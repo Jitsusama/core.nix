@@ -11,6 +11,7 @@ use super::{Act, Key, line_keys, operators, slots, spoken, table};
 /// more rows than the launcher's thirteen, Neovim's longest.
 pub const GROUPS: &[&str] = &[
     "Moving",
+    "Along a Line",
     "In View",
     "Jumping",
     "Links and Files",
@@ -26,8 +27,9 @@ pub const GROUPS: &[&str] = &[
 /// What the key list says an act does, and its group, in the words his
 /// Neovim's key map uses: a sentence, as keys.nix's `does`. Acts that do
 /// the same on a page share their words, so the list gives them one row;
-/// Escape at rest isn't listed. h and l move only a selection's cursor,
-/// since the page fits the window, so they're listed with selecting.
+/// Escape at rest isn't listed. The keys along a line move the cursor onto
+/// a character at rest, and a selection's end while selecting, so they're
+/// a group of their own.
 pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
     Some(match act {
         Act::Down => ("Moving", "Down a line"),
@@ -69,15 +71,19 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::Previous => ("Searching", "Back to the match before"),
         Act::SetMark(_) => ("Marks", "Mark this place with a letter"),
         Act::GoToMark(_) => ("Marks", "Go to a letter's mark"),
-        Act::Select => ("Selecting", "Select from the cursor's line"),
+        Act::Select => ("Selecting", "Select from the cursor"),
         Act::SelectPieces => ("Selecting", "Select whole paragraphs, items and lines"),
-        Act::Left => ("Selecting", "A character left"),
-        Act::Right => ("Selecting", "A character right"),
-        Act::WordOn => ("Selecting", "On to the next word"),
-        Act::WordBack => ("Selecting", "Back to a word's start"),
-        Act::WordEnd => ("Selecting", "On to a word's end"),
-        Act::LineStart => ("Selecting", "To the line's start"),
-        Act::LineEnd => ("Selecting", "To the line's end"),
+        Act::Left => ("Along a Line", "A character left"),
+        Act::Right => ("Along a Line", "A character right"),
+        Act::WordOn => ("Along a Line", "On to the next word"),
+        Act::WordBack => ("Along a Line", "Back to a word's start"),
+        Act::WordEnd => ("Along a Line", "On to a word's end"),
+        Act::LineStart => ("Along a Line", "To the line's start"),
+        Act::LineEnd => ("Along a Line", "To the line's end"),
+        Act::ToLetter(_) => ("Along a Line", "On to the character typed"),
+        Act::ToLetterBack(_) => ("Along a Line", "Back to the character typed"),
+        Act::LetterAgain => ("Along a Line", "To that character again"),
+        Act::LetterAgainBack => ("Along a Line", "Back to that character again"),
         Act::OtherEnd => ("Selecting", "To the selection's other end"),
         Act::Object(Object::InWord) => ("Text Objects", "A word"),
         Act::Object(Object::AWord) => ("Text Objects", "A word and the space after it"),
@@ -248,6 +254,7 @@ pub fn chords() -> Vec<Listed> {
                 "Marks" => "jumping".to_string(),
                 "Moving" => "scrolling".to_string(),
                 "In View" => "view".to_string(),
+                "Along a Line" => "line".to_string(),
                 "Links and Files" => "links".to_string(),
                 "Text Objects" => "objects".to_string(),
                 "The Page" => "page".to_string(),

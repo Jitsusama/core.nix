@@ -72,6 +72,15 @@ shows() {
   [ "$said" = "$1" ] || fail "the selection is $said, not $1"
 }
 
+# Whether the cursor stands on `character` at rest, said as Rust quotes
+# it, or on nothing but its line, by the log's last word on it.
+stands() {
+  local said
+  said=$(grep -a -E '^character: ' said | tail -n 1)
+  said=${said#character: }
+  [ "$said" = "$1" ] || fail "the cursor stands on $said, not $1"
+}
+
 # Waits for the next copy, and whether it took `markdown`, said as Rust
 # quotes it.
 copies=0

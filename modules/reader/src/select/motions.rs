@@ -6,6 +6,15 @@ use super::{Class, Layout, Motion, Pos, Selection};
 impl Layout {
     /// Moves the cursor `count` times.
     pub fn moved(&self, selection: &mut Selection, motion: Motion, count: usize) {
+        // f and F with a count go to that many of the character on, or
+        // nowhere when the line has fewer, as Vim's fail whole.
+        if let Motion::ToLetter(letter) | Motion::ToLetterBack(letter) = motion {
+            let on = matches!(motion, Motion::ToLetter(_));
+            if let Some(at) = self.letter_from(selection.cursor, letter, on, count.max(1)) {
+                selection.put(at);
+            }
+            return;
+        }
         let mut at = selection.cursor;
         let vertical = matches!(motion, Motion::Down | Motion::Up);
         if vertical {
@@ -41,6 +50,7 @@ impl Layout {
                 }),
                 Motion::ParagraphOn => self.paragraph_on(at),
                 Motion::ParagraphBack => self.paragraph_back(at),
+                Motion::ToLetter(_) | Motion::ToLetterBack(_) => None,
                 Motion::First => (0..self.lines.len())
                     .find(|&line| self.len(line) > 0)
                     .map(|line| Pos { line, ch: 0 }),
@@ -56,6 +66,19 @@ impl Layout {
         }
         selection.cursor = at;
         selection.taken = None;
+    }
+
+    /// f and F: the `count`th of a character on along the line from a
+    /// place, or back, never past the line's ends.
+    fn letter_from(&self, from: Pos, letter: char, on: bool, count: usize) -> Option<Pos> {
+        let chars = &self.chars[from.line];
+        let found = |&ch: &usize| chars[ch] == letter;
+        let ch = if on {
+            (from.ch + 1..chars.len()).filter(found).nth(count - 1)
+        } else {
+            (0..from.ch).rev().filter(found).nth(count - 1)
+        }?;
+        Some(Pos { ch, ..from })
     }
 
     /// w: the next word's start, a line's end counting as a blank.

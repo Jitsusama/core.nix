@@ -279,14 +279,17 @@ impl WindowHandler for App {
                     self.lit = make(search_marks())
                         .zip(make(current_marks()))
                         .map(|(a, b)| [a, b]);
-                    // The cursor always stands on a character the
-                    // selection holds, so it recolours the selection's.
+                    // A selection's cursor always stands on a character
+                    // the selection holds, so it recolours the
+                    // selection's; at rest the cursor's character is on
+                    // the page's own.
                     let page = (self::ground(), page_ink());
                     self.chosen = gl
                         .chosen(page, selection_marks())
                         .ok()
                         .zip(gl.chosen(selection_marks(), cursor_marks()).ok())
-                        .map(|(a, b)| [a, b]);
+                        .zip(gl.chosen(page, cursor_marks()).ok())
+                        .map(|((a, b), c)| [a, b, c]);
                     self.rule = gl.swatch(theme::get().accent.gl()).ok();
                     self.bare = gl.swatch(self::ground()).ok();
                     self.gl = Some(gl);

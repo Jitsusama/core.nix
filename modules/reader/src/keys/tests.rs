@@ -56,14 +56,17 @@ fn the_list_gives_each_thing_one_row_with_every_way_to_type_it() {
 
 #[test]
 fn the_list_says_selecting_text_objects_and_copying_by_letters() {
+    let along = rows_of("Along a Line");
+    for way in ["h", "l", "w", "b", "e", "0", "$", "f", "F", ";", ","] {
+        assert!(
+            along.iter().any(|(ways, _)| ways == &[way]),
+            "Along a Line lists no row typed {way}"
+        );
+    }
     let selecting = rows_of("Selecting");
     assert!(
-        selecting.iter().any(|(ways, _)| ways == &["h"]),
-        "Selecting lists no row typed h"
-    );
-    assert!(
-        selecting.iter().any(|(ways, _)| ways == &["l"]),
-        "Selecting lists no row typed l"
+        !selecting.iter().any(|(ways, _)| ways == &["h"]),
+        "Selecting still lists h, which is along a line"
     );
     assert!(
         selecting.iter().any(|(ways, _)| ways == &["v"]),
@@ -317,9 +320,12 @@ fn a_count_goes_with_the_motion_after_it() {
 }
 
 #[test]
-fn a_zero_alone_starts_no_count_and_goes_to_the_lines_start_while_selecting() {
+fn a_zero_alone_starts_no_count_and_goes_to_the_lines_start() {
     let mut machine = Machine::default();
-    assert_eq!(typed(&mut machine, "0j"), [(Act::Down, None)]);
+    assert_eq!(
+        typed(&mut machine, "0j"),
+        [(Act::LineStart, None), (Act::Down, None)]
+    );
     assert_eq!(typed(&mut machine, "10j"), [(Act::Down, Some(10))]);
     assert_eq!(typed_in(&mut machine, "0", true), [(Act::LineStart, None)]);
     assert_eq!(
@@ -366,6 +372,49 @@ fn y_copies_at_once_while_selecting_and_waits_for_its_object_at_rest() {
 }
 
 #[test]
+fn the_keys_along_a_line_move_at_rest_as_while_selecting() {
+    let mut machine = Machine::default();
+    for selecting in [false, true] {
+        assert_eq!(
+            typed_in(&mut machine, "hlwbe0$2w", selecting),
+            [
+                (Act::Left, None),
+                (Act::Right, None),
+                (Act::WordOn, None),
+                (Act::WordBack, None),
+                (Act::WordEnd, None),
+                (Act::LineStart, None),
+                (Act::LineEnd, None),
+                (Act::WordOn, Some(2)),
+            ]
+        );
+    }
+}
+
+#[test]
+fn f_takes_any_character_after_it_and_a_mark_only_a_letter() {
+    let mut machine = Machine::default();
+    assert_eq!(
+        typed(&mut machine, "fa3fbF.f f3;,"),
+        [
+            (Act::ToLetter('a'), None),
+            (Act::ToLetter('b'), Some(3)),
+            (Act::ToLetterBack('.'), None),
+            (Act::ToLetter(' '), None),
+            (Act::ToLetter('3'), None),
+            (Act::LetterAgain, None),
+            (Act::LetterAgainBack, None),
+        ]
+    );
+    assert_eq!(
+        typed_in(&mut machine, "fx2;", true),
+        [(Act::ToLetter('x'), None), (Act::LetterAgain, Some(2))]
+    );
+    assert_eq!(typed(&mut machine, "m."), [], "a mark is a letter's");
+    assert!(!machine.busy(), "and m . waits no more");
+}
+
+#[test]
 fn text_objects_and_motions_work_only_while_selecting() {
     let mut machine = Machine::default();
     assert_eq!(
@@ -382,7 +431,12 @@ fn text_objects_and_motions_work_only_while_selecting() {
             (Act::ParagraphOn, None),
         ]
     );
-    assert_eq!(typed(&mut machine, "iwob"), [], "at rest they mean nothing");
+    assert_eq!(typed(&mut machine, "o"), [], "at rest o means nothing");
+    assert_eq!(
+        typed(&mut machine, "iw"),
+        [(Act::WordOn, None)],
+        "at rest i is nothing, and w moves along the line"
+    );
     assert_eq!(typed(&mut machine, "v"), [(Act::Select, None)]);
     assert_eq!(
         typed_in(&mut machine, "V", true),
@@ -549,6 +603,7 @@ fn a_change_is_refused_once_it_is_whole() {
         assert!(!machine.busy(), "{motion}");
     }
     assert_eq!(typed(&mut machine, "cgg"), [refused(ChangeMotion)]);
+    assert_eq!(typed(&mut machine, "df."), [refused(DeleteMotion)]);
     // A key that's no motion drops the operator, and Escape cancels it.
     assert_eq!(typed(&mut machine, "dqj"), [(Act::Down, None)]);
     typed(&mut machine, "c");

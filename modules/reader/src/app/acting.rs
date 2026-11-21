@@ -240,12 +240,18 @@ impl App {
             Act::Change(_) => self.say(ex::CANNOT_CHANGE),
             // Escape at rest does nothing, as Vim's does; :noh puts the
             // search's marks away. The page is set to fit the window's
-            // width, so there's never anything beside it to move to; h and
-            // l move only a selection's cursor, which takes them, with its
-            // own keys, before they get here.
+            // width, so there's never anything beside it to move to; the
+            // keys along a line move the cursor's character, or a
+            // selection's cursor, which take them, with a selection's own
+            // keys, before they get here, and ; and , before any f do
+            // nothing.
             Act::Rest
             | Act::Left
             | Act::Right
+            | Act::ToLetter(_)
+            | Act::ToLetterBack(_)
+            | Act::LetterAgain
+            | Act::LetterAgainBack
             | Act::Select
             | Act::SelectPieces
             | Act::WordOn
@@ -269,6 +275,7 @@ impl App {
     /// the tests.
     fn acted(&mut self, act: keys::Act, count: Option<u32>, from: (f64, f64), screen_pt: f64) {
         use keys::Act;
+        self.keep_character(act);
         let (from_pt, from_aim) = from;
         // A move longer than a screen is a jump, as vi's are, however it
         // was made; going through the jumps never adds to them.

@@ -2979,14 +2979,20 @@ fits whole on the laptop's plate.
   what it said, and u brings back what d took until the launcher closes.
 - **The reader** has a cursor, as a help buffer does: the cursor line marked
   by a thin accent rule in the left margin, as his `cursorlineopt=number`
-  lights only the number, and a block only in visual, which starts on the
-  line's first word, never on a list's number or bullet: those are the
+  lights only the number, and a block once it stands on a character. h l,
+  w b e, 0 $, f F and ; , put it on one, along the cursor's line, from
+  its first word, never a list's number or bullet: those are the
   margin's, as Vim's number column is, and the selection's ground leaves
-  them bare. j and k move it by
-  the line as shown, the view following at his `scrolloff=4`; Ctrl+E and
+  them bare. That is so he can choose the character a selection starts
+  on (Joel, 2026-11-21: "a cursor mode when visually selecting text
+  before i start so that I can choose what character i start at"). v
+  and V start from the character, or the line's first word. j and k move
+  the cursor by the line as shown, a character keeping across as Vim's
+  curswant does, the view following at his `scrolloff=4`; Ctrl+E and
   Ctrl+Y scroll the view alone. /, n N, ]] [[, { }, gO, marks, jumps and
-  :{n} put the cursor where they land, so / and then yip copies the
-  paragraph found. Escape at rest and q do nothing.
+  :{n} put the cursor where they land, its line alone, so / and then yip
+  copies the paragraph found. Escape at rest puts a character back to
+  the line, and otherwise does nothing; q does nothing.
 - **The drawer** is the preview window: Ctrl+W l goes in and the reader's
   keys work there, and Ctrl+W h or :q comes back, Ctrl+W w either way, as
   Vim goes between windows, with his Neovim's Space and an arrow over

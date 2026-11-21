@@ -41,8 +41,9 @@ pub enum Key {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Act {
     /// The cursor down or up by the lines shown, the view following it, or
-    /// across by columns, as vi's j, k, l and h; while selecting, the
-    /// selection's cursor.
+    /// across by characters, as vi's j, k, l and h; while selecting, the
+    /// selection's cursor. At rest, h and l put the cursor on a character
+    /// of its line, which j and k then carry, keeping across.
     Down,
     Up,
     Left,
@@ -125,18 +126,26 @@ pub enum Act {
     /// @: the last line the command line ran, run again.
     AgainCommand,
     /// v and V: a selection, of characters or of whole paragraphs, items
-    /// and lines of code, from the first word on the cursor's line, with
-    /// the block cursor there; the same key again ends it, and the other
-    /// turns it into one of the other kind.
+    /// and lines of code, from the cursor's character, or the first word
+    /// on its line, with the block cursor there; the same key again ends
+    /// it, and the other turns it into one of the other kind.
     Select,
     SelectPieces,
-    /// While selecting, the cursor on by words as w, b and e, and to a
-    /// line's ends as 0 and $.
+    /// The cursor on by words as w, b and e, and to a line's ends as 0 and
+    /// $: at rest onto a character of its line, and while selecting the
+    /// selection's end.
     WordOn,
     WordBack,
     WordEnd,
     LineStart,
     LineEnd,
+    /// f and F: the cursor to the character typed after it, on along its
+    /// line or back; ; and , to that character again, the same way or the
+    /// other.
+    ToLetter(char),
+    ToLetterBack(char),
+    LetterAgain,
+    LetterAgainBack,
     /// o: the cursor to the selection's other end.
     OtherEnd,
     /// A text object round the cursor: iw, aw, is, as, ip, ap and `` i` ``.
@@ -192,6 +201,8 @@ impl Act {
                 | Act::WordOn
                 | Act::WordBack
                 | Act::WordEnd
+                | Act::LetterAgain
+                | Act::LetterAgainBack
                 | Act::ZoomIn
                 | Act::ZoomOut
         )
@@ -294,6 +305,8 @@ const SPOKEN: &[(&str, Act)] = &[
     ("word-end", Act::WordEnd),
     ("line-start", Act::LineStart),
     ("line-end", Act::LineEnd),
+    ("letter-again", Act::LetterAgain),
+    ("letter-again-backward", Act::LetterAgainBack),
     ("other-end", Act::OtherEnd),
     ("in-word", Act::Object(Object::InWord)),
     ("a-word", Act::Object(Object::AWord)),
@@ -321,7 +334,22 @@ const SPOKEN: &[(&str, Act)] = &[
 type Slot = fn(char) -> Act;
 
 /// The acts whose key takes a letter after it, by their names.
-const SLOTS: &[(&str, Slot)] = &[("set-mark", Act::SetMark), ("go-to-mark", Act::GoToMark)];
+const SLOTS: &[(&str, Slot)] = &[
+    ("set-mark", Act::SetMark),
+    ("go-to-mark", Act::GoToMark),
+    ("to-letter", Act::ToLetter),
+    ("to-letter-backward", Act::ToLetterBack),
+];
+
+/// Whether a slot takes a character typed after its key: a mark's name is
+/// a letter, as Vim's a to z and A to Z, and f and F go to any character
+/// a line can show, a space or a stop as much as a letter.
+fn takes(slot: Slot, typed: char) -> bool {
+    match slot(typed) {
+        Act::ToLetter(_) | Act::ToLetterBack(_) => !typed.is_control(),
+        _ => typed.is_ascii_alphabetic(),
+    }
+}
 
 /// The acts whose key takes a motion after it, as Vim's operators do, or
 /// acts on a selection at once, by their names.
@@ -673,6 +701,8 @@ fn spoken(act: Act) -> &'static str {
     match act {
         Act::SetMark(_) => "set-mark",
         Act::GoToMark(_) => "go-to-mark",
+        Act::ToLetter(_) => "to-letter",
+        Act::ToLetterBack(_) => "to-letter-backward",
         act => SPOKEN
             .iter()
             .chain(OPERATORS)

@@ -1,5 +1,6 @@
 //! Visual mode in the window: v and V start a selection with the theme's
-//! block cursor on the first word of the cursor's line, the keys move it
+//! block cursor on the cursor's character, which the keys along a line put
+//! it on at rest, or the first word of the cursor's line, the keys move it
 //! and its text objects take what's round it (select/), and y or Ctrl+C
 //! copies it as the file's markdown through wl-copy, flashing what it took
 //! as his Neovim's yank does. At rest, y y, y i p, y a p and y } copy the
@@ -79,6 +80,11 @@ impl App {
                 self.end_selection();
             }
         }
+        if let (Some(character), Some(old)) = (&self.character, &self.layout)
+            && !layout.same_line(old, character.cursor.line)
+        {
+            self.character = None;
+        }
         self.layout = Some(Arc::new(layout));
     }
 
@@ -112,8 +118,6 @@ impl App {
                     | Act::CopyToParagraphEnd
             );
         };
-        let (_, foot) = self.view_pt();
-        let here = self.cursor_pt();
         match act {
             Act::Select | Act::SelectPieces => {
                 let kind = if act == Act::Select {
@@ -129,17 +133,13 @@ impl App {
                         }
                     }
                     None => {
-                        let first = layout.first_in_view(here - 0.5, foot);
-                        // On the line a search left the cursor on, v starts at
-                        // the match, as Neovim's starts at the cursor's
-                        // character, which the search put there.
-                        let matched = self
-                            .current
-                            .and_then(|i| self.found.get(i))
-                            .and_then(|found| found.pieces.first())
-                            .and_then(|piece| layout.place_of(piece.baseline_pt, piece.from_pt))
-                            .filter(|at| first.is_some_and(|first| first.line == at.line));
-                        self.selection = matched.or(first).map(|at| Selection::new(kind, at));
+                        // From the cursor's character, as Neovim's starts
+                        // at its cursor's.
+                        let at = match self.character.take() {
+                            Some(character) => Some(character.cursor),
+                            None => self.start_here(&layout),
+                        };
+                        self.selection = at.map(|at| Selection::new(kind, at));
                     }
                 }
                 return true;
@@ -150,35 +150,30 @@ impl App {
             }
             _ => {}
         }
+        let along = self.letter_motion(act).or_else(|| along(act));
         let Some(selection) = self.selection.as_mut() else {
-            return false;
+            return self.character_act(&layout, act, along, times);
         };
-        let motion = match act {
-            Act::Down => Motion::Down,
-            Act::Up => Motion::Up,
-            Act::Left => Motion::Left,
-            Act::Right => Motion::Right,
-            Act::WordOn => Motion::WordOn,
-            Act::WordBack => Motion::WordBack,
-            Act::WordEnd => Motion::WordEnd,
-            Act::LineStart => Motion::LineStart,
-            Act::LineEnd => Motion::LineEnd,
-            Act::ParagraphBack => Motion::ParagraphBack,
-            Act::ParagraphOn => Motion::ParagraphOn,
-            Act::First => Motion::First,
-            Act::Last => Motion::Last,
-            Act::OtherEnd => {
+        let motion = match (along, act) {
+            (Some(motion), _) => motion,
+            (None, Act::Down) => Motion::Down,
+            (None, Act::Up) => Motion::Up,
+            (None, Act::ParagraphBack) => Motion::ParagraphBack,
+            (None, Act::ParagraphOn) => Motion::ParagraphOn,
+            (None, Act::First) => Motion::First,
+            (None, Act::Last) => Motion::Last,
+            (None, Act::OtherEnd) => {
                 selection.swap();
                 self.follow_cursor();
                 return true;
             }
-            Act::Object(object) => {
+            (None, Act::Object(object)) => {
                 layout.object(selection, object);
                 self.follow_cursor();
                 return true;
             }
             // y leaves the cursor at the selection's start, as Vim's does.
-            Act::Copy => {
+            (None, Act::Copy) => {
                 let taken = selection.clone();
                 self.end_selection();
                 let (top, foot) = layout.line_extent(taken.ends().0.line);
@@ -187,13 +182,13 @@ impl App {
                 self.copy(&layout, taken);
                 return true;
             }
-            Act::Rest => {
+            (None, Act::Rest) => {
                 self.end_selection();
                 return true;
             }
             // A mark made while selecting is the cursor's line, as his
             // Neovim's is, and the selection holds.
-            Act::SetMark(letter) => {
+            (None, Act::SetMark(letter)) => {
                 let (top, _) = layout.line_extent(selection.cursor.line);
                 self.marks.insert(letter, top);
                 return true;
@@ -203,6 +198,110 @@ impl App {
         layout.moved(selection, motion, times);
         self.follow_cursor();
         true
+    }
+
+    /// Where the cursor stands on its line before a key moves it along:
+    /// the first word on its line, or on the line a search left it on, the
+    /// match, as Neovim's cursor is the character the search put it on.
+    fn start_here(&self, layout: &select::Layout) -> Option<select::Pos> {
+        let (_, foot) = self.view_pt();
+        let first = layout.first_in_view(self.cursor_pt() - 0.5, foot);
+        let matched = self
+            .current
+            .and_then(|i| self.found.get(i))
+            .and_then(|found| found.pieces.first())
+            .and_then(|piece| layout.place_of(piece.baseline_pt, piece.from_pt))
+            .filter(|at| first.is_some_and(|first| first.line == at.line));
+        matched.or(first)
+    }
+
+    /// f, F, ; and , as the motion each makes: f and F keep the character
+    /// they go to for ; and , to go to again, the same way and the other;
+    /// ; and , before any f do nothing.
+    fn letter_motion(&mut self, act: Act) -> Option<Motion> {
+        let (letter, on) = match act {
+            Act::ToLetter(letter) => (letter, true),
+            Act::ToLetterBack(letter) => (letter, false),
+            Act::LetterAgain => self.letter?,
+            Act::LetterAgainBack => self.letter.map(|(letter, on)| (letter, !on))?,
+            _ => return None,
+        };
+        if matches!(act, Act::ToLetter(_) | Act::ToLetterBack(_)) {
+            self.letter = Some((letter, on));
+        }
+        Some(if on {
+            Motion::ToLetter(letter)
+        } else {
+            Motion::ToLetterBack(letter)
+        })
+    }
+
+    /// At rest, a key along the line puts the cursor on a character of it,
+    /// from where it stands (`start_here`), or moves it on from the one
+    /// it's on, and j and k carry that across lines, keeping across, as
+    /// Vim's normal cursor; the cursor's line goes with it. Escape puts the
+    /// cursor back to being its line, as anything else that moves it off
+    /// the character's line does (`keep_character`). False for a key that
+    /// does what it does at rest.
+    fn character_act(
+        &mut self,
+        layout: &Arc<select::Layout>,
+        act: Act,
+        along: Option<Motion>,
+        times: usize,
+    ) -> bool {
+        let standing = self.character.is_some();
+        let motion = match (along, act) {
+            (Some(motion), _) => motion,
+            (None, Act::Down) if standing => Motion::Down,
+            (None, Act::Up) if standing => Motion::Up,
+            (None, Act::Rest) if standing => {
+                self.character = None;
+                return true;
+            }
+            _ => return false,
+        };
+        let Some(mut character) = self.character.take().or_else(|| {
+            self.start_here(layout)
+                .map(|at| Selection::new(Kind::Chars, at))
+        }) else {
+            return true;
+        };
+        layout.moved(&mut character, motion, times);
+        let (top, foot) = layout.line_extent(character.cursor.line);
+        self.aim = Some(top);
+        let toward = match motion {
+            Motion::Down => Some(true),
+            Motion::Up => Some(false),
+            _ => None,
+        };
+        self.follow_line(top, foot, toward);
+        self.character = Some(character);
+        true
+    }
+
+    /// The cursor's character holds while the cursor is on its line, so a
+    /// key that took the cursor off it, as } or H does, leaves the cursor
+    /// its line again, as v then starts from; a search puts it on its
+    /// match's line, where v starts at the match.
+    pub(crate) fn keep_character(&mut self, act: Act) {
+        let (Some(layout), Some(character)) = (self.layout.as_ref(), self.character.as_ref())
+        else {
+            return;
+        };
+        let (top, _) = layout.line_extent(character.cursor.line);
+        let searched = matches!(
+            act,
+            Act::SearchForward
+                | Act::SearchBackward
+                | Act::Next
+                | Act::Previous
+                | Act::SameWordOn
+                | Act::SameWordBack
+        );
+        if searched || (top - self.cursor_pt()).abs() > 0.5 {
+            self.character = None;
+        }
     }
 
     /// y y, y i p, y a p or y } at rest, from the cursor's line. As Vim's
@@ -354,7 +453,8 @@ impl App {
     /// The cursor's line, its cell's top and foot in points: the
     /// selection's cursor's while selecting, and else the page's.
     pub(crate) fn cursor_line(&self) -> Option<(f64, f64)> {
-        if let (Some(layout), Some(selection)) = (self.layout.as_ref(), self.selection.as_ref()) {
+        let standing = self.selection.as_ref().or(self.character.as_ref());
+        if let (Some(layout), Some(selection)) = (self.layout.as_ref(), standing) {
             return layout.lines.get(selection.cursor.line).map(moves::rule_of);
         }
         let (i, lines) = self.cursor().zip(self.words.as_deref())?;
@@ -390,9 +490,9 @@ impl App {
 
     /// The selection, and what a copy took while it flashes, on the
     /// selection's ground with their words in strong; then the cursor, a
-    /// block on its character.
+    /// block on its character, as it is at rest once it stands on one.
     pub(crate) fn draw_selection(&self, gl: &gl::Gl, screen: f32) {
-        let (false, Some([chosen, cursor])) = (baseline(), self.chosen.as_ref()) else {
+        let (false, Some([chosen, cursor, resting])) = (baseline(), self.chosen.as_ref()) else {
             return;
         };
         let px = self.px_per_pt();
@@ -433,6 +533,15 @@ impl App {
             let (top, foot) = select::line_cell(at.baseline_pt, at.cap_pt, at.size_pt);
             mark(cursor, (top, foot, at.from_pt, at.to_pt));
         }
+        if let (Some(layout), None, Some(character)) = (
+            self.layout.as_ref(),
+            self.selection.as_ref(),
+            self.character.as_ref(),
+        ) && let Some(at) = layout.cursor(character)
+        {
+            let (top, foot) = select::line_cell(at.baseline_pt, at.cap_pt, at.size_pt);
+            mark(resting, (top, foot, at.from_pt, at.to_pt));
+        }
     }
 
     /// Says what the selection holds after a key, for the key log.
@@ -446,7 +555,27 @@ impl App {
                 layout.shown(selection)
             );
         }
+        if let (true, Some(layout)) = (keys_logged(), self.layout.as_ref()) {
+            match self.character.as_ref() {
+                Some(character) => eprintln!("character: {:?}", layout.shown(character)),
+                None => eprintln!("character: nothing"),
+            }
+        }
     }
+}
+
+/// A key along a line as the motion it makes, at rest and while selecting.
+fn along(act: Act) -> Option<Motion> {
+    Some(match act {
+        Act::Left => Motion::Left,
+        Act::Right => Motion::Right,
+        Act::WordOn => Motion::WordOn,
+        Act::WordBack => Motion::WordBack,
+        Act::WordEnd => Motion::WordEnd,
+        Act::LineStart => Motion::LineStart,
+        Act::LineEnd => Motion::LineEnd,
+        _ => return None,
+    })
 }
 
 /// Copies what a selection took as the file's markdown, on a thread, so

@@ -139,8 +139,9 @@ shows '"E"'
 # strong text rather than the page's: of what v changed on the page at
 # rest, that many pixels are each of the two exactly.
 changed_to() {
-  magick v.png -fill black +opaque "$1" -fill white -opaque "$1" \
-    \( at-rest.png v.png -compose difference -composite -colorspace gray -threshold 0 \) \
+  local shot=${2:-v.png}
+  magick "$shot" -fill black +opaque "$1" -fill white -opaque "$1" \
+    \( at-rest.png "$shot" -compose difference -composite -colorspace gray -threshold 0 \) \
     -compose multiply -composite -format '%[fx:round(mean*w*h)]' info:
 }
 deadline=$((SECONDS + 30))
@@ -161,6 +162,50 @@ copied '"**bold**"'
 shows 'nothing'
 # Ending a selection leaves the cursor on its line, as Neovim's does, so
 # v starts there again, and each selection after starts from gg.
+act 1 v
+shows '"A"'
+act 1 -k Escape
+# At rest, the keys along a line put the cursor on a character, from the
+# first word on its line, drawn as v's block is, and v starts there: w to
+# bold's b, e to its end, then v and b select it back to its start.
+act 1 w
+stands '"b"'
+deadline=$((SECONDS + 30))
+until grim w.png && [ "$(changed_to "$cursor" w.png)" -gt 100 ]; do
+  ((SECONDS < deadline)) \
+    || fail "w's cursor took $(changed_to "$cursor" w.png) pixels of its colour, not its block"
+  inotifywait -q -q -t 1 -e modify said || true
+done
+act 1 e
+stands '"d"'
+act 1 v
+shows '"d"'
+stands 'nothing'
+act 1 b
+shows '"bold"'
+act 1 y
+copied '"**bold**"'
+# f goes to the character typed, and ; to it again, so v e then takes
+# the rest of second's word.
+act 1 fc
+stands '"c"'
+act 1 ';'
+act 2 ve
+shows '"cond"'
+act 1 -k Escape
+# j and k carry the character, its line with it, keeping across, so it
+# comes back to bold's b; Escape puts the cursor back to its line, so v
+# starts on its first word.
+act 1 w
+stands '"b"'
+before=$(cursor)
+act 1 j
+awk "BEGIN { exit !($(cursor) > $before) }" || fail "j left the cursor at $(cursor) pt"
+act 1 k
+stands '"b"'
+near "$(cursor)" "$before" || fail "k put the cursor at $(cursor) pt, not $before"
+act 1 -k Escape
+stands 'nothing'
 act 1 v
 shows '"A"'
 act 1 -k Escape

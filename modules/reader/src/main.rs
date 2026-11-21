@@ -260,10 +260,18 @@ struct App {
     layout_to: channel::Sender<(u32, select::Layout)>,
     /// Visual mode's selection, while there is one.
     selection: Option<select::Selection>,
+    /// The cursor's character on its line at rest, once a key moves it
+    /// along the line, as Vim's normal cursor stands on one, for v to
+    /// start on: a selection's cursor alone, never one, so the keys stay
+    /// normal mode's. Until then, the cursor is its line.
+    character: Option<select::Selection>,
+    /// The character f or F went to last, and whether on, for ; and ,.
+    letter: Option<(char, bool)>,
     /// What the last copy took, flashed until a moment after it.
     flash: Option<(Vec<text::Piece>, Instant)>,
-    /// The selection's mark, then the cursor's, which is drawn over it.
-    chosen: Option<[gl::Mark; 2]>,
+    /// The selection's mark, then the cursor's, which is drawn over it,
+    /// then the cursor's on the page at rest.
+    chosen: Option<[gl::Mark; 3]>,
     /// The cursor's line's top, in points, as a help buffer keeps a cursor:
     /// where j and k, H, M and L, a landing or a match left it, for yy,
     /// v, zt, %, * and gf to act on, and marked by a rule in the margin.

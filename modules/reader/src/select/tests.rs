@@ -220,6 +220,36 @@ fn w_b_and_e_go_by_words_as_vi_does() {
 }
 
 #[test]
+fn f_and_f_back_go_to_a_character_on_the_line_or_nowhere() {
+    let page = page();
+    // "Some bold words and a"
+    let mut s = Selection::new(Kind::Chars, at(1, 0));
+    page.moved(&mut s, Motion::ToLetter('o'), 1);
+    assert_eq!(s.cursor, at(1, 1));
+    page.moved(&mut s, Motion::ToLetter('o'), 2);
+    assert_eq!(s.cursor, at(1, 11), "a count goes on to that many");
+    page.moved(&mut s, Motion::ToLetter(' '), 1);
+    assert_eq!(s.cursor, at(1, 15), "a space is a character too");
+    page.moved(&mut s, Motion::ToLetter('o'), 1);
+    assert_eq!(
+        s.cursor,
+        at(1, 15),
+        "none on along the line, so it stays, never going to the next"
+    );
+    page.moved(&mut s, Motion::ToLetterBack('S'), 1);
+    assert_eq!(s.cursor, at(1, 0), "back, and in its case");
+    page.moved(&mut s, Motion::ToLetter('d'), 3);
+    assert_eq!(s.cursor, at(1, 18));
+    page.moved(&mut s, Motion::LineStart, 1);
+    page.moved(&mut s, Motion::ToLetter('d'), 4);
+    assert_eq!(
+        s.cursor,
+        at(1, 0),
+        "fewer than the count on along it, so it stays, as Vim's fails whole"
+    );
+}
+
+#[test]
 fn braces_go_by_paragraphs() {
     let page = page();
     let mut s = Selection::new(Kind::Chars, at(1, 4));
