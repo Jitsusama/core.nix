@@ -554,8 +554,8 @@ pub fn views<W: AsRef<[u8]>>(words: &[W]) -> bool {
 /// since after a crash the launcher opens each hosted session's viewer
 /// to wait for its host. So for a session a host runs, a viewer's holder
 /// is left out altogether, known by its command while its viewer is down
-/// and its holder parked, or by its process (`is_viewer`), and its
-/// windows are never among those a restart closes as dead. For one no
+/// and its holder parked, or by its process (`is_viewer`); a holder whose
+/// process is a pi counts whatever its words, as a pi always does. For one no
 /// host is known to run, a viewer counts as a pi does: a pi started
 /// beside a host's would run twice on one log.
 pub fn holding(
@@ -570,7 +570,10 @@ pub fn holding(
         Some(all) if hosted => {
             let counted: Vec<Holder> = all
                 .iter()
-                .filter(|h| !(views(&h.command) || (h.pid > 0 && is_viewer(h.pid))))
+                .filter(|h| {
+                    let live = h.pid > 0;
+                    (live && is_pi(h.pid)) || !(views(&h.command) || (live && is_viewer(h.pid)))
+                })
                 .cloned()
                 .collect();
             held(&counted, &seen.session, is_pi)
