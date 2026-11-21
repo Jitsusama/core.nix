@@ -46,6 +46,19 @@ function why(heard, casts, recording) {
     return `${counted} the screen (${kinds.join(", ")})`;
 }
 
+// What a copy's row is made with beyond what it holds, as Copies' made()
+// makes it. Made showing, it names `source`, the one that hides it once a
+// share starts, so no way back goes to a place holding it then
+// (Steady.hiddenGone). Made hidden, it draws nothing of the copy, only
+// `name` saying it's hidden, and names no source, since a place holding it
+// shows nothing a share would hide, so it stays.
+function made(hiding, source, name) {
+    if (!hiding) {
+        return { shownBy: source };
+    }
+    return { name, note: "", reads: "", picture: "" };
+}
+
 // A copy as the history `served` it, saying only its kind and when it was
 // copied, for its row while copies hide: the history's glyph tells a link,
 // an address, a path or a number apart, and its side gives a text's lines
