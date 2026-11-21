@@ -159,6 +159,28 @@ function forgets(made, leaving, held, steps) {
     };
 }
 
+// How many keys Joel had pressed when a step left by itself landed on a
+// row that isn't `from`, the step's own record of the row he stepped in
+// from (its key, or "" for none), or -1 where it landed on that row by
+// its key. `landed` is the key of the row selected once it landed, or
+// "" for none. A row gone from the rows the leave searched again, as an
+// ask a share hides, leaves the selection where it stood, on a row Joel
+// never chose (holdsReturn).
+function guessedAt(from, landed, keys) {
+    const key = from?.key ?? "";
+    return key !== "" && key === landed ? -1 : keys;
+}
+
+// Whether Return holds still, doing nothing, once a step left by itself
+// landed where guessedAt says: only as the first key after the leave, so
+// a second Return meant for the step that left, as an ask's Release It,
+// never runs the row the selection stands on instead. Any other key
+// first, as a move or a word typed, lets the next Return run. `keys`
+// counts this Return too, as the field counts a key before it acts.
+function holdsReturn(guessed, keys) {
+    return guessed >= 0 && keys === guessed + 1;
+}
+
 // Where a list of steps goes, the one way the launcher tells places
 // apart, for its histories as they're kept and as they forget: a row by
 // its key, as the launcher's sameRow matches a row remade, so a refresh

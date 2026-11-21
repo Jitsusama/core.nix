@@ -278,11 +278,35 @@ QtObject {
             `${typedEnded.leave} ${typedEnded.all}`, "1 false");
 
         leaving(check, steps, nothing, below);
+        guessing(check);
 
         for (const failure of failures) {
             console.warn(`FAIL ${failure}`);
         }
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // Whether Return holds once after a step left by itself, as an ask's
+    // during a share: its held step offers nothing, so the launcher leaves
+    // it, and the ask, hidden, is no row to land back on. Joel's second
+    // Return, meant for its Release It, must never run the row the
+    // selection was left on instead. Each told to `check`.
+    function guessing(check) {
+        const ask = { key: "ask:7", at: 2 };
+        check("a leave that lands on the row stepped in from, by its key, holds nothing",
+            Held.guessedAt(ask, "ask:7", 5), -1);
+        check("one that lands on another row, as one hidden leaves it, holds from its keys",
+            Held.guessedAt(ask, "copies", 5), 5);
+        check("and one that lands on no row at all", Held.guessedAt(ask, "", 5), 5);
+        check("a row stepped in from with no key is never known to be landed on",
+            [Held.guessedAt({ key: "", at: 0 }, "", 3),
+                Held.guessedAt({ at: 0 }, "", 3), Held.guessedAt(undefined, "x", 3)].join(" "),
+            "3 3 3");
+        check("the first key after a guessed landing, a Return, holds",
+            Held.holdsReturn(5, 6), true);
+        check("a Return after another key first runs, as Joel moved or typed since",
+            [Held.holdsReturn(5, 7), Held.holdsReturn(5, 5)].join(" "), "false false");
+        check("a landing by its key holds no Return", Held.holdsReturn(-1, 0), false);
     }
 
     // Where a step that offers nothing now leaves to, as `nothing` and

@@ -3091,6 +3091,11 @@ Scope {
     property int landedKeys: -1
     property real landedAt: 0
 
+    // The keys the line had taken when a step left by itself landed on a
+    // row other than the one Joel stepped in from (Held.guessedAt), or -1:
+    // the next key, if it's Return, does nothing (run).
+    property int guessedAt: -1
+
     function land(choice) {
         prompt.toNormal();
         landedKey = steadyId(choice);
@@ -6429,6 +6434,7 @@ Scope {
         // Held.forgets and Held.afterLeave say, even where the leave throws
         // partway. Both are read first, as onHeldChanged moves lastPlace.
         const last = lastPlace;
+        const from = steps[leaving.keep];
         jumping = true;
         const before = steps.length;
         try {
@@ -6441,10 +6447,17 @@ Scope {
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
         // deep to how deep, never the row's name, which a source served.
-        if (held.length < before)
+        if (held.length < before) {
             console.info(`launcher: left ${before - held.length} of ${before} steps to `
                 + `${held.length} by itself, as what ${source?.settings.name ?? "a place"} `
                 + "offered there offers nothing now");
+            // Its row may be gone from what's shown, as an ask a share
+            // hides, so the selection stands on another row (leftAt), one
+            // Joel never chose: a Return pressed next, meant for the step
+            // that left, waits rather than run it.
+            const onRow = current >= 0 ? matches[current] ?? null : null;
+            guessedAt = Held.guessedAt(from, onRow ? steadyId(onRow) : "", prompt.keysTaken);
+        }
         return "left";
     }
 
@@ -8317,6 +8330,17 @@ Scope {
         // did nothing can be told from one that ran: the reason only, which names nothing.
         if (choice.gone) {
             console.info("launcher: Return on a gone row did nothing");
+            return;
+        }
+        // The first key after a step left by itself under a row it had to
+        // guess, as an ask hidden as a share starts, is a Return meant for
+        // that step, so it runs nothing and the foot says why. A click
+        // takes no key, so it's never held: it chose its row.
+        const guessed = Held.holdsReturn(guessedAt, prompt.keysTaken);
+        guessedAt = -1;
+        if (guessed) {
+            console.info("launcher: Return held once, as the step closed by itself under it");
+            say([["\u21b5", (Words.field.hints ?? {}).closedUnder ?? ""]]);
             return;
         }
         // One held still, as a secret ask hidden while Joel shares, keeps
@@ -11072,6 +11096,7 @@ Scope {
             // Reboot was armed and the launcher shut, a click rebooted).
             armed = Arming.rest();
             landedKey = "";
+            guessedAt = -1;
             // Shut in the mode it opens in, so what it keeps is weighed for
             // that mode while shut, and the opening's take() changes no
             // mode. Closed by :q from normal, each reopening weighed its
