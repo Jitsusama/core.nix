@@ -10,8 +10,10 @@
 // A cell's address, as mycelium-link lets one through: 1 to 12 capitals
 // and digits.
 const ADDRESS = /^[A-Z0-9]{1,12}$/u;
-// Any run of spaces, tabs or line breaks, which a line of words reads as one.
-const GAPS = /\s+/u;
+// Any run of spaces, tabs or line breaks, which a line of words reads as
+// one: Unicode's White_Space, as Rust's `char::is_whitespace` splits
+// plain.rs's words, so U+0085 parts words and U+FEFF is left out below.
+const GAPS = /\p{White_Space}+/u;
 // What mycelium-link leaves out of words, as its plain.rs does: control and
 // format characters, what else draws nothing, and the braille blank.
 const UNSEEN = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2800]/gu;

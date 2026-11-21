@@ -3758,9 +3758,11 @@ import {
   window.addEventListener("blur", sproutLetGo);
   // Escape closes the line from anywhere in it, its tick and button too,
   // which the page's own keys leave alone as fields; it goes no further,
-  // so the same press never lets go of the open cell or closes Now.
+  // so the same press never lets go of the open cell or closes Now. A held
+  // Return, on what opened the line or in it, sends once: its repeats
+  // never send the kept words again.
   sproutLine.addEventListener("keydown", (e) => {
-    if (sproutHeld && e.repeat) {
+    if (e.repeat && (sproutHeld || e.key === "Enter")) {
       e.preventDefault();
       return;
     }

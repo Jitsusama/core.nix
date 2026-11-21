@@ -896,9 +896,9 @@ FULL_WORDS = "The line holds 1000 letters; any past that were left off."
 NO_WORDS = "Say what the new work is first; the Launcher needs its words."
 CLOSED_WORDS = "New work closed; nothing was handed on."
 # Whether a key's repeat, pressed now in new work's field, is held off.
-REPEAT_HELD = """(() => {
+REPEAT_HELD = """((key) => {
   const e = new KeyboardEvent("keydown", {
-    key: "x", repeat: true, bubbles: true, cancelable: true,
+    key, repeat: true, bubbles: true, cancelable: true,
   });
   document.getElementById("sprout").dispatchEvent(e);
   return e.defaultPrevented;
@@ -1055,21 +1055,22 @@ def test_find_and_new_work_never_stand_together(mycelium_opened: Opened) -> None
     expect(trail, "the trail stood beside new work").to_be_hidden()
 
 
-def test_new_work_sends_again_from_the_cell_it_went_from(
-    mycelium_opened: Opened, mycelium_node: StandIn
-) -> None:
+def sent_again(page: Page, want: str) -> None:
+    """Open new work's line from the map and send its kept words again, as `want`."""
+    page.evaluate("window.talkedTo = null")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    page.keyboard.press("Enter")
+    handed = page.evaluate("window.talkedTo")
+    assert handed == want, f"sent again as {handed}, not {want}"
+
+
+def test_new_work_sends_again_from_the_cell_it_went_from(mycelium_opened: Opened) -> None:
     page = mycelium_opened.page
     the_map_stands(page, "live")
     page.evaluate(TALK_HELD)
     field, tick = page.locator("#sprout"), page.locator("#sprout-from")
     drawer = page.locator("#panel-body").get_by_role("button", name="Start New Work From It")
-
-    def send_again(want: str) -> None:
-        page.locator("#map-view").focus()
-        page.keyboard.press("s")
-        page.keyboard.press("Enter")
-        handed = page.evaluate("window.talkedTo")
-        assert handed == want, f"sent again as {handed}, not {want}"
 
     # Words sent again go from the cell they went from, whatever is open,
     # and the tick names that cell's address where it can be seen.
@@ -1082,7 +1083,7 @@ def test_new_work_sends_again_from_the_cell_it_went_from(
     page.keyboard.press("Enter")
     page.evaluate(f"location.hash = '#cell={NEEDING[1]}'")
     expect(page, "the second cell didn't open").to_have_url(re.compile(rf"#cell={NEEDING[1]}$"))
-    send_again(f"mycelium:sprout?words=first&from={NEEDING[0]}")
+    sent_again(page, f"mycelium:sprout?words=first&from={NEEDING[0]}")
     # New words over kept ones are new work, from the cell open now.
     page.locator("#map-view").focus()
     page.keyboard.press("s")
@@ -1098,11 +1099,34 @@ def test_new_work_sends_again_from_the_cell_it_went_from(
     tick.uncheck()
     drawer.click()
     expect(tick, "the drawer's button left its own cell unticked").to_be_checked()
+
+
+def test_new_works_kept_words_keep_a_cleared_tick_and_let_a_gone_cell_go(
+    mycelium_opened: Opened, mycelium_node: StandIn
+) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.evaluate(TALK_HELD)
+    field, tick = page.locator("#sprout"), page.locator("#sprout-from")
+    drawer = page.locator("#panel-body").get_by_role("button", name="Start New Work From It")
+    page.evaluate(f"location.hash = '#cell={NEEDING[1]}'")
+    drawer.click()
+    # A tick cleared on kept words stays cleared as new words go over them.
+    page.keyboard.type("third")
+    field.press("Enter")
+    sent_again(page, f"mycelium:sprout?words=third&from={NEEDING[1]}")
+    page.locator("#map-view").focus()
+    page.keyboard.press("s")
+    tick.uncheck()
+    field.press_sequentially("x")
+    expect(tick, "typing over kept words ticked a cleared cell back").not_to_be_checked()
+    page.keyboard.press("Escape")
+    drawer.click()
     # Words sent from no cell go again from none, though a cell is open.
     page.keyboard.type("bare")
     tick.uncheck()
     field.press("Enter")
-    send_again("mycelium:sprout?words=bare")
+    sent_again(page, "mycelium:sprout?words=bare")
     page.locator("#map-view").focus()
     page.keyboard.press("s")
     expect(page.locator("#sprout-from-line"), "a cell came back unasked").to_be_hidden()
@@ -1115,7 +1139,7 @@ def test_new_work_sends_again_from_the_cell_it_went_from(
     expect(page, "the first cell didn't open").to_have_url(re.compile(rf"#cell={NEEDING[0]}$"))
     mycelium_node.tell("cell", gone=[f"cell:{NEEDING[1]}"])
     the_map_counts(page, "7 cells, 2 moving", "the gone cell was still counted")
-    send_again(f"mycelium:sprout?words=last&from={NEEDING[0]}")
+    sent_again(page, f"mycelium:sprout?words=last&from={NEEDING[0]}")
 
 
 def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
@@ -1128,10 +1152,11 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     for _ in range(3):
         page.keyboard.down("s")
     expect(field, "a held s typed into the line").to_have_value("")
-    assert page.evaluate(REPEAT_HELD), "a held s's repeat wasn't held off"
+    assert page.evaluate(REPEAT_HELD, "x"), "a held s's repeat wasn't held off"
     page.locator("#map-view").focus()
     page.keyboard.up("s")
-    assert not page.evaluate(REPEAT_HELD), "s coming up off the line didn't let repeats go"
+    assert not page.evaluate(REPEAT_HELD, "x"), "s coming up off the line didn't let repeats go"
+    assert page.evaluate(REPEAT_HELD, "Enter"), "a held Return's repeat could send again"
     field.focus()
     page.keyboard.down("x")
     page.keyboard.down("x")
@@ -1144,10 +1169,9 @@ def test_new_works_line_holds_its_keys(mycelium_opened: Opened) -> None:
     )
     page.keyboard.press("y")
     expect(page.locator("#where"), "a letter left off wasn't said").to_have_text(FULL_WORDS)
-    # On the line's own button, / and the map's letters leave the words be.
+    # On the line's own button, / leaves the words be.
     page.locator(".sprout-go").focus()
     page.keyboard.press("/")
-    page.keyboard.press("a")
     expect(page.locator("#find-line"), "/ on the line's button opened find").to_be_hidden()
     expect(field, "a key on the line's button let the words go").to_have_value("x" * 1000)
     field.focus()

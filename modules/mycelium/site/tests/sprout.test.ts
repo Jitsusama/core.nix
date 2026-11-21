@@ -57,6 +57,11 @@ it("leaves out what the launcher leaves out of the words", () => {
     "tidy the rows",
     "control, format and blank characters should go, and a word of only them with them",
   );
+  assert.equal(
+    sproutWords("tidy\u0085the\uFEFFse rows"),
+    "tidy these rows",
+    "U+0085 should part words and U+FEFF go, as plain.rs splits and drops them",
+  );
 });
 
 it("percent-encodes the words, so none of them can add to the link", () => {
