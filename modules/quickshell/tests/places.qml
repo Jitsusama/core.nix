@@ -587,6 +587,36 @@ QtObject {
         expect("no window keeps nothing", [Viewers.placeOf(null, 100),
             Viewers.placeOf(laid(null, null), 100)], [null, null]);
 
+        // A viewer's window is titled as pi's host will title it, from the
+        // first moment, never for the command it runs: what the session's
+        // record says, else its quest's name and its folder, or its folder
+        // alone where its name is its folder, as one with no quest is named.
+        expect("a viewer titled as its record says",
+            Viewers.viewerTitle("\u03c0 - Reef - harbour", "Shoal", "/home/skiff/keel"),
+            "\u03c0 - Reef - harbour");
+        expect("a viewer titled by its quest and folder",
+            Viewers.viewerTitle(undefined, "Reef", "/home/skiff/harbour/"),
+            "\u03c0 - Reef - harbour");
+        expect("a viewer named for its folder titled by its folder once",
+            Viewers.viewerTitle("", "harbour", "/home/skiff/harbour"), "\u03c0 - harbour");
+        expect("a record's title that isn't pi's is no viewer's",
+            Viewers.viewerTitle("mycelium", "Reef", "/home/skiff/harbour"),
+            "\u03c0 - Reef - harbour");
+        expect("words titled first, the title one word, said to nothing but the title",
+            Viewers.titled("\u03c0 - Reef\u001b]2;x\u0007\u007f\u009b\u00a0",
+                ["mycelium", "attach"]),
+            ["sh", "-c", 'printf "\\033]2;%s\\007" "$0"; exec "$@"',
+                "\u03c0 - Reef ]2;x   \u00a0", "mycelium", "attach"]);
+        // A hosted session's restore entry says the words its viewer runs
+        // while its host isn't serving it yet; an entry an older harness
+        // wrote says none, and words not whole are none.
+        const viewWords = ["node", "/lasting/host-join.ts", "--view", "--session", "s-a"];
+        expect("a hosted entry's view words", Viewers.waitingWords({ view: viewWords }),
+            viewWords);
+        expect("no view words, or none whole, are none", [Viewers.waitingWords({}),
+            Viewers.waitingWords({ view: [] }), Viewers.waitingWords({ view: ["node", 3] }),
+            Viewers.waitingWords(null)], [null, null, null, null]);
+
         // Each kept place is one viewer to open once its session runs
         // hosted with words to view it by, and then kept no more; one whose
         // viewer is open already is let go, and one a day old lapses, as
@@ -646,6 +676,77 @@ QtObject {
             gone(screens)), { open: [], kept: alone });
         expect("its viewer open, it is let go however Joel is", Viewers.viewersDue(alone,
             [hosted("moved", laid(4, 3))], 10, gone(screens, { away: false })),
+            { open: [], kept: {} });
+
+        // One Reopen Them All kept while Joel was on its workspace, with
+        // words to wait for its host by, opens by them once he isn't
+        // there, its host serving it or not, him away or not, since he
+        // asked for it; not where he is, nor if kept before this shell
+        // started (20 November: kept for its host alone, it opened by
+        // itself nearly two hours later).
+        const words = ["node", "/lasting/scripts/host-join.ts", "--view", "--session", "held"];
+        const keptAsked = (workspace, more) => ({ held: Object.assign({ workspace, column: 2,
+            at: 0, waiting: words, named: "pi-hosted.held", title: "\u03c0 - Reef" },
+            more ?? {}) });
+        expect("its host away and Joel elsewhere, it opens by its words",
+            Viewers.viewersDue(keptAsked(4), [], 10, gone(screens, { away: false })),
+            { open: [{ id: "held", place: keptAsked(4).held, into: { workspace: 4, column: 2 } }],
+                kept: {} });
+        expect("on Joel's workspace it waits", Viewers.viewersDue(keptAsked(9), [], 10,
+            gone(screens)), { open: [], kept: keptAsked(9) });
+        expect("kept before the shell started, it waits", Viewers.viewersDue(keptAsked(4), [], 10,
+            gone(screens, { since: 5 })), { open: [], kept: keptAsked(4) });
+        expect("words that aren't all words, it waits for its host",
+            Viewers.viewersDue(keptAsked(4, { waiting: ["node", 7] }), [], 10, gone(screens)),
+            { open: [], kept: keptAsked(4, { waiting: ["node", 7] }) });
+        expect("its host serving it, it opens as any served one",
+            Viewers.viewersDue(keptAsked(4), [hosted("held")], 10, gone(screens)).open
+                .map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+        expect("its host back before Joel left, it opens by its session's words, him not away",
+            Viewers.viewersDue(keptAsked(4), [hosted("held")], 10,
+                gone(screens, { away: false })).open
+                .map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+        const napped = hosted("held");
+        napped.presence.parked = { since: "then" };
+        expect("parked in its host, it waits, since viewing it would wake it",
+            Viewers.viewersDue(keptAsked(4), [napped], 10, gone(screens)),
+            { open: [], kept: keptAsked(4) });
+        expect("asked past ASKED_FOR, it opens none and is let go",
+            Viewers.viewersDue(keptAsked(4), [], Viewers.ASKED_FOR + 1, gone(screens)),
+            { open: [], kept: {} });
+        expect("back as a plain pi, whose window it would never be, it's let go",
+            Viewers.viewersDue(keptAsked(4), [plain("held")], 10, gone(screens)),
+            { open: [], kept: {} });
+        // Kept while Joel was on its workspace, ASKED_FOR doesn't run while he
+        // stays there, since he may work there for hours: once he leaves,
+        // it opens, served or not and him away or not, or ASKED_FOR runs
+        // from then if nothing can open it yet.
+        const keptThere = (workspace, more) => keptAsked(workspace,
+            Object.assign({ asked: true, there: true }, more ?? {}));
+        const lateLeft = Viewers.ASKED_FOR + 1;
+        expect("Joel on its workspace past ASKED_FOR, it waits",
+            Viewers.viewersDue(keptThere(9), [], lateLeft, gone(screens)),
+            { open: [], kept: keptThere(9) });
+        expect("and once he leaves, however late, it opens by its words",
+            Viewers.viewersDue(keptThere(4), [], lateLeft, gone(screens, { away: false }))
+                .open.map(one => one.into), [{ workspace: 4, column: 2 }]);
+        expect("served, with no words of its own, it opens by its session's once he leaves",
+            Viewers.viewersDue({ held: { workspace: 4, column: 2, at: 0, asked: true,
+                there: true } }, [hosted("held")], lateLeft, gone(screens, { away: false }))
+                .open.map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+        const leftUnviewable = Viewers.viewersDue({ held: { workspace: 4, column: 2, at: 0,
+            asked: true, there: true } }, [], lateLeft, gone(screens)).kept.held;
+        expect("left with nothing to open it by yet, ASKED_FOR runs from then",
+            [leftUnviewable?.at, leftUnviewable?.there], [lateLeft, undefined]);
+        expect("parked in its host, it's viewed once he leaves, which wakes it, as he asked",
+            Viewers.viewersDue(keptThere(4), [napped], lateLeft, gone(screens)).open
+                .map(one => [one.session.presence.session, one.into]),
+            [["held", { workspace: 4, column: 2 }]]);
+        expect("kept by a shell before this one, it lapses from the ask all the same",
+            Viewers.viewersDue(keptThere(9), [], lateLeft, gone(screens, { since: 5 })),
             { open: [], kept: {} });
 
         // A viewer never opens where Joel is, so it never takes his focus

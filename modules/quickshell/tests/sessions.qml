@@ -304,9 +304,11 @@ ShellRoot {
         Sessions.goTo(hosted);
         const viewed = Niri.spawned.join(" ");
         const hostedAsk = asked(viewed);
-        expect("a hosted one is viewed by its node's words, held, in a window named for it",
+        // Titled before its words run, as pi's would be with no name or folder said.
+        expect("a hosted one is viewed by its node's words, held, titled, in a window named for it",
             hostedAsk !== null && hostedAsk.classed === "pi-hosted.s-hosted"
             && hostedAsk.words === "mycelium --realm harbour holds add -- "
+                + 'sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" \u03c0 '
                 + "mycelium --realm harbour attach --host harbour-attended --session s-hosted",
             viewed);
         Sessions.goTo(hosted);

@@ -22,10 +22,11 @@ function placeOf(window, at) {
 // deadline or refusing it (2QZBX9, [906a6c10]).
 const KEPT_FOR = 24 * 60 * 60 * 1000;
 
-// How long after Joel asks Reopen Them All a sleeper it wakes still opens
-// its window: long enough for the wakes it paces out to land, so an ask
-// never opens a window hours later, when something else wakes it (four
-// restarted at 19:48 on 16 November opened windows kept from earlier).
+// How long after Joel asks Reopen Them All a sleeper it wakes, or a viewer
+// it kept for him to leave its workspace, still opens its window: long
+// enough for the wakes it paces out to land, so an ask never opens a
+// window hours later, when something else wakes it (four restarted at
+// 19:48 on 16 November opened windows kept from earlier).
 const ASKED_FOR = 15 * 60 * 1000;
 
 // Of the places `kept`, by pi's session id, the viewers to open `now`
@@ -39,7 +40,17 @@ const ASKED_FOR = 15 * 60 * 1000;
 // a move that has ended, and a shell restarted by a switch opened two
 // such viewers on a new workspace while Joel was there (OSPHT4
 // [0762284c], 13:41:38 on 11 November). One parked waits too, since
-// viewing it is what wakes it, which woke a parked QCXZEB then.
+// viewing it is what wakes it, which woke a parked QCXZEB then. One
+// Reopen Them All kept while Joel was on its workspace (`asked`), or with
+// the words its viewer waits for its host by (`waiting`), opens once he
+// isn't there, him away or not, since he asked for it: by its session's
+// words once its host serves it, else by its own, without its session.
+// Kept for its host alone, it opened by itself nearly two hours later on
+// 20 November, so it's let go ASKED_FOR after the ask, or once its
+// session is back as a plain pi, whose window it would never be. While
+// Joel stays on its workspace (`there`) that time doesn't run, since he
+// may work there for hours and the window is still his to come back to;
+// left, it opens at once, or ASKED_FOR runs from then if it can't yet.
 function viewersDue(kept, sessions, now, screen) {
     const { workspaces, since, away } = screen ?? {};
     const open = [];
@@ -74,6 +85,31 @@ function viewersDue(kept, sessions, now, screen) {
             // Lapsed, its session most likely never moved.
         } else if (session?.window) {
             // Its viewer is open, so its place is done with.
+        } else if (place.asked === true || waitingWords({ view: place.waiting }) !== null) {
+            const words = waitingWords({ view: place.waiting }) !== null;
+            const ours = place.at >= since;
+            const joelThere = workspaces?.[place.workspace]?.is_focused === true;
+            // A place an earlier shell kept lapses from its ask, Joel there
+            // or not, since this shell never saw him leave.
+            const lapsed = !(now - place.at <= ASKED_FOR) && (place.there !== true || !ours);
+            const into = viewerPlace(place, workspaces ?? {});
+            if (lapsed || sessions.some(one => one.presence?.session === id
+                && !one.presence?.hosted)) {
+                // Asked too long ago, or back as a plain pi: let go.
+            } else if (!ours || joelThere) {
+                still[id] = place;
+            } else if (into !== null && (viewable || words)
+                && (!parkedHere(session) || place.asked === true)) {
+                // One Joel asked for is viewed parked too, which wakes it,
+                // as the walk does where he isn't.
+                open.push(viewable ? { session, into } : { id, place, into });
+            } else if (place.there === true) {
+                // Left, it can't open yet: ASKED_FOR runs from now. An
+                // undefined mark is dropped as the place is kept.
+                still[id] = Object.assign({}, place, { at: now, there: undefined });
+            } else {
+                still[id] = place;
+            }
         } else if (!viewable || away !== true || !(place.at >= since) || parkedHere(session)) {
             still[id] = place;
         } else {
@@ -145,5 +181,56 @@ function parkedHere(session) {
 function viewerPlace(place, workspaces) {
     const own = workspaces[place.workspace];
     return own && !own.is_focused ? { workspace: own.id, column: place.column } : null;
+}
+
+// The slashes a folder's path may end in, which name no folder.
+const TRAILING_SLASHES = /\/+$/;
+
+// The title a viewer's window opens with: the one pi's host gives it once
+// its conversation shows, as the session's record says it (`said`), else
+// "π - ", its quest's name and " - " its folder, or its folder alone
+// where its name is its folder, as the harness names one with no quest
+// (windowTitle in its presence.ts). kitty names a window for the command
+// it runs until that names it, and a viewer waiting for its host read
+// "mycelium" for over an hour on 20 November, a window Joel couldn't
+// tell for a session.
+function viewerTitle(said, title, cwd) {
+    if (typeof said === "string" && said.startsWith("\u03c0 - ")) {
+        return said;
+    }
+    const trimmed = typeof cwd === "string" ? cwd.replace(TRAILING_SLASHES, "") : "";
+    const folder = trimmed.slice(trimmed.lastIndexOf("/") + 1);
+    const name = typeof title === "string" && title !== folder ? title : "";
+    return ["\u03c0", name, folder].filter(part => part !== "").join(" - ");
+}
+
+// `words`, run once the window is titled `title`. It's set within what
+// the realm's holder runs, which keeps the title its program set last, so
+// a window that joins later is titled too, and it stands until the viewer
+// titles the window itself. Control characters become spaces, so the
+// title can't end the sequence early and say anything else to the
+// terminal.
+function titled(title, words) {
+    const clean = Array.from(String(title), c => (controlCharacter(c) ? " " : c)).join("");
+    return ["sh", "-c", 'printf "\\033]2;%s\\007" "$0"; exec "$@"', clean].concat(words);
+}
+
+// Whether `c` is a C0 or C1 control character, or DEL, any of which a
+// terminal could read as the start or end of a sequence.
+function controlCharacter(c) {
+    const code = c.charCodeAt(0);
+    return code < 0x20 || (code >= 0x7f && code < 0xa0);
+}
+
+// The words a hosted session's viewer runs while its host isn't serving
+// it yet, as the harness's restore entry says them (`view`): its join,
+// whose attach fails while the host the roster names is away, and which
+// looks again, saying so in the window, until the host shows the
+// conversation. None where the entry says none whole, as one an older
+// harness wrote doesn't.
+function waitingWords(one) {
+    const words = one?.view;
+    return Array.isArray(words) && words.length > 0
+        && words.every(word => typeof word === "string") ? words.slice() : null;
 }
 

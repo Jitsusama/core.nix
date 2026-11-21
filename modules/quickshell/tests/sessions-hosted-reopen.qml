@@ -5,9 +5,16 @@ pragma ComponentBehavior: Bound
 // conversation back as the machine started, so only a viewer is opened,
 // never a pi: one the host serves opens quietly where the last boot kept
 // it, on the screen's empty workspace, and holds there; one no host serves
-// yet has its place kept, for its viewer to open once one does; one the
-// boot kept no place of opens none. One bound for the workspace Joel is on
-// waits until he leaves it, then opens there. Asked to reopen as a plain pi
+// yet has its place kept, for its viewer to open once one does, unless its
+// restore entry says the words its viewer runs, when that viewer opens at
+// once to wait there for its host, once however often he asks, a place
+// kept for it before let go only once its window comes; one the boot kept
+// no place of opens none. One bound for the workspace Joel is on waits
+// until he leaves it, then opens there, by those words while its host is
+// still away. One whose viewer was asked for moments ago and hasn't come
+// is asked for no second time, the walk going on, and its place, kept
+// with words, stays kept; one kept with words whose viewer is open opens
+// no second. Asked to reopen as a plain pi
 // one its host's own list names, it begins none; one whose hosted presence
 // outlived its host's list is begun; and one parked in its holder here is
 // woken, told to carry on, its place kept for its window to open there as it
@@ -35,6 +42,16 @@ ShellRoot {
         return ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-background",
             "--session", id];
     }
+    // The words a hosted session's restore entry says its viewer runs, the
+    // harness's join, which looks again until the host its roster names
+    // shows the conversation.
+    function waitingView(id) {
+        return ["node", "/lasting/scripts/host-join.ts", "--view", "--session", id, "--",
+            "pi", "--session", id];
+    }
+    // What titles a viewer's window before its words run, as niri's
+    // stand-in records a spawn.
+    readonly property string titling: 'sh -c printf "\\033]2;%s\\007" "$0"; exec "$@"'
 
     // A session pi's host runs here, as the node tells of it, its owner the
     // host's process, whose own list the state script lays out naming
@@ -118,6 +135,24 @@ ShellRoot {
                 asked();
             else if (stage === "adrift")
                 adrift();
+            else if (stage === "unserved")
+                unserved();
+            else if (stage === "settled")
+                settled();
+            else if (stage === "refused")
+                refused();
+            else if (stage === "rested")
+                rested();
+            else if (stage === "again")
+                again();
+            else if (stage === "leaves")
+                leaves();
+            else if (stage === "asking")
+                asking();
+            else if (stage === "raised")
+                raised();
+            else if (stage === "guarded")
+                guarded();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -145,11 +180,11 @@ ShellRoot {
         const spawned = viewerSpawns("s-viewed");
         if (spawned.length === 0)
             return;
-        Expect.expect("its viewer opens by the node's words, held, without the focus",
+        Expect.expect("its viewer opens by the node's words, held, titled, without the focus",
             spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
             && spawned[0].includes("/pi-sessions/kitty.sock pi-hosted.s-viewed ")
             && spawned[0].includes("mycelium --realm harbour holds add -- "
-                + viewing("s-viewed").join(" ")), spawned[0]);
+                + `${titling} \u03c0 - VIEWED ` + viewing("s-viewed").join(" ")), spawned[0]);
         Expect.expect("niri is told where it opens: the monitor's empty workspace",
             JSON.stringify(opensOn("s-viewed")) === JSON.stringify([{
                 app_id: "pi-hosted.s-viewed", reference: { Id: 41 }, column: 1 }]),
@@ -211,6 +246,10 @@ ShellRoot {
             JSON.stringify(second));
         Expect.expect("and opens nothing while he's there", viewerSpawns("s-second").length === 0,
             Niri.spawns.join("\n"));
+        // He leaves it for another at the machine, not going away, which
+        // is what opens it: kept for him to go away, it would open hours
+        // later, on a workspace he moved on from.
+        Away.now = false;
         stage = "left";
         joelOn(40);
     }
@@ -295,6 +334,18 @@ ShellRoot {
         return Niri.spawns.filter(command => command.includes(` pi --session ${id}`));
     }
     function asked() {
+        // niri opens the one carried here as its kitty does, beside Joel,
+        // since no place was kept for it, so the walk goes on without
+        // waiting out its patience, and once the rest are back it is done,
+        // with no window it gave up on left to come.
+        const carried = Sessions.reopening?.waiting;
+        if (carried?.id === "s-carried" && carried.classed && carried.opened === null) {
+            const window = { id: 59, pid: 590, workspace_id: 40, session: true,
+                opened: carried.classed, layout: { pos_in_scrolling_layout: [1, 1] } };
+            Niri.windows = Object.assign({}, Niri.windows, { "59": window });
+            Niri.revision += 1;
+            Niri.windowOpenedOrChanged(window);
+        }
         const woken = steers.find(one => one.address === "NAPPED");
         if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken)
             return;
@@ -327,7 +378,7 @@ ShellRoot {
         stage = "adrift";
         Sessions.reopenAll([{ id: "s-adrift", cwd: "/given-back", quest: "QEST-ADRIFT" }],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone, and nothing started afresh`),
-            kept({ "s-adrift": keptOn(3) }), Sessions.carryOn);
+            kept({ "s-adrift": keptOn(2) }), Sessions.carryOn);
     }
 
     // Its folder given back, its quest starts afresh where the harness says,
@@ -343,6 +394,215 @@ ShellRoot {
             started.length === 1 && started[0].includes(`--directory ${start} env `)
             && /pi --session-id [0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab]/u.test(started[0])
             && !Niri.spawns.some(command => command.includes("s-adrift")), Niri.spawns.join("\n"));
+        // niri opens it, so the walk goes on without waiting it out.
+        const classed = Sessions.reopening?.waiting?.classed ?? "";
+        if (classed !== "") {
+            // Kept on a workspace of its own, it leaves the next its place.
+            const window = { id: 60, pid: 600, workspace_id: 41, session: true,
+                opened: classed, layout: { pos_in_scrolling_layout: [1, 1] } };
+            Niri.windows = Object.assign({}, Niri.windows, { "60": window });
+            Niri.revision += 1;
+            Niri.windowOpenedOrChanged(window);
+        }
+        // After a crash its host is still coming back, so it serves nothing
+        // yet, but the restore entry says the words its viewer runs.
+        // A place kept for it before, as the cutover keeps one, is let go.
+        Sessions.keepPlaces(Object.assign({}, Sessions.keptPlaces,
+            { "s-waiting": { workspace: 41, column: 2, at: Date.now() } }));
+        stage = "unserved";
+        Sessions.reopenAll([waitingEntry("s-waiting")], root.never,
+            kept({ "s-waiting": keptOn(3) }), "");
+    }
+    function waitingEntry(id) {
+        return { id, cwd: "/home/skiff/harbour", title: "Reef", hosted: true, way: "boot",
+            view: waitingView(id) };
+    }
+
+    // Its viewer opens at once, where its window was, quietly, held and
+    // titled as its host will title it, to wait there for its host; its
+    // place isn't kept for a viewer to open later by itself, and no pi is
+    // started for it (20 November: three viewers opened unasked at 15:03,
+    // nearly two hours after the walk, titled "mycelium").
+    function unserved() {
+        const spawned = viewerSpawns("s-waiting");
+        if (spawned.length === 0)
+            return;
+        Expect.expect("it opens by its entry's words, held and titled, without the focus",
+            spawned.length === 1
+            && spawned[0].startsWith("env -u XDG_ACTIVATION_TOKEN -u DESKTOP_STARTUP_ID ")
+            && spawned[0].includes("mycelium --realm harbour holds add -- "
+                + `${titling} \u03c0 - Reef - harbour ` + waitingView("s-waiting").join(" ")),
+            spawned[0]);
+        Expect.expect("niri is told where it opens", opensOn("s-waiting").length === 1
+            && typeof opensOn("s-waiting")[0].reference.Id === "number"
+            && opensOn("s-waiting")[0].column === 1, JSON.stringify(Niri.acts));
+        const on = opensOn("s-waiting")[0].reference.Id;
+        Expect.expect("it opens off the workspace Joel is on",
+            Niri.workspaces[on]?.is_focused !== true, JSON.stringify(Niri.workspaces));
+        Expect.expect("a place kept for it before stays until its window comes",
+            Sessions.keptPlaces["s-waiting"]?.workspace === 41,
+            JSON.stringify(Sessions.keptPlaces));
+        Expect.expect("nothing but its viewer is started for it",
+            Niri.spawns.filter(command => command.includes("s-waiting")).length === 1,
+            Niri.spawns.join("\n"));
+        // niri opens it, and the place kept before is let go, so viewKept
+        // never opens a second one by itself once its host serves it.
+        const window = { id: 61, pid: 610, workspace_id: on, session: true,
+            opened: "pi-hosted.s-waiting", layout: { pos_in_scrolling_layout: [1, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "61": window });
+        Niri.revision += 1;
+        Niri.windowOpenedOrChanged(window);
+        Expect.expect("its window come, the place kept before is let go",
+            Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
+        waitedOn = on;
+        stage = "settled";
+    }
+    property int waitedOn: -1
+    property real walkedAt: 0
+
+    // Asked again once that walk is done, before the windows daemon lists
+    // its window, the walk finds it open by niri's own list, and goes
+    // straight on to the next rather than waiting out its patience for it.
+    // Each walk here begins once the one before is done, since a list
+    // handed over meanwhile passes over those it began.
+    function settled() {
+        if (Sessions.reopening !== null)
+            return;
+        walkedAt = Date.now();
+        stage = "refused";
+        Sessions.reopenAll([waitingEntry("s-waiting"), waitingEntry("s-after")], root.never,
+            kept({ "s-waiting": keptOn(3), "s-after": keptOn(3) }), "");
+    }
+
+    function refused() {
+        if (viewerSpawns("s-after").length === 0)
+            return;
+        Expect.expect("one open, waiting for its host, isn't asked for again",
+            viewerSpawns("s-waiting").length === 1, Niri.spawns.join("\n"));
+        Expect.expect("the next opens without waiting out the walk's patience",
+            Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
+        Expect.expect("nor is a place kept for it, for a second to open later",
+            Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
+        const window = { id: 62, pid: 620, workspace_id: waitedOn, session: true,
+            opened: "pi-hosted.s-after", layout: { pos_in_scrolling_layout: [2, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "62": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(61, "pi-hosted.s-waiting", waitedOn),
+            windowRecord(62, "pi-hosted.s-after", waitedOn)] });
+        stage = "rested";
+        Niri.windowOpenedOrChanged(window);
+    }
+
+    function rested() {
+        if (Sessions.reopening !== null)
+            return;
+        // The daemon lists them, Joel goes to their workspace, and the
+        // moments a viewer is waited for pass; asked again while the host
+        // is still coming back, as its row is still offered, the walk finds
+        // the one waiting open by its app id alone, and keeps another bound
+        // there for him to leave.
+        joelOn(waitedOn);
+        Sessions.attaching = ({});
+        stage = "again";
+        Sessions.reopenAll([waitingEntry("s-waiting"), waitingEntry("s-watched")], root.never,
+            kept({ "s-waiting": keptOn(3), "s-watched": keptOn(3) }), "");
+    }
+
+    function again() {
+        const watched = Sessions.keptPlaces["s-watched"];
+        if (!watched || (Sessions.reopening?.queue.length ?? 0) > 0)
+            return;
+        Expect.expect("one open, waiting for its host, opens no second viewer",
+            viewerSpawns("s-waiting").length === 1, Niri.spawns.join("\n"));
+        Expect.expect("nor is a place kept for it, for a second to open later",
+            Sessions.keptPlaces["s-waiting"] === undefined, JSON.stringify(Sessions.keptPlaces));
+        Expect.expect("one bound for Joel's workspace is kept there, with its words, not opened",
+            watched.workspace === waitedOn && viewerSpawns("s-watched").length === 0
+            && JSON.stringify(watched.waiting) === JSON.stringify(waitingView("s-watched"))
+            && watched.named === "pi-hosted.s-watched"
+            && watched.title === "\u03c0 - Reef - harbour",
+            `${JSON.stringify(watched)} ${Niri.spawns.join("\n")}`);
+        // Joel leaves for another workspace, its host still away.
+        const other = Object.values(Niri.workspaces).find(one => one.id !== waitedOn);
+        stage = "leaves";
+        joelOn(other.id);
+    }
+
+    // It opens by its words where it was kept, without the focus, and its
+    // place is done with, rather than waiting for its host to serve it.
+    function leaves() {
+        const spawned = viewerSpawns("s-watched");
+        if (spawned.length === 0)
+            return;
+        Expect.expect("it opens once, by its words, titled", spawned.length === 1
+            && spawned[0].includes(`${titling} \u03c0 - Reef - harbour `
+                + waitingView("s-watched").join(" ")), spawned[0]);
+        Expect.expect("where it was kept", opensOn("s-watched").length === 1
+            && opensOn("s-watched")[0].reference.Id === waitedOn, JSON.stringify(Niri.acts));
+        Expect.expect("its place done with", Sessions.keptPlaces["s-watched"] === undefined,
+            JSON.stringify(Sessions.keptPlaces));
+        // One whose viewer was asked for moments ago, by Go To or viewKept,
+        // and hasn't opened yet, is opening: the walk asks for no second
+        // and goes on.
+        Sessions.attaching = ({ "pi-hosted.s-asked": Date.now() });
+        walkedAt = Date.now();
+        stage = "asking";
+        Sessions.reopenAll([waitingEntry("s-asked"), waitingEntry("s-next")], root.never,
+            kept({ "s-asked": keptOn(3), "s-next": keptOn(3) }), "");
+    }
+
+    function asking() {
+        if (viewerSpawns("s-next").length === 0)
+            return;
+        Expect.expect("one asked for moments ago isn't asked for again",
+            viewerSpawns("s-asked").length === 0, Niri.spawns.join("\n"));
+        Expect.expect("and the walk goes on without waiting out its patience for it",
+            Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
+        // Two kept with words to wait by on a workspace Joel isn't on: one
+        // whose viewer is open already, which viewKept leaves be, and one
+        // whose viewer was asked for moments ago, which stays kept, so a
+        // viewer that never opens still leaves its place to open by.
+        const place = id => ({ workspace: waitedOn, column: 1, at: Date.now(),
+            waiting: waitingView(id), named: `pi-hosted.${id}`, title: "\u03c0 - Reef" });
+        Sessions.attaching = Object.assign({}, Sessions.attaching,
+            { "pi-hosted.s-held": Date.now() });
+        stage = "guarded";
+        Sessions.keepPlaces(Object.assign({}, Sessions.keptPlaces,
+            { "s-waiting": place("s-waiting"), "s-held": place("s-held") }));
+        Niri.revision += 1;
+    }
+
+    function guarded() {
+        if (Sessions.keptPlaces["s-waiting"] !== undefined)
+            return;
+        Expect.expect("one kept whose viewer is open opens no second",
+            viewerSpawns("s-waiting").length === 1, Niri.spawns.join("\n"));
+        Expect.expect("one kept whose viewer was asked for moments ago stays kept, unopened",
+            Sessions.keptPlaces["s-held"]?.named === "pi-hosted.s-held"
+            && viewerSpawns("s-held").length === 0,
+            `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
+        // A session its host serves whose viewer niri lists, as just after
+        // a crash, before the windows daemon does.
+        const window = { id: 63, pid: 630, workspace_id: waitedOn, session: true,
+            opened: "pi-hosted.s-goto", layout: { pos_in_scrolling_layout: [3, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "63": window });
+        Niri.revision += 1;
+        stage = "raised";
+        Watch.tell(root.watch, { changed: [Object.assign(hosted("s-goto", "GOTO"),
+            { told: "0000000000000009" })] });
+    }
+
+    // Go To raises the viewer niri lists, rather than opening a second or
+    // doing nothing.
+    function raised() {
+        const session = find("GOTO");
+        if (!session)
+            return;
+        Sessions.goTo(session);
+        Expect.expect("Go To raises the viewer niri lists, opening no second",
+            Niri.acts.some(act => act.FocusWindow?.id === 63)
+            && viewerSpawns("s-goto").length === 0,
+            `${JSON.stringify(Niri.acts)} ${Niri.spawns.join("\n")}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }
@@ -389,9 +649,12 @@ ShellRoot {
         }
     }
 
+    // Long enough for each walk to be done before the next begins, and
+    // short of the check's own 120 s timeout, so a stage that never ends
+    // says which it is rather than the check ending with no word.
     Timer {
         running: true
-        interval: 50000
+        interval: 110000
         onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }

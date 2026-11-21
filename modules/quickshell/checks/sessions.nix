@@ -316,7 +316,9 @@ in
       mkdir -m 700 $XDG_RUNTIME_DIR $XDG_RUNTIME_DIR/mycelium
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      # Its walks wait out the walk's 30 s patience for a carried session
+      # that opens no window, so the case runs for over a minute.
+      timeout 120 ${qs} -p shell.qml
       touch $out
     '';
 
