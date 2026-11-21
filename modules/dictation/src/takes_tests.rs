@@ -392,17 +392,21 @@ fn speech_across_dropped_packets_is_heard_whole() {
 fn a_short_answer_after_a_dropped_part_of_a_frame_is_a_take() {
     // Packets dropped part of the way into a frame leave it mostly
     // nothing, but not quite: it mustn't set a floor under the line's
-    // hiss, or the hiss reads as loud and the answer is lost in it.
-    let sound = [
-        noise(3.0, 0.005, false),
-        vec![0.0; FRAME - 10],
-        noise(3.5, 0.005, false),
-        voice(0.3, 150.0),
-        noise(3.5, 0.005, false),
-        quiet(2.0),
-    ]
-    .concat();
-    assert_eq!(cut(&sound).len(), 1, "the answer in the hiss");
+    // hiss, or the hiss reads as loud and the answer is lost in it. The
+    // drop may end a few samples into the frame or start a few in.
+    for into in [0, 10] {
+        let sound = [
+            noise(3.0, 0.005, false),
+            noise(1.0, 0.005, false)[..into].to_vec(),
+            vec![0.0; FRAME - 10],
+            noise(3.5, 0.005, false),
+            voice(0.3, 150.0),
+            noise(3.5, 0.005, false),
+            quiet(2.0),
+        ]
+        .concat();
+        assert_eq!(cut(&sound).len(), 1, "the answer in the hiss, {into} samples in");
+    }
 }
 
 #[test]
@@ -411,9 +415,11 @@ fn a_lost_packet_adds_no_hiss_to_a_take() {
     // to just short of a mute, so its hiss after them is no more
     // speech than before: the take is the word and its edges, where a
     // cleared floor would add a fifth of a second of hiss at least.
-    // The hiss wanders, as a line's does, by 1.4 dB a frame.
+    // The hiss wanders, as a line's does, by 1.4 dB a frame. The
+    // losses are counted out, not drawn from the mute's length, so a
+    // shorter mute fails them.
     let hiss = stepping(&noise(3.0, 0.005, false), 0.85);
-    for lost in [2, MUTE_FRAMES - 1] {
+    for lost in [2, 10, 19] {
         let sound = [
             hiss.clone(),
             voice(0.4, 150.0),
