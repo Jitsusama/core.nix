@@ -53,8 +53,8 @@ static CAUGHT: AtomicI32 = AtomicI32::new(-1);
 static STOPPED: AtomicBool = AtomicBool::new(false);
 
 /// How `until_stopped`'s run has returned, as `CUT_SHORT`'s index, for a
-/// catch, which can't take `RAN`'s lock, to read: not yet, well, or with
-/// an error kept unsaid.
+/// catch, which can't take `RAN`'s lock, to read: not yet, well or with
+/// its error said, or with an error kept unsaid.
 static RETURNED: AtomicUsize = AtomicUsize::new(0);
 
 /// Whether stderr is the journal's stream, kept before the stops are
@@ -184,6 +184,8 @@ fn ending(end: impl FnOnce() + Send + 'static) -> io::Result<()> {
                 if let Some(words) = unsaid {
                     crate::source::fail(&words);
                 }
+                // Said, so a second stop now costs only the followers' end.
+                RETURNED.store(1, Ordering::SeqCst);
             } else {
                 crate::source::fail(&format!(
                     "health: a stop ended health before it wrote the day, as its run hadn't \
