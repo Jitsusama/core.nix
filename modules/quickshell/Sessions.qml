@@ -1508,7 +1508,7 @@ Singleton {
         // kept nowhere had no window rather than went unrecorded
         // (Reopening.broughtBack).
         const arranged = keptAt !== undefined
-            || Object.keys(boots.restored ?? {}).length > 0;
+            || Object.keys(boots.now ?? {}).length > 0;
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
         lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf, arranged));
@@ -1879,7 +1879,7 @@ Singleton {
             // Reopen Them All puts one back at its kept place, ahead of
             // its orchestrator's workspace (Reopening.broughtBack).
             const quiet = next.one.quiet === true;
-            const home = next.back?.home === false ? "" : Places.homeOf(next.one, next.kept);
+            const home = Places.homeOf(next.one, next.kept);
             const asked = next.one.focused === true && at === null && home === "";
             const into = asked ? null
                 : root.opensOn(next.one, at, root.besideOf(reopening.placed), home);
