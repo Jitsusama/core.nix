@@ -552,7 +552,11 @@ fn escaped(text: &str) -> String {
 }
 
 /// What `notify-send` is given to show `one`: printing the id it's shown
-/// by, and a coming back replacing its going down.
+/// by, and a coming back replacing its going down. An id kept for hours
+/// stays its notice's across a restart of the shell, since the notices
+/// daemon keeps its next id with its store and replaces only a notice
+/// still open, giving a new id otherwise; only a store it can't read,
+/// which it sets aside, numbers from 1 again.
 fn notice_args(one: &Tell) -> Vec<String> {
     let mut args: Vec<String> = ["-p", "-a", "Machines", "-u", one.urgency()]
         .map(str::to_owned)
@@ -630,10 +634,26 @@ fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> 
     }
 }
 
-/// One tick's watch: reads each of `realms`, tells what's newly down or
-/// back, and keeps each machine's spell in `down.json` in `folder`. The
-/// spells are written as told before anything is, so a write that fails
-/// tells nothing rather than the same each tick.
+/// What each of `realms`' nodes says of its machines, read once a tick for
+/// every use of it, each within `ASK_WITHIN`, so a node that never answers
+/// can't stall the tick; a realm whose node didn't answer, or answered
+/// naming no machines, as with an error, is left out.
+pub fn machines(realms: &[String]) -> BTreeMap<String, String> {
+    realms
+        .iter()
+        .filter_map(|realm| {
+            let said = answer("mycelium", &["--realm", realm, "machines"], ASK_WITHIN).ok()?;
+            crate::elsewhere::machines(&said)?;
+            Some((realm.clone(), said))
+        })
+        .collect()
+}
+
+/// One tick's watch: reads each of `realms`, by its node's answer in
+/// `machines`, tells what's newly down or back, and keeps each machine's
+/// spell in `down.json` in `folder`. The spells are written as told before
+/// anything is, so a write that fails tells nothing rather than the same
+/// each tick.
 ///
 /// # Errors
 ///
@@ -644,6 +664,7 @@ pub fn run(
     orchestrator: &str,
     owners: &BTreeMap<String, String>,
     realms: &[String],
+    machines: &BTreeMap<String, String>,
     now: i64,
 ) -> io::Result<()> {
     let path = folder.join("down.json");
@@ -657,23 +678,19 @@ pub fn run(
     let mut read = Vec::new();
     let mut here = None;
     for realm in realms {
-        // An answer naming no machines, as an error, says nothing of them.
-        let Some(machines) = ask(realm, "machines")
-            .ok()
-            .filter(|said| crate::elsewhere::machines(said).is_some())
-        else {
+        let Some(machines) = machines.get(realm) else {
             continue;
         };
         let sessions = ask(realm, "sessions").unwrap_or_default();
         answered.push(realm.clone());
         // A realm whose record says this machine misses a network outranks
         // one saying it reaches all.
-        here = match (here, reach(&machines, &this)) {
+        here = match (here, reach(machines, &this)) {
             (Some(false), _) | (_, Some(false)) => Some(false),
             (_, Some(true)) => Some(true),
             (was, None) => was,
         };
-        read.extend(seen(realm, &machines, &sessions, &this));
+        read.extend(seen(realm, machines, &sessions, &this));
     }
     let sure = here == Some(true);
     if !sure {
@@ -686,27 +703,44 @@ pub fn run(
         println!("The {realm} realm's node didn't answer, so no machine is told down");
     }
     let tells = due(&read, realms, &answered, &mut told, now, sure);
-    let owner_of = |key: &str| crate::findings::owner_of(key, owners);
-    let write = |told: &Told| crate::write_whole(&path, &serde_json::to_string_pretty(told)?);
+    promise_then_tell(
+        &path,
+        &tells,
+        told,
+        |key: &str| crate::findings::owner_of(key, owners),
+        orchestrator,
+        notify,
+        |to, text| mesh.send(&crate::message(to, "finding", text)),
+    )
+}
+
+/// Tells each of `tells` as `tell` does, with the spells in `told` written
+/// to `path` as though each were told before any is, so a write that fails
+/// tells nothing rather than the same each tick, and as told once each is.
+/// Each is printed for the journal, saying Joel has a notice only where
+/// one was shown.
+fn promise_then_tell(
+    path: &Path,
+    tells: &[Tell],
+    mut told: Told,
+    owner_of: impl Fn(&str) -> Option<String>,
+    orchestrator: &str,
+    notify: impl Fn(&Tell) -> Option<u32>,
+    send: impl Fn(&str, String) -> io::Result<()>,
+) -> io::Result<()> {
+    let write = |told: &Told| crate::write_whole(path, &serde_json::to_string_pretty(told)?);
     let mut promised = told.clone();
     tell::<io::Error>(
-        &tells,
+        tells,
         &mut promised,
         orchestrator,
-        owner_of,
+        &owner_of,
         |_| Some(0),
         |_, _| Ok(()),
     )?;
     write(&promised)?;
-    let told_all = tell(
-        &tells,
-        &mut told,
-        orchestrator,
-        owner_of,
-        notify,
-        |to, text| mesh.send(&crate::message(to, "finding", text)),
-    );
-    for one in &tells {
+    let told_all = tell(tells, &mut told, orchestrator, &owner_of, notify, send);
+    for one in tells {
         let noticed = match one {
             Tell::Down { machine, .. } => told
                 .machines

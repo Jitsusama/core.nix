@@ -297,6 +297,8 @@ fn run(args: &Args) -> io::Result<()> {
     {
         eprintln!("cadence: telling of broken units: {err}");
     }
+    // Read once a tick for each use, within a deadline.
+    let machines = watch::down::machines(&args.realms);
     if let Some(orchestrator) = &args.orchestrator
         && let Err(err) = watch::down::run(
             &mesh,
@@ -304,6 +306,7 @@ fn run(args: &Args) -> io::Result<()> {
             orchestrator,
             &args.owners,
             &args.realms,
+            &machines,
             now,
         )
     {
@@ -314,7 +317,7 @@ fn run(args: &Args) -> io::Result<()> {
     {
         eprintln!("cadence: telling of reverts: {err}");
     }
-    let mut snapshot = gather(&folder, &state_home, &mesh, args, now)?;
+    let mut snapshot = gather(&folder, &state_home, &mesh, args, &machines, now)?;
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
 
@@ -552,6 +555,7 @@ fn gather(
     state_home: &Path,
     mesh: &Mesh,
     args: &Args,
+    machines: &BTreeMap<String, String>,
     now: i64,
 ) -> io::Result<Snapshot> {
     let core = Core::fetched(folder)?;
@@ -598,7 +602,7 @@ fn gather(
         now,
         landings,
         follower,
-        failing_elsewhere: failing_elsewhere(&args.realms),
+        failing_elsewhere: elsewhere::failing_in(machines),
         runs: records::parse_runs(
             &fs::read_to_string(state_home.join("nix-offload/there.jsonl")).unwrap_or_default(),
             now - DAY,
@@ -645,19 +649,6 @@ fn gather(
         switcher: switcher(args),
         answered_by: BTreeMap::new(),
     })
-}
-
-/// Each realm's other machines whose newest update failed, as the node
-/// keeping it says; none from a realm whose node doesn't answer.
-fn failing_elsewhere(realms: &[String]) -> Vec<elsewhere::Failing> {
-    // Read as the kit reads it, so it matches mycelium's names as the
-    // other tools' readings do.
-    let this = terminal_kit::environment::machine();
-    realms
-        .iter()
-        .filter_map(|realm| command("mycelium", &["--realm", realm, "machines"]).ok())
-        .flat_map(|answer| elsewhere::failing_elsewhere(&answer, &this))
-        .collect()
 }
 
 /// An alarm as the watcher or the switcher is asked it. An answer ends

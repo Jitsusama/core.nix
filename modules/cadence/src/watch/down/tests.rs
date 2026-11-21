@@ -479,6 +479,54 @@ fn a_going_down_is_told_to_joel_the_orchestrator_and_its_owner_each_once() {
 }
 
 #[test]
+fn spells_are_kept_as_told_before_anything_is_told_and_unkept_tell_nothing() {
+    let (told, tells) = gone();
+    let folder = std::env::temp_dir().join(format!("cadence-down-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).expect("a scratch folder");
+    let path = folder.join("down.json");
+    let kept = || -> Told {
+        serde_json::from_slice(&std::fs::read(&path).expect("the spells kept")).expect("read")
+    };
+    let shown = RefCell::new(0);
+    let sent = RefCell::new(0);
+    let owner = |_: &str| None;
+    let notify = |_: &Tell| {
+        assert!(
+            kept().machines["yonder"].told,
+            "Joel was shown a notice before its spell was kept as told"
+        );
+        *shown.borrow_mut() += 1;
+        Some(42)
+    };
+    let send = |_: &str, _: String| {
+        *sent.borrow_mut() += 1;
+        Ok(())
+    };
+    let unkept = folder.join("gone/down.json");
+    assert!(
+        promise_then_tell(&unkept, &tells, told.clone(), owner, "ORCH", notify, send).is_err(),
+        "spells that couldn't be kept were said kept"
+    );
+    assert_eq!(
+        (*shown.borrow(), *sent.borrow()),
+        (0, 0),
+        "what couldn't be kept as told was told, so it would be told again each tick"
+    );
+    promise_then_tell(&path, &tells, told, owner, "ORCH", notify, send).expect("told");
+    assert_eq!(
+        (*shown.borrow(), *sent.borrow()),
+        (1, 1),
+        "it wasn't told once"
+    );
+    assert_eq!(
+        kept().machines["yonder"].notice,
+        Some(42),
+        "the notice shown wasn't kept, so its coming back can't replace it"
+    );
+    std::fs::remove_dir_all(&folder).ok();
+}
+
+#[test]
 fn a_coming_back_replaces_joels_notice_and_goes_to_each_who_had_it() {
     let back = Tell::Back {
         machine: "yonder".into(),
