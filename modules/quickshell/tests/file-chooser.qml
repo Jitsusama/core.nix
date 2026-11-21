@@ -301,6 +301,8 @@ ShellRoot {
         target: theChooser
 
         function onChanged() {
+            if (root.stage === 28)
+                root.countsLeft = root.countsLeft.concat([theChooser.toCount.length]);
             Qt.callLater(root.step);
         }
 
@@ -317,6 +319,9 @@ ShellRoot {
     // and the one whose preview is waited on.
     property var picking: null
     property string previewing: ""
+    // The folders still to count as each change was said, while a batch
+    // of counts is asked.
+    property var countsLeft: []
 
     // Each case, once what it waits on is there.
     function step() {
@@ -483,12 +488,34 @@ ShellRoot {
             } else if (stage === 26 && restarted?.savedLastIn() === notes
                 && restarted.order === "changed" && restarted.reversed) {
                 stage = 27;
+                ask(11, { mode: "open", title: "Open", folder: home });
+            } else if (stage === 27 && theChooser.asking?.reply.endsWith("/11.sock")
+                && ready([home]) && theChooser.toCount.length === 0 && theChooser.outstanding === null) {
+                stage = 28;
+                countingOnce();
+            } else if (stage === 28 && theChooser.toCount.length === 0
+                && theChooser.outstanding === null && countsLeft.length > 0) {
+                stage = 29;
+                expect("a batch of counts is said once, as the last is heard, not as each comes",
+                    countsLeft.length === 1 && countsLeft[0] === 0, countsLeft.join(" "));
                 console.log("every case holds");
                 Qt.callLater(() => Qt.exit(0));
             }
         } catch (error) {
             fail(error.message);
         }
+    }
+
+    // Four folders asked to be counted at once, held long enough that only
+    // the last count heard says them.
+    function countingOnce() {
+        theChooser.countsHeldFor = 60000;
+        const deep = `${home}/elsewhere/deep`;
+        [`${home}/elsewhere`, deep, `${deep}/one`, `${deep}/two`]
+            .forEach(path => theChooser.count(path));
+        expect("the four wait to be counted, one asked",
+            theChooser.toCount.length + (theChooser.outstanding === null ? 0 : 1) === 4,
+            `${theChooser.toCount.length} waiting`);
     }
 
     function opening() {

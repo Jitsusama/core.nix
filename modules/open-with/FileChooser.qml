@@ -119,6 +119,12 @@ Provider {
     property string previewNext: ""
     property var toCount: []
     property var outstanding: null
+    // How long counts heard while more are still to come are held before
+    // they're said, in ms. Each change makes every row afresh, so a folder
+    // of twenty folders said each count as it came and remade its rows
+    // twenty times; now a batch is said once it's all heard, or this long
+    // after its first count where it takes longer.
+    property int countsHeldFor: 200
     // The folders stepped into, read beside those on the way to the start.
     property var stepped: []
     // A ]b or [b waiting on the folder holding the one it was pressed in to
@@ -454,9 +460,23 @@ Provider {
             previews = Object.assign({}, previews, { [was.path]: said });
         } else if (said) {
             counts = Object.assign({}, counts, said);
-            changed();
+            if (toCount.length === 0) {
+                countsHeld.stop();
+                changed();
+            } else if (!countsHeld.running) {
+                countsHeld.start();
+            }
         }
         Qt.callLater(provider.askNext);
+    }
+
+    // Says the counts heard so far, once a batch has been held long
+    // enough.
+    Timer {
+        id: countsHeld
+
+        interval: provider.countsHeldFor
+        onTriggered: provider.changed()
     }
 
     // One file-preview for an ask, started as the first thing is wanted of
@@ -1471,6 +1491,7 @@ Provider {
         askedAt = {};
         toCount = [];
         outstanding = null;
+        countsHeld.stop();
         previewer.running = false;
     }
 
