@@ -523,7 +523,9 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         it never says what's wanted. It fails by AssertionError when its time runs out, which a
         wait on what's heard (heard.py) reads as never hearing it, and by RuntimeError when the
         reader stops otherwise, which that wait only notes, since what it last heard then is no
-        sign of where the shell settled.
+        sign of where the shell settled. The driver's cut-off counts as time running out
+        whatever made the run overrun, a reader blocked past it too, since the guest's status
+        can't tell them apart.
         """
         pace = vm_helpers.pace(vm_helpers.busyness())
         deadline = time.monotonic() + timeout.total_seconds() * pace
@@ -720,7 +722,8 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         The launcher reports its state each time it changes, so a wait reads it once and then
         hears every change. One that never passes says what it last heard the launcher show
         (heard.py). Since is a mark taken before the key that brings the state, for a state
-        that may come and go before the wait marks the journal itself.
+        that may come and go before the wait marks the journal itself. What passed can be older
+        than the first read, so act on it only where no later state can undo it.
         """
         since = self.mark() if since is None else since
         passed: Json = until_heard(

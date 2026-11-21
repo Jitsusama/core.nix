@@ -1453,9 +1453,11 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # A third Return there lands on a row that has gone, which runs nothing: it writes no
         # line, installs nothing more and leaves the step as it was (Y2YBTS, 2026-11-20). The
         # launcher's journal says when it took that Return, so the screen read after it shows
-        # what the Return left, and a line it wrote fails the step back. This Return comes only
-        # once the row has gone: one while the install is going in lands on the daemon's going
-        # row, whose answer races the install's end, so no second install is proven here.
+        # what the Return's own handler left, where the launcher chooses and runs an act, and a
+        # line it wrote fails the step back; an effect put off past the key isn't read. This
+        # Return comes only once the row has gone: one while the install is going in lands on
+        # the daemon's going row, whose answer races the install's end, so no second install is
+        # proven here.
         since = desktop.mark()
         machine.send_key("ret")
         try:
@@ -1469,9 +1471,17 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
             )
         except Exception as unheard:
             # The driver's wait says only that it ran out, so this says what the launcher shows
-            # and what the stand-in ran, telling a lost key from a second install.
-            shown = desktop.showing()
-            ran = desktop.as_account(f"cat {said}/installed").splitlines()
+            # and what the stand-in ran, telling a lost key from a second install. Each is read
+            # without raising, since a shell that hung on the Return fails its read too, and
+            # that error would stand in for this one; a read that fails says its status.
+            def read(command: str) -> str:
+                status, out = machine.execute(
+                    desktop.in_session(command), timeout=dt.timedelta(seconds=30)
+                )
+                return out.strip() if status == 0 else f"unread, stopping with {status}"
+
+            shown = read("qs ipc call launcher showing")
+            ran = read(f"cat {said}/installed")
             failed = (
                 "the journal never said the gone row's Return was taken,"
                 f" the launcher showing {shown} and the stand-in run as {ran}"
