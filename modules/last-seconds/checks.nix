@@ -9,8 +9,9 @@
 onLinux {
   # Its tests run as it builds: a record read back as written, a torn or
   # flipped one never read, the ring wrapping and going on after a restart,
-  # each source found by its name and read as what grew, and how each
-  # boot's record ended.
+  # each source found by its name and read as what grew, how each boot's
+  # record ended, and the recorder run whole, signalled as the sleep's hook
+  # does, recording each sleep whatever came before it.
   last-seconds-keeps-its-ring = pkgs.callPackage ./package.nix { };
 
   # The sleep's hook, as writeShellApplication runs it, against stand-ins
