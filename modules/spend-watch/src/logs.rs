@@ -53,11 +53,11 @@ pub struct Carry {
     /// names is found there. Given afresh each read, so never kept.
     #[serde(skip)]
     pub brought: Option<String>,
-    /// Whether the history holds the session the header names as its
-    /// parent, read from whichever machine's logs. Given afresh each read,
-    /// so never kept.
+    /// The session the header names as its parent, when the history holds
+    /// it, read from whichever machine's logs. Given afresh each read, so
+    /// never kept.
     #[serde(skip)]
-    pub parent_held: bool,
+    pub held_parent: Option<String>,
     pub session: Option<String>,
     pub cwd: Option<String>,
     pub quest: Option<String>,
@@ -549,8 +549,9 @@ fn session_entry(entry: &Value, at: Option<f64>, carry: &mut Carry, events: &mut
     carry.session = Some(id.clone());
     carry.cwd = Some(cwd.clone());
     let brought = carry.brought.as_deref().map(std::path::Path::new);
-    carry.copies_known = !copies::awaits_parent(entry, brought, carry.parent_held);
-    if copies::carried(entry, brought, carry.parent_held) {
+    let held = carry.held_parent.is_some();
+    carry.copies_known = !copies::awaits_parent(entry, brought, held);
+    if copies::carried(entry, brought, held) {
         carry.copied_until = at;
     }
     if carry.quest.is_none() {

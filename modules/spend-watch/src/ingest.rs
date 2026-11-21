@@ -314,7 +314,7 @@ fn check_copies(
     let name = found.path.to_string_lossy().into_owned();
     let header = header(&found.path);
     let brought = found.brought.as_deref();
-    let held = parent_held(history, header.as_ref());
+    let held = held_parent(history, header.as_ref()).is_some();
     if let Some(header) = header
         .as_ref()
         .filter(|header| crate::logs::copies::carried(header, brought, held))
@@ -346,11 +346,11 @@ fn check_copies(
     Ok(false)
 }
 
-/// Whether the history holds the session a header names as its parent.
-fn parent_held(history: &History, header: Option<&serde_json::Value>) -> bool {
+/// The session a header names as its parent, when the history holds it.
+fn held_parent(history: &History, header: Option<&serde_json::Value>) -> Option<String> {
     header
         .and_then(crate::logs::copies::parent_id)
-        .is_some_and(|id| history.holds_session(&id))
+        .filter(|id| history.holds_session(id))
 }
 
 fn scan_slice(
@@ -400,7 +400,11 @@ fn scan_slice(
     carry.kind.clone_from(&found.kind);
     carry.machine.clone_from(&found.machine);
     // Only a read from its start meets the header.
-    carry.parent_held = offset == 0 && parent_held(history, header(path).as_ref());
+    carry.held_parent = if offset == 0 {
+        held_parent(history, header(path).as_ref())
+    } else {
+        None
+    };
     carry.brought = found
         .brought
         .as_ref()
