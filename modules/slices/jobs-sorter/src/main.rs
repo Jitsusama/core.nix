@@ -112,6 +112,7 @@ mod keep;
 mod kitty;
 mod low;
 mod oom;
+mod own;
 mod probe;
 mod quests;
 mod quick;
@@ -1340,20 +1341,25 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             continue;
         }
         // One with two roots, as a command its started process left behind makes, still holds
-        // what a window shows, so it's ranked by its windows alone, and said once.
+        // what a window shows and the orchestrators its roots run, so every root is counted, and
+        // the doubt said once.
+        let roots = hosts::roots(&procs);
         let pid = hosts::host_of(&procs);
         if pid.is_none() && ranks.hosts.unclear.insert(unit.to_owned()) {
-            eprintln!("Ranking {unit} by its windows alone: no one process in it started it.");
+            eprintln!("Ranking {unit} by all its roots: no one process in it started it.");
         }
         seen.push(unit.to_owned());
-        let own = own_of(unit, pid, now, total, ranks, &mut seen);
+        let own = own_of(unit, pid, now, total, ranks);
         let signs = hosts::Signs {
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
             shown: shown.iter().filter(|viewed| *viewed == unit).count(),
-            orchestrators: pid
-                .and_then(|pid| ranks.orchestrating.get(&pid).copied())
-                .unwrap_or(0),
-            marked: pid.is_some_and(|pid| windows.dir.join(pid.to_string()).exists()),
+            orchestrators: roots
+                .iter()
+                .filter_map(|root| ranks.orchestrating.get(root))
+                .sum(),
+            marked: roots
+                .iter()
+                .any(|root| windows.dir.join(root.to_string()).exists()),
             current: fs::read_to_string(path.join("memory.current"))
                 .ok()
                 .and_then(|text| text.trim().parse().ok()),
@@ -1396,26 +1402,22 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
 /// The settings `unit`, started by `pid` when one process did, holds of
 /// its own, read with `systemctl cat` once a minute and again when its
 /// host restarts. An instance's are its template's, so they're read once
-/// for them all and kept, among `seen`, while any instance runs, rather
-/// than read for each every minute.
+/// for them all and kept while any instance runs (`Hosts::keep_only`),
+/// rather than read for each every minute.
 fn own_of(
     unit: &str,
     pid: Option<u32>,
     now: std::time::Instant,
     total: u64,
     ranks: &mut Ranks,
-    seen: &mut Vec<String>,
-) -> hosts::Own {
-    let template = hosts::template(unit);
+) -> own::Own {
+    let template = own::template(unit);
     let source = template.as_deref().unwrap_or(unit);
     let reader = if template.is_some() {
         0
     } else {
         pid.unwrap_or(0)
     };
-    if template.is_some() && !seen.iter().any(|kept| kept == source) {
-        seen.push(source.to_owned());
-    }
     ranks.hosts.own(source, reader, now, || {
         let output = Command::new("systemctl")
             .args(["--user", "cat", "--", source])
@@ -1425,7 +1427,7 @@ fn own_of(
         output
             .status
             .success()
-            .then(|| hosts::own(&String::from_utf8_lossy(&output.stdout), total))
+            .then(|| own::own(&String::from_utf8_lossy(&output.stdout), total))
     })
 }
 

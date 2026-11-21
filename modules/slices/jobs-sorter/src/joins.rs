@@ -6,6 +6,7 @@
 //! hosts' slots do.
 
 use std::fs;
+use std::io::Read;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -107,12 +108,24 @@ fn flag(rest: &[String], name: &str) -> Option<String> {
 
 /// Whether the slot file at `path` holds `session`. Only a file of a slot's
 /// size is read, never a link, a pipe or a folder, so nothing put beside
-/// the slots can stall or mislead the loop that reads them.
+/// the slots can stall or mislead the loop that reads them. The path is
+/// checked before it's opened, as opening a pipe would wait, and what was
+/// opened is checked again, and read no further than a slot's size, in
+/// case it changed between.
 fn holds(path: &Path, session: &str) -> bool {
+    let is_slot = |meta: &fs::Metadata| meta.file_type().is_file() && meta.len() <= SLOT_MOST;
     fs::symlink_metadata(path)
         .ok()
-        .filter(|meta| meta.file_type().is_file() && meta.len() <= SLOT_MOST)
-        .and_then(|_| fs::read_to_string(path).ok())
+        .filter(is_slot)
+        .and_then(|_| fs::File::open(path).ok())
+        .filter(|file| file.metadata().is_ok_and(|meta| is_slot(&meta)))
+        .and_then(|file| {
+            let mut text = String::new();
+            file.take(SLOT_MOST)
+                .read_to_string(&mut text)
+                .ok()
+                .map(|_| text)
+        })
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .is_some_and(|slot| {
             slot.pointer("/session/sessionId")
@@ -175,6 +188,17 @@ mod tests {
         let line = words("mycelium attach --host work-attended --session 0193-ab");
         let conversations = Some(("pi-conversation-", slots.as_path()));
         let joined = unit_of(&line, "pi-host-", conversations, |_| true);
+        let stopped = unit_of(&line, "pi-host-", conversations, |_| false);
+        // A slot past what one holds isn't read, though it names the session.
+        fs::write(
+            host.join("0193-ab.json"),
+            format!(
+                r#"{{"session": {{"sessionId": "0193-ab"}}, "pad": "{}"}}"#,
+                " ".repeat(64 << 10)
+            ),
+        )
+        .unwrap();
+        let large = unit_of(&line, "pi-host-", conversations, |_| true);
         fs::remove_dir_all(&slots).unwrap();
         assert_eq!(
             joined.as_deref(),
@@ -182,9 +206,14 @@ mod tests {
             "a conversation in a unit of its own is what the window joins"
         );
         assert_eq!(
-            unit_of(&line, "pi-host-", conversations, |_| false).as_deref(),
+            stopped.as_deref(),
             Some("pi-host-work-attended.service"),
             "with no unit of its own running, the host runs it"
+        );
+        assert_eq!(
+            large.as_deref(),
+            Some("pi-host-work-attended.service"),
+            "a slot too large to be one is passed over"
         );
         assert_eq!(
             unit_of(&line, "pi-host-", None, |_| true).as_deref(),
