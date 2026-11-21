@@ -16,7 +16,9 @@
 //! speaker model, loaded and let go with Parakeet and kept compiled where
 //! it is, for an embedding of how it sounds; once the call is written
 //! down whole the takes are grouped by voice (voices.rs), unless the
-//! record already names their side. Only the embeddings are kept, never
+//! record already names their side, and each voice is named where who
+//! was in the Meet as it spoke says so (presence.rs). Only the
+//! embeddings are kept, never
 //! the sound, and only in memory: the last few calls' stay once they end,
 //! so a call rejoined is told apart whole.
 //!
@@ -29,13 +31,15 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
+use dictation::mel::RATE;
 use dictation::parakeet::Parakeet;
-use dictation::transcript::{self, Line, Side, markdown};
+use dictation::transcript::{self, Line, Side, markdown_naming};
 use dictation::voices::{self, Heard, Voices};
 
 use crate::Settings;
 use crate::book::{self, Record, Shared, TRANSCRIPT, write_whole};
 use crate::filed;
+use crate::presence::{self, Present, Spoke, Who};
 use crate::{notices, said};
 
 /// How long Parakeet is kept once the last call is written, so a call
@@ -67,7 +71,9 @@ pub enum Job {
 /// none in still helps tell the others apart, as it does where the voices
 /// check measures them (apart.rs). It's `whole` when its embeddings cover
 /// the whole call, as they do for one heard from its start in this run,
-/// and not for one taken up from its file after a restart.
+/// and not for one taken up from its file after a restart. Its `guesses`
+/// say who the voices left numbered may be, once it's told apart; they
+/// aren't in its lines, so a restart loses them.
 #[derive(Default)]
 struct Writing {
     lines: Vec<Line>,
@@ -75,6 +81,7 @@ struct Writing {
     heard: Vec<Heard>,
     heard_lines: Vec<Option<usize>>,
     whole: bool,
+    guesses: Option<String>,
 }
 
 impl Writing {
@@ -199,8 +206,9 @@ pub fn hear(
                     end: start + samples.len(),
                     text,
                     voice: None,
+                    name: None,
                 });
-                write(book, &key, &writing.lines, me, true);
+                write(book, &key, writing, me, true);
             }
             Job::Done { key, side } => {
                 let writing = calls
@@ -209,7 +217,7 @@ pub fn hear(
                 writing.done.insert(side);
                 if writing.done.len() == 2 {
                     tell_apart(book, &key, writing, me);
-                    write(book, &key, &writing.lines, me, false);
+                    write(book, &key, writing, me, false);
                     if let Some(writing) = calls.remove(&key) {
                         keep(&mut ended, &key, writing);
                     }
@@ -282,14 +290,55 @@ fn embed(settings: &Settings, speakers: &mut Speakers, samples: &[f32]) -> Optio
 
 /// Gives each of their lines the voice its take was grouped into, unless
 /// the record names their side for certain, as when one other person was
-/// on the call; no more voices than the people known to be on it.
+/// on the call; no more voices than the people known to be on it. Once
+/// they're grouped anew, each voice is named where who was in the Meet
+/// says so.
 fn tell_apart(book: &Shared, key: &str, writing: &mut Writing, me: &str) {
-    let Some(record) = book.lock().record(key).cloned() else {
-        return;
+    let (record, present) = {
+        let book = book.lock();
+        let Some(record) = book.record(key).cloned() else {
+            return;
+        };
+        (record, book.presence(key))
     };
-    if let TheirSide::Unnamed { people } = their_side(&record, me) {
-        give_voices(writing, people);
+    if let TheirSide::Unnamed { people } = their_side(&record, me)
+        && give_voices(writing, people)
+    {
+        writing.guesses = give_names(&mut writing.lines, record.started, &present);
     }
+}
+
+/// Gives each line of theirs whose voice was `present` for certain that
+/// person's name, for a call that `started` then, in milliseconds since
+/// the epoch, as Meet says when each was in; what can be said of the
+/// voices left numbered is given back, for the transcript's note.
+fn give_names(lines: &mut [Line], started: u64, present: &[Present]) -> Option<String> {
+    if present.is_empty() {
+        return None;
+    }
+    let at = |sample: usize| started + u64::try_from(sample * 1000 / RATE).unwrap_or(u64::MAX);
+    let spoke: Vec<Spoke> = lines
+        .iter()
+        .filter(|line| line.side == Side::Theirs)
+        .filter_map(|line| {
+            Some(Spoke {
+                voice: line.voice?,
+                from: at(line.start),
+                to: at(line.end),
+            })
+        })
+        .collect();
+    let voices = spoke.iter().map(|take| take.voice + 1).max()?;
+    let who = presence::who(present, &spoke, voices);
+    for line in lines.iter_mut() {
+        if let Some(Who::Is(name)) = line.voice.map(|voice| &who[voice]) {
+            line.name = Some(name.clone());
+        }
+    }
+    let heard: Vec<bool> = (0..voices)
+        .map(|voice| spoke.iter().any(|take| take.voice == voice))
+        .collect();
+    presence::guesses(&who, &heard)
 }
 
 /// What a call's record says of their side, for telling its voices apart.
@@ -330,14 +379,21 @@ fn keep(ended: &mut Vec<(String, Writing)>, key: &str, mut writing: Writing) {
 /// taken up again after a restart has none for what it said before: when
 /// that part was told apart its voices stay, and this part's lines stay
 /// under Others, since which of those voices each is can't be said, and
-/// numbering them anew would call one person two.
-fn give_voices(writing: &mut Writing, people: Option<usize>) {
+/// numbering them anew would call one person two; a voice named then
+/// keeps its name. Whether they were grouped anew is given back.
+fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
+    writing.guesses = None;
     if writing.whole {
         for line in &mut writing.lines {
             line.voice = None;
+            line.name = None;
         }
-    } else if writing.lines.iter().any(|line| line.voice.is_some()) {
-        return;
+    } else if writing
+        .lines
+        .iter()
+        .any(|line| line.voice.is_some() || line.name.is_some())
+    {
+        return false;
     }
     let grouped = voices::group(&writing.heard, people);
     for (line, voice) in writing.heard_lines.iter().zip(grouped) {
@@ -345,6 +401,7 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) {
             writing.lines[index].voice = voice;
         }
     }
+    true
 }
 
 /// A call's title, as its record has it.
@@ -368,15 +425,27 @@ fn taken_up(ended: &mut Vec<(String, Writing)>, book: &Shared, key: &str, me: &s
 /// call recorded before the daemon restarted holds, or nothing for a call
 /// just begun, which is then heard whole. A line is Joel's only when it's
 /// under his name, `me`. Only its Transcript section is read, so the
-/// summary's quotes are never lines said twice.
+/// summary's quotes are never lines said twice. A line under a name keeps
+/// it only while the record doesn't name their side, since otherwise
+/// that name is their side's, not a voice's.
 fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
-    let lines = book
-        .lock()
-        .record(key)
-        .and_then(|record| record.transcript.clone())
+    let Some(record) = book.lock().record(key).cloned() else {
+        return Writing {
+            whole: true,
+            ..Writing::default()
+        };
+    };
+    let mut lines: Vec<Line> = record
+        .transcript
+        .as_ref()
         .and_then(|file| std::fs::read_to_string(file).ok())
         .map(|text| transcript::read(filed::transcript(&text), me))
         .unwrap_or_default();
+    if their_side(&record, me) == TheirSide::Named {
+        for line in &mut lines {
+            line.name = None;
+        }
+    }
     Writing {
         whole: lines.is_empty(),
         lines,
@@ -390,17 +459,19 @@ fn resumed(book: &Shared, key: &str, me: &str) -> Writing {
 /// being written. The summary is the record's, so writing the
 /// transcript again keeps it; a call that's still on has none, since
 /// a rejoin lets the last one go.
-fn write(book: &Shared, key: &str, lines: &[Line], me: &str, transcribing: bool) {
+fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bool) {
     let mut book = book.lock();
     let Some(record) = book.record(key).cloned() else {
         return;
     };
     let file = record.folder.join(TRANSCRIPT);
     let mut opening = record.opening.clone();
+    let lines = &writing.lines;
     if !lines.is_empty() {
         let them = record.them(me);
         let note = record.note(me);
-        let said = markdown(lines, me, them.as_deref(), note.as_deref());
+        let guesses = writing.guesses.as_deref();
+        let said = markdown_naming(lines, me, them.as_deref(), note.as_deref(), guesses);
         let written = filed::whole(&record.title, record.summary.as_deref(), &said);
         if let Err(why) = write_whole(&file, &written) {
             eprintln!("call-transcripts: writing {}: {why}", file.display());
@@ -438,6 +509,7 @@ mod tests {
             end: (at + 5) * SECOND,
             text: "Said.".to_owned(),
             voice,
+            name: None,
         }
     }
 
@@ -548,6 +620,68 @@ mod tests {
         assert!(
             voices[2..].iter().all(Option::is_none),
             "lines after a restart were numbered anew beside the old voices: {voices:?}"
+        );
+    }
+
+    const STARTED: u64 = 1_800_000_000_000;
+
+    fn present(name: &str, joined_s: u64) -> Present {
+        Present {
+            name: name.to_owned(),
+            joined: STARTED + joined_s * 1000,
+            left: None,
+        }
+    }
+
+    fn names(lines: &[Line]) -> Vec<Option<&str>> {
+        lines.iter().map(|line| line.name.as_deref()).collect()
+    }
+
+    #[test]
+    fn a_voice_heard_only_while_one_other_was_in_takes_that_name_and_the_rest_are_guessed() {
+        let mut lines = vec![
+            line(Side::Theirs, 10, Some(0)),
+            line(Side::Mine, 30, None),
+            line(Side::Theirs, 60, Some(0)),
+            line(Side::Theirs, 600, Some(1)),
+            line(Side::Theirs, 620, None),
+        ];
+        let present = [present("Ada", 0), present("Bo", 300)];
+        let guesses = give_names(&mut lines, STARTED, &present);
+        assert_eq!(
+            names(&lines),
+            [Some("Ada"), None, Some("Ada"), None, None],
+            "Ada's voice wasn't named for her, or Joel's line or Bo's or Others' was named"
+        );
+        assert_eq!(
+            guesses.as_deref(),
+            Some("Voice 2 is likely Bo."),
+            "the voice heard while both were in wasn't said only likely Bo"
+        );
+    }
+
+    #[test]
+    fn with_nobody_seen_in_the_meet_no_voice_is_named_or_guessed() {
+        let mut lines = vec![line(Side::Theirs, 10, Some(0))];
+        assert_eq!(give_names(&mut lines, STARTED, &[]), None);
+        assert_eq!(names(&lines), [None], "a voice was named with nobody seen");
+    }
+
+    #[test]
+    fn a_call_taken_up_again_keeps_the_names_it_had() {
+        let named = Line {
+            name: Some("Ada".to_owned()),
+            ..line(Side::Theirs, 0, None)
+        };
+        let mut writing = sitting(vec![named], false);
+        assert!(
+            !give_voices(&mut writing, None),
+            "a call taken up again was grouped anew beside the voices it had"
+        );
+        assert_eq!(
+            writing.lines[0].name.as_deref(),
+            Some("Ada"),
+            "the name given before a restart was lost"
         );
     }
 

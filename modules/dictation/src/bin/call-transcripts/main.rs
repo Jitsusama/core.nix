@@ -427,6 +427,7 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
                     end: take.start + take.samples.len(),
                     text,
                     voice: None,
+                    name: None,
                 });
             }
         }

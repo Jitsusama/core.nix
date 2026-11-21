@@ -101,6 +101,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                         end: take.start + take.samples.len(),
                         text,
                         voice: None,
+                        name: None,
                     });
                 }
             }

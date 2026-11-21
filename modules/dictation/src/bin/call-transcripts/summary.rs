@@ -157,13 +157,32 @@ pub fn summarize(
     them: Option<&str>,
     transcript: &str,
 ) -> Result<String, String> {
+    summarize_as(ask, title, None, them, transcript)
+}
+
+/// `summarize`, with Joel called `me` where that's known, as it is to the
+/// daemon that wrote the transcript, so a voice of theirs named by who was
+/// in the Meet is never taken for him; where it isn't, he's guessed.
+///
+/// # Errors
+///
+/// As `summarize`.
+pub fn summarize_as(
+    ask: &mut dyn FnMut(&str, usize) -> Result<String, String>,
+    title: &str,
+    me: Option<&str>,
+    them: Option<&str>,
+    transcript: &str,
+) -> Result<String, String> {
     let mut said = lines(transcript);
-    // Joel is whoever isn't them, by name, as Others or as a voice told
-    // apart, since a transcript can open with their line.
-    let me = said
-        .iter()
-        .map(|line| line.who.as_str())
-        .find(|who| !unnamed(who) && Some(*who) != them)
+    // Unknown, Joel is whoever isn't them, by name, as Others or as a
+    // voice told apart, since a transcript can open with their line.
+    let me = me
+        .or_else(|| {
+            said.iter()
+                .map(|line| line.who.as_str())
+                .find(|who| !unnamed(who) && Some(*who) != them)
+        })
         .unwrap_or("Me")
         .to_owned();
     if let Some(them) = them {
@@ -171,14 +190,15 @@ pub fn summarize(
             them.clone_into(&mut line.who);
         }
     }
-    let voiced = said
-        .iter()
-        .any(|line| unnamed(&line.who) && line.who != OTHERS);
+    let theirs = |line: &&Said| them.is_none() && line.who != me && line.who != OTHERS;
+    let voiced = said.iter().any(|line| theirs(&line));
+    let named = said.iter().any(|line| theirs(&line) && !unnamed(&line.who));
     let call = Call {
         said: &said,
         me,
         them: them.map(str::to_owned),
         voiced,
+        named,
     };
     let parts = parts(&said, PART_CHARS);
     let mut kept = Vec::new();
@@ -231,12 +251,14 @@ pub fn summarize(
 }
 
 /// A call's lines, what Joel is called in them, who the others are
-/// where the call knows, and whether their voices are told apart.
+/// where the call knows, whether their voices are told apart, and
+/// whether some of those are named.
 struct Call<'a> {
     said: &'a [Said],
     me: String,
     them: Option<String>,
     voiced: bool,
+    named: bool,
 }
 
 impl Call<'_> {
@@ -264,6 +286,12 @@ impl Call<'_> {
     fn between(&self) -> String {
         match &self.them {
             Some(them) => format!("a call between {} and {them}", self.me),
+            None if self.named => format!(
+                "a call between {} and the others on it, whose voices are told apart by how \
+                 they sound and called by name where only that person was in the Meet as it \
+                 spoke, Voice 1, Voice 2 and so on where not, or {OTHERS} where none was sure",
+                self.me
+            ),
             None if self.voiced => format!(
                 "a call between {} and the others on it, whose voices are called Voice 1, \
                  Voice 2 and so on by how they sound, or {OTHERS} where none was sure",

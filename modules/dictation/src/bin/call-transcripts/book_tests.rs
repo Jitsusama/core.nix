@@ -26,6 +26,45 @@ fn ask(book: &mut Book, line: &str) -> (Value, mpsc::Receiver<String>) {
     (book.answer(line, 1, &told), heard)
 }
 
+fn present(name: &str, joined: u64, left: Option<u64>) -> Present {
+    Present {
+        name: name.to_owned(),
+        joined,
+        left,
+    }
+}
+
+#[test]
+fn who_was_in_a_meet_is_its_newest_look_and_whoever_that_leaves_out() {
+    let mut book = Book::default();
+    book.present(
+        "call:e1",
+        &[present("Ada", 10, Some(50)), present("Bo", 20, None)],
+    );
+    book.present(
+        "call:e1",
+        &[
+            present("Ada", 10, None),
+            present("Cy", 70, None),
+            present("Cy", 80, Some(90)),
+        ],
+    );
+    assert_eq!(
+        book.presence("call:e1"),
+        [
+            present("Ada", 10, None),
+            present("Cy", 70, None),
+            present("Cy", 80, Some(90)),
+            present("Bo", 20, None),
+        ],
+        "a rejoin kept the old leave, one person's two devices became one, or one left out was lost"
+    );
+    assert!(
+        book.presence("call:e2").is_empty(),
+        "a call whose Meet wasn't seen was given someone's"
+    );
+}
+
 #[test]
 fn a_watch_hears_each_call_as_it_changes_and_lists_are_newest_first() {
     let folder = tempfile::tempdir().unwrap();

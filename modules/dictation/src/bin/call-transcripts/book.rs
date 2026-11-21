@@ -17,6 +17,7 @@
 //! starts, and only then: the shell never reads the folder. A folder
 //! from before keeps its summary in summary.md, beside its transcript.
 
+use std::collections::HashMap;
 use std::io::Read;
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
@@ -28,6 +29,7 @@ use dictation::daemon::{self, Answers, VERSION, Watches, error};
 
 use crate::filed;
 use crate::meeting::{self, Known};
+use crate::presence::Present;
 use crate::private::make_folder;
 pub use crate::private::write_whole;
 use serde_json::{Value, json};
@@ -317,6 +319,11 @@ pub struct Book {
     /// stopped mid-call starts again recording nothing, and no call it
     /// reads back says it's being recorded.
     recording: Option<String>,
+    /// When each other person was in each call's Meet, by its key, as
+    /// the google daemon said while it was recorded (meet.rs). Held only
+    /// here, never beside the call, since it's for naming its voices as
+    /// it ends, and Meet says it again to a daemon restarted mid-call.
+    present: HashMap<String, Vec<Present>>,
 }
 
 impl Book {
@@ -345,7 +352,28 @@ impl Book {
             unlisted,
             unreadable,
             recording: None,
+            present: HashMap::new(),
         }
+    }
+
+    /// Keeps who `seen` says was in the Meet of the call `key`, in place
+    /// of what was seen before, since Meet gives each their first join
+    /// every time, and its leaves are newer, a rejoin clearing one. A
+    /// name it leaves out keeps what was seen of it.
+    pub fn present(&mut self, key: &str, seen: &[Present]) {
+        let held = self.present.remove(key).unwrap_or_default();
+        let mut kept = seen.to_vec();
+        let gone = held
+            .into_iter()
+            .filter(|held| !seen.iter().any(|person| person.name == held.name));
+        kept.extend(gone);
+        self.present.insert(key.to_owned(), kept);
+    }
+
+    /// Who was in the Meet of the call `key`, and when, as far as it
+    /// was seen; nobody for a call whose Meet wasn't.
+    pub fn presence(&self, key: &str) -> Vec<Present> {
+        self.present.get(key).cloned().unwrap_or_default()
     }
 
     /// Says the call `key` is the one being recorded now, or none is,
