@@ -22,15 +22,21 @@ const ADA: [f32; 2] = [1.0, 0.0];
 const BO: [f32; 2] = [0.0, 1.0];
 
 /// Hears each take into `writing`, one piece of 5 s, a line of theirs
-/// for each said.
+/// with a word at its start for each said.
 fn hear_takes(writing: &mut Writing, takes: &[([f32; 2], bool)]) {
     for &(voice, said) in takes {
         let at = writing.lines.len();
         let line_at = said.then_some(at);
         let start = (20 + 5 * at) * SECOND;
-        writing.heard(line_at, vec![(voice.to_vec(), start, 5 * SECOND)]);
+        let words = if said {
+            vec![word("Said.", start)]
+        } else {
+            Vec::new()
+        };
+        writing.heard(line_at, &words, vec![(voice.to_vec(), start, 5 * SECOND)]);
         if said {
             writing.lines.push(line(Side::Theirs, 20 + 5 * at, None));
+            writing.words.insert(at, words);
         }
     }
 }
@@ -104,38 +110,47 @@ fn word(text: &str, at: usize) -> Word {
     }
 }
 
-#[test]
-fn a_take_that_runs_from_one_voice_into_another_is_split_between_them() {
+/// A call of Ada's line, Bo's, and a take of 6 s, 40 s in, its first
+/// piece Ada's and its second Bo's, heard as the daemon hears them.
+fn ada_into_bo() -> Writing {
     let mut writing = Writing {
         whole: true,
         ..Writing::default()
     };
     hear_takes(&mut writing, &[(ADA, true), (BO, true)]);
-    // A take of 6 s, 40 s in: its first piece Ada's, its second Bo's.
     let start = 40 * SECOND;
     let index = writing.lines.len();
-    writing.heard(
-        Some(index),
-        vec![
-            (ADA.to_vec(), start, 3 * SECOND),
-            (BO.to_vec(), start + 3 * SECOND, 3 * SECOND),
-        ],
-    );
+    let said = [("Done.", 1), ("Not", 4), ("yet.", 5)];
+    let words = said.map(|(text, at)| word(text, start + at * SECOND));
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (BO.to_vec(), start + 3 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(index), &words, pieces);
     writing.lines.push(Line {
         start,
         end: start + 6 * SECOND,
         text: "Done. Not yet.".to_owned(),
         ..line(Side::Theirs, 40, None)
     });
-    let said = [("Done.", 1), ("Not", 4), ("yet.", 5)];
-    let words = said.map(|(text, at)| word(text, start + at * SECOND));
     writing.words.insert(index, words.into());
-    give_voices(&mut writing, None);
-    let lines: Vec<(&str, Option<usize>)> = writing
+    writing
+}
+
+fn said_by(writing: &Writing) -> Vec<(&str, Option<usize>)> {
+    writing
         .lines
         .iter()
         .map(|line| (line.text.as_str(), line.voice))
-        .collect();
+        .collect()
+}
+
+#[test]
+fn a_take_that_runs_from_one_voice_into_another_is_split_between_them() {
+    let mut writing = ada_into_bo();
+    give_voices(&mut writing, None);
+    let start = 40 * SECOND;
+    let lines = said_by(&writing);
     assert_eq!(
         lines,
         [
@@ -150,6 +165,48 @@ fn a_take_that_runs_from_one_voice_into_another_is_split_between_them() {
         writing.lines[3].start,
         start + 3 * SECOND,
         "Bo's part doesn't start where his piece does, so the Meet names it by the wrong time"
+    );
+}
+
+#[test]
+fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
+    let mut writing = ada_into_bo();
+    give_voices(&mut writing, None);
+    hear_takes(&mut writing, &[(ADA, true)]);
+    give_voices(&mut writing, None);
+    assert_eq!(
+        said_by(&writing),
+        [
+            ("Said.", Some(0)),
+            ("Said.", Some(1)),
+            ("Done.", Some(0)),
+            ("Not yet.", Some(1)),
+            ("Said.", Some(0)),
+        ],
+        "a take heard after a rejoin wasn't given its own voice past the split"
+    );
+    let lines_of: Vec<Option<usize>> = writing.pieces.iter().map(|piece| piece.line).collect();
+    assert_eq!(
+        lines_of,
+        [Some(0), Some(1), Some(2), Some(3), Some(4)],
+        "the pieces don't say which lines they're of after the rejoin"
+    );
+    let mut keys: Vec<usize> = writing.words.keys().copied().collect();
+    keys.sort_unstable();
+    assert_eq!(
+        keys,
+        [0, 1, 2, 3, 4],
+        "the words aren't kept by their lines"
+    );
+}
+
+#[test]
+fn a_takes_words_are_timed_from_the_calls_start() {
+    let words = from_call_start(40 * SECOND, vec![word("Done.", SECOND)]);
+    assert_eq!(
+        words,
+        [word("Done.", 41 * SECOND)],
+        "a word wasn't moved by where its take starts in the call"
     );
 }
 

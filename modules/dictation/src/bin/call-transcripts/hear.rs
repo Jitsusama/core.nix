@@ -19,9 +19,10 @@
 //! are grouped by voice (voices.rs), unless the record already names
 //! their side, a line is split where its pieces' voice changes
 //! (split.rs), and each voice is named where who was in the Meet as it
-//! spoke says so (presence.rs). Only the embeddings and when each word
-//! was said are kept, never the sound, and only in memory: the last few
-//! calls' stay once they end, so a call rejoined is told apart whole.
+//! spoke says so (presence.rs). Only the embeddings and the words, with
+//! when each was said, are kept, never the sound, and only in memory: the
+//! last few calls' stay once they end, so a call rejoined is told apart
+//! whole.
 //!
 //! A call written down whole is given to be summed up (summarizer.rs)
 //! once no call is being heard and Parakeet is let go, so the two models
@@ -94,13 +95,21 @@ struct Writing {
 impl Writing {
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
-    /// and which line the take is, if it has one.
-    fn heard(&mut self, line: Option<usize>, embedded: Vec<(Vec<f32>, usize, usize)>) {
+    /// and which line the take is, if it has one; a piece is worded when
+    /// one of the line's `words` was said in it, as the voices check has
+    /// a piece worded when the reference has speech in it.
+    fn heard(
+        &mut self,
+        line: Option<usize>,
+        words: &[Word],
+        embedded: Vec<(Vec<f32>, usize, usize)>,
+    ) {
         for (embedding, start, samples) in embedded {
+            let in_it = |word: &Word| (start..start + samples).contains(&word.at);
             self.heard.push(Heard {
                 embedding,
                 samples,
-                worded: line.is_some(),
+                worded: line.is_some() && words.iter().any(in_it),
             });
             self.pieces.push(Piece {
                 take: self.takes,
@@ -207,7 +216,7 @@ pub fn hear(
                         }
                     }
                     let line = text.is_some().then_some(writing.lines.len());
-                    writing.heard(line, embedded);
+                    writing.heard(line, &words, embedded);
                 }
                 let Some(text) = text else {
                     continue;
@@ -273,20 +282,25 @@ fn heard(
     match heard {
         Ok((text, words, took)) => {
             eprintln!("call-transcripts: {}", took.describe(&parakeet.device));
-            let words = words
-                .into_iter()
-                .map(|word| Word {
-                    at: start + word.at,
-                    ..word
-                })
-                .collect();
-            (said::spoken(text.trim()), words)
+            (said::spoken(text.trim()), from_call_start(start, words))
         }
         Err(why) => {
             eprintln!("call-transcripts: a take wasn't heard: {why}");
             (None, Vec::new())
         }
     }
+}
+
+/// A take's `words`, timed from its start, timed from the call's instead,
+/// the take starting `start` samples into it.
+fn from_call_start(start: usize, words: Vec<Word>) -> Vec<Word> {
+    words
+        .into_iter()
+        .map(|word| Word {
+            at: start + word.at,
+            ..word
+        })
+        .collect()
 }
 
 /// Compiles Parakeet and lets it go, when it's for the NPU and nothing is
@@ -337,7 +351,7 @@ fn embed(settings: &Settings, speakers: &mut Speakers, samples: &[f32]) -> Optio
     match voices.embed(samples) {
         Ok(embedding) => embedding,
         Err(why) => {
-            eprintln!("call-transcripts: a take's voice wasn't heard: {why}");
+            eprintln!("call-transcripts: a piece of a take's voice wasn't heard: {why}");
             None
         }
     }

@@ -4,7 +4,10 @@
 //! sit whole under one. On the three AMI meetings the voices and naming
 //! checks measure, 3 s pieces put more of the far end's speech under the
 //! right voice and the right name than whole takes did; at 2 s, TitaNet
-//! heard one person as several.
+//! heard one person as several. The checks score each piece under its
+//! own voice; the daemon's lines, split from them where the voice
+//! changes (call-transcripts' split.rs), are proved by that module's
+//! cases, not by the checks' numbers.
 //!
 //! A piece grouped into no voice is most often someone's short
 //! interjection inside another's take, but it's under the voice of the
@@ -18,8 +21,8 @@ pub const PIECE: usize = 3 * RATE;
 
 /// Where each piece of a take of `samples` starts and ends: `PIECE` each,
 /// the last taking in what's left when that's shorter than half of one,
-/// so no piece is too short to embed well. A take of no more than half a
-/// piece over one is one piece.
+/// so the last holds from 1.5 s to under 4.5 s, as the checks measured. A
+/// take shorter than one piece and a half is one piece.
 #[must_use]
 pub fn pieces(samples: usize) -> Vec<(usize, usize)> {
     let mut out = Vec::new();
@@ -80,12 +83,17 @@ mod tests {
     }
 
     #[test]
-    fn a_take_of_no_more_than_half_a_piece_over_one_is_whole() {
+    fn a_take_shorter_than_one_piece_and_a_half_is_whole() {
         assert_eq!(pieces(PIECE / 2), [(0, PIECE / 2)], "a short take was cut");
         assert_eq!(
             pieces(PIECE + PIECE / 2 - 1),
             [(0, PIECE + PIECE / 2 - 1)],
             "a take just short of one piece and a half was cut"
+        );
+        assert_eq!(
+            pieces(PIECE + PIECE / 2),
+            [(0, PIECE), (PIECE, PIECE + PIECE / 2)],
+            "a take of one piece and a half wasn't cut"
         );
     }
 

@@ -2,10 +2,17 @@
 //! until a pause, and on a call with several people one often runs from
 //! one voice into another's; heard whole, its line sat under one voice.
 //! Each take is embedded in pieces (`dictation::pieces`), and once the
-//! call's pieces are grouped a line whose pieces fall in more than one
+//! call's pieces are grouped a take whose pieces fall in more than one
 //! voice is cut at the pieces' edges, each part given the words Parakeet
-//! wrote in it. A part Parakeet wrote no words in joins the part before
-//! it, or the one after when it's first, since a line holds words.
+//! wrote in it.
+//!
+//! A run of pieces whose words say nothing once tidied (said.rs), none
+//! at all or only a hesitation, joins the part before it, or the one
+//! after when it's first, words and all, since a line holds words; two
+//! parts that are then in one voice are one. A bracketed note is never
+//! cut, so tidying each part leaves it out as tidying the whole did. A
+//! take split when the call was last told apart is joined again before
+//! it's split, so a rejoin's grouping decides its parts afresh.
 
 use std::collections::HashMap;
 
@@ -32,6 +39,16 @@ pub struct Heard<'a> {
     pub words: &'a mut HashMap<usize, Vec<Word>>,
 }
 
+/// A line as its take was heard, the parts it was split into before
+/// joined again: its pieces, its words, and the take it's of, none for a
+/// line with no pieces.
+struct Whole {
+    line: Line,
+    pieces: Vec<usize>,
+    words: Vec<Word>,
+    take: Option<usize>,
+}
+
 /// Gives each line the voice of its pieces, `voices` holding each
 /// piece's, and splits one whose pieces fall in more than one voice where
 /// the voice changes, each part keeping the words written in it; the
@@ -40,30 +57,20 @@ pub struct Heard<'a> {
 pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     let mut lines = Vec::with_capacity(heard.lines.len());
     let mut words = HashMap::new();
-    // Each line's pieces, read before any is renumbered, since a piece
-    // renumbered for a part would otherwise be read as a later line's.
-    let mut of_line: HashMap<usize, Vec<usize>> = HashMap::new();
-    for (piece, of) in heard.pieces.iter().enumerate() {
-        if let Some(line) = of.line {
-            of_line.entry(line).or_default().push(piece);
-        }
-    }
-    for (index, line) in std::mem::take(heard.lines).into_iter().enumerate() {
-        let of = of_line.remove(&index).unwrap_or_default();
-        let said = heard.words.remove(&index).unwrap_or_default();
-        if of.is_empty() {
-            if !said.is_empty() {
-                words.insert(lines.len(), said);
+    for whole in wholes(heard) {
+        if whole.pieces.is_empty() {
+            if !whole.words.is_empty() {
+                words.insert(lines.len(), whole.words);
             }
-            lines.push(line);
+            lines.push(whole.line);
             continue;
         }
-        let runs = runs(&of, heard.pieces, voices);
-        let parts = parts(&line, &runs, said);
-        // A piece is of the last part starting at or before it, the first
-        // part holding any piece that starts before the line does.
+        let runs = runs(&whole.pieces, heard.pieces, voices);
+        let parts = parts(&whole.line, &runs, whole.words);
+        // A piece is of the last part starting at or before it; the first
+        // starts with the take.
         let starts: Vec<usize> = parts.iter().map(|(part, _)| part.start).collect();
-        for &piece in &of {
+        for &piece in &whole.pieces {
             let at = heard.pieces[piece].start;
             let part = starts.iter().rposition(|&start| start <= at).unwrap_or(0);
             heard.pieces[piece].line = Some(lines.len() + part);
@@ -77,6 +84,40 @@ pub fn by_voice(heard: &mut Heard, voices: &[Option<usize>]) {
     }
     *heard.lines = lines;
     *heard.words = words;
+}
+
+/// The lines as their takes were heard: next to each other, the parts of
+/// a take split before are joined again. Each line's pieces are read
+/// before any is renumbered, since one renumbered for a part would
+/// otherwise be read as a later line's.
+fn wholes(heard: &mut Heard) -> Vec<Whole> {
+    let mut of_line: HashMap<usize, Vec<usize>> = HashMap::new();
+    for (piece, of) in heard.pieces.iter().enumerate() {
+        if let Some(line) = of.line {
+            of_line.entry(line).or_default().push(piece);
+        }
+    }
+    let mut wholes: Vec<Whole> = Vec::new();
+    for (index, line) in std::mem::take(heard.lines).into_iter().enumerate() {
+        let pieces = of_line.remove(&index).unwrap_or_default();
+        let words = heard.words.remove(&index).unwrap_or_default();
+        let take = pieces.first().map(|&piece| heard.pieces[piece].take);
+        match wholes.last_mut() {
+            Some(whole) if take.is_some() && whole.take == take => {
+                whole.line.end = line.end;
+                whole.line.text = format!("{} {}", whole.line.text, line.text);
+                whole.pieces.extend(pieces);
+                whole.words.extend(words);
+            }
+            _ => wholes.push(Whole {
+                line,
+                pieces,
+                words,
+                take,
+            }),
+        }
+    }
+    wholes
 }
 
 /// Where each run of a line's pieces, `of`, in one voice starts, and its
@@ -93,60 +134,86 @@ fn runs(of: &[usize], pieces: &[Piece], voices: &[Option<usize>]) -> Vec<(usize,
 }
 
 /// A line cut into a part for each run of its pieces in one voice, each
-/// holding the words written in it, a part with none joined to the one
-/// before it, or after it when it's first. A line one voice holds whole,
-/// or whose words can't be cut between voices, is kept whole under the
-/// voice its words are in, its text as it was.
+/// holding the words written in it, as the module says. A line left in
+/// one part is kept whole under that part's voice, its text as it was.
 fn parts(line: &Line, runs: &[(usize, Option<usize>)], said: Vec<Word>) -> Vec<(Line, Vec<Word>)> {
-    let mut parts: Vec<(Line, Vec<Word>)> = Vec::new();
-    // The words of a first part with none worth writing, kept for the next.
+    // Each part kept: where it starts, its voice and its words.
+    let mut kept: Vec<(usize, Option<usize>, Vec<Word>)> = Vec::new();
+    // The words of runs before the first worth a line.
     let mut before: Vec<Word> = Vec::new();
-    let mut said = said.into_iter().peekable();
-    for (run, &(start, voice)) in runs.iter().enumerate() {
-        let end = runs.get(run + 1).map_or(usize::MAX, |&(next, _)| next);
-        let mut words = Vec::new();
-        while let Some(word) = said.next_if(|word| run + 1 == runs.len() || word.at < end) {
-            words.push(word);
+    for (&(start, voice), words) in runs.iter().zip(in_runs(runs, said)) {
+        let worth = said::spoken(&spelled(&words)).is_some();
+        match kept.last_mut() {
+            Some(last) if !worth || last.1 == voice => last.2.extend(words),
+            _ if !worth => before.extend(words),
+            _ => kept.push((start, voice, before.drain(..).chain(words).collect())),
         }
-        let joined: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
-        let Some(text) = said::spoken(&joined.join(" ")) else {
-            match parts.last_mut() {
-                Some((last, kept)) => {
-                    kept.extend(words);
-                    last.end = end.min(line.end);
-                }
-                None => before.extend(words),
-            }
-            continue;
-        };
-        let start = if parts.is_empty() { line.start } else { start };
-        let words: Vec<Word> = before.drain(..).chain(words).collect();
-        parts.push((
-            Line {
-                start,
-                end: end.min(line.end),
-                text,
-                voice,
-                name: None,
-                ..line.clone()
-            },
-            words,
-        ));
     }
-    if parts.len() < 2 {
-        let voice = parts.first().map_or(runs[0].1, |(part, _)| part.voice);
+    if kept.len() < 2 {
+        let voice = kept.first().map_or(runs[0].1, |&(_, voice, _)| voice);
         let words = before
             .into_iter()
-            .chain(parts.into_iter().flat_map(|(_, words)| words))
-            .collect();
+            .chain(kept.into_iter().flat_map(|(_, _, words)| words));
         let whole = Line {
             voice,
             name: None,
             ..line.clone()
         };
-        return vec![(whole, words)];
+        return vec![(whole, words.collect())];
     }
-    parts
+    let ends: Vec<usize> = kept
+        .iter()
+        .skip(1)
+        .map(|&(start, _, _)| start)
+        .chain([line.end])
+        .collect();
+    kept.into_iter()
+        .zip(ends)
+        .enumerate()
+        .map(|(part, ((start, voice, words), end))| {
+            // A kept part holds words worth a line, so it's never empty.
+            let text = said::spoken(&spelled(&words)).unwrap_or_default();
+            let start = if part == 0 { line.start } else { start };
+            let line = Line {
+                start,
+                end,
+                text,
+                voice,
+                name: None,
+                ..line.clone()
+            };
+            (line, words)
+        })
+        .collect()
+}
+
+/// The words in each run, by when each was said, a word inside a bracket
+/// opened before it kept with the word before.
+fn in_runs(runs: &[(usize, Option<usize>)], said: Vec<Word>) -> Vec<Vec<Word>> {
+    let mut in_runs: Vec<Vec<Word>> = runs.iter().map(|_| Vec::new()).collect();
+    let mut depth = 0_usize;
+    let mut last = 0;
+    for word in said {
+        if depth == 0 {
+            let by_time = runs.iter().rposition(|&(start, _)| start <= word.at);
+            last = by_time.unwrap_or(0).max(last);
+        }
+        for c in word.text.chars() {
+            match c {
+                '[' | '(' => depth += 1,
+                ']' | ')' => depth = depth.saturating_sub(1),
+                _ => {}
+            }
+        }
+        in_runs[last].push(word);
+    }
+    in_runs
+}
+
+/// Words, a space between each.
+fn spelled(words: &[Word]) -> String {
+    let texts: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+    texts.join(" ")
 }
 
 #[cfg(test)]
@@ -301,6 +368,176 @@ mod tests {
             said(&lines),
             [("Fine (laughs).", Some(1), 0, 6), ("Okay.", None, 7, 9)],
             "a line in one voice was rewritten, or one with no pieces was given a voice"
+        );
+    }
+
+    /// `lines` split by `voices`, a voice for each of `pieces`.
+    fn split(
+        lines: &mut Vec<Line>,
+        pieces: &mut [Piece],
+        words: &mut HashMap<usize, Vec<Word>>,
+        voices: &[Option<usize>],
+    ) {
+        let mut heard = Heard {
+            lines,
+            pieces,
+            words,
+        };
+        by_voice(&mut heard, voices);
+    }
+
+    #[test]
+    fn a_hesitation_in_another_voice_stays_in_the_part_before_it() {
+        let mut lines = vec![theirs(0, 9, "Ship it. Mm-hmm. Not yet.")];
+        let mut pieces = pieces_of(0, 0, &[0, 3, 6]);
+        let said = [
+            ("Ship", 1),
+            ("it.", 2),
+            ("Mm-hmm.", 4),
+            ("Not", 7),
+            ("yet.", 8),
+        ];
+        let mut words = HashMap::from([(0, said.map(|(text, at)| word(text, at)).into())]);
+        split(
+            &mut lines,
+            &mut pieces,
+            &mut words,
+            &[Some(0), Some(1), Some(2)],
+        );
+        assert_eq!(
+            said(&lines),
+            [
+                ("Ship it. Mm-hmm.", Some(0), 0, 6),
+                ("Not yet.", Some(2), 6, 9)
+            ],
+            "the hesitation between two voices was dropped, or given a line of its own"
+        );
+        assert_eq!(
+            words.get(&0).map(Vec::len),
+            Some(3),
+            "the part's words don't hold what its text says"
+        );
+    }
+
+    #[test]
+    fn one_voice_either_side_of_a_wordless_run_is_one_line() {
+        let mut lines = vec![theirs(0, 9, "Ship it, then.")];
+        let mut pieces = pieces_of(0, 0, &[0, 3, 6]);
+        let mut words =
+            HashMap::from([(0, vec![word("Ship", 1), word("it,", 2), word("then.", 7)])]);
+        split(
+            &mut lines,
+            &mut pieces,
+            &mut words,
+            &[Some(0), Some(1), Some(0)],
+        );
+        assert_eq!(
+            said(&lines),
+            [("Ship it, then.", Some(0), 0, 9)],
+            "one voice's line was cut in two around a piece holding no words"
+        );
+    }
+
+    #[test]
+    fn a_bracketed_note_is_never_cut_between_two_parts() {
+        let mut lines = vec![theirs(0, 9, "Fine. Not yet.")];
+        let mut pieces = pieces_of(0, 0, &[0, 3]);
+        let said = [
+            ("Fine.", 1),
+            ("(wind", 2),
+            ("blowing)", 4),
+            ("Not", 5),
+            ("yet.", 6),
+        ];
+        let mut words = HashMap::from([(0, said.map(|(text, at)| word(text, at)).into())]);
+        split(&mut lines, &mut pieces, &mut words, &[Some(0), Some(1)]);
+        assert_eq!(
+            said(&lines),
+            [("Fine.", Some(0), 0, 3), ("Not yet.", Some(1), 3, 9)],
+            "half a bracketed note was written as words"
+        );
+    }
+
+    #[test]
+    fn a_take_split_before_is_split_afresh_by_a_later_grouping() {
+        let mut lines = vec![theirs(10, 19, "We could ship it. Not yet.")];
+        let mut pieces = pieces_of(0, 0, &[10, 13, 16]);
+        let said = [
+            ("We", 10),
+            ("could", 11),
+            ("ship", 12),
+            ("it.", 14),
+            ("Not", 16),
+            ("yet.", 17),
+        ];
+        let mut words = HashMap::from([(0, said.map(|(text, at)| word(text, at)).into())]);
+        split(
+            &mut lines,
+            &mut pieces,
+            &mut words,
+            &[Some(0), Some(0), Some(1)],
+        );
+        split(
+            &mut lines,
+            &mut pieces,
+            &mut words,
+            &[Some(2), Some(2), Some(2)],
+        );
+        assert_eq!(
+            said(&lines),
+            [("We could ship it. Not yet.", Some(2), 10, 19)],
+            "a take split by the first grouping stayed split when the next put it in one voice"
+        );
+        assert_eq!(
+            words.get(&0).map(Vec::len),
+            Some(6),
+            "the take joined again lost some of its words"
+        );
+    }
+
+    #[test]
+    fn a_later_line_is_split_and_numbered_past_an_earlier_split() {
+        let mine = Line {
+            side: Side::Mine,
+            ..theirs(7, 8, "Why?")
+        };
+        let mut lines = vec![
+            theirs(0, 6, "Yes. No."),
+            mine,
+            theirs(9, 15, "Maybe. Friday."),
+        ];
+        let mut pieces = pieces_of(0, 0, &[0, 3]);
+        pieces.extend(pieces_of(2, 1, &[9, 12]));
+        let mut words = HashMap::from([
+            (0, vec![word("Yes.", 1), word("No.", 4)]),
+            (2, vec![word("Maybe.", 10), word("Friday.", 13)]),
+        ]);
+        let voices = [Some(0), Some(1), Some(1), Some(0)];
+        split(&mut lines, &mut pieces, &mut words, &voices);
+        split(&mut lines, &mut pieces, &mut words, &voices);
+        assert_eq!(
+            said(&lines),
+            [
+                ("Yes.", Some(0), 0, 3),
+                ("No.", Some(1), 3, 6),
+                ("Why?", None, 7, 8),
+                ("Maybe.", Some(1), 9, 12),
+                ("Friday.", Some(0), 12, 15),
+            ],
+            "a take after an earlier split wasn't split by its own pieces, told apart twice"
+        );
+        let lines_of: Vec<Option<usize>> = pieces.iter().map(|piece| piece.line).collect();
+        assert_eq!(
+            lines_of,
+            [Some(0), Some(1), Some(3), Some(4)],
+            "the later take's pieces weren't numbered past the earlier split"
+        );
+        let mut keys: Vec<usize> = words.keys().copied().collect();
+        keys.sort_unstable();
+        assert_eq!(
+            keys,
+            [0, 1, 3, 4],
+            "the words aren't kept by the lines they're in"
         );
     }
 }

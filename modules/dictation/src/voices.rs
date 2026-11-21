@@ -1,7 +1,9 @@
 //! Telling a call's far-end voices apart: TitaNet small (titanet.nix), run
-//! through OpenVINO on the CPU, gives each take one embedding as it's
-//! heard, and at the call's end the takes are grouped by how alike their
-//! embeddings are. No sound is kept for it, only 192 numbers a take.
+//! through OpenVINO on the CPU, gives each 3 s piece of a take
+//! (pieces.rs) one embedding as it's heard, and at the call's end the
+//! pieces are grouped by how alike their embeddings are; each is a
+//! `Heard`, called a take below. No sound is kept for it, only 192
+//! numbers a piece.
 //!
 //! A take is the cutter's (takes.rs), cut where the far end pauses, so
 //! now and then one holds two voices, and a group may be a mix; grouping
@@ -38,7 +40,9 @@ pub const LEAST_SHARE: f64 = 0.1;
 /// The most takes a call groups, its longest: grouping holds every take's
 /// distance from every other, 36 MB at this many, and a far end with
 /// chatter on it can cut a take a second for hours. The shortest are left
-/// out, saying least of how a voice sounds, and stay under Others.
+/// out, saying least of how a voice sounds, and of the same length the
+/// latest. Cut in 3 s pieces, about 2.5 hours of their speech fills it,
+/// and past that a take whose pieces are all left out stays under Others.
 pub const MOST_TAKES: usize = 3000;
 
 /// A window's samples, 25 ms, and how far each is from the last, 10 ms.

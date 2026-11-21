@@ -243,11 +243,10 @@ impl Parakeet {
                 frames: &frames,
                 predicted,
             };
-            let start = number * WINDOW;
             tokens.extend(
                 greedy(frames.len(), &mut steps)?
                     .into_iter()
-                    .map(|(token, frame)| (token, start + frame * FRAME)),
+                    .map(|(token, frame)| (token, sample_of(number, frame))),
             );
             predicted = steps.predicted;
             timings.mel += after_mel - started;
@@ -492,6 +491,12 @@ fn english(piece: &str) -> bool {
     !special && piece.chars().all(|c| c == SPACE || c.is_ascii())
 }
 
+/// The sample of a take that window `number`'s encoder frame `frame`
+/// starts at.
+fn sample_of(number: usize, frame: usize) -> usize {
+    number * WINDOW + frame * FRAME
+}
+
 fn first(values: &[i64]) -> Result<i64> {
     values
         .first()
@@ -660,6 +665,16 @@ mod tests {
             "the tokens, or the frames they were written on, were wrong"
         );
         assert_eq!(model.predicted, [2, 3, 4]);
+    }
+
+    #[test]
+    fn a_frame_is_timed_from_the_takes_start_through_its_window() {
+        assert_eq!(sample_of(0, 3), 3 * 1280, "a frame isn't 80 ms");
+        assert_eq!(
+            sample_of(2, 1),
+            2 * 15 * RATE + 1280,
+            "a later window's frame isn't timed from the take's start"
+        );
     }
 
     #[test]
