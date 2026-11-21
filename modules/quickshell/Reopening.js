@@ -1,8 +1,9 @@
 .pragma library
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
 // first, each once, when it may begin the next session, and which of those
-// begun to tell to carry on, from the machine queue's own verdict. Where each goes back is Places.js's; tests/places.qml
-// holds both to their cases.
+// begun to tell to carry on, from the machine queue's own verdict. Where
+// each goes back is Places.js's, but for a named workspace's (namedBack);
+// tests/places.qml holds both to their cases.
 
 // How much of the disk's time may be stalled, as the share of the last ten
 // seconds some task waited on it, before the next session waits too: past
@@ -101,10 +102,11 @@ function mayBegin(text, now) {
 // as before. Anything else, handed over or started alone, opens as it
 // always did, going home first.
 //
-// Its limits, as the daemon keeps places: a place outlives its window
-// within a boot, so one whose window Joel closed comes back in a window;
-// and a window floating, or opened in the last still moment before the
-// crash, was never kept, so its session comes back without one.
+// Its limits, as the daemon keeps places: a place outlives its window for
+// three minutes, a boot's end's time, so one whose window Joel closed just
+// before a restart comes back in a window; and a window floating, or
+// opened in the last still moment before the crash, was never kept, so its
+// session comes back without one.
 function broughtBack(walk, kept, arranged, satHere) {
     if (!walk) {
         return { window: true, home: true };
@@ -113,6 +115,23 @@ function broughtBack(walk, kept, arranged, satHere) {
         return { window: true, home: false };
     }
     return { window: !(arranged && satHere), home: true };
+}
+
+// Where a place kept on a named workspace, an orchestrator's, goes back to,
+// by that name rather than its number, since named workspaces come back
+// from a boot in another order (2026-11-21 10:08: WM4KSZ's eleven sessions
+// came back on workspace 3 by number, the name WM4KSZ going to an empty
+// fifth). { join } the workspace named so now, by id; { name } to give the
+// workspace it lands on when none has it; null for a place kept on a
+// workspace named nothing, which goes by its number. `workspaces` are
+// niri's, { id, name } each.
+function namedBack(at, workspaces) {
+    const name = typeof at?.named === "string" ? at.named : "";
+    if (name === "") {
+        return null;
+    }
+    const named = workspaces.find(space => space.name === name);
+    return named ? { join: named.id } : { name };
 }
 
 // How long a session started without a window is taken as begun, though

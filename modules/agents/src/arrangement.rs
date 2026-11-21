@@ -112,6 +112,12 @@ impl Desk<'_> {
         );
         place.insert("output".into(), json!(output));
         place.insert("workspace".into(), workspace["idx"].clone());
+        // Named workspaces, an orchestrator's, come back from a boot in
+        // another order, so the name says where it goes better than the
+        // number (Reopening.js's namedBack).
+        if let Some(name) = workspace["name"].as_str().filter(|name| !name.is_empty()) {
+            place.insert("named".into(), json!(name));
+        }
         place.insert("column".into(), json!(column));
         place.insert("tile".into(), json!(tile));
         Some(place)

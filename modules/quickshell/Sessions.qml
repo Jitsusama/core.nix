@@ -1009,14 +1009,22 @@ Singleton {
             const where = Places.whereBack(at, beside);
             if (!where.make)
                 return { workspace: where.join, column: Places.opensAt(where, beside) };
-            // The screen's empty workspace, niri's last, so a workspace kept
-            // is never taken for one of Joel's by a number it had last boot.
+            // One kept on a workspace named for an orchestrator goes back to
+            // the one named so now, whatever its number; else to the
+            // screen's empty workspace, niri's last, so a workspace kept is
+            // never taken for one of Joel's by a number it had last boot,
+            // and that one takes the kept name.
+            const back = Reopening.namedBack(at, Object.values(Niri.workspaces));
+            const named = back?.join !== undefined ? Niri.workspace(back.join) : null;
             const its = Object.values(Niri.workspaces).filter(one => one.output === at.output)
                 .sort((a, b) => a.idx - b.idx);
             const empty = root.lastOn(at.output);
-            const there = (empty !== null ? Niri.workspace(empty) : null) ?? its[its.length - 1];
+            const there = named
+                ?? (empty !== null ? Niri.workspace(empty) : null) ?? its[its.length - 1];
             if (!there)
                 return null;
+            if (back?.name)
+                Niri.act({ SetWorkspaceName: { name: back.name, workspace: { Id: there.id } } });
             const columns = Object.values(Niri.windows)
                 .filter(one => one.workspace_id === there.id)
                 .map(one => one.layout?.pos_in_scrolling_layout?.[0] ?? 0);
