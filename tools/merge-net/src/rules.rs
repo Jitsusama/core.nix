@@ -351,7 +351,10 @@ mod tests {
         let base = lock(&[("mycelium", "a"), ("nixpkgs", "n")]);
         let head = lock(&[("mycelium", "b"), ("nixpkgs", "n")]);
         assert_eq!(lock_moved(&base, &head), Some(words("mycelium")));
-        assert!(lock_runs_after(&base, &head, &after));
+        assert!(
+            lock_runs_after(&base, &head, &after),
+            "a lock moving only mycelium should run its VM tests after"
+        );
     }
 
     #[test]
@@ -360,7 +363,10 @@ mod tests {
         let base = lock(&[("mycelium", "a"), ("nixpkgs", "n")]);
         let head = lock(&[("mycelium", "b"), ("nixpkgs", "m")]);
         assert_eq!(lock_moved(&base, &head), Some(words("mycelium nixpkgs")));
-        assert!(!lock_runs_after(&base, &head, &after));
+        assert!(
+            !lock_runs_after(&base, &head, &after),
+            "a lock moving nixpkgs too should run its VM tests first"
+        );
     }
 
     #[test]
@@ -371,7 +377,10 @@ mod tests {
         let base = lock(&[("mycelium", "a")]);
         let head = lock(&[("mycelium", "b"), ("extra", "e")]);
         assert_eq!(lock_moved(&base, &head), Some(words("extra mycelium root")));
-        assert!(!lock_runs_after(&base, &head, &after));
+        assert!(
+            !lock_runs_after(&base, &head, &after),
+            "a lock gaining an input should run its VM tests first"
+        );
     }
 
     #[test]
@@ -379,8 +388,14 @@ mod tests {
         let after = words("mycelium");
         let base = lock(&[("mycelium", "a")]);
         assert_eq!(lock_moved(&base, "{ not a lock"), None);
-        assert!(!lock_runs_after(&base, "{ not a lock", &after));
-        assert!(!lock_runs_after(&base, "{\"version\": 7}", &after));
+        assert!(
+            !lock_runs_after(&base, "{ not a lock", &after),
+            "a lock that doesn't parse should run its VM tests first"
+        );
+        assert!(
+            !lock_runs_after(&base, "{\"version\": 7}", &after),
+            "a lock with no nodes should run its VM tests first"
+        );
     }
 
     #[test]
@@ -394,7 +409,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(lock_moved(&base, &spaced), Some(Vec::new()));
-        assert!(!lock_runs_after(&base, &spaced, &after));
+        assert!(
+            !lock_runs_after(&base, &spaced, &after),
+            "a lock whose layout alone moved should run its VM tests first"
+        );
     }
 
     #[test]
