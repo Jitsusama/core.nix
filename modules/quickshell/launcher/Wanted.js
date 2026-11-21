@@ -120,7 +120,8 @@ function readByStep(source, newlyHeld, launchers) {
 // all at once as it opened, which held Joel's shell 195 to 220 ms past
 // its first frame (2026-11-10 20:39): those home's rows read, in home's
 // order, a place's own and then those it holds, so the rows shown fill
-// first, then every other in `all`'s order. `place(id)` is the place an
+// first, then every other in `all`'s order, each that waits its turn
+// (wakesInTurn). `place(id)` is the place an
 // id names, as `{ stands, holds }`, or null, and `source(id)` the source
 // an id or a place's `stands` reads, or null.
 function wakingOrder(home, place, source, all) {
@@ -149,7 +150,7 @@ function wakingOrder(home, place, source, all) {
     for (const one of all) {
         add(one);
     }
-    return order;
+    return order.filter(one => wakesInTurn(one));
 }
 
 // The source an id names, by the name `provider(id)` gives it, the first in

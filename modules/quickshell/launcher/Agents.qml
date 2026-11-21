@@ -393,7 +393,8 @@ Provider {
     readonly property bool readNow: readable()
     // Asleep in a kept opening's waking until its turn, like any source
     // home's rows read (Launcher.qml's wakingOrder), so its own are read
-    // in its slice.
+    // as it wakes, after the open's turn: in a slice of its own when Now's
+    // takes up the slice's budget, in Now's when Now's is short.
     readsHome: true
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
