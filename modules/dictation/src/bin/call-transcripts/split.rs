@@ -390,14 +390,14 @@ mod tests {
     fn a_hesitation_in_another_voice_stays_in_the_part_before_it() {
         let mut lines = vec![theirs(0, 9, "Ship it. Mm-hmm. Not yet.")];
         let mut pieces = pieces_of(0, 0, &[0, 3, 6]);
-        let said = [
+        let timed = [
             ("Ship", 1),
             ("it.", 2),
             ("Mm-hmm.", 4),
             ("Not", 7),
             ("yet.", 8),
         ];
-        let mut words = HashMap::from([(0, said.map(|(text, at)| word(text, at)).into())]);
+        let mut words = HashMap::from([(0, timed.map(|(text, at)| word(text, at)).into())]);
         split(
             &mut lines,
             &mut pieces,
@@ -442,14 +442,14 @@ mod tests {
     fn a_bracketed_note_is_never_cut_between_two_parts() {
         let mut lines = vec![theirs(0, 9, "Fine. Not yet.")];
         let mut pieces = pieces_of(0, 0, &[0, 3]);
-        let said = [
+        let timed = [
             ("Fine.", 1),
             ("(wind", 2),
             ("blowing)", 4),
             ("Not", 5),
             ("yet.", 6),
         ];
-        let mut words = HashMap::from([(0, said.map(|(text, at)| word(text, at)).into())]);
+        let mut words = HashMap::from([(0, timed.map(|(text, at)| word(text, at)).into())]);
         split(&mut lines, &mut pieces, &mut words, &[Some(0), Some(1)]);
         assert_eq!(
             said(&lines),
@@ -462,7 +462,7 @@ mod tests {
     fn a_take_split_before_is_split_afresh_by_a_later_grouping() {
         let mut lines = vec![theirs(10, 19, "We could ship it. Not yet.")];
         let mut pieces = pieces_of(0, 0, &[10, 13, 16]);
-        let said = [
+        let timed = [
             ("We", 10),
             ("could", 11),
             ("ship", 12),
@@ -470,7 +470,7 @@ mod tests {
             ("Not", 16),
             ("yet.", 17),
         ];
-        let mut words = HashMap::from([(0, said.map(|(text, at)| word(text, at)).into())]);
+        let mut words = HashMap::from([(0, timed.map(|(text, at)| word(text, at)).into())]);
         split(
             &mut lines,
             &mut pieces,
