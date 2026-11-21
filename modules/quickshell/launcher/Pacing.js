@@ -398,10 +398,12 @@ function openingParts(parts) {
 // named work didn't say (H6EDLC, 2026-11-14); and `thread`, the shell
 // thread's `{ ran, waited }` (KeyTimes.ran and waited), so
 // `stallThread` is how much of the stall it ran and waited for a CPU:
-// the rest it slept.
+// the rest it slept. `asked`, where the heap stood at the opening's ask
+// (Heap.standing), is read only as it begins and kept, so a second ask
+// before its line is said can't lend it its own.
 function feltBegun(now, clocks = {}) {
     return { last: now, calm: now, stall: 0, stallAt: now, usable: -1,
-        collected: clocks.collected ?? 0, stallCollected: 0,
+        asked: clocks.asked ?? null, collected: clocks.collected ?? 0, stallCollected: 0,
         thread: clocks.thread ?? { ran: 0, waited: 0 }, stallThread: { ran: 0, waited: 0 } };
 }
 
@@ -416,7 +418,7 @@ function feltTicked(felt, now, pace, clocks = {}) {
     const longer = gap > felt.stall;
     return { last: now, calm, stall: longer ? gap : felt.stall,
         stallAt: longer ? felt.last : felt.stallAt,
-        usable: now - calm >= pace.calmFor ? calm : -1, collected,
+        usable: now - calm >= pace.calmFor ? calm : -1, asked: felt.asked, collected,
         stallCollected: longer ? collected - felt.collected : felt.stallCollected, thread,
         stallThread: longer
             ? { ran: thread.ran - felt.thread.ran, waited: thread.waited - felt.thread.waited }

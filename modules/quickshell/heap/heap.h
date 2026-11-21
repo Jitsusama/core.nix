@@ -38,7 +38,8 @@ public:
     // is asked: `chunks`, `collectsAt`, `outside` and `collectsOutsideAt`,
     // in megabytes, and `collecting`, whether a collection is under way
     // between its slices. Openings whose longest stall the collector ran
-    // in say it, since which limit they met isn't otherwise known.
+    // in say it, read once their room is left: the room each limit had
+    // as they began, which nothing else says.
     Q_INVOKABLE QVariantMap standing() const;
 
     // How many milliseconds Qt's collector has spent collecting since the
