@@ -125,7 +125,12 @@ pub fn standing(s: &Snapshot) -> Vec<Breach> {
     if let Some(why) = &s.budgets_unwatched {
         return vec![Breach {
             key: UNWATCHED.to_owned(),
-            text: format!("no budget's allowance is watched: spend-watch's budgets.json {why}"),
+            // A spend-watch whose every pass fails still reads as running, so
+            // the alarm says where its reason is.
+            text: format!(
+                "no budget's allowance is watched: spend-watch's budgets.json {why} \
+                 (journalctl --user -u spend-watch says why)"
+            ),
         }];
     }
     s.budgets
@@ -139,6 +144,13 @@ pub fn standing(s: &Snapshot) -> Vec<Breach> {
                 .iter()
                 .rev()
                 .find(|&&level| percent >= f64::from(level))?;
+            // A plan's share stands as its percent already; a dollar
+            // allowance's doesn't.
+            let shown = if a.standing.contains('%') {
+                a.standing.clone()
+            } else {
+                format!("{}, {percent:.0}%", a.standing)
+            };
             let next = LEVELS.iter().find(|&&above| above > level).map_or_else(
                 || "the last level it's told".to_owned(),
                 |above| format!("told again past {above}%"),
@@ -146,8 +158,8 @@ pub fn standing(s: &Snapshot) -> Vec<Breach> {
             Some(Breach {
                 key: key(a, level),
                 text: format!(
-                    "{}'s {} allowance stands at {}, {percent:.0}%: past {level}%, {next}",
-                    a.label, a.window, a.standing
+                    "{}'s {} allowance stands at {shown}: past {level}%, {next}",
+                    a.label, a.window
                 ),
             })
         })
@@ -269,7 +281,7 @@ mod tests {
             said(&[("weekly", Some(0.9065), None)]),
             [Breach {
                 key: "budget:proxy:weekly:90:".to_owned(),
-                text: "Your AI proxy token's WEEKLY allowance stands at 91% of week, 91%: \
+                text: "Your AI proxy token's WEEKLY allowance stands at 91% of week: \
                        past 90%, the last level it's told"
                     .to_owned(),
             }],
@@ -279,7 +291,7 @@ mod tests {
             said(&[("weekly", Some(0.82), None)]),
             [Breach {
                 key: "budget:proxy:weekly:80:".to_owned(),
-                text: "Your AI proxy token's WEEKLY allowance stands at 82% of week, 82%: \
+                text: "Your AI proxy token's WEEKLY allowance stands at 82% of week: \
                        past 80%, told again past 90%"
                     .to_owned(),
             }],
@@ -415,7 +427,8 @@ mod tests {
             standing(&s),
             [Breach {
                 key: UNWATCHED.to_owned(),
-                text: "no budget's allowance is watched: spend-watch's budgets.json is missing"
+                text: "no budget's allowance is watched: spend-watch's budgets.json is missing \
+                       (journalctl --user -u spend-watch says why)"
                     .to_owned(),
             }],
             "no budget watched read the same as every budget being fine"

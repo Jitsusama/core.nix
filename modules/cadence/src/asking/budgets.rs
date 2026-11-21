@@ -6,11 +6,10 @@ use crate::watch::{Breach, Snapshot, breaches};
 
 use super::State;
 
-/// How long a budget's alarm is remembered once it stops standing: one is
+/// How long a level's alarm is remembered once it stops standing: one is
 /// told again only once it has stood clear this long, so a share hovering
 /// at a level isn't told at each crossing, while a rolling window that
-/// eased overnight is told when it climbs back, and a spend-watch stopped
-/// again the next day is told again. It is remembered however long no
+/// eased overnight is told when it climbs back. It is remembered however long no
 /// budget can be read, as through a sleep, so a level standing on either
 /// side isn't told again; one that eased just before and climbed back
 /// meanwhile isn't told either, as cadence can't tell the two apart.
@@ -31,9 +30,13 @@ pub(super) fn budgeting(key: &str) -> bool {
     key.starts_with("alarm:budget:")
 }
 
-/// Whether a budget's alarm last standing at `at` is still remembered.
-pub(super) fn rests(s: &Snapshot, at: i64) -> bool {
-    s.budgets_unwatched.is_some() || s.now - at < BUDGET_REST
+/// Whether a budget's alarm at `key`, last standing at `at`, is still
+/// remembered. No budget watched is forgotten once spend-watch writes
+/// again, as a stop doesn't hover the way a share does, so each stop is
+/// told, however soon after the last.
+pub(super) fn rests(s: &Snapshot, key: &str, at: i64) -> bool {
+    let stop = key.strip_prefix("alarm:") == Some(crate::watch::budgets::UNWATCHED);
+    s.budgets_unwatched.is_some() || (!stop && s.now - at < BUDGET_REST)
 }
 
 /// Remembers a budget's alarm while it stands, a level with those beneath
@@ -164,14 +167,27 @@ mod tests {
                 "stop {stop}: no budget watched for ten minutes wasn't told to the \
                  orchestrator, or was waited on"
             );
+            // It stands awake past BUDGET_REST, then through a weekend's
+            // sleep and on waking.
+            for _ in 0..=(BUDGET_REST / 300) {
+                s.now += 5 * 60;
+                assert!(
+                    tick(&s, &mut state).is_empty(),
+                    "stop {stop}: a standing stop was told again while awake"
+                );
+            }
             s.now += REMEMBER;
-            assert!(
-                tick(&s, &mut state).is_empty(),
-                "stop {stop}: a standing stop was told again"
-            );
+            for _ in 0..4 {
+                assert!(
+                    tick(&s, &mut state).is_empty(),
+                    "stop {stop}: a standing stop was told again after a sleep"
+                );
+                s.now += 5 * 60;
+            }
+            // spend-watch writes again, and stops an hour later.
             s.budgets_unwatched = None;
-            s.now += BUDGET_REST + 60;
             tick(&s, &mut state);
+            s.now += 3600;
         }
     }
 

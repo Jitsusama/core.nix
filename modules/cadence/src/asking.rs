@@ -242,7 +242,7 @@ fn forget(s: &Snapshot, state: &mut State) {
     let keep = |at: &i64| s.now - *at < REMEMBER;
     state.seen.retain(|key, at| {
         if budgeting(key) {
-            budgets::rests(s, *at)
+            budgets::rests(s, key, *at)
         } else {
             keep(at)
         }
