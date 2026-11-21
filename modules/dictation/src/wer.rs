@@ -11,8 +11,8 @@
 //! speech model writes few. A word said twice in a row is said once in the
 //! reference (`said`), since a reference keeps every stutter and a speech
 //! model drops them; a word heard twice still counts twice, so a model
-//! caught in a loop is seen. Words a transcript leaves out on purpose, such
-//! as a lone "yeah", aren't hesitations, so leaving them out counts.
+//! caught in a loop is seen. A lone "yeah" or "no" isn't a hesitation, so
+//! a transcript that leaves one out has dropped a word.
 
 use std::ops::AddAssign;
 

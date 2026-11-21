@@ -188,8 +188,15 @@
 
   # A call writes down only what was said. Joel's side is a quiet room, a
   # second of loud noise with no speech in it, then his question; the far
-  # end's is silence with a click. One turn, Joel's question, with no
-  # "[static]" for the noise, proves the noise and the silence gave none.
+  # end's is silence with a click, a breath, a cough, a ringtone, a chime,
+  # a chord and a mains hum, all but the click loud and long enough to be
+  # takes by loudness alone. Parakeet writes "Yeah." for the breath; it
+  # and the cough rise and fade, never holding steady for the half second
+  # of the line's own sound that would end its gate, so they're takes by
+  # loudness, which the voice test stops. The last four repeat as a voice
+  # does, so they may reach Parakeet. One turn, Joel's question, with no
+  # "[static]" for the noise, proves none of the sounds gave one, whatever
+  # stopped it, though a take of filler alone is kept.
   call-transcripts-writes-only-what-was-said =
     let
       dictation = pkgs.callPackage ./package.nix { };
@@ -209,9 +216,22 @@
         made room.wav synth 4 pinknoise vol 0.001
         made noise.wav synth 1 pinknoise vol 0.03
         made click.wav synth 0.02 square 1000 vol 0.3
+        made breath.wav synth 0.7 brownnoise vol 0.3 fade q 0.2 0.7 0.4
+        made cough.wav synth 0.6 pinknoise vol 0.6 fade 0 0.6 0.3
         made silence.wav trim 0 5
+        made low.wav synth 2 sine 440 vol 0.1
+        made high.wav synth 2 sine 480 vol 0.1
+        sox -R -m low.wav high.wav ring.wav
+        made chime.wav synth 1.5 pluck A5 vol 0.3 fade 0 1.5 1.4
+        made c.wav synth 3 pluck C4 vol 0.15
+        made e.wav synth 3 pluck E4 vol 0.15
+        made g.wav synth 3 pluck G4 vol 0.15
+        sox -R -m c.wav e.wav g.wav chord.wav
+        made hum.wav synth 3 square 60 vol 0.05
         sox room.wav noise.wav room.wav ask.wav room.wav mine.wav
-        sox silence.wav click.wav silence.wav silence.wav theirs.wav
+        sox silence.wav click.wav silence.wav breath.wav silence.wav cough.wav silence.wav \
+          ring.wav silence.wav chime.wav silence.wav chord.wav silence.wav hum.wav silence.wav \
+          theirs.wav
         DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts \
           transcribe ${model} mine.wav theirs.wav > transcript.md
         cat transcript.md
@@ -237,7 +257,10 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      ceiling = "19.8";
+      # Keeping a lone "Yeah." or "No.", and cutting takes only where a
+      # voice is, took the rate from 19.3% to 18.8%; the ceiling sits
+      # between, so it fails the code from before it.
+      ceiling = "19.0";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
