@@ -775,30 +775,119 @@ fn a_macs_era_is_its_boot_and_its_console_login() {
     assert!(era_of(" \n", WHO, "someone").is_err(), "no boot is said");
 }
 
+/// A Mac's three boot reads, each checked for the words and time zone it
+/// runs with and answered by `answer` given its program, and any other
+/// command refused, so a read's path, words or time zone changing fails
+/// here rather than first on a Mac.
+fn mac_reads(
+    answer: impl Fn(&str) -> Result<String, Unheard>,
+) -> impl Fn(&mut Command) -> Result<String, Unheard> {
+    move |command: &mut Command| {
+        let text = |word: &std::ffi::OsStr| word.to_string_lossy().into_owned();
+        let program = text(command.get_program());
+        let words: Vec<String> = command.get_args().map(text).collect();
+        let zone: Vec<(String, Option<String>)> = command
+            .get_envs()
+            .map(|(name, value)| (text(name), value.map(text)))
+            .collect();
+        let (expected, utc) = match program.as_str() {
+            "/usr/sbin/sysctl" => (vec!["-n", "kern.bootsessionuuid"], false),
+            "/usr/bin/who" => (vec![], true),
+            "/usr/bin/id" => (vec!["-un"], false),
+            other => panic!("a Mac's boot read ran {other}, which isn't one of its three"),
+        };
+        assert_eq!(words, expected, "{program}'s words");
+        let asked_in_utc = vec![("TZ".to_owned(), Some("UTC0".to_owned()))];
+        assert_eq!(zone.is_empty(), !utc, "{program}'s environment: {zone:?}");
+        if utc {
+            assert_eq!(zone, asked_in_utc, "who is asked in UTC");
+        }
+        answer(&program)
+    }
+}
+
+/// What a Mac's three boot reads answer when each does.
+fn answered(program: &str) -> Result<String, Unheard> {
+    Ok(match program {
+        "/usr/sbin/sysctl" => "40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned(),
+        "/usr/bin/who" => WHO.to_owned(),
+        _ => "someone\n".to_owned(),
+    })
+}
+
 #[test]
 fn a_macs_boot_read_that_stalls_names_its_program() {
-    let look = |command: &mut Command| match command.get_program().to_str() {
-        Some("/usr/sbin/sysctl") => Ok("40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned()),
-        Some("/usr/bin/who") => Err(Unheard::Late(LOOK_WITHIN)),
-        _ => Ok("someone\n".to_owned()),
-    };
-    let said = mac_era(&look)
-        .expect_err("a stalled read fails")
-        .to_string();
+    let stalled = Unheard::Late(LOOK_WITHIN);
+    let said = mac_era(&mac_reads(|program| match program {
+        "/usr/bin/who" => Err(stalled.clone()),
+        _ => answered(program),
+    }))
+    .expect_err("a stalled read fails")
+    .to_string();
     assert!(
-        said.contains("/usr/bin/who: no answer within 20 s"),
+        said.contains(&format!("/usr/bin/who: {stalled}")),
         "said {said:?}, not which read stalled"
     );
-    let all = |command: &mut Command| match command.get_program().to_str() {
-        Some("/usr/sbin/sysctl") => Ok("40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned()),
-        Some("/usr/bin/who") => Ok(WHO.to_owned()),
-        _ => Ok("someone\n".to_owned()),
-    };
     assert_eq!(
-        mac_era(&all).ok(),
+        mac_era(&mac_reads(answered)).ok(),
         Some("40DCF87A-79B7-469D-80E0-C06F4FAACF06 Nov 19 12:42".to_owned()),
         "three answers read as the boot and login"
     );
+}
+
+#[test]
+fn a_macs_boot_read_that_fails_names_its_program_and_keeps_its_words() {
+    let said = mac_era(&mac_reads(|program| match program {
+        "/usr/sbin/sysctl" => Err(Unheard::Failed(
+            "sysctl: unknown oid 'kern.bootsessionuuid'".into(),
+        )),
+        _ => answered(program),
+    }))
+    .expect_err("a failed read fails")
+    .to_string();
+    assert!(
+        said.contains("/usr/sbin/sysctl: sysctl: unknown oid 'kern.bootsessionuuid'"),
+        "said {said:?}"
+    );
+    let said = mac_era(&mac_reads(|program| match program {
+        "/usr/bin/id" => Err(Unheard::Failed("exit status: 1".into())),
+        _ => answered(program),
+    }))
+    .expect_err("the last read failing fails")
+    .to_string();
+    assert!(
+        said.contains("/usr/bin/id: exit status: 1"),
+        "said {said:?}"
+    );
+}
+
+#[test]
+fn a_boot_that_cant_be_read_is_said_once_with_when_its_run_began() {
+    let unread = || {
+        Failure::new(Exit::Unavailable, "it couldn't read which boot this is")
+            .because("/usr/bin/who: no answer within 20 s")
+    };
+    let said = RefCell::new(Vec::new());
+    let say = |line: &str| said.borrow_mut().push(line.to_owned());
+    let told = boot_told(Err(unread()), 1_795_215_241, &say);
+    assert_eq!(
+        told.map_err(|failure| failure.to_string()),
+        Err(unread().to_string()),
+        "the run ends with the boot's failure"
+    );
+    assert_eq!(
+        said.take(),
+        vec![format!(
+            "{}, in a run begun at 2026-11-20T22:54:01Z",
+            unread()
+        )],
+        "said once, with when the run began"
+    );
+    assert_eq!(
+        boot_told(Ok("a boot".into()), 1_795_215_241, &say).ok(),
+        Some("a boot".to_owned())
+    );
+    assert!(said.take().is_empty(), "a boot read says nothing");
 }
 
 #[test]
@@ -827,7 +916,11 @@ fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
         ]),
         Duration::from_secs(1),
     );
-    assert_eq!(said, Err(Unheard::Late(Duration::from_secs(1))));
+    assert_eq!(
+        said,
+        Err(Unheard::Unread(Duration::from_secs(1))),
+        "one that ended is told apart from one still running"
+    );
     assert!(
         begun.elapsed() < Duration::from_secs(5),
         "it didn't wait for the sleep to close the pipe"
@@ -861,6 +954,14 @@ fn a_command_that_answers_in_time_is_read_and_one_that_fails_says_why() {
         ),
         Err(Unheard::Failed("refused; {\"Err\":1}".into())),
         "what it printed on either stream is said"
+    );
+    assert_eq!(
+        within(
+            Command::new("sh").args(["-c", "exit 3"]),
+            Duration::from_secs(10)
+        ),
+        Err(Unheard::Failed("exit status: 3".into())),
+        "one that said nothing is told by how it ended"
     );
 }
 

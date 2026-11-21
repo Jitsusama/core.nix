@@ -620,6 +620,23 @@ fn say(realm: &str, line: &str) {
     eprintln!("{} {}: {}", stamp(now()), one_line(realm), one_line(line));
 }
 
+/// What a line about the whole machine is named by, in place of a realm.
+const EVERY_REALM: &str = "every realm";
+
+/// The machine's boot and login, or its failure said stamped, as each
+/// realm's is, since what the run ends with is written without a time. A
+/// boot that can't be read is told apart from the Mac's busy minutes only
+/// by when, and a read gives up as much as a minute after it began, so it
+/// says when the run `began` as well. It's said once, by `say`, since the
+/// boot is the machine's, not any one realm's.
+fn boot_told(
+    era: Result<String, Failure>,
+    began: u64,
+    say: &dyn Fn(&str),
+) -> Result<String, Failure> {
+    era.inspect_err(|failure| say(&format!("{failure}, in a run begun at {}", stamp(began))))
+}
+
 /// Writes a realm's record whole, or not at all, and on the disk before
 /// it takes the old one's place, since the restarts it's for include
 /// those with no clean shutdown. One unchanged since this run kept it, as
@@ -766,16 +783,11 @@ fn run_realm(realm: &str, era: &str, folder: &Path, at: u64, world: &World) -> R
 /// Every realm's run, each on its own, so one realm's node being away
 /// keeps none of the others' sessions from coming back. Each failure is
 /// said, stamped and named by its realm; the first is what the run ends
-/// with.
+/// with. A boot that can't be read is said once, for every realm, before
+/// any of them runs (`boot_told`).
 fn run(mycelium: &str, realms: &[String]) -> Result<(), Failure> {
-    // Said stamped in each realm too, as every other failure is, since
-    // what the run ends with is written without a time, and a boot that
-    // can't be read is told apart from the Mac's busy minutes only by when.
-    let era = era().inspect_err(|failure| {
-        for realm in realms {
-            say(realm, &failure.to_string());
-        }
-    })?;
+    let began = now();
+    let era = boot_told(era(), began, &|line| say(EVERY_REALM, line))?;
     let folder = state()?;
     let mut failed = None;
     for realm in realms {

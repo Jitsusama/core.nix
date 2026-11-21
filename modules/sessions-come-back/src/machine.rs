@@ -16,12 +16,16 @@ use std::thread;
 use std::time::{Duration, Instant};
 use terminal_kit::{Exit, Failure};
 
-/// Why a command gave no answer: it failed, saying why, or said nothing
-/// in time and was stopped.
+/// Why a command gave no answer: it failed, saying why; it was still
+/// running at its limit; or it ended, but what it printed didn't come
+/// through in time, as when it leaves a process holding its output, or
+/// when the reader itself is starved. Each was stopped, and the last two
+/// are told apart since only the first is the command's own slowness.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Unheard {
     Failed(String),
     Late(Duration),
+    Unread(Duration),
 }
 
 impl fmt::Display for Unheard {
@@ -29,6 +33,11 @@ impl fmt::Display for Unheard {
         match self {
             Self::Failed(why) => f.write_str(why),
             Self::Late(limit) => write!(f, "no answer within {} s", limit.as_secs()),
+            Self::Unread(limit) => write!(
+                f,
+                "it ended, but what it printed wasn't read within {} s",
+                limit.as_secs()
+            ),
         }
     }
 }
@@ -140,7 +149,7 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
         .map_err(|e| Unheard::Failed(e.to_string()))?;
     let out = drain(child.stdout.take());
     let err = drain(child.stderr.take());
-    let stop = |child: &mut std::process::Child| {
+    let stop = |child: &mut std::process::Child, why: fn(Duration) -> Unheard| {
         let _ = Command::new(KILL)
             .args(["-KILL", "--", &format!("-{}", child.id())])
             .stdout(Stdio::null())
@@ -148,7 +157,7 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
             .status();
         let _ = child.kill();
         let _ = child.wait();
-        Unheard::Late(limit)
+        why(limit)
     };
     let status = loop {
         if let Some(status) = child
@@ -158,13 +167,13 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
             break status;
         }
         if Instant::now() >= deadline {
-            return Err(stop(&mut child));
+            return Err(stop(&mut child, Unheard::Late));
         }
         thread::sleep(Duration::from_millis(50));
     };
     let left = || deadline.saturating_duration_since(Instant::now());
     let (Ok(out), Ok(err)) = (out.recv_timeout(left()), err.recv_timeout(left())) else {
-        return Err(stop(&mut child));
+        return Err(stop(&mut child, Unheard::Unread));
     };
     if status.success() {
         Ok(out)
@@ -173,6 +182,12 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
             .into_iter()
             .filter(|said| !said.is_empty())
             .collect();
-        Err(Unheard::Failed(said.join("; ")))
+        // One that said nothing is told by how it ended, an exit code or
+        // the signal that stopped it, rather than by nothing at all.
+        Err(Unheard::Failed(if said.is_empty() {
+            status.to_string()
+        } else {
+            said.join("; ")
+        }))
     }
 }
