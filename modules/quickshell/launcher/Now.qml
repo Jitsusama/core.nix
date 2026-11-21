@@ -1111,10 +1111,23 @@ Provider {
             settleLook(one, "opened", waitingSaid("openedHow", {}));
     }
 
-    // The cell a look leads to, running or parked, as Looks.js finds it:
-    // the session that left it, else its quest's own, else one on its quest.
+    // Which live session each cell is now, as the agents daemon serves it
+    // (modules/agents/src/cells.rs), read only as a look's Talk or Go To is
+    // pressed, so nothing here is remade as it changes.
+    Daemon {
+        id: cellsDaemon
+
+        socket: `${Quickshell.env("XDG_RUNTIME_DIR")}/daemons/agents.sock`
+        kind: "agent-cell"
+        watching: ({ place: "agents" })
+        answersWhole: true
+    }
+
+    // The cell a look leads to, running or parked, as the agents daemon
+    // names it (Looks.js's cellFor): the session that left it, else its
+    // quest's own, else one on its quest.
     function lookCell(one) {
-        return Looks.cellOf(one, Sessions.running, Sessions.parked);
+        return Looks.cellFor(one, cellsDaemon.held, Sessions.running, Sessions.parked);
     }
 
     // Goes to the window of the cell a look leads to, as it stands when

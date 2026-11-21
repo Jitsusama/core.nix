@@ -689,6 +689,29 @@ QtObject {
             Looks.cellOf({ session: "s-0", quest: "QEST-1-ABCDEF" }, [helper], [own]).address,
             "ABCDEF");
         expect("nothing held, none", Looks.cellOf(lookLeft, undefined, undefined), null);
+        // As the agents daemon names it (cells.rs): the cell a look names goes
+        // to the live session it is now, running or parked; ended with none
+        // to go to, none; not served yet, or naming no cell, cellOf's search.
+        const cells = {
+            "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
+            "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
+            "agent-cell:agents:GGGGGG": { cell: "GGGGGG", goes: null }
+        };
+        const naming = cell => Object.assign({}, lookLeft, { cell: cell });
+        expect("a cell goes where the daemon says, running",
+            Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir, leaver], []).address,
+            "BBBBBB");
+        expect("or parked",
+            Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
+        expect("ended with none to go to, none",
+            Looks.cellFor(naming("GGGGGG"), cells, [leaver], []), null);
+        expect("not served yet, cellOf's search",
+            Looks.cellFor(naming("HHHHHH"), cells, [heir], [leaver]).address,
+            "AAAAAA");
+        expect("naming no cell, cellOf's search",
+            Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
+        expect("nothing served, cellOf's search",
+            Looks.cellFor(lookLeft, undefined, [heir], [leaver]).address, "AAAAAA");
 
         if (failures.length > 0) {
             for (const failure of failures)
