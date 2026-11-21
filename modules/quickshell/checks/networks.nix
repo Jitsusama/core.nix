@@ -246,7 +246,9 @@ in
   # a join needs in the field before it's sent
   # (modules/quickshell/tests/wifi-acts.qml), with the launcher's asking stood
   # in.
-  wifi-asks-each-word-a-join-needs-first = wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml null;
+  wifi-asks-each-word-a-join-needs-first =
+    wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml
+      null;
 
   # The launcher's journal says how many letters a daemon's refusal held, not
   # its words, with reports off, in each line saying one: an act that shuts
@@ -263,13 +265,17 @@ in
   # the launcher open on another place
   # (modules/quickshell/tests/wifi-looks.qml), since each look takes the card
   # off its channel for seconds.
-  wifi-looks-only-while-its-rows-are-shown = wifiCase "wifi-looks-only-while-its-rows-are-shown" ../tests/wifi-looks.qml null;
+  wifi-looks-only-while-its-rows-are-shown =
+    wifiCase "wifi-looks-only-while-its-rows-are-shown" ../tests/wifi-looks.qml
+      null;
 
   # Wi-Fi holds the network joined ahead while the launcher's open, so a
   # step onto Wi-Fi or into it finds its drawer held, and a change to that
   # drawer alone, nobody looking at it, tells the launcher nothing
   # (modules/quickshell/tests/wifi-ahead.qml).
-  wifi-holds-the-network-joined-ahead = wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml null;
+  wifi-holds-the-network-joined-ahead =
+    wifiCase "wifi-holds-the-network-joined-ahead" ../tests/wifi-ahead.qml
+      null;
 
   # A network wanting a sign-in is told of once, and its notice taken back once
   # it stops wanting one, even a notice arriving only after that
