@@ -4,8 +4,10 @@
 # behind a socket of its own. The harness's host program is the process,
 # run by the node the host's pi was built with; the pi it hosts carries the
 # host's patches (checks.nix, pi-hosted-keeps-turns-its-own), and every pi
-# an account starts by hand stays unpatched. A machine that names no realm
-# gets no host. Linux only, for now.
+# an account starts by hand stays unpatched. Each host may run a
+# conversation in a process of its own, from a template unit beside it
+# (conversationOf). A machine that names no realm gets no host. Linux only,
+# for now.
 #
 # No pi reaches a host unproven. The harness's scripts/host-prove.ts writes a
 # runtime's proof once `pnpm test:host` passes on it with no case skipped,
@@ -118,6 +120,176 @@ let
     background = "the pi conversations that run in the background";
   };
 
+  # How long systemd gives a conversation's own process to stop, in seconds.
+  # It parks one conversation, not many, and is told the same number, so its
+  # own limit, three quarters of it, comes first.
+  conversationStopSeconds = 60;
+
+  # The command line a host and a conversation's own process share, up to
+  # the harness's program: the realm's folders, the host's node with the
+  # inspector shut, and its heap. `rest` comes after the program.
+  startOf =
+    host: heapMb: rest:
+    lib.escapeShellArgs (
+      # Environment= can only replace PATH, so env puts the realm's folders
+      # before the user manager's; systemd expands ${PATH}, and env execs
+      # node in its place, the pid systemd watches. A folder's % and $ are
+      # doubled, so systemd reads neither as a specifier or a variable. The
+      # manager always has a PATH on NixOS, so the list never ends in the
+      # empty entry that would mean the working folder.
+      lib.optionals (host.path != [ ]) [
+        "${pkgs.coreutils}/bin/env"
+        "PATH=${
+          lib.concatMapStringsSep ":" (lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ]) host.path
+        }:\${PATH}"
+      ]
+      ++ [
+        host.node
+        # Any process of the account may send SIGUSR1, which would open
+        # node's inspector and let it run code as the host. mycelium takes
+        # the host's word for which conversation each pi-spawner serves
+        # only where this is the first option on the host's command line
+        # and no option there opens the inspector; once its lock here
+        # carries its list, also only where the host's environment gives
+        # none of loadsCode, which the unit clears below. It refuses the
+        # word of a host started otherwise, and logs why.
+        "--disable-sigusr1"
+      ]
+      # After the flag above, which must come first; asyncContextFrame's
+      # description says why a realm sets it.
+      ++ lib.optional host.asyncContextFrame "--experimental-async-context-frame"
+      ++ [
+        # The harness's package.json names no module type, on purpose.
+        "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
+        "--max-old-space-size=${toString heapMb}"
+        entry
+      ]
+      ++ rest
+    );
+
+  # The environment a host and a conversation's own process share, quoted,
+  # as systemd splits an unquoted entry at its spaces; `own` comes last.
+  environmentOf =
+    realm: host: own:
+    lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
+      {
+        # The host reads its conversations' mesh folders off its loop, on
+        # libuv's pool, which is four threads by default. On 16 November a
+        # stalled disk held those reads for up to 17 s, and four stalled
+        # reads would leave every other conversation's reads, lookups and
+        # hashing waiting behind them. libuv sizes the pool when it first
+        # starts, before any of the host's code runs, so it is set here. A
+        # machine's own value still wins.
+        UV_THREADPOOL_SIZE = "16";
+        # pi gives a process two codemode workers, which suits one
+        # conversation but is shared here by every conversation the host
+        # holds. After the reset of 17 November the background host's
+        # forty conversations had one cell's six-minute script and one
+        # other holding both, and every other script failed after waiting
+        # a minute. A worker starts only for a script, so a bigger limit
+        # costs nothing while idle. pi reads it at each script.
+        PI_CODEMODE_MAX_WORKERS = "16";
+      }
+      // lib.optionalAttrs agentProxied {
+        # A hosted conversation's commands run with the host's own
+        # environment, so they reach the agents' SSH agent, as a fenced
+        # command does, rather than whichever agent the user manager was
+        # told of before the host started. After the reset of 17 November
+        # the hosts started before the session told the manager of any, and
+        # every ssh from a hosted conversation was refused.
+        SSH_AUTH_SOCK = "%t/pi-agent.sock";
+      }
+      // host.environment
+      // {
+        MYCELIUM_REALM = realm;
+        # pi reads its own files from here, and a subagent a hosted
+        # conversation starts runs this pi too.
+        PI_PACKAGE_DIR = host.pi;
+        # The host checks it against its pi as it starts.
+        PI_HOST_PROOF = "${host.proof}";
+      }
+      // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
+      // own
+    );
+
+  # The user manager names the TPM's agent, Joel's own keys, to everything
+  # it starts, and a hosted conversation's commands inherit the host's
+  # environment, so on 18 November the background host still named it after
+  # SSH_AUTH_SOCK moved to the agents' proxy. Where the proxy runs, agents
+  # sign and log in through it; where it doesn't, SSH_AUTH_SOCK is whatever
+  # the manager holds. This hides the TPM agent's variable only: its socket
+  # is still at a path everyone knows, and what keeps a host's commands from
+  # it, once the agent has started with it, is the agent's key gate
+  # (modules/ssh-tpm-agent/gate.conf), which refuses agents.slice. The gate
+  # catches accidents, not a command set on escaping; the fence is that
+  # boundary. Joel's own signing still finds his agent without the variable.
+  #
+  # loadsCode goes too, as systemd's last step, after every Environment= and
+  # EnvironmentFile= a machine adds, so neither those nor the user manager's
+  # environment run code as the host before pi does, or open the inspector
+  # the flag shuts. A hosted conversation's commands, which inherit the
+  # host's environment, start without them too.
+  unsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode;
+
+  # The template each realm-kind host starts a conversation's own process
+  # from, `pi-conversation-KEY@SLOT.service`, so no conversation's work can
+  # hold another's thread, a host's restart stops none of them, and systemd
+  # weighs each one's memory alone. On 19 November one conversation held the
+  # background host's one thread for 3 s while a list waited on it, and
+  # Joel couldn't work. The host writes the slot's file, KEY.d/SLOT.json in
+  # its runtime folder, before it starts the instance, and the process
+  # listens on KEY.d/SLOT.sock beside it (the harness's
+  # host/service/child-units.ts). Its environment is the host's, so nothing
+  # secret passes through the host's code or a unit's record.
+  conversationOf =
+    realm: host: kind:
+    let
+      key = "${realm}-${kind}";
+    in
+    {
+      name = "pi-conversation-${key}@";
+      value = {
+        Unit = {
+          Description = "Holds one of ${kinds.${kind}} in the ${realm} realm, in slot %i";
+          ConditionPathExists = entry;
+          # A restart would end the conversation's turn, so a switch leaves a
+          # running one be; the next conversation it takes up runs the new pi.
+          X-SwitchMethod = "keep-old";
+        };
+        Service = {
+          # It says nothing to systemd: its host follows it on its socket.
+          Type = "exec";
+          ExecStart = startOf host host.conversationHeapMb [ "--child" ];
+          Environment = environmentOf realm host {
+            PI_HOST_CHILD_KEY = key;
+            PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
+            # The stop limit below, which it parks within.
+            PI_HOST_STOP_USEC = toString (conversationStopSeconds * 1000000);
+          };
+          UnsetEnvironment = unsetEnvironment;
+          # Its host decides what comes after an ending: a crash's
+          # conversation is resumed by the host in a new process, so systemd
+          # never restarts one, and no watchdog kills one for a long turn.
+          Restart = "no";
+          # Each open is a slot of its own, never started again, so an
+          # instance that failed is forgotten rather than listed for good.
+          CollectMode = "inactive-or-failed";
+          # One of its commands killed for memory leaves the conversation be,
+          # as a plain pi outlives its command.
+          OOMPolicy = "continue";
+          # Parking ends its turn and the tools it runs; what is left is
+          # ended with it.
+          KillMode = "mixed";
+          TimeoutStopSec = "${toString conversationStopSeconds}s";
+          # Past this the conversation and its commands are slowed, not
+          # killed, so one conversation's build can't take the memory every
+          # other conversation runs in. A default, so a machine may move it.
+          MemoryHigh = lib.mkDefault "12G";
+          Slice = "agents.slice";
+        };
+      };
+    };
+
   hostOf = realm: host: kind: {
     name = "pi-host-${realm}-${kind}";
     value = {
@@ -155,112 +327,18 @@ let
         # conversation can be sent to it; it says so from a child process.
         Type = "notify";
         NotifyAccess = "all";
-        ExecStart = lib.escapeShellArgs (
-          # Environment= can only replace PATH, so env puts the realm's folders
-          # before the user manager's; systemd expands ${PATH}, and env execs
-          # node in its place, the pid systemd watches. A folder's % and $ are
-          # doubled, so systemd reads neither as a specifier or a variable. The
-          # manager always has a PATH on NixOS, so the list never ends in the
-          # empty entry that would mean the working folder.
-          lib.optionals (host.path != [ ]) [
-            "${pkgs.coreutils}/bin/env"
-            "PATH=${
-              lib.concatMapStringsSep ":" (lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ]) host.path
-            }:\${PATH}"
-          ]
-          ++ [
-            host.node
-            # Any process of the account may send SIGUSR1, which would open
-            # node's inspector and let it run code as the host. mycelium
-            # takes the host's word for which conversation each pi-spawner
-            # serves only where this is the first option on the host's
-            # command line and no option there opens the inspector; once
-            # its lock here carries its list, also only where the host's
-            # environment gives none of loadsCode, which the unit clears
-            # below. It refuses the word of a host started otherwise, and
-            # logs why.
-            "--disable-sigusr1"
-          ]
-          # After the flag above, which must come first; asyncContextFrame's
-          # description says why a realm sets it.
-          ++ lib.optional host.asyncContextFrame "--experimental-async-context-frame"
-          ++ [
-            # The harness's package.json names no module type, on purpose.
-            "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
-            "--max-old-space-size=${toString host.heapMb}"
-            entry
-            kind
-          ]
-        );
-        # Quoted, as systemd splits an unquoted entry at its spaces.
-        Environment = lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
-          {
-            # The host reads its conversations' mesh folders off its loop,
-            # on libuv's pool, which is four threads by default. On 16
-            # November a stalled disk held those reads for up to 17 s, and
-            # four stalled reads would leave every other conversation's reads,
-            # lookups and hashing waiting behind them. libuv sizes the pool
-            # when it first starts, before any of the host's code runs, so it
-            # is set here. A machine's own value still wins.
-            UV_THREADPOOL_SIZE = "16";
-            # pi gives a process two codemode workers, which suits one
-            # conversation but is shared here by every conversation the host
-            # holds. After the reset of 17 November the background host's
-            # forty conversations had one cell's six-minute script and one
-            # other holding both, and every other script failed after waiting
-            # a minute. A worker starts only for a script, so a bigger limit
-            # costs nothing while idle. pi reads it at each script.
-            PI_CODEMODE_MAX_WORKERS = "16";
-          }
-          // lib.optionalAttrs agentProxied {
-            # A hosted conversation's commands run with the host's own
-            # environment, so they reach the agents' SSH agent, as a fenced
-            # command does, rather than whichever agent the user manager was
-            # told of before the host started. After the reset of 17 November
-            # the hosts started before the session told the manager of any,
-            # and every ssh from a hosted conversation was refused.
-            SSH_AUTH_SOCK = "%t/pi-agent.sock";
-          }
-          // host.environment
-          // {
-            MYCELIUM_REALM = realm;
-            # pi reads its own files from here, and a subagent a hosted
-            # conversation starts runs this pi too.
-            PI_PACKAGE_DIR = host.pi;
-            # The host checks it against its pi as it starts.
-            PI_HOST_PROOF = "${host.proof}";
-            # The stop limit below, which the host parks within.
-            PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
-            # A host restarts itself onto a new pi or harness once it's
-            # installed, or for its heap. At 16:38 on 19 November the
-            # attended host did so mid-call as its install moved, and every
-            # window on it went with it, so it waits until no call is on and
-            # nothing a machine adds holds.
-            PI_HOST_RESTART_WAITS_ON = restartWaitsOn;
-          }
-          // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
-        );
-        # The user manager names the TPM's agent, Joel's own keys, to
-        # everything it starts, and a hosted conversation's commands inherit
-        # the host's environment, so on 18 November the background host
-        # still named it after SSH_AUTH_SOCK above moved to the agents' proxy.
-        # Where the proxy runs, agents sign and log in through it; where it
-        # doesn't, SSH_AUTH_SOCK is whatever the manager holds. This hides
-        # the TPM agent's variable only: its socket is still at a path
-        # everyone knows, and what keeps a host's commands from it, once the
-        # agent has started with it, is the agent's key gate
-        # (modules/ssh-tpm-agent/gate.conf), which refuses agents.slice. The
-        # gate catches accidents, not a command set on escaping; the fence is
-        # that boundary. Joel's own signing still finds his agent without
-        # the variable.
-        #
-        # loadsCode goes too, as systemd's last step, after every
-        # Environment= and EnvironmentFile= a machine adds, so neither those
-        # nor the user manager's environment run code as the host before pi
-        # does, or open the inspector the flag above shuts. A hosted
-        # conversation's commands, which inherit the host's environment,
-        # start without them too.
-        UnsetEnvironment = [ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode;
+        ExecStart = startOf host host.heapMb [ kind ];
+        Environment = environmentOf realm host {
+          # The stop limit below, which the host parks within.
+          PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
+          # A host restarts itself onto a new pi or harness once it's
+          # installed, or for its heap. At 16:38 on 19 November the attended
+          # host did so mid-call as its install moved, and every window on it
+          # went with it, so it waits until no call is on and nothing a
+          # machine adds holds.
+          PI_HOST_RESTART_WAITS_ON = restartWaitsOn;
+        };
+        UnsetEnvironment = unsetEnvironment;
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
         # takes back what it held.
@@ -407,6 +485,16 @@ in
               aborts alone, rather than slowing every agent beside it.
             '';
           };
+          conversationHeapMb = lib.mkOption {
+            type = lib.types.ints.positive;
+            default = 4096;
+            description = ''
+              The most JavaScript heap each conversation's own process may
+              hold, in MB: about node's own default, which a plain pi in a
+              terminal runs with. One past it aborts alone, and its host
+              resumes the conversation in a new process.
+            '';
+          };
           asyncContextFrame = lib.mkOption {
             type = lib.types.bool;
             default = false;
@@ -529,7 +617,11 @@ in
   config.systemd.user.services = lib.mkIf pkgs.stdenv.hostPlatform.isLinux (
     lib.listToAttrs (
       lib.concatLists (
-        lib.mapAttrsToList (realm: host: map (hostOf realm host) (lib.attrNames kinds)) cfg
+        lib.mapAttrsToList (
+          realm: host:
+          map (hostOf realm host) (lib.attrNames kinds)
+          ++ map (conversationOf realm host) (lib.attrNames kinds)
+        ) cfg
       )
     )
     // lib.optionalAttrs (cfg != { }) {
