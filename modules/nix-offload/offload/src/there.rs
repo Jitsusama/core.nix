@@ -1054,6 +1054,9 @@ fn sent_up(
     if sent.is_empty() {
         return Ok(());
     }
+    // Held until the copy ends, and its clock starts only once it's held,
+    // so a run waiting its turn isn't timed out by another's copy.
+    let _turn = sending_to(Path::new(SENDS_FOLDER), &lent.host);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copying = Copying::start(
         upload(nix, alive)
@@ -1069,6 +1072,40 @@ fn sent_up(
             &copying,
         )),
     }
+}
+
+/// Where runs here take their turns sending to a builder, which every
+/// run of the account shares, as ssh's control sockets do.
+const SENDS_FOLDER: &str = "/tmp";
+
+/// A turn sending to the builder `host`, held until it's dropped, taken
+/// from a lock in `folder` that every run sending there here shares. On
+/// 20 November four runs sent the same 844 MiB tool closure to one
+/// builder at once over a home uplink of about 7 Mbit/s: each copy got a
+/// quarter of it, ssh timed out after 18 minutes, and none ran. One at a
+/// time, the first sends the closure whole and the rest find it there.
+/// Where the lock can't be taken, the send goes on without one, as
+/// before.
+fn sending_to(folder: &Path, host: &str) -> Option<fs::File> {
+    use std::os::fd::AsRawFd;
+    let name: String = host
+        .chars()
+        .map(|each| {
+            if each.is_ascii_alphanumeric() {
+                each
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    let lock = fs::File::create(folder.join(format!("nix-offload-sending-{name}.lock"))).ok()?;
+    // SAFETY: flock only locks the file it's given, open until dropped.
+    if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+        return Some(lock);
+    }
+    eprintln!("nix-offload: another run here is sending to {host}, so this waits its turn");
+    // SAFETY: as above.
+    (unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0).then_some(lock)
 }
 
 /// Why no builder took a build: one a builder standing again may take, or
@@ -4971,6 +5008,37 @@ mod tests {
     use std::os::unix::process::CommandExt;
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn runs_send_to_one_builder_one_at_a_time_and_to_two_at_once() {
+        let folder = tempfile::tempdir().unwrap();
+        let first = sending_to(folder.path(), "hook@builder-1");
+        assert!(
+            first.is_some(),
+            "the first run sending to a builder got no turn"
+        );
+        assert!(
+            sending_to(folder.path(), "hook@builder-2").is_some(),
+            "a run sending to another builder waited on the first's turn"
+        );
+        let (said, heard) = mpsc::channel();
+        let path = folder.path().to_owned();
+        let second = std::thread::spawn(move || {
+            let turn = sending_to(&path, "hook@builder-1");
+            said.send(turn.is_some()).unwrap();
+        });
+        assert!(
+            heard.recv_timeout(Duration::from_millis(300)).is_err(),
+            "a second run sent to a builder while the first still was"
+        );
+        drop(first);
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(5)),
+            Ok(true),
+            "the second run got no turn once the first's ended"
+        );
+        second.join().unwrap();
+    }
 
     #[test]
     fn a_macs_load_is_read_from_its_first_two_averages_or_not_at_all() {
