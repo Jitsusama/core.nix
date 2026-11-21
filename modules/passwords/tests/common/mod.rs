@@ -156,11 +156,37 @@ pub fn git_in(tree: &std::path::Path, args: &[&str]) {
     assert!(ran.status.success(), "git {args:?} failed: {ran:?}");
 }
 
-/// A stand-in for wl-copy in the foreground: what it's given goes to its
-/// file, and it holds on until it's ended, as wl-copy holds the clipboard.
+/// A stand-in for Passwords' wl-copy in the foreground: it says it's ready,
+/// what it's given goes to its file, it says it holds it, and it holds on
+/// until it's ended, as wl-copy holds the clipboard. A test sets how it
+/// strays: `COPIER_WAITS` has it wait a second before saying it's ready,
+/// noting in `.early` a byte it was given before then, read with a blocking
+/// read cut short so the pipe stays as `cat` expects it; `COPIER_SILENT`
+/// has it never say it's ready, leaving a child of its own behind that
+/// holds its standard error; `COPIER_REFUSES` has it refuse the copy for
+/// that reason, as Passwords' wl-copy refuses one it can't hold whole;
+/// `COPIER_UNHELD` has it read the copy and never say it holds it; and
+/// `COPIER_DEAF` has it say it's ready and never read at all.
 const COPIER: &str = r#"
+if [ -n "$COPIER_WAITS" ]; then
+  sleep 1
+  timeout 0.3 dd bs=1 count=1 of="$COPIED.early" 2>/dev/null
+fi
+if [ -n "$COPIER_SILENT" ]; then
+  sleep 60 &
+else
+  echo ready
+fi
+if [ -n "$COPIER_DEAF" ]; then
+  while :; do sleep 1; done
+fi
 cat > "$COPIED"
 printf '%s\n' "$*" > "$COPIED.flags"
+if [ -n "$COPIER_REFUSES" ]; then
+  echo "wl-copy: refused a sensitive copy: $COPIER_REFUSES" >&2
+  exit 1
+fi
+[ -n "$COPIER_UNHELD" ] || echo held
 while :; do sleep 1; done
 "#;
 
@@ -346,6 +372,9 @@ impl Running {
             .arg(words)
             .env("PASSWORDS_COPIER", &copier)
             .env("PASSWORDS_CLEARS_MS", "700")
+            // Long enough for a copier told to wait a second, short
+            // enough that one which never answers is soon given up on.
+            .env("PASSWORDS_COPIER_PATIENCE_MS", "3000")
             .env("COPIED", folder.join("copied"))
             .env("XDG_STATE_HOME", folder.join("state"))
             .envs(set.iter().copied())
