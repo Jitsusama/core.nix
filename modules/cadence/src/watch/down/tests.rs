@@ -488,7 +488,7 @@ fn spells_are_kept_as_told_before_anything_is_told_and_unkept_tell_nothing() {
         serde_json::from_slice(&std::fs::read(&path).expect("the spells kept")).expect("read")
     };
     let shown = RefCell::new(0);
-    let sent = RefCell::new(0);
+    let findings = RefCell::new(0);
     let owner = |_: &str| None;
     let notify = |_: &Tell| {
         assert!(
@@ -499,7 +499,7 @@ fn spells_are_kept_as_told_before_anything_is_told_and_unkept_tell_nothing() {
         Some(42)
     };
     let send = |_: &str, _: String| {
-        *sent.borrow_mut() += 1;
+        *findings.borrow_mut() += 1;
         Ok(())
     };
     let unkept = folder.join("gone/down.json");
@@ -508,13 +508,13 @@ fn spells_are_kept_as_told_before_anything_is_told_and_unkept_tell_nothing() {
         "spells that couldn't be kept were said kept"
     );
     assert_eq!(
-        (*shown.borrow(), *sent.borrow()),
+        (*shown.borrow(), *findings.borrow()),
         (0, 0),
         "what couldn't be kept as told was told, so it would be told again each tick"
     );
     promise_then_tell(&path, &tells, told, owner, "ORCH", notify, send).expect("told");
     assert_eq!(
-        (*shown.borrow(), *sent.borrow()),
+        (*shown.borrow(), *findings.borrow()),
         (1, 1),
         "it wasn't told once"
     );
