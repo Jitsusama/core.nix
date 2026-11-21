@@ -111,12 +111,71 @@ impl Place {
         self.dir.join("retired")
     }
 
-    /// The commit `current` points at, when it points at one.
+    /// The commit `current` points at, when it points at one: its
+    /// folder's name, less what a rebuild of the same commit adds.
     #[must_use]
     pub fn current_commit(&self) -> Option<String> {
+        let folder = self.current_folder()?;
+        let commit = folder
+            .split_once(REBUILT)
+            .map_or(folder.as_str(), |(commit, _)| commit);
+        Some(commit.to_owned())
+    }
+
+    /// The name of the version folder `current` points at.
+    #[must_use]
+    pub fn current_folder(&self) -> Option<String> {
         let target = fs::read_link(self.current()).ok()?;
         target.file_name()?.to_str().map(str::to_owned)
     }
+}
+
+/// What separates a commit from the time its version was built again, in
+/// the folder of a rebuild (see [`rebuild`]).
+const REBUILT: char = '+';
+
+/// The variables that name pnpm's store, which the module sets.
+const STORE: [&str; 2] = ["npm_config_store_dir", "pnpm_config_store_dir"];
+
+/// Whether a version's dependencies resolve outside the root, when the
+/// settings put pnpm's store under it: a version installed before its
+/// store moved there, whose links still lead into the account's store,
+/// which an agent's fenced commands may write. A dependency's folder is
+/// read one level down `node_modules`, and one more inside a scope.
+#[must_use]
+pub fn links_elsewhere(config: &Config, version: &Path) -> bool {
+    let store_under_root = config.env.iter().any(|(key, value)| {
+        STORE.contains(&key.as_str()) && Path::new(value).starts_with(&config.root)
+    });
+    if !store_under_root {
+        return false;
+    }
+    let root = fs::canonicalize(&config.root).unwrap_or_else(|_| config.root.clone());
+    let modules = version.join("node_modules");
+    let mut links = Vec::new();
+    for entry in fs::read_dir(&modules).into_iter().flatten().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let path = entry.path();
+        if name.starts_with('.') {
+            continue;
+        }
+        let is_folder = entry.file_type().is_ok_and(|kind| kind.is_dir());
+        if name.starts_with('@') && is_folder {
+            links.extend(
+                fs::read_dir(&path)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|inner| inner.path()),
+            );
+        } else {
+            links.push(path);
+        }
+    }
+    links.iter().any(|link| {
+        fs::symlink_metadata(link).is_ok_and(|found| found.file_type().is_symlink())
+            && fs::canonicalize(link).is_ok_and(|real| !real.starts_with(&root))
+    })
 }
 
 /// The environment a build runs in.
@@ -236,13 +295,49 @@ pub fn build(
     commit: &str,
     env: &[(String, String)],
 ) -> Result<PathBuf, String> {
-    let version = place.versions().join(commit);
+    build_as(config, package, place, commit, commit, env)
+}
+
+/// Build `commit` again, into a folder of its own named for the commit
+/// and `now`, for a version whose dependencies resolve where they no
+/// longer should ([`links_elsewhere`]). The version it replaces is left
+/// where it is, for the pis that run it, until a sweep finds nothing does.
+/// Says the new folder and its name, which [`swap`] takes.
+///
+/// # Errors
+///
+/// Says what the build or the check found.
+pub fn rebuild(
+    config: &Config,
+    package: &Package,
+    place: &Place,
+    commit: &str,
+    now: SystemTime,
+    env: &[(String, String)],
+) -> Result<(PathBuf, String), String> {
+    let seconds = now
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    let name = format!("{commit}{REBUILT}{seconds}");
+    let built = build_as(config, package, place, commit, &name, env)?;
+    Ok((built, name))
+}
+
+fn build_as(
+    config: &Config,
+    package: &Package,
+    place: &Place,
+    commit: &str,
+    name: &str,
+    env: &[(String, String)],
+) -> Result<PathBuf, String> {
+    let version = place.versions().join(name);
     if version.is_dir() {
         return Ok(version);
     }
     fs::create_dir_all(place.versions())
         .map_err(|error| format!("{}: {error}", place.versions().display()))?;
-    let building = place.versions().join(format!(".{commit}.building"));
+    let building = place.versions().join(format!(".{name}.building"));
     if building.exists() {
         fs::remove_dir_all(&building)
             .map_err(|error| format!("{}: {error}", building.display()))?;
@@ -355,22 +450,23 @@ fn manifest_of(dir: &Path) -> Option<Value> {
     serde_json::from_str(&text).ok()
 }
 
-/// Point `current` at `commit`'s version by renaming a new link over it,
-/// so a reader finds the old version or the new and never neither, and
-/// start the clock on the version it left.
+/// Point `current` at the version in `folder`, a commit or a rebuild's
+/// name, by renaming a new link over it, so a reader finds the old
+/// version or the new and never neither, and start the clock on the
+/// version it left.
 ///
 /// # Errors
 ///
 /// Says which link could not be made or moved.
-pub fn swap(place: &Place, commit: &str, now: SystemTime) -> Result<(), String> {
-    let left = place.current_commit();
+pub fn swap(place: &Place, folder: &str, now: SystemTime) -> Result<(), String> {
+    let left = place.current_folder();
     let staged = place.dir.join(".current.new");
     let _ = fs::remove_file(&staged);
-    symlink(Path::new("versions").join(commit), &staged)
+    symlink(Path::new("versions").join(folder), &staged)
         .map_err(|error| format!("{}: {error}", staged.display()))?;
     fs::rename(&staged, place.current())
         .map_err(|error| format!("{}: {error}", place.current().display()))?;
-    if let Some(left) = left.filter(|left| left != commit) {
+    if let Some(left) = left.filter(|left| left != folder) {
         retire(place, &left, now)?;
     }
     Ok(())

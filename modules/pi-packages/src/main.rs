@@ -249,6 +249,10 @@ fn outcome_lines(name: &str, outcome: &Outcome, now: SystemTime) -> Vec<String> 
             to,
         } => format!("{name}: moved from {} to {}", short(from), short(to)),
         Done::Moved { from: None, to } => format!("{name}: installed at {}", short(to)),
+        Done::Rebuilt { commit } => format!(
+            "{name}: {} built again, since its dependencies lay outside pi-packages' own store",
+            short(commit)
+        ),
         Done::Busy => format!("{name}: another update holds it, so this one left it"),
         Done::OnHold { commit, hold } => format!(
             "{name}: {} waits, since swaps are held {}: {}; `pi-packages release` ends the hold",
@@ -294,6 +298,7 @@ fn outcome_fact(name: &str, outcome: &Outcome) -> Value {
             let done = if from.is_some() { "moved" } else { "installed" };
             (done, Some(to), from.as_ref(), None, None, None)
         }
+        Done::Rebuilt { commit } => ("rebuilt", Some(commit), None, None, None, None),
         Done::Busy => ("busy", None, None, None, None, None),
         Done::Held { commit, until } => (
             "spaced",

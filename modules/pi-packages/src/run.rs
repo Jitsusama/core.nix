@@ -46,6 +46,10 @@ pub enum Done {
     Current { commit: String },
     /// `current` was moved, from the version it pointed at, if any.
     Moved { from: Option<String>, to: String },
+    /// `current` stayed at the branch's head, but its version was built
+    /// again and swapped in, since its dependencies resolved outside the
+    /// root (version.rs, `links_elsewhere`).
+    Rebuilt { commit: String },
     /// Another update holds this package's lock, so this one left it.
     Busy,
     /// The branch has moved, but the last swap was within [`SPACING`], so
@@ -126,7 +130,8 @@ fn mark_swap(config: &Config, now: SystemTime) -> Result<(), String> {
 }
 
 /// Update one package: fetch, build the branch's head when `current` is
-/// elsewhere, swap it in, and remove what nothing uses. Given a `wait`, a
+/// elsewhere, or build it again when its dependencies resolve outside the
+/// root, swap it in, and remove what nothing uses. Given a `wait`, a
 /// package that already has a version keeps it and builds nothing; one
 /// with none is installed anyway, since pi can't load it at all until it
 /// is.
@@ -154,7 +159,9 @@ pub fn update_one(
     let (commit, unfetched) = version::fetch(config, package, &place, &env)?;
     let from = place.current_commit();
     let mut unwarmed = Vec::new();
-    let done = if from.as_deref() == Some(commit.as_str()) {
+    let stale = from.as_deref() == Some(commit.as_str())
+        && version::links_elsewhere(config, &place.current());
+    let done = if from.as_deref() == Some(commit.as_str()) && !stale {
         Done::Current { commit }
     } else if let (Some(_), Some(wait)) = (&from, wait) {
         match wait {
@@ -168,17 +175,27 @@ pub fn update_one(
             },
         }
     } else {
-        match version::build(config, package, &place, &commit, &env) {
-            Ok(built) => {
+        let built = if stale {
+            version::rebuild(config, package, &place, &commit, now, &env)
+        } else {
+            version::build(config, package, &place, &commit, &env)
+                .map(|built| (built, commit.clone()))
+        };
+        match built {
+            Ok((built, folder)) => {
                 unwarmed = warm::warm(config, package, &built, &warm::pis(config), &env);
                 // A hold put while the warm ran stands too; a package with
                 // no version is installed whatever holds, as before.
                 if let Some(hold) = hold::standing(config, now).filter(|_| from.is_some()) {
                     Done::OnHold { commit, hold }
                 } else {
-                    version::swap(&place, &commit, now)?;
+                    version::swap(&place, &folder, now)?;
                     mark_swap(config, now)?;
-                    Done::Moved { from, to: commit }
+                    if stale {
+                        Done::Rebuilt { commit }
+                    } else {
+                        Done::Moved { from, to: commit }
+                    }
                 }
             }
             Err(why) => Done::Failed { commit, why },

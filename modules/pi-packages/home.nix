@@ -52,8 +52,11 @@ let
   urlOf = source: "https://${lib.removePrefix "git:" source}";
   # Where each package's pis say what they loaded (src/loaded.rs).
   loadedDirs = map (source: "${cfg.root}/${lib.removePrefix "git:" source}/loaded") gitPackages;
-  # Where pnpm keeps what the versions install (see env below).
+  # Where pnpm keeps what the versions install, what it read of the
+  # registry, and where node-gyp keeps node's headers (see env below).
   store = "${cfg.root}/.pnpm-store";
+  cache = "${cfg.root}/.pnpm-cache";
+  headers = "${cfg.root}/.node-gyp";
   configFile = pkgs.writeText "pi-packages.json" (
     builtins.toJSON {
       inherit (cfg) root;
@@ -67,10 +70,17 @@ let
       # virtual store, and its files are hard links to the store's own, so
       # in a folder an agent's fenced commands write, one could rewrite
       # code pi then runs outside the fence. The fence holds the root
-      # read-only, so the store lies under it.
+      # read-only, so the store lies under it. pnpm's metadata cache and
+      # node-gyp's headers go there too, out of ~/.cache, which fenced
+      # commands write: a rewritten package document or header would be
+      # built into what pi runs. XDG_CACHE_HOME stays, since warming runs
+      # pis with this environment.
       env = {
         npm_config_store_dir = store;
         pnpm_config_store_dir = store;
+        npm_config_cache_dir = cache;
+        pnpm_config_cache_dir = cache;
+        npm_config_devdir = headers;
       };
     }
   );

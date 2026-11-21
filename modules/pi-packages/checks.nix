@@ -55,7 +55,8 @@
   # pi loads its packages' dependencies from the store pnpm installs them
   # into, so that store lies under the folder the agent fence holds
   # read-only (the harness's fence-home.ts), never in the account's one
-  # store, which fenced commands write.
+  # store, which fenced commands write; so do pnpm's metadata cache and
+  # node-gyp's headers, which a build reads. pnpm is asked where they lie.
   pi-packages-keeps-its-own-store =
     let
       home = account workstation;
