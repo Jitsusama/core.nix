@@ -619,8 +619,8 @@ mod tests {
             carried(said, now, &mut kept)
         };
         down(NOW - 60);
-        let now = down(NOW);
-        let modem = now
+        let second = down(NOW);
+        let modem = second
             .sources
             .iter()
             .find(|source| source.name == "modem")

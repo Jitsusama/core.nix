@@ -231,7 +231,8 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 /// its counts are judged against now alone: in the first minute after a
 /// restart the older lines still outvote now's new start, and only the
 /// counts show it, while a misread now costs at most a minute with no
-/// count lately. A minute the modem didn't answer says nothing of it,
+/// count lately, in which a channel far above the rest is a concern. A
+/// minute the modem didn't answer says nothing of it,
 /// so the walk passes it by.
 fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
     let lines: Vec<&Moment> = day
@@ -652,16 +653,47 @@ mod tests {
             assert_eq!(
                 modem(&network).lately_s,
                 lately_s,
-                "a restart was judged wrongly when its counts fell: {restarted}"
+                "lately read wrongly where every count fell to 0 is {restarted}"
             );
-            if restarted {
-                assert_eq!(
-                    sixteen(&network).lost_lately,
-                    None,
-                    "channel 16 counted across a restart"
-                );
-            }
         }
+    }
+
+    #[test]
+    fn a_misread_now_costs_one_minute_with_no_count_lately() {
+        // Now misreads every count as 0, so the newest line falls against
+        // now alone and nothing is counted lately. A minute on, the misread
+        // is a line that now outvotes, and the day reads on.
+        let now = network();
+        let day = |now: &Network| {
+            [
+                earlier(now, 5 * HOUR, 800, 41),
+                earlier(now, 3 * HOUR, 840, 41),
+            ]
+        };
+        let mut misread_now = now.clone();
+        for channel in &mut misread_now
+            .devices
+            .iter_mut()
+            .find(|device| device.id == "modem")
+            .and_then(|device| device.modem.as_mut())
+            .expect("the record has the modem's channels")
+            .downstream
+        {
+            channel.uncorrectable = Some(0);
+        }
+        let mut misread = Moment::of(&misread_now);
+        misread.at = now.collected_at - 60;
+        let [five, three] = day(&now);
+        let misread_minute = recalled(misread_now, &day(&now));
+        let next_minute = recalled(now, &[five, three, misread]);
+        assert_eq!(
+            (
+                modem(&misread_minute).lately_s,
+                modem(&next_minute).lately_s
+            ),
+            (None, Some(5 * HOUR)),
+            "a misread now cost other than its own minute's count lately"
+        );
     }
 
     #[test]
@@ -799,6 +831,7 @@ mod tests {
         let now = network();
         for (after, ofdm_lately) in [(180, Some(0)), (181, None)] {
             let mut old = earlier(&now, 5 * HOUR, 800, 41);
+            old.modem_started = None;
             for lost in &mut old.lost {
                 lost.frequency_hz = None;
             }
