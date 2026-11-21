@@ -2376,7 +2376,33 @@ in
         # 2026-11-10). niri asks a window it doesn't show for about one frame
         # a second, so the hidden ones go quiet; a shown one waits at most a
         # frame, 8.3 ms at 120 Hz.
+        # It's started without what systemd tells it of its own unit
+        # (systemd.exec(5)'s environment), which it would pass to every
+        # session's window, where a program reading it took the unit as its
+        # own: warp-cli took the sessions' socket folder as its runtime folder
+        # (OSPHT4, 2026-11-20), and one watching memory pressure would watch
+        # the kitty's. The manager's pid goes too, since it marks a program as
+        # one systemd started, which a window's isn't. Its own lines use %t
+        # instead. A switch keeps the running kitty (keep-old, in Unit above),
+        # so this reaches its windows at the next login; restarting the unit
+        # sooner closes every session's window.
         ExecStart = lib.concatStringsSep " " [
+          (lib.concatStringsSep " " (
+            [ (lib.getExe' pkgs.coreutils "env") ]
+            ++ map (name: "-u ${name}") [
+              "RUNTIME_DIRECTORY"
+              "INVOCATION_ID"
+              "JOURNAL_STREAM"
+              "SYSTEMD_EXEC_PID"
+              "MANAGERPID"
+              "MEMORY_PRESSURE_WATCH"
+              "MEMORY_PRESSURE_WRITE"
+              "CPU_PRESSURE_WATCH"
+              "CPU_PRESSURE_WRITE"
+              "IO_PRESSURE_WATCH"
+              "IO_PRESSURE_WRITE"
+            ]
+          ))
           "${config.home.profileDirectory}/bin/kitty"
           "--listen-on unix:%t/pi-sessions/kitty.sock -o allow_remote_control=socket-only"
           "-o sync_to_monitor=yes"
