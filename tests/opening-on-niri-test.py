@@ -1279,10 +1279,11 @@ def unshared_and_closed(shell: Shell, stood: CastsStandIn) -> None:
 
 @pytest.mark.parametrize(
     ("way", "keys"),
+    # Ids as a part's list could name them, with no space or +.
     [
-        ("Ctrl+I", ("ctrl-i",)),
-        ("Space Tab", ("spc", "tab")),
-        ("Ctrl+T", ("ctrl-t",)),
+        pytest.param("Ctrl+I", ("ctrl-i",), id="ctrl-i"),
+        pytest.param("Space Tab", ("spc", "tab"), id="space-tab"),
+        pytest.param("Ctrl+T", ("ctrl-t",), id="ctrl-t"),
     ],
 )
 def test_a_way_into_a_copy_shown_before_a_share_is_let_go(
