@@ -255,6 +255,7 @@
         quickshell-starts-warm =
           script "quickshell-starts-warm" ../../modules/quickshell/starts-warm.sh
             { };
+        recording-sound = script "recording-sound" ../../modules/quickshell/recording-sound.sh { };
         saves-while-open = script "saves-while-open" ../../modules/backlight/saves-while-open.sh { };
         screen-kept = script "screen-kept" ../../modules/swayidle/screen-kept.sh { };
         se-keys = script "se-keys" ../../modules/secure-enclave-signing/se-keys.sh { };
