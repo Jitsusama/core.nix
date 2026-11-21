@@ -50,7 +50,10 @@ struct Asked {
 /// idle is no quicker bringing a download down, and isn't tried blind.
 /// The card's own isn't: its minute is known, and an idle figure is a
 /// floor on a loaded one, which as the bar a trial off it must beat would
-/// send a download back for carrying worse than no download could.
+/// send a download back for carrying worse than no download could. The
+/// card slowed by its own download is weighed by it too, so it isn't held
+/// by an idle figure against another point's loaded one: it goes by its
+/// minute, and the trial judges the move like with like.
 fn known<'a>(
     lately: &'a Measures,
     learned: &'a Learned,
@@ -170,7 +173,7 @@ fn chosen(
         }
         Choice::Back(to) => {
             let why = chooser.went_back();
-            let kept = chooser.keeps_off(&on.point);
+            let kept = chooser.keeps_off(&on.point, now);
             println!("<6>{}", went_back(on, measured, &to, (why.as_ref(), kept)));
             Some(Next::Move(to))
         }

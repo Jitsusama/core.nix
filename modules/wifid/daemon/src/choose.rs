@@ -230,9 +230,10 @@ pub struct Chooser {
     trial: Option<Trial>,
     /// Each access point kept off and until when.
     spurned: HashMap<String, Instant>,
-    /// Each access point a trial went back from for carrying worse only
-    /// than the usual, and when, so a second within `SPURNED` keeps it off.
-    usually: HashMap<String, Instant>,
+    /// Each move, from one access point to another, that went back for
+    /// carrying worse only than the usual, and when, so a second within
+    /// `SPURNED` keeps the point tried off.
+    usually: HashMap<(String, String), Instant>,
     /// Why the last choice sent the card back, for the journal to say once.
     went_back: Option<Against>,
     /// The access point a move on trial never reached, kept off from the
@@ -565,9 +566,9 @@ impl Chooser {
         self.went_back.take()
     }
 
-    /// Whether the card keeps off this access point.
-    pub fn keeps_off(&self, point: &str) -> bool {
-        self.spurned.contains_key(point)
+    /// Whether the card keeps off this access point now.
+    pub fn keeps_off(&self, point: &str, now: Instant) -> bool {
+        self.spurned.get(point).is_some_and(|until| now < *until)
     }
 
     /// The narrower access point the last choice began keeping a wider band
@@ -654,19 +655,24 @@ impl Chooser {
         } else {
             worse(measured, &against).then_some(Against::Usually(against))
         };
-        let why = why?;
+        let moved = (trial.from.clone(), point.to_owned());
+        // A trial that stands carried well, so a back on the usual before it
+        // is no longer the first of a repeat.
+        let Some(why) = why else {
+            self.usually.remove(&moved);
+            return None;
+        };
         // A trial worse only than what the point left usually carries isn't
         // kept off the first time: the settle every move takes already keeps
         // the card from trying it again at once, and a keep-off past that
         // would hold the card off its way out should the point gone back to
-        // fail. A second within `SPURNED` is: learning doesn't end the
-        // repeats, since a usual is blended over neighbouring steps, and
-        // under load over every hour, so ten slow minutes barely move it.
-        let again = matches!(why, Against::Usually(_))
-            && self
-                .usually
-                .insert(point.to_owned(), now)
-                .is_some_and(|last| now.saturating_duration_since(last) < SPURNED);
+        // fail. A second of the same move within `SPURNED` is: learning
+        // doesn't end the repeats, since a usual is blended over neighbouring
+        // steps, and under load over every hour, so ten slow minutes barely
+        // move it. Another point's usual is another bar, so counts apart.
+        self.usually
+            .retain(|_, at| now.saturating_duration_since(*at) < SPURNED);
+        let again = matches!(why, Against::Usually(_)) && self.usually.insert(moved, now).is_some();
         if again || !matches!(why, Against::Usually(_)) {
             self.spurned.insert(point.to_owned(), now + SPURNED);
         }
@@ -2355,6 +2361,7 @@ pub(crate) mod tests {
         on(again + primed, DESK, &slow);
         let third = on(again + SETTLE, DESK, &slow);
         let kept = chooser.spurned.get(HALL).copied();
+        let says = chooser.keeps_off(HALL, again + SETTLE);
 
         assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
         assert_eq!(first, Choice::Back(DESK.into()), "and gone back from");
@@ -2365,10 +2372,61 @@ pub(crate) mod tests {
             "and gone back from again"
         );
         assert_eq!(kept, Some(again + SPURNED), "so kept off the hour");
-        assert_ne!(
+        assert!(says, "and said to be kept off");
+        assert_eq!(
             third,
+            Choice::Stay,
+            "the hall kept off, it stays where it is"
+        );
+    }
+
+    #[test]
+    fn a_back_on_the_usual_an_hour_after_the_last_keeps_nothing_off() {
+        let start = Instant::now();
+        let unloaded = |p95| Measured {
+            moving: None,
+            ..carried(p95, 0.0)
+        };
+        let (slow, there) = (unloaded(76), unloaded(50));
+        let mut chooser = after_a_bad_minute(DESK);
+        let around = [desk_at(-50, Some(unloaded(14))), hall(-45, Some(20), None)];
+        let mut on = |at, point, measured: &Measured| {
+            chooser.choose(at, (point, measured, -50, CH52), &around, false)
+        };
+        let back = start + TRIAL;
+        // Retried so its trial ends just as the first back's hour does.
+        let retry = back + SPURNED.saturating_sub(TRIAL);
+        let primed = retry
+            .checked_sub(Duration::from_secs(60))
+            .expect("after the start");
+
+        let tried = on(start, DESK, &slow);
+        let first = on(back, HALL, &there);
+        on(primed, DESK, &slow);
+        let retried = on(retry, DESK, &slow);
+        let second = on(back + SPURNED, HALL, &there);
+        let kept = chooser.keeps_off(HALL, back + SPURNED);
+        let why = chooser.went_back();
+
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+        assert_eq!(first, Choice::Back(DESK.into()), "and gone back from");
+        assert_eq!(
+            retried,
             Choice::Try(HALL.into()),
-            "and not tried a third time"
+            "tried again near the hour"
+        );
+        assert_eq!(
+            second,
+            Choice::Back(DESK.into()),
+            "and gone back from again"
+        );
+        assert!(
+            matches!(why, Some(Against::Usually(_))),
+            "on the usual again: {why:?}"
+        );
+        assert!(
+            !kept,
+            "an hour on, it counts as a first, so nothing's kept off"
         );
     }
 
@@ -2553,7 +2611,7 @@ pub(crate) mod tests {
         let usually = (Some(Against::Usually(usual)), None);
         assert_eq!(
             learned, usually,
-            "a usual learned under load judges a download"
+            "a trial made and over under load is judged by its usual"
         );
 
         let cut = judged(moving(136, 50), Some(unloaded(20)), &moving(40, 30));
