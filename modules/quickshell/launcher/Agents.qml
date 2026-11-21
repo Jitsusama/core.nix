@@ -405,22 +405,30 @@ Provider {
     // (readable): at home, in Agents or Now, or its catalogue walked. Shut,
     // or opened into another place, nothing does, so
     // each gives what it last made and reads nothing else, and a change
-    // nobody sees makes none of them; each is made again as the launcher
-    // opens, three or four rows (keeps-pace). Joel's shut launcher made 312
-    // of Agents' rows in 240 s (YQZGPC, 2026-11-10). For You's (forYou)
+    // nobody sees makes none of them. Joel's shut launcher made 312
+    // of Agents' rows in 240 s (YQZGPC, 2026-11-10). Read again, each is
+    // kept while everything it's made from is as it was (keptAlike), so
+    // an opening or a step out of Now makes one again only if that changed
+    // while nothing read it: each - out of Now made 4 to 6 of them anew as
+    // home was held, 47 to 72 ms of Joel's (2026-11-21, 13:13). Budgets
+    // and Spec are made of a row their source makes afresh as it's asked,
+    // so they're made again each time. For You's (forYou)
     // are made shut too, since the tray counts what waits there, but only
-    // as a landing comes, goes or changes. A plain object, so keeping one
-    // notifies nothing.
-    readonly property var lastMade: ({})
-    function madeBefore(name, none) {
-        return name in lastMade ? lastMade[name] : none;
+    // as a landing comes, goes or changes. A keeper (Provider.qml's), so
+    // keeping one notifies nothing.
+    readonly property var ownMade: keeper()
+    function madeBefore(name) {
+        return ownMade.rows[name]?.row ?? null;
     }
-    onToReopenChanged: lastMade.toReopen = toReopen
-    onLandedChanged: lastMade.landed = landed
-    onRecentChanged: lastMade.recent = recent
-    onStartChanged: lastMade.start = start
-    onStartNewWorkChanged: lastMade.startNewWork = startNewWork
-    onBudgetsChanged: lastMade.budgets = budgets
+    // Made here and kept by its name while `parts` are as they were.
+    function ownKept(name, parts, make) {
+        return keptAlike(ownMade, name, parts, make);
+    }
+    // Made anew, and kept by its name for while nothing reads it.
+    function ownAnew(name, row) {
+        ownMade.rows[name] = { from: null, row: row };
+        return row;
+    }
 
     // The daemon's rows of Agents, each record held by its key, its fields
     // under `row` (Y2YBTS's ready-rows.md), watched whether or not the
@@ -1611,9 +1619,10 @@ Provider {
         return (provider.launcher?.sources ?? []).find(one => one.settings.name === name) ?? null;
     }
 
-    readonly property var start: {
-        if (!readNow)
-            return madeBefore("start", null);
+    // Made of its words alone, what it holds read as it's stepped into.
+    readonly property var start: readNow ? ownKept("start", [Words.all, provider.weight],
+        startMade) : madeBefore("start")
+    function startMade() {
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
         // Its drawer says what it holds, as every row's does (Joel,
@@ -1644,9 +1653,9 @@ Provider {
     // once it's up (openSprouted). Folded, found by its name, as Start a Session is.
     // Its rows are made only when it's stepped into (inside), so it costs
     // the first letter typed at home one folded row.
-    readonly property var startNewWork: {
-        if (!readNow)
-            return madeBefore("startNewWork", null);
+    readonly property var startNewWork: readNow ? ownKept("startNewWork",
+        [Words.all, provider.weight], startNewWorkMade) : madeBefore("startNewWork")
+    function startNewWorkMade() {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
@@ -2050,9 +2059,12 @@ Provider {
     // there only while any are. Its count is at its side, never in its
     // name, which would change as he reopens them, and its note says where
     // they came from.
-    readonly property var toReopen: {
-        if (!readNow)
-            return madeBefore("toReopen", null);
+    // Made of what Sessions offers and how it words each, Not Now's last
+    // boot read as it's stepped into.
+    readonly property var toReopen: readNow ? ownKept("toReopen", [Words.all, provider.weight,
+        Sessions.toReopen, Sessions.reopenRows, Sessions.reopenPlace], toReopenMade)
+        : madeBefore("toReopen")
+    function toReopenMade() {
         const lost = Sessions.toReopen;
         if (lost.length === 0)
             return null;
@@ -2623,11 +2635,12 @@ Provider {
         };
     }
 
-    readonly property var landed: {
-        if (!readNow)
-            return madeBefore("landed", null);
-        // Made again as the day Joel is in is told, so its step is too.
-        void landedDayMoves;
+    // Made again as the day Joel is in is told, so its step is too, and as
+    // the day turns, which renames the days before.
+    readonly property var landed: readNow ? ownKept("landed", [Words.all, provider.weight,
+        landedDayMoves, landedDays, Calendars.today, landings, landedEarlier], landedMade)
+        : madeBefore("landed")
+    function landedMade() {
         const words = Words.of("agents:landed");
         return thingRow({
             key: "agents:landed",
@@ -2830,11 +2843,9 @@ Provider {
     // or the day turns, which rewords when each closed: Sessions had made
     // every closed session anew as any one changed, and compared nine of
     // Joel's, about 30,000 characters, each time (2026-11-10).
-    readonly property var recent: {
-        if (!readNow)
-            return madeBefore("recent", null);
-        void recentMoves;
-        void Calendars.today;
+    readonly property var recent: readNow ? ownKept("recent", [Words.all, provider.weight,
+        recentMoves, Calendars.today, rowsKind?.held], recentMade) : madeBefore("recent")
+    function recentMade() {
         const held = Object.values(rowsKind?.held ?? {})
             .filter(one => one?.kind === "recent" && one.recent);
         const listed = Order.sorted(held, Order.smaller(one => one.order))
@@ -2899,9 +2910,9 @@ Provider {
     // lists no budgets: with one budget, which its periods already say,
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
-    readonly property var budgets: {
-        if (!readNow)
-            return madeBefore("budgets", null);
+    readonly property var budgets: readNow ? ownAnew("budgets", budgetsMade())
+        : madeBefore("budgets")
+    function budgetsMade() {
         // AI spend's row as it reads now, since AI spend makes its rows
         // only while it's wanted, which it isn't while Agents is held;
         // found among them where it can't say (1KZFHC, 2026-11-10).
@@ -2931,9 +2942,8 @@ Provider {
     // cadence-spec hasn't answered or isn't on this machine. Listed as its
     // part, as Budgets is, and never among Agents' own rows as well, where
     // its key twice over moved the cursor between them (2026-11-18).
-    readonly property var spec: {
-        if (!readNow)
-            return madeBefore("spec", null);
+    readonly property var spec: readNow ? ownAnew("spec", specMade()) : madeBefore("spec")
+    function specMade() {
         const place = source("spec");
         const head = place?.head() ?? null;
         if (head === null)
@@ -2946,7 +2956,6 @@ Provider {
             hue: head.hue || "agent"
         }, () => place.axes());
     }
-    onSpecChanged: lastMade.spec = spec
 
     things: [toReopen, landed, budgets, spec, recent, start, startNewWork]
         .filter(row => row !== null)
