@@ -14,12 +14,16 @@ heard() {
   fi
 }
 
-heard "a shut act's refusal" "launcher: verb:wifi-forget refused: 29 letters"
+heard "a shut act's refusal" "launcher: verb:wifi-forget refused: refused, 29 letters"
 heard "a withheld act's why" "launcher: verb:wifi-join withheld: 41 letters"
-heard "what an act asks besides, refused" "launcher: verb:copy's also refused: 30 letters"
+heard "what an act asks besides, refused" \
+  "launcher: verb:copy's also refused: gone, 30 letters"
 error='{"code":"busy","said":"21 letters","message":"19 letters"}'
 heard "a daemon's error, its code whole" \
   "launcher: wifi's daemon didn't answer 4 letters typed in \"wifi\": $error"
+heard "a daemon's search refused, its code whole" \
+  "launcher: wifi's daemon can't search, asked again a minute on: "\
+'{"code":"unread","said":"29 letters"}'
 
 if grep -a 'launcher:' "$said" | grep -aF 'Harbour'; then
   echo "a line says the daemon's words with reports off"

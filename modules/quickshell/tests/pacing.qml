@@ -1141,7 +1141,8 @@ QtObject {
             Presented.typedInSaid("door", "wifi:Harbour House", true),
             '"door" typed in "wifi:Harbour House"');
         // An act's key is said bare while reports are on, as the desktop's
-        // tests read it, but a calendar's words in it still can't end the line.
+        // tests read it, but a calendar's words in it still can't end the line,
+        // nor can a key the launcher says whole with them off.
         check(failures, "an act's key is said by its verb with reports off",
             Presented.actShown("verb:calendar:standup", false), "verb:calendar");
         check(failures, "and bare while they're on",
@@ -1149,15 +1150,27 @@ QtObject {
         check(failures, "its line breaks and quotes escaped",
             Presented.actShown('verb:calendar:a "b"\nlauncher: x', true),
             'verb:calendar:a \\"b\\"\\nlauncher: x');
+        check(failures, "and escaped with reports off where it's said whole",
+            Presented.actShown("place:x\nlauncher: y", false), "place:x\\nlauncher: y");
+        // A refusal's code, which its line says whole, escaped as a key is.
+        const refusing = { error: { code: "refused", refused: "WrongPassword" } };
+        check(failures, "a refusal says the daemon's own reason first",
+            Presented.codeShown(refusing), "WrongPassword");
+        check(failures, "and its code where it gives none",
+            Presented.codeShown({ error: { code: 'go"ne\n' } }), 'go\\"ne\\n');
+        check(failures, "and that it gave none", Presented.codeShown({}), "no code");
+        check(failures, "or that no answer came", Presented.codeShown(null), "no answer");
         // A daemon's error says its codes whole, being no one's words, and
         // its words by how many letters, since they can name a row.
         const busy = { code: "busy", refused: "WrongPassword", said: "Harbour is busy", at: 2 };
         check(failures, "a daemon's error keeps its codes and numbers with reports off",
             Presented.errorShown(busy, false),
             '{"code":"busy","refused":"WrongPassword","said":"15 letters","at":2}');
-        check(failures, "and says the words of what it holds by how many letters",
+        check(failures, "and says a field holding more by its JSON's letters",
             Presented.errorShown({ code: "x", detail: { name: "Harbour" } }, false),
             '{"code":"x","detail":"18 letters"}');
+        check(failures, "and an error that's words alone by how many letters",
+            Presented.errorShown("couldn't join Harbour", false), '"21 letters"');
         check(failures, "and is whole while they're on",
             Presented.errorShown(busy, true), JSON.stringify(busy));
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on

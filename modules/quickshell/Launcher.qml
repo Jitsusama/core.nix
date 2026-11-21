@@ -6573,7 +6573,8 @@ Scope {
         if (answersLate !== null && answersLate.sources.includes(source)) {
             const late = Date.now() - answersLate.began;
             console.info(`launcher: ${source.settings?.name ?? ""} answered`
-                + ` "${answersLate.text}" ${late} ms after its key, past the`
+                + ` ${Presented.typedShown(answersLate.text, Options.reports)} ${late} ms after its`
+                + ` key, past the`
                 + ` ${answersWaitedFor} ms its list waited`);
             Report.say(`answered late ${source.settings?.name ?? ""}`);
             answersLate.sources = answersLate.sources.filter(one => one !== source);

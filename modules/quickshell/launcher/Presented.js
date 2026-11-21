@@ -335,11 +335,18 @@ function typedInSaid(typed, within, whole) {
 
 // An act's key as its lines in the journal say it: by its kind alone unless `whole`, as rowShown
 // says a row's, and otherwise bare, since an act's key is its daemon's own and the desktop's tests
-// read it so, with what quoting would escape still escaped, so a calendar's words in it can't end
-// the line early or forge another.
+// read it so, with what quoting would escape escaped either way, so a calendar's words in it, or a
+// line break in a kind, can't end the line early or forge another.
 function actShown(key, whole) {
-    const said = rowShown({ key }, whole);
-    return whole ? quoted(said).slice(1, -1) : said;
+    return quoted(rowShown({ key }, whole)).slice(1, -1);
+}
+
+// A daemon's code for a refusal, as wifid's WrongPassword, said whole whatever the reports setting
+// since it names no one, escaped as actShown escapes a key; "no answer" where none came, and
+// "no code" where one came without.
+function codeShown(answer) {
+    const code = answer ? (answer.error?.refused ?? answer.error?.code ?? "no code") : "no answer";
+    return quoted(String(code)).slice(1, -1);
 }
 
 // The fields of a daemon's error that are codes, no one's words, so said whole whatever the
@@ -349,10 +356,11 @@ const errorCodes = new Set(["code", "kind", "refused"]);
 // A daemon's error as a line in the journal may say it: whole as JSON where `whole`, and otherwise
 // with its codes, numbers and truths whole and each of its words as typedShown says typed words,
 // since a daemon's own words can name a row, as "couldn't join Harbour House" (Y2YBTS, 2026-11-20,
-// 41ca61c4).
+// 41ca61c4). An error that's words alone, against the contract, is said as those words are.
 function errorShown(error, whole) {
     if (whole || error === null || typeof error !== "object") {
-        return JSON.stringify(error ?? null);
+        const words = typeof error === "string" && !whole;
+        return JSON.stringify(words ? typedShown(error, false) : (error ?? null));
     }
     const told = {};
     for (const [field, value] of Object.entries(error)) {

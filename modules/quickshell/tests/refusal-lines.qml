@@ -1,6 +1,7 @@
 // Drives the real ReadyRows.qml, through Wi-Fi's place (launcher/Wireless.qml), to each line
 // its journal says of a daemon's refusal: an act that shuts the launcher refused, one withheld,
-// what an act asks besides refused, and words typed in a row that the daemon didn't answer. Each
+// what an act asks besides refused, words typed in a row that the daemon didn't answer, and a
+// search of the whole place it can't make. Each
 // refusal names a network in the daemon's own words, as "couldn't join Harbour House" would,
 // and the check around it reads the shell's output, with reports off, for each line saying how
 // many letters rather than the words (Y2YBTS, 2026-11-20, 41ca61c4). What's told on screen
@@ -80,6 +81,7 @@ ShellRoot {
             withheld();
             alsoRefused();
             typedRefused();
+            searchRefused();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error} at ${error.stack}`);
@@ -97,10 +99,11 @@ ShellRoot {
             standIn.toldWhys.slice(-1), ["couldn't forget Harbour House"]);
     }
 
-    // An act its place won't send as it's asked, withheld in the place's words.
+    // An act its place won't send as it's asked, withheld in the place's words, its key naming
+    // the network as a calendar's act names its meeting, so its line must leave that out too.
     function withheld() {
         wireless.served.whyWithheld = key => `${key.slice(5)} waits on your own key press`;
-        wireless.served.withheld(root.key, { key: "verb:wifi-join",
+        wireless.served.withheld(root.key, { key: "verb:wifi-join:Harbour House",
             ask: { ask: "act", act: "join", network: "Harbour House" } });
         Expect.same("a withheld act is told on screen in its place's words",
             standIn.toldWhys.slice(-1), ["Harbour House waits on your own key press"]);
@@ -119,5 +122,12 @@ ShellRoot {
         wireless.served.typedIn(root.key, "door");
         refuse(said => said.ask === "search",
             { code: "busy", said: "Harbour House is busy", message: "Harbour House holds" });
+    }
+
+    // Words searched for over the whole place, which the daemon can't search, in its words.
+    function searchRefused() {
+        wireless.served.search("door", 0);
+        refuse(said => said.ask === "search" && !said.within,
+            { code: "unread", said: "couldn't search Harbour House" });
     }
 }
