@@ -725,4 +725,19 @@ pub(crate) mod tests {
         );
         assert_eq!(rows(&[filter], &words()), Vec::<Value>::new());
     }
+
+    // The mix a recording makes of the microphone and the desktop's sound
+    // (modules/quickshell's recording-sound.sh) lives only while it
+    // records, and nothing is played through it, so it's no output.
+    #[test]
+    fn a_recordings_mix_isnt_listed() {
+        let mix = device(
+            "recording-4242",
+            true,
+            "Recording",
+            &json!({"recording-sound.mix": "true"}),
+        );
+        let speakers = device("speakers", true, "Speakers", &json!({}));
+        assert_eq!(names(&rows(&[mix, speakers], &words())), ["Speakers"]);
+    }
 }
