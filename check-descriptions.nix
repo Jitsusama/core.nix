@@ -4846,6 +4846,11 @@
     the power profile daemon's unit, the XPS 14's patched one too, waits for neither the network nor
     the boot's end, and keeps upstream's settings
   '';
+  the-processor-starts-with-its-fixed-microcode = ''
+    the XPS 14's initrd is set to start with Intel microcode giving its processor, 06-cc-02 on
+    platform 0x80, revision 0x11d or newer, which fixes functional issues close to the hang behind
+    two of its resets
+  '';
   the-profile-saves-power-on-a-low-battery = ''
     the power profile follows the charger, goes to power saver below 20% on battery, and holds a
     profile picked by hand
@@ -4878,6 +4883,12 @@
   the-queue-is-heard-from-the-node = ''
     the machine queue is the harness's file as the node's record holds it, none of a version it
     doesn't read, and a write of only when it was written says nothing new
+  '';
+  the-rest-residency-adds-every-core = ''
+    the XPS 14's journal line on rest adds each rest state over every core with rest states in its
+    number's place, past state9 and cpu9, with each state's exit latency and the count of cores
+    added, says plainly when the kernel has no cpuidle driver, and fails when the driver or its
+    states can't be read or a core's states differ from the first core's in name or number
   '';
   the-sandboxes-door-trusts-no-one = ''
     the Nix daemon's door for sandboxes, run as its socket unit runs it, answers as a daemon and
@@ -4969,6 +4980,14 @@
     to most; acts are asked of the socket, spawning nothing; told by the socket, a change remakes
     only the rows it changed, and a watch never answered is drawn from what's held while still
     reading
+  '';
+  the-deep-rest-hold-starts-unless-turned-off = ''
+    the XPS 14's hold keeping the cores from their deepest rest starts with the machine, and with
+    its one setting turned off nothing wants, requires or upholds it
+  '';
+  the-deep-rest-hold-stops-short-of-c6 = ''
+    the XPS 14's hold bounds the cores' exit latency below every rest state from the first C6 on
+    and above every shallower one, by the laptop's cpuidle table as it read on 20 November
   '';
   the-desktop-speaks-its-javascript = ''
     the shell calls no method Quickshell's JavaScript lacks
@@ -6082,6 +6101,13 @@
     the shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it
     sends; the shaper follows the connection down to 4 Mbit/s and back, and down again when the
     uploads ride a second link to the same router
+  '';
+  vm-the-cores-stay-out-of-deep-rest = ''
+    a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit
+    latency at 20 us; stopped, the bound goes at once; started by hand, it holds by the time its
+    start returns; a hold killed by TERM or KILL comes back; and the journal's line on how long
+    each rest state ran, written in its confinement over haltpoll's rest states, names the states
+    root sees
   '';
   vm-the-desk-lights-come-back = ''
     a Litra plugged back in while a camera streams is told to light again, and the camera stopping

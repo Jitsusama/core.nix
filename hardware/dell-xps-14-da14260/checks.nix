@@ -329,6 +329,86 @@ in
       touch $out
     '';
 
+  # Intel's microcode 0x11d fixes functional issues in this processor
+  # (06-cc-02; platform bit 0x80, as cpu0's microcode/processor_flags read
+  # on 20 November, which the release's pf_mask 0x94 covers), whose errata
+  # name a hang like the firmware recorded at two resets, so the image the
+  # initrd is set to start with must give it at least that. The image goes
+  # first, before anything else the initrd holds, as the kernel reads early
+  # microcode only there. This reads the setting nixpkgs's initrd builders
+  # prepend, rather than a built initrd, which would cost the kernel's
+  # build; after a switch and a reboot, /proc/cpuinfo's microcode line says
+  # the rest.
+  the-processor-starts-with-its-fixed-microcode =
+    let
+      inherit ((bareNixos [ self.nixosModules.dell-xps-14-da14260 ]).config.boot.initrd) prepend;
+    in
+    pkgs.runCommandLocal "the-processor-starts-with-its-fixed-microcode"
+      {
+        nativeBuildInputs = [
+          pkgs.iucode-tool
+          pkgs.libarchive
+        ];
+      }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/early-microcode-is-at-least.sh} \
+          ${builtins.head prepend} 0x000c06c2 0x80 0x011d
+        touch $out
+      '';
+
+  # The hold on the cores' deep rest is a test of keeping them out of C6S
+  # and deeper, so its bound has to refuse every state from the first C6
+  # on, and no more, by the laptop's cpuidle table as it read on 20
+  # November (deep-rest.nix); the kernel's own table can move with the
+  # kernel, which the journal's line shows.
+  the-deep-rest-hold-stops-short-of-c6 =
+    let
+      inherit (bareNixos [ self.nixosModules.dell-xps-14-da14260 ]) config;
+      bound = lib.toInt config.systemd.services.cores-kept-from-deep-rest.environment.BOUND_US;
+      inherit (lib.importJSON ./rest-states.json) states;
+      firstC6 = lib.lists.findFirstIndex (state: lib.hasPrefix "C6" state.name) null states;
+    in
+    holds "the-deep-rest-hold-stops-short-of-c6"
+      "The deep-rest hold's bound lets the cores into C6 or deeper, or keeps them out of a shallower state, by the XPS 14's rest states as they read on 20 November."
+      (
+        firstC6 != null
+        && lib.all (state: state.latency <= bound) (lib.take firstC6 states)
+        && lib.all (state: state.latency > bound) (lib.drop firstC6 states)
+      );
+
+  # Joel said yes to the hold on 20 November, so it starts with the
+  # machine, and its one setting turning it off leaves nothing starting it.
+  the-deep-rest-hold-starts-unless-turned-off =
+    let
+      startedBy =
+        modules:
+        let
+          inherit (bareNixos ([ self.nixosModules.dell-xps-14-da14260 ] ++ modules)) config;
+          inherit (config.systemd) services targets;
+          hold = services.cores-kept-from-deep-rest;
+          pulls = unit: unit.wants or [ ] ++ unit.requires or [ ] ++ unit.upholds or [ ];
+          pullsHold = _: unit: lib.elem "cores-kept-from-deep-rest.service" (pulls unit);
+          pulling = lib.filterAttrs pullsHold (services // targets);
+        in
+        hold.wantedBy ++ hold.requiredBy ++ hold.upheldBy or [ ] ++ lib.attrNames pulling;
+    in
+    holds "the-deep-rest-hold-starts-unless-turned-off"
+      "The deep-rest hold doesn't start with the XPS 14, or something still starts it once turned off."
+      (
+        startedBy [ ] == [ "multi-user.target" ]
+        && startedBy [ { jitsusama.dellXps14.keepCoresFromDeepRest = false; } ] == [ ]
+      );
+
+  # The journal's line on rest adds each state over every core, by its
+  # number, so a core's state lands beside the same state of the others,
+  # and fails rather than say there are none when it can't read them.
+  the-rest-residency-adds-every-core =
+    pkgs.runCommandLocal "the-rest-residency-adds-every-core" { }
+      ''
+        ${lib.getExe pkgs.bash} ${./tests/rest-residency-adds-every-core.sh} ${./rest-residency.sh}
+        touch $out
+      '';
+
   # A model runs on the NPU only once its compiler has turned it into the
   # NPU's program, and the driver looks for the compiler in its own
   # directory, so both have to be in the graphics driver directory that

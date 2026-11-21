@@ -833,6 +833,68 @@ seconds instead of freezing the laptop. If it happens again, the record is in
 `/var/lib/systemd/pstore`, and the next step is a kernel built with KASAN,
 which names both the code that freed the memory and the code that used it.
 
+### The Resets
+
+Between 17 and 20 November the laptop also reset itself three times,
+mid-work and docked, with the journal stopping dead and no panic in pstore.
+The firmware kept an Intel Crash Log of each in BERT, which the
+firmware-errors module copies at the next boot, and Intel's own decoder,
+[`iclg`][40], reads them:
+
+- **Twice, the same fatal core timeout.** A P-core's machine check bank 3
+  read `0xbe000000e1840400`: an uncorrected, processor-context-corrupt
+  internal-timer error, MCACOD `0400h` and MSCOD `E184h`, the core's
+  three-strike timeout for a transaction that never came back. The record
+  flags the memory controller too. The power controller's firmware then
+  reset the whole platform, and PHAT's reset reason says the same,
+  `pmc_fw`.
+- **Once, the management engine.** It asked for the global reset itself,
+  `megbl`, with no core record.
+
+Other owners of the DA14260 and DA16260 report the same resets on firmware
+1.2.1 to 1.13.0, mostly on battery, with the power light blinking 1 amber
+and 6 white; 1.13.0 doesn't fix them. Two things here answer what can be
+answered without Dell:
+
+- **Microcode 0x11d.** Intel's release of 10 November takes this processor
+  (06-cc-02) from 0x11c to 0x11d for functional issues. Its errata list
+  PTL039, a hang when several P-cores leave a low-power state at once under
+  heavy ring traffic, with an internal-timer machine check of MCACOD
+  `400h`. That is close to these records, though its MSCOD is `000h`.
+  [The hardware file][2] takes that release until nixpkgs has it, and
+  `the-processor-starts-with-its-fixed-microcode` checks that the initrd
+  is set to start with it. It loads only at a boot, since the kernel can't
+  load microcode while it runs, and `grep -m1 microcode /proc/cpuinfo`
+  reading `0x11d` after one is the proof it took.
+- **A hold on deep rest, as a test.** One owner's resets stopped with the
+  cores kept out of C6S and C10. From boot, `cores-kept-from-deep-rest`
+  keeps every core able to come out of rest within 20 us. On 20 November
+  the P-cores and E-cores alike gave C1 an exit latency of 1 us, C1E 10,
+  C6S 300 and C10 370 in cpuidle (kept in `rest-states.json`), so they
+  rest no deeper than C1E. What that costs hasn't been measured; with no
+  core in C6 the package stays out of its own deep states too. A start
+  returns only once the kernel's bound reads 20, and fails otherwise, so
+  `systemctl status` showing it active means the hold is real.
+  `systemctl stop` ends it at once, until the next boot or switch, and
+  `jitsusama.dellXps14.keepCoresFromDeepRest = false` turns it off from
+  the next boot. Every five minutes the journal says how long the cores
+  have rested in each state since boot, with each state's exit latency as
+  the kernel has it then (`journalctl -u cores-rest-residency`): while
+  the hold runs, C6S's and C10's totals stop growing. That shows the
+  kernel kept to the hold, not that the chip stayed out of C6, which only
+  its own counters say (`turbostat`'s `CPU%c6`).
+
+The hold starts with the switch that brings both, and the microcode at
+the next boot, so from then on the two run together. If the resets stop,
+that says the two together answer them, not which one did. Each boot's
+journal names the revision loaded (`microcode: Current revision`) and
+whether the hold ran, so turning the hold off later to win back power is
+a test of the microcode alone, worth a week before calling it.
+
+If a reset comes again, the next boot's
+`/var/lib/firmware-errors/<boot id>/` holds its record, and the firmware's
+own Power Event Log, under F2's Maintenance, keeps only about the last ten.
+
 ### The Light Sensor
 
 The sensor hub shows its ambient light sensor twice, as two `als` devices
@@ -1741,3 +1803,4 @@ sealed to.
 [37]: ../hardware/apple-macbook-pro-m4-pro-a3401/kernel/README.md
 [38]: https://github.com/aurora-silicon
 [39]: ../hardware/microsoft-surface-laptop-4-1958/touch/package.nix
+[40]: https://github.com/intel/crashlog
