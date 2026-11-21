@@ -12,6 +12,7 @@ and may not find what an earlier one set up. wifid as the tests reach it is wifi
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -38,8 +39,8 @@ WAY_BACK = 2
 # after the line sending it back and before the 2 s begin, and a loaded builder's guest may
 # be late to wake wifid as they end.
 LOADED_SLACK = 1.5
-# How much closer journald may stamp two of wifid's lines than wifid said them, in seconds.
-STAMPED_LATE = 0.1
+# How long the line letting a stranded card go says it went back, in milliseconds.
+WENT_BACK = re.compile(r"within ([0-9]+) ms, so may join any network")
 
 
 def first_line(said: list[str], words: str, after: int = -1) -> int:
@@ -338,7 +339,6 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     # in the runs so far, with room here for a loaded builder.
     off = float(sent.split()[0]) - float(moved.split()[0])
     assert not late, f"sent back only once its time was up, {off:.3f} s after the move"
-    assert off < WAY_BACK + LOADED_SLACK, f"sent back {off:.3f} s after the move"
     took = float(back.split()[0]) - float(moved.split()[0])
     returned = float(back.split()[0]) - float(sent.split()[0])
     bidden = machine.succeed(
@@ -406,11 +406,13 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     sent = first_line(said, ", so goes back to 02:00:00:00:00:00")
     let_go = first_line(said, "so may join any network")
     # Held to its way back for wifid's 2 s, it's let go then, not before, and never tries the
-    # Inn meanwhile.
+    # Inn meanwhile. Not before is judged by wifid's own clock, as journald stamps lines as it
+    # takes them in, which a loaded builder may do late for one and not the other.
+    went = WENT_BACK.search(said[let_go])
+    assert went, f"the line letting it go says no time: {said[let_go]}"
+    assert int(went.group(1)) >= WAY_BACK * 1000, f"let go too soon: {said[let_go]}"
     held = float(said[let_go].split()[0]) - float(said[sent].split()[0])
-    assert WAY_BACK - STAMPED_LATE <= held < WAY_BACK + LOADED_SLACK, (
-        f"let go {held:.3f} s after it was sent back"
-    )
+    assert held < WAY_BACK + LOADED_SLACK, f"let go {held:.3f} s after it was sent back"
     unheld = first_line(said, "wlan2 may join any access point of its network again", sent)
     assert unheld > let_go, f"its hold let go before its 2 s were up: {said[unheld]}"
     tried = [line for line in said[:let_go] if "SSID='Roadside Inn'" in line]

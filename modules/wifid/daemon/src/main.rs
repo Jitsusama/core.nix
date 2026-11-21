@@ -378,29 +378,13 @@ async fn follow(
         let deadline = joining.as_ref().map(|joining| joining.deadline);
         let stalled = air.stalls.due();
         let unreached = wifid.arrivals.borrow().due();
-        // In order, so what wpa_supplicant has said is taken in before a
-        // move's time is judged: a move that completed as its time ran
-        // out, the signal still queued, would otherwise be sent back off
-        // the point it reached.
         tokio::select! {
-            biased;
             Some(change) = owners.recv() => {
                 wifid.owner_changed(&change, &mut air, &mut networks).await;
             }
             Some(Ok(message)) = links.recv() => wifid.link_changed(&message, &mut networks).await,
             Some(Ok(message)) = signals.recv() => {
-                air.take_in(bus, &message).await;
-                for card in std::mem::take(&mut air.left) {
-                    let free = joining.as_ref().is_none_or(|joining| joining.card != card);
-                    wifid.came_off(&card, free).await;
-                }
-                for card in std::mem::take(&mut air.settled) {
-                    let free = joining.as_ref().is_none_or(|joining| joining.card != card);
-                    wifid.settled(&card, free).await;
-                }
-                for card in std::mem::take(&mut air.gone) {
-                    wifid.gone(&card).await;
-                }
+                take_signal(wifid, &mut air, joining.as_ref(), &message).await;
             }
             Some(event) = switched.recv() => {
                 let was = radios.on();
@@ -439,6 +423,16 @@ async fn follow(
                 }
             }
             () = until(unreached), if unreached.is_some() => {
+                // What wpa_supplicant has said is taken in before a move's
+                // time is judged: a move that completed as its time ran
+                // out, the signal still queued, would otherwise be sent
+                // back off the point it reached. Only what's queued now is,
+                // so signals coming without end can't hold the judging off.
+                for _ in 0..signals.len() {
+                    if let Ok(Ok(message)) = signals.try_recv() {
+                        take_signal(wifid, &mut air, joining.as_ref(), &message).await;
+                    }
+                }
                 let joining = joining.as_ref().map(|joining| joining.card.as_str());
                 wifid.overdue(joining, Instant::now()).await;
             }
@@ -459,6 +453,28 @@ async fn follow(
             }
             else => return Ok(()),
         }
+    }
+}
+
+/// Takes in a signal of wpa_supplicant's, then each card it says came off
+/// its network, settled on one or went. A card in a join the shell asked
+/// for isn't free, as the join turns its networks on as it ends.
+async fn take_signal(
+    wifid: &Wifid<'_>,
+    air: &mut Air<'_>,
+    joining: Option<&Joining>,
+    message: &zbus::Message,
+) {
+    air.take_in(wifid.bus, message).await;
+    let free = |card: &str| joining.is_none_or(|joining| joining.card != card);
+    for card in std::mem::take(&mut air.left) {
+        wifid.came_off(&card, free(&card)).await;
+    }
+    for card in std::mem::take(&mut air.settled) {
+        wifid.settled(&card, free(&card)).await;
+    }
+    for card in std::mem::take(&mut air.gone) {
+        wifid.gone(&card);
     }
 }
 
@@ -769,9 +785,22 @@ impl Air<'_> {
                 }
             }
             "InterfaceRemoved" => {
-                if let Ok(card) = body.deserialize::<OwnedObjectPath>() {
-                    self.gone_under(&format!("{}/", card.as_str()));
+                let Ok(card) = body.deserialize::<OwnedObjectPath>() else {
+                    return;
+                };
+                // Anyone on the bus may send this signal, so a card is
+                // forgotten only once wpa_supplicant no longer answers at
+                // its path. One handed over again since answers at another,
+                // so it's a card of its own, holding networks of its own.
+                let answers = match interface(bus, card.clone()).await {
+                    Ok(interface) => interface.ifname().await.is_ok(),
+                    Err(_) => false,
+                };
+                if answers {
+                    println!("<4>{card} was said gone, but wpa_supplicant still answers for it");
+                    return;
                 }
+                self.gone_under(&format!("{}/", card.as_str()));
             }
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
             // What a card heard is said before it says it's done looking.
@@ -1676,7 +1705,7 @@ impl Wifid<'_> {
                 // Forgotten now, not as the next signal comes, which would
                 // take the holds the cards handed over below have since.
                 for card in std::mem::take(&mut air.gone) {
-                    self.gone(&card).await;
+                    self.gone(&card);
                 }
                 // It starts again on no network, Joel's pick or another,
                 // and with every network on.
@@ -1851,7 +1880,12 @@ impl Wifid<'_> {
             },
             Err(error) => Err(error),
         };
-        selected.map_err(|error| failed(format!("wpa_supplicant didn't join it: {error}")))?;
+        if let Err(error) = selected {
+            // The move it ended kept the card's other networks off, and
+            // with no join to turn them on as it ends, they come on now.
+            self.together(&card.name, true).await;
+            return Err(failed(format!("wpa_supplicant didn't join it: {error}")));
+        }
         println!("<6>joining {name} on {}, as asked", card.name);
         Ok((card.name, new, since))
     }
@@ -2377,13 +2411,8 @@ impl Wifid<'_> {
 
     /// Forgets what a move kept of a card wpa_supplicant has let go of: a
     /// card handed over again holds new networks, which a move it no
-    /// longer makes would keep off. One wpa_supplicant still has keeps
-    /// them, since only a hold wifid remembers is ever lifted.
-    async fn gone(&self, card: &str) {
-        if self.supplicant.get_interface(card).await.is_ok() {
-            println!("<4>{card} was said gone, but wpa_supplicant still has it");
-            return;
-        }
+    /// longer makes would keep off.
+    fn gone(&self, card: &str) {
         self.astray.borrow_mut().remove(card);
         self.alone.borrow_mut().remove(card);
         self.held.borrow_mut().remove(card);
@@ -2441,8 +2470,8 @@ impl Wifid<'_> {
             }
         }
         let stranded = self.arrivals.borrow_mut().stranded(now);
-        for (card, to) in stranded {
-            self.stranded(&card, &to, free(&card)).await;
+        for (card, to, going) in stranded {
+            self.stranded(&card, &to, going, free(&card)).await;
         }
     }
 
@@ -2450,10 +2479,10 @@ impl Wifid<'_> {
     /// time join whatever it hears, its other networks on again, so one
     /// whose point has gone too isn't held to it. It's off the network
     /// Joel picked, if that was the one, as a card come off it is.
-    async fn stranded(&self, card: &str, to: &str, free: bool) {
+    async fn stranded(&self, card: &str, to: &str, going: Duration, free: bool) {
         println!(
             "<4>{card} didn't get back to {to} within {} ms, so may join any network",
-            arrive::BACK_FOR.as_millis()
+            going.as_millis()
         );
         self.free(card, free).await;
         // Not to look again once it's taken another network, as a card
