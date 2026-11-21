@@ -662,6 +662,7 @@ fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
     // nothing and too young for git to drop: its upkeep runs, leaves the
     // store as it was, and exits 0 all the same. These three blobs' names
     // begin 17, the folder of 256 git's count reads.
+    behind.git(&here, &["repack", "--quiet", "-a", "-d"]);
     behind.git(&here, &["config", "gc.auto", "1"]);
     let blobs = real(&running.path("")).join("blobs");
     std::fs::create_dir_all(&blobs).unwrap();
@@ -670,6 +671,11 @@ fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
         std::fs::write(&blob, format!("blob {number}\n")).unwrap();
         behind.git(&here, &["hash-object", "-w", blob.to_str().unwrap()]);
     }
+    let counted = behind.git(&here, &["count-objects", "-v"]);
+    assert!(
+        counted.lines().any(|line| line == "count: 3"),
+        "the store holds loose objects besides the three unreached blobs: {counted}"
+    );
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
     assert_eq!(
@@ -679,23 +685,83 @@ fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
 }
 
 #[test]
-fn gather_its_store_waits_while_another_upkeep_holds_it() {
+fn gather_its_store_is_refused_while_another_upkeep_holds_it() {
     let running = Running::new("code-gather-held");
     let behind = Behind::new(&running);
     let here = behind.here.clone();
-    let git = |args: &[&str]| behind.git(&here, args);
-    // Due, and held by another upkeep's lock, which git's own upkeep
-    // passes by in silence.
-    git(&["config", "gc.autoPackLimit", "1"]);
-    git(&["repack", "--quiet", "-a", "-d"]);
-    behind.commit(&here, "three");
-    git(&["repack", "--quiet", "-d"]);
-    std::fs::write(here.join(".git/objects/maintenance.lock"), "").unwrap();
+    due_by_its_packs(&behind);
+    // Held by another upkeep's lock, which git's own upkeep passes by in
+    // silence.
+    let lock = here.join(".git/objects/maintenance.lock");
+    std::fs::write(&lock, "").unwrap();
     let mut client = running.client();
     let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
     assert_eq!(
         said["error"]["said"], "not gathered: git is already at work in it",
         "Gather Its Store didn't say another upkeep holds the store: {said}"
+    );
+    // A lock older than any gathering is one a killed upkeep left.
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(2);
+    let held = std::fs::File::options().write(true).open(&lock).unwrap();
+    held.set_modified(long_ago).unwrap();
+    let said = client.ask(&json!({"id": 2, "ask": "code:gather", "path": here}));
+    assert_eq!(
+        said["error"]["said"],
+        "not gathered: git left its upkeep's lock behind, in .git/objects/maintenance.lock",
+        "Gather Its Store called a lock left behind one at work: {said}"
+    );
+}
+
+/// Makes the checkout behind `behind` due by its packs alone, two where
+/// its config allows one.
+fn due_by_its_packs(behind: &Behind) {
+    let git = |args: &[&str]| behind.git(&behind.here, args);
+    git(&["config", "gc.autoPackLimit", "1"]);
+    git(&["repack", "--quiet", "-a", "-d"]);
+    behind.commit(&behind.here, "three");
+    git(&["repack", "--quiet", "-d"]);
+}
+
+#[test]
+fn gather_its_store_runs_no_program_its_config_names() {
+    let running = Running::new("code-gather-hooked");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    due_by_its_packs(&behind);
+    let ran = real(&running.path("")).join("ran");
+    let hook = format!("touch {}", ran.display());
+    behind.git(&here, &["config", "gc.recentObjectsHook", &hook]);
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not gathered: its config names a program git's gc would run",
+        "Gather Its Store ran upkeep under a config naming a program: {said}"
+    );
+    assert!(!ran.exists(), "the program the checkout's config names ran");
+}
+
+#[test]
+fn gather_its_store_forgets_no_tree_however_long_gone() {
+    let running = Running::new("code-gather-keeps-trees");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    due_by_its_packs(&behind);
+    let old = real(&running.path("")).join("old");
+    let path = old.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
+    std::fs::remove_dir_all(&old).unwrap();
+    // Gone past git's three months, which its upkeep forgets on its own.
+    let index = here.join(".git/worktrees/old/index");
+    let long_ago = std::time::SystemTime::now() - std::time::Duration::from_hours(24 * 120);
+    let file = std::fs::File::options().write(true).open(&index).unwrap();
+    file.set_modified(long_ago).unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
+    assert_eq!(said["said"], "gathered its store", "{said}");
+    let listed = behind.git(&here, &["worktree", "list", "--porcelain"]);
+    assert!(
+        listed.contains(path),
+        "Gather Its Store forgot a gone tree: {listed}"
     );
 }
 
@@ -743,6 +809,32 @@ fn forget_gone_trees_keeps_a_tree_whose_commits_nothing_else_holds() {
     behind.git(&here, &["config", "gc.reflogExpireUnreachable", "now"]);
     let said = client.ask(&json!({"id": 4, "ask": "code:forget", "path": here}));
     assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
+}
+
+#[test]
+fn forget_gone_trees_passes_a_locked_tree_by_whatever_it_holds() {
+    let running = Running::new("code-forget-locked-stranded");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    let cases = real(&running.path(""));
+    // A locked tree's work no branch has: git never forgets it, so it
+    // holds no Forget back.
+    let locked = cases.join("locked");
+    let path = locked.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
+    behind.commit(&locked, "only-here");
+    behind.git(&here, &["worktree", "lock", path]);
+    std::fs::remove_dir_all(&locked).unwrap();
+    let plain = cases.join("plain");
+    let plain = plain.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "-b", "plain", plain]);
+    std::fs::remove_dir_all(plain).unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
+    assert_eq!(
+        said["said"], "forgot 1 gone tree, kept 1 locked",
+        "Forget Gone Trees was held back by a tree git keeps: {said}"
+    );
 }
 
 #[test]

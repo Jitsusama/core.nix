@@ -150,6 +150,8 @@
         "nothing": "nothing was due",
         "tree": "not gathered: it isn't a checkout's own folder",
         "busy": "not gathered: git is already at work in it",
+        "left": "not gathered: git left its upkeep's lock behind, in .git/objects/maintenance.lock",
+        "hooked": "not gathered: its config names a program git's gc would run",
         "unread": "not gathered: its store couldn't be read",
         "failed": "not gathered: git failed or ran too long"
       }

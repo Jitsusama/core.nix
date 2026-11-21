@@ -65,6 +65,13 @@ pub enum Refused {
     Failed,
     /// A gone tree holds commits no branch or other ref reaches.
     Stranded,
+    /// Git's upkeep left its lock on the store behind, longer ago than any
+    /// gathering may take, as a killed one does, and git keeps no rule to
+    /// call it stale.
+    Left,
+    /// The checkout's config names a program git's gc runs, which a
+    /// `.git` from elsewhere could name, and which no `-c` takes back.
+    Hooked,
 }
 
 impl Refused {
@@ -75,6 +82,8 @@ impl Refused {
             Refused::Unread => "unread",
             Refused::Failed => "failed",
             Refused::Stranded => "stranded",
+            Refused::Left => "left",
+            Refused::Hooked => "hooked",
         }
     }
 }
@@ -298,7 +307,9 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
 /// does, with the git at `git`, where it's due: git's `gc` task, at the
 /// checkout's config, waited on rather than left in the background. A
 /// store read the same after as before was left untouched, whatever git's
-/// exit said, since git's upkeep is quiet when it passes one by.
+/// exit said, since git's upkeep is quiet when it passes one by. Its gc
+/// forgets no tree, as it would forget those gone past three months, so
+/// only Forget Gone Trees forgets one, and keeps what one alone holds.
 ///
 /// # Errors
 ///
@@ -309,11 +320,30 @@ pub fn gather(git: &str, folder: &Path, wait: Duration) -> Result<Tended, Refuse
         return Ok(Tended::Nothing);
     }
     // Git's upkeep passes a store by, and says nothing, while another
-    // holds this lock.
-    if folder.join(".git/objects/maintenance.lock").exists() {
-        return Err(Refused::Busy);
+    // holds this lock, or a killed one left it.
+    if let Ok(lock) = std::fs::metadata(folder.join(".git/objects/maintenance.lock")) {
+        let age = lock.modified().ok().and_then(|at| at.elapsed().ok());
+        return Err(if age.is_some_and(|age| age > wait) {
+            Refused::Left
+        } else {
+            Refused::Busy
+        });
     }
-    let args = ["maintenance", "run", "--auto", "--no-detach", "--quiet"];
+    let hooks = ["config", "--get-all", "gc.recentObjectsHook"];
+    match ran(git, folder, &hooks, Some(READ)) {
+        Ok(said) if !said.trim().is_empty() => return Err(Refused::Hooked),
+        Ok(_) | Err(Some(1)) => {}
+        Err(_) => return Err(Refused::Failed),
+    }
+    let args = [
+        "-c",
+        "gc.worktreePruneExpire=never",
+        "maintenance",
+        "run",
+        "--auto",
+        "--no-detach",
+        "--quiet",
+    ];
     ran(git, folder, &args, Some(wait)).map_err(|_| Refused::Failed)?;
     let after = own(folder)?.weight.ok_or(Refused::Unread)?;
     if after == before {
