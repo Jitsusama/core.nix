@@ -424,7 +424,7 @@ ShellRoot {
         Sessions.wake(like("WARDED", "s-warded", { fence: "strict" }));
         // And one fenced by the fence's own word, which comes back under it,
         // never under strict; and one whose presence names no fence, which
-        // says nothing of how it ran, so it stays refused.
+        // says nothing of how it ran, so it stays asleep, said so.
         Sessions.wake(like("HEDGED", "s-hedged", { fence: "fence" }));
         Sessions.wake(like("UNSAID", "s-unsaid", { fence: undefined }));
         Sessions.wake(like("ALIVE", "s-LIVE01"));
@@ -599,10 +599,10 @@ ShellRoot {
         if (kitties.length < 9 || unopened.length < 3 || !steered || !talked()
             || !kitties.some(one => one.endsWith(" pi --session s-orphan"))
             || root.unfiled === "" && !Niri.spawns.some(one => one.includes("QEST-NOFILE"))
-            || root.fenced === "" && !Niri.spawns.some(one => one.includes("s-fenced"))
+            || !("FENCED" in root.asleep) && !Niri.spawns.some(one => one.includes("s-fenced"))
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
-            || root.unsaid === "" && !Niri.spawns.some(one => one.includes("s-unsaid")))
+            || !("UNSAID" in root.asleep) && !Niri.spawns.some(one => one.includes("s-unsaid")))
             return;
         expect("one parked that no holder keeps is reopened where it left off, once",
             kitties.filter(one => one.startsWith(`${kitty} ${state}/trees/karst zsh -lic `)
@@ -629,14 +629,16 @@ ShellRoot {
             kitties.filter(one => one.startsWith(
                 `${kitty} ${state}/trees/karst env PI_SANDBOX=fence zsh -lic `)
                 && one.endsWith(" pi --session s-hedged")).length === 1, kitties.join("\n"));
-        expect("nor one whose presence names no fence, said as refused",
+        // Each said as one that might come back unfenced, once, never as the
+        // node's refusal, which blames only the holder it lacks.
+        expect("nor one whose presence names no fence, said as one it might bring back unfenced",
             !Niri.spawns.some(one => one.includes("s-unsaid"))
-            && root.unsaid.startsWith("UNSAID isn't parked"),
-            `${root.unsaid}: ${Niri.spawns.join("\n")}`);
-        expect("nor one fenced by a word no fence goes by, said as refused",
+            && root.asleep.UNSAID === "unfenced", `${JSON.stringify(root.asleep)}: `
+                + Niri.spawns.join("\n"));
+        expect("nor one fenced by a word no fence goes by, said so too",
             !Niri.spawns.some(one => one.includes("s-fenced"))
-            && root.fenced.startsWith("FENCED isn't parked"),
-            `${root.fenced}: ${Niri.spawns.join("\n")}`);
+            && root.asleep.FENCED === "unfenced", `${JSON.stringify(root.asleep)}: `
+                + Niri.spawns.join("\n"));
         expect("nor one running here already",
             !Niri.spawns.some(one => one.endsWith(" pi --session s-LIVE01")),
             Niri.spawns.join("\n"));
@@ -853,8 +855,9 @@ ShellRoot {
     property string strayedAct: ""
     property string unfiledAct: ""
     property string unfiled: ""
-    property string fenced: ""
-    property string unsaid: ""
+    // How each Wake left asleep was said, by its address: "unfenced" for
+    // one it might bring back unfenced, else the node's refusal as said.
+    property var asleep: ({})
     // Each steer the node was asked, and whether the one parked had been
     // woken by then.
     property var steers: []
@@ -875,6 +878,12 @@ ShellRoot {
             root.unreached = session.address;
         }
 
+        function onUnfenced(session) {
+            root.expect(`${session.address} is said unfenced once`,
+                !(session.address in root.asleep), JSON.stringify(root.asleep));
+            root.asleep = Object.assign({}, root.asleep, { [session.address]: "unfenced" });
+        }
+
         function onUnsteered(session, why, act) {
             try {
                 // One Wake mustn't reopen, or can't, is said as the node
@@ -890,12 +899,8 @@ ShellRoot {
                     root.unfiledAct = act;
                     return;
                 }
-                if (session.address === "FENCED") {
-                    root.fenced = why;
-                    return;
-                }
-                if (session.address === "UNSAID") {
-                    root.unsaid = why;
+                if (session.address === "FENCED" || session.address === "UNSAID") {
+                    root.asleep = Object.assign({}, root.asleep, { [session.address]: why });
                     return;
                 }
                 // One Wake reopens, said as refused, is said as itself.
