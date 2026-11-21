@@ -40,8 +40,11 @@ let
     # It goes when the camera does, and a camera plugged in again starts it
     # afresh, whatever node it's given.
     bindsTo = [ "dev-%i.device" ];
-    startLimitIntervalSec = 60;
-    startLimitBurst = 3;
+    # systemd counts every start toward a start limit, a camera plugged in
+    # again included, and refuses the next one for the rest of the window,
+    # leaving a streaming camera unwatched; so nothing limits the starts,
+    # and the restarts back off instead.
+    startLimitIntervalSec = 0;
     after = [
       "dev-%i.device"
       "systemd-tmpfiles-setup.service"
@@ -55,11 +58,13 @@ let
       ExecStopPost = "${lib.getExe holders} --usb --forget /dev/%I ${folder}";
       # A run that crashes with its camera still plugged in starts again
       # once its files are forgotten, rather than leaving the camera
-      # unwatched until it's plugged in again; the start limit, three a
-      # minute, ends one that keeps failing, even ten seconds into a
-      # stream, rather than flicker the light all call.
+      # unwatched until it's plugged in again. One that keeps failing, even
+      # ten seconds into a stream, waits longer each time, up to a minute,
+      # rather than flicker the light every few seconds all call.
       Restart = "on-failure";
       RestartSec = "1s";
+      RestartSteps = 4;
+      RestartMaxDelaySec = "1min";
       # The same reach as a loopback's watch, every process's open files,
       # and the camera's own node, opened to read its format and controls.
       # ProtectClock allows only the clock's device unless others are named.
