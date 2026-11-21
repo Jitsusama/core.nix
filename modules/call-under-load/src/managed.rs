@@ -114,19 +114,19 @@ fn gathered(state: &Path) -> std::io::Result<()> {
     fs::write(kept(state).join("why"), all)
 }
 
-/// What to look at, and clear, for an enrolment `why` names: the kept
-/// folder, and the call's cache too where a profile still holds one.
-pub fn look_at(why: &str, state: &Path, cache: &Path) -> String {
+/// What to look at for an enrolment `why` names, and what to clear once
+/// it's been read: the kept folder, and the call's cache too where a
+/// profile still holds one. The command only lists, so pasting it can't
+/// remove the evidence before anyone has read it.
+pub fn look_at(why: &str, state: &Path, cache: &Path) -> (String, String) {
     let kept = kept(state);
-    if why.contains("stays at") {
-        format!(
-            "ls -R {0} {1}; rm -r {0} {1}",
-            kept.display(),
-            cache.display()
-        )
+    let folders = if why.contains("stays at") {
+        format!("{} {}", kept.display(), cache.display())
     } else {
-        format!("ls -R {0}; rm -r {0}", kept.display())
-    }
+        kept.display().to_string()
+    };
+    let clear = format!("Once it's been read, removing {folders} lets the hour's test go on.");
+    (format!("ls -R {folders}"), clear)
 }
 
 /// Copies the folder `from` to `to`, true only when every file was copied.
@@ -144,6 +144,9 @@ fn copy(from: &Path, to: &Path) -> bool {
         whole &= if path.is_dir() {
             copy(&path, &into)
         } else {
+            // An earlier look's copy may be read-only, which a copy onto
+            // it would fail on.
+            let _ = fs::remove_file(&into);
             fs::copy(&path, &into).is_ok()
         };
     }
@@ -218,6 +221,13 @@ mod tests {
         fs::write(far.join("Policy/Enrollment/token"), "f").expect("the far token is written");
         let near_kept = keep(&state, &profile).is_ok();
         let far_kept = keep(&state, &far).is_ok();
+        // A read-only earlier copy doesn't stop a later look keeping it.
+        let copied = kept_from(&state, &profile).join("Policy/Enrollment/token");
+        let mut read_only = fs::metadata(&copied)
+            .expect("the copy is there")
+            .permissions();
+        read_only.set_readonly(true);
+        fs::set_permissions(&copied, read_only).expect("the copy is made read-only");
         let again = keep(&state, &profile).is_ok();
         let off = stays_off(&state);
         let token = |of: &Path| {
@@ -235,6 +245,25 @@ mod tests {
             tokens,
             (Some("t".into()), Some("f".into())),
             "an end's enrolment wasn't kept"
+        );
+    }
+
+    #[test]
+    fn the_hint_only_lists_so_pasting_it_removes_nothing() {
+        let (state, cache) = (Path::new("/s"), Path::new("/c"));
+        let (kept_look, kept_clear) = look_at("what it was given is kept in /s", state, cache);
+        let (stays_look, _) = look_at("its profile stays at /c/p", state, cache);
+        assert_eq!(
+            kept_look, "ls -R /s/call-under-load/enrolled",
+            "the hint does more than list"
+        );
+        assert_eq!(
+            stays_look, "ls -R /s/call-under-load/enrolled /c",
+            "the hint misses the profile that still holds it"
+        );
+        assert!(
+            kept_clear.contains("removing"),
+            "what to clear isn't said: {kept_clear}"
         );
     }
 

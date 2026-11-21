@@ -185,9 +185,9 @@ fn said(hour: &Value, age: u64) -> String {
 /// given, or where Chromium's own machine policy could enrol it.
 fn unmanaged() -> Result<(), Failure> {
     if let Some(why) = managed::stays_off(&state()) {
-        let look = managed::look_at(&why, &state(), &cache());
+        let (look, clear) = managed::look_at(&why, &state(), &cache());
         return Err(Failure::new(Exit::Refused, "the test call stays off")
-            .because(why.trim_end())
+            .because(format!("{}. {clear}", why.trim_end()))
             .try_this(look));
     }
     if let Some(why) = managed::could_enrol(Path::new(managed::POLICIES)) {
@@ -203,10 +203,10 @@ fn unmanaged() -> Result<(), Failure> {
 /// An enrolment this run found: refused, as the next hour would be, in
 /// the run's own words, which say where the evidence is, kept or still in
 /// its profile.
-fn enrolled(why: String) -> Failure {
-    let look = managed::look_at(&why, &state(), &cache());
+fn enrolled(why: &str) -> Failure {
+    let (look, clear) = managed::look_at(why, &state(), &cache());
     Failure::new(Exit::Refused, "a test browser enrolled")
-        .because(why)
+        .because(format!("{why}. {clear}"))
         .try_this(look)
 }
 
@@ -222,7 +222,7 @@ fn run(context: &Context) -> Result<(), Failure> {
     let cache = cache();
     // What a killed run left is looked in before the gates, so an hour
     // skipped for a meeting still finds an enrolment it holds.
-    call::swept(&runtime, &cache, &state()).map_err(enrolled)?;
+    call::swept(&runtime, &cache, &state()).map_err(|why| enrolled(&why))?;
     let skip = |why: String| {
         context
             .say(&format!("no test call this hour: {why}\n"))
@@ -268,7 +268,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         })?;
     let ended = call::run(&chrome, &page, SECONDS, &runtime, &cache, &state()).map_err(
         |fault| match fault {
-            call::Fault::Enrolled(why) => enrolled(why),
+            call::Fault::Enrolled(why) => enrolled(&why),
             call::Fault::Failed(why) => {
                 Failure::new(Exit::Failed, "the test call couldn't be made")
                     .because(why)
