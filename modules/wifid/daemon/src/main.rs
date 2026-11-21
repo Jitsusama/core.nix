@@ -60,7 +60,7 @@ mod vault;
 mod words;
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fs::{self, OpenOptions};
 use std::future;
@@ -112,6 +112,10 @@ const LOOKING_MASK: [u8; 6] = [0x03, 0, 0, 0, 0, 0];
 
 /// How long a card has to join a network the shell asked for.
 const JOINING: Duration = Duration::from_secs(45);
+
+/// How many accounts that let wpa_supplicant's name go are passed over,
+/// the newest kept: their queued signals drain within a tick or two.
+const DEPARTED: usize = 4;
 
 /// wpa_supplicant's name on the bus.
 const SUPPLICANT: WellKnownName<'static> =
@@ -268,9 +272,9 @@ async fn serve(
     // one through, so each is taken only from wpa_supplicant as it runs
     // now (`Air::take_in`), but for a card beginning to look, since the VM
     // test says a card is scanning so, no radio there ever hanging a look
-    // (2026-11-20). Such an account could have a move wait on a look it
-    // made up, up to `LOOK_ENDS`, or a card it says has looked too long be
-    // told to join a network it saved, and nothing more.
+    // (2026-11-20). That's taken only of a card holding no network and in
+    // no move, so such an account can have a card it says has looked too
+    // long told to join a network it saved, and nothing more.
     let rule = MatchRule::builder()
         .msg_type(zbus::message::Type::Signal)
         .path_namespace("/fi/w1/wpa_supplicant1")?
@@ -288,7 +292,7 @@ async fn serve(
         gone: Vec::new(),
         at: HashMap::new(),
         owner: supplicant_owner(&owners).await,
-        departed: HashSet::new(),
+        departed: VecDeque::new(),
     };
     air.hear_all(&bus, &supplicant).await;
 
@@ -751,10 +755,11 @@ struct Air<'a> {
     /// wifid started and from each change of hands since, so its own
     /// signals are told from another's without asking the bus each time.
     owner: Option<String>,
-    /// Every account that held wpa_supplicant's name and let it go, whose
-    /// signals still queued are passed over: they name paths a new
-    /// wpa_supplicant numbers again from nought.
-    departed: HashSet<String>,
+    /// The last few accounts that held wpa_supplicant's name and let it
+    /// go, whose signals still queued are passed over: they name paths a
+    /// new wpa_supplicant numbers again from nought. Those drain within a
+    /// tick or two, so older ones needn't be kept.
+    departed: VecDeque<String>,
 }
 
 impl Air<'_> {
@@ -799,12 +804,14 @@ impl Air<'_> {
             return;
         };
         let sender = header.sender().map(zbus::names::UniqueName::as_str);
-        if sender.is_some_and(|sender| self.departed.contains(sender)) {
+        if sender.is_some_and(|sender| self.departed.iter().any(|gone| gone == sender)) {
             return;
         }
         let body = message.body();
         // Another account's signal is taken only as a card beginning to
-        // look (`serve`), and only its step.
+        // look (`serve`), and only its step, of a card holding no network
+        // and in no move, so it can't end a move, lift a hold or let a
+        // card's other networks on.
         if !self.own(bus, sender).await {
             let changed = body.deserialize::<(String, HashMap<String, OwnedValue>, Vec<String>)>();
             if member.as_str() == "PropertiesChanged"
@@ -813,6 +820,9 @@ impl Air<'_> {
                     .is_some_and(|interface| interface == "org.freedesktop.DBus.Properties")
                 && let Ok((interface, mut changed, _)) = changed
                 && begins_looking(&interface, &changed)
+                && self.cards.get(path.as_str()).is_some_and(|(card, step)| {
+                    may_be_said_looking(step, self.arrivals.borrow().moving(card))
+                })
             {
                 changed.retain(|property, _| property == "State");
                 self.card_changed(bus, path, &changed).await;
@@ -897,16 +907,17 @@ impl Air<'_> {
         }
     }
 
-    /// Whether a signal from this sender is wpa_supplicant's own. One
-    /// from another account has the bus asked again, as a wpa_supplicant
-    /// started since may speak before the change of hands is read, and an
-    /// ask that failed as wifid started knows nobody; that costs a round
-    /// trip for each signal another account sends.
+    /// Whether a signal from this sender is wpa_supplicant's own. Knowing
+    /// nobody, as where the ask failed as wifid started, it asks the bus
+    /// again. Knowing the owner, it never does: one started since is
+    /// read in its change of hands, which forgets all its signals said
+    /// before, and asking for each of another account's signals would let
+    /// any account slow the loop judging a move.
     async fn own(&mut self, bus: &Connection, sender: Option<&str>) -> bool {
         if said_by(sender, self.owner.as_deref()) {
             return true;
         }
-        if sender.is_none() {
+        if sender.is_none() || self.owner.is_some() {
             return false;
         }
         let Ok(owners) = DBusProxy::new(bus).await else {
@@ -1128,6 +1139,13 @@ fn said_by(sender: Option<&str>, owner: Option<&str>) -> bool {
     sender
         .zip(owner)
         .is_some_and(|(sender, owner)| sender == owner)
+}
+
+/// Whether another account may say a card at this step, in a move or not,
+/// began to look: only one holding no network and in no move, for whom a
+/// look made up can't end a join or a move, or let its networks on.
+fn may_be_said_looking(step: &str, moving: bool) -> bool {
+    !supplicant::holds_a_network(step) && !moving
 }
 
 /// Whether another account's signal says only what wifid takes from any:
@@ -1808,7 +1826,10 @@ impl Wifid<'_> {
             // nothing yet, and says each access point as it hears it.
             "fi.w1.wpa_supplicant1" => {
                 if let Some(old) = Option::as_ref(args.old_owner()) {
-                    air.departed.insert(old.to_string());
+                    air.departed.push_back(old.to_string());
+                    if air.departed.len() > DEPARTED {
+                        air.departed.pop_front();
+                    }
                 }
                 air.owner = Option::as_ref(args.new_owner()).map(ToString::to_string);
                 air.gone_under("");
@@ -2364,10 +2385,9 @@ impl Wifid<'_> {
             let step = interface.state().await?;
             if self.on_its_way(&card, bssid, &step) {
                 println!("<7>{card} is {step} on its own, held to {bssid}");
-                // Held, wherever it joins is judged by this point.
-                // One already in a move to it keeps that move, and with it
-                // the way back.
-                if step != "completed" && !self.arrivals.borrow().moving(&card) {
+                // Held, wherever it joins is judged by this point. One
+                // already in a move has it aimed here, keeping its way back.
+                if step != "completed" {
                     self.arrivals
                         .borrow_mut()
                         .heading(&card, bssid, Instant::now());
@@ -2948,10 +2968,10 @@ mod tests {
     }
 
     #[test]
-    fn a_card_is_said_gone_only_by_the_wpa_supplicant_running_now() {
+    fn a_signal_is_taken_whole_only_from_the_wpa_supplicant_running_now() {
         assert!(
             said_by(Some(":1.7"), Some(":1.7")),
-            "wpa_supplicant's own removal is taken"
+            "wpa_supplicant's own signal is taken"
         );
         assert!(
             !said_by(Some(":1.7"), Some(":1.9")),
@@ -3013,6 +3033,26 @@ mod tests {
         assert!(
             !begins_looking(interface, &HashMap::new()),
             "nor a change saying no step"
+        );
+    }
+
+    #[test]
+    fn another_account_may_say_only_a_card_off_every_network_and_in_no_move_looks() {
+        assert!(
+            may_be_said_looking("disconnected", false),
+            "a card stopped where it stands"
+        );
+        assert!(
+            !may_be_said_looking("completed", false),
+            "not one joined, which would be taken as leaving its network"
+        );
+        assert!(
+            !may_be_said_looking("authenticating", false),
+            "nor one joining"
+        );
+        assert!(
+            !may_be_said_looking("disconnected", true),
+            "nor one in a move, which would be sent back"
         );
     }
 
