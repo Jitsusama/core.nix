@@ -16,6 +16,7 @@ test's opening comment says what stands in for the device a VM lacks.
 | `usb-wake.nix`, `-vm-test.py`            | the USB 2 and 1.1 root hubs allowed to wake it, not USB 3's |
 | `ir-camera.nix`, `-vm-test.py`           | a stand-in IR camera relayed only to the programs reading   |
 | `loopback-holders.nix`, `-vm-test.py`    | which programs hold a loopback camera open                  |
+| `mx-brio-at-switch.nix`, `-vm-test.py`   | a switch taking hold of an MX Brio already plugged in       |
 
 Two stand-ins sit in the tests folder's `stand-ins/`, since the desktop's
 tests take them too: both lid tests take their lid from
