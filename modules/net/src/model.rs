@@ -485,6 +485,17 @@ pub struct Ink {
     pub state: Option<String>,
 }
 
+/// A frequency in megahertz to a tenth, as the channel table and the
+/// concerns both say it, so a channel reads the same in each.
+pub fn megahertz(hertz: u64) -> String {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a cable line's hertz are far under f64's whole numbers"
+    )]
+    let hertz = hertz as f64;
+    format!("{:.1}", hertz / 1e6)
+}
+
 /// One channel of a cable line, down or up.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Channel {

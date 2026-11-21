@@ -186,8 +186,8 @@ fn single_carrier_down(row: &Value) -> Channel {
         modulation: None,
         power_dbmv: real(row, "signalStrength"),
         snr_db: real(row, "snr"),
-        corrected: whole(row, "correcteds"),
-        uncorrectable: whole(row, "uncorrect"),
+        corrected: count(row, "correcteds"),
+        uncorrectable: count(row, "uncorrect"),
         active: true,
         lost_lately: None,
     }
@@ -204,8 +204,8 @@ fn ofdm_down(row: &Value) -> Channel {
         modulation: None,
         power_dbmv: real(row, "plcpower"),
         snr_db: real(row, "SNR"),
-        corrected: whole(row, "correcteds"),
-        uncorrectable: whole(row, "uncorrect"),
+        corrected: count(row, "correcteds"),
+        uncorrectable: count(row, "uncorrect"),
         active: text(row, "plclock").map(str::trim) == Some("YES"),
         lost_lately: None,
     }
@@ -329,6 +329,16 @@ fn whole<T: std::str::FromStr>(row: &Value, key: &str) -> Option<T> {
     text(row, key)?.trim().parse().ok()
 }
 
+/// A channel's count of pieces of data, which the modem keeps in 32 bits:
+/// one climbing tens of thousands a second reads only hundreds of millions
+/// after weeks up, so it wraps. Now and then a page gives one past 32 bits,
+/// 64 to 72 in its high half, which is a misread and so none. Its low half
+/// is no real count either, and a misread with nothing in its high half,
+/// often a zero, can't be told from one: src/history.rs allows for that.
+fn count(row: &Value, key: &str) -> Option<u64> {
+    whole::<u32>(row, key).map(u64::from)
+}
+
 fn real(row: &Value, key: &str) -> Option<f64> {
     whole::<f64>(row, key).filter(|figure| figure.is_finite())
 }
@@ -370,6 +380,41 @@ mod tests {
             Some("3.1"),
             "the DOCSIS version wasn't found"
         );
+    }
+
+    #[test]
+    fn a_count_past_what_the_modem_keeps_is_a_misread() {
+        let row = serde_json::json!({
+            "Subcarr0freqFreq": " 635600000",
+            "correcteds": "528562409",
+            "uncorrect": "309237645385",
+        });
+        let channel = ofdm_down(&row);
+        assert_eq!(
+            (channel.corrected, channel.uncorrectable),
+            (Some(528_562_409), None),
+            "a count the modem can't hold was taken as real, or a real one lost"
+        );
+    }
+
+    #[test]
+    fn a_count_is_kept_up_to_32_bits_on_either_kind_of_channel() {
+        // A wrapping counter reaches the last 32-bit count, so that one is
+        // real and only the next is a misread, on either kind of channel.
+        let row = serde_json::json!({
+            "channelId": "16",
+            "Subcarr0freqFreq": " 635600000",
+            "correcteds": "4294967295",
+            "uncorrect": "4294967296",
+        });
+        for channel in [single_carrier_down(&row), ofdm_down(&row)] {
+            assert_eq!(
+                (channel.corrected, channel.uncorrectable),
+                (Some(4_294_967_295), None),
+                "the {} channel drew the line in the wrong place",
+                channel.kind
+            );
+        }
     }
 
     #[test]
