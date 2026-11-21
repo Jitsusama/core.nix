@@ -11,7 +11,7 @@ colours=$2
 home=$(mktemp -d)
 trap 'rm -rf "$home"' EXIT
 
-mkdir "$home/clean" "$home/kept" "$home/linked" "$home/silent" "$home/erring"
+mkdir "$home/clean" "$home/kept" "$home/linked" "$home/silent" "$home/erring" "$home/cased"
 echo '{"color":"#100F0F"}' > "$home/clean/style.json"
 ln -s /nowhere/left "$home/clean/gone"
 first=$(head -n 1 "$colours")
@@ -24,6 +24,11 @@ mv "$home/kept/style.json" "$home/store/style.json"
 ln -s "$home/store/style.json" "$home/kept/style.json"
 ln -s "$home/store/style.json" "$home/linked/.config/style.json"
 ln -s /nowhere/left "$home/linked/gone"
+# A file may write a colour in either case, so one written in the other
+# case from the theme's is kept all the same.
+lettered=$(grep -m 1 '[A-Fa-f]' "$colours")
+flipped=$(printf '%s' "$lettered" | tr 'A-Fa-f' 'a-fA-F')
+echo "{\"color\":\"$flipped\"}" > "$home/cased/style.json"
 : > "$home/none"
 # An rg that ends in error without a word.
 printf '#!%s\nexit 2\n' "$BASH" > "$home/silent/rg"
@@ -53,6 +58,7 @@ fails() {
 passes "$colours" "$home/clean/"
 fails "$colours" "$home/kept/"
 fails "$colours" "$home/linked/"
+fails "$colours" "$home/cased/"
 fails "$colours" "$home/clean/" "$home/kept/style.json"
 fails "$home/none" "$home/kept/"
 fails "$colours" "$home/clean/" "$home/nowhere"
