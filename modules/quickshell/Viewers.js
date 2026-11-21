@@ -147,6 +147,9 @@ function viewerPlace(place, workspaces) {
     return own && !own.is_focused ? { workspace: own.id, column: place.column } : null;
 }
 
+// The slashes a folder's path may end in, which name no folder.
+const TRAILING_SLASHES = /\/+$/;
+
 // The title a viewer's window opens with: the one pi's host gives it once
 // its conversation shows, as the session's record says it (`said`), else
 // "π - ", its quest's name and " - " its folder, or its folder alone
@@ -159,7 +162,7 @@ function viewerTitle(said, title, cwd) {
     if (typeof said === "string" && said.startsWith("\u03c0 - ")) {
         return said;
     }
-    const trimmed = typeof cwd === "string" ? cwd.replace(/\/+$/, "") : "";
+    const trimmed = typeof cwd === "string" ? cwd.replace(TRAILING_SLASHES, "") : "";
     const folder = trimmed.slice(trimmed.lastIndexOf("/") + 1);
     const name = typeof title === "string" && title !== folder ? title : "";
     return ["\u03c0", name, folder].filter(part => part !== "").join(" - ");
@@ -172,8 +175,15 @@ function viewerTitle(said, title, cwd) {
 // title can't end the sequence early and say anything else to the
 // terminal.
 function titled(title, words) {
-    const clean = String(title).replace(/[\u0000-\u001f\u007f-\u009f]/g, " ");
+    const clean = Array.from(String(title), c => (controlCharacter(c) ? " " : c)).join("");
     return ["sh", "-c", 'printf "\\033]2;%s\\007" "$0"; exec "$@"', clean].concat(words);
+}
+
+// Whether `c` is a C0 or C1 control character, or DEL, any of which a
+// terminal could read as the start or end of a sequence.
+function controlCharacter(c) {
+    const code = c.charCodeAt(0);
+    return code < 0x20 || (code >= 0x7f && code < 0xa0);
 }
 
 // The words a hosted session's viewer runs while its host isn't serving
