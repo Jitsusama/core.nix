@@ -3447,9 +3447,10 @@
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
   '';
   searches-leave-other-programs-data-alone = ''
-    a Mac's home folder holds an ignore file, and ripgrep and fd searching from it or from Library
-    never open other programs' data, the cloud's folders or the folders macOS guards, while still
-    finding the rest and searching a guarded folder named or started in; Linux holds no such file
+    a Mac's home folder holds an ignore file, and ripgrep and fd searching from it or from Library,
+    run there or given its path, never open other programs' data, the cloud's folders or the
+    folders macOS guards, while still finding the rest, a project's folder named like a guarded one
+    included, and searching a guarded folder named or started in; Linux holds no such file
   '';
   secret-asks-keeps-the-item-to-its-yes = ''
     a yes releases the one item to the checker alone, which says its length and never the value;
