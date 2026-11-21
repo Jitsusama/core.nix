@@ -1375,7 +1375,7 @@ def test_firmware_says_whats_offered_and_holds_each_devices_version(desktop: Des
 def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
     desktop: Desktop,
 ) -> None:
-    """Install asks once, installs once however often Return is pressed, then waits."""
+    """Install asks once, installs once asked, then waits, a Return on it then doing nothing."""
     machine = desktop.machine
     said = "$XDG_RUNTIME_DIR/fwupd"
     offered = {"Devices": [{"DeviceId": "bios", "Releases": [{"Version": "1.13.0"}]}]}
@@ -1434,10 +1434,12 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
         # a held step whose row offers nothing now is left (launcher/Held.js), back to the
         # device's step: Install waits for the restart there, dimmed in place. Nothing is
         # pressed meanwhile, since a minus would leave the device's step too once the asking
-        # was left, so only the launcher can bring Install back.
+        # was left, so only the launcher can bring Install back, still selected as the row
+        # stepped out from, so the next Return lands on it.
         def stepped_back(shown: Json) -> bool:
             return (
                 shown["rows"][:1] == ["Install 1.13.0"]
+                and (shown["selected"] or {}).get("name") == "Install 1.13.0"
                 and shown["things"][0]["gone"] is True
                 and shown["footer"] == "restart to finish"
                 and shown["command"] is None
@@ -1445,19 +1447,27 @@ def test_firmware_installs_an_update_once_asked_and_waits_for_the_restart(
 
         desktop.launcher_until(stepped_back)
         # A third Return there lands on a row that has gone, which runs nothing: it writes no
-        # line and installs nothing more, at most the foot saying why (Y2YBTS, 2026-11-20).
-        # The launcher's journal says when it took that Return, so the screen read after it
-        # shows what the Return left, and a line it wrote fails the step back.
+        # line, installs nothing more and leaves the step as it was (Y2YBTS, 2026-11-20). The
+        # launcher's journal says when it took that Return, so the screen read after it shows
+        # what the Return left, and a line it wrote fails the step back. This Return comes only
+        # once the row has gone: one while the install is going in lands on the daemon's going
+        # row, whose answer races the install's end, so no second install is proven here.
         since = desktop.mark()
         machine.send_key("ret")
-        machine.wait_until_succeeds(
-            desktop.in_session(
-                "journalctl --user -u quickshell --no-pager -o cat"
-                f" --after-cursor={shlex.quote(since)}"
-                " | grep -q -F 'launcher: Return on a gone row did nothing'"
-            ),
-            timeout=dt.timedelta(seconds=30),
-        )
+        try:
+            machine.wait_until_succeeds(
+                desktop.in_session(
+                    "journalctl --user -u quickshell --no-pager -o cat"
+                    f" --after-cursor={shlex.quote(since)}"
+                    " | grep -q -F 'launcher: Return on a gone row did nothing'"
+                ),
+                timeout=dt.timedelta(seconds=30),
+            )
+        except Exception as unheard:
+            # The driver's wait says only that it ran out, so this says where the Return went.
+            shown = desktop.showing()
+            failed = f"the gone row's Return went unjournalled, the launcher showing {shown}"
+            raise AssertionError(failed) from unheard
         shown = desktop.showing()
         assert stepped_back(shown), shown
         desktop.shoot("launcher-firmware-install-waits")

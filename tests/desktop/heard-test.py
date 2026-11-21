@@ -36,7 +36,7 @@ def test_a_wait_never_passed_says_the_last_state_it_heard() -> None:
     assert str(never.value) == wanted, f"the wait that never passed said: {never.value}"
 
 
-def test_a_wait_that_hears_nothing_says_the_state_it_first_read() -> None:
+def test_a_wait_timing_out_on_nothing_heard_says_the_state_it_first_read() -> None:
     def hear(_passes: Callable[[str], object]) -> None:
         message = "never heard rows of Restart"
         raise AssertionError(message)
@@ -127,7 +127,7 @@ def test_a_wait_that_stops_hearing_before_a_state_passes_fails() -> None:
     assert str(never.value) == wanted, f"the wait that stopped early said: {never.value}"
 
 
-def test_a_wait_whose_hearer_heard_nothing_fails_on_the_first_read() -> None:
+def test_a_wait_whose_hearer_returns_having_heard_nothing_fails_on_the_first_read() -> None:
     def hear(_passes: Callable[[str], object]) -> None:
         return
 
