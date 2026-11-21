@@ -93,7 +93,11 @@ pub fn revive(
                     Held::Not
                 }
             },
-            |all| revive::held(all, &s.session, lives),
+            |all| {
+                revive::held(all, &s.session, |pid| {
+                    revive::keeps_running(s.hosted.is_some(), is_pi(pid), shows(pid))
+                })
+            },
         );
         let named = matches!(hold, Held::Running | Held::Parked);
         let cwd = match revive::judge(s, quest.as_ref(), is_pi, named) {
@@ -461,7 +465,12 @@ fn close_dead(session: &str, hold: &Held, holders: &[Holder]) -> usize {
 /// runs the viewer, not pi, so counting only a pi would close the window
 /// Joel reads a hosted session in whenever its host restarts.
 fn lives(pid: u32) -> bool {
-    is_pi(pid) || fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| views(&line))
+    is_pi(pid) || shows(pid)
+}
+
+/// Whether `pid` is a hosted session's viewer.
+fn shows(pid: u32) -> bool {
+    fs::read(format!("/proc/{pid}/cmdline")).is_ok_and(|line| views(&line))
 }
 
 /// Whether a command line, its words split by NUL, is a hosted session's

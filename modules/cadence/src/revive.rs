@@ -516,6 +516,14 @@ pub fn held(holders: &[Holder], session: &str, runs: impl Fn(u32) -> bool) -> He
     }
 }
 
+/// Whether a holder's process keeps its session running: a pi, or a
+/// viewer of one, as a window handed into a host runs.
+#[must_use]
+pub fn keeps_running(hosted: bool, pi: bool, viewer: bool) -> bool {
+    let _ = hosted;
+    pi || viewer
+}
+
 /// The realm the restart words hold a session in, after `--realm`.
 #[must_use]
 pub fn realm_of(restart: &str) -> Option<&str> {
@@ -935,6 +943,48 @@ mod tests {
             judge(&hosted(true, false), Some(&q), |pid| pid == 9, false),
             Verdict::Alive,
             "one its quest's pid still runs is alive, wherever its host is"
+        );
+    }
+
+    #[test]
+    fn a_viewer_alone_keeps_no_hosted_conversation_running() {
+        // After a crash the launcher opens each hosted conversation's
+        // viewer to wait for its host, so one whose host stays down has a
+        // holder running a viewer and nothing else.
+        let all =
+            holders(r#"{"command":["node","/scripts/host-join.ts","--session","s-A-1"],"pid":7}"#);
+        let viewer = |pid: u32| pid == 7;
+        let hosted = Seen {
+            hosted: Some(Hosting {
+                host: "work-background".into(),
+                holds: true,
+                back: false,
+            }),
+            ..seen("A", None, false, "1")
+        };
+        let held_hosted = held(&all, "s-A-1", |pid| keeps_running(true, false, viewer(pid)));
+        let named = matches!(held_hosted, Held::Running | Held::Parked);
+        let q = quest_with("active", "active", None);
+        assert_eq!(
+            judge(&hosted, Some(&q), |_| false, named),
+            Verdict::Stranded(
+                "its host, work-background, is down or gone: bring the host back, which resumes it"
+                    .into()
+            ),
+            "a viewer only shows what its host runs, so a host left down is still said"
+        );
+        assert_eq!(
+            held(&all, "s-A-1", |pid| keeps_running(
+                false,
+                false,
+                viewer(pid)
+            )),
+            Held::Running,
+            "one no host runs keeps its window while a viewer holds it"
+        );
+        assert!(
+            keeps_running(true, true, false),
+            "a pi keeps any session running"
         );
     }
 
