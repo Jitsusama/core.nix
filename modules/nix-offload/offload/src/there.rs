@@ -84,7 +84,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::archived;
 use crate::held;
@@ -1086,7 +1086,8 @@ fn sent_up(
     }
     // Held until the copy ends, and its clock starts only once it's held,
     // so a run waiting its turn isn't timed out by another's copy.
-    let _turn = sending_to(&turns_folder(), &lent.host);
+    let mut turn = sending_to(&turns_folder(), &lent.host);
+    holds_until(turn.as_mut(), within);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copying = Copying::start(
         upload(nix, alive)
@@ -1129,26 +1130,59 @@ fn turns_folder() -> PathBuf {
 /// quarter of it, ssh timed out after 18 minutes, and none ran. One at a
 /// time, the first sends the closure whole and the rest find it there.
 /// Where the lock can't be taken, the send goes on without one, as
-/// before, and says so. The wait has a limit of its own, [`TURN_WAITS`],
-/// since not every holder's copy has one: a derivation's copy runs to its
-/// end, however slow, and one stopped while it held the turn would
-/// otherwise keep every later run from the builder.
+/// before, and says so. A run waits until the holder's copy must have
+/// ended, as [`holds_until`] writes it, and a minute more, or for
+/// [`TURN_WAITS`] where the holder has written none yet, so one stopped
+/// while it held the turn doesn't keep every later run from the builder.
+/// Only outputs sent up take it: a run's derivations, kilobytes, go at
+/// once beside them, as a run sent first does, so a check waits on no
+/// session's send.
 fn sending_to(folder: &Path, host: &str) -> Option<fs::File> {
     sending_to_within(folder, host, TURN_WAITS)
 }
 
-/// How long a run waits for another's turn sending to one builder before
-/// it sends beside it: two of the longest a small send is given
-/// ([`SEND_LEAST`]), which the first of four runs sending one 844 MiB
-/// closure, at 16 minutes, comes inside, after which the rest find it
-/// there and go quickly.
+/// How long a run waits for another's turn sending to one builder, where
+/// the holder hasn't said how long its copy may take: two of the longest
+/// a small send is given ([`SEND_LEAST`]), which the first of four runs
+/// sending one 844 MiB closure, at 16 minutes, comes inside, after which
+/// the rest find it there and go quickly.
 const TURN_WAITS: std::time::Duration = std::time::Duration::from_mins(30);
+
+/// How long past the holder's own limit a run still waits for its turn,
+/// for the holder's copy to be stopped and its turn let go.
+const TURN_GRACE: u64 = 60;
+
+/// Writes in the turn `held`, where there's one, that its copy is given
+/// `within` from now, so a run waiting on it waits as long and no less: on
+/// a send given more than [`TURN_WAITS`], three waiters giving up at once
+/// would bring back the very race the turn stops.
+fn holds_until(held: Option<&mut fs::File>, within: std::time::Duration) {
+    use std::io::Seek;
+    let Some(lock) = held else {
+        return;
+    };
+    let until = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs())
+        .saturating_add(within.as_secs());
+    let _ = lock.set_len(0);
+    let _ = lock.rewind();
+    let _ = writeln!(lock, "{} {until}", std::process::id());
+}
+
+/// The run holding a turn, and until when its copy may run in seconds
+/// since the epoch, where it said, as its lock's `text` says.
+fn holder_of(text: &str) -> (Option<&str>, Option<u64>) {
+    let mut words = text.split_whitespace();
+    let pid = words.next();
+    (pid, words.next().and_then(|until| until.parse().ok()))
+}
 
 /// [`sending_to`], waiting at most `waits` for the turn.
 fn sending_to_within(folder: &Path, host: &str, waits: std::time::Duration) -> Option<fs::File> {
     use std::io::Seek;
     use std::os::fd::AsRawFd;
-    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt, PermissionsExt};
     let name: String = host
         .chars()
         .map(|each| {
@@ -1178,9 +1212,21 @@ fn sending_to_within(folder: &Path, host: &str, waits: std::time::Duration) -> O
     match fs::symlink_metadata(folder) {
         // SAFETY: geteuid only reads the process's own user id.
         Ok(made) if made.is_dir() && made.uid() == unsafe { libc::geteuid() } => {
-            if made.mode() & 0o077 != 0 {
+            // One other accounts could write in may hold their files, a
+            // lock among them, so it's never used. One they can only read,
+            // as `create_dir_all` makes under a umask of 022 and
+            // changed-checks' own turns do, is made this account's alone.
+            if made.mode() & 0o022 != 0 {
                 return untaken(format!(
-                    "{} can be reached by other accounts",
+                    "{} can be written by other accounts",
+                    folder.display()
+                ));
+            }
+            if made.mode() & 0o077 != 0
+                && let Err(error) = fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
+            {
+                return untaken(format!(
+                    "{} can be read by other accounts: {error}",
                     folder.display()
                 ));
             }
@@ -1223,16 +1269,24 @@ fn sending_to_within(folder: &Path, host: &str, waits: std::time::Duration) -> O
         if busy.raw_os_error() != Some(libc::EWOULDBLOCK) {
             return untaken(busy.to_string());
         }
-        let holder = fs::read_to_string(folder.join(format!("sending-{name}.lock")))
-            .map(|pid| pid.trim().to_owned())
-            .ok()
-            .filter(|pid| !pid.is_empty())
-            .map_or_else(|| "another run here".to_owned(), |pid| format!("run {pid}"));
-        if began.elapsed() >= waits {
+        let text =
+            fs::read_to_string(folder.join(format!("sending-{name}.lock"))).unwrap_or_default();
+        let (pid, until) = holder_of(&text);
+        let holder = pid.map_or_else(|| "another run here".to_owned(), |pid| format!("run {pid}"));
+        // As long as the holder's copy may run, and a minute more for it
+        // to be stopped, where it said how long; else `waits`.
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_or(0, |since| since.as_secs());
+        let limit = until.map_or(waits, |until| {
+            let left = until.saturating_add(TURN_GRACE).saturating_sub(now);
+            began.elapsed() + std::time::Duration::from_secs(left)
+        });
+        if began.elapsed() >= limit {
             eprintln!(
-                "nix-offload: {holder} has held its turn sending to {host} for {}, so this \
-                 sends beside it",
-                lasting(waits)
+                "nix-offload: {holder} has held its turn sending to {host} for {}, past its \
+                 limit, so this sends beside it",
+                lasting(began.elapsed())
             );
             return None;
         }
@@ -1241,10 +1295,10 @@ fn sending_to_within(folder: &Path, host: &str, waits: std::time::Duration) -> O
             eprintln!(
                 "nix-offload: {holder} is sending to {host}, so this waits its turn, for up to \
                  {}",
-                lasting(waits)
+                lasting(limit.saturating_sub(began.elapsed()))
             );
         }
-        std::thread::sleep(std::time::Duration::from_millis(200).min(waits));
+        std::thread::sleep(std::time::Duration::from_millis(200).min(limit));
     }
 }
 
@@ -1461,11 +1515,8 @@ fn derivations_up(
                 .args(paths)
         }
     };
-    // The builder's turn first, so a run waiting on it holds no turn at
-    // the uplink that another run's copy elsewhere could use. This copy
-    // has no limit, since a build can't go without its derivations, so a
-    // run waiting behind it sends beside it after `TURN_WAITS`.
-    let _builder = sending_to(&turns_folder(), &lent.host);
+    // No turn at the builder: derivations are kilobytes, and a check
+    // waiting on another run's gigabyte of outputs would wait for nothing.
     let _turn = uplink_turn(rank);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
@@ -1771,11 +1822,15 @@ fn sent_held(
     );
     // The builder's turn, then the uplink's, held only while the copy
     // runs, so the builder's own fetches above hold neither, and its
-    // clock starts once they're held.
-    let _builder = sending_to(&turns_folder(), &lent.host);
+    // clock starts once they're held. A run sent first takes neither, as
+    // the net's go ahead of sessions'.
+    let mut builder = (rank != Rank::First)
+        .then(|| sending_to(&turns_folder(), &lent.host))
+        .flatten();
     let _turn = uplink_turn(rank);
-    // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
+    holds_until(builder.as_mut(), within);
+    // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let sent = upload(nix, COPY_ALIVE)
         .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
         .args(&sending)
@@ -5237,8 +5292,78 @@ mod tests {
         );
     }
 
-    // A folder of turns other accounts can reach, as one left in a shared
-    // temporary folder may be, and a lock that's a link, are never used.
+    // A holder that said how long its copy may run keeps a run waiting as
+    // long, past the run's own limit, so waiters don't all give up at once
+    // mid-copy and send beside it.
+    #[test]
+    fn a_run_waits_as_long_as_the_holder_s_copy_may_run() {
+        let folder = tempfile::tempdir().unwrap();
+        let turns = folder.path().join("turns");
+        let mut first = sending_to(&turns, "hook@builder-1");
+        holds_until(first.as_mut(), Duration::from_secs(3));
+        let lock = fs::read_to_string(turns.join("sending-hook-builder-1.lock")).unwrap();
+        let pid = std::process::id().to_string();
+        assert_eq!(
+            holder_of(&lock).0,
+            Some(pid.as_str()),
+            "the lock doesn't name its run"
+        );
+        assert!(
+            holder_of(&lock).1.is_some(),
+            "the lock doesn't say until when"
+        );
+        let path = turns.clone();
+        let second = std::thread::spawn(move || {
+            sending_to_within(&path, "hook@builder-1", Duration::from_millis(200)).is_some()
+        });
+        std::thread::sleep(Duration::from_secs(1));
+        drop(first);
+        assert!(
+            second.join().unwrap(),
+            "a run gave up at its own limit while the holder's copy could still run"
+        );
+    }
+
+    #[test]
+    fn a_lock_says_its_holder_and_until_when_or_only_its_holder() {
+        assert_eq!(
+            holder_of("42 1795262333\n"),
+            (Some("42"), Some(1_795_262_333))
+        );
+        assert_eq!(holder_of("42\n"), (Some("42"), None));
+        assert_eq!(holder_of(""), (None, None));
+    }
+
+    // On 21 November changed-checks' own turns made the folder under a
+    // umask of 022, which refused every turn after; one only readable by
+    // others is made this account's alone and used.
+    #[test]
+    fn a_turns_folder_others_can_only_read_is_made_private_and_used() {
+        use std::os::unix::fs::PermissionsExt;
+        let folder = tempfile::tempdir().unwrap();
+        let turns = folder.path().join("turns");
+        fs::create_dir(&turns).unwrap();
+        fs::set_permissions(&turns, fs::Permissions::from_mode(0o755)).unwrap();
+        let first = sending_to(&turns, "hook@builder-1");
+        assert!(
+            first.is_some(),
+            "no turn was taken in a folder others can only read"
+        );
+        assert_eq!(
+            fs::metadata(&turns).unwrap().permissions().mode() & 0o777,
+            0o700,
+            "the folder was left readable by others"
+        );
+        let second = sending_to_within(&turns, "hook@builder-1", Duration::from_millis(300));
+        assert!(
+            second.is_none(),
+            "a second run took the turn the first held"
+        );
+    }
+
+    // A folder of turns other accounts can write in, as one left in a
+    // shared temporary folder may be, and a lock that's a link, are never
+    // used.
     #[test]
     fn a_turn_others_could_hold_or_redirect_is_never_taken() {
         use std::os::unix::fs::PermissionsExt;
