@@ -39,6 +39,7 @@ fn role_words(role: Role) -> &'static str {
         Role::Switch => "switch",
         Role::Receiver => "receiver",
         Role::Printer => "printer",
+        Role::Television => "television",
         Role::Client => "client",
     }
 }
@@ -474,8 +475,8 @@ mod tests {
             assert!(words.contains("modem answering"), "{text}");
             assert!(
                 words.contains(
-                    "23 devices: a modem, a router, 3 access points, a switch, a receiver, a \
-                     printer and 16 clients"
+                    "24 devices: a modem, a router, 3 access points, a switch, a receiver, a \
+                     printer, a television and 16 clients"
                 ),
                 "{text}"
             );

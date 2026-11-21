@@ -515,13 +515,14 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |
 | backhaul | how a node reaches the node before it, over Ethernet or Wi-Fi | mesh link, backbone | |
 | device | one box on the home network, whatever it does, listed once with each role it plays | station | `clients`, net's `devices` |
-| role | what a device does on the home network: modem, router, access point, switch, receiver, printer or client, one box playing several, as one eero is a router and an access point | | net's `roles` |
+| role | what a device does on the home network: modem, router, access point, switch, receiver, printer, television or client, one box playing several, as one eero is a router and an access point | | net's `roles` |
 | modem | the device that turns the internet provider's line into Ethernet, with its channels and event log | cable modem | net's `modem` |
 | router | the device that hands out the home network's addresses and carries its traffic out to the internet | | |
 | access point | the device whose radios devices join over Wi-Fi; each node is one | AP | `access-point` |
 | switch | the device that joins cables to the home network, port by port | | net's `switch` |
 | receiver | a device that plays what's sent to it over the home network into speakers, as an AV receiver does, with its volume and what it's playing | stereo, AV receiver | net's `receiver` |
 | printer | a device that prints what's sent to it over the home network, with its ink and what it's doing | | net's `printer` |
+| television | a device that shows what it's sent on a screen of its own, with whether it's on or in standby | TV, smart TV | net's `television` |
 | client | a device that only joins the home network, as a laptop or a phone does | | `client` |
 | port | a socket on a device that a cable plugs into, with its link and speed | | net's `ports` |
 | link | of the home network, a cable or a radio joining two devices, port to port or radio to radio; the home network's map is drawn from them | | net's `links` |

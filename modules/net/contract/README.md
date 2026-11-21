@@ -37,3 +37,10 @@ golden copy is `../../eero/home-network.json`.
   hardware address and device id (`Den`, `02:00:00:00:00:80`), the
   address it saw the ask from (`10.0.0.41`) and its pairing keys (zeros
   and stand-in UUIDs) replaced; every other field is as it answered.
+- `samsung/`: a Samsung Q70C TV's answer to
+  `http://<tv>:8001/api/v2/`, asked on 2026-11-20 without pairing, as
+  `api-v2.json`, laid out again with its name, its address, its
+  hardware address, the hardware address of the radio it was on and its
+  ids replaced (`Living Room`, `10.0.0.90`, `02:00:00:00:00:90`,
+  `02:00:00:00:20:01`, a zero UUID); every other field is as it
+  answered.
