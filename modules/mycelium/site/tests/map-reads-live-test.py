@@ -67,9 +67,9 @@ CELLS = 8
 # 27 files since the balance, who started each cell, the tree beside the map,
 # what each thing is in words, how a time is said, how each thing stands, what
 # each is doing, what each spent, what waits, how wide each line is drawn and
-# how a cell is named were read in modules of their own; about 708 KB, with
-# room above.
-BUDGET = Budget(files=27, kilobytes=745, elements=590)
+# how a cell is named were read in modules of their own; about 746 KB since
+# the builders and the legend's moving samples, with a little room above.
+BUDGET = Budget(files=27, kilobytes=750, elements=590)
 # The twin's size, past which the map once misdrew, and its orchestrations.
 TWIN_CELLS = 10_000
 TWIN_NETWORKS = 200
@@ -1237,6 +1237,62 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     assert not label_kept, "a cell gone left the map's names as they were written"
     assert (label_at or "").startswith("translate("), "the names written again were never placed"
     assert label_at != NUDGED, "the names written again stand where the old ones were nudged"
+
+
+# The samples in the legend's What Moves, each with how many animations it runs.
+SAMPLES_PLAYING = """() => Object.fromEntries(
+  [...document.querySelectorAll('#panel-body .moves [data-moves]')].map((row) => [
+    row.dataset.moves,
+    [...row.querySelectorAll('svg *')].reduce((n, el) => n + el.getAnimations().length, 0)]))"""
+SAMPLES = {"flight", "birth", "ended"}
+# Two frames on, so whatever a frame would have started has started.
+TWO_FRAMES = """() => new Promise((done) =>
+  requestAnimationFrame(() => requestAnimationFrame(done)))"""
+SAMPLES_STILL = f"Object.values(({SAMPLES_PLAYING})()).every((n) => n === 0)"
+# What a redraw keeping the legend open does to it: sets it open, with no click.
+REOPENED = """() => {
+  const legend = document.querySelector('#panel-body details[data-keep="legend"]');
+  legend.open = false;
+  legend.open = true;
+}"""
+
+
+def playing_after_two_frames(page: Page) -> dict[str, int]:
+    """How many animations each legend sample runs, two frames on."""
+    page.evaluate(TWO_FRAMES)
+    playing: dict[str, int] = page.evaluate(SAMPLES_PLAYING)
+    return playing
+
+
+def test_the_legend_shows_what_moves_moving_only_at_his_word(mycelium_opened: Opened) -> None:
+    page = mycelium_opened.page
+    the_map_stands(page, "live")
+    page.locator("#map-view").focus()
+    page.keyboard.press(".")
+    summary = page.locator('#panel-body details[data-keep="legend"] > summary')
+    expect(summary, ". never opened Now with its legend").to_be_visible()
+    # Opened by him, the legend plays every sample once.
+    summary.click()
+    playing = playing_after_two_frames(page)
+    assert set(playing) == SAMPLES, f"the legend's What Moves holds {sorted(playing)}"
+    idle = sorted(sample for sample, n in playing.items() if not n)
+    assert not idle, f"opening the legend left samples still: {idle}"
+    page.wait_for_function(SAMPLES_STILL, timeout=PACE_MS)
+    # Pointed at, a row plays its own sample and no other.
+    page.locator('#panel-body .moves [data-moves="ended"] dd').hover()
+    playing = playing_after_two_frames(page)
+    moving = sorted(sample for sample, n in playing.items() if n)
+    assert moving == ["ended"], f"pointing at Ended played {moving}"
+    page.wait_for_function(SAMPLES_STILL, timeout=PACE_MS)
+    # Opened again by a redraw, as a reading does, it plays nothing.
+    page.evaluate(REOPENED)
+    playing = playing_after_two_frames(page)
+    assert not any(playing.values()), f"a redraw reopening the legend played {playing}"
+    # Asked for less motion, pointing plays nothing either.
+    page.emulate_media(reduced_motion="reduce")
+    page.locator('#panel-body .moves [data-moves="flight"] dd').hover()
+    playing = playing_after_two_frames(page)
+    assert not any(playing.values()), f"a sample moved with less motion asked for: {playing}"
 
 
 # What node.json's cells spent today, as the Spent Today fold lists it under

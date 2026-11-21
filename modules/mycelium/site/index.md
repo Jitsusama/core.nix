@@ -90,6 +90,11 @@ Nothing on it acts on the network.
   started within the last ten minutes. With reduced motion asked for,
   nothing moves and the list says it all. Nothing is drawn while
   nothing changes.
+- **The legend shows what moves, moving.** Under What Moves, a
+  message, a birth and an ending each play in the legend as they do
+  on the map, once as Joel opens the legend and again as he points at
+  one, and rest where the legend draws them. A reading redrawing the
+  drawer leaves the legend as it is, so nothing in it moves unasked.
 - **Talk stays drawn for ten minutes.** The arc between two that
   messaged stays solid in the voice ink, thickening in three steps the
   more they said, so who has been talking to whom reads without
