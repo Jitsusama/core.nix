@@ -576,12 +576,10 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
     };
     let file = record.folder.join(TRANSCRIPT);
     let mut opening = record.opening.clone();
-    let lines = &writing.lines;
-    if !lines.is_empty() {
+    if !writing.lines.is_empty() {
         let them = record.them(me);
         let note = record.note(me);
-        let guesses = writing.guesses.as_deref();
-        let said = markdown_naming(lines, me, them.as_deref(), note.as_deref(), guesses);
+        let said = transcript_of(writing, me, them.as_deref(), note.as_deref());
         let written = filed::whole(&record.title, record.summary.as_deref(), &said);
         if let Err(why) = write_whole(&file, &written) {
             eprintln!("call-transcripts: writing {}: {why}", file.display());
@@ -601,6 +599,13 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
             ..record
         });
     }
+}
+
+/// The transcript `writing` holds, under their side's name `them` where
+/// it's known and the voices' `note`.
+fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
+    let guesses = writing.guesses.as_deref();
+    markdown_naming(&writing.lines, me, them, note, guesses)
 }
 
 #[cfg(test)]

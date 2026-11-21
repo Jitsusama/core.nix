@@ -169,6 +169,60 @@ fn a_take_that_runs_from_one_voice_into_another_is_split_between_them() {
 }
 
 #[test]
+fn joels_answer_to_one_part_of_a_split_take_is_written() {
+    let mut writing = Writing {
+        whole: true,
+        ..Writing::default()
+    };
+    hear_takes(&mut writing, &[(ADA, true), (BO, true)]);
+    // A take of 9 s, 40 s in, Ada's for two pieces and Bo's for the last,
+    // and Joel saying Bo's words back as his own answer.
+    let start = 40 * SECOND;
+    let index = writing.lines.len();
+    let timed = [
+        ("We", 0),
+        ("could", 1),
+        ("ship", 2),
+        ("it", 3),
+        ("today.", 4),
+        ("Not", 6),
+        ("yet.", 7),
+    ];
+    let words = timed.map(|(text, at)| word(text, start + at * SECOND));
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (ADA.to_vec(), start + 3 * SECOND, 3 * SECOND),
+        (BO.to_vec(), start + 6 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(index), &words, pieces);
+    writing.lines.push(Line {
+        start,
+        end: start + 9 * SECOND,
+        text: "We could ship it today. Not yet.".to_owned(),
+        ..line(Side::Theirs, 40, None)
+    });
+    writing.words.insert(index, words.into());
+    writing.lines.push(Line {
+        start: 50 * SECOND,
+        end: 51 * SECOND,
+        text: "Not yet.".to_owned(),
+        ..line(Side::Mine, 50, None)
+    });
+    give_voices(&mut writing, None);
+    let written = transcript::read(&transcript_of(&writing, "Joel", None, None), "Joel");
+    let joels: Vec<&str> = written
+        .iter()
+        .filter(|line| line.side == Side::Mine)
+        .map(|line| line.text.as_str())
+        .collect();
+    assert_eq!(
+        joels,
+        ["Not yet."],
+        "Joel's answer was taken for an echo of Bo's part, not judged against the whole take"
+    );
+}
+
+#[test]
 fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
     let mut writing = ada_into_bo();
     give_voices(&mut writing, None);
