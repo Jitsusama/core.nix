@@ -276,9 +276,10 @@ fn a_follow_up_after_a_landing_note_waits_on_that_fix_and_counts_once_it_runs() 
     };
     let merged = BTreeSet::from([core(6000), core(6010)]);
     let waiting = BTreeMap::from([(core(6010), "the last switch doesn't carry it")]);
+    let none = BTreeSet::new();
     let judged = |unrun| Judged {
         merged: &merged,
-        unread: &BTreeSet::new(),
+        unread: &none,
         unrun,
         here: "here",
     };

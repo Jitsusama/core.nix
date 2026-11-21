@@ -262,8 +262,8 @@ impl Findings {
         let mut unseen = 0;
         let mut open = vec![false; self.found.len()];
         for (index, finding) in self.found.iter().enumerate() {
-            let named = named_as(&finding.posted);
-            let opens = format!("{named} · {}", finding.owner);
+            let name = named_as(&finding.posted);
+            let opens = format!("{name} · {}", finding.owner);
             // Each open line is one finding's, taken once, its note after
             // its owner opening with a comma, so neither a finding named
             // alike nor an owner's longer name can take another's.
@@ -290,7 +290,7 @@ impl Findings {
             };
             let old = finding.posted.written / 1000 <= now - PAST;
             // Each line ends with its owner, whom its drag is filed with.
-            let said = format!("{named}{note} · {}", finding.owner);
+            let said = format!("{name}{note} · {}", finding.owner);
             if held_unseen(note) {
                 unseen += 1;
                 if old {
