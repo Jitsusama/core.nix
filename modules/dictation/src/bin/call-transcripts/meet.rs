@@ -52,7 +52,8 @@ pub fn still_on(
 /// followed, Meet hasn't said who's in it, the event is joined by
 /// something other than Meet or can't be found, or which of them is Joel
 /// can't be told. The meetings are asked for only once a call is
-/// followed, which while the launcher is shut none is.
+/// followed, which none is while nothing is recorded and the launcher is
+/// shut.
 fn on_meet(runtime: &Path, event: Option<&str>, me: &str) -> Option<Vec<String>> {
     let socket = runtime.join(GOOGLE);
     let said = followed(&socket)?;

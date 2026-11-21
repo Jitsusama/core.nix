@@ -6,36 +6,30 @@
 // otherwise none, since each look is Meet asked once or twice more.
 //
 // The shell says its follow again every RENEW while it follows any, and
-// the program lets one go once LASTS has passed unsaid, so a shell that
-// went away leaves nothing followed. LASTS is watch.rs's FOLLOW_LASTS, and
-// the-desktop-tells-the-next-meeting fails when the two differ.
+// the program lets one go once its FOLLOW_LASTS has passed unsaid, so a
+// shell that went away leaves nothing followed.
 .pragma library
 
 const RENEW = 60_000;
-const LASTS = 90_000;
 
 // Whether call-transcripts is recording a call, from the calls it serves
 // over calls.sock, by key: one is served `recording` while it is (its
-// book.rs). With no call-transcripts, nothing is served, so none is, and
-// calls are followed as the launcher alone says.
+// book.rs). With no call-transcripts, or one gone away, none is held, so
+// none is, and calls are followed as the launcher alone says.
 function recording(held) {
     return Object.values(held).some(call => call.recording === true);
 }
 
 // The codes of `calls`, each { code }, to follow while the launcher's
-// `open` or a call's `recorded`; none while neither is.
-function followed(calls, open, recorded) {
-    return open || recorded ? calls.map(call => call.code) : [];
+// `open` or call-transcripts' `held` calls say one is recorded; none while
+// neither is. Every Meet call open is followed, not only the recorded
+// call's, since a call with no meeting is known only as the one Meet call
+// under way (meet.rs).
+function follows(calls, open, held) {
+    return open || recording(held) ? calls.map(call => call.code) : [];
 }
 
 // Whether the follow is said again each RENEW: only while it holds a call.
 function renews(codes) {
     return codes.length > 0;
-}
-
-// What the program follows at `now`, as watch.rs's following reckons it,
-// when it was last told `told`, { at, codes }, or never: those codes until
-// LASTS has passed since, and none after.
-function following(told, now) {
-    return told !== null && now - told.at <= LASTS ? told.codes : [];
 }

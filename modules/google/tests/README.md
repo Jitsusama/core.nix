@@ -14,8 +14,9 @@ and google's checks (../checks.nix) run the script and the shell's cases.
   where it should, with a stand-in for each program.
 - `mail.qml` runs Google.js and Mail.js in Qt's own engine: what the shell
   reads of the program's records, and how mail is said.
-- `calendar.qml` runs Calendar.js, Repeats.js and Meet.js there: which
-  meeting is next, how it's said, and which Meet call a window is.
+- `calendar.qml` runs Calendar.js, Repeats.js, Meet.js and Following.js
+  there: which meeting is next, how it's said, which Meet call a window
+  is, and which calls the shell follows.
 - `drive.qml` runs Drive.js, DrivePlaces.js, Google.js and Saves.js there: the
   documents looked at lately, Drive's own places, and which saves into
   Drive are told.
