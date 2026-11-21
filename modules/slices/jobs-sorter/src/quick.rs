@@ -26,9 +26,14 @@
 //! name that isn't his is given the kernel's default back, so a slice it
 //! inherited goes. A terminal's own programs don't ask either: the sorter
 //! moves a terminal's busy work to jobs, where a short slice would run
-//! beside his. A program whose starter has ended is judged by his user
-//! manager, which takes it in, so it counts as his. Taking the flags away
-//! leaves the slices asked until each program restarts.
+//! beside his. A program whose starter has ended, or that is a service's
+//! own process, is the user manager's child, as his are, so it counts as
+//! his, an agent's too: nothing about its parent tells them apart, and
+//! agents' browser tools keep their launcher. This keeps a short slice
+//! from reaching agents' work by accident; any program of the account's
+//! could ask for one itself. What his programs start, a link's handler or
+//! a terminal opened from one, inherits the slice, as his own work. Taking
+//! the flags away leaves the slices asked until each program restarts.
 
 use std::ffi::{c_int, c_long, c_uint};
 use std::fs;
@@ -139,9 +144,24 @@ enum Asked {
     No,
     /// It asks now.
     Yes,
-    /// The kernel took the call but doesn't hold the slice, as one older
-    /// than fair slices does.
+    /// The kernel took the call but holds no slice for it, as one older
+    /// than fair slices does, reading every ordinary thread's as 0.
     Unheard,
+}
+
+/// What a thread set to `attr` read back as `again` says: a kernel that
+/// holds slices reads one back, the default or another, so only 0 with
+/// nothing else changed is one that holds none. A thread that changed its
+/// own policy or nice between is asked again later.
+fn heard(attr: &Attr, again: &Attr) -> Asked {
+    let untouched = again.policy == attr.policy && again.nice == attr.nice;
+    if attr.runtime == 0 || again.runtime == attr.runtime || !untouched {
+        Asked::Yes
+    } else if again.runtime == 0 {
+        Asked::Unheard
+    } else {
+        Asked::Yes
+    }
 }
 
 /// Has one thread ask for `slice`.
@@ -150,11 +170,7 @@ fn ask_one(tid: c_int, slice: u64) -> io::Result<Asked> {
         return Ok(Asked::No);
     };
     set(tid, &attr)?;
-    if slice == 0 || get(tid)?.runtime == slice {
-        Ok(Asked::Yes)
-    } else {
-        Ok(Asked::Unheard)
-    }
+    Ok(heard(&attr, &get(tid)?))
 }
 
 /// Whether a process's name, as the kernel gives it, is one of `names`.
@@ -183,18 +199,38 @@ fn his(quick: &str, own: &str, starter: &str, windows: &[String]) -> bool {
     from_his && !a_window(own, windows) && !a_window(starter, windows)
 }
 
+/// A process as the starter's walk reads it: its parent, its name and its
+/// cgroup below the user manager's.
+struct Seen {
+    parent: u32,
+    comm: String,
+    cgroup: Option<String>,
+}
+
+/// A process as /proc has it.
+fn seen(pid: u32, manager: &str) -> Option<Seen> {
+    let stat = crate::parse_stat(&fs::read_to_string(format!("/proc/{pid}/stat")).ok()?)?;
+    Some(Seen {
+        parent: stat.ppid,
+        comm: fs::read_to_string(format!("/proc/{pid}/comm")).ok()?,
+        cgroup: crate::cgroup_of(pid, manager),
+    })
+}
+
 /// The cgroup of what started a program's first process: up through its
-/// parents of the same name, to the first of another.
-fn starter(pid: u32, names: &[String], manager: &str) -> Option<String> {
+/// parents of the same name, to the first of another, each read by
+/// `read`. None when one can't be read, the walk reaches no other, or
+/// what started it is outside the user manager.
+fn starter(pid: u32, names: &[String], read: impl Fn(u32) -> Option<Seen>) -> Option<String> {
     let mut at = pid;
     for _ in 0..DEEPEST {
-        let parent = crate::parse_stat(&fs::read_to_string(format!("/proc/{at}/stat")).ok()?)?.ppid;
+        let parent = read(at)?.parent;
         if parent == 0 {
             return None;
         }
-        let comm = fs::read_to_string(format!("/proc/{parent}/comm")).ok()?;
-        if !named(&comm, names) {
-            return crate::cgroup_of(parent, manager);
+        let above = read(parent)?;
+        if !named(&above.comm, names) {
+            return above.cgroup;
         }
         at = parent;
     }
@@ -229,7 +265,7 @@ pub fn ask(asking: &Asking, warned: &mut bool) -> bool {
         // One whose parents can't be read is left as it is this pass.
         let (Some(own), Some(from)) = (
             crate::cgroup_of(pid, asking.manager),
-            starter(pid, asking.names, asking.manager),
+            starter(pid, asking.names, |pid| seen(pid, asking.manager)),
         ) else {
             continue;
         };
@@ -269,7 +305,7 @@ pub fn ask(asking: &Asking, warned: &mut bool) -> bool {
         if let Some(error) = failed
             && !*warned
         {
-            eprintln!("Couldn't have {comm} ({pid}) ask for a short slice: {error}");
+            eprintln!("Couldn't set the slice of {comm} ({pid})'s threads: {error}");
             *warned = true;
         }
         if !heard {
@@ -424,6 +460,84 @@ mod tests {
         );
     }
 
+    fn process(parent: u32, comm: &str, cgroup: &str) -> Seen {
+        Seen {
+            parent,
+            comm: format!("{comm}\n"),
+            cgroup: Some(cgroup.to_owned()),
+        }
+    }
+
+    /// A renderer, its zygote and its browser, each a chrome, started by
+    /// `starter` in `at`.
+    fn browser(parent: u32, comm: &str, at: &str) -> impl Fn(u32) -> Option<Seen> {
+        let comm = comm.to_owned();
+        let at = at.to_owned();
+        move |pid| match pid {
+            30 => Some(process(20, "chrome", "/app.slice/app-niri-a-10.scope")),
+            20 => Some(process(
+                10,
+                "chrome",
+                "/app.slice/app-com.google.Chrome-10.scope",
+            )),
+            10 => Some(process(
+                parent,
+                "chrome",
+                "/app.slice/app-com.google.Chrome-10.scope",
+            )),
+            9 => Some(process(1, &comm, &at)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_program_is_judged_by_what_started_its_first_process() {
+        let names = ["chrome".to_owned()];
+        let from = |parent, comm, at| starter(30, &names, browser(parent, comm, at));
+        assert_eq!(
+            from(9, "systemd", "/init.scope").as_deref(),
+            Some("/init.scope"),
+            "up past its own to his user manager"
+        );
+        assert_eq!(
+            from(9, "pi", "/app.slice/mycelium-pi-4.scope").as_deref(),
+            Some("/app.slice/mycelium-pi-4.scope"),
+            "a pi session that started it is found, however deep its renderer"
+        );
+        assert_eq!(
+            from(0, "", ""),
+            None,
+            "one with no starter is left as it is"
+        );
+        assert_eq!(from(8, "", ""), None, "a starter it can't read is left too");
+    }
+
+    #[test]
+    fn a_kernel_that_reads_back_no_slice_is_unheard_and_a_race_is_not() {
+        let asked = ordinary(3, SLICE_NS);
+        assert_eq!(heard(&asked, &asked), Asked::Yes, "held");
+        assert_eq!(heard(&asked, &ordinary(3, 0)), Asked::Unheard, "none held");
+        let moved = Attr {
+            policy: SCHED_BATCH,
+            ..ordinary(3, 0)
+        };
+        assert_eq!(
+            heard(&asked, &moved),
+            Asked::Yes,
+            "a policy changed between"
+        );
+        assert_eq!(
+            heard(&asked, &ordinary(5, 0)),
+            Asked::Yes,
+            "a nice changed between"
+        );
+        assert_eq!(
+            heard(&ordinary(3, 0), &ordinary(3, 0)),
+            Asked::Yes,
+            "a default given back"
+        );
+    }
+
     /// A thread of its own, niced as a hidden tab is, asks for the short
     /// slice through the kernel, keeps its nice, and a thread it starts
     /// afterwards inherits the slice. On a kernel that holds no fair
@@ -469,7 +583,7 @@ mod tests {
                     "its child inherits"
                 );
             }
-            Asked::Unheard => assert_ne!(own.runtime, SLICE_NS, "unheard means not held"),
+            Asked::Unheard => assert_eq!(own.runtime, 0, "unheard reads no slice at all"),
             Asked::No => assert!(
                 !matches!(own.policy, SCHED_OTHER | SCHED_BATCH),
                 "only a thread that can't ask asks nothing"
