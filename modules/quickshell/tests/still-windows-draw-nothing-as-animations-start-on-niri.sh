@@ -19,6 +19,13 @@ export QT_QUICK_BACKEND=rhi QSG_RHI_BACKEND=opengl QSG_RENDER_LOOP=threaded QSG_
 # which window it asks for each frame; they stay in the log for whoever
 # reads a failure.
 export QT_LOGGING_RULES=qt.scenegraph.renderloop.debug=true
+# Qt's Wayland client takes a window as no longer shown when niri's frame
+# callback is 100 ms late, and draws a frame as it's shown again: on a
+# loaded builder Qt found one and two windows shown at a stop and a start,
+# and the still window drew one frame over the ten starts (21 November).
+# Held at a minute, a window stays shown, so a frame it draws is one the
+# starts asked for.
+export QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=60000
 
 said=$logs/shell.log
 ran=0
@@ -52,8 +59,8 @@ fi
 # own line to the next start's or the count's, is asked for that line,
 # and at least half of the starts the case counted must have one. Not
 # every start: on a loaded builder Qt logged it 8 times over a whole run
-# of ten starts, one stop finding a window not shown, its cause not
-# known (2026-11-21), and how many of those fell within the starts that
+# of ten starts, one stop finding a window not shown, likely a late frame
+# callback (2026-11-21, before the timeout above), and how many of those fell within the starts that
 # log doesn't say; a passing run logged 11 over the run and 10 within
 # them. The timer's line is Qt's own wording, which a Qt bump may change.
 if ! grep -q 'threaded render loop' "$said"; then
