@@ -200,6 +200,7 @@ fn figures(said: &Value) -> Value {
         "on_battery": at("/power/on_battery"),
         "updated_at": at("/updated/at"),
         "update_step": at("/updated/step"),
+        "update_why": at("/updated/why"),
     })
 }
 
@@ -322,7 +323,16 @@ mod tests {
                    "cores": 16, "cpu_busy": 0.9,
                    "memory": 67_000_000_000_u64, "memory_available": 30_000_000_000_u64,
                    "charge": 79, "on_battery": false,
-                   "updated_at": "2026-11-17T22:45:18Z", "update_step": "done"})
+                   "updated_at": "2026-11-17T22:45:18Z", "update_step": "done",
+                   "update_why": null})
+        );
+        let mut mac = laptop();
+        mac["updated"] = json!({"at": "2026-11-17T23:00:00Z", "step": "refused",
+                                "why": "the Mac is over its room"});
+        assert_eq!(
+            super::ties(&mac, None, None, None)["figures"]["update_why"],
+            json!("the Mac is over its room"),
+            "an update put off carries why"
         );
         let bare = super::ties(
             &json!({"name": "spare", "state": "unreachable"}),
