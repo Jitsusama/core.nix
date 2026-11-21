@@ -222,9 +222,17 @@ mod tests {
 
     #[test]
     fn a_held_windows_hard_floor_is_what_it_holds_up_to_a_cap() {
-        assert_eq!(hard_floor(Some(300 << 20)), 300 << 20, "what it holds, under the cap");
+        assert_eq!(
+            hard_floor(Some(300 << 20)),
+            300 << 20,
+            "what it holds, under the cap"
+        );
         assert_eq!(hard_floor(Some(3 << 30)), HARD, "the cap, past it");
-        assert_eq!(hard_floor(None), 0, "nothing claimed for what can't be read");
+        assert_eq!(
+            hard_floor(None),
+            0,
+            "nothing claimed for what can't be read"
+        );
     }
 
     #[test]

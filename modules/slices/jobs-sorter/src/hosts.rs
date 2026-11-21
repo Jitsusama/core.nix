@@ -23,6 +23,8 @@
 //!   for each orchestrator among them, as each would have in a window.
 //!   With neither, a window that only shows one adds [`keep::PI_FLOOR`],
 //!   once, as a window running a pi of its own keeps.
+//! - While any hold it, it keeps what it holds hard, up to
+//!   [`holds::HARD`] for each window holding it, beside the unit's own.
 //! - While any but the last hold it, nothing of it is written to the
 //!   disk's swap and systemd-oomd ends it last, as a held window's.
 //!
@@ -50,40 +52,19 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use crate::{focus, keep, low};
+use crate::own::Own;
+use crate::{focus, holds, keep, low};
 
 /// How long a unit's own settings are trusted before they're read again,
 /// so a switch that changes them reaches a host that keeps running.
 pub const OWN_FOR: Duration = Duration::from_secs(60);
-
-/// The folder runtime properties set through systemd's manager land in,
-/// which a unit's own settings leave out.
-const RUNTIME_CONTROL: &str = "/systemd/user.control/";
-
-/// A unit's own settings, as far as ranking it goes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Own {
-    pub floor: u64,
-    pub writeback: bool,
-    pub preference: String,
-}
-
-impl Default for Own {
-    /// systemd's defaults, which a unit that says nothing has.
-    fn default() -> Self {
-        Own {
-            floor: 0,
-            writeback: true,
-            preference: "none".to_owned(),
-        }
-    }
-}
 
 /// A host unit's rank: the properties set on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rank {
     pub weight: u64,
     pub floor: u64,
+    pub hard: u64,
     pub writeback: bool,
     pub preference: String,
 }
@@ -139,77 +120,19 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     // would hold every conversation in memory, which #3070 kept windows from by holding at
     // most three. Unread, it might not fit, so writeback stays.
     let fits = signs.current.is_some_and(|current| current <= floor);
+    // A window held keeps a hard floor too, what the unit holds up to a held window's hard floor
+    // each, read as the hold is taken ([`Hosts::changed`]).
+    let held = signs
+        .current
+        .filter(|_| signs.viewed > 0)
+        .map_or(0, |current| current.min(viewed.saturating_mul(holds::HARD)));
     Rank {
         weight,
         floor,
+        hard: own.hard.saturating_add(held),
         writeback: own.writeback && (signs.viewed == 0 || !fits),
         preference,
     }
-}
-
-/// A unit's own settings from `systemctl cat`'s text, its files each
-/// under a `# <path>` line, leaving out the runtime ones set through the
-/// manager. A later file's setting wins, and an empty one is systemd's
-/// default again. A percentage is of `total`, the machine's memory.
-pub fn own(text: &str, total: u64) -> Own {
-    let mut own = Own::default();
-    let mut counted = true;
-    for line in text.lines() {
-        let line = line.trim();
-        if let Some(path) = line.strip_prefix("# /") {
-            counted = !format!("/{path}").contains(RUNTIME_CONTROL);
-            continue;
-        }
-        if !counted || line.starts_with('#') || line.starts_with(';') {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            continue;
-        };
-        let value = value.trim();
-        match key.trim() {
-            "MemoryLow" => {
-                own.floor = if value.is_empty() {
-                    0
-                } else {
-                    size(value, total).unwrap_or(own.floor)
-                };
-            }
-            "MemoryZSwapWriteback" => {
-                own.writeback = value.is_empty() || !matches!(value, "no" | "false" | "0" | "off");
-            }
-            "ManagedOOMPreference" => {
-                own.preference = if value.is_empty() {
-                    "none".to_owned()
-                } else {
-                    value.to_owned()
-                };
-            }
-            _ => {}
-        }
-    }
-    own
-}
-
-/// A size as systemd reads one: bytes, with K, M, G or T for powers of
-/// 1024, `infinity`, or a percentage of `total`.
-pub fn size(value: &str, total: u64) -> Option<u64> {
-    if value == "infinity" {
-        return Some(u64::MAX);
-    }
-    if let Some(percent) = value.strip_suffix('%') {
-        let percent: u128 = percent.trim().parse().ok()?;
-        return u64::try_from(u128::from(total) * percent / 100).ok();
-    }
-    let (digits, shift) = match value.chars().last()? {
-        'K' => (&value[..value.len() - 1], 10),
-        'M' => (&value[..value.len() - 1], 20),
-        'G' => (&value[..value.len() - 1], 30),
-        'T' => (&value[..value.len() - 1], 40),
-        _ => (value, 0),
-    };
-    let number: u64 = digits.trim().parse().ok()?;
-    number.checked_mul(1 << shift)
 }
 
 /// The host units under `slice` whose names start with `prefix`.
@@ -282,6 +205,7 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
     let weight = rank.weight.to_string();
     let floor = rank.floor.to_string();
     let writeback = rank.writeback.to_string();
+    let hard = rank.hard.to_string();
     [
         "--user",
         "--quiet",
@@ -293,7 +217,7 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
         "sba(sv)",
         unit,
         "true",
-        "4",
+        "5",
         "CPUWeight",
         "t",
         &weight,
@@ -306,6 +230,9 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
         "ManagedOOMPreference",
         "s",
         &rank.preference,
+        "MemoryMin",
+        "t",
+        &hard,
     ]
     .iter()
     .map(|arg| (*arg).to_string())
@@ -350,9 +277,20 @@ impl Hosts {
     }
 
     /// Whether `unit` should be set to `rank`: it changed, or this sorter
-    /// never set it, as one before it may have left it held.
+    /// never set it, as one before it may have left it held. A hard floor
+    /// that moves only with what a unit still held holds isn't a change, so
+    /// it's read once as the hold is taken, not set again every pass.
     pub fn changed(&self, unit: &str, rank: &Rank) -> bool {
-        self.set.get(unit) != Some(rank)
+        self.set.get(unit).is_none_or(|set| {
+            if set.floor == rank.floor && set.hard > 0 && rank.hard > 0 {
+                *set != Rank {
+                    hard: set.hard,
+                    ..rank.clone()
+                }
+            } else {
+                set != rank
+            }
+        })
     }
 
     /// Notes a unit as set to `rank`.
@@ -376,6 +314,7 @@ mod tests {
     fn attended() -> Own {
         Own {
             floor: 512 << 20,
+            hard: 0,
             writeback: true,
             preference: "avoid".to_owned(),
         }
@@ -389,6 +328,7 @@ mod tests {
             Rank {
                 weight: low::AT,
                 floor: 512 << 20,
+                hard: 0,
                 writeback: true,
                 preference: "avoid".to_owned(),
             },
@@ -442,6 +382,71 @@ mod tests {
         assert_eq!(
             rank.preference, "avoid",
             "systemd-oomd ends a held host last"
+        );
+    }
+
+    #[test]
+    fn each_window_joel_is_at_holds_what_its_unit_holds_hard_up_to_a_cap() {
+        let own = Own {
+            hard: 64 << 20,
+            ..Own::default()
+        };
+        let held = |viewed, current| {
+            wanted(
+                &own,
+                Signs {
+                    viewed,
+                    current,
+                    ..Signs::default()
+                },
+                10,
+            )
+            .hard
+        };
+        assert_eq!(
+            held(1, Some(300 << 20)),
+            (64 << 20) + (300 << 20),
+            "one window held keeps what its unit holds, beside the unit's own"
+        );
+        assert_eq!(
+            held(2, Some(3 * GIB)),
+            (64 << 20) + 2 * holds::HARD,
+            "two windows held keep at most a held window's hard floor each"
+        );
+        assert_eq!(
+            held(0, Some(GIB)),
+            64 << 20,
+            "none held keeps the unit's own"
+        );
+        assert_eq!(
+            held(1, None),
+            64 << 20,
+            "what can't be read claims nothing more"
+        );
+    }
+
+    #[test]
+    fn a_held_units_hard_floor_is_read_once_while_it_stays_held() {
+        let mut hosts = Hosts::default();
+        let viewed = |current| {
+            wanted(
+                &Own::default(),
+                Signs {
+                    viewed: 1,
+                    current: Some(current),
+                    ..Signs::default()
+                },
+                10,
+            )
+        };
+        hosts.done("u", viewed(300 << 20));
+        assert!(
+            !hosts.changed("u", &viewed(310 << 20)),
+            "what a held unit holds moving isn't asked for again"
+        );
+        assert!(
+            hosts.changed("u", &wanted(&Own::default(), Signs::default(), 10)),
+            "giving the hold back is"
         );
     }
 
@@ -554,66 +559,6 @@ mod tests {
     }
 
     #[test]
-    fn a_units_own_settings_leave_out_the_runtime_ones() {
-        let text = "\
-# /home/j/.config/systemd/user/pi-host-work-attended.service -> /nix/store/x
-[Service]
-ManagedOOMPreference=avoid
-MemoryLow=512M
-
-# /run/user/1000/systemd/user.control/pi-host-work-attended.service.d/50-MemoryLow.conf
-[Service]
-MemoryLow=3221225472
-ManagedOOMPreference=none
-";
-        assert_eq!(
-            own(text, 64 * GIB),
-            attended(),
-            "a floor this sorter set at runtime isn't the unit's own"
-        );
-    }
-
-    #[test]
-    fn a_later_file_wins_and_an_empty_setting_is_the_default_again() {
-        let text = "\
-# /etc/systemd/user/pi-host-a.service
-[Service]
-MemoryLow=1G
-MemoryZSwapWriteback=no
-# /etc/systemd/user/pi-host-a.service.d/10-more.conf
-[Service]
-MemoryLow=
-MemoryLow=10%
-";
-        let own = own(text, 100 * GIB);
-        assert_eq!(
-            own.floor,
-            10 * GIB,
-            "the last floor said is the one that holds"
-        );
-        assert!(!own.writeback, "writeback turned off stays off");
-        assert_eq!(
-            super::own("[Service]\nMemoryLow=\n", GIB).floor,
-            0,
-            "an empty floor is systemd's default"
-        );
-    }
-
-    #[test]
-    fn sizes_read_as_systemd_reads_them() {
-        assert_eq!(size("512M", 0), Some(512 << 20), "M is mebibytes");
-        assert_eq!(size("1G", 0), Some(GIB), "G is gibibytes");
-        assert_eq!(size("4096", 0), Some(4096), "no suffix is bytes");
-        assert_eq!(size("infinity", 0), Some(u64::MAX), "infinity is no limit");
-        assert_eq!(
-            size("25%", 8 * GIB),
-            Some(2 * GIB),
-            "a percentage is of memory"
-        );
-        assert_eq!(size("lots", 0), None, "words aren't a size");
-    }
-
-    #[test]
     fn the_host_is_the_one_process_whose_parent_is_outside() {
         assert_eq!(
             host_of(&[(10, 1)]),
@@ -720,7 +665,7 @@ MemoryLow=10%
     }
 
     #[test]
-    fn the_call_sets_all_four_properties() {
+    fn the_call_sets_all_five_properties() {
         let call = rank_call(
             "pi-host-work-attended.service",
             &wanted(&attended(), Signs::default(), 10),
@@ -730,7 +675,7 @@ MemoryLow=10%
             tail,
             [
                 "true",
-                "4",
+                "5",
                 "CPUWeight",
                 "t",
                 "100",
@@ -742,9 +687,12 @@ MemoryLow=10%
                 "true",
                 "ManagedOOMPreference",
                 "s",
-                "avoid"
+                "avoid",
+                "MemoryMin",
+                "t",
+                "0"
             ],
-            "the call gives back the unit's own floor and preference"
+            "the call gives back the unit's own floors and preference"
         );
     }
 }
