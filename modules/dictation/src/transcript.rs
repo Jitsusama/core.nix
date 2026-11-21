@@ -120,8 +120,8 @@ pub fn markdown_naming(
     let mut paragraphs = vec!["# Transcript".to_owned()];
     paragraphs.extend(note.map(str::to_owned));
     if voiced {
-        let names = heard.iter().any(|line| name_of(line).is_some());
-        paragraphs.push(if names { NAMED_NOTE } else { VOICES_NOTE }.to_owned());
+        let some_called = heard.iter().any(|line| name_of(line).is_some());
+        paragraphs.push(if some_called { NAMED_NOTE } else { VOICES_NOTE }.to_owned());
         paragraphs.extend(guesses.map(str::to_owned));
     }
     // The notes are no line, so a run of lines never joins onto them. A
