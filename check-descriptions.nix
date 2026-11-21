@@ -1721,6 +1721,33 @@
     reads a stand-in's named thread from the kernel, sums each generation by its load, and answers
     now and report as text for Joel or as JSON named by its schema
   '';
+  last-seconds-keeps-its-ring = ''
+    last-seconds reads back each record as it was written and never a torn, flipped or zeroed
+    one, wraps its ring past its slots, puts seconds in a row on different pages so a garbled
+    page loses one in nineteen, refuses a second recorder, and goes on after a restart's newest
+    record; finds each source of a stand-in machine by its name rather than its number, again
+    when found late, its fans never through the driver that holds every processor where another
+    gives them, moving off it once one loads; reads each counter as what grew a second, however
+    far apart it was read, an energy counter that started again as nothing and one that wrapped
+    within ten seconds across its range; reads the firmware every fifth second and after each
+    quick read, saying which records did, and signs the battery's current by what it says; and
+    says a boot cut short after its newest second, asleep when it never woke, and the running
+    one quiet when its recorder stopped writing; says no growth in the first record after a
+    sleep; and the recorder refuses no seconds, a boot id no folder the reader lists could hold,
+    and a stand-in's rings among the machine's own, ends a rest at once when its end has come,
+    and lets in signals held back through a second that overran, a sleep and its wake together
+    read as awake; and asking for one boot
+    answers that boot alone
+  '';
+  last-seconds-passes-clippy = ''
+    clippy finds nothing in last-seconds or its tests
+  '';
+  last-seconds-sleeps-wait-for-the-record = ''
+    last-seconds' sleep hook, run against stand-ins of systemctl, setpriv and the reader, lets a
+    sleep go once a record newer than the newest before its signal says asleep, never on an
+    older sleep's, gives up two seconds on, kills a look that hangs past six tenths, tells the
+    recorder it woke after, and lets a sleep go at once with no recorder running
+  '';
   lately-follows-each-source = ''
     Now's Lately counts what's unread from the mail, Slack and the desktop's other notices,
     each until its own source says it's done, never the shell's own notice for a Needs You
@@ -6129,6 +6156,16 @@
     which fails no switch, and sends once the following finds it, stops when its card is
     unplugged and sends again once it's back and renamed, and a panic's words and its 10 s
     arrive before the kernel restarts, sooner than the watchdog could
+  '';
+  vm-a-reset-leaves-its-last-seconds = ''
+    last-seconds-keep runs as its own account and writes each second to the boot's ring, wheel's
+    to read, where an administrator reads the boot as still recorded and another account is
+    refused, and reads what the kernel gives through its sandbox, every rest state it lists
+    included; a stop writes a record saying so and a restart goes on after it, a kill restarts
+    it by itself, a sleep waits until the recorder's record says it and a wake has it go on
+    within seconds without counting the sleep, a power off stops it after a service that stops
+    late, a machine reset asleep leaves its boot said asleep, and a machine killed as a reset
+    kills it leaves its boot said cut short, its last second read kept
   '';
   vm-root-builds-only-where-it-trusts = ''
     nix-offload's lines start as their own account with their settings, read the token the

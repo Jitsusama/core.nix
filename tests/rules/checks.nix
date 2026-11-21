@@ -173,6 +173,7 @@
         deviceCheck = pkgs.callPackage ../../modules/device-check/package.nix { };
         dictation = pkgs.callPackage ../../modules/dictation/package.nix { };
         google = pkgs.callPackage ../../modules/google/package.nix { };
+        lastSeconds = pkgs.callPackage ../../modules/last-seconds/package.nix { };
         slack = pkgs.callPackage ../../modules/slack/package.nix { };
         pineapple = pkgs.callPackage ../../modules/pineapple/package.nix { };
         recentFiles = pkgs.callPackage ../../modules/open-with/recent-files.nix { };
@@ -341,6 +342,9 @@
         jobs-sorter = pkgs.callPackage ../../modules/slices/jobs-sorter/package.nix { };
         key-counts = pkgs.callPackage ../../modules/key-counts/package.nix { };
         lag-watch = pkgs.callPackage ../../modules/lag-watch/package.nix { };
+        last-seconds = lastSeconds;
+        last-seconds-keep = lastSeconds;
+        last-seconds-sleeps = script "last-seconds-sleeps" ../../modules/last-seconds/sleeps.sh { };
         launcher = pkgs.callPackage ../../modules/quickshell/in-a-terminal/package.nix { };
         launcher-say = pkgs.callPackage ../../modules/quickshell/launcher-say/package.nix { };
         lid-docked = pkgs.callPackage ../../modules/lid/docked/package.nix { };
@@ -588,6 +592,23 @@
             {
               args = [ "report" ];
               inherit state;
+            }
+          ];
+        # Two boots of a stand-in machine, one stopped at a shutdown and
+        # one cut short: the list, and the cut one's last seconds as a
+        # table, which gives way column by column as the room narrows.
+        last-seconds =
+          let
+            state = builtWith "a-machine-kept-two-boots" [
+              (pkgs.callPackage ../../modules/last-seconds/package.nix { })
+            ] ../../modules/last-seconds/tests/a-machine-kept-two-boots.sh;
+            env.LAST_SECONDS_STATE = "@HERE@/state";
+          in
+          [
+            { inherit state env; }
+            {
+              inherit state env;
+              args = [ "949a397c" ];
             }
           ];
         # A loaded reading that fell short of idle in five signals, which

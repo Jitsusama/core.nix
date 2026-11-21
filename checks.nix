@@ -605,6 +605,7 @@ gather {
     ./modules/lag-watch/checks.nix
     ./modules/load-proof/checks.nix
     ./modules/lanzaboote/checks.nix
+    ./modules/last-seconds/checks.nix
     ./modules/libvirt/checks.nix
     ./modules/lid/checks.nix
     ./modules/lid-hinge/checks.nix

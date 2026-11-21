@@ -90,6 +90,9 @@ in
     ../../modules/kernel/nixos.nix
     ../../modules/keyboard/nixos.nix
     ../../modules/kmscon/nixos.nix
+    # It has reset itself with nothing in the journal, so what it did in
+    # each boot's last seconds is kept where a reset can't take it.
+    ../../modules/last-seconds/nixos.nix
     # Its lid's switch has said shut with the lid wide open, and its hinge
     # sensor tells.
     ../../modules/lid-hinge/nixos.nix

@@ -1,0 +1,27 @@
+# last-seconds: what the machine was doing in the seconds before each boot
+# ended, kept by last-seconds-keep each second in a ring on the disk, and
+# read back by last-seconds (src/lib.rs says why).
+[package]
+name = "last-seconds"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "last-seconds"
+path = "src/main.rs"
+
+[[bin]]
+name = "last-seconds-keep"
+path = "src/bin/last-seconds-keep.rs"
+
+[dependencies]
+# Flushing one record's page, the inode's flags, the boot's clock and a stop.
+libc = "0.2"
+serde_json = "1.0"
+# The shape every command of ours takes: its flags, help, errors and exits.
+terminal-kit = { path = "../terminal-kit" }
