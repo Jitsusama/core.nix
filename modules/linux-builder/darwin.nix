@@ -340,7 +340,9 @@ in
   config = {
     assertions = [
       {
-        assertion = networkHolds;
+        # A guest that keeps macOS's NAT never uses the network, so it's
+        # only warned of below.
+        assertion = !changed || networkHolds;
         message = "jitsusama.linux-builder.network ${cfg.network} isn't a private network, has an octet past 255, or has an address bit set past its prefix.";
       }
     ];
