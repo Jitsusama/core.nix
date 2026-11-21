@@ -48,14 +48,19 @@ def the_old_watch(node: str) -> str:
     return f"usb-camera-holders@{node.removeprefix('/dev/')}.service"
 
 
+# What the take-hold's last run said, read from that run alone.
+RUN = "$(systemctl show -p InvocationID --value mx-brio-take-hold.service)"
+SAID = f"journalctl _SYSTEMD_INVOCATION_ID={RUN} -o cat --no-pager"
+# The line a run that replayed the Brio's arrival ends with.
+REPLAYED = "Replayed the MX Brio's arrival, so its relay has it."
+
+
 def the_run_said(machine: BaseMachine, words: str) -> None:
     """Wait for the take-hold's last run to have said `words`, read from that run alone."""
-    run = "$(systemctl show -p InvocationID --value mx-brio-take-hold.service)"
-    said = f"journalctl _SYSTEMD_INVOCATION_ID={run} -o cat --no-pager"
     try:
-        machine.wait_until_succeeds(f"{said} | grep -qF '{words}'", timeout=FILING)
+        machine.wait_until_succeeds(f"{SAID} | grep -qF '{words}'", timeout=FILING)
     except RequestedAssertionFailed:
-        text = machine.execute(said)[1]
+        text = machine.execute(SAID)[1]
         pytest.fail(f"the take-hold's last run didn't say {words!r}: {text}")
 
 
@@ -108,6 +113,19 @@ def test_the_switch_takes_the_brio_back_from_the_seat(machine: BaseMachine, swit
     )
 
 
+def test_the_seat_loses_the_brio_before_its_arrival_is_replayed(
+    machine: BaseMachine, switched: str
+) -> None:
+    """The seat's access goes before the replay tells the seat's programs the Brio has come."""
+    the_run_said(machine, REPLAYED)
+    lines = machine.succeed(SAID).splitlines()
+    took = f"Took back the seat's access to {switched}."
+    assert took in lines, f"the run never took the seat's access back first: {lines}"
+    assert lines.index(took) < lines.index(REPLAYED), (
+        f"the seat's access was taken back only after the replay: {lines}"
+    )
+
+
 def test_the_switch_leaves_every_other_camera_with_the_seat(
     machine: BaseMachine, switched: str, values: dict[str, Any]
 ) -> None:
@@ -129,6 +147,26 @@ def test_udev_no_longer_hands_the_brio_to_the_seat(machine: BaseMachine, switche
         f"udevadm info --query=property --property=CURRENT_TAGS --value {switched}"
     )
     assert ":uaccess:" not in tags, f"udev still tags the Brio for the seat: {tags.strip()}"
+
+
+def test_the_seat_s_next_session_isnt_handed_the_brio(
+    machine: BaseMachine, switched: str, values: dict[str, Any]
+) -> None:
+    """A new session at the seat is handed its other cameras by logind, but not the Brio."""
+    sessions = machine.succeed("loginctl show-user someone -p Sessions --value").split()
+    machine.succeed("loginctl terminate-user someone")
+    old = " ".join(f"-e {session}" for session in sessions)
+    # Autologin brings someone back in a session of its own, which logind hands the cameras.
+    machine.wait_until_succeeds(
+        "loginctl show-user someone -p State --value | grep -qx active && "
+        f"! loginctl show-user someone -p Sessions --value | grep -qw {old}",
+        timeout=SEATING,
+    )
+    other = the_stand_in(machine, values["other"])
+    machine.wait_until_succeeds(f"getfacl -p {other} | grep -q user:someone:", timeout=SEATING)
+    assert not the_seat_can_open(machine, switched), (
+        f"the new session was handed the Brio: {machine.succeed(f'getfacl -p {switched}')}"
+    )
 
 
 def test_the_switch_ends_the_brios_old_watch(machine: BaseMachine, switched: str) -> None:
