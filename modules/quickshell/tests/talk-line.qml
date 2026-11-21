@@ -400,7 +400,9 @@ QtObject {
             // the order written, superseded ones too, each with who and when, and the nerdy
             // bits for the fold (8GYNJ6 [851e94b2]).
             const threadWords = { has: "{who} has it", tookUp: "{who} took it up",
-                letGo: "{who} let it go", taken: "taken back" };
+                letGo: "{who} let it go", taken: "taken back", sent: "sent",
+                waiting: "waiting on {who}", void: "the void", picks: "picks a line",
+                opens: "opens it", back: "back to the lines" };
             const threaded = Object.assign(Said.begun("VOID", "is the fix in?", "is the fix in?",
                 when(20, 30)), { key: "2026-11-13 20:30" });
             const threadEvents = [
@@ -470,8 +472,26 @@ QtObject {
             const pending = Thread.threadOf(threaded, threadEvents, threadWords,
                 { replies: [replyHere, replyServed, elsewhere] }).steps.slice(5);
             Expect.same("replies to it not yet written show at once as his, without their key",
-                pending.map(step => [step.text, step.mine, step.side]),
+                pending.slice(0, 2).map(step => [step.text, step.mine, step.side]),
                 [["and now?", true, "21:00"], ["and then?", true, "21:05"]]);
+            // His last reply says how it stands while nothing has come of it: sent until
+            // the void writes it, then whom it waits on, by name (Joel, 2026-11-21 10:27: "it
+            // didn't indicate whether it was working on it").
+            Expect.same("a reply not yet written stands as sent, in the voice, under it",
+                pending.slice(2).map(step => [step.text, step.mine, step.answer, step.side]),
+                [["sent", false, false, ""]]);
+            Expect.same("a reply written waits on whoever has the thread, by name, not address",
+                Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords)
+                    .steps.slice(6).map(step => [step.text, step.mine]),
+                [["waiting on your orchestrator", false]]);
+            Expect.same("a reply written in a thread nobody has waits on the void",
+                Thread.threadOf(threaded, [replyWritten], threadWords).steps
+                    .map(step => step.text), ["and now?", "waiting on the void"]);
+            Expect.same("anything after his reply ends its standing",
+                Thread.threadOf(threaded, threadEvents.concat([replyWritten, { line: replyKey,
+                    msg: "r2", who: "Delta", event: "answered", at: "21:02",
+                    text: "Now." }]), threadWords).steps.slice(-1).map(step => step.text),
+                ["Now."]);
             Expect.same("a reply said here shows once when the void has written it",
                 Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords,
                     { replies: [replyHere] }).steps.filter(step => step.text === "and now?")
@@ -482,6 +502,30 @@ QtObject {
                 [Thread.picking(-1, 1, 4), Thread.picking(0, 1, 4), Thread.picking(2, 5, 4),
                     Thread.picking(1, -3, 4), Thread.picking(-1, -1, 4), Thread.picking(-1, 1, 0)],
                 [0, 1, 3, 0, 0, -1]);
+            // Return opens the line picked, in insert as in normal, and sends what's typed
+            // where none is picked or a thread is open (Joel, 2026-11-21 10:27).
+            const listed = [{ since: 30 }, { since: 20 }, { since: 10 }];
+            Expect.same("Return opens the line picked, and only where no thread is open",
+                [Thread.opening(1, listed, null), Thread.opening(-1, listed, null),
+                    Thread.opening(0, listed, listed[2]), Thread.opening(5, listed, null)],
+                [20, 0, 0, 0]);
+            // The foot says how to pick a line, that Return opens it, and how to come back,
+            // by the keys of the mode he's in (Joel, 2026-11-21 10:23: "I have no clue how to
+            // step into a thread").
+            const footed = (asked) => Thread.footKeys(Object.assign({ listed: true, picked: -1,
+                threadOpen: false, typing: true, takes: "" }, asked), threadWords);
+            Expect.same("the foot says how to pick a line, typing and in normal",
+                [footed({}), footed({ typing: false }), footed({ listed: false })],
+                [[["Tab", "picks a line"]], [["j", "picks a line"]], []]);
+            Expect.same("with a line picked, the foot says Return opens it",
+                footed({ picked: 0 }), [["\u21b5", "opens it"]]);
+            Expect.same("in a thread, the foot says how to come back, typing and in normal",
+                [footed({ threadOpen: true, picked: 2 }),
+                    footed({ threadOpen: true, typing: false })],
+                [[["Esc -", "back to the lines"]], [["-", "back to the lines"]]]);
+            Expect.same("while the void can undo it, :take follows",
+                footed({ takes: "Take It Back" }),
+                [["Tab", "picks a line"], [":take", "take it back"]]);
             Qt.exit(0);
         } catch (error) {
             Expect.fail(error.message);

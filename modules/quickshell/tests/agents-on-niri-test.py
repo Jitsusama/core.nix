@@ -3650,6 +3650,10 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     Joel wanted to "continue those threads of conversation" (2026-11-13 17:48, [851e94b2]).
     A reply's first line names its thread by its key, which the void sends on to whoever has
     it and writes as `replied` (QCXZEB [5eaea432], 8GYNJ6 [0543317b]).
+
+    Picked by Tab while typing, Return opens the line with no Escape first, the foot saying
+    each key as it's wanted, and the reply stands as sent under it (Joel, 2026-11-21 10:23
+    and 10:27: "I have no clue how to step into a thread", "enter does nothing").
     """
     inbox = STEER / "VOID"
     replies = inbox / "replies"
@@ -3702,13 +3706,25 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
             shown["line"]["keys"] and asked in [one["line"] for one in shown["line"]["talks"]]
         )
     )
-    # A key of another keymap first, as the case before does, so Escape isn't lost.
-    shell.send_key("F24")
-    shell.send_key("esc")
-    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    # Typing, the foot says Tab picks a line; once one is picked, that Return opens it.
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["mode"] == "insert"
+            and shown["line"]["footKeys"][:1] == [["Tab", "picks a line"]]
+        )
+    )
     at_line = [one["line"] for one in shell.showing()["line"]["talks"]].index(asked)
-    shell.send_chars(f"{at_line + 1}j")
-    shell.launcher_until(lambda shown: shown["line"]["picked"] == at_line)
+    # A key of another keymap first, as the cases before do, so the first Tab isn't lost.
+    shell.send_key("F24")
+    for _ in range(at_line + 1):
+        shell.send_key("tab")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["picked"] == at_line
+            and shown["line"]["mode"] == "insert"
+            and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
+        )
+    )
     shell.send_key("ret")
     # It opens ready to type, so the reply's first letter is its first letter, no i before.
     shell.launcher_until(
@@ -3720,11 +3736,13 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     shell.send_chars(words)
     shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
     shell.send_key("ret")
-    # It shows in the thread as his at once, before the void has written it.
+    # It shows in the thread as his at once, before the void has written it, sent under it,
+    # and the foot says how to come back.
     shell.launcher_until(
         lambda shown: (
-            [[step["text"], step["mine"]] for step in (shown["line"]["thread"] or {})["steps"]][-1:]
-            == [[words, True]]
+            [[step["text"], step["mine"]] for step in (shown["line"]["thread"] or {})["steps"]][-2:]
+            == [[words, True], ["sent", False]]
+            and shown["line"]["footKeys"][:1] == [["Esc -", "back to the lines"]]
         )
     )
     sent = steered(words)
@@ -3801,7 +3819,14 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shell.launcher_until(lambda shown: shown["line"]["picked"] == talks.index(asked))
     shell.send_key("ret")
     fold = "replied \u00b7 msg w3 \u00b7 re w2 \u00b7 to WCJQSG"
-    shell.launcher_until(lambda shown: mine(shown) == [[words, True, fold]])
+    # Written, it waits on whoever has the thread, by name and never the owner's address.
+    shell.launcher_until(
+        lambda shown: (
+            mine(shown) == [[words, True, fold]]
+            and [step["text"] for step in shown["line"]["thread"]["steps"]][-1:]
+            == ["waiting on your orchestrator"]
+        )
+    )
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_chars("za")
