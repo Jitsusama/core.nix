@@ -101,7 +101,8 @@ const { land, move, toSection } = cursor;
 // Each drawn region's markup as last drawn, since the browser's own
 // serialization of it never reads back the same.
 let drawnParts = "";
-let drawnLooks = "";
+// None yet, so the first draw always settles whether the list shows.
+let drawnLooks: string | undefined;
 let drawnBridge = "";
 let drawnPlaces = "";
 /** The machine the address asks for, until the cursor has landed for it. */
@@ -153,6 +154,23 @@ function sayWhen(): void {
     noteSaid = noted;
     note.textContent = noted;
   }
+}
+
+/**
+ * Redraws what is worth a look, only when it reads differently, the cursor
+ * kept on its row or the one now in its place. Hidden only while a part is
+ * still to come, which may be the one to name.
+ */
+function drawLooks(read: System): void {
+  const drawn = looksDrawn(looksOf(read, MACHINES_DRAWN));
+  if (drawn === drawnLooks) {
+    return;
+  }
+  drawnLooks = drawn;
+  cursor.across(() => {
+    looks.innerHTML = drawn;
+    looking.hidden = drawn === "";
+  });
 }
 
 /** Redraws the machines, only when they read differently, the cursor kept. */
@@ -307,9 +325,7 @@ function draw(): void {
   }
   const heading = machineHeadline(system);
   title.innerHTML = headlineOf(heading);
-  drawnLooks = redraw(looks, looksDrawn(looksOf(system, MACHINES_DRAWN)), drawnLooks, "data-row");
-  // Empty only while a part is still to come, which may be the one to name.
-  looking.hidden = drawnLooks === "";
+  drawLooks(system);
   document.title = `${heading.machines}, ${heading.stand}. Your machines, now`;
   drawnBridge = redraw(bridge, bridgeOf(machinesOf(system)), drawnBridge, "data-row");
   drawnPlaces = redraw(places, placesOf(system), drawnPlaces, "data-place");
@@ -346,11 +362,18 @@ for (const kind of KINDS) {
 // A draw changes only the regions whose markup moved.
 setInterval(draw, MINUTE);
 
-/** Puts the cursor on the next thing worth a look, or says there is none, as a on the map does. */
+/**
+ * Puts the cursor on the next thing worth a look, or says there is none, as
+ * a on the map does, but only once the list says so itself.
+ */
 function nextLook(): void {
-  if (!cursor.next(looks)) {
-    note.textContent = "Nothing is worth a look.";
+  if (cursor.next(looks)) {
+    return;
   }
+  note.textContent =
+    looks.querySelector(".clear") === null
+      ? "What is worth a look isn't known yet."
+      : "Nothing is worth a look.";
 }
 
 /** Copies `command`, and says whether it could. */

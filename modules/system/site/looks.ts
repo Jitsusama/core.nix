@@ -106,7 +106,9 @@ function looksOf(system: System, drawn: number): Looks {
   return {
     looks: all.slice(0, LOOKS_LISTED),
     more: Math.max(0, all.length - LOOKS_LISTED),
-    settled: system.untold.length === 0,
+    // A part still to come, or a machine named before its record, may hold
+    // the one look there is.
+    settled: system.untold.length === 0 && system.parts.every((part) => part.untold === 0),
   };
 }
 

@@ -35,8 +35,8 @@ PACE_MS = 6000
 RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
-# What a first visit to the page may cost, drawn from system.json: about 472 KB
-# and 397 elements since the list of what is worth a look, six to a row.
+# What a first visit to the page may cost, drawn from system.json: 25 files,
+# about 472 KB and 397 elements since the list of what is worth a look, six to a row.
 BUDGET = Budget(files=25, kilobytes=475, elements=400)
 
 
@@ -230,6 +230,12 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     for _ in LOOKED_AT:
         keyboard.press("a")
     assert focused_row(system_page) == "look:machine:kestrel:0", "a didn't go round to the first"
+    # A look that clears under the cursor leaves it on the one now in its place.
+    keyboard.press("a")
+    system_daemon.tell("machine", changed=[{"key": "machine:osprey", "side": []}])
+    system_page.wait_for_function(
+        "document.activeElement?.dataset?.row === 'look:part:mycelium:0'", timeout=PACE_MS
+    )
     # With nothing anywhere worth a look, the list says so in one line.
     quiet: list[dict[str, object]] = [
         {"key": key, "side": []} for key in ["machine:kestrel", "machine:osprey"]
