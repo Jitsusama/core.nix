@@ -70,7 +70,7 @@ fn run(context: &Context) -> Result<(), Failure> {
     }
     let written = match context.args.as_slice() {
         [] => {
-            let system = read();
+            let (system, _) = read();
             if context.format().is_json() {
                 context.answer(&system.json())
             } else {
@@ -78,7 +78,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             }
         }
         [machine, name] if machine == "machine" => {
-            let system = read();
+            let (system, _) = read();
             let missing = || match system.machines_unread() {
                 Some(why) => Failure::new(
                     Exit::Unavailable,
@@ -115,8 +115,9 @@ fn run(context: &Context) -> Result<(), Failure> {
     })
 }
 
-/// The system as each owner says it now.
-pub(crate) fn read() -> System {
+/// The system as each owner says it now, and which owners it was read
+/// from kept answers of.
+pub(crate) fn read() -> (System, Notes) {
     let since_boot = std::fs::read_to_string("/proc/uptime")
         .ok()
         .and_then(|uptime| system::power::since_boot(&uptime));
@@ -133,8 +134,9 @@ pub(crate) fn read() -> System {
     let mut answers = ask::all(&asked);
     let journal = journal_asked.then(|| answers.pop()).flatten();
     // Each owner's answer stands on its last good one for a read missed,
-    // as under load one may be; with no state home, none is kept.
-    let kept = state_home().map(|state| Kept::in_folder(state.join("system/kept")));
+    // as under load one may be; with no state home, none is kept. Each
+    // realm keeps its own, as mycelium answers for the realm asked.
+    let kept = state_home().map(|state| Kept::in_folder(state.join("system/kept").join(realm())));
     let at = now();
     let mut used = asked
         .iter()
@@ -178,7 +180,22 @@ pub(crate) fn read() -> System {
     if let Some(sites) = sites() {
         Homes::read(&sites).place(&mut system);
     }
-    system
+    (system, notes)
+}
+
+/// The realm mycelium is asked in, as a folder's name: the one this
+/// account's sessions are in, or none.
+fn realm() -> String {
+    let realm: String = std::env::var("MYCELIUM_REALM")
+        .unwrap_or_default()
+        .chars()
+        .filter(|each| each.is_ascii_alphanumeric() || matches!(each, '-' | '_'))
+        .collect();
+    if realm.is_empty() {
+        "no-realm".to_owned()
+    } else {
+        format!("realm-{realm}")
+    }
 }
 
 /// Puts an error the firmware kept before this boot into this machine's

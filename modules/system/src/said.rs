@@ -398,7 +398,7 @@ mod tests {
 
     #[test]
     fn a_tie_read_from_a_kept_answer_says_when_and_why() {
-        let note = "as read at 11:54; mycelium health gave no answer in 10 s just now";
+        let note = "as read at 11:54; just now mycelium health gave no answer in 20 s";
         let ties = json!({
             "cells": {"busy": 2, "idle": 3, "ended": 0},
             "network": [],

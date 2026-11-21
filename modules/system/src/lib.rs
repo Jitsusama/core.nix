@@ -8,7 +8,7 @@
 //! each owner's own answer and judges it, so a fix in an owner shows here
 //! at once and the two can never disagree. A part whose answer can't be
 //! had is said as not read, with why, and the others still stand, unless
-//! its owner answered within the last few minutes, when that answer stands
+//! its owner answered within the last ten minutes, when that answer stands
 //! and says when it was read (kept.rs). The one
 //! exception is the kernel's word on an error the firmware kept before this
 //! machine's boot, which no owner's command says yet, read from this
