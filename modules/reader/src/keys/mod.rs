@@ -89,8 +89,10 @@ pub enum Act {
     /// as vi's next buffer.
     FileOn,
     FileBack,
-    /// gf: the file the first link from the cursor's line names, or a path
-    /// written there; Ctrl+]: the first link from the cursor's line.
+    /// gf: the file named under or after the cursor's character, or else
+    /// by the first link from the cursor's line or a path written there;
+    /// Ctrl+]: the link under or after the character, or else the first
+    /// from the cursor's line.
     FollowFile,
     FollowLink,
     /// gO: the headings, as a list to go to one from, as Neovim's gO.
