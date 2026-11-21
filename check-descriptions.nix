@@ -2849,6 +2849,10 @@
     question waits on one start of it rather than several, and asks again while it isn't
     logged in
   '';
+  pi-browses-in-chromium = ''
+    a pi started from a shell on Linux is told to browse in Chromium, which no Chrome policy
+    enrols, unless the machine names its own browser, which wins; a Mac is told of none
+  '';
   pi-claude-keeps-to-the-plan = ''
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
     mesh, signed in to the plan's own folder and with nothing that would bill an API instead
@@ -3028,7 +3032,8 @@
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's
-    environment, proof, node, frame flag and SSH agent but a plain pi's pools, its realm's
+    environment, proof, node, frame flag and SSH agent, the browser its account names in
+    place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
     agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
@@ -3047,7 +3052,7 @@
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb,
+    conversations to share, Chromium as its browser, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
     frame, and pi's SSH agent proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
