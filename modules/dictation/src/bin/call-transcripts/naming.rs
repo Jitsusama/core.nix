@@ -172,7 +172,27 @@ fn name(heard: &[Heard], cuts: &[Cut], length: usize) -> (Names, String) {
             named.right += cut.speakers.get(name).copied().unwrap_or(0);
         }
     }
-    (named, described(&who, &held))
+    let mut first: Vec<Option<usize>> = vec![None; voices];
+    for (cut, voice) in kept.iter().zip(&voice_of) {
+        if let Some(voice) = voice.filter(|_| !cut.speakers.is_empty()) {
+            first[voice].get_or_insert(cut.start);
+        }
+    }
+    let came: Vec<String> = present
+        .iter()
+        .map(|person| {
+            let at = joins[&person.name];
+            format!("{} at {}", person.name, dictation::transcript::clock(at))
+        })
+        .collect();
+    let said = format!(
+        "joined {}, of {} takes {} kept; {}",
+        came.join(", "),
+        cuts.len(),
+        kept.len(),
+        described(&who, &held, &first)
+    );
+    (named, said)
 }
 
 /// Whether `cut` is said by someone before they joined: `LEAST_SHARE` or
@@ -193,7 +213,7 @@ fn as_f64(n: usize) -> f64 {
 }
 
 /// Who each voice was taken to be, and whose speech it holds, by share.
-fn described(who: &[Who], held: &[HashMap<&str, usize>]) -> String {
+fn described(who: &[Who], held: &[HashMap<&str, usize>], first: &[Option<usize>]) -> String {
     if who.is_empty() {
         return "no voices".to_owned();
     }
@@ -214,7 +234,12 @@ fn described(who: &[Who], held: &[HashMap<&str, usize>]) -> String {
                 .iter()
                 .map(|(name, samples)| format!("{name} {}", percent(tenths(*samples, all))))
                 .collect();
-            format!("Voice {} {taken}, holding {}", at + 1, holds.join(", "))
+            let from = first[at].map_or_else(|| "never".to_owned(), dictation::transcript::clock);
+            format!(
+                "Voice {} {taken}, first at {from}, holding {}",
+                at + 1,
+                holds.join(", ")
+            )
         })
         .collect();
     voices.join("; ")
