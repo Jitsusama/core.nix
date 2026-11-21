@@ -4,18 +4,18 @@
 //! screen, and the far end a headless Chrome. Both use Chrome's fake
 //! camera; no real one is ever opened. A call of Joel's stops it within
 //! fifteen seconds, from its first step to its last: the watch asks every
-//! five, an ask has five to answer, and a step five more to end.
+//! five, an ask has five to answer, and a step still going five more on
+//! has its Weston and Chromes ended under it.
 
 use crate::cdp::{self, Browser};
 use crate::gate::{self, Call};
 use serde_json::{Value, json};
 use std::fs;
-use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -40,8 +40,8 @@ const TICK: Duration = Duration::from_secs(5);
 const WAIT: Duration = Duration::from_secs(60);
 
 /// How long a step that can't be broken off, such as a Chrome slow to
-/// answer, is given to end once Joel's call began, before the program
-/// ends and takes the call with it.
+/// answer, is given to end once Joel's call began, before the watch ends
+/// the call's Weston and Chromes, which ends the step.
 const GRACE: Duration = Duration::from_secs(5);
 
 /// The folders Chrome maps writable and keeps writing, kept in memory and
@@ -91,11 +91,13 @@ impl Drop for Started {
 /// starting Weston and two Chromes under load can take minutes: a thread
 /// of its own asks `a-call-is-on` every five seconds, and the call takes
 /// what it says between its steps and on its beat. If the call is still
-/// in a step `GRACE` after a call of Joel's began, the program ends there;
-/// its children end with it, and the next run sweeps its folders.
+/// in a step `GRACE` after a call of Joel's began, the watch ends each
+/// process the call started, so the step fails and the call returns,
+/// cleaning up as it goes.
 struct Watch {
     said: Receiver<String>,
     over: Arc<AtomicBool>,
+    started: Arc<Mutex<Vec<u32>>>,
 }
 
 impl Watch {
@@ -108,6 +110,8 @@ impl Watch {
         let (tell, said) = mpsc::channel();
         let over = Arc::new(AtomicBool::new(false));
         let done = Arc::clone(&over);
+        let started = Arc::new(Mutex::new(Vec::new()));
+        let ending = Arc::clone(&started);
         thread::spawn(move || {
             let why = loop {
                 match ask() {
@@ -125,12 +129,24 @@ impl Watch {
             // The call is given a moment to stop by itself and clean up.
             thread::sleep(GRACE);
             if !done.load(Ordering::SeqCst) {
-                // A closed stdout mustn't keep the program from ending.
-                let _ = writeln!(std::io::stdout(), "no test call this hour: {why}");
-                std::process::exit(0);
+                let pids = ending.lock().map(|pids| pids.clone()).unwrap_or_default();
+                for pid in pids {
+                    cdp::end(pid);
+                }
             }
         });
-        Watch { said, over }
+        Watch {
+            said,
+            over,
+            started,
+        }
+    }
+
+    /// Has the process `pid` ended if a step outlasts its grace.
+    fn ends(&self, pid: u32) {
+        if let Ok(mut pids) = self.started.lock() {
+            pids.push(pid);
+        }
     }
 
     /// Why the call must stop, if it must.
@@ -180,7 +196,12 @@ pub fn run(
     sweep(cache, "profile-");
     steps(chrome, page, seconds, runtime, cache, &watch).or_else(|step| match step {
         Step::Stopped(ended) => Ok(ended),
-        Step::Failed(why) => Err(why),
+        // A step the watch broke off by ending its processes fails, but
+        // the call stopped for Joel's, and counts for nothing.
+        Step::Failed(why) => match watch.stop() {
+            Err(ended) => Ok(ended),
+            Ok(()) => Err(why),
+        },
     })
 }
 
@@ -265,11 +286,11 @@ fn steps(
         .stdout(Stdio::null());
     // Its complaints go to the unit's journal, where a failed hour is read.
     cdp::ends_with_us(&mut weston);
-    started.children.push(
-        weston
-            .spawn()
-            .map_err(|e| format!("weston couldn't start: {e}"))?,
-    );
+    let weston = weston
+        .spawn()
+        .map_err(|e| format!("weston couldn't start: {e}"))?;
+    watch.ends(weston.id());
+    started.children.push(weston);
     let socket = memory.join("wl");
     let until = Instant::now() + WAIT;
     while !socket.exists() {
@@ -288,10 +309,12 @@ fn steps(
     near.arg("--ozone-platform=wayland")
         .env("WAYLAND_DISPLAY", "wl");
     let mut near = Browser::start(near).map_err(|e| format!("Chrome couldn't start: {e}"))?;
+    watch.ends(near.pid());
     watch.stop()?;
     let mut far = chrome_command(chrome, &far_profile, &memory, &config);
     far.arg("--headless=new");
     let mut far = Browser::start(far).map_err(|e| format!("the far end's Chrome: {e}"))?;
+    watch.ends(far.pid());
     watch.stop()?;
 
     let url = format!("file://{}", page.display());
@@ -493,24 +516,72 @@ mod tests {
         assert!(
             watch
                 .wait_until(started + Duration::from_millis(200))
-                .is_ok()
+                .is_ok(),
+            "the beat stopped with no call on"
         );
-        assert!(started.elapsed() >= Duration::from_millis(200));
-        assert!(watch.stop().is_ok());
+        assert!(
+            started.elapsed() >= Duration::from_millis(200),
+            "the beat came early, after {:?}",
+            started.elapsed()
+        );
+        assert!(watch.stop().is_ok(), "a step stopped with no call on");
+    }
+
+    #[test]
+    fn a_step_outlasting_its_grace_has_what_the_call_started_ended() {
+        let mut stuck = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("sleep starts");
+        let watch = Watch::asking(on, Duration::from_millis(10));
+        watch.ends(stuck.id());
+        let started = Instant::now();
+        let status = stuck.wait().expect("sleep is waited on");
+        assert!(
+            !status.success() && started.elapsed() < GRACE + Duration::from_secs(2),
+            "the stuck process ended {status} after {:?}",
+            started.elapsed()
+        );
+        assert!(watch.stop().is_err(), "the call didn't hear why it stopped");
+    }
+
+    #[test]
+    fn only_a_child_of_the_call_s_is_ever_ended() {
+        // This program isn't its own child, so it's left be.
+        cdp::end(std::process::id());
+        let mut child = Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("sleep starts");
+        cdp::end(child.id());
+        let status = child.wait().expect("sleep is waited on");
+        assert!(!status.success(), "a child of ours wasn't ended: {status}");
     }
 
     #[test]
     fn a_call_that_never_connected_fails() {
         let new = [json!({"state": "new"}), json!({"state": "connecting"})];
-        assert!(matches!(connected(&new), Err(Step::Failed(_))));
-        assert!(connected(&[json!({"state": "connected"})]).is_ok());
+        assert!(
+            matches!(connected(&new), Err(Step::Failed(_))),
+            "a call that never connected passed"
+        );
+        assert!(
+            connected(&[json!({"state": "connected"})]).is_ok(),
+            "a connected call failed"
+        );
     }
 
     #[test]
     fn only_chrome_s_fake_camera_is_taken_at_either_end() {
-        assert!(fake(&json!({"label": "fake_device_0"}), "near").is_ok());
+        assert!(
+            fake(&json!({"label": "fake_device_0"}), "near").is_ok(),
+            "Chrome's fake camera was refused"
+        );
         let refused = |said: Value| matches!(fake(&said, "far"), Err(Step::Failed(_)));
-        assert!(refused(json!({"label": "MX Brio 705 for Business"})));
+        assert!(
+            refused(json!({"label": "MX Brio 705 for Business"})),
+            "a real camera was taken"
+        );
         assert!(refused(json!({})), "a camera with no name is refused");
     }
 

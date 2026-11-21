@@ -19,16 +19,40 @@ unsafe extern "C" {
     fn dup2(old: RawFd, new: RawFd) -> i32;
     fn fcntl(fd: RawFd, command: i32, argument: i32) -> i32;
     fn prctl(option: i32, ...) -> i32;
+    fn kill(pid: i32, signal: i32) -> i32;
+}
+
+/// Ends the process `pid` at once, if it's still a child of this program:
+/// one already reaped is left be, so a stranger given its pid never is.
+pub fn end(pid: u32) {
+    let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+        return;
+    };
+    // The parent is the second field after the name, which may hold spaces.
+    let parent = stat
+        .rsplit_once(')')
+        .and_then(|(_, rest)| rest.split_whitespace().nth(1))
+        .and_then(|field| field.parse::<u32>().ok());
+    if parent != Some(std::process::id()) {
+        return;
+    }
+    if let Ok(pid) = i32::try_from(pid) {
+        // SAFETY: kill only sends a signal, to a child of ours not yet reaped.
+        unsafe {
+            kill(pid, SIGKILL);
+        }
+    }
 }
 
 /// `PR_SET_PDEATHSIG` and `SIGKILL`: a child killed as its parent ends.
 const DEATH_SIGNAL: i32 = 1;
+const SIGKILL: i32 = 9;
 const KILL: u64 = 9;
 
-/// Makes what `command` starts end with this program, however it ends: a
-/// call stopped for Joel's while a step can't be broken off ends the
-/// program, and must take Weston and each Chrome with it. The signal comes
-/// as the thread that started the child ends, which is the call's own.
+/// Makes what `command` starts end with this program, however it ends,
+/// even by a panic or a kill, so no Weston or Chrome outlives a run. The
+/// signal comes as the thread that started the child ends, which is the
+/// call's own.
 pub fn ends_with_us(command: &mut Command) {
     // SAFETY: prctl is a system call, async-signal-safe, and the closure
     // allocates nothing.
@@ -134,6 +158,13 @@ impl Browser {
             next: 0,
             session: None,
         })
+    }
+}
+
+impl Browser {
+    /// Its Chrome's process id.
+    pub fn pid(&self) -> u32 {
+        self.child.id()
     }
 }
 
