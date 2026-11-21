@@ -2914,6 +2914,10 @@
     through an update, keep the version before current and the one a live pi says it loaded, and
     never swap in a build that fails or leaves a native module unbuilt
   '';
+  pi-packages-keeps-its-own-store = ''
+    pi's packages install their dependencies into a pnpm store of their own, under the folder
+    the agent fence holds read-only, never the account's one store, which fenced commands write
+  '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
     fifteen minutes in background.slice on Linux and by a launchd agent on a Mac, and a pi's start
