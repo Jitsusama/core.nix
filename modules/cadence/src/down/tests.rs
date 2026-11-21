@@ -9,8 +9,8 @@ fn one(machine: &str, reading: Reading, working: bool) -> Seen {
         machine: machine.into(),
         realm: "work".into(),
         reading,
-        working,
-        refused: None,
+        working: Some(working),
+        battery: false,
     }
 }
 
@@ -20,7 +20,7 @@ fn work() -> Vec<String> {
 
 /// What's due at `now`, told to everyone without a fault, as a tick does.
 fn step(told: &mut Told, now: i64, seen: &[Seen]) -> Vec<Tell> {
-    let tells = due(seen, &work(), told, now);
+    let tells = due(seen, &work(), &work(), told, now);
     let sent: Result<(), ()> = tell(&tells, told, "ORCH", |_| None, |_| Some(7), |_, _| Ok(()));
     assert_eq!(sent, Ok(()), "a send that couldn't fail failed");
     tells
@@ -30,22 +30,21 @@ fn step(told: &mut Told, now: i64, seen: &[Seen]) -> Vec<Tell> {
 fn the_nodes_answers_are_read_for_each_other_machine() {
     let machines = concat!(
         r#"{"Ok":{"Machines":[{"name":"here","state":"ready"},"#,
-        r#"{"name":"yonder","state":"unreachable"},{"name":"far","state":"unreachable"},"#,
+        r#"{"name":"yonder","state":"unreachable"},"#,
+        r#"{"name":"far","state":"ready","power":{"on_battery":true}},"#,
         r#"{"name":"near","state":"ready"},{"name":"odd","state":"starting"}]}}"#,
         "\n",
         r#"{"Ok":{"Builders":[]}}"#,
     );
     let sessions = r#"{"Ok":{"Sessions":[{"machine":"yonder","state":"busy"},
         {"machine":"near","state":"idle"},{"machine":"here","state":"busy"}]}}"#;
-    let health = r#"{"links":[{"machine":"far","state":"refused","why":"it speaks v3"},
-        {"machine":"yonder","state":"unreachable"},{"machine":"near","state":"up"}]}"#;
     assert_eq!(
-        seen("work", machines, sessions, health, "here"),
+        seen("work", machines, sessions, "here"),
         [
             one("yonder", Reading::Down, true),
             Seen {
-                refused: Some("it speaks v3".into()),
-                ..one("far", Reading::Down, false)
+                battery: true,
+                ..one("far", Reading::Ready, false)
             },
             one("near", Reading::Ready, false),
             one("odd", Reading::Unread, false),
@@ -53,7 +52,13 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
         "the machines weren't read as the node says, or this one wasn't left out"
     );
     assert!(
-        seen("work", r#"{"Err":"no such realm"}"#, "", "", "here").is_empty(),
+        seen("work", machines, r#"{"Err":"timed out"}"#, "here")
+            .iter()
+            .all(|one| one.working.is_none()),
+        "a node not saying which sessions are busy read every machine idle"
+    );
+    assert!(
+        seen("work", r#"{"Err":"no such realm"}"#, "", "here").is_empty(),
         "a node answering with an error read machines"
     );
 }
@@ -84,7 +89,6 @@ fn a_working_machine_down_ten_minutes_is_told_once_and_again_once_back() {
             machine: "yonder".into(),
             realm: "work".into(),
             minutes: 10,
-            refused: None,
         }],
         "a working machine down ten minutes wasn't told"
     );
@@ -99,6 +103,7 @@ fn a_working_machine_down_ten_minutes_is_told_once_and_again_once_back() {
         [Tell::Back {
             machine: "yonder".into(),
             minutes: 40,
+            at_least: false,
             to: BTreeSet::from(["ORCH".to_owned()]),
             notice: Some(7),
         }],
@@ -163,6 +168,27 @@ fn a_machine_idle_never_ready_slept_away_from_or_back_in_moments_is_never_told()
 }
 
 #[test]
+fn a_laptop_on_battery_shut_while_busy_is_never_told() {
+    let mut told = Told::default();
+    let on_battery = Seen {
+        battery: true,
+        ..one("yonder", Reading::Ready, true)
+    };
+    step(&mut told, NOW, &[on_battery]);
+    for minutes in (5..=30).step_by(5) {
+        assert!(
+            step(
+                &mut told,
+                NOW + minutes * 60,
+                &[one("yonder", Reading::Down, true)]
+            )
+            .is_empty(),
+            "a laptop on battery asleep was told at {minutes} min"
+        );
+    }
+}
+
+#[test]
 fn only_readings_in_a_row_count_as_down() {
     let mut told = Told::default();
     let down = [one("yonder", Reading::Down, false)];
@@ -197,18 +223,19 @@ fn only_readings_in_a_row_count_as_down() {
 }
 
 #[test]
-fn every_machine_up_dropping_at_once_is_this_one_cut_off() {
+fn machines_up_a_tick_before_all_dropping_at_once_is_this_one_cut_off() {
     let mut told = Told::default();
     let up = [
         one("yonder", Reading::Ready, true),
         one("near", Reading::Ready, true),
     ];
+    let down = [
+        one("yonder", Reading::Down, true),
+        one("near", Reading::Down, true),
+    ];
     step(&mut told, NOW, &up);
-    for minutes in (5..=40).step_by(5) {
-        let down = [
-            one("yonder", Reading::Down, true),
-            one("near", Reading::Down, true),
-        ];
+    // However long it lasts, past the hour they last read ready.
+    for minutes in (5..=120).step_by(5) {
         assert!(
             step(&mut told, NOW + minutes * 60, &down).is_empty(),
             "every machine down at once was told at {minutes} min"
@@ -227,10 +254,25 @@ fn every_machine_up_dropping_at_once_is_this_one_cut_off() {
         1,
         "one machine down while another stayed up wasn't told"
     );
+    // One asleep since earlier doesn't make another's crash a cut-off.
+    let mut told = Told::default();
+    step(&mut told, NOW, &up);
+    let asleep = [
+        one("yonder", Reading::Ready, true),
+        one("near", Reading::Down, false),
+    ];
+    step(&mut told, NOW + 5 * 60, &asleep);
+    step(&mut told, NOW + 10 * 60, &down);
+    step(&mut told, NOW + 15 * 60, &down);
+    assert_eq!(
+        step(&mut told, NOW + 20 * 60, &down).len(),
+        1,
+        "a working machine's crash after another slept was taken for a cut-off"
+    );
 }
 
 #[test]
-fn a_realm_not_answering_leaves_its_machines_unread_and_one_unlisted_is_forgotten() {
+fn a_realm_not_answering_leaves_its_machines_unread_and_one_let_go_doesnt() {
     let mut told = Told::default();
     let personal = Seen {
         realm: "personal".into(),
@@ -240,44 +282,85 @@ fn a_realm_not_answering_leaves_its_machines_unread_and_one_unlisted_is_forgotte
     due(
         &[one("yonder", Reading::Down, false), personal],
         &both,
+        &both,
         &mut told,
         NOW,
     );
+    let read = [one("yonder", Reading::Down, false)];
     for minutes in (5..=30).step_by(5) {
-        let read = [one("yonder", Reading::Down, false)];
         assert!(
-            due(&read, &work(), &mut told, NOW + minutes * 60).is_empty(),
+            due(&read, &both, &work(), &mut told, NOW + minutes * 60).is_empty(),
             "a machine the realm reaching it didn't read was told at {minutes} min"
         );
     }
-    due(&[], &work(), &mut told, NOW + FORGET + 45 * 60);
+    // A realm no longer asked is let go, and the machine read again.
+    let mut told = Told::default();
+    due(
+        &[one("yonder", Reading::Down, false), personal_ready()],
+        &both,
+        &both,
+        &mut told,
+        NOW,
+    );
+    due(&read, &work(), &work(), &mut told, NOW + 5 * 60);
+    assert_eq!(
+        due(&read, &work(), &work(), &mut told, NOW + 15 * 60).len(),
+        1,
+        "a realm no longer asked left its machine unread"
+    );
+    due(&[], &work(), &work(), &mut told, NOW + FORGET + 45 * 60);
     assert!(
         told.machines.is_empty(),
         "a machine no realm lists was kept"
     );
 }
 
-/// A machine working at `NOW` and turned away since five minutes on.
-fn turned_away() -> (Told, Vec<Tell>) {
+/// The machine as the personal realm reads it, ready and busy.
+fn personal_ready() -> Seen {
+    Seen {
+        realm: "personal".into(),
+        ..one("yonder", Reading::Ready, true)
+    }
+}
+
+#[test]
+fn a_tick_not_saying_who_is_busy_keeps_what_the_last_said() {
     let mut told = Told::default();
-    let away = [Seen {
-        refused: Some("it speaks v3".into()),
-        ..one("yonder", Reading::Down, false)
-    }];
+    step(&mut told, NOW, &[one("yonder", Reading::Ready, true)]);
+    let unsaid = Seen {
+        working: None,
+        ..one("yonder", Reading::Ready, false)
+    };
+    step(&mut told, NOW + 5 * 60, &[unsaid]);
+    let down = [one("yonder", Reading::Down, false)];
+    step(&mut told, NOW + 10 * 60, &down);
+    step(&mut told, NOW + 15 * 60, &down);
+    assert_eq!(
+        step(&mut told, NOW + 20 * 60, &down).len(),
+        1,
+        "a tick whose sessions went unread made a working machine idle"
+    );
+}
+
+/// A machine working at `NOW` and unreachable since five minutes on.
+fn gone() -> (Told, Vec<Tell>) {
+    let mut told = Told::default();
+    let down = [one("yonder", Reading::Down, false)];
     due(
         &[one("yonder", Reading::Ready, true)],
+        &work(),
         &work(),
         &mut told,
         NOW,
     );
-    due(&away, &work(), &mut told, NOW + 5 * 60);
-    let tells = due(&away, &work(), &mut told, NOW + 15 * 60);
+    due(&down, &work(), &work(), &mut told, NOW + 5 * 60);
+    let tells = due(&down, &work(), &work(), &mut told, NOW + 15 * 60);
     (told, tells)
 }
 
 #[test]
 fn a_going_down_is_told_to_joel_the_orchestrator_and_its_owner_each_once() {
-    let (mut told, tells) = turned_away();
+    let (mut told, tells) = gone();
     let notices = RefCell::new(Vec::new());
     let findings = RefCell::new(Vec::new());
     let owner = |key: &str| (key == "down:yonder").then(|| "OWNER".to_owned());
@@ -299,14 +382,14 @@ fn a_going_down_is_told_to_joel_the_orchestrator_and_its_owner_each_once() {
     assert_eq!(
         notices.take(),
         [
-            "critical yonder: Won't link with this machine for 10 min, and its work waits. The \
-          orchestrator has been told why."
+            "critical yonder: Can't be reached for 10 min, and its work waits until it's back. \
+             Check it's awake and online."
         ],
         "Joel's notice wasn't as written"
     );
-    let text = "Cadence alarm: yonder has read turned away, its node saying \"it speaks v3\" \
-                in the work realm for 10 min, after reading ready within the hour before with \
-                a session on it busy. Joel has a notice of it.";
+    let text = "Cadence alarm: yonder has read unreachable in the work realm for 10 min, after \
+                reading ready within the hour before, on mains power with a session on it \
+                busy. Joel has a notice of it.";
     assert_eq!(
         findings.take(),
         [
@@ -319,7 +402,8 @@ fn a_going_down_is_told_to_joel_the_orchestrator_and_its_owner_each_once() {
         !told.machines["yonder"].told,
         "a going down not sent to all was kept as told"
     );
-    let again = due(&tells_reading(), &work(), &mut told, NOW + 20 * 60);
+    let down = [one("yonder", Reading::Down, false)];
+    let again = due(&down, &work(), &work(), &mut told, NOW + 20 * 60);
     let send = |to: &str, text: String| {
         findings.borrow_mut().push((to.to_owned(), text));
         Ok::<(), &str>(())
@@ -336,17 +420,9 @@ fn a_going_down_is_told_to_joel_the_orchestrator_and_its_owner_each_once() {
         "a going down told again went beyond the one who missed it, or showed Joel it twice"
     );
     assert!(
-        due(&tells_reading(), &work(), &mut told, NOW + 25 * 60).is_empty(),
+        due(&down, &work(), &work(), &mut told, NOW + 25 * 60).is_empty(),
         "a going down told to all was told again"
     );
-}
-
-/// The machine still turned away.
-fn tells_reading() -> Vec<Seen> {
-    vec![Seen {
-        refused: Some("it speaks v3".into()),
-        ..one("yonder", Reading::Down, false)
-    }]
 }
 
 #[test]
@@ -354,13 +430,14 @@ fn a_coming_back_replaces_joels_notice_and_goes_to_each_who_had_it() {
     let back = Tell::Back {
         machine: "yonder".into(),
         minutes: 25,
+        at_least: false,
         to: BTreeSet::from(["ORCH".to_owned(), "OWNER".to_owned()]),
         notice: Some(42),
     };
     let notices = RefCell::new(Vec::new());
     let findings = RefCell::new(Vec::new());
     let result: Result<(), ()> = tell(
-        &[back],
+        std::slice::from_ref(&back),
         &mut Told::default(),
         "ORCH",
         |_| None,
@@ -389,11 +466,45 @@ fn a_coming_back_replaces_joels_notice_and_goes_to_each_who_had_it() {
         ],
         "a machine back wasn't told to each who had its going down"
     );
+    let replaced = notice_args(&back);
+    assert!(
+        replaced.windows(2).any(|pair| pair == ["-r", "42"]) && replaced.contains(&"-p".into()),
+        "a coming back wouldn't replace its going down's notice: {replaced:?}"
+    );
+    let (_, tells) = gone();
+    assert!(
+        !notice_args(&tells[0]).contains(&"-r".into()),
+        "a going down would replace some other notice"
+    );
+}
+
+#[test]
+fn a_coming_back_after_a_gap_says_how_long_at_least() {
+    let (mut told, tells) = gone();
+    let fine = |_: &str, _: String| Ok::<(), ()>(());
+    let sent = tell(&tells, &mut told, "ORCH", |_| None, |_| Some(7), fine);
+    assert_eq!(sent, Ok(()), "a send that couldn't fail failed");
+    // This machine slept from twenty minutes on, and wakes to it back.
+    step(
+        &mut told,
+        NOW + 20 * 60,
+        &[one("yonder", Reading::Down, false)],
+    );
+    let back = step(
+        &mut told,
+        NOW + 14 * 3600,
+        &[one("yonder", Reading::Ready, false)],
+    );
+    assert_eq!(
+        back.iter().map(|one| one.notice()).collect::<Vec<_>>(),
+        ["Back after at least 15 min, and its work carries on."],
+        "a coming back counted this machine's own sleep as time down"
+    );
 }
 
 #[test]
 fn a_notice_not_shown_is_tried_again_and_the_finding_says_so() {
-    let (mut told, tells) = turned_away();
+    let (mut told, tells) = gone();
     let findings = RefCell::new(Vec::new());
     let send = |_: &str, text: String| {
         findings.borrow_mut().push(text);
@@ -412,7 +523,8 @@ fn a_notice_not_shown_is_tried_again_and_the_finding_says_so() {
         !told.machines["yonder"].told,
         "a going down Joel never saw was kept as told"
     );
-    let again = due(&tells_reading(), &work(), &mut told, NOW + 20 * 60);
+    let down = [one("yonder", Reading::Down, false)];
+    let again = due(&down, &work(), &work(), &mut told, NOW + 20 * 60);
     let shown = RefCell::new(0);
     let result = tell(
         &again,
@@ -433,16 +545,26 @@ fn a_notice_not_shown_is_tried_again_and_the_finding_says_so() {
 }
 
 #[test]
-fn the_nodes_words_are_quoted_bounded_and_kept_from_markup() {
-    let words = format!("say \"hi\"\nnow {}", "x".repeat(200));
-    let said = quoted(&words);
-    assert!(
-        said.starts_with("\"say 'hi' now x") && said.chars().count() == SAID + 2,
-        "the node's words weren't quoted on one line and bounded: {said}"
-    );
+fn a_notices_body_is_kept_from_markup_and_a_slow_node_is_stopped() {
     assert_eq!(
         escaped("<a href=\"x\">&</a>"),
         "&lt;a href=\"x\"&gt;&amp;&lt;/a&gt;",
         "a notice's body could be read as markup"
+    );
+    let shell = std::env::var("BASH").unwrap_or_else(|_| "bash".into());
+    let slow = answer(
+        &shell,
+        &["-c", "while :; do :; done"],
+        Duration::from_millis(300),
+    );
+    assert_eq!(
+        slow.map_err(|err| err.kind()),
+        Err(io::ErrorKind::TimedOut),
+        "a node that wouldn't answer held the tick"
+    );
+    assert_eq!(
+        answer(&shell, &["-c", "echo said"], Duration::from_secs(5)).ok(),
+        Some("said\n".to_owned()),
+        "a node's answer wasn't read"
     );
 }
