@@ -1354,9 +1354,8 @@ fn uplink_turn(rank: Rank) -> Option<fs::File> {
             Ok(None) if said => {}
             Ok(None) => {
                 eprintln!(
-                    "nix-offload: {} copies already go up from this machine, so this waits its \
-                     turn to send",
-                    taken
+                    "nix-offload: {taken} copies already go up from this machine, so this waits \
+                     its turn to send"
                 );
                 said = true;
             }
