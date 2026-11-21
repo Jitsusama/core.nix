@@ -125,6 +125,19 @@ it("the lede says what each machine worth a look has, then the worst of the rest
   assert.equal(machineLede(system([machine("heron", "good")])), undefined);
 });
 
+it("the lede says what the machines part has worth a look that no machine does", () => {
+  const note = "as read at 11:54; just now mycelium machines gave no answer in 20 s";
+  const kept = system([machine("heron", "good")]);
+  const [machines, ...others] = kept.parts;
+  assert.ok(machines);
+  const read = { ...kept, parts: [{ ...machines, side: [note] }, ...others] };
+  assert.equal(
+    machineLede(read),
+    `The machines, ${note}.`,
+    "machines read from a kept answer say so in the lede",
+  );
+});
+
 it("the lede names three machines worth a look at most, however many there are", () => {
   const many = Array.from({ length: 1000 }, (_, at) =>
     machine(`m${at}`, "watch", ["code wants a look"]),

@@ -276,7 +276,12 @@ it("says why a good part read from its owner's last answer is that answer", () =
     systemWith((record) => (record.key === "part:code" ? { ...record, side: [note] } : record)),
     when,
   );
-  assert.ok(kept.includes("As read at 11:54; just now repos --json"), "the kept note went unsaid");
+  assert.ok(
+    kept.includes(
+      `<p class="said">18 repositories</p><p class="aside">As read at 11:54; just now repos --json`,
+    ),
+    "a good part says what it holds, with the kept note aside",
+  );
   assert.ok(
     partsOf(systemWith(), when).includes("Nothing in it is worth a look."),
     "a good part read from its own answer has nothing worth a look",

@@ -121,9 +121,11 @@ function stopped(words: string): string {
 
 /**
  * The lede: what each machine worth a look has, the worst first and its
- * name leading, since a name keeps its case; then the worst of the other
- * parts' first look, or else why one wasn't read. None when nothing
- * anywhere wants a look.
+ * name leading, since a name keeps its case, or else what the machines
+ * part has worth a look that no machine does, as when the machines were
+ * read from their owner's last answer; then the worst of the other parts'
+ * first look, or else why one wasn't read. None when nothing anywhere
+ * wants a look.
  */
 function machineLede(system: System): string | undefined {
   const part = system.parts.find((each) => each.part === "machines");
@@ -135,8 +137,12 @@ function machineLede(system: System): string | undefined {
     .filter((thing) => thing.side.length > 0)
     .slice(0, LEDE_MACHINES)
     .map((thing) => stopped(`${thing.name}: ${thing.side.join("; ")}`));
+  const own =
+    machines.length === 0 && part !== undefined && part.health !== "good" && part.side.length > 0
+      ? [stopped(`The machines, ${part.side.join("; ")}`)]
+      : [];
   const rest = restOf(system.parts.filter((other) => other.part !== "machines"));
-  const said = [...machines, ...(rest === undefined ? [] : [rest])];
+  const said = [...machines, ...own, ...(rest === undefined ? [] : [rest])];
   return said.length === 0 ? undefined : said.join(" ");
 }
 
