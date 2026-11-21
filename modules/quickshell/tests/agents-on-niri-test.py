@@ -866,8 +866,13 @@ def test_a_sessions_drawer_glances_at_six_facts_at_most_and_folds_the_rest(
     usage_dated_today("LISTEN")
     found(shell, "listening quest", "Listening Quest")
     glance = ["Last Turn", "Context"]
+    # Its figures folded too, so a drawer from before its usage was laid again isn't read.
     shell.launcher_until(
-        lambda shown: shown["drawer"]["shown"] and shown["drawer"]["facts"] == glance
+        lambda shown: (
+            shown["drawer"]["shown"]
+            and shown["drawer"]["facts"] == glance
+            and "Cache" in shown["drawer"]["nerd"]
+        )
     )
     drawer = shell.showing()["drawer"]
     assert shown_first(drawer) == glance, f"its first screen hides some: {drawer}"
@@ -2334,6 +2339,9 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     shell: Shell,
 ) -> None:
     """Recent holds a session closed this boot, never one to reopen; Return reopens it."""
+    # When it closed, as its row would say it before any of Recent is made, since a run begun
+    # before midnight reads it after, saying its day too (XY9H5C, 1b5eff6c).
+    before = closed_side("CLOSED")
     opened(shell)
     shell.launcher_until(lambda shown: "Recent" in shown["rows"])
     rows = shell.showing()["rows"]
@@ -2352,10 +2360,8 @@ def test_recent_holds_the_sessions_closed_this_boot_after_landed_and_before_star
     # Only the one closed: the last boot's are Sessions to Reopen's, and the closed
     # orchestrators stand at the tree's end.
     shell.launcher_until(lambda shown: shown["rows"] == ["Closed Quest"])
-    # When it closed, by its time alone only on the day it closed, since a run begun before
-    # midnight reads it after, saying its day too (XY9H5C, 1b5eff6c); either, should the day
-    # turn as it's read.
-    before = closed_side("CLOSED")
+    # By its time alone only on the day it closed: as before the row was made, or as now,
+    # should the day turn in between.
     row = shell.showing()["selected"]
     assert row["side"] in {before, closed_side("CLOSED")}, row
     # Its note never says its name again, but where it ran.
@@ -3847,13 +3853,10 @@ def touched(address: str) -> None:
     The node reads its carries again only as a session it holds changes, and a presence's
     `at` alone is none of a session's, so its `since` moves.
     """
-    path = PRESENCE / f"{address.lower()}.json"
-    record = json.loads(path.read_text())
+    record = laid_record(address)
     record["at"] = datetime.now(UTC).isoformat()
     record["since"] = record["at"]
-    laid = path.with_suffix(".tmp")
-    laid.write_text(json.dumps(record))
-    laid.rename(path)
+    laid_whole(address, record)
 
 
 def kept(*carries: Json) -> None:
