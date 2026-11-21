@@ -296,9 +296,10 @@ in
       KillMode = "mixed";
       # A stop waits on whatever command the loop is in, and a stuck one
       # would hold a switch for systemd's 90 s. Stops took 0.04 to 3.6 s on
-      # 21 November, the slowest under a load of 160. Past this the shaper
-      # is killed, and the stop's sweep, or the next shaper taking the
-      # queues back, still sets every queue right.
+      # 21 November, the slowest under a load of 160. It bounds the stop's
+      # sweep too, one tc read for each of a handful of devices, which took
+      # 46 ms. Past this the shaper is killed, and the stop's sweep, or the
+      # next shaper taking the queues back, still sets every queue right.
       TimeoutStopSec = 15;
       Restart = "always";
       RestartSec = 2;

@@ -253,9 +253,15 @@ fn sh(words: &[String]) -> Result<String, String> {
 }
 
 /// A device's queues, as `tc -j qdisc show` gives them, or nothing when
-/// the read says nothing of them.
+/// the read says nothing of them, which is said, since a read failing
+/// every time would otherwise leave a queue unrepaired without a word.
 fn queues_of(device: &str) -> Option<String> {
-    seen_queues(sh(&words(&format!("tc -j qdisc show dev {device}"))))
+    let read = sh(&words(&format!("tc -j qdisc show dev {device}")));
+    let seen = seen_queues(read.clone());
+    if let (None, Err(e)) = (&seen, &read) {
+        eprintln!("{e}: {device}'s queues are left as they are until a read answers");
+    }
+    seen
 }
 
 /// A device that isn't there has no queues, which reads as none. Any other
@@ -918,10 +924,11 @@ fn run(options: &Options) -> Result<(), Failure> {
             follow_leaders(&mut shaped, &order);
             primary = order.first().cloned();
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
-            follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
+            let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
             // A restart left the old shaper's queues; once this one has
-            // taken up the links and VPNs it shapes, the rest go.
-            if !swept {
+            // taken up the links and VPNs it shapes, the rest go. A VPN
+            // whose read failed isn't taken up yet, and would go with them.
+            if !swept && read {
                 swept = true;
                 sweep(&held(&shaped, &vpns.0));
             }
@@ -1144,13 +1151,15 @@ type Vpns = (BTreeMap<String, Vpn>, cost::Cost);
 /// from what was sent inside the VPNs, `inside`, and what their bulk
 /// holds. Lets go of one that's gone or has no uplink to ride. What a VPN
 /// receives goes straight in, past its IFB, while the uplink's does. Read
-/// at `t` seconds.
+/// at `t` seconds. Gives whether every VPN there was read, since one whose
+/// read failed is left as it was and not yet taken up.
 fn follow_vpns(
     (applied, spent): &mut Vpns,
     names: &[String],
     primary: Option<&mut Shaped>,
     (inside, t): (Option<qdisc::Tins>, f64),
-) {
+) -> bool {
+    let mut every_read = true;
     let read: Vec<String> = applied
         .keys()
         .map(|name| sh(&words(&format!("tc -s -j qdisc show dev {name}"))).unwrap_or_default())
@@ -1220,6 +1229,7 @@ fn follow_vpns(
         // A read that failed leaves the VPN's queues as they are until one
         // answers.
         let (Some(json), Some(back)) = (queues_of(name), queues_of(&ifb)) else {
+            every_read = false;
             continue;
         };
         let mut kept = Vpn {
@@ -1255,6 +1265,7 @@ fn follow_vpns(
         }
         applied.insert(name.clone(), kept);
     }
+    every_read
 }
 
 /// Follows the uplinks: shapes a new one, lets a gone one go, and puts back
