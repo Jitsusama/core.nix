@@ -50,10 +50,14 @@ const SILENT: Duration = Duration::from_mins(30);
 /// the queue takes, so neither clock may start until it's said.
 const TAKEN: &str = "nix-offload: building on ";
 
-/// What nix-offload says once a lent builder has taken a run. A Mac's
-/// comparison says it first, while a lent builder names what changed, so
-/// only a later `TAKEN` says a Mac took it.
+/// What nix-offload says once a lent builder has taken a run, which no
+/// Mac's take says: a `TAKEN` line saying it took no Mac.
 const LENT: &str = "nix-offload: building on the lent builder ";
+
+/// What nix-offload says as a lent builder begins naming a Mac's changed
+/// checks. It says nothing more until a Mac takes what was named, and the
+/// naming can hang there, so the clocks start here as they do at `TAKEN`.
+const NAMES: &str = "nix-offload: no lent builder builds for ";
 
 /// What nix-offload says, every five minutes, while a run a builder took
 /// waits there for one of its turns. It says that after `TAKEN`, so a
@@ -113,6 +117,9 @@ struct Clock {
     /// builder that names a Mac's changed checks: only then can a Mac's
     /// comparison have stalled there.
     nearby: bool,
+    /// Whether a lent builder began naming a Mac's changed checks, so
+    /// that time before a Mac took them went to the naming.
+    naming: bool,
 }
 
 impl Clock {
@@ -130,6 +137,7 @@ impl Clock {
             heard: now,
             stopped: None,
             nearby: false,
+            naming: false,
         }
     }
 
@@ -167,8 +175,15 @@ impl Clock {
     /// other lines, as that it may wait for room, say neither.
     fn heard_line(&mut self, line: &str, now: Instant) {
         let line = line.trim();
-        if says_taken(line) {
-            self.nearby |= says_a_mac_took(line);
+        if says_a_mac_took(line) && !self.nearby {
+            // A Mac's turn and its two hours begin at its own take, not
+            // at the naming before it, which took up to 20 minutes.
+            self.nearby = true;
+            self.taken = Some(now);
+            self.waits = None;
+            self.building = Some(now);
+        } else if says_taken(line) {
+            self.naming |= line.starts_with(NAMES);
             self.taken.get_or_insert(now);
             self.waits = None;
             self.building.get_or_insert(now);
@@ -227,9 +242,11 @@ impl Clock {
                 return Some("it printed nothing for half an hour");
             }
             match self.building {
-                Some(building) => {
-                    (now.duration_since(building) > LONGEST).then_some("it built past two hours")
+                Some(building) if now.duration_since(building) <= LONGEST => None,
+                Some(_) if self.naming && !self.nearby => {
+                    Some("a lent builder named it past two hours")
                 }
+                Some(_) => Some("it built past two hours"),
                 None => (now.duration_since(taken) > WAITS_AT_MOST)
                     .then_some("it waited for a turn past three hours"),
             }
@@ -853,15 +870,18 @@ fn mac_ended(code: Option<i32>, clock: &Clock, log: &Path) -> Option<i32> {
     read
 }
 
-/// Whether a line is nix-offload's saying a builder took the run.
+/// Whether a line is nix-offload's saying a builder took the run, a lent
+/// builder's beginning to name a Mac's checks among them.
 fn says_taken(line: &str) -> bool {
-    line.trim_start().starts_with(TAKEN)
+    let line = line.trim_start();
+    line.starts_with(TAKEN) || line.starts_with(NAMES)
 }
 
 /// Whether a line is nix-offload's saying a machine nearby, not a lent
 /// builder, took the run.
 fn says_a_mac_took(line: &str) -> bool {
-    says_taken(line) && !line.trim_start().starts_with(LENT)
+    let line = line.trim_start();
+    line.starts_with(TAKEN) && !line.starts_with(LENT)
 }
 
 /// Whether a line is nix-offload's saying the run waits there for a turn,
@@ -2533,11 +2553,94 @@ error: Cannot build '/nix/store/lvq948h202w1y515cz4g89fjgynya8d5-system-0.1.0.dr
         let _ = fs::remove_file(&log);
     }
 
-    /// What nix-offload says while a lent builder names a Mac's changed
-    /// checks, before any Mac takes them.
+    /// What a Mac's comparison prints while a lent builder names its
+    /// changed checks, before any Mac takes them: nix-offload's one line,
+    /// then changed-checks' own, with no line saying the lent builder took
+    /// it (`captured_on` prints none).
     const NAMING: &str = "nix-offload: no lent builder builds for aarch64-darwin and a machine \
         nearby does, so changed-checks only names what changed, and what it names builds nearby\n\
-        nix-offload: building on the lent builder lb-1\n";
+        changed-checks: naming what main to the change touched\n";
+
+    /// Appends `line` to `log`, as a run printing as it goes does.
+    fn printed(log: &Path, line: &str) {
+        let mut kept = fs::OpenOptions::new().append(true).open(log).unwrap();
+        writeln!(kept, "{line}").unwrap();
+    }
+
+    #[test]
+    fn a_naming_past_two_hours_compared_nothing_and_says_the_lent_builder_took_them() {
+        let log = std::env::temp_dir().join(format!("merge-net-named-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        for step in 1..=6 {
+            let at = start + Duration::from_mins(20 * step);
+            printed(&log, "changed-checks: still naming");
+            assert!(
+                !clock.overdue(&log, at),
+                "a naming printing as it goes is overdue"
+            );
+        }
+        assert!(
+            clock.overdue(&log, start + LONGEST + Duration::from_secs(1)),
+            "a naming past two hours went on"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            Some(UNCOMPARED),
+            "a naming the net stopped was read as a Mac's stall"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this compared nothing: a lent builder named it past two hours"),
+            "a naming's two hours were told as a Mac's build"
+        );
+        let _ = fs::remove_file(&log);
+    }
+
+    #[test]
+    fn a_macs_two_hours_count_from_its_own_take_not_the_naming_before_it() {
+        let log = std::env::temp_dir().join(format!("merge-net-take-{}.log", std::process::id()));
+        let _ = fs::remove_file(&log);
+        let start = Instant::now();
+        let mut clock = Clock::new(&log, start);
+        fs::write(&log, NAMING).unwrap();
+        assert!(
+            !clock.overdue(&log, start),
+            "a naming just begun is overdue"
+        );
+        let took = start + Duration::from_mins(20);
+        printed(&log, "nix-offload: building on a-mac, /tmp/compare");
+        assert!(!clock.overdue(&log, took), "a Mac's take is overdue");
+        for step in 1..=6 {
+            let at = took + Duration::from_secs(20 * 60 * step - 60);
+            printed(&log, "a-check> building");
+            assert!(
+                !clock.overdue(&log, at),
+                "a Mac building under two hours from its take is overdue"
+            );
+        }
+        assert!(
+            clock.overdue(&log, took + LONGEST + Duration::from_secs(1)),
+            "a Mac building past two hours from its take went on"
+        );
+        assert_eq!(
+            mac_ended(None, &clock, &log),
+            None,
+            "a Mac's build stopped past its two hours wasn't read as a stall"
+        );
+        assert_eq!(
+            fs::read_to_string(&log).unwrap().lines().last(),
+            Some("merge-net: this run stopped unfinished: it built past two hours"),
+            "a Mac's two-hour stop doesn't say why"
+        );
+        let _ = fs::remove_file(&log);
+    }
 
     #[test]
     fn a_mac_comparison_stopped_while_a_lent_builder_named_it_compared_nothing() {
