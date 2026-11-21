@@ -78,10 +78,11 @@ fn successor<'a>(on: &HashMap<&str, Vec<Session<'a>>>, quest: &str) -> Option<Se
 /// How strongly a session that goes by `name` is that cell: 0 live and
 /// named by it now, 1 live and once named by it, 2 ended and named by it,
 /// 3 ended and once named by it, and 4 once named by it on another quest
-/// than the session named by it now (`owner`'s). The least wins.
+/// than the session named by it now (`owner`'s), or where that session is
+/// on none, which no other shares. The least wins.
 fn claim(one: Session<'_>, name: &str, owner: Option<&str>) -> u8 {
     let own = one.address() == name;
-    if !own && owner.is_some_and(|quest| quest != quest_of(one)) {
+    if !own && owner.is_some_and(|quest| quest.is_empty() || quest != quest_of(one)) {
         return 4;
     }
     let own = u8::from(!own);
@@ -104,7 +105,8 @@ pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
             owners.insert(name, quest_of(one));
         }
     }
-    // Each name only listed: the one quest its listers share, or none.
+    // Each name only listed: the one quest its listers share, or none,
+    // which listers on no quest never share.
     let mut listed: HashMap<&str, Option<&str>> = HashMap::new();
     for one in sessions.iter().copied() {
         let quest = quest_of(one);
@@ -112,7 +114,7 @@ pub fn records(sessions: &[Session<'_>]) -> Vec<Value> {
             listed
                 .entry(name)
                 .and_modify(|shared| {
-                    if *shared != Some(quest) {
+                    if *shared != Some(quest) || quest.is_empty() {
                         *shared = None;
                     }
                 })
@@ -308,6 +310,29 @@ mod tests {
             ])[0],
             "N>null",
             "N had no quest, so neither the live L listing it nor Z, on no quest, is N now"
+        );
+        let mut lister = session("Z", "running", "");
+        lister["presence"]["addresses"] = json!(["Z", "N"]);
+        assert_eq!(
+            goes(&[session("N", "closed", ""), lister])[0],
+            "N>null",
+            "two sessions on no quest share none, so Z listing N isn't N now"
+        );
+    }
+
+    #[test]
+    fn a_name_only_listed_by_two_on_no_quest_goes_nowhere() {
+        let mut one = session("Y", "running", "");
+        one["presence"]["addresses"] = json!(["Y", "OLD"]);
+        let mut other = session("Z", "running", "");
+        other["presence"]["addresses"] = json!(["Z", "OLD"]);
+        assert!(
+            goes(&[one.clone(), other]).contains(&"OLD>null".to_owned()),
+            "on no quest they share none, so neither takes OLD's looks"
+        );
+        assert!(
+            goes(&[one]).contains(&"OLD>\"Y\"".to_owned()),
+            "listed by one alone, it is OLD now"
         );
     }
 
