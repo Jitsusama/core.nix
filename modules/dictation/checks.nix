@@ -257,10 +257,10 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      # Keeping a lone "Yeah." or "No.", and cutting takes only where a
-      # voice is, took the rate from 19.3% to 18.8%; the ceiling sits
-      # between, so it fails the code from before it.
-      ceiling = "19.0";
+      # Waiting a second's quiet before cutting a take took the rate from
+      # 18.8% to 17.7%; the ceiling sits between, so it fails the code
+      # from before it.
+      ceiling = "18.2";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}
@@ -275,15 +275,17 @@
   # the speech is handled as it should be: given a voice, or left under
   # Others where one talker holds all but a tenth of a far end, as
   # TS3003a's holds 97%. A change that tells them apart better raises the
-  # floors to what it reaches; each sits half a point under what the last
-  # measurement on 2026-11-20 gave.
+  # floors to what it reaches, and one that trades naming for words heard
+  # lowers them, saying so: a second's pause before a take is cut hears
+  # a point more of the words and names the voices worse. Each sits half
+  # a point under what was measured on 2026-11-20, 82.7% and 96.9%.
   call-transcripts-tells-voices-apart-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "85.6";
-      handled = "93.5";
+      right = "82.2";
+      handled = "96.4";
     in
     pkgs.runCommand "call-transcripts-tells-voices-apart-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts voices ${voices} ${meetings} \
@@ -298,15 +300,17 @@
   # came. Of the speech given a name, at least `right` is that person's,
   # and at least `named` of the speech is given one. A change that names
   # better raises the floors to what it reaches; each sits half a point
-  # under what the last measurement on 2026-11-21 gave, 93.4% and 23.9%.
+  # under what the last measurement on 2026-11-21 gave, 83.5% and 27.9%.
+  # Waiting a second before cutting a take lowered `right` from 93.4%:
+  # a take that runs through a short pause holds more of a second voice.
   # TS3003a names none, since one talker holds nearly all of its far end.
   call-transcripts-names-voices-as-well-as-it-did =
     let
       dictation = pkgs.callPackage ./package.nix { };
       voices = pkgs.callPackage ./titanet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      right = "92.9";
-      named = "23.4";
+      right = "83.0";
+      named = "27.4";
     in
     pkgs.runCommand "call-transcripts-names-voices-as-well-as-it-did" { } ''
       ${dictation}/bin/call-transcripts names ${voices} ${meetings} \
