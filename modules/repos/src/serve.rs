@@ -118,7 +118,8 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     let mut record = timed(&took, || disk.read_whole(&mut heard, &mut folders, &kept));
     let mut working =
         Working::start(|folders: &[PathBuf]| using::sample(Path::new("/proc"), folders));
-    working.read(folders_of(&record));
+    // What works in each is said unread until /proc answers, which may
+    // take its second or never, so the daemon is ready on the disk alone.
     shared.change(working.said(&record), feed::sources(&record));
     let listener = serve::listen(&socket).map_err(|why| {
         let socket = socket.display();
@@ -127,6 +128,8 @@ pub fn run(home: Option<&Path>) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     eprintln!("{}", ready(started.elapsed()));
+    working.read(folders_of(&record));
+    shared.change(working.said(&record), feed::sources(&record));
     // Once views are answered, so writing the homes never holds up the
     // first.
     keep(homes.as_mut(), &record);
