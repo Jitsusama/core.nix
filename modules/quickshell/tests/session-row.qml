@@ -463,7 +463,7 @@ QtObject {
         // For You's fill or a look's answer, is said as none, never its id.
         const vocabulary = { "verb:agent:wake": "Wake", "verb:agent:talk": "Talk" };
         const nameOf = id => vocabulary[id] ?? id;
-        const acts = [
+        const actNames = [
             ["a known act by its name", "wake", "Wake"],
             ["Talk by its name", "talk", "Talk"],
             ["an act the vocabulary doesn't name is none", "fill", ""],
@@ -471,7 +471,7 @@ QtObject {
             ["no act is none", "", ""],
             ["nor a missing one", undefined, ""]
         ];
-        for (const [what, act, want] of acts) {
+        for (const [what, act, want] of actNames) {
             const said = SessionRow.actName(act, nameOf);
             if (said !== want)
                 failures.push(`actName, ${what}: "${said}", not "${want}"`);
