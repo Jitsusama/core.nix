@@ -42,6 +42,20 @@ import {
 } from "./health.js";
 import { bySpend, cellSpendWords, cellsHeading, networkCells, partHeading, partsBySpend, partWords, restWords, shownAndRest, splits } from "./spend.js";
 import { EVERY_PAGE_ACT, findKey, mapKey, pageKey, stepped, switchedTo, treeKey } from "./keys.js";
+import {
+  colonyRadius as colonyOf,
+  CORD_BUNDLE_OVER,
+  control,
+  HUB_R,
+  layOut,
+  layoutKeyOf,
+  MACHINE_R,
+  MACHINE_STEP,
+  placeCells,
+  R,
+  shortestTree,
+  sow as sowSeeds,
+} from "./layout.js";
 import { grownOf } from "./lineage.js";
 import { drawnWidth } from "./lines.js";
 import { durationOf, easedInOut, goneAndBack } from "./motion.js";
@@ -86,27 +100,17 @@ import {
   const EVERY_MS = 2000;
   const SVG = "http://www.w3.org/2000/svg";
 
-  // The drawing's measures, in the map's own units, which zoom scales.
-  const R = 11; // a cell's membrane
+  // The drawing's measures, in the map's own units, which zoom scales. A
+  // cell's, a hub's and a machine's are layout.ts's, which keeps things
+  // apart by them.
   const NUCLEUS = 6.5;
   const QUIET_DOT = 5.5; // the ring inside a quiet cell
-  const HUB_R = 21; // an orchestration's hub
-  const MACHINE_R = 19;
   const SPOKES = 8; // round a network's hub, which no cell has, so the two never read alike
   const SPOKE_FROM = 3; // how far out past the hub's ring a spoke starts
   const SPOKE_LONG = 6;
   const LENT_CORNER = 0.32; // how much of a lent machine's shorter side each corner keeps
-  const SEED = 16.5; // a sunflower's spacing: seeds about 29 apart
-  const HOLE = 5; // seeds left empty round a hub, so it has room
-  const GAP = 54; // between two neighbouring discs
-  const BRANCH_GAP = 2.4 * GAP; // between a hub's disc and a branch's, so each colony reads as its own
-  const EDGE_GAP = 2 * GAP; // between the furthest network and the receptors at the edge
   const DISH_LIP = 0.6; // how far above a receptor's middle its dish's lips reach, in R
   const DISH_DEPTH = 1.6; // its curve's pull below the middle, which puts its floor half an R down
-  const RING_MIN = 190; // the least distance from the machines to a hub
-  const MACHINE_STEP = 96;
-  const MACHINE_SPREAD = 0.4; // the least distance between machines, as a share of the ring
-  const GOLDEN = Math.PI * (3 - Math.sqrt(5));
   // Zoom, as screen pixels per unit.
   const K_MIN = 0.15;
   const K_MAX = 3.2;
@@ -600,189 +604,34 @@ import {
 
   // ---- Places that never move. ----
 
-  // Each hub's seeds, in the order its cells first came: an id, or null
-  // where a cell has ended. Kept while the page is open.
+  // Where each thing sits is layout.ts's to say. The drawing keeps each
+  // hub's seeds, in the order its cells first came, while the page is open,
+  // and the layout for as long as nothing that would move it has changed.
   const seeds = new Map();
-  const sow = (m) => {
-    const where = new Map();
-    for (const s of m.cells) where.set(s.id, (s.hub || s.loose).key);
-    for (const [key, list] of seeds) {
-      for (let i = 0; i < list.length; i++) if (list[i] && where.get(list[i]) !== key) list[i] = null;
-    }
-    for (const h of m.hubs.values()) {
-      const list = seeds.get(h.key) || [];
-      const have = new Set(list);
-      const fresh = h.cells.filter((s) => !have.has(s.id)).sort((a, b) => (a.since || "").localeCompare(b.since || "") || a.id.localeCompare(b.id));
-      for (const s of fresh) {
-        const empty = list.indexOf(null);
-        if (empty >= 0) list[empty] = s.id;
-        else list.push(s.id);
-      }
-      seeds.set(h.key, list);
-    }
-  };
-
-  // A disc keeps room for more cells than it holds, in steps, so a cell
-  // arriving doesn't move the hubs round it.
-  const roomFor = (n) => Math.max(8, Math.ceil((n * 1.15 + 3) / 8) * 8);
-  const discRadius = (room) => SEED * Math.sqrt(room + HOLE) + R;
-  const seedAt = (i) => {
-    const k = i + HOLE;
-    const r = SEED * Math.sqrt(k);
-    const a = k * GOLDEN;
-    return [r * Math.cos(a), r * Math.sin(a)];
-  };
-
-  // Where everything sits, in map units: the machines at the origin, each
-  // top hub round them in a share of the ring as wide as its family, and
-  // each branch further out from its parent.
+  const sow = (m) => sowSeeds(seeds, m);
   let layout = null;
   let layoutKey = "";
   const lay = (m) => {
-    const room = new Map();
-    for (const h of m.hubs.values()) room.set(h.key, roomFor((seeds.get(h.key) || []).length));
-    const key = [...room].map(([k, r]) => `${k}:${r}:${m.hubs.get(k)?.machine || ""}:${m.hubs.get(k)?.within || ""}`).join("|") + `|${m.machines.map((x) => x.name).join(",")}|${m.builders.map((b) => b.name).join(",")}`;
+    const key = layoutKeyOf(m, seeds);
     if (key === layoutKey && layout) return layout;
     layoutKey = key;
-    const disc = new Map([...room].map(([k, r]) => [k, discRadius(r)]));
-    // Each machine's networks take one arc of the ring, clockwise from the
-    // top, the top machine's first, so its cords never cross the middle
-    // and a machine opened is the arc it carries.
-    const machineAt = new Map(m.machines.map((x, i) => [x.name, i]));
-    const arc = (h) => machineAt.get(h.machine) ?? m.machines.length;
-    const tops = [...m.hubs.values()].filter((h) => !h.within && !h.edge).sort((a, b) => Boolean(a.alone) - Boolean(b.alone) || arc(a) - arc(b) || collate(a.name, b.name));
-    const familyWidth = (h) => {
-      const kids = h.children.reduce((sum, c) => sum + familyWidth(c) + GAP, 0);
-      return Math.max(2 * disc.get(h.key), kids - GAP);
-    };
-    const widths = tops.map((h) => familyWidth(h) + GAP);
-    const total = widths.reduce((a, b) => a + b, 0);
-    const column = m.machines.length;
-    const machineSpan = ((column - 1) * MACHINE_STEP) / 2 + MACHINE_R;
-    const ring = Math.max(RING_MIN + machineSpan, total / (2 * Math.PI));
-    const at = new Map();
-    const angle = new Map();
-    const place = (h, x, y, a) => {
-      at.set(h.key, [x, y]);
-      angle.set(h.key, a);
-      const kids = [...h.children].sort((p, q) => p.name.localeCompare(q.name));
-      if (!kids.length) return;
-      const reach = disc.get(h.key) + BRANCH_GAP + Math.max(...kids.map((c) => disc.get(c.key)));
-      const spans = kids.map((c) => (familyWidth(c) + GAP) / reach);
-      let from = a - spans.reduce((p, q) => p + q, 0) / 2;
-      kids.forEach((c, i) => {
-        const ca = from + spans[i] / 2;
-        from += spans[i];
-        const d = disc.get(h.key) + BRANCH_GAP + disc.get(c.key);
-        place(c, x + Math.cos(ca) * d, y + Math.sin(ca) * d, ca);
-      });
-    };
-    // The machines stand in a column, so the first machine's arc is turned
-    // to sit over it, at the top, and the last one's comes round below.
-    const firstRun = tops.findIndex((h) => h.machine !== tops[0]?.machine);
-    const lead = widths.slice(0, firstRun < 0 ? widths.length : firstRun).reduce((a, b) => a + b, 0);
-    let used = -lead / 2;
-    tops.forEach((h, i) => {
-      const a = -Math.PI / 2 + ((used + widths[i] / 2) / total) * 2 * Math.PI;
-      used += widths[i];
-      const d = ring + disc.get(h.key);
-      place(h, Math.cos(a) * d, Math.sin(a) * d, a);
-    });
-    // The receptors stand at the edge, above everything the ring and its
-    // branches reach, since they are where the outside comes in.
-    const edge = m.hubs.get(OUTSIDE);
-    const outer = Math.max(ring, ...[...at].map(([k, [x, y]]) => Math.hypot(x, y) + disc.get(k)));
-    if (edge) place(edge, 0, -(outer + EDGE_GAP + disc.get(OUTSIDE)), -Math.PI / 2);
-    // Machines stand in a column, apart in proportion to the ring, since a
-    // machine's mark is its name, wide and short: a row of them would
-    // need several times the room to keep their boxes apart.
-    const step = Math.max(MACHINE_STEP, ring * MACHINE_SPREAD);
-    const inColumn = (i) => [0, (i - (column - 1) / 2) * step];
-    const machines = new Map(m.machines.map((x, i) => [x.name, inColumn(i)]));
-    // A builder carries no cord, and inside the ring a mark of words
-    // stands on the hubs once the map is zoomed out to its whole, so the
-    // builders stand under the ring, below everything it and its branches
-    // reach, as the receptors stand above it: under the machines' column,
-    // a step apart, kept there when the machines move out to their arcs.
-    const foot = outer + EDGE_GAP + MACHINE_R;
-    const builders = new Map(m.builders.map((b, j) => [b.name, [0, foot + j * MACHINE_STEP]]));
-    // Once a machine's cords bundle, the ring is too wide for a row of
-    // machines at its middle to be told apart: each machine carrying
-    // networks moves out to the middle of its own arc, so its trunks start
-    // from it and two machines' arcs read as two.
-    const carried = new Map();
-    for (const h of tops) if (h.machine) carried.set(h.machine, [...(carried.get(h.machine) || []), h]);
-    if ([...carried.values()].some((hs) => hs.length > CORD_BUNDLE_OVER)) {
-      for (const [name, hs] of carried) {
-        const [cx, cy] = hs.reduce(([x, y], h) => [x + Math.cos(angle.get(h.key)), y + Math.sin(angle.get(h.key))], [0, 0]);
-        const a = Math.atan2(cy, cx);
-        machines.set(name, [Math.cos(a) * ring * MACHINE_ORBIT, Math.sin(a) * ring * MACHINE_ORBIT]);
-      }
-    }
-    layout = { at, angle, disc, machines, builders, ring };
+    layout = layOut(m, seeds);
     return layout;
   };
 
   // How far a hub's cells reach from it, as sown now rather than as
   // room is kept, so the ground fits the colony it holds.
   const COLONY_PAD = 12;
-  const colonyRadius = (h) => {
-    const n = (seeds.get(h.key) || []).length;
-    return n ? SEED * Math.sqrt(n - 1 + HOLE) + R : HUB_R;
-  };
-
-  // Each cell's place: its hub's, plus its seed's.
-  const placeCells = (m, L) => {
-    const pos = new Map();
-    for (const h of m.hubs.values()) {
-      const [hx, hy] = L.at.get(h.key);
-      (seeds.get(h.key) || []).forEach((id, i) => {
-        if (!id || !m.byId.has(id)) return;
-        const [dx, dy] = seedAt(i);
-        pos.set(id, [hx + dx, hy + dy]);
-      });
-    }
-    return pos;
-  };
+  const colonyRadius = (h) => colonyOf(seeds, h.key);
 
   // The places are kept for as long as the reading and the layout are:
   // seeds are sown only from a new reading, and a choice moves nothing.
   let placedFor = null;
   const placed = (m, L) => {
-    if (placedFor?.m !== m || placedFor.L !== L) placedFor = { m, L, pos: placeCells(m, L) };
+    if (placedFor?.m !== m || placedFor.L !== L) placedFor = { m, L, pos: placeCells(m, L, seeds) };
     return placedFor.pos;
   };
 
-  // The shortest tree joining `points` (Prim's), as pairs of indices; the
-  // hyphae a network grows between its cells, short ones first.
-  const shortestTree = (points) => {
-    const n = points.length;
-    const edges = [];
-    if (n < 2) return edges;
-    const best = new Array(n).fill(Infinity);
-    const from = new Array(n).fill(-1);
-    const done = new Array(n).fill(false);
-    best[0] = 0;
-    for (let step = 0; step < n; step++) {
-      let u = -1;
-      for (let i = 0; i < n; i++) if (!done[i] && (u < 0 || best[i] < best[u])) u = i;
-      done[u] = true;
-      if (from[u] >= 0) edges.push([from[u], u]);
-      const [ux, uy] = points[u];
-      for (let v = 0; v < n; v++) {
-        if (done[v]) continue;
-        const d = (points[v][0] - ux) ** 2 + (points[v][1] - uy) ** 2;
-        if (d < best[v]) {
-          best[v] = d;
-          from[v] = u;
-        }
-      }
-    }
-    return edges;
-  };
-
-  // A gently bowed line from one place to another, as hyphae grow.
-  const control = ([x1, y1], [x2, y2], by) => [(x1 + x2) / 2 - (y2 - y1) * by, (y1 + y2) / 2 + (x2 - x1) * by];
   // Every line drawn, as a curve in map units, so names can keep off them.
   let lineShapes = [];
   let talkShapes = [];
@@ -2381,12 +2230,10 @@ import {
   // off the map, draws as its ground and hub, and its cells unfold as he
   // comes close. What's open, chosen, pointed at or found never folds. ----
   const FOLD_OVER = 400; // cells, at or under which nothing folds
-  const CORD_BUNDLE_OVER = 24; // networks on a machine, past which its cords bundle
   const CORD_MOST = 6; // px, the heaviest a cord or trunk is drawn
   const CROSS_MOST = 4; // px, the largest a cross-hypha's dots are drawn
   const BUNDLE_WAYS = 12; // trunks out of a bundling machine, one each way
   const BUNDLE_REACH = 0.8; // how far out a trunk forks, as a share of the ring
-  const MACHINE_ORBIT = 0.3; // how far out a bundling machine sits, as a share of the ring
   // A cell's radius on screen under which its network folds: 5 px across, the least a disc
   // still reads as one, since folding at 8 hid every cell of a hundred on a laptop's whole map.
   const FOLD_PX = 2.5;
