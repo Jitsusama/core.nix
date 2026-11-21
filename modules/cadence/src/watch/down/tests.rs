@@ -2,6 +2,8 @@ use std::cell::RefCell;
 
 use super::*;
 
+mod cut_off;
+
 const NOW: i64 = 1_795_200_000;
 
 fn one(machine: &str, reading: Reading, working: bool) -> Seen {
@@ -25,6 +27,17 @@ fn lost(machine: &str, heard: i64) -> Seen {
 
 fn work() -> Vec<String> {
     vec!["work".into()]
+}
+
+/// What's due at `now` on a machine sure of its own reach.
+fn due(
+    seen: &[Seen],
+    asked: &[String],
+    answered: &[String],
+    told: &mut Told,
+    now: i64,
+) -> Vec<Tell> {
+    super::due(seen, asked, answered, told, now, true)
 }
 
 /// What's due at `now`, told to everyone without a fault, as a tick does.
@@ -238,196 +251,6 @@ fn only_readings_in_a_row_count_as_down() {
         .len(),
         1,
         "a tick missed restarted the count"
-    );
-}
-
-#[test]
-fn machines_last_heard_together_with_none_ready_is_this_one_cut_off() {
-    let up = [
-        one("yonder", Reading::Ready, true),
-        one("near", Reading::Ready, true),
-    ];
-    let down = [lost("yonder", 200), lost("near", 230)];
-    // However long it lasts, past the hour they last read ready.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    for minutes in (5..=120).step_by(5) {
-        assert!(
-            step(&mut told, NOW + minutes * 60, &down).is_empty(),
-            "every machine dropping at once was told at {minutes} min"
-        );
-    }
-    // A first tick that reads nothing, or nothing but unread, then the drop.
-    for between in [vec![], vec![one("yonder", Reading::Unread, true)]] {
-        let mut told = Told::default();
-        step(&mut told, NOW, &up);
-        step(&mut told, NOW + 5 * 60, &between);
-        for minutes in (10..=40).step_by(5) {
-            assert!(
-                step(&mut told, NOW + minutes * 60, &down).is_empty(),
-                "a drop after a tick reading {between:?} was told at {minutes} min"
-            );
-        }
-    }
-    // Peers lost either side of a tick.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    let straddled = [lost("yonder", 290), one("near", Reading::Ready, true)];
-    step(&mut told, NOW + 5 * 60, &straddled);
-    let down = [lost("yonder", 290), lost("near", 320)];
-    step(&mut told, NOW + 10 * 60, &down);
-    // And back either side of a tick, the count the cut-off held starts anew.
-    let back = [lost("yonder", 290), one("near", Reading::Ready, true)];
-    for minutes in [15, 20] {
-        assert!(
-            step(&mut told, NOW + minutes * 60, &back).is_empty(),
-            "a peer back a tick after another was told at {minutes} min"
-        );
-    }
-}
-
-#[test]
-fn this_machine_reaching_nothing_it_probes_reads_offline() {
-    let machines = |reached: &str| {
-        format!(
-            r#"{{"Ok":{{"Machines":[{{"name":"here","reached":{reached}}},
-            {{"name":"yonder","reached":{{"home":true}}}}]}}}}"#
-        )
-    };
-    assert!(
-        offline(&machines(r#"{"call":false,"home":false}"#), "here"),
-        "a machine reaching nothing read online"
-    );
-    for reached in [r#"{"call":false,"home":true}"#, "{}"] {
-        assert!(
-            !offline(&machines(reached), "here"),
-            "a machine reaching {reached} read offline"
-        );
-    }
-    assert!(
-        !offline(&machines(r#"{"home":false}"#), "far"),
-        "another machine's record was read as this one's"
-    );
-    assert!(!offline("", "here"), "no answer read as offline");
-}
-
-#[test]
-fn what_the_cut_off_cant_tell_is_never_told() {
-    let up = [
-        one("yonder", Reading::Ready, true),
-        one("near", Reading::Ready, true),
-    ];
-    // A machine down with no time heard.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    let unheard = Seen {
-        heard: None,
-        ..one("yonder", Reading::Down, true)
-    };
-    for minutes in (5..=30).step_by(5) {
-        let down = [unheard.clone(), lost("near", 100)];
-        assert!(
-            step(&mut told, NOW + minutes * 60, &down).is_empty(),
-            "a drop beside a machine with no time heard was told at {minutes} min"
-        );
-    }
-    // Read down by two realms, one of which lost it long before.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    let both = ["work".to_owned(), "personal".to_owned()];
-    let personal = |seen: Seen| Seen {
-        realm: "personal".into(),
-        ..seen
-    };
-    for minutes in (5..=30).step_by(5) {
-        let down = [
-            lost("yonder", -7200),
-            personal(lost("yonder", 200)),
-            personal(lost("near", 230)),
-        ];
-        assert!(
-            due(&down, &both, &both, &mut told, NOW + minutes * 60).is_empty(),
-            "a realm's stale hearing parted a cut-off, told at {minutes} min"
-        );
-    }
-    // A realm not answering.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    for minutes in (5..=30).step_by(5) {
-        let down = [lost("yonder", 200)];
-        assert!(
-            due(&down, &both, &work(), &mut told, NOW + minutes * 60).is_empty(),
-            "a drop while a realm didn't answer was told at {minutes} min"
-        );
-    }
-}
-
-#[test]
-fn three_machines_tell_apart_a_cut_off_from_a_crash() {
-    let three = [
-        one("yonder", Reading::Ready, true),
-        one("near", Reading::Ready, true),
-        one("far", Reading::Ready, true),
-    ];
-    // Two dropping together beside one still ready is no cut-off.
-    let mut told = Told::default();
-    step(&mut told, NOW, &three);
-    let pair = [
-        lost("yonder", 200),
-        lost("near", 210),
-        one("far", Reading::Ready, true),
-    ];
-    step(&mut told, NOW + 5 * 60, &pair);
-    assert_eq!(
-        step(&mut told, NOW + 15 * 60, &pair).len(),
-        2,
-        "two machines down beside one ready weren't told"
-    );
-    // Two idle, asleep together long before, don't hide a third's crash.
-    let mut told = Told::default();
-    let idle_pair = [
-        one("yonder", Reading::Ready, false),
-        one("near", Reading::Ready, false),
-        one("far", Reading::Ready, true),
-    ];
-    step(&mut told, NOW, &idle_pair);
-    let crash = [lost("yonder", -9000), lost("near", -8990), lost("far", 200)];
-    step(&mut told, NOW + 5 * 60, &crash);
-    assert_eq!(
-        step(&mut told, NOW + 15 * 60, &crash).len(),
-        1,
-        "a crash beside two machines asleep since long before wasn't told"
-    );
-}
-
-#[test]
-fn a_machine_down_apart_from_the_others_is_told() {
-    let up = [
-        one("yonder", Reading::Ready, true),
-        one("near", Reading::Ready, true),
-    ];
-    // One down while another stays up.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    let mixed = [lost("yonder", 200), one("near", Reading::Ready, true)];
-    step(&mut told, NOW + 5 * 60, &mixed);
-    assert_eq!(
-        step(&mut told, NOW + 15 * 60, &mixed).len(),
-        1,
-        "one machine down while another stayed up wasn't told"
-    );
-    // One asleep since earlier, then another failing on its own.
-    let mut told = Told::default();
-    step(&mut told, NOW, &up);
-    let asleep = [one("yonder", Reading::Ready, true), lost("near", 100)];
-    step(&mut told, NOW + 5 * 60, &asleep);
-    let down = [lost("yonder", 500), lost("near", 100)];
-    step(&mut told, NOW + 10 * 60, &down);
-    step(&mut told, NOW + 15 * 60, &down);
-    assert_eq!(
-        step(&mut told, NOW + 20 * 60, &down).len(),
-        1,
-        "a working machine's crash after another slept was taken for a cut-off"
     );
 }
 
