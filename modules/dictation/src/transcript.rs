@@ -510,6 +510,61 @@ mod tests {
         assert_eq!(markdown(&lines, "Joel", None, None), want.join("\n"));
     }
 
+    /// Joel's lines that `markdown` keeps, among `lines`.
+    fn kept(lines: &[Line]) -> Vec<String> {
+        let written = markdown(lines, "Joel", None, None);
+        read(&written, "Joel")
+            .into_iter()
+            .filter(|line| line.side == Side::Mine)
+            .map(|line| line.text)
+            .collect()
+    }
+
+    #[test]
+    fn joels_short_answer_to_a_longer_line_of_theirs_is_his_own() {
+        // On the meetings, which hold no echo, each line of Joel's the
+        // filter left out was a short answer like these, its few words
+        // all in the longer line of theirs it answered.
+        let theirs = "Okay, that's fine, yes, but let's check the budget.";
+        for answer in ["Okay.", "Yes. Yes.", "Okay. That's fine."] {
+            let lines = [line(Side::Theirs, 4, theirs), line(Side::Mine, 5, answer)];
+            assert_eq!(
+                kept(&lines),
+                [answer],
+                "Joel's answer {answer:?} was taken for their echo"
+            );
+        }
+    }
+
+    #[test]
+    fn an_echo_of_a_short_line_of_theirs_is_still_left_out() {
+        let lines = [
+            line(Side::Theirs, 4, "Sounds good."),
+            line(Side::Mine, 4, "Sounds good"),
+        ];
+        assert!(
+            kept(&lines).is_empty(),
+            "the echo of their short line was kept as Joel's"
+        );
+    }
+
+    #[test]
+    fn four_words_of_a_longer_line_of_theirs_are_its_echo() {
+        // Joel's microphone hears their long line as two takes where it
+        // cuts at its own pauses, and each is the echo of part of it.
+        let theirs = "Thursday morning works for everyone, then lunch at noon.";
+        let lines = [
+            line(Side::Theirs, 4, theirs),
+            line(Side::Mine, 4, "Thursday morning works for"),
+            line(Side::Mine, 6, "everyone then lunch at noon"),
+        ];
+        assert!(
+            kept(&lines).is_empty(),
+            "a part of their long line was kept as Joel's: {:?}",
+            kept(&lines)
+        );
+    }
+
     #[test]
     fn a_transcript_reads_back_as_the_lines_it_was_written_from() {
         let lines = [
