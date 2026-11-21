@@ -1063,13 +1063,27 @@ def test_a_records_words_are_drawn_as_words(
 MARK_DRAWN = """() => {
   document.querySelector('#world g.nodes').dataset.kept = 'yes';
   document.querySelector('#panel-body').firstElementChild.dataset.kept = 'yes';
-  window.readingsDrawn = 0;
-  document.addEventListener('mycelium:modelled', () => window.readingsDrawn++);
+  const legend = document.querySelector('#panel-body details[data-keep="legend"]');
+  legend.open = true;
+  legend.querySelector('summary').focus();
+  document.addEventListener('mycelium:modelled', (e) => {
+    window.tern = e.detail.model.cells.find((s) => s.address === 'TERN03') || null;
+  });
 }"""
-# Whether the marks and the drawer marked by MARK_DRAWN are still the ones drawn.
-STILL_DRAWN = """() => [
-  document.querySelector('#world g.nodes').dataset.kept === 'yes',
-  document.querySelector('#panel-body').firstElementChild.dataset.kept === 'yes']"""
+# Whether the marks and the drawer marked by MARK_DRAWN are still the ones drawn,
+# and whether the legend it opened is open and its summary focused.
+STILL_DRAWN = """() => {
+  const legend = document.querySelector('#panel-body details[data-keep="legend"]');
+  return [
+    document.querySelector('#world g.nodes').dataset.kept === 'yes',
+    document.querySelector('#panel-body').firstElementChild.dataset.kept === 'yes',
+    !!legend?.open,
+    document.activeElement === legend?.querySelector('summary')];
+}"""
+# What TERN03 was in the reading last drawn, for a wait on the one told.
+TERN_USED = "window.tern?.usage?.context?.used === 12000"
+TERN_MOVING = "window.tern?.standing === 'moving'"
+TERN_GONE = "window.tern === null"
 
 
 def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
@@ -1078,20 +1092,37 @@ def test_a_reading_that_moves_no_shape_is_painted_over_the_map_as_drawn(
     page = mycelium_opened.page
     the_map_stands(page, "live")
     the_map_counts(page, COUNTED, "the map miscounted the realm")
+    # Now open, so its legend can be opened and focused as he would.
+    page.locator("#map-view").focus()
+    page.keyboard.press(".")
+    legend = page.locator('#panel-body details[data-keep="legend"] > summary')
+    expect(legend, ". never opened Now with its legend").to_be_visible()
     page.evaluate(MARK_DRAWN)
+    *_, focused = page.evaluate(STILL_DRAWN)
+    assert focused, "the legend's summary took no focus"
     # A turn's worth of context, which moves no cell and no network.
     used = {"limit": 1000000, "used": 12000}
     last = "2026-11-16T10:00:00Z"
     turned = {"cost_today": 0.1, "context": used, "turns_today": 2, "last_turn": last}
     mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "usage": turned}])
-    page.wait_for_function("window.readingsDrawn > 0", timeout=PACE_MS)
-    kept_marks, kept_drawer = page.evaluate(STILL_DRAWN)
+    page.wait_for_function(TERN_USED, timeout=PACE_MS)
+    kept_marks, kept_drawer, kept_fold, kept_focus = page.evaluate(STILL_DRAWN)
     assert kept_marks, "a reading that moved no shape built the map's marks again"
     assert kept_drawer, "a reading that left the drawer's words built the drawer again"
+    assert kept_fold, "a reading that left the drawer's words shut the fold left open"
+    assert kept_focus, "a reading that left the drawer's words took the focus off the fold"
+    # TERN03 set moving beside TERN01, which already moves, keeps the shape
+    # but not the inks: its nucleus is painted over the marks as drawn.
+    mycelium_node.tell("cell", changed=[{"key": "cell:TERN03", "standing": "moving"}])
+    page.wait_for_function(TERN_MOVING, timeout=PACE_MS)
+    kept_marks, *_ = page.evaluate(STILL_DRAWN)
+    assert kept_marks, "a cell set moving in a moving network built the map's marks again"
+    painted = [mark["cls"] for mark in page.evaluate(MARKS.format("c:TERN03"))]
+    assert "m-nucleus" in painted, f"a restyle left TERN03 unpainted as moving: {painted}"
     # A cell gone changes the shape, so the map is drawn again.
     mycelium_node.tell("cell", gone=["cell:TERN03"])
-    page.wait_for_function("window.readingsDrawn > 1", timeout=PACE_MS)
-    kept_marks, _ = page.evaluate(STILL_DRAWN)
+    page.wait_for_function(TERN_GONE, timeout=PACE_MS)
+    kept_marks, *_ = page.evaluate(STILL_DRAWN)
     assert not kept_marks, "a cell gone left the map as it was drawn"
 
 
