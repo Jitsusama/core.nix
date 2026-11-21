@@ -5,6 +5,11 @@
 # its heading is drawn, and closes it with :q. cage doesn't pass on how this
 # ended, so it leaves ./passed once every key did what it should.
 #
+# Long because it's one reader in one cage, driven key by key, and each
+# case starts where the one before left the view and the cursor: split,
+# each part would start cage and the reader again and replay the keys
+# that brought it there.
+#
 # cage has no keyboard until wtype makes one, so the reader has the
 # keyboard only once the first key is typed: G is pressed until it's taken.
 # Each wtype adds a keyboard of its own and takes it away as it ends, so
@@ -178,9 +183,11 @@ act 1 -k Escape
 act 1 w
 stands '"b"'
 deadline=$((SECONDS + 30))
-until grim w.png && [ "$(changed_to "$cursor" w.png)" -gt 100 ]; do
-  ((SECONDS < deadline)) \
-    || fail "w's cursor took $(changed_to "$cursor" w.png) pixels of its colour, not its block"
+while :; do
+  took=0
+  if grim w.png; then took=$(changed_to "$cursor" w.png); fi
+  ((took > 100)) && break
+  ((SECONDS < deadline)) || fail "w's cursor took $took pixels of its colour, not its block"
   inotifywait -q -q -t 1 -e modify said || true
 done
 act 1 e
@@ -209,18 +216,23 @@ act 1 w
 stands '"b"'
 before=$(cursor)
 act 1 j
-awk "BEGIN { exit !($(cursor) > $before) }" || fail "j left the cursor at $(cursor) pt"
+after=$(cursor)
+awk "BEGIN { exit !($after > $before) }" || fail "j left the cursor at $after pt"
 act 1 k
 stands '"b"'
-near "$(cursor)" "$before" || fail "k put the cursor at $(cursor) pt, not $before"
+after=$(cursor)
+awk "BEGIN { exit !($after - $before < 1 && $before - $after < 1) }" \
+  || fail "k put the cursor at $after pt, not $before"
 act 1 -k Escape
 stands 'nothing'
 # And its block goes with it: nothing on the page is in the cursor's
 # colour that wasn't at rest.
 deadline=$((SECONDS + 30))
-until grim gone.png && [ "$(changed_to "$cursor" gone.png)" -lt 20 ]; do
-  ((SECONDS < deadline)) \
-    || fail "Escape left $(changed_to "$cursor" gone.png) pixels of the cursor's block"
+while :; do
+  left=999
+  if grim gone.png; then left=$(changed_to "$cursor" gone.png); fi
+  ((left < 20)) && break
+  ((SECONDS < deadline)) || fail "Escape left $left pixels of the cursor's block"
   inotifywait -q -q -t 1 -e modify said || true
 done
 act 1 v

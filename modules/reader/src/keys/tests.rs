@@ -55,8 +55,8 @@ fn the_list_gives_each_thing_one_row_with_every_way_to_type_it() {
 }
 
 #[test]
-fn the_list_says_along_a_line_selecting_text_objects_and_copying_by_letters() {
-    let along = rows_of("Along a Line");
+fn the_list_says_left_and_right_selecting_text_objects_and_copying_by_letters() {
+    let along = rows_of("Left and Right");
     for way in [
         "h",
         "l",
@@ -72,7 +72,7 @@ fn the_list_says_along_a_line_selecting_text_objects_and_copying_by_letters() {
     ] {
         assert!(
             along.iter().any(|(ways, _)| ways == &[way]),
-            "Along a Line lists no row typed {way}"
+            "Left and Right lists no row typed {way}"
         );
     }
     let selecting = rows_of("Selecting");
@@ -477,8 +477,14 @@ fn what_a_key_takes_after_it_is_the_languages_to_say() {
         Some(Takes::Letter),
         "f takes what the language says, not what the reader thinks"
     );
-    assert!(Takes::Character.takes('.') && !Takes::Letter.takes('.'));
-    assert!(!Takes::Character.takes('\n'));
+    assert!(
+        Takes::Character.takes('.') && !Takes::Letter.takes('.'),
+        "a character slot takes a stop, which a letter slot doesn't"
+    );
+    assert!(
+        !Takes::Character.takes('\n'),
+        "a character slot takes nothing that ends a line"
+    );
 }
 
 #[test]

@@ -746,9 +746,9 @@
       "name": "Searching"
     },
     {
-      "id": "shortcuts:reader:line",
+      "id": "shortcuts:reader:left-right",
       "in": "shortcuts",
-      "name": "Along a Line"
+      "name": "Left and Right"
     },
     {
       "id": "shortcuts:reader:selecting",
