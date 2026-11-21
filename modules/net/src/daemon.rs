@@ -31,7 +31,7 @@ use ureq::Agent;
 
 use crate::collect::{self, Said};
 use crate::history::{self, Moment};
-use crate::model::{self, Network};
+use crate::model::{self, Network, Source};
 use crate::room;
 use crate::serve as served;
 use crate::sources::{airplay, hp, modem, samsung, sony, switch};
@@ -100,16 +100,8 @@ pub fn run() -> Result<(), String> {
         .into();
     // Each TV's last answer, so a minute it's silent keeps its name.
     let mut tvs = samsung::Heard::new();
-    // Each source as the last record said it, starting from the record a
-    // daemon before this one wrote, so a restart doesn't make an outage
-    // begin again. A record older than a few minutes says nothing of what
-    // happened since it was written, so it carries nothing over.
-    let mut before = fs::read_to_string(&record)
-        .ok()
-        .and_then(|text| serde_json::from_str::<Network>(&text).ok())
-        .filter(|network| time::now().saturating_sub(network.collected_at) <= LATELY)
-        .map(|network| network.sources)
-        .unwrap_or_default();
+    // Each source as the last record said it.
+    let mut before = last_sources(&record);
     loop {
         let heard = read_eero(&eero);
         let receivers = heard
@@ -171,6 +163,19 @@ pub fn run() -> Result<(), String> {
         held.network(&network);
         thread::sleep(EVERY);
     }
+}
+
+/// Each source as the record a daemon before this one wrote said it, so a
+/// restart doesn't make an outage begin again. A record older than a few
+/// minutes says nothing of what happened since it was written, so it
+/// carries nothing over, nor does one that can't be read.
+fn last_sources(record: &Path) -> Vec<Source> {
+    fs::read_to_string(record)
+        .ok()
+        .and_then(|text| serde_json::from_str::<Network>(&text).ok())
+        .filter(|network| time::now().saturating_sub(network.collected_at) <= LATELY)
+        .map(|network| network.sources)
+        .unwrap_or_default()
 }
 
 fn read_eero(file: &Path) -> Result<Value, String> {
