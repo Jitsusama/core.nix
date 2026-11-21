@@ -48,7 +48,7 @@
         "took": "pulled 1 commit",
         "tookMany": "pulled {count} commits",
         "tree": "not pulled: it isn't a checkout's own folder",
-        "busy": "not pulled: something else is under way in it",
+        "busy": "not pulled: git is already at work in it",
         "detached": "not pulled: it's on no branch",
         "unfollowed": "not pulled: its branch follows no other",
         "unread": "not pulled: git couldn't read it",
@@ -67,7 +67,8 @@
         "kept": ", kept 1 locked",
         "keptMany": ", kept {count} locked",
         "tree": "not forgotten: it isn't a checkout's own folder",
-        "busy": "not forgotten: something else is under way in it",
+        "busy": "not forgotten: git is already at work in it",
+        "stranded": "not forgotten: a gone tree holds commits no branch has",
         "unread": "not forgotten: git's folder couldn't be read",
         "failed": "not forgotten: git refused"
       }
@@ -76,10 +77,11 @@
       "id": "verb:code:gather",
       "said": {
         "gathered": "gathered its store",
-        "gatheredStill": "gathered its store, still due: what it holds loose is too recent to drop",
+        "gatheredStill": "gathered its store, and git still calls it due",
+        "untouched": "git left its store as it was: another upkeep may hold it",
         "nothing": "nothing was due",
         "tree": "not gathered: it isn't a checkout's own folder",
-        "busy": "not gathered: something else is under way in it",
+        "busy": "not gathered: git is already at work in it",
         "unread": "not gathered: its store couldn't be read",
         "failed": "not gathered: git failed or ran too long"
       }
@@ -90,7 +92,7 @@
         "switched": "switched to {branch}",
         "here": "already on {branch}",
         "tree": "not switched: it isn't a checkout's own folder",
-        "busy": "not switched: something else is under way in it",
+        "busy": "not switched: git is already at work in it",
         "unknown": "not switched: there's no branch {branch} now",
         "unread": "not switched: git couldn't read it",
         "detached": "not switched: it's on no branch",

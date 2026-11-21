@@ -654,6 +654,56 @@ fn gather_its_store_runs_gits_upkeep_where_its_due_and_says_so() {
 }
 
 #[test]
+fn gather_its_store_says_so_when_git_leaves_it_as_it_was() {
+    let running = Running::new("code-gather-untouched");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    let git = |args: &[&str]| behind.git(&here, args);
+    // Due, and held by another upkeep's lock: git's own upkeep passes a
+    // store by while another holds it, and exits 0 all the same.
+    git(&["config", "gc.autoPackLimit", "1"]);
+    git(&["repack", "--quiet", "-a", "-d"]);
+    behind.commit(&here, "three");
+    git(&["repack", "--quiet", "-d"]);
+    std::fs::write(here.join(".git/objects/maintenance.lock"), "").unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:gather", "path": here}));
+    assert_eq!(
+        said["said"], "git left its store as it was: another upkeep may hold it",
+        "Gather Its Store said it gathered a store git passed by: {said}"
+    );
+}
+
+#[test]
+fn forget_gone_trees_keeps_a_tree_whose_commits_nothing_else_holds() {
+    let running = Running::new("code-forget-stranded");
+    let behind = Behind::new(&running);
+    let here = behind.here.clone();
+    let cases = real(&running.path(""));
+    let pinned = cases.join("pinned");
+    let path = pinned.to_str().unwrap();
+    behind.git(&here, &["worktree", "add", "--quiet", "--detach", path]);
+    behind.commit(&pinned, "only-here");
+    let commit = behind.head(&pinned);
+    std::fs::remove_dir_all(&pinned).unwrap();
+    let mut client = running.client();
+    let said = client.ask(&json!({"id": 1, "ask": "code:forget", "path": here}));
+    assert_eq!(
+        said["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
+        "Forget Gone Trees forgot a tree holding the only way to its commits: {said}"
+    );
+    let listed = behind.git(&here, &["worktree", "list", "--porcelain"]);
+    assert!(
+        listed.contains(path),
+        "git no longer lists the pinned tree: {listed}"
+    );
+    // Once a branch holds its commit, it's forgotten as any gone tree is.
+    behind.git(&here, &["branch", "kept", &commit]);
+    let said = client.ask(&json!({"id": 2, "ask": "code:forget", "path": here}));
+    assert_eq!(said["said"], "forgot 1 gone tree", "{said}");
+}
+
+#[test]
 fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     let running = Running::new("code-terminal");
     let mut client = running.client();

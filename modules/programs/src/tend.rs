@@ -5,8 +5,11 @@
 //! checkout's own folder, the one holding `.git` as a folder, as Pull does,
 //! never on a tree cut from it or a bare checkout, which git is told of
 //! another way. Neither touches a file to work in: forgetting a tree takes
-//! only git's own record of it, its branch and commits stay, and a locked
-//! tree is kept, as git keeps it. The checkout is read before and after
+//! only git's own record of it, its branch stays, and a locked tree is
+//! kept, as git keeps it. A gone tree at no branch, whose commit no ref
+//! reaches, is the one place its commits are kept, so forgetting is
+//! refused while there's one rather than leave them to git's next gc,
+//! which Gather Its Store runs. The checkout is read before and after
 //! from git's own files, as `repos` reads it, so the answer says what
 //! changed rather than what was asked.
 //!
@@ -35,10 +38,12 @@ pub enum Tended {
     /// Git forgot this many gone trees, and kept this many it lists still,
     /// gone but locked.
     Forgot { forgot: u64, kept: u64 },
-    /// Its store was gathered. It's still due where what it holds loose is
-    /// too recent for git to drop, which gc loosens again rather than
-    /// packs, so git would gather it again.
+    /// Its store was gathered, and git still calls it due or not.
     Gathered { still: bool },
+    /// Git ran its upkeep and left the store as it was, as it does when
+    /// another upkeep holds the store, or when Joel's own config says it
+    /// isn't due where the checkout's alone, which repos reads, says it is.
+    Untouched,
     /// There was nothing to do, as a reading since the row's said.
     Nothing,
 }
@@ -54,6 +59,8 @@ pub enum Refused {
     Unread,
     /// Git failed, or ran past its wait.
     Failed,
+    /// A gone tree holds commits no branch or other ref reaches.
+    Stranded,
 }
 
 impl Refused {
@@ -63,6 +70,7 @@ impl Refused {
             Refused::Busy => "busy",
             Refused::Unread => "unread",
             Refused::Failed => "failed",
+            Refused::Stranded => "stranded",
         }
     }
 }
@@ -142,6 +150,7 @@ impl Words {
                 let word = if still { "gatheredStill" } else { "gathered" };
                 json!({"id": id, "said": self.say(act, word)})
             }
+            Ok(Tended::Untouched) => json!({"id": id, "said": self.say(act, "untouched")}),
             Ok(Tended::Nothing) => json!({"id": id, "said": self.say(act, "nothing")}),
             Err(why) => {
                 let said = self.say(act, why.code());
@@ -173,16 +182,50 @@ fn gone(checkout: &Checkout) -> u64 {
     u64::try_from(gone).unwrap_or(u64::MAX)
 }
 
+/// Whether a gone tree of the checkout at `folder` is all that keeps
+/// some commits: one at no branch, whose commit no ref reaches, as a tree
+/// pinned at a commit and worked in there would be. Git's record of the
+/// tree, which `worktree prune` takes, holds its HEAD and its reflog, the
+/// only roots its gc walks from to them.
+fn stranding(git: &str, folder: &Path, checkout: &Checkout) -> Result<bool, Refused> {
+    let detached = checkout
+        .trees
+        .iter()
+        .filter(|tree| !tree.present && tree.head.branch.is_none());
+    for tree in detached {
+        let Some(commit) = tree.head.commit.as_deref() else {
+            return Ok(true);
+        };
+        let args = [
+            "for-each-ref",
+            "--count=1",
+            "--format=x",
+            "--contains",
+            commit,
+        ];
+        let reached = ran(git, folder, &args, Some(READ)).map_err(|_| Refused::Failed)?;
+        if reached.trim().is_empty() {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Has git forget the trees cut from the checkout at `folder` whose
-/// folders are gone, with the git at `git`, keeping those locked.
+/// folders are gone, with the git at `git`, keeping those locked, and
+/// none at all while one gone holds commits nothing else does.
 ///
 /// # Errors
 ///
 /// Says why it left the checkout as it was.
 pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
-    let before = gone(&own(folder)?);
+    let checkout = own(folder)?;
+    let before = gone(&checkout);
     if before == 0 {
         return Ok(Tended::Nothing);
+    }
+    if stranding(git, folder, &checkout)? {
+        return Err(Refused::Stranded);
     }
     ran(git, folder, &["worktree", "prune"], Some(READ)).map_err(|_| Refused::Failed)?;
     let kept = gone(&own(folder)?);
@@ -194,22 +237,25 @@ pub fn forget(git: &str, folder: &Path) -> Result<Tended, Refused> {
 
 /// Gathers the store of the checkout at `folder` as git's own upkeep
 /// does, with the git at `git`, where it's due: git's `gc` task, at the
-/// checkout's config, waited on rather than left in the background.
+/// checkout's config, waited on rather than left in the background. A
+/// store read the same after as before was left untouched, whatever git's
+/// exit said, since git's upkeep is quiet when it passes one by.
 ///
 /// # Errors
 ///
 /// Says why it left the checkout as it was.
 pub fn gather(git: &str, folder: &Path, wait: Duration) -> Result<Tended, Refused> {
-    let due = |checkout: &Checkout| checkout.weight.map(|weight| weight.due);
-    match due(&own(folder)?) {
-        None => return Err(Refused::Unread),
-        Some(false) => return Ok(Tended::Nothing),
-        Some(true) => {}
+    let before = own(folder)?.weight.ok_or(Refused::Unread)?;
+    if !before.due {
+        return Ok(Tended::Nothing);
     }
     let args = ["maintenance", "run", "--auto", "--no-detach", "--quiet"];
     ran(git, folder, &args, Some(wait)).map_err(|_| Refused::Failed)?;
-    let still = due(&own(folder)?).ok_or(Refused::Unread)?;
-    Ok(Tended::Gathered { still })
+    let after = own(folder)?.weight.ok_or(Refused::Unread)?;
+    if after == before {
+        return Ok(Tended::Untouched);
+    }
+    Ok(Tended::Gathered { still: after.due })
 }
 
 #[cfg(test)]
@@ -227,10 +273,12 @@ mod tests {
                 "kept": ", kept 1 locked",
                 "keptMany": ", kept {count} locked",
                 "tree": "not forgotten: it isn't a checkout's own folder",
+                "stranded": "not forgotten: a gone tree holds commits no branch has",
             }},
             {"id": "verb:code:gather", "said": {
                 "gathered": "gathered its store",
-                "gatheredStill": "gathered its store, still due",
+                "gatheredStill": "gathered its store, and git still calls it due",
+                "untouched": "git left its store as it was",
                 "nothing": "nothing was due",
             }},
         ]}))
@@ -263,9 +311,19 @@ mod tests {
         );
         assert_eq!(
             said(Tended::Gathered { still: true }),
-            "gathered its store, still due"
+            "gathered its store, and git still calls it due"
         );
+        assert_eq!(said(Tended::Untouched), "git left its store as it was");
         assert_eq!(said(Tended::Nothing), "nothing was due");
+    }
+
+    #[test]
+    fn forgetting_refused_for_a_stranded_tree_says_so() {
+        let stranded = words().answer(&json!(3), Act::Forget, Err(Refused::Stranded));
+        assert_eq!(
+            stranded["error"]["said"], "not forgotten: a gone tree holds commits no branch has",
+            "{stranded}"
+        );
     }
 
     #[test]
