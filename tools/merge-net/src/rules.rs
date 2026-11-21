@@ -466,7 +466,7 @@ mod tests {
     }
 
     /// A lock whose root names `inputs`, holding `nodes` as given.
-    fn shaped(inputs: serde_json::Value, nodes: &[(&str, serde_json::Value)]) -> String {
+    fn shaped(inputs: &serde_json::Value, nodes: &[(&str, serde_json::Value)]) -> String {
         let mut all = serde_json::Map::new();
         all.insert("root".to_owned(), serde_json::json!({ "inputs": inputs }));
         for (key, node) in nodes {
@@ -483,21 +483,15 @@ mod tests {
     fn an_input_is_found_by_the_node_its_root_names() {
         let after = words("mycelium");
         let inputs = serde_json::json!({ "mycelium": "mycelium_2", "nixpkgs": "nixpkgs" });
-        let base = shaped(
-            inputs.clone(),
-            &[("mycelium_2", at("a")), ("nixpkgs", at("n"))],
-        );
-        let head = shaped(inputs, &[("mycelium_2", at("b")), ("nixpkgs", at("n"))]);
+        let base = shaped(&inputs, &[("mycelium_2", at("a")), ("nixpkgs", at("n"))]);
+        let head = shaped(&inputs, &[("mycelium_2", at("b")), ("nixpkgs", at("n"))]);
         assert!(
             lock_runs_after(&base, &head, &after),
             "a node keyed apart from its input's name should still be let through"
         );
         let keyed = serde_json::json!({ "mycelium": "nixpkgs", "nixpkgs": "mycelium" });
-        let base = shaped(
-            keyed.clone(),
-            &[("mycelium", at("a")), ("nixpkgs", at("n"))],
-        );
-        let head = shaped(keyed, &[("mycelium", at("b")), ("nixpkgs", at("n"))]);
+        let base = shaped(&keyed, &[("mycelium", at("a")), ("nixpkgs", at("n"))]);
+        let head = shaped(&keyed, &[("mycelium", at("b")), ("nixpkgs", at("n"))]);
         assert!(
             !lock_runs_after(&base, &head, &after),
             "a node keyed mycelium that the root reads as another input should run first"
@@ -514,13 +508,10 @@ mod tests {
             (serde_json::json!(["mycelium", "nixpkgs"]), "by a follow"),
         ] {
             let base = shaped(
-                inputs.clone(),
+                &inputs,
                 &[("mycelium", at("a")), ("tool", tool(reads.clone()))],
             );
-            let head = shaped(
-                inputs.clone(),
-                &[("mycelium", at("b")), ("tool", tool(reads))],
-            );
+            let head = shaped(&inputs, &[("mycelium", at("b")), ("tool", tool(reads))]);
             assert!(
                 !lock_runs_after(&base, &head, &after),
                 "another node reading mycelium {how} should run its VM tests first"
@@ -535,10 +526,13 @@ mod tests {
         let inputs = serde_json::json!({ "mycelium": "mycelium", "nixpkgs": "nixpkgs" });
         let mycelium = |rev: &str| serde_json::json!({ "locked": { "rev": rev }, "inputs": { "nixpkgs": ["nixpkgs"] } });
         let base = shaped(
-            inputs.clone(),
+            &inputs,
             &[("mycelium", mycelium("a")), ("nixpkgs", at("n"))],
         );
-        let head = shaped(inputs, &[("mycelium", mycelium("b")), ("nixpkgs", at("n"))]);
+        let head = shaped(
+            &inputs,
+            &[("mycelium", mycelium("b")), ("nixpkgs", at("n"))],
+        );
         assert!(
             lock_runs_after(&base, &head, &after),
             "mycelium following the root's nixpkgs should still be let through"
