@@ -73,6 +73,23 @@ function pendingOf(key, replies, written) {
         side: Said.clockOf(one.reply.since), nerd: "", pending: true }));
 }
 
+// Who has a line now among its events in the order written, its last routing's or taking
+// up's, mid-sentence; "" where none has, or it was let go or taken back since, as the list
+// waits on a line only while its last event holds it (TalkLine.js's past).
+const HOLDING = ["routed", "taken"];
+const LETTING = ["let-go", "undone"];
+function heldBy(own) {
+    let who = "";
+    for (const event of own ?? []) {
+        if (HOLDING.includes(event.event)) {
+            who = Said.midSentence(event.who);
+        } else if (LETTING.includes(event.event)) {
+            who = "";
+        }
+    }
+    return who;
+}
+
 // How his last reply stands while nothing has come of it since, a step in the voice under
 // it: sent, until the void writes it, then waiting on whoever has the thread, as the list
 // says of a line; nothing once anything follows it (Joel, 2026-11-21 10:27: "i said heello
@@ -83,7 +100,7 @@ function standingOf(steps, own, words) {
         return [];
     }
     // Who has it by name, never the address a reply's owner is written as.
-    const who = Said.heldBy(own) || String(words?.void ?? "");
+    const who = heldBy(own) || String(words?.void ?? "");
     const text = last.pending ? String(words?.sent ?? "") : Said.worded(words, "waiting", who);
     return [{ text, answer: false, mine: false, by: "", side: "", nerd: "" }];
 }
@@ -108,25 +125,32 @@ function threadOf(talk, events, words, { dayOf, replies } = {}) {
         nerd: key === "" ? "" : `line ${key}` };
 }
 
-// The line Return opens, by when he said it, where one is picked and no thread is open, in
-// insert as in normal, since Tab or an arrow picks one as he types (Joel, 2026-11-21 10:27:
+// The line Return opens, by when he said it, where one is picked and no thread is open,
+// whatever the mode, since Tab or an arrow picks one as he types (Joel, 2026-11-21 10:27:
 // "having to hit escape first is not intuitive when i can use my arrows to select entries
-// without being escaped but enter does nothing"); 0 where Return sends what's typed.
+// without being escaped but enter does nothing"); 0 where Return sends what's typed. Words
+// typed before the pick stay on the line under the thread it opens, neither sent nor lost.
 function opening(picked, talks, opened) {
     const line = opened === null && picked >= 0 ? talks?.[picked] : undefined;
     return line === undefined ? 0 : line.since;
 }
 
+// The line still picked once what's typed changes: let go, so Return sends what's typed,
+// but kept in an open thread, where typing is its reply, so - comes back to it picked.
+function afterTyping(picked, threadOpen) {
+    return threadOpen ? picked : -1;
+}
+
 // The keys the foot offers, each a key and what it does as KeyHints takes them: in an open
-// thread, how to come back to the lines; with a line picked, that Return opens it; with
-// lines listed, how to pick one, Tab while typing and j in normal; and :take while the void
-// can undo the last line (Joel, 2026-11-21 10:23: "I have no clue how to step into a
-// thread").
-function footKeys({ listed, picked, threadOpen, typing, takes }, words) {
+// thread, how to come back to the lines; where Return opens a line (`opens`, as opening
+// answers, so the two never disagree), that it does; with lines listed, how to pick one,
+// Tab while typing and j in normal; and :take while the void can undo the last line (Joel,
+// 2026-11-21 10:23: "I have no clue how to step into a thread").
+function footKeys({ listed, opens, threadOpen, typing, takes }, words) {
     const keys = [];
     if (threadOpen) {
         keys.push([typing ? "Esc -" : "-", String(words?.back ?? "")]);
-    } else if (picked >= 0) {
+    } else if (opens) {
         keys.push(["\u21b5", String(words?.opens ?? "")]);
     } else if (listed) {
         keys.push([typing ? "Tab" : "j", String(words?.picks ?? "")]);

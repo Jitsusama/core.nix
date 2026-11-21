@@ -613,9 +613,9 @@ Scope {
                         onAccepted: root.returned()
                         // - back to the list from a thread, its line still picked.
                         onBackward: root.openedSince = 0
-                        // Typing lets a picked line go, so Return sends what's typed.
+                        // Typing lets a picked line go but in its thread (afterTyping).
                         onTextChanged: {
-                            root.picked = -1;
+                            root.picked = Thread.afterTyping(root.picked, root.opened !== null);
                             root.typed();
                         }
                         onCaretChanged: root.typed()
@@ -744,7 +744,8 @@ Scope {
                     visible: keys.length > 0
                     x: parent.width - width
                     anchors.baseline: foot.baseline
-                    keys: Thread.footKeys({ listed: root.talks.length > 0, picked: root.picked,
+                    keys: Thread.footKeys({ listed: root.talks.length > 0,
+                        opens: Thread.opening(root.picked, root.talks, root.opened) !== 0,
                         threadOpen: root.thread !== null, typing: prompt.mode === "insert",
                         takes: (root.talk?.undo ?? "") !== "" ? root.takes : "" }, root.said)
                 }

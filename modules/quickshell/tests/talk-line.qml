@@ -480,10 +480,20 @@ QtObject {
             Expect.same("a reply not yet written stands as sent, in the voice, under it",
                 pending.slice(2).map(step => [step.text, step.mine, step.answer, step.side]),
                 [["sent", false, false, ""]]);
+            const held = threadEvents.filter(event => event.event !== "let-go");
             Expect.same("a reply written waits on whoever has the thread, by name, not address",
-                Thread.threadOf(threaded, threadEvents.concat([replyWritten]), threadWords)
-                    .steps.slice(6).map(step => [step.text, step.mine]),
+                Thread.threadOf(threaded, held.concat([replyWritten]), threadWords)
+                    .steps.slice(-1).map(step => [step.text, step.mine]),
                 [["waiting on your orchestrator", false]]);
+            // Let go or taken back, nobody has it, as the list says of a line, so it's the
+            // void's again.
+            const takenBack = { line: replyKey, msg: "m6", who: "Delta", event: "undone" };
+            Expect.same("a reply after the thread was let go or taken back waits on the void",
+                [threadEvents, held.concat([takenBack])].map(events => Thread.threadOf(threaded,
+                    events.concat([replyWritten]), threadWords).steps.slice(-1)[0].text),
+                ["waiting on the void", "waiting on the void"]);
+            Expect.same("a holder's name goes in as written, $ and all",
+                Said.worded(threadWords, "waiting", "$& $'"), "waiting on $& $'");
             Expect.same("a reply written in a thread nobody has waits on the void",
                 Thread.threadOf(threaded, [replyWritten], threadWords).steps
                     .map(step => step.text), ["and now?", "waiting on the void"]);
@@ -502,8 +512,13 @@ QtObject {
                 [Thread.picking(-1, 1, 4), Thread.picking(0, 1, 4), Thread.picking(2, 5, 4),
                     Thread.picking(1, -3, 4), Thread.picking(-1, -1, 4), Thread.picking(-1, 1, 0)],
                 [0, 1, 3, 0, 0, -1]);
-            // Return opens the line picked, in insert as in normal, and sends what's typed
-            // where none is picked or a thread is open (Joel, 2026-11-21 10:27).
+            // Return opens the line picked, and sends what's typed where none is picked or a
+            // thread is open (Joel, 2026-11-21 10:27); the niri case holds it in insert.
+            // Typing lets the pick go, but in the thread it opened, where typing is its reply,
+            // so - comes back to it picked.
+            Expect.same("typing lets a pick go, but not in its open thread",
+                [Thread.afterTyping(2, false), Thread.afterTyping(2, true),
+                    Thread.afterTyping(-1, true)], [-1, 2, -1]);
             const listed = [{ since: 30 }, { since: 20 }, { since: 10 }];
             Expect.same("Return opens the line picked, and only where no thread is open",
                 [Thread.opening(1, listed, null), Thread.opening(-1, listed, null),
@@ -512,15 +527,15 @@ QtObject {
             // The foot says how to pick a line, that Return opens it, and how to come back,
             // by the keys of the mode he's in (Joel, 2026-11-21 10:23: "I have no clue how to
             // step into a thread").
-            const footed = (asked) => Thread.footKeys(Object.assign({ listed: true, picked: -1,
+            const footed = (asked) => Thread.footKeys(Object.assign({ listed: true, opens: false,
                 threadOpen: false, typing: true, takes: "" }, asked), threadWords);
             Expect.same("the foot says how to pick a line, typing and in normal",
                 [footed({}), footed({ typing: false }), footed({ listed: false })],
                 [[["Tab", "picks a line"]], [["j", "picks a line"]], []]);
             Expect.same("with a line picked, the foot says Return opens it",
-                footed({ picked: 0 }), [["\u21b5", "opens it"]]);
+                footed({ opens: true }), [["\u21b5", "opens it"]]);
             Expect.same("in a thread, the foot says how to come back, typing and in normal",
-                [footed({ threadOpen: true, picked: 2 }),
+                [footed({ threadOpen: true, opens: true }),
                     footed({ threadOpen: true, typing: false })],
                 [[["Esc -", "back to the lines"]], [["-", "back to the lines"]]]);
             Expect.same("while the void can undo it, :take follows",

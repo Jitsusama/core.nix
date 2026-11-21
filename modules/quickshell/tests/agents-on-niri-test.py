@@ -3247,7 +3247,10 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     # The answer takes sent's place, where it went first, its undo offered in the foot.
     replied(sent, "\u2192 Delta \u00b7 undo 04:58\nFiled under the cut title's fix.")
     shell.launcher_until(
-        lambda shown: shown["line"]["talk"] == "answered" and shown["line"]["takes"]
+        lambda shown: (
+            shown["line"]["talk"] == "answered"
+            and [":take", "take it back"] in shown["line"]["footKeys"]
+        )
     )
     assert shell.showing()["line"]["standing"].startswith("\u2192 Delta\n"), shell.showing()
     shoot("answered")
@@ -3259,7 +3262,7 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     shell.launcher_until(lambda shown: shown["line"]["talk"] == "taking")
     replied(steered(lambda text: text == "undo 04:58"), "undone")
     shell.launcher_until(lambda shown: shown["line"]["standing"] == "taken back")
-    assert not shell.showing()["line"]["takes"], shell.showing()["line"]
+    assert [":take", "take it back"] not in shell.showing()["line"]["footKeys"], shell.showing()
     shoot("taken")
     # Put away and opened again, the talk is still there, the field empty.
     shell.as_account(line)
@@ -3716,15 +3719,8 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     at_line = [one["line"] for one in shell.showing()["line"]["talks"]].index(asked)
     # A key of another keymap first, as the cases before do, so the first Tab isn't lost.
     shell.send_key("F24")
-    for _ in range(at_line + 1):
-        shell.send_key("tab")
-    shell.launcher_until(
-        lambda shown: (
-            shown["line"]["picked"] == at_line
-            and shown["line"]["mode"] == "insert"
-            and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
-        )
-    )
+    pick_by_tab(shell, at_line)
+    typing_lets_the_pick_go(shell, at_line)
     shell.send_key("ret")
     # It opens ready to type, so the reply's first letter is its first letter, no i before.
     shell.launcher_until(
@@ -3749,8 +3745,50 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     assert sent["text"] == f"reply {key}\n{words}", sent
     # Said now, so the void reads it into the run under way rather than after it.
     assert sent.get("now") is True, sent
+    comes_back_picked(shell, at_line)
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def pick_by_tab(shell: Shell, at_line: int) -> None:
+    """Pick Super+S's line at `at_line` by Tab, typing, till the foot says Return opens it."""
+    for _ in range(at_line + 1):
+        shell.send_key("tab")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["picked"] == at_line
+            and shown["line"]["mode"] == "insert"
+            and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
+        )
+    )
+
+
+def typing_lets_the_pick_go(shell: Shell, at_line: int) -> None:
+    """Type a letter, which lets a pick go so Return would send it, then pick again."""
+    shell.send_chars("x")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["picked"] == -1
+            and shown["line"]["footKeys"][:1] == [["Tab", "picks a line"]]
+        )
+    )
+    shell.send_key("backspace")
+    shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
+    pick_by_tab(shell, at_line)
+
+
+def comes_back_picked(shell: Shell, at_line: int) -> None:
+    """Come back from a thread by Esc -, its line still picked, a reply's clearing aside."""
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    shell.send_chars("-")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["thread"] is None
+            and shown["line"]["picked"] == at_line
+            and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
+        )
+    )
 
 
 @pytest.mark.usefixtures("said_over")

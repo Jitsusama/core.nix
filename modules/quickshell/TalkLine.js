@@ -376,13 +376,6 @@ function past(events, key) {
         lastWho: midSentence(last.who) };
 }
 
-// Who last had a line among its events in the order written, its routing's or its taking
-// up's, mid-sentence; "" where none has.
-function heldBy(own) {
-    const held = (own ?? []).filter(event => HOLDING.includes(event.event));
-    return held.length === 0 ? "" : midSentence(held[held.length - 1].who);
-}
-
 // "Your orchestrator has it", as the void's first answer says who has a line.
 const HOLDER = /^(?<who>.+) has it$/u;
 const YOUR = /^Your /u;
@@ -400,7 +393,8 @@ function holderIn(reply) {
 }
 
 function worded(words, name, who) {
-    return String(words?.[name] ?? "").replace("{who}", who);
+    // By a function, so a name holding $& or $' goes in as written.
+    return String(words?.[name] ?? "").replace("{who}", () => who);
 }
 
 function clockOf(at) {
