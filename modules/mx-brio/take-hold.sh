@@ -33,7 +33,11 @@ take_back() {
   local acl
   acl=$(getfacl -cp "$1" 2>/dev/null) || return 0
   grep -q '^user:[^:]' <<<"$acl" || return 0
-  setfacl --remove-all "$1" || [ ! -e "$1" ]
+  # One that fails is let pass, so the check after the replay says so.
+  if ! setfacl --remove-all "$1" && [ -e "$1" ]; then
+    echo "Couldn't take back the seat's access to $1." >&2
+    return 0
+  fi
   echo "Took back the seat's access to $1."
 }
 
@@ -98,18 +102,17 @@ for node in "${nodes[@]}"; do
   facts=$(udevadm info --query=property "$node" 2>/dev/null) || continue
   if ! grep -qx 'CAMERA_RELAYED=1' <<<"$facts" || the_seats "$facts"; then
     echo "The MX Brio at $node isn't held:" \
-      "udev didn't mark it relayed and keep it from the seat." >&2
+      "udev didn't mark it relayed and keep it from the seat." \
+      "Replugging it replays its arrival; journalctl -u systemd-udevd says why it wasn't." >&2
     loose=1
   fi
   take_back "$node"
   if the_seat_can_open "$node"; then
-    echo "The seat can still open the MX Brio at $node:" \
-      "its access couldn't be taken back." >&2
+    echo "The seat can still open the MX Brio at $node: its access couldn't be taken back." \
+      "getfacl -p $node shows who holds it." >&2
     loose=1
   fi
 done
 if [ "$loose" = 1 ]; then
-  echo "Replugging the Brio replays its arrival;" \
-    "journalctl -u systemd-udevd says why it wasn't." >&2
   exit 1
 fi
