@@ -1367,10 +1367,12 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
             current: fs::read_to_string(path.join("memory.current"))
                 .ok()
                 .and_then(|text| text.trim().parse().ok()),
-            // Busy commands are moved out of hosts' units alone (`looked_at`).
-            keeps_its_work: windows
-                .conversations
-                .is_some_and(|(conversations, _)| unit.starts_with(conversations)),
+            keeps_its_work: joins::keeps_its_work(
+                unit,
+                windows
+                    .conversations
+                    .map(|(conversations, _)| conversations),
+            ),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
         if !ranks.hosts.changed(unit, &rank) {

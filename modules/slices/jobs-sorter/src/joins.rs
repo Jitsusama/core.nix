@@ -19,6 +19,18 @@ const SLOT_MOST: u64 = 64 << 10;
 /// alike, where this runs; the crate takes no libc for one constant.
 const O_NONBLOCK: i32 = 0o4000;
 
+/// Linux's flag to refuse a link at the path's end, which differs by
+/// architecture: 1 << 15 in arm64's own fcntl.h, 1 << 17 in the generic one
+/// `x86_64` takes.
+#[cfg(target_arch = "aarch64")]
+const O_NOFOLLOW: i32 = 0o100_000;
+#[cfg(not(target_arch = "aarch64"))]
+const O_NOFOLLOW: i32 = 0o400_000;
+
+/// Linux's flag that keeps a terminal opened from becoming the sorter's
+/// own, 0o400 on both.
+const O_NOCTTY: i32 = 0o400;
+
 /// The host unit a viewer's words join, `<prefix><key>.service`, when
 /// they are mycelium's `attach --host <key>`.
 pub fn viewed(words: &[String], prefix: &str) -> Option<String> {
@@ -111,25 +123,46 @@ fn flag(rest: &[String], name: &str) -> Option<String> {
     })
 }
 
-/// Whether the slot file at `path` holds `session`. Only a regular file of
-/// a slot's size is read, never a pipe or a folder, so nothing put beside
-/// the slots can stall or mislead the loop that reads them. A link is
-/// passed over before opening; it's opened without waiting, so a pipe
-/// swapped in meanwhile can't hold the loop, and what was opened is
-/// checked again and read no further than a slot's size.
-fn holds(path: &Path, session: &str) -> bool {
-    let is_slot = |meta: &fs::Metadata| meta.file_type().is_file() && meta.len() <= SLOT_MOST;
+/// Whether the unit named `unit` keeps the busy commands its conversation
+/// starts, as a conversation's own unit under the `conversations` prefix
+/// does: they're moved out of hosts' units alone (`looked_at`).
+pub fn keeps_its_work(unit: &str, conversations: Option<&str>) -> bool {
+    conversations.is_some_and(|conversations| unit.starts_with(conversations))
+}
+
+/// Whether `meta` is a slot's: a regular file no larger than one.
+fn is_slot(meta: &fs::Metadata) -> bool {
+    meta.file_type().is_file() && meta.len() <= SLOT_MOST
+}
+
+/// The file at `path` opened to be read, when it's a slot's. A link is
+/// passed over before opening, then [`open_slot`] opens it.
+fn opened(path: &Path) -> Option<fs::File> {
     fs::symlink_metadata(path)
         .ok()
         .filter(is_slot)
-        .and_then(|_| {
-            fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(O_NONBLOCK)
-                .open(path)
-                .ok()
-        })
+        .and_then(|_| open_slot(path))
+}
+
+/// The file at `path`, opened without waiting, so a pipe swapped in after
+/// the check can't hold the loop, refusing a link swapped in, and kept
+/// only when what was opened is a slot's. The slots are Joel's own user's,
+/// so this guards the loop rather than a boundary.
+fn open_slot(path: &Path) -> Option<fs::File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(O_NONBLOCK | O_NOFOLLOW | O_NOCTTY)
+        .open(path)
+        .ok()
         .filter(|file| file.metadata().is_ok_and(|meta| is_slot(&meta)))
+}
+
+/// Whether the slot file at `path` holds `session`. Only a regular file of
+/// a slot's size is read, never a pipe or a folder, so nothing put beside
+/// the slots can stall or mislead the loop that reads them, and it's read
+/// no further than a slot's size.
+fn holds(path: &Path, session: &str) -> bool {
+    opened(path)
         .and_then(|file| {
             let mut text = String::new();
             file.take(SLOT_MOST)
@@ -139,6 +172,7 @@ fn holds(path: &Path, session: &str) -> bool {
         })
         .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
         .is_some_and(|slot| {
+            // As the host writes them: on 21 November all 76 live slots held it here.
             slot.pointer("/session/sessionId")
                 .and_then(serde_json::Value::as_str)
                 == Some(session)
@@ -354,5 +388,49 @@ mod tests {
             );
         }
         fs::remove_dir_all(&slots).unwrap();
+    }
+
+    #[test]
+    fn only_a_conversations_own_unit_keeps_its_work() {
+        let unit = "pi-conversation-work-background@0193-ab.service";
+        assert!(
+            keeps_its_work(unit, Some("pi-conversation-")),
+            "a conversation's unit keeps the commands it starts"
+        );
+        assert!(
+            !keeps_its_work("pi-host-work-attended.service", Some("pi-conversation-")),
+            "a host's busy commands are moved to jobs"
+        );
+        assert!(
+            !keeps_its_work(unit, None),
+            "with no conversations' prefix given, no unit is one"
+        );
+    }
+
+    #[test]
+    fn a_slot_is_opened_only_as_a_file_of_its_own() {
+        let dir = std::env::temp_dir().join(format!("joins-open-{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let slot = dir.join("0193-ab.json");
+        fs::write(&slot, "{}").unwrap();
+        assert!(open_slot(&slot).is_some(), "a slot's file is opened");
+        let pipe = dir.join("pipe.json");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .unwrap();
+        assert!(made.success(), "mkfifo made the pipe to open");
+        // Opened waiting, a pipe with no writer would hang the test rather than fail it.
+        assert!(
+            open_slot(&pipe).is_none(),
+            "a pipe swapped in is opened without waiting and turned away"
+        );
+        let link = dir.join("link.json");
+        std::os::unix::fs::symlink(&slot, &link).unwrap();
+        assert!(
+            open_slot(&link).is_none(),
+            "a link swapped in is refused at the open, not followed"
+        );
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
