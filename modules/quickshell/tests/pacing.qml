@@ -1137,6 +1137,8 @@ QtObject {
             Presented.keyShown("verb:agent:7f3a:close", false), "verb:agent");
         check(failures, "and a verb that isn't a kind's word is said as verb",
             Presented.keyShown("verb:Join Harbour House", false), "verb");
+        check(failures, "and nothing past its act, as a notice's offer the sender named",
+            Presented.keyShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
         // A slow key's line and a typed answer's say what was typed, which
         // may be anything Joel searches for.
         check(failures, "words typed are said by how many letters with reports off",
@@ -1170,6 +1172,14 @@ QtObject {
             Presented.actShown("displays:night-light", false), "displays:night-light");
         check(failures, "but a window's by its app, as its row is",
             Presented.actShown("window:Firefox:Inbox", false), "window:Firefox");
+        check(failures, "even where its title is shaped as a kind's word",
+            Presented.actShown("window:kitty:inbox", false), "window:kitty");
+        check(failures, "and a record's by its kind, whatever its network's name is shaped as",
+            Presented.actShown("row:wifi:network:eduroam", false), "wifi");
+        check(failures, "and a daemon's own act no further than its act",
+            Presented.actShown("displays:sleep:eduroam", false), "displays:sleep");
+        check(failures, "and a verb no further than keyShown says it",
+            Presented.actShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
         check(failures, "and the launcher's own whole",
             Presented.actShown("place:Programs", false), "place:Programs");
         check(failures, "and bare while they're on",
@@ -1186,6 +1196,14 @@ QtObject {
         check(failures, "and its code where it gives none",
             Presented.codeShown({ error: { code: 'go"ne\n' } }), 'go\\"ne\\n');
         check(failures, "and that it gave none", Presented.codeShown({}), "no code");
+        // A refusal that came after the line was done, as the : line's
+        // journal says it once Joel has typed on.
+        check(failures, "a late refusal says its code and how many letters with reports off",
+            Presented.refusalShown("couldn't dim Harbour", "unread", false), "unread, 20 letters");
+        check(failures, "or the letters alone where no code came with it",
+            Presented.refusalShown("couldn't dim Harbour", "", false), "20 letters");
+        check(failures, "and its words quoted while they're on",
+            Presented.refusalShown("no\nlauncher: x", "unread", true), '"no\\nlauncher: x"');
         check(failures, "or that no answer came", Presented.codeShown(null), "no answer");
         // A daemon's error says its codes whole, being no one's words, and
         // its words by how many letters, since they can name a row.

@@ -5081,9 +5081,10 @@ Scope {
         const ranAt = prompt.keysTaken;
         for (const { change, to } of steps) {
             if (to !== undefined) {
-                const later = (words, failed) => {
+                const later = (words, failed, code) => {
                     const heard = SetWords.later(change.option, words,
-                        prompt.keysTaken === ranAt, Presented.typedShown(words, Options.reports));
+                        prompt.keysTaken === ranAt,
+                        Presented.refusalShown(words, code, Options.reports));
                     if (heard?.say !== undefined)
                         commandSay(heard.say, failed);
                     else if (heard?.journal !== undefined)

@@ -117,8 +117,7 @@ function shownSaid(times, at) {
         return "";
     }
     const hz = Math.round(1000 / refresh);
-    // A hundredth of a frame's slack, for a time read a little apart from
-    // the vblank it lies on.
+    // A hundredth of a frame's slack, for a time read a little apart from the vblank it lies on.
     const count = Math.max(1, Math.ceil((at - times.swapped) / refresh - 0.01));
     const frames = `${count} ${count === 1 ? "frame" : "frames"} at ${hz} Hz`;
     return `; ${frames} from its swap to the screen`
@@ -259,8 +258,10 @@ function intoKept(keyAt, into, whole) {
 // config.
 const keysOwn = ["place:", "category:", "collection:"];
 
-// A kind's word, as the launcher and its daemons write one.
+// A kind's word, as the launcher and its daemons write one, and the keys whose kind keyShown
+// says, as actShown leaves them, since their later parts may be someone's words.
 const kindWord = /^[a-z][a-z0-9-]*$/;
+const keysSaidByKind = /^(row|window|verb):/;
 
 // A program's own id, as kitty, 1Password or org.gnome.Evolution. A browser's app window may build
 // one from a page's address, with underscores for its slashes, so one that isn't shaped like this
@@ -279,9 +280,10 @@ function kindsLed(parts) {
 // otherwise its kind, after a record's `row:`, as wifid's `row:wifi:network:<name>` is `wifi`,
 // since most keys carry what someone else wrote, a network's name or a window's title. The
 // launcher's own ids are whole, `window:<app>:<title>` is `window:<app>`, or `window` where that
-// isn't a program's id or nothing follows it, and a `verb:` key, its daemon's own words, goes up to
-// its first part that isn't a kind's word: `verb:agent:close` whole, `verb:disk:nvme0:/home` as
-// `verb:disk:nvme0`. A new kind says nothing more until it's named here, and a first part that
+// isn't a program's id or nothing follows it, and a `verb:` key, its daemon's own words, goes to
+// its act or its first part that isn't a kind's word, if sooner: `verb:agent:close` whole,
+// `verb:disk:nvme0:/home` as `verb:disk:nvme0`, `verb:notice:offer:<sender's id>` as
+// `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
 // isn't a kind's word, as a name with a colon in it, nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
@@ -294,7 +296,7 @@ function keyShown(key, whole) {
         return appWord.test(app) && !appsUnnamed.includes(app) ? `window:${app}` : "window";
     }
     if (parts[0] === "verb") {
-        return kindsLed(parts).join(":");
+        return kindsLed(parts.slice(0, 3)).join(":");
     }
     return parts.length > 1 && kindWord.test(parts[0]) ? parts[0] : "";
 }
@@ -341,13 +343,21 @@ function typedInSaid(typed, within, whole) {
     return `${typedShown(typed, whole)} typed in ${quoted(rowShown({ key: within }, whole))}`;
 }
 
-// An act's key as its lines say it: as rowShown says a row's, or to its first part that isn't a
-// kind's word where that says more, as its daemon's own `displays:sleep`; bare, as the desktop's
-// tests read it, with what quoting escapes escaped, so a line break can't forge another line.
+// An act's key as its lines say it: as rowShown says a row's, or a daemon's own act of a kind, as
+// `displays:sleep`, by its kind and act where both are kinds' words, never more, and a record's,
+// a window's or a verb's as keyShown says it; bare, as the desktop's tests read it, with what
+// quoting escapes escaped, so a line break can't forge another line.
 function actShown(key, whole) {
     const said = rowShown({ key }, whole);
-    const kinds = kindsLed(String(key).split(":")).join(":");
+    const kinds = whole || keysSaidByKind.test(String(key)) ? ""
+        : kindsLed(String(key).split(":").slice(0, 2)).join(":");
     return quoted(kinds.length > said.length ? kinds : said).slice(1, -1);
+}
+
+// A refusal come after its line was done, as the journal says it: quoted while reports are on,
+// otherwise by how many letters, after the daemon's code where it gave one (codeShown).
+function refusalShown(why, code, whole) {
+    return whole ? typedShown(why, true) : `${code ? `${code}, ` : ""}${typedShown(why, false)}`;
 }
 
 // A daemon's code for a refusal, as wifid's WrongPassword, said whole whatever the reports setting
@@ -395,12 +405,8 @@ function drawersSaid(drawers) {
 // A place's change heard from a line at `from`: the earliest line not yet drawn is the one it's
 // timed from, since the draw shows them all.
 function heard(waiting, place, from) {
-    if (place in waiting && waiting[place] <= from) {
-        return waiting;
-    }
-    const kept = Object.assign({}, waiting);
-    kept[place] = from;
-    return kept;
+    return place in waiting && waiting[place] <= from ? waiting
+        : Object.assign({}, waiting, { [place]: from });
 }
 
 // What waits for a place once it's drawn, which it no longer does.
@@ -435,24 +441,18 @@ function changesParted(its) {
         return partsSwapped(its, changeParts);
     }
     const filled = its.map(one => Object.assign({}, one, { held: heldOf(one) }));
-    const holds = its.filter(one => one.held !== undefined && one.refreshed !== undefined)
+    const ms = its.filter(one => one.held !== undefined && one.refreshed !== undefined)
         .map(one => Math.round(one.refreshed - heldOf(one)));
     const said = partsSwapped(filled, pacedParts);
-    if (said === "" || holds.length === 0) {
-        return said;
-    }
-    return `${said}; ${holds.length} held while home was found, the longest `
-        + `${Math.max(...holds)} ms`;
+    return said === "" || ms.length === 0 ? said
+        : `${said}; ${ms.length} held while home was found, the longest ${Math.max(...ms)} ms`;
 }
 
 // When a change was held from: one not held is held for none, and one heard again after its hold
 // began, an earlier line come late taking the place's change (heard, above), from when it was
 // heard, so its wait on the pace is never less than none.
 function heldOf(one) {
-    if (one.held === undefined) {
-        return one.refreshed;
-    }
-    return Math.max(one.heard, one.held);
+    return one.held === undefined ? one.refreshed : Math.max(one.heard, one.held);
 }
 
 // When each place's waiting change was first held for home's find, `held` by place, as a refresh
@@ -473,12 +473,11 @@ function heldFrom(held, heardOf, { places, at, holding }) {
 }
 
 // What the journal says of the changes presented, each `{place, from, at}` and, once the launcher
-// took it, its refresh began and its frame began, `heard`, `refreshed` and `begun`: a line a
-// place, in the places' order by name, saying where its time went as a key's does, so a slow
-// update says whether it waited before the launcher took it, in the shell, or after its frame
-// began (Joel's 20 changes in machine, 6 past 50 ms, 2026-11-11). Where they name the daemons
-// whose lines set them going, `by`, it says how many each did, most first, as Now is made from
-// many.
+// took it, its refresh began and its frame began, `heard`, `refreshed` and `begun`: a line a place,
+// in the places' order by name, saying where its time went as a key's does, so a slow update says
+// whether it waited before the launcher took it, in the shell, or after its frame began (Joel's 20
+// changes in machine, 6 past 50 ms, 2026-11-11). Where they name the daemons whose lines set them
+// going, `by`, it says how many each did, most first, as Now is made from many.
 function changesSaid(changes) {
     const places = [...new Set(changes.map(one => one.place))].sort();
     return places.map(place => {

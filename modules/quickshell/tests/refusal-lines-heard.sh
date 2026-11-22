@@ -7,8 +7,11 @@ set -euo pipefail
 said=$1
 failed=0
 
+# Each case is a line ending in what's wanted, so one saying more after it doesn't pass for it.
 heard() {
-  if ! grep -aqF -- "$2" "$said"; then
+  if ! WANTED=$2 awk 'BEGIN { w = ENVIRON["WANTED"] }
+    substr($0, length($0) - length(w) + 1) == w { found = 1 }
+    END { exit !found }' "$said"; then
     echo "$1 isn't said by how many letters, wanted: $2"
     failed=1
   fi

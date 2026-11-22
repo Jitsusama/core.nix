@@ -210,14 +210,23 @@ function shown(name, now, option) {
 // ran it (`held`), so a refusal is said where the line was; { journal }
 // once Joel has typed on, so a late one never writes over what he's
 // doing, said in the journal instead, as `journalled` says them (the
-// launcher gives Presented.typedShown's, so reports off keep a daemon's
-// words out of it); and null where it has no words.
-function later(option, words, held, journalled = words) {
+// launcher gives Presented.refusalShown's, so reports off keep a
+// daemon's words out of it), or where it gives none by how many letters
+// they held, so a caller that forgets keeps them out too; and null where
+// it has no words.
+function later(option, words, held, journalled = lettersIn(words)) {
     if (words === "") {
         return null;
     }
     return held ? { say: words }
         : { journal: `launcher: ${option} refused after Joel typed on: ${journalled}` };
+}
+
+// How many letters words hold, by code point, as Presented.typedShown
+// counts them, which this library can't reach.
+function lettersIn(words) {
+    const letters = [...String(words)].length;
+    return letters === 1 ? "1 letter" : `${letters} letters`;
 }
 
 const escapedSpace = /\s/g;
