@@ -1343,19 +1343,23 @@ ShellRoot {
         // the list stands with no heading, which :filter draws none of: two
         // sessions asking are gathered in Agents Asking, so no cell stands
         // among what needs Joel now, and the asks stand where the heaviest
-        // weighs (ForYou.js's agentAt). Each kind's row stands for those it
-        // holds (our council on #5916, F7, 2026-11-20).
+        // weighs (ForYou.js's agentAt): after a to-do overdue he can do now
+        // (70), before one that only waits (10), each ask weighing 50 as it
+        // blocks its session. Each kind's row stands for those it holds (our
+        // council on #5916, F7, 2026-11-20).
         const standsFor = row => String(row.key).startsWith("on:waitingOnYou:kind:")
             ? Array.from(row.targets()).map(one => one.key) : [row.key];
         const askingOf = (address, said) => ({ address, title: `Session ${address}`, presence: {
             session: `s-${address}`, addresses: [], wants: { kind: "question", said } } });
         const signHeld = { title: "Sign in to the bank", minutes: 2 };
+        const payHeld = { title: "Pay the bill", minutes: 2, ready: true,
+            deadline: new Date(Date.now() - 3600000).toISOString() };
         let drawn = [];
         let narrowed = [];
         try {
             Sessions.wanting = [askingOf("WANTF", "Which?"), askingOf("WANTG", "Where?")];
-            WaitingOnYou.now = [signHeld];
-            WaitingOnYou.foremost = signHeld;
+            WaitingOnYou.now = [signHeld, payHeld];
+            WaitingOnYou.foremost = payHeld;
             drawn = Array.from(now.waitingRows());
             narrowed = Array.from(now.filterable()).map(row => row.key);
         } finally {
@@ -1365,10 +1369,11 @@ ShellRoot {
         }
         const wholeList = drawn.reduce((keys, row) => keys.concat(standsFor(row)), []);
         const seeded = ["on:waiting:desktop", "on:waiting:want:WANTF", "on:waiting:want:WANTG",
-            "on:waiting:Sign in to the bank", "on:look:p"];
+            "on:waiting:Sign in to the bank", "on:waiting:Pay the bill", "on:look:p"];
         expect("and lists the rest of For You in the list's order",
             !drawn.some(row => row.heading) && drawn.some(row => row.key
-                === "on:waitingOnYou:kind:agent") && JSON.stringify([...narrowed].sort())
+                === "on:waitingOnYou:kind:agent") && wholeList.indexOf("on:waiting:Pay the bill")
+                < wholeList.indexOf("on:waiting:want:WANTF") && JSON.stringify([...narrowed].sort())
                 === JSON.stringify([...seeded].sort())
                 && JSON.stringify(wholeList) === JSON.stringify(narrowed),
             JSON.stringify([drawn.map(row => row.key), wholeList, narrowed]));
