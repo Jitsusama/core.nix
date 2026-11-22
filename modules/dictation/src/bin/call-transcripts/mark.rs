@@ -71,6 +71,12 @@ fn marked(
     mine: Option<&str>,
     me: &str,
 ) -> Result<[Errors; 2], String> {
+    if let Some(mine) = mine
+        && !reference.iter().any(|line| line.speaker == mine)
+    {
+        return Err(format!("{mine} never speaks, so can't be Joel's side"));
+    }
+    // No speaker is named "", so with none named every line is theirs.
     let mine = mine.unwrap_or_default();
     let lines = transcript::read(filed::transcript(file), me);
     Ok([Side::Mine, Side::Theirs].map(|side| {
@@ -94,10 +100,14 @@ fn report(name: &str, errors: &[Errors; 2]) -> String {
     total += errors[score::index(Side::Theirs)];
     let side = |side: Side| {
         let errors = &errors[score::index(side)];
-        format!("{} ({})", score::rate(errors), score::kinds(errors))
+        if errors.words == 0 {
+            format!("nothing said, {} words added", errors.inserted)
+        } else {
+            format!("{} ({})", score::rate(errors), score::kinds(errors))
+        }
     };
     format!(
-        "{name}: {} ({}), Joel's side {}, the far end {}",
+        "{name}: {} ({}), Joel's side: {}, the far end: {}",
         score::rate(&total),
         score::kinds(&total),
         side(Side::Mine),
