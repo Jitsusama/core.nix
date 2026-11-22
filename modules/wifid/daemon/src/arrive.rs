@@ -1093,7 +1093,9 @@ mod tests {
 
         let off = arrivals.fell_off("wlan0");
         let again = arrivals.fell_off("wlan0");
-        let late = arrivals.unreached(now + BACK_AFTER);
+        // A move that left is due at BACK_FOR, so one whose way back
+        // survived would be handed back late then.
+        let late = arrivals.unreached(now + BACK_FOR);
 
         assert_eq!(
             off,

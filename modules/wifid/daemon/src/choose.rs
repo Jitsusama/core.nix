@@ -2685,8 +2685,10 @@ pub(crate) mod tests {
         let near = [desk, elsewhere()];
         let back = second + Duration::from_secs(60);
         let waits = chooser.choose(back, (HALL, &badly, -50, CH52), &near, false);
-        // Past a span-only hold from the way back, short of the first's settle.
-        let spanned = back + SPAN;
+        // Past a span-only hold from the way back, short of the first's
+        // settle, and a second past where a settle from the span alone
+        // would end, so that one shows on any comparison.
+        let spanned = back + SPAN + Duration::from_secs(1);
         let held = chooser.choose(spanned, (HALL, &badly, -50, CH52), &near, false);
         let settled = start + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, (HALL, &badly, -50, CH52), &near, false);

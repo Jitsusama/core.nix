@@ -946,6 +946,9 @@ impl<'a> Air<'a> {
             };
             let moving = self.arrivals.borrow().moving(card);
             if let Some(changed) = stranger_look(changed, step, moving) {
+                // Said apart, so the journal shows a look wpa_supplicant
+                // never said, as the stall it can set off is read there.
+                println!("<7>another account says {card} is scanning");
                 self.card_changed(bus, path, &changed).await;
             } else if self.passed.insert(card.clone()) {
                 // Said once a step, so a look passed over as its card still
@@ -1866,19 +1869,25 @@ impl Wifid<'_> {
         let alone = self.alone.borrow().contains(&card.name);
         let leaving = self.leaving.borrow().contains_key(&card.name);
         // The step is read only where it can change what's done.
-        let step = if alone || leaving {
-            String::new()
-        } else {
+        let step = if picked && !alone && !leaving {
             interface.state().await?
+        } else {
+            String::new()
         };
         match supplicant::others_given(alone, leaving, picked, &step) {
             Others::Kept => {}
             Others::KeptTillTakenOff => {
                 self.alone.borrow_mut().insert(card.name.clone());
             }
+            // Each is turned on alone, as in turn_on_networks, so one that
+            // won't doesn't leave the rest off.
             Others::On => {
                 for (_, network) in &joinable {
-                    self.joinable(network).await?.set_enabled(true).await?;
+                    let on = async { self.joinable(network).await?.set_enabled(true).await };
+                    if let Err(error) = on.await {
+                        let (card, network) = (&card.name, network.as_str());
+                        eprintln!("<4>can't turn {card}'s {network} on again: {error}");
+                    }
                 }
             }
         }
@@ -2372,14 +2381,18 @@ impl Wifid<'_> {
                 }
                 // wpa_supplicant may still be trying the network it was
                 // asked to join, so the others are turned on whatever step
-                // the card is at, unless Joel left it between the join's
-                // tries: they then wait for its next to be taken off.
+                // the card is at, as it's no longer picked. A move begun
+                // during the join keeps them off till it ends, and a card
+                // Joel left between the join's tries till its next is taken
+                // off.
+                let alone = self.alone.borrow().contains(card);
                 let leaving = self.leaving.borrow().contains_key(card);
-                match supplicant::others_given(false, leaving, false, "") {
+                match supplicant::others_given(alone, leaving, false, "") {
+                    Others::Kept => {}
                     Others::KeptTillTakenOff => {
                         self.alone.borrow_mut().insert(card.clone());
                     }
-                    Others::Kept | Others::On => self.turn_on_networks(card).await,
+                    Others::On => self.turn_on_networks(card).await,
                 }
             }
         }
