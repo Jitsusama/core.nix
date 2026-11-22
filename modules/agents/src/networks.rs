@@ -171,7 +171,8 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
 /// parked and quiet else, lighting nothing for its hour; and a lead
 /// wearing his mark for a session under it (`anyWaitsOnJoel`) counts
 /// once more, unless that session, or a marked lead under it, is a cell
-/// here, counted already. A put-off lead still marked for one under it
+/// here, counted already, or the lead has a want of its own (top.rs's
+/// `wants`), which the node counted already. A put-off lead still marked for one under it
 /// still needs him, where the node counted it, unless that one is a cell
 /// here, counted already, when it too stands as it would wanting
 /// nothing. The machines' network names machines, not cells, so it's
@@ -212,7 +213,7 @@ pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) 
     let leads = cells
         .iter()
         .filter(marked)
-        .filter(|row| !held(row, "putOff"))
+        .filter(|row| !held(row, "putOff") && row["held"]["wants"].is_null())
         .filter(|row| !counted.contains(&address_of(row)))
         .count();
     let leads = u64::try_from(leads).unwrap_or(u64::MAX);
@@ -771,6 +772,27 @@ mod tests {
             seen["counts"],
             json!({"needs-you": 2, "stuck": 1, "moving": 0, "quiet": 0, "dormant": 0}),
             "two marked cells leave moving, then quiet, and the counts still sum to three cells"
+        );
+    }
+
+    #[test]
+    fn a_marked_lead_with_a_want_of_its_own_counts_once_where_the_node_put_it() {
+        let mut lead = session("KELP01", "working", "orchestration");
+        lead["held"]["anyWaitsOnJoel"] = json!(true);
+        lead["held"]["wants"] = json!("question");
+        let counts = json!({"needs-you": 1, "stuck": 0, "moving": 1, "quiet": 0, "dormant": 0});
+        let team = record(
+            "repo.world",
+            "repository",
+            &["kelp01", "tern03"],
+            &counts,
+            0,
+        );
+        let seen = as_marked(&team, &sessions(&[lead]));
+        assert_eq!(
+            seen["counts"], counts,
+            "the node counted its question to its orchestrator as needing Joel, so its mark for \
+             one under it adds nothing and moving stays moving"
         );
     }
 

@@ -145,6 +145,11 @@ pub struct Row {
     /// Served only as top.rs's `putOffAs`, by its id.
     #[serde(skip)]
     pub unwanted: Option<Stands>,
+    /// The kind of want it has, Joel's or another's, as `Session::wants`
+    /// says; none where it wants nothing. Served only as top.rs's
+    /// `wants`, so a network counts it once (networks.rs).
+    #[serde(skip)]
+    pub wants: Option<String>,
     pub state: &'static str,
     /// How it stands in words, among its side's items too: For You's
     /// heading over the cell says it alone, without its figures.
@@ -379,6 +384,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         gone: !session.reachable(),
         waits_on_joel,
         unwanted,
+        wants: session.wants().map(str::to_owned),
         state: stands.id(),
         doing: doing_said,
         // One standing at the top is gone to to be told something, the
@@ -849,6 +855,32 @@ mod tests {
         let row = made(&record, Place::default(), &given());
         assert_eq!((row.state, row.side.as_str()), ("needs", "needs your yes"));
         assert_eq!(row.note, "May I push?");
+    }
+
+    #[test]
+    fn a_row_keeps_the_kind_of_any_want_whoever_it_is_put_to() {
+        let asking = |wants: Value| {
+            let record = json!({"presence": {"addresses": ["B"], "orchestratedBy": "O",
+                "state": "listening", "wants": wants}});
+            let row = made(&record, Place::default(), &given());
+            (row.waits_on_joel, row.wants)
+        };
+        assert_eq!(
+            [
+                asking(json!({"kind": "question", "said": "Which?"})),
+                asking(json!({"kind": "approval", "said": "May I push?"})),
+                asking(json!({"said": "Look?"})),
+                asking(Value::Null),
+            ],
+            [
+                (false, Some("question".to_owned())),
+                (true, Some("approval".to_owned())),
+                (true, Some("want".to_owned())),
+                (false, None),
+            ],
+            "a question to its orchestrator isn't Joel's, yet the node counts it as needing him, \
+             so the row keeps it; a want naming no kind is still one; none is none"
+        );
     }
 
     #[test]

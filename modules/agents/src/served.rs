@@ -391,6 +391,7 @@ mod tests {
             gone: false,
             waits_on_joel: false,
             unwanted: None,
+            wants: None,
             state: "working",
             doing: "working".to_owned(),
             returns: "switch",

@@ -172,7 +172,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
                 "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off(),
-                "putOffAs": row.unwanted.map(Stands::id),
+                "putOffAs": row.unwanted.map(Stands::id), "wants": row.wants,
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -260,7 +260,7 @@ fn act_rows<'a>(
 /// The acts a session inside an orchestration offers: Talk and Go To only
 /// where it waits on Joel. One whose want he put off waits on him for
 /// nothing until its hour is up, so it offers neither, as one working
-/// doesn't; For You still lists it, where both are.
+/// doesn't, and For You leaves it out until then too.
 fn member_acts(row: &Row) -> impl Iterator<Item = &str> {
     let needs = row.waits_on_joel;
     row.acts
@@ -326,7 +326,7 @@ fn member(row: &Row, parent: &str, depth: usize, under: usize, said: &Said) -> V
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
                 "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off(),
-                "putOffAs": row.unwanted.map(Stands::id),
+                "putOffAs": row.unwanted.map(Stands::id), "wants": row.wants,
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -503,6 +503,7 @@ mod tests {
             gone: false,
             waits_on_joel: state == "needs",
             unwanted: None,
+            wants: (state == "needs").then(|| "approval".to_owned()),
             state,
             doing: state.to_owned(),
             returns: "switch",
@@ -973,6 +974,32 @@ mod tests {
             acts(member),
             ["verb:details", "verb:agent:pause", "verb:agent:close"],
             "and offers no Talk or Go To inside, as one working doesn't"
+        );
+    }
+
+    #[test]
+    fn a_session_at_the_top_is_served_as_put_off_and_with_its_want() {
+        let mut put_off = row("A", "needs", 0, LIVE);
+        if let Shown::Session(row) = &mut put_off {
+            (row.waits_on_joel, row.unwanted) = (false, Some(Stands::Parked));
+        }
+        let rows = top(&[put_off, row("B", "working", 0, LIVE)]);
+        let held = |at: &str| {
+            let held = &found(&rows, at)["held"];
+            (
+                held["putOff"].clone(),
+                held["putOffAs"].clone(),
+                held["wants"].clone(),
+            )
+        };
+        assert_eq!(
+            [held("row:agents-top:A"), held("row:agents-top:B")],
+            [
+                (json!(true), json!("parked"), json!("approval")),
+                (json!(false), Value::Null, Value::Null),
+            ],
+            "a row at the top is served put off as it would stand wanting nothing, with its \
+             want's kind, so Networks counts each want once; one wanting nothing says so"
         );
     }
 
