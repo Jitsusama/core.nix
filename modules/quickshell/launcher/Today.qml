@@ -169,11 +169,13 @@ Provider {
     // Date's first frame after a refusal closed the launcher, on a builder
     // slow enough to answer it before the ask (039ab50d0). Asking clears a
     // refusal at once, and the reader refuses only later, so one heard
-    // once it has asked is this showing's own. Shut, no showing will ask,
-    // so a refusal standing is said as it stands, as a terminal reads Date
-    // (`launcher show`). Rows Now kept from an earlier showing that had
-    // asked aren't covered: a refusal kept in them reads on the first
-    // frame until this showing's ask answers Date again.
+    // once it has asked is this showing's own. Walked from outside, as a
+    // terminal reads Date (`launcher show`), no showing will ask, so a
+    // refusal standing is said as it stands; rows made shut otherwise, as
+    // the shell starts and the first opening draws from, read as asking.
+    // Rows Now kept from an earlier showing that had asked aren't covered:
+    // a refusal kept in them reads on the first frame until this
+    // showing's ask answers Date again.
     property bool askedThisShowing: false
 
     Connections {
@@ -293,15 +295,16 @@ Provider {
     // top, no step holds Date, so the place stays "..." until he steps back
     // to the answer, which shows them, as any part stepped into from an
     // answer at the top is made again only as he steps back. Only a reader
-    // that refused this showing's ask (askedThisShowing), or any while the
-    // launcher is shut, gives a row whose Return closes, as it has nothing
+    // that refused this showing's ask (askedThisShowing), or any as the
+    // launcher is walked from outside, gives a row whose Return closes, as it has nothing
     // to wait for, and a step held on it then leaves by itself. A reader
     // that takes the question and never answers leaves the place saying "...", as the row
     // did before, since Calendars.qml gives a question no deadline.
     function calendarsRow(at, now) {
         const reading = Calendars.reading;
         const said = calendarsSaid;
-        const refusalCounts = askedThisShowing || !(launcher?.open ?? false);
+        const refusalCounts = askedThisShowing || !launcher
+            || launcher.cataloguing === true;
         if (reading?.day !== Moment.iso(at) && Calendars.refused && refusalCounts)
             return copyRow({ key: "today:calendars", name: Words.name("today:calendars"),
                 side: said.silent, copiesNothing: true, note: "", glyph: Theme.glyph.date });

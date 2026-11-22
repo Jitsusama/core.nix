@@ -50,6 +50,7 @@ ShellRoot {
         id: showing
 
         property bool open: false
+        property bool cataloguing: false
         property var answer: null
         property var held: []
     }
@@ -332,7 +333,7 @@ ShellRoot {
             Calendars.refused = true;
             today.askedThisShowing = false;
             const standing = calendarsOf(date());
-            expect("shut, as a terminal reads it, a refusal standing is said, and only closes",
+            expect("with no launcher, as a check's, a refusal standing is said, and only closes",
                 standing?.verb === "close", `${standing?.side} ${standing?.verb}`);
             today.askedThisShowing = true;
             Calendars.refused = false;
@@ -414,14 +415,27 @@ ShellRoot {
                 const held = calendarsNow();
                 expect("held, as from Now, its first frame after a refusal reads as asking",
                     held?.verb === "more", `${held?.side} ${held?.verb}`);
+                const kept = showing.held[0].row.rows
+                    .find(row => row.name === Words.name("today:calendars"));
+                expect("and the rows it holds, made shut as a start warms them, read so too",
+                    kept?.verb === "more", `${kept?.side} ${kept?.verb}`);
             },
             aTurn,
             () => {
                 expect("held, a turn on, it has asked, clearing the refusal",
                     shownToday.askedThisShowing && !Calendars.refused, told());
+                showing.open = false;
+                showing.held = [];
+                Calendars.refused = true;
+                showing.cataloguing = true;
+                const walked = calendarsNow();
+                expect("walked from outside, as a terminal reads it, a refusal is said, closing",
+                    walked?.verb === "close", `${walked?.side} ${walked?.verb}`);
+                showing.cataloguing = false;
             },
             () => {
                 showing.open = false;
+                showing.cataloguing = false;
                 showing.answer = null;
                 showing.held = [];
                 Calendars.refused = wasRefused;
