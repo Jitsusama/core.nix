@@ -231,9 +231,11 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 /// modem's first S of uptime, all of them if it came sooner, and
 /// stretches the span it names by S when the stretch's first line was
 /// read before it; once the stretch reaches back a day, the day read
-/// drops the lines read in the S before a day ago instead, so the span
-/// stays a day and its first S goes uncounted. One back by S hides each line read before it until S
-/// after it was read, since it is stamped after now. Until a line is
+/// drops the lines read in the day's first S instead, so the span stays
+/// a day and its first S goes uncounted. One back by S shortens the span
+/// by S, hiding each line read before it until S after it was read, since
+/// it is stamped after now. A step either way that leaves the stretch
+/// under an hour says no figure lately until an hour of lines builds up. Until a line is
 /// read after it, any lines read from S to S and five minutes ago are
 /// stamped recent and vote with the start they said, S late, outvoting
 /// now: the lines before the step are judged by their own clock, but a
