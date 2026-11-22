@@ -157,6 +157,7 @@
 //! the second lent builder, else the warm VM builders, that passed theirs.
 
 mod archived;
+mod asking;
 mod busy;
 mod cargo;
 mod changed;
@@ -450,6 +451,10 @@ fn heard_after(helper: impl BufRead, place: &Mutex<Place>) {
 }
 
 fn main() -> ExitCode {
+    // First, before any thread starts: no ssh this starts may ask Joel.
+    // SAFETY: nothing has started a thread yet, and no dependency starts
+    // one before `main`.
+    unsafe { asking::never_ask() };
     // Read lossily only to see whether help is asked: a word that isn't
     // text reaches the kit whole, which refuses it as asked wrongly (64)
     // where `env::args` would panic.
