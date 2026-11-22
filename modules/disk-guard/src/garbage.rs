@@ -354,8 +354,12 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
         .collect())
 }
 
-/// How long deleting one batch may take.
-const DELETE_TIMEOUT: Duration = Duration::from_mins(10);
+/// How long deleting one batch may take, every run of Nix it takes
+/// counted from the first. Nix ends every delete reading each entry of the
+/// store's links folder, whatever it deleted: on 21 November a machine's
+/// deletes took five to eight minutes apiece, a few bytes or gigabytes,
+/// near a ten-minute limit, and that machine is often busier.
+const DELETE_TIMEOUT: Duration = Duration::from_mins(30);
 /// How many paths may come alive since the batch was made before it's
 /// taken as too stale to go on with. Each refusal costs Nix a whole look
 /// for roots and deletes nothing, so a batch that keeps meeting them is
@@ -382,6 +386,19 @@ fn refused<'a>(said: &str, left: &[&'a String]) -> Option<&'a String> {
     })
 }
 
+/// What a delete came to.
+#[derive(Debug)]
+pub struct Deleted {
+    /// The paths the system wouldn't let Nix change.
+    pub refused: Vec<String>,
+    /// Whether Nix ran, which it doesn't when temporary roots hold every
+    /// path, so a delete that cost nothing earns no rest.
+    pub ran: bool,
+    /// Whether it stopped before running Nix again for another process
+    /// writing Nix's database, leaving what was left for later.
+    pub put_off: bool,
+}
+
 /// Whether a delete failed because the listing its batch came from is
 /// stale, which only listing the store again mends.
 pub fn stale(why: &str) -> bool {
@@ -397,36 +414,66 @@ pub fn stale(why: &str) -> bool {
 /// whole call when a root reaches any path again, naming one, so it's
 /// dropped and the rest tried again. A path the system won't let Nix
 /// change stops the call there too, and is dropped the same way; the
-/// paths the system refused are what it answers.
+/// paths the system refused are what it answers, and whether Nix ran.
+/// Evaluations, which root paths again, also write Nix's database, so
+/// before Nix runs again the delete asks `writing` and stops while it
+/// says so. A name holding a space is no store path Nix can be given one a
+/// line, and is left out.
 pub fn delete(
     nix: &Path,
     roots: &Path,
     paths: &[String],
     idle: bool,
-) -> Result<Vec<String>, String> {
+    writing: impl Fn() -> bool,
+) -> Result<Deleted, String> {
     let mut alive: Vec<String> = Vec::new();
     let mut forbidden: Vec<String> = Vec::new();
+    let mut ran = false;
+    let deadline = std::time::Instant::now() + DELETE_TIMEOUT;
     loop {
         let held = temp_roots(roots);
         let left: Vec<&String> = paths
             .iter()
+            .filter(|path| !path.contains(char::is_whitespace))
             .filter(|path| !alive.contains(path) && !forbidden.contains(path))
             .filter(|path| !held.contains(path.as_str()))
             .filter(|path| Path::new(path).symlink_metadata().is_ok())
             .collect();
-        if left.is_empty() {
-            return Ok(forbidden);
+        // Asked only when something is left, so an empty batch says what it
+        // came to rather than that it waits for a writer.
+        let put_off = !left.is_empty() && ran && writing();
+        if left.is_empty() || put_off {
+            return Ok(Deleted {
+                refused: forbidden,
+                ran,
+                put_off,
+            });
         }
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
         argv.extend(NIX_COMMAND.map(OsStr::new));
         // Offline, as the listing is: Nix asks every substituter about a
         // path it never registered before deleting it, and the system unit
         // has no network, so a batch holding one waits on each, retried.
-        argv.extend(["store", "delete", "--offline"].map(OsStr::new));
-        argv.extend(left.iter().map(|path| OsStr::new(path.as_str())));
-        let (ok, said) = output(&argv, DELETE_TIMEOUT, idle)?;
+        // The paths go on its standard input, which no command line's
+        // length limits, so a batch closes only at its size.
+        argv.extend(["store", "delete", "--offline", "--stdin"].map(OsStr::new));
+        let mut input = Vec::new();
+        for path in &left {
+            input.extend_from_slice(path.as_bytes());
+            input.push(b'\n');
+        }
+        ran = true;
+        let left_of_it = deadline.saturating_duration_since(std::time::Instant::now());
+        if left_of_it.is_zero() {
+            return Err(format!("{} ran past {DELETE_TIMEOUT:?}", name(&argv)));
+        }
+        let (ok, said) = output(&argv, left_of_it, idle, &input)?;
         if ok {
-            return Ok(forbidden);
+            return Ok(Deleted {
+                refused: forbidden,
+                ran,
+                put_off: false,
+            });
         }
         let revived = said
             .split("Cannot delete path '")
@@ -447,7 +494,7 @@ pub fn delete(
 
 /// What a command printed, or why it failed, in its own last words.
 pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
-    match output(argv, timeout, idle)? {
+    match output(argv, timeout, idle, &[])? {
         (true, stdout) => Ok(stdout),
         (false, stderr) => Err(failed(argv, &stderr)),
     }
@@ -455,7 +502,12 @@ pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<Stri
 
 /// Whether a command succeeded, with what it printed if so and what it
 /// said on its error stream if not.
-fn output(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<(bool, String), String> {
+fn output(
+    argv: &[&OsStr],
+    timeout: Duration,
+    idle: bool,
+    input: &[u8],
+) -> Result<(bool, String), String> {
     let name = name(argv);
     let job = Job {
         argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
@@ -465,7 +517,7 @@ fn output(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<(bool, Strin
         limit: OUTPUT_LIMIT,
         idle,
     };
-    match commands::run(&job).map_err(|error| format!("starting {name}: {error}"))? {
+    match commands::fed(&job, input).map_err(|error| format!("starting {name}: {error}"))? {
         Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
         Ran::Stopped => Err(format!("{name} was stopped with the guard")),
         Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),

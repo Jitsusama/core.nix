@@ -1,8 +1,8 @@
+//! A pass over a fake disk: what it takes, measures, learns and waits for,
+//! and where it ends. What a finished pass says is in `pass_lines`.
+
 use disk_guard::band::{Band, Space, Thresholds};
-use disk_guard::pass::{
-    Disk, End, Failing, Goal, Learned, Outcome, Reclaimer, Report, failed_line, failing, pass,
-    told, unheard_line,
-};
+use disk_guard::pass::{Disk, End, Goal, Learned, Outcome, Reclaimer, pass};
 use disk_guard::plan::{Candidate, Class};
 use disk_guard::units::float;
 use std::collections::BTreeMap;
@@ -11,168 +11,6 @@ use std::path::{Path, PathBuf};
 
 const GIB: u64 = 1 << 30;
 
-/// A finished pass's report, with what came of each path it tried.
-fn report(freed: u64, outcomes: Vec<Outcome>) -> Report {
-    Report {
-        end: End::Reached,
-        band: Band::Filling,
-        freed,
-        actions: outcomes
-            .into_iter()
-            .enumerate()
-            .map(|(number, outcome)| (PathBuf::from(format!("/tmp/taken-{number}")), outcome))
-            .collect(),
-    }
-}
-
-#[test]
-fn a_pass_that_took_something_says_when_how_many_and_how_much_it_freed() {
-    let report = report(
-        8 * GIB + GIB / 4,
-        vec![
-            Outcome::Reclaimed,
-            Outcome::Kept("in use".to_string()),
-            Outcome::Reclaimed,
-            Outcome::Failed("refused".to_string()),
-        ],
-    );
-    assert_eq!(
-        told(&report, 12.34, "2026-11-09 10:33:05").as_deref(),
-        Some(
-            "disk-guard: at 2026-11-09 10:33:05 a pass while filling took 2 of the 3 it \
-             tried, freeing 8.2 GiB in 12.3 s"
-        )
-    );
-}
-
-#[test]
-fn a_pass_whose_tries_all_failed_says_so_too() {
-    let report = report(0, vec![Outcome::Failed("refused".to_string())]);
-    assert_eq!(
-        told(&report, 0.5, "2026-11-09 10:33:05").as_deref(),
-        Some(
-            "disk-guard: at 2026-11-09 10:33:05 a pass while filling took 0 of the 1 it \
-             tried, freeing 0 B in 0.5 s"
-        )
-    );
-}
-
-#[test]
-fn a_pass_that_only_judged_says_nothing() {
-    let kept = report(0, vec![Outcome::Kept("in use".to_string())]);
-    assert_eq!(told(&kept, 3.0, "2026-11-09 10:33:05"), None);
-    assert_eq!(
-        told(&report(0, Vec::new()), 3.0, "2026-11-09 10:33:05"),
-        None
-    );
-}
-
-// On 11 November a laptop's system guard spent 90 minutes with every
-// delete of the store's garbage refused, each pass saying only that it
-// took 0 of the 6 it tried, and its notice that nothing was left to clear.
-#[test]
-fn a_filling_pass_that_freed_nothing_for_its_failures_is_an_error() {
-    let refused = "warning: unable to download 'https://cache.example/x.narinfo'\n\
-                   retrying in 250 ms\n\
-                   error: unable to download 'https://cache.example/x.narinfo': \
-                   Could not resolve hostname\n";
-    let report = report(
-        0,
-        vec![
-            Outcome::Failed(refused.to_string()),
-            Outcome::Kept("in use".to_string()),
-            Outcome::Failed(refused.to_string()),
-        ],
-    );
-    let failing = failing(&report).expect("a filling pass that freed nothing is failing");
-    assert_eq!(
-        failing,
-        Failing {
-            tried: 2,
-            failed: 2,
-            timed_out: false,
-            last: "error: unable to download 'https://cache.example/x.narinfo': Could not \
-                   resolve hostname"
-                .to_string(),
-        }
-    );
-    assert_eq!(
-        failed_line(&failing, &report, "2026-11-11 15:40:00"),
-        "disk-guard: error: at 2026-11-11 15:40:00 a pass while filling freed nothing: 2 of \
-         the 2 it tried failed; the last: error: unable to download \
-         'https://cache.example/x.narinfo': Could not resolve hostname"
-    );
-}
-
-#[test]
-fn a_timeout_is_an_error_even_when_the_rest_freed_something() {
-    let report = report(
-        3 * GIB,
-        vec![
-            Outcome::Reclaimed,
-            Outcome::Failed("nix ran past 600s".to_string()),
-        ],
-    );
-    let failing = failing(&report).expect("a delete timing out is failing");
-    assert!(failing.timed_out, "{failing:?}");
-    assert_eq!(
-        failed_line(&failing, &report, "2026-11-11 15:40:00"),
-        "disk-guard: error: at 2026-11-11 15:40:00 a pass while filling freed only 3.0 GiB: 1 \
-         of the 2 it tried failed, one timing out; the last: nix ran past 600s"
-    );
-}
-
-#[test]
-fn a_system_daemon_that_couldnt_be_asked_is_said_with_why() {
-    assert_eq!(
-        unheard_line(
-            Some("Resource temporarily unavailable"),
-            "2026-11-14 14:18:48"
-        ),
-        "disk-guard: at 2026-11-14 14:18:48 the system daemon couldn't be asked about the \
-         processes this account can't read (Resource temporarily unavailable), so what they \
-         might use was kept"
-    );
-    assert_eq!(
-        unheard_line(None, "2026-11-14 14:18:48"),
-        "disk-guard: at 2026-11-14 14:18:48 the system daemon couldn't be asked about the \
-         processes this account can't read, so what they might use was kept"
-    );
-}
-
-#[test]
-fn what_freed_something_failed_at_nothing_or_ran_while_healthy_isnt_an_error() {
-    let partly = report(
-        GIB,
-        vec![Outcome::Reclaimed, Outcome::Failed("refused".to_string())],
-    );
-    assert_eq!(failing(&partly), None, "a pass that freed something");
-    let kept = report(0, vec![Outcome::Kept("in use".to_string())]);
-    assert_eq!(failing(&kept), None, "a pass that only judged");
-    let mut healthy = report(0, vec![Outcome::Failed("nix ran past 600s".to_string())]);
-    healthy.band = Band::Healthy;
-    assert_eq!(failing(&healthy), None, "upkeep on a healthy disk");
-}
-
-// On 14 November two switches each rooted paths a pass had listed as
-// garbage, and each left an error line though the guard lists again.
-#[test]
-fn a_batch_gone_stale_since_the_listing_isnt_an_error() {
-    let stale = || Outcome::Failed("3 paths came alive since the listing".to_string());
-    let switched = report(0, vec![Outcome::Kept("in use".to_string()), stale()]);
-    assert_eq!(
-        failing(&switched),
-        None,
-        "a stale batch read as a failing guard"
-    );
-    let both = report(0, vec![stale(), Outcome::Failed("refused".to_string())]);
-    let failing = failing(&both).expect("a refusal beside a stale batch is still failing");
-    assert_eq!(
-        (failing.failed, failing.last.as_str()),
-        (1, "refused"),
-        "a stale batch was counted among the failures"
-    );
-}
 const HOUR: f64 = 3600.0;
 
 const PRODUCER: Class = Class::Producer {
@@ -236,6 +74,10 @@ struct FakeReclaimer<'a> {
     taken: Vec<PathBuf>,
     /// How many it takes before a stop waits, if one comes.
     stops_after: Option<usize>,
+    /// Whether what it keeps waits for another process, as garbage does.
+    waits: bool,
+    /// How many it has kept.
+    held: usize,
 }
 
 impl Reclaimer for FakeReclaimer<'_> {
@@ -244,12 +86,17 @@ impl Reclaimer for FakeReclaimer<'_> {
             .is_some_and(|after| self.taken.len() >= after)
     }
 
+    fn waiting(&self) -> bool {
+        self.waits && self.held > 0
+    }
+
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
         {
             let mut disk = self.disk.borrow_mut();
             disk.clock += disk.each;
         }
         if self.kept.contains(&candidate.path) {
+            self.held += 1;
             return Outcome::Kept("a build started in it".into());
         }
         self.taken.push(candidate.path.clone());
@@ -324,6 +171,8 @@ fn run(
         kept,
         taken: Vec::new(),
         stops_after: None,
+        waits: false,
+        held: 0,
     };
     let mut learned = Learned::default();
     let report = pass(
@@ -464,6 +313,83 @@ fn deletes_that_free_nothing_stop_the_pass_after_three_batches() {
     );
     // A stall teaches nothing, or the next pass would plan everything.
     crate::assert_exactly(run.learned.ratio(Class::Target), 1.0);
+}
+
+/// How a pass of `goal` over ten temp files ends when each is kept to
+/// wait, and how many it asked for.
+fn waiting_on_each(goal: Goal) -> (End, usize) {
+    let candidates = temps_of_two_days(10);
+    let disk = std::cell::RefCell::new(FakeDisk::new(14 * GIB));
+    let mut reclaimer = FakeReclaimer {
+        disk: &disk,
+        frees: BTreeMap::new(),
+        kept: candidates.iter().map(|c| c.path.clone()).collect(),
+        taken: Vec::new(),
+        stops_after: None,
+        waits: true,
+        held: 0,
+    };
+    let report = pass(
+        &mut Shared(&disk),
+        &mut reclaimer,
+        &candidates,
+        &thresholds(),
+        Band::Filling,
+        goal,
+        &mut Learned::default(),
+    );
+    (report.end, reclaimer.held)
+}
+
+#[test]
+fn a_pass_reaching_for_room_ends_where_what_it_kept_waits() {
+    // Garbage kept for Nix's rest or another writer goes first as the
+    // cheapest loss, so what costs more waits with it rather than going in
+    // its place.
+    let (end, asked) = waiting_on_each(Goal::Reach);
+    assert_eq!(end, End::Waiting);
+    assert_eq!(asked, 1, "went on past the wait");
+}
+
+#[test]
+fn a_waiting_pass_learns_nothing_from_a_batch_that_stalled() {
+    // A temp freed nothing before the garbage after it was kept to wait.
+    let candidates = temps(10, GIB / 4);
+    let disk = std::cell::RefCell::new(FakeDisk::new(14 * GIB));
+    let first = candidates[0].path.clone();
+    let mut reclaimer = FakeReclaimer {
+        disk: &disk,
+        frees: BTreeMap::from([(first.clone(), 0)]),
+        kept: candidates[1..].iter().map(|c| c.path.clone()).collect(),
+        taken: Vec::new(),
+        stops_after: None,
+        waits: true,
+        held: 0,
+    };
+    let mut learned = Learned::default();
+    let report = pass(
+        &mut Shared(&disk),
+        &mut reclaimer,
+        &candidates,
+        &thresholds(),
+        Band::Filling,
+        Goal::Reach,
+        &mut learned,
+    );
+    assert_eq!(report.end, End::Waiting);
+    assert_eq!(reclaimer.taken, [first], "not the one temp, then the wait");
+    let ratio = learned.ratio(Class::Temp);
+    assert!(
+        (ratio - 1.0).abs() < f64::EPSILON,
+        "a stalled batch taught a ratio of {ratio}"
+    );
+}
+
+#[test]
+fn upkeep_looks_at_all_that_is_due_past_what_waits() {
+    let (end, asked) = waiting_on_each(Goal::Upkeep);
+    assert_ne!(end, End::Waiting, "upkeep ended at a wait");
+    assert_eq!(asked, 10, "upkeep stopped at a wait");
 }
 
 /// `count` temp files of `size` each, long idle, so due at any band.
@@ -697,6 +623,8 @@ fn a_stop_ends_a_pass_before_its_next_candidate() {
         kept: Vec::new(),
         taken: Vec::new(),
         stops_after: Some(2),
+        waits: false,
+        held: 0,
     };
     let report = pass(
         &mut Shared(&disk),

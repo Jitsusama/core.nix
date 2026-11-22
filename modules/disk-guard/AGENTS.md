@@ -327,7 +327,37 @@ or launchd, and [`home.nix`][2] the account's.
   old date. Once a batch is refused anyway, the store is listed again and
   none of the old listing's batches goes to Nix meanwhile, not even the
   rest of that pass's, since builds root again what a listing called
-  dead, within minutes of it. It expires
+  dead, within minutes of it. Every delete ends with Nix reading each
+  entry of its links folder, five to eight minutes a call on a busy
+  machine whatever it deleted, so a batch closes only at its size, its
+  paths going on Nix's standard input rather than its command line; Nix
+  reads them a word at a time, so a name holding a space is left out.
+  "Short of nearly full" is the store disk's own band as last measured,
+  never the band a pass aims for or an account's guard asks at, since a
+  garbage pass aims at healthy whatever the disk reads and any account
+  may ask. The one exception is the guard's own forecast of nearly full
+  or past, which starts a pass only as long before as a pass takes, so a
+  rest would use up its lead: that pass is unspaced. Short of nearly
+  full a pass makes one delete, and the next waits four
+  times as long as the last Nix run took, refused or timed out included,
+  so deleting takes at most a fifth of the store's time, a rest a
+  restart forgets at the cost of one delete; a batch temporary roots
+  hold whole runs no Nix and earns none. Nor does a delete begin short
+  of nearly full while another process holds Nix's database for
+  writing, as the kernel answers for a write lock on byte 120 of
+  `db/db.sqlite-shm` beside the temp roots, since that writer, a build
+  or an evaluation, would then wait on the delete and read "database is
+  busy". The writer is asked again before each of a delete's reruns for
+  what came alive, and one found stops it, keeping what's left. Garbage
+  kept for either is looked at again once it's over, whatever pass kept
+  it, under the garbage's own rest, and a pass reaching for room that
+  kept it ends `waiting` rather than taking what costs more to lose in
+  its place, and so does an account's guard whose ask the system's
+  guard answers `waiting`. Where the guard can't tell whether anything writes, it says
+  so once on its standard error and waits for none. Nearly full and
+  past, room comes first: batches go back to back, writer or none. A
+  batch runs at most half an hour over all its Nix runs, and keeps the
+  paths it deleted when stopped, as Nix deletes each in turn. It expires
   generations, never the current, running or booted one, the
   newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing

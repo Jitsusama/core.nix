@@ -2,7 +2,7 @@
 //! them, and plan again.
 
 use crate::band::{Band, Space, Thresholds};
-use crate::plan::{Candidate, Class, Group, plan};
+use crate::plan::{Candidate, Class, Group, Step, plan};
 use crate::units::float;
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -56,6 +56,13 @@ pub trait Reclaimer {
     fn stopping(&self) -> bool {
         crate::commands::stop_waiting()
     }
+
+    /// Whether this pass kept garbage that waits for a rest or another
+    /// process to finish, so a pass reaching for room ends there rather
+    /// than taking what costs more to lose than garbage while it waits.
+    fn waiting(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -80,6 +87,10 @@ pub enum Goal {
     Clear,
 }
 
+/// How a pass that ended [`End::Waiting`] is journalled and answered, which
+/// a user daemon reads back from the system daemon it asked.
+pub const WAITING: &str = "waiting";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum End {
     Reached,
@@ -90,6 +101,9 @@ pub enum End {
     /// A routine pass ran `ROUTINE_LONGEST`, and what was left is due again
     /// at the next step.
     Unfinished,
+    /// A pass reaching for room kept garbage for a rest or another process
+    /// and left what costs more to lose for when that's over.
+    Waiting,
     Failed(String),
 }
 
@@ -337,39 +351,27 @@ pub fn pass(
             return report;
         }
 
-        let started = disk.now();
-        let (mut predicted, mut batch, mut groups) = (0, Vec::new(), Vec::new());
-        for step in &steps {
-            let index = left[step.index];
-            let candidate = &candidates[index];
-            // A command is measured alone, so what it frees is credited to
-            // no one else, and is measured before anything more goes, since
-            // it may have been enough.
-            if candidate.class.command() && !batch.is_empty() {
-                break;
-            }
-            if reclaimer.stopping() {
-                report.end = End::Stopped;
+        let taking = take(&steps, &offered, reclaimer, disk, goal, remaining);
+        for &tried in &taking.tried {
+            taken[left[tried]] = true;
+        }
+        report.actions.extend(taking.actions);
+        if taking.stopped {
+            report.end = End::Stopped;
+            return report;
+        }
+        let Taking {
+            predicted,
+            freeing: batch,
+            groups,
+            waiting,
+            ..
+        } = taking;
+        if batch.is_empty() {
+            if waiting {
+                report.end = End::Waiting;
                 return report;
             }
-            taken[index] = true;
-            let outcome = reclaimer.reclaim(candidate);
-            let freeing = outcome == Outcome::Reclaimed;
-            if freeing {
-                predicted += step.predicted;
-                batch.push(candidate);
-                if !groups.contains(&step.group) {
-                    groups.push(step.group);
-                }
-            }
-            report.actions.push((candidate.path.clone(), outcome));
-            let enough = remaining.is_some_and(|remaining| predicted >= remaining);
-            let measure = freeing && candidate.class.command();
-            if enough || measure || disk.now() - started >= BATCH_SECONDS {
-                break;
-            }
-        }
-        if batch.is_empty() {
             continue;
         }
         if let Err(error) = disk.settle() {
@@ -381,7 +383,16 @@ pub fn pass(
         };
         let freed = after.free.saturating_sub(before.free);
         report.freed += freed;
-        if float(freed) < float(predicted) * STALL_SHARE {
+        let stalling = float(freed) < float(predicted) * STALL_SHARE;
+        if waiting {
+            // What waits ends the pass, but a stalled batch teaches nothing.
+            if !stalling {
+                credit(learned, &batch, freed);
+            }
+            report.end = End::Waiting;
+            return report;
+        }
+        if stalling {
             if predicted >= STALL_FLOOR {
                 stalled(groups, &mut stalls, &mut given_up);
             }
@@ -392,6 +403,80 @@ pub fn pass(
         }
         credit(learned, &batch, freed);
     }
+}
+
+/// What one batch took of what a pass offered.
+struct Taking<'a> {
+    /// The places in what was offered of each candidate tried, kept or not.
+    tried: Vec<usize>,
+    /// What the plan said the reclaimed ones would free.
+    predicted: u64,
+    /// The candidates reclaimed, whose measurement teaches.
+    freeing: Vec<&'a Candidate>,
+    groups: Vec<Group>,
+    actions: Vec<(PathBuf, Outcome)>,
+    /// Whether the guard was stopping before the batch was done.
+    stopped: bool,
+    /// Whether, reaching for room, the reclaimer kept garbage to wait for.
+    waiting: bool,
+}
+
+/// Takes the plan's steps over `offered` into one batch, until it holds
+/// enough for `remaining`, a command is to be measured alone, its time is
+/// up, the guard is stopping or, reaching for room, the reclaimer kept
+/// garbage to wait for.
+fn take<'a>(
+    steps: &[Step],
+    offered: &'a [Candidate],
+    reclaimer: &mut impl Reclaimer,
+    disk: &impl Disk,
+    goal: Goal,
+    remaining: Option<u64>,
+) -> Taking<'a> {
+    let started = disk.now();
+    let mut taking = Taking {
+        tried: Vec::new(),
+        predicted: 0,
+        freeing: Vec::new(),
+        groups: Vec::new(),
+        actions: Vec::new(),
+        stopped: false,
+        waiting: false,
+    };
+    for step in steps {
+        let candidate = &offered[step.index];
+        // A command is measured alone, so what it frees is credited to no
+        // one else, and is measured before anything more goes, since it may
+        // have been enough.
+        if candidate.class.command() && !taking.freeing.is_empty() {
+            break;
+        }
+        if reclaimer.stopping() {
+            taking.stopped = true;
+            break;
+        }
+        taking.tried.push(step.index);
+        let outcome = reclaimer.reclaim(candidate);
+        let freeing = outcome == Outcome::Reclaimed;
+        if freeing {
+            taking.predicted += step.predicted;
+            taking.freeing.push(candidate);
+            if !taking.groups.contains(&step.group) {
+                taking.groups.push(step.group);
+            }
+        }
+        taking.actions.push((candidate.path.clone(), outcome));
+        if goal == Goal::Reach && reclaimer.waiting() {
+            taking.waiting = true;
+            break;
+        }
+        let enough = remaining.is_some_and(|remaining| taking.predicted >= remaining);
+        let measure = freeing && candidate.class.command();
+        if enough || measure || disk.now() - started >= BATCH_SECONDS {
+            break;
+        }
+    }
+    taking
 }
 
 /// Counts a stalled batch against each of its groups, giving up on a group
