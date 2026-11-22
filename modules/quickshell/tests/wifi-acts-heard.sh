@@ -7,14 +7,10 @@ said=$1
 failed=0
 
 # A line ending in what's wanted, so one saying more after the code doesn't pass for it.
-ends() {
-  WANTED=$1 awk 'BEGIN { w = ENVIRON["WANTED"] }
-    substr($0, length($0) - length(w) + 1) == w { found = 1 }
-    END { exit !found }' "$said"
-}
-
 wanted="launcher: verb:wifi-join refused: WrongPassword"
-if ! ends "$wanted"; then
+if ! WANTED=$wanted awk 'BEGIN { w = ENVIRON["WANTED"] }
+  substr($0, length($0) - length(w) + 1) == w { found = 1 }
+  END { exit !found }' "$said"; then
   echo "a refused join isn't said by its act and code, wanted: $wanted"
   failed=1
 fi
