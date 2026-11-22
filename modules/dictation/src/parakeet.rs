@@ -516,8 +516,10 @@ fn usize_of(n: i64) -> Result<usize> {
 mod tests {
     use super::*;
 
-    const VOCAB: &str = r#"{"0": "<unk>", "1": "<|nospeech|>", "2": "▁hello", "3": "▁wor",
-        "4": "ld", "5": "▁é", "6": "<", "7": "▁ne"}"#;
+    // Spaced as Parakeet's exported vocabulary is: a piece that starts a
+    // word leads with a plain space, never the tokenizer's own mark.
+    const VOCAB: &str = r#"{"0": "<unk>", "1": "<|nospeech|>", "2": " hello", "3": " wor",
+        "4": "ld", "5": " é", "6": "<", "7": " ne"}"#;
 
     fn vocab() -> Vocab {
         Vocab::parse(VOCAB).unwrap()
