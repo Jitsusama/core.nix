@@ -28,9 +28,11 @@ A session's address on the mesh is 1 to 12 capital letters and digits, in
 ASCII. `addresses.txt` holds what is one and what isn't, a case a line: `is` or
 `not`, a space, then the text to the end of the line, spaces and all, with
 `not` alone the empty text. A line opening with `#` is a note. In the text,
-`\u{HEX}` is the character with that code, so a case can hold a tab, a line
-break or a space at its end where it can be seen; any other backslash, or a
-carriage return anywhere, fails the test reading it.
+`\u{HEX}` is the character with that code, written as 1 to 6 capital hex
+digits naming a character (never a surrogate, D800 to DFFF), so a case can
+hold a tab, a line break, a backslash (`\u{5C}`) or a space at its end where
+it can be seen. Any other backslash, or a carriage return anywhere, fails
+each test reading it, and each reader has a case seeing it refuse them.
 
 Three copies of the rule read it in their tests, so none drifts from the
 others unseen: the map's `isAddress` (`../sprout.ts`), the notices daemon's
@@ -38,13 +40,30 @@ others unseen: the map's `isAddress` (`../sprout.ts`), the notices daemon's
 `addressed` (`modules/quickshell/mycelium-link/src/main.rs`). It holds the
 bare rule alone, never the `@machine` and `#anchor` a whole cell link adds.
 
-Other copies don't read it yet: the sites' kit (`modules/local-sites/kit/cell.ts`),
-the launcher's Start New Work (`launcher/Sprouting.js`) and Explain It
-(`launcher/Explaining.js`, which upper-cases first), the harness that sends
-the addresses, and mycelium's own, which lets lowercase through. Session rows
-and places in the launcher match letters and digits of any length, a looser
-rule of their own.
+Other copies don't read it yet. A grep under `modules/` for the `[A-Z0-9]`
+patterns and `is_ascii_uppercase` found these, so there may be more:
 
-Both Rust packages build with this file in their source, so editing it, its
-notes included, rebuilds the notices daemon and mycelium-link; the notes are
-kept here so that happens only when a case changes.
+- The same rule: the sites' kit (`modules/local-sites/kit/cell.ts`), and the
+  launcher's Start New Work (`modules/quickshell/launcher/Sprouting.js`) and
+  Explain It (`modules/quickshell/launcher/Explaining.js`, which upper-cases
+  first).
+- Looser, any length: For You's reader of the notices daemon's cell links
+  (`modules/quickshell/launcher/ForYouCells.js`, which takes either case and
+  upper-cases it), session rows (`modules/quickshell/launcher/SessionRow.js`),
+  places (`modules/quickshell/Places.js`), the sessions list's orchestrator
+  and workspace (`modules/quickshell/Sessions.qml`), and cadence's sender of a
+  hold (`modules/cadence/src/watch/held.rs`, after trimming and dropping an
+  `@`).
+- Stricter: rhythm's reading of a session's message
+  (`modules/rhythm/src/seed.rs`) takes exactly 6, so a message from a
+  shorter or longer address counts there as typed by Joel.
+
+Outside this tree, the harness that sends the addresses and mycelium hold
+copies too.
+
+Both Rust packages build with this file in their source, and they are the
+packages every desktop runs. So editing it, its notes included, rebuilds the
+notices daemon and mycelium-link, and the next switch restarts the notices
+daemon, which is safe since the bus holds notices meanwhile. A bad line fails
+both builds, so every machine's switch fails until it is reverted. The notes
+are kept here so a rebuild comes only when a case changes.

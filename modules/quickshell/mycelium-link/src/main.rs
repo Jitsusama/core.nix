@@ -458,7 +458,7 @@ mod tests {
     const ADDRESSES: &str = include_str!("../../../mycelium/site/tests/addresses.txt");
 
     #[test]
-    fn an_address_is_judged_as_every_copy_of_the_rule_judges_it() {
+    fn an_address_is_judged_by_the_shared_cases() {
         // Split on line feeds alone, since `lines` would drop a carriage
         // return the other readers see.
         let cases: Vec<&str> = ADDRESSES
@@ -475,16 +475,42 @@ mod tests {
         }
     }
 
-    /// A case's text with each `\u{HEX}` made the character it names,
-    /// failing on any other backslash (modules/mycelium/site/tests/README.md).
+    #[test]
+    fn a_case_escaped_any_other_way_is_refused() {
+        for written in [
+            "T\\",
+            "T\\n",
+            "T\\u{a}",
+            "T\\u{+A}",
+            "T\\u{0000041}",
+            "T\\u{}",
+            "T\\u{41",
+            "T\\u{D800}",
+            "T\\u{110000}",
+        ] {
+            let read = std::panic::catch_unwind(|| case_text(written));
+            assert!(read.is_err(), "{written:?} is refused");
+        }
+        assert_eq!(
+            case_text("T\\u{5C}\\u{9}"),
+            "T\\\t",
+            "each escape the one way"
+        );
+    }
+
+    /// A case's text with each `\u{HEX}`, 1 to 6 capital hex digits, made
+    /// the character it names, failing on any other backslash or a code that
+    /// names none (modules/mycelium/site/tests/README.md).
     fn case_text(written: &str) -> String {
+        let hex_digit = |digit: u8| digit.is_ascii_digit() || (b'A'..=b'F').contains(&digit);
         let mut text = String::new();
         let mut rest = written;
         while let Some(at) = rest.find('\\') {
             text.push_str(&rest[..at]);
             let escape = rest[at..]
                 .strip_prefix("\\u{")
-                .and_then(|after| after.split_once('}'));
+                .and_then(|after| after.split_once('}'))
+                .filter(|(hex, _)| (1..=6).contains(&hex.len()) && hex.bytes().all(hex_digit));
             let (hex, after) =
                 escape.unwrap_or_else(|| panic!("{written:?} escapes as \\u{{HEX}}"));
             let code = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32);

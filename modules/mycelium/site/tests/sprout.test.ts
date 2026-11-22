@@ -95,7 +95,41 @@ it("says the cell it comes from only when that is an address", () => {
   }
 });
 
-it("judges an address as the notices daemon and mycelium-link do", () => {
+/** The escape a case may hold: 1 to 6 capital hex digits (README.md, The Address Cases). */
+const ESCAPE = /\\u\{([0-9A-F]{1,6})\}/gu;
+
+/** A case's text with each escape made the character it names, failing on any other. */
+function caseText(written: string): string {
+  const line = JSON.stringify(written);
+  assert.ok(!written.replace(ESCAPE, "").includes("\\"), `${line} should escape only as \\u{HEX}`);
+  return written.replace(ESCAPE, (_, hex: string) => {
+    const code = Number.parseInt(hex, 16);
+    assert.ok(
+      code <= 0x10_ff_ff && (code < 0xd8_00 || code > 0xdf_ff),
+      `${line} should name a character`,
+    );
+    return String.fromCodePoint(code);
+  });
+}
+
+it("refuses a case escaped any other way", () => {
+  for (const written of [
+    "T\\",
+    "T\\n",
+    "T\\u{a}",
+    "T\\u{+A}",
+    "T\\u{0000041}",
+    "T\\u{}",
+    "T\\u{41",
+    "T\\u{D800}",
+    "T\\u{110000}",
+  ]) {
+    assert.throws(() => caseText(written), `${JSON.stringify(written)} should be refused`);
+  }
+  assert.equal(caseText("T\\u{5C}\\u{9}"), "T\\\t", "each escape should be read the one way");
+});
+
+it("judges each shared address case", () => {
   const cases = readFileSync(new URL("addresses.txt", import.meta.url), "utf8")
     .split("\n")
     .filter((line) => line !== "" && !line.startsWith("#"));
@@ -103,12 +137,7 @@ it("judges an address as the notices daemon and mycelium-link do", () => {
   for (const line of cases) {
     assert.ok(!line.includes("\r"), `${JSON.stringify(line)} should hold no carriage return`);
     const [kind, ...rest] = line.split(" ");
-    const text = rest
-      .join(" ")
-      .replace(/\\u\{([0-9A-F]{1,6})\}/gu, (_, code) =>
-        String.fromCodePoint(Number.parseInt(code, 16)),
-      );
-    assert.ok(!text.includes("\\"), `${JSON.stringify(line)} should escape only as \\u{HEX}`);
+    const text = caseText(rest.join(" "));
     assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
     const is = kind === "is";
     assert.equal(isAddress(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
