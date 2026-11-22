@@ -227,7 +227,7 @@ impl App {
                 &mut self.marks,
                 &after,
                 incoming.edited,
-                &moved,
+                moved,
             );
             if let Some(pt) = self.aim.as_mut() {
                 *pt = moved(*pt);
