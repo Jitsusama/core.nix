@@ -170,9 +170,33 @@ fn a_change_reaching_the_hosts_waits_on_them() {
             "a patch beside core's runtime build, its hosts {hosts}, was judged wrongly"
         );
     }
+    // A note beside the patches reaches no host at all.
+    let note = |_: &str| Some("modules/pi/host-patches/README.md".to_owned());
+    assert_eq!(
+        judge("core", at, Some("f00d"), all, note, lack),
+        None,
+        "a change reaching no host's patches waited on the hosts"
+    );
+    let unit = |_: &str| Some("modules/pi/host.nix".to_owned());
+    assert_eq!(
+        judge("core", at, Some("f00d"), all, unit, lack),
+        Some("unit"),
+        "the hosts' unit, which a switch leaves a running host keeping, didn't wait on them"
+    );
+    let home = |_: &str| Some(format!("modules/pi/home.nix\n{CODE}"));
+    assert_eq!(
+        judge("core", at, Some("f00d"), all, home, lack),
+        None,
+        "a switch alone didn't carry the rest"
+    );
+}
+
+#[test]
+fn a_fix_to_cores_runtime_build_alone_waits_only_on_a_host_it_failed() {
+    let all = |_: &str, _: &str| Some(true);
+    let at = Some("a1b2c3d");
     // A fix to how core builds its runtime, with no patch, can't be seen in
-    // a runtime built elsewhere, while a note beside the patches reaches no
-    // host at all.
+    // a runtime built elsewhere.
     let build =
         |_: &str| Some("modules/pi/hosted-pi.nix\nmodules/pi/host-patches/README.md".into());
     // Only a host the build may have failed is its owner's; an hour that
@@ -206,24 +230,6 @@ fn a_change_reaching_the_hosts_waits_on_them() {
     assert!(
         LASTING.contains(&"cadence can't tell what a pi host loads"),
         "a fix to core's runtime build, which no hour can read, held only for the hour"
-    );
-    let note = |_: &str| Some("modules/pi/host-patches/README.md".to_owned());
-    assert_eq!(
-        judge("core", at, Some("f00d"), all, note, lack),
-        None,
-        "a change reaching no host's patches waited on the hosts"
-    );
-    let unit = |_: &str| Some("modules/pi/host.nix".to_owned());
-    assert_eq!(
-        judge("core", at, Some("f00d"), all, unit, lack),
-        Some("unit"),
-        "the hosts' unit, which a switch leaves a running host keeping, didn't wait on them"
-    );
-    let home = |_: &str| Some(format!("modules/pi/home.nix\n{CODE}"));
-    assert_eq!(
-        judge("core", at, Some("f00d"), all, home, lack),
-        None,
-        "a switch alone didn't carry the rest"
     );
 }
 
