@@ -32,6 +32,7 @@
 #include <cstdio>
 #include <ctime>
 #include <fcntl.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 namespace {
@@ -77,6 +78,15 @@ double KeyTimes::waited() const {
     if (std::sscanf(text, "%llu %llu", &ran, &waited) != 2)
         return 0;
     return static_cast<double>(waited) / 1e6;
+}
+
+// The kernel's count for the thread reading it alone (RUSAGE_THREAD), a
+// system call with no file to open.
+double KeyTimes::faulted() const {
+    rusage usage{};
+    if (getrusage(RUSAGE_THREAD, &usage) != 0)
+        return -1;
+    return static_cast<double>(usage.ru_majflt);
 }
 
 bool KeyTimes::eventFilter(QObject *watched, QEvent *event) {

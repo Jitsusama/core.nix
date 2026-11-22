@@ -292,6 +292,27 @@ QtObject {
             "; its thread ran 15 ms of the stall, waited 9 for a CPU and slept 0");
         check(failures, "an opening that never stalled says nothing of it",
             Thread.said(0, { ran: 0, waited: 0 }, "the stall"), "");
+        const paging = [[16, { ran: 5, waited: 1, faulted: 3 }],
+            [132, { ran: 20, waited: 2, faulted: 1206 }]];
+        const pagedStall = paging.reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace,
+            { thread }), Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
+        check(failures, "the stall counts its thread's major page faults",
+            pagedStall.stallThread.faulted, 1203);
+        const unreadStall = [[16, { ran: 5, waited: 1, faulted: 3 }],
+            [132, { ran: 20, waited: 2, faulted: -1 }]].reduce((was, [at, thread]) =>
+            Pacing.feltTicked(was, at, pace, { thread }),
+            Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
+        check(failures, "a stall whose count wasn't read takes no count",
+            unreadStall.stallThread.faulted, undefined);
+        check(failures, "and says nothing of them",
+            Thread.said(unreadStall.stall, unreadStall.stallThread, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 100");
+        const fellStall = [[16, { ran: 5, waited: 1, faulted: 9 }],
+            [132, { ran: 20, waited: 2, faulted: 4 }]].reduce((was, [at, thread]) =>
+            Pacing.feltTicked(was, at, pace, { thread }),
+            Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
+        check(failures, "nor one whose count went back", fellStall.stallThread.faulted,
+            undefined);
         keyThreaded(failures);
     }
 
@@ -318,6 +339,38 @@ QtObject {
             Thread.spent({ ran: 5, waited: 0 }, { ran: 9, waited: 5000 }), null);
         check(failures, "nor one that failed at the end",
             Thread.spent({ ran: 5, waited: 40 }, { ran: 9, waited: 0 }), null);
+        keyPaged(failures);
+    }
+
+    // The major page faults a key's thread took while it searched: Joel's
+    // "s" slept 448 ms of 566 searching, in work that never waits on its
+    // event loop, with memory short (2026-11-21).
+    function keyPaged(failures) {
+        const paged = Thread.spent({ ran: 5, waited: 40, faulted: 120 },
+            { ran: 120, waited: 43, faulted: 1323 });
+        check(failures, "a key's part counts its thread's major page faults",
+            paged.faulted, 1203);
+        check(failures, "they're said after its sleep",
+            Thread.said(566, paged, "its searching"),
+            "; its thread ran 115 ms of its searching, waited 3 for a CPU and slept 448"
+                + ", with 1203 major page faults");
+        check(failures, "one is said as one",
+            Thread.said(20, { ran: 15, waited: 1, faulted: 1 }, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4"
+                + ", with 1 major page fault");
+        check(failures, "a count of none is said as none",
+            Thread.said(20, { ran: 15, waited: 1, faulted: 0 }, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4"
+                + ", with no major page faults");
+        check(failures, "a count that wasn't read says nothing of them",
+            Thread.said(20, { ran: 15, waited: 1 }, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4");
+        check(failures, "a count that went back isn't taken as faults",
+            Thread.spent({ ran: 5, waited: 4, faulted: 9 }, { ran: 9, waited: 5, faulted: 3 })
+                .faulted, undefined);
+        check(failures, "nor one that couldn't be read",
+            Thread.spent({ ran: 5, waited: 4, faulted: -1 }, { ran: 9, waited: 5, faulted: 3 })
+                .faulted, undefined);
     }
 
     // What held an opening's longest stall, by the work it ran into: Joel's
@@ -337,6 +390,23 @@ QtObject {
             Pacing.stallSpent(nested, 0, 100), "filling 50, the drawer 10, 40 unnamed");
         check(failures, "one all named says nothing unnamed",
             Pacing.stallSpent(nested, 10, 70), "filling 50, the drawer 10");
+        // Some of the open handler's laps beside the slices after its frame,
+        // which say "waking" and "joining" for their own work (2026-11-21),
+        // in the order the launcher pushes them: the handler's join, felt
+        // inside its lap, then the lap, and "opening", begun before the
+        // handler, once `open` has turned. A span inside a lap of its name
+        // adds into the lap; that the launcher gives its join that name
+        // (freshenAs) is no case's.
+        const laps = [{ name: Pacing.lapName("beginning"), from: 1, to: 5 },
+            { name: Pacing.lapName("waking"), from: 5, to: 25 },
+            { name: Pacing.lapName("joining"), from: 26, to: 30 },
+            { name: Pacing.lapName("joining"), from: 25, to: 31 },
+            { name: "opening", from: 0, to: 40 },
+            { name: "waking", from: 60, to: 80 },
+            { name: "joining", from: 80, to: 90 }];
+        check(failures, "an opening's laps are said apart from the slices after it",
+            Pacing.stallSpent(laps, 0, 100), "opening's waking 20, waking 20, opening 10, "
+                + "joining 10, opening's joining 6, opening's beginning 4, 30 unnamed");
     }
 
     // Each frame's own work, as spans: the rows it laid out and its sync,
