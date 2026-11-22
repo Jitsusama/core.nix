@@ -1027,6 +1027,75 @@ fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
 }
 
 #[test]
+fn a_hold_no_reading_mends_lasts_and_one_a_reading_mends_passes() {
+    let held =
+        |reason: &str| format!("ab12 from IKQ63G: y{HELD}core #6000{UNRUN}{reason} · OSPHT4");
+    for lasting in [
+        "cadence can't tell what a pi host loads",
+        "cadence can't tell when the harness carrying it was installed",
+    ] {
+        assert!(
+            held_for_good(&held(lasting)) && held_unseen(&held(lasting)),
+            "a hold no reading mends passed: {lasting}"
+        );
+    }
+    for passing in [
+        "cadence can't list the pi hosts",
+        "cadence can't see what runs here",
+        "cadence can't find its merge",
+    ] {
+        assert!(
+            !held_for_good(&held(passing)) && held_unseen(&held(passing)),
+            "a hold a reading mends lasted: {passing}"
+        );
+    }
+}
+
+#[test]
+fn a_regression_beneath_a_fix_no_reading_shows_running_counts() {
+    let root = finding(3 * DAY, "IKQ63G", "IKQ63G finding for OSPHT4: y");
+    let posted = [
+        root.clone(),
+        answer(3 * DAY - 60, "OSPHT4", "Landed core #6000.", &root),
+        answering(
+            finding(2 * DAY, "CIJMZQ", "CIJMZQ finding for OSPHT4: it's back"),
+            &root,
+        ),
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    let findings = Findings {
+        text: as_misses(&found),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    let fix = Named {
+        repo: "core".to_owned(),
+        number: 6000,
+    };
+    let merged = BTreeSet::from([fix.clone()]);
+    let unrun = BTreeMap::from([(fix, "cadence can't tell what a pi host loads")]);
+    let judged = Judged {
+        merged: &merged,
+        unread: &BTreeSet::new(),
+        unrun: &unrun,
+        here: "here",
+    };
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let measure = findings.measured(&repos, &judged, NOW);
+    assert!(
+        (measure.now - 1.0).abs() < 1e-9
+            && measure
+                .behind
+                .iter()
+                .any(|line| line.contains("it's back · OSPHT4") && !held_unseen(line)),
+        "a regression beneath a fix no reading will show running went unseen: {} {:?}",
+        measure.says,
+        measure.behind
+    );
+}
+
+#[test]
 fn a_fix_is_walked_for_from_its_earliest_note_however_late_one_came() {
     let first = finding(2 * DAY, "IKQ63G", "IKQ63G finding for A2VLJN: x");
     let sent_sooner = jiff::Timestamp::from_second(NOW - 3 * DAY).expect("a time");

@@ -32,6 +32,18 @@ pub const UNRUN: &str = " merged, but ";
 /// asked about what only the hour can mend.
 pub const UNSEEN: &str = "cadence can't ";
 
+/// What a host loads can't be read from a fix to how core builds its
+/// runtime, ever, nor from a runtime keeping no patch copies until the
+/// hosts restart onto another.
+const LOADS_UNSEEN: &str = "cadence can't tell what a pi host loads";
+
+/// The harness's install time stays unknown until it is installed again.
+const INSTALL_UNSEEN: &str = "cadence can't tell when the harness carrying it was installed";
+
+/// The reasons of cadence's blindness that no fetch or listing mends, so
+/// a hold on one lasts rather than passing with the hour.
+pub const LASTING: [&str; 2] = [LOADS_UNSEEN, INSTALL_UNSEEN];
+
 /// The repositories whose running revision cadence reads: core's and
 /// World's from the last switch, mycelium's as that switch's core pins it,
 /// and the harness's from the version installed. A change elsewhere,
@@ -361,7 +373,7 @@ fn judge(
     // elsewhere, which copies only its patches, so it isn't told fixed;
     // `changed` leaves the build out where it only listed the patches.
     if files.lines().any(|file| file == HOSTED_PI) {
-        return Some("cadence can't tell what a pi host loads");
+        return Some(LOADS_UNSEEN);
     }
     (!reaches.patches.is_empty() || reaches.unit)
         .then(|| hosts(sha, reaches))
@@ -422,10 +434,10 @@ fn hosts_lack(
         });
     }
     if runtime && loaded.contains(&None) {
-        return Some("cadence can't tell what a pi host loads");
+        return Some(LOADS_UNSEEN);
     }
     if reaches.program && since.is_none() {
-        return Some("cadence can't tell when the harness carrying it was installed");
+        return Some(INSTALL_UNSEEN);
     }
     if restarts && (since.is_none() || running().any(|host| host.started.is_none())) {
         return Some("cadence can't tell when a pi host or conversation started");

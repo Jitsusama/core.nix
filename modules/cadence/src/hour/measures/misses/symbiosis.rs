@@ -33,7 +33,7 @@ use std::time::UNIX_EPOCH;
 use serde::{Deserialize, Serialize};
 
 use super::super::{Class, DAY, Measure, count, first_owner};
-use super::running::RUN_HERE;
+use super::running::{LASTING, RUN_HERE};
 use super::{Checkouts, HELD, Judged, UNRUN, UNSEEN, named, open_misses, repo_word};
 use crate::write_whole;
 
@@ -367,13 +367,18 @@ pub fn held_unseen(line: &str) -> bool {
 }
 
 /// Whether a finding's line is held for as long as the finding is kept: by
-/// a change a landing note names in a repository cadence can't read. A
-/// main unread, or what runs here unseen, is held only until a reading
-/// sees, since a fetch or a listing mends it; a merge in a repository
-/// whose running revision cadence doesn't read closes, counted apart.
+/// a change a landing note names in a repository cadence can't read, or a
+/// merged change whose running no fetch or listing will show. A main
+/// unread, or what runs here otherwise unseen, is held only until a
+/// reading sees; a merge in a repository whose running revision cadence
+/// doesn't read closes, counted apart.
 #[must_use]
 pub fn held_for_good(line: &str) -> bool {
     line.contains(UNNAMED)
+        || line.split_once(HELD).is_some_and(|(_, why)| {
+            why.split_once(UNRUN)
+                .is_some_and(|(_, unrun)| LASTING.iter().any(|lasting| unrun.starts_with(lasting)))
+        })
 }
 
 /// Whether `finding`, closed, was closed by a change in a repository
