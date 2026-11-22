@@ -119,18 +119,9 @@ pub fn run() -> Result<(), String> {
             .into_iter()
             .map(|(mac, address)| (mac, read_apple_tv(&at_home, &address)))
             .collect();
-        let listed = heard.as_ref().map(samsung::listed);
-        // Only a minute eero answered says which TVs have left.
-        if let Ok(listed) = &listed {
-            samsung::forget_unlisted(&mut tvs, listed);
-        }
-        let televisions = listed
-            .unwrap_or_default()
-            .into_iter()
-            .map(|(mac, address)| {
-                samsung::remember(&mut tvs, mac, read_television(&at_home, &address))
-            })
-            .collect();
+        let televisions = samsung::ask(&mut tvs, &heard, |address| {
+            read_television(&at_home, address)
+        });
         let said = Said {
             eero: heard,
             modem: read_modem(&agent),

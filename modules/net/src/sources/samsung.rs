@@ -120,9 +120,32 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
+/// This minute's ask of each TV eero lists, through `read`, which asks
+/// the box at an address. Only a minute eero answered says which TVs have
+/// left, so one it didn't answer asks none and forgets none, and a TV
+/// keeps its name through eero's silence.
+pub fn ask<E>(
+    heard: &mut Heard,
+    eero: &Result<Value, E>,
+    mut read: impl FnMut(&str) -> Reply,
+) -> Vec<Asked> {
+    let Ok(eero) = eero else {
+        return Vec::new();
+    };
+    let listed = listed(eero);
+    forget_unlisted(heard, &listed);
+    listed
+        .into_iter()
+        .map(|(mac, address)| {
+            let reply = read(&address);
+            remember(heard, mac, reply)
+        })
+        .collect()
+}
+
 /// What `mac` answered this minute, beside its last answer as a TV; an
 /// answer that is a TV's becomes the one remembered.
-pub fn remember(heard: &mut Heard, mac: String, reply: Reply) -> Asked {
+fn remember(heard: &mut Heard, mac: String, reply: Reply) -> Asked {
     if let Reply::Page(said) = &reply
         && television(String::new(), said).is_ok()
     {
@@ -137,7 +160,7 @@ pub fn remember(heard: &mut Heard, mac: String, reply: Reply) -> Asked {
 
 /// Forgets each TV eero no longer lists, so the memory holds only the TVs
 /// on the network now, however many boxes have answered as one.
-pub fn forget_unlisted(heard: &mut Heard, listed: &[(String, String)]) {
+fn forget_unlisted(heard: &mut Heard, listed: &[(String, String)]) {
     heard.retain(|mac, _| listed.iter().any(|(listed, _)| listed == mac));
 }
 
@@ -505,6 +528,73 @@ pub mod tests {
         forget_unlisted(&mut heard, &[(OTHER.to_owned(), ADDRESS.to_owned())]);
         let kept = heard.keys().collect::<Vec<_>>();
         assert_eq!(kept, [OTHER], "a TV that left is still remembered");
+    }
+
+    #[test]
+    fn a_tv_keeps_its_name_through_a_minute_eero_didnt_answer() {
+        let mut heard = Heard::new();
+        let eero = Ok::<Value, String>(json!({"devices": [listing()]}));
+        let mut addresses = Vec::new();
+        ask(&mut heard, &eero, |address| {
+            addresses.push(address.to_owned());
+            Reply::Page(answer())
+        });
+        assert_eq!(
+            addresses,
+            [ADDRESS],
+            "the TV isn't asked at eero's address for it"
+        );
+        let mut asked_anyway = false;
+        let none = ask(&mut heard, &Err::<Value, _>("timed out".to_owned()), |_| {
+            asked_anyway = true;
+            silent()
+        });
+        assert!(
+            none.is_empty() && !asked_anyway,
+            "a TV is asked in a minute eero didn't say which are on the network"
+        );
+        let (source, found) = read(ask(&mut heard, &eero, |_| silent()), NOW);
+        let said: Vec<_> = found
+            .iter()
+            .map(|tv| (tv.name.as_deref(), tv.television.answering))
+            .collect();
+        assert_eq!(
+            said,
+            [(Some("Living Room"), false)],
+            "a minute eero didn't answer forgot the TV"
+        );
+        assert_eq!(
+            source.map(|source| source.state),
+            Some(SourceState::Answering),
+            "a TV asleep after eero's silence reads as the source failing"
+        );
+    }
+
+    #[test]
+    fn a_tv_answering_without_its_power_says_none() {
+        let quiet = answer().replace("\"PowerState\": \"on\",", "");
+        assert_ne!(
+            quiet,
+            answer(),
+            "the contract's answer no longer says its power"
+        );
+        let (source, found) = one(quiet);
+        assert_eq!(
+            found.first().map(|tv| (tv.name.as_deref(), &tv.television)),
+            Some((
+                Some("Living Room"),
+                &Television {
+                    power: None,
+                    answering: true
+                }
+            )),
+            "a TV that doesn't say its power is given one, or isn't heard as answering"
+        );
+        assert_eq!(
+            source.map(|source| source.state),
+            Some(SourceState::Answering),
+            "a TV without its power reads as the source failing"
+        );
     }
 
     #[test]
