@@ -4448,10 +4448,10 @@
     each with how many, its name as the head says it, and its kind's, source's or program's mark
   '';
   the-launcher-weighs-what-it-owes = ''
-    the launcher counts the shell's holders once, only after the census, then weighs what
-    letting go of each of the six largest by that count would free, one a turn, leaving out names
-    folded under a tilde; a closing resumes a count or weighing put off, and a busy answer keeps
-    what it owes for the next turn rather than dropping it
+    the launcher's weighing plan, apart from its timers, starts nothing before the census, counts
+    the shell's holders once, then weighs what letting go of each of the six largest by that count
+    would free, one a turn, leaving out names folded under a tilde; and a busy count or weighing
+    stays owed for the next closing to take up rather than being dropped
   '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
