@@ -198,8 +198,8 @@ pub const SILENT_WHILE_REACHED: u32 = 3;
 /// reaches it (`reached`) and whether it `answers` at all, asked of one
 /// builds reach only once it has failed [`FAILS_WHILE_REACHED`],
 /// counting in `silent` how many times in a row it hasn't, which an
-/// answer, a passed proof or a builder short of those failures (as one
-/// just lent is) starts again. Dropped, it's named nowhere
+/// answer, a passed proof, or falling short of those failures while
+/// builds reach it starts again. Dropped, it's named nowhere
 /// either way, so no new build goes there. One that answers is busy, not
 /// lost, and keeps what it builds until it ends: on 10 November a builder
 /// whose slots stayed full failed ten proofs in a row and was given back,
@@ -208,7 +208,9 @@ pub const SILENT_WHILE_REACHED: u32 = 3;
 /// two builders whose builds it didn't see were given back after two
 /// failed proofs, one 41 s after it had answered, deleting a model check
 /// and a test suite with it. Kept while it answers, it's given back once
-/// it sits idle, as any builder is. Either goes only once it has missed
+/// it sits idle, as any builder is, but as lost, so another is asked for
+/// at once: an answering builder that can't build costs at most that idle
+/// spell, where giving it back unseen cost hours of builds. Either goes only once it has missed
 /// [`SILENT_WHILE_REACHED`] answers in a row.
 pub fn proven_lost(
     dropped: bool,
@@ -377,10 +379,6 @@ mod tests {
             "a build reaches it"
         );
         assert!(
-            !proven_lost(true, 2, true, &mut silent, unasked),
-            "a build reaches it"
-        );
-        assert!(
             !proven_lost(true, FAILS_WHILE_REACHED - 1, true, &mut silent, unasked),
             "a build reaches it, short of ten failures"
         );
@@ -397,12 +395,15 @@ mod tests {
             "it passes"
         );
         assert_eq!(silent, 0, "a passed proof starts the count again");
-        silent = SILENT_WHILE_REACHED;
+        silent = SILENT_WHILE_REACHED - 1;
         assert!(
             !proven_lost(true, 2, true, &mut silent, unasked),
-            "one just lent that a build reaches"
+            "a build reaches it, short of ten failures"
         );
-        assert_eq!(silent, 0, "one just lent doesn't take the last one's count");
+        assert_eq!(
+            silent, 0,
+            "short of ten failures with a build on it, the count starts again"
+        );
     }
 
     #[test]
@@ -426,6 +427,10 @@ mod tests {
     #[test]
     fn a_builder_nothing_is_seen_to_reach_goes_only_once_it_stops_answering() {
         let mut silent = 0;
+        assert!(
+            !proven_lost(true, 2, false, &mut silent, || false),
+            "one answer missed"
+        );
         assert!(
             !proven_lost(true, 2, false, &mut silent, || true),
             "two failed proofs, but it answers"

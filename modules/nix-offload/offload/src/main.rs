@@ -3253,11 +3253,27 @@ fn named(dir: &Path, machines: &mut Machines, lent: Option<&Lent>, keeper: Optio
 /// proofs, so it says each once while that lasts.
 #[derive(Default)]
 struct SaidKept {
+    /// The builder this is said of, so the next one starts afresh.
+    builder: String,
     reached: bool,
     stalled: bool,
     busy: bool,
     /// How many times in a row the builder hasn't said whether it answers.
     silent: u32,
+}
+
+impl SaidKept {
+    /// What's said of `builder` from now: a builder lent after one given
+    /// back doesn't take its count of missed answers, or it could go at
+    /// its first miss.
+    fn of(&mut self, builder: &str) {
+        if self.builder != builder {
+            *self = Self {
+                builder: builder.to_owned(),
+                ..Self::default()
+            };
+        }
+    }
 }
 
 /// Whether `builder`, which a build `reached` this tick or not, is given
@@ -3272,6 +3288,7 @@ fn unanswered(
     said: &mut SaidKept,
     [ssh, nix]: [&str; 2],
 ) -> bool {
+    said.of(&builder.name);
     let dropped = kept(settings, keeper, builder, at, [ssh, nix]);
     let failures = keeper.as_ref().map_or(0, |keeper| keeper.health.failures);
     // One that builds but can't take a copy has a way to it that's full,
@@ -3280,12 +3297,18 @@ fn unanswered(
     // minutes to warm.
     let stalled = keeper.as_ref().is_some_and(|keeper| keeper.health.stalled);
     let silent_before = said.silent;
+    // Whether it was asked if it answers, as proven_lost decided, so what
+    // is said can't drift from the decision.
+    let mut asked = false;
     let unanswered = decide::proven_lost(
         dropped,
         failures,
         reached || stalled,
         &mut said.silent,
-        || answers(settings, builder, ssh),
+        || {
+            asked = true;
+            answers(settings, builder, ssh)
+        },
     );
     if unanswered {
         let reaching = if reached || stalled {
@@ -3299,7 +3322,15 @@ fn unanswered(
             builder.name, said.silent
         );
     }
-    if !unanswered && said.silent > silent_before {
+    if !unanswered && said.silent > silent_before && builder.store.is_none() {
+        eprintln!(
+            "nix-offload: {} has no store of its own to ask whether it answers, {} of {} in a \
+             row, so it keeps what it builds for now",
+            builder.name,
+            said.silent,
+            decide::SILENT_WHILE_REACHED
+        );
+    } else if !unanswered && said.silent > silent_before {
         eprintln!(
             "nix-offload: {} didn't say within {} s whether it answers, {} of {} in a row, so \
              it keeps what it builds for now",
@@ -3330,9 +3361,6 @@ fn unanswered(
         );
     }
     said.reached &= dropped;
-    // Whether it was asked if it answers: at once when nothing is seen to
-    // reach it, else only once it has failed enough proofs.
-    let asked = !(reached || stalled) || failures >= decide::FAILS_WHILE_REACHED;
     let busy = dropped && !unanswered && said.silent == 0 && asked;
     if busy && !std::mem::replace(&mut said.busy, true) {
         eprintln!(
@@ -5158,6 +5186,23 @@ exit 0
         );
         assert!(runs(&mut builder.helper), "its helper still runs");
         end(&mut builder.helper);
+    }
+
+    #[test]
+    fn a_builder_lent_anew_doesnt_take_the_last_ones_missed_answers() {
+        let mut said = SaidKept::default();
+        said.of("lend-5");
+        said.silent = decide::SILENT_WHILE_REACHED;
+        said.busy = true;
+        said.of("lend-5");
+        assert_eq!(
+            said.silent,
+            decide::SILENT_WHILE_REACHED,
+            "the same builder keeps it"
+        );
+        said.of("lend-6");
+        assert_eq!(said.silent, 0, "the next builder starts at none");
+        assert!(!said.busy, "nor is it said to be busy");
     }
 
     #[test]
