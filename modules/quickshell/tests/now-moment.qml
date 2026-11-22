@@ -238,16 +238,23 @@ ShellRoot {
         function say(keys) {
             said = keys;
         }
-        // What it was told failed, as toldThat's what and why, and the
-        // place it was last asked to open into.
+        // What it was told failed, as toldThat's what and why, the place it
+        // was last asked to open into, and how often it was asked to say a
+        // Go To's session is gone, its keys held back (Launcher.qml's
+        // toldGone), which Now asks rather than opening it bare.
         property var told: []
         property string intoAsked: ""
+        property int goneTold: 0
 
         function toldThat(what, why) {
             told = told.concat([{ what: what, why: why }]);
         }
         function into(name) {
             intoAsked = name;
+        }
+        function toldGone() {
+            goneTold += 1;
+            return true;
         }
         // Set without one only by a case that asks what's left without it.
         property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
@@ -2167,8 +2174,8 @@ ShellRoot {
             Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
         Sessions.wentTo = null;
         // Go on a terminal look whose session is gone opens nothing, settles
-        // nothing and says so, opening the launcher on Agents to say it.
-        const gone = Words.of("verb:notice:goTo").said ?? {};
+        // nothing and says so through the launcher's own toldGone, which
+        // holds Joel's keys back, never by opening it bare.
         const textsGone = now.lookTexts;
         const goneLook = { id: "g", file: "g.json", kind: "terminal", title: "Read G",
             target: "", state: "waiting", session: "s-gone", address: "GONEGG",
@@ -2177,6 +2184,7 @@ ShellRoot {
         const textGone = now.lookTexts["g.json"];
         theLauncher.told = [];
         theLauncher.intoAsked = "";
+        theLauncher.goneTold = 0;
         const openedGone = now.openLook(goneLook);
         expect("Go on a gone session opens nothing",
             openedGone === false && Sessions.wentTo === null,
@@ -2184,18 +2192,19 @@ ShellRoot {
         expect("and leaves its look waiting as it was",
             now.lookTexts["g.json"] === textGone && now.looksSettling["g.json"] === undefined,
             JSON.stringify([now.lookTexts["g.json"], now.looksSettling["g.json"] ?? null]));
-        expect("and says so in Go To's own words, the launcher opened on Agents",
-            JSON.stringify(theLauncher.told) === JSON.stringify([{ what: gone.gone ?? "",
-                why: gone.why ?? "" }]) && theLauncher.intoAsked === "agents",
-            JSON.stringify([theLauncher.told, theLauncher.intoAsked]));
+        expect("and says so through the launcher's toldGone, never opening it bare",
+            theLauncher.goneTold === 1 && theLauncher.told.length === 0
+                && theLauncher.intoAsked === "",
+            JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked]));
         now.lookTexts = textsGone;
-        theLauncher.told = [];
+        theLauncher.goneTold = 0;
         now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
             state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
             cell: "GONEQQ" } }, "row:looks-history:q").run();
         expect("a served quiet terminal look whose session is gone opens nothing and says so",
-            Sessions.wentTo === null && theLauncher.told.length === 1,
-            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.told]));
+            Sessions.wentTo === null && theLauncher.goneTold === 1,
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneTold]));
+        theLauncher.goneTold = 0;
         theLauncher.told = [];
         theLauncher.intoAsked = "";
         Sessions.wentTo = null;

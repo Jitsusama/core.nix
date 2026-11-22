@@ -7,9 +7,12 @@
 // one settled stays cleared once the stream tells it so, with nothing of
 // Joel's act left laid over it, and the daemon's word on it, the same look
 // written its own way at its own moment, makes nothing new, so For You
-// isn't drawn again a moment after the act's own frame.
+// isn't drawn again a moment after the act's own frame. A served terminal
+// look whose session is gone opened nothing, so the daemon is never asked
+// to settle it, while one whose session is held is.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 pragma ComponentBehavior: Bound
+import qs
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -158,8 +161,28 @@ ShellRoot {
         {
             what: "the daemon's word on it, the same look, leaves the text the act showed",
             holds: () => now.lookTexts["b.json"] === root.clearedText
+        },
+        {
+            what: "a served terminal look whose session is gone asks no settle; one held does",
+            run: () => {
+                Sessions.running = [{ address: "HERE01",
+                    presence: { session: "s-h", quest: "QEST-H" } }];
+                root.openServed("g", "GONEGG", "QEST-G");
+                root.openServed("h", "HERE01", "QEST-H");
+            },
+            // Asked in order on one socket, so with h's here g's would be too.
+            holds: () => root.settles.includes("h") && !root.settles.includes("g")
+                && Sessions.wentTo?.address === "HERE01"
         }
     ]
+
+    // Opens a served quiet terminal look of `id` on `cell` and `quest`
+    // through its History row's own Open, as Joel would.
+    function openServed(id, cell, quest) {
+        now.lookServed({ held: { id: id, kind: "terminal", title: `Read ${id}`, target: "",
+            state: "quiet", session: `s-${id}`, address: cell, quest: quest,
+            cell: cell } }, `row:looks-history:${id}`).run();
+    }
 
     // Each step polled for ten seconds before it's said not to hold.
     Timer {

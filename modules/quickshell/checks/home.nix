@@ -40,8 +40,7 @@
   # look's ask under its why, offers its choices, each answered by a steer
   # to the session that left it or its quest's, and gathers what other
   # sources give it, as Passwords' one to-do, weighed beside the rest or
-  # done, and finds the cell a look leads to, its own session or one on its
-  # quest, as modules/quickshell/tests/for-you.qml holds ForYou.js and
+  # done, as modules/quickshell/tests/for-you.qml holds ForYou.js and
   # Looks.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
@@ -56,6 +55,27 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you.qml
+      touch $out
+    '';
+
+  # A look's Talk and Go To reach the session that left it, the agents
+  # daemon's answer for its cell, or a session on its quest, never one on
+  # another, and a served look settles only once it opened, as
+  # modules/quickshell/tests/look-cells.qml holds Looks.js to it in Qt's own
+  # engine.
+  a-look-leads-to-its-cell =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-look-leads-to-its-cell" { } ''
+      cp ${../tests/look-cells.qml} look-cells.qml
+      cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/Looks.js} Looks.js
+      cp ${../launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml look-cells.qml
       touch $out
     '';
 
