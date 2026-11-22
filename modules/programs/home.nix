@@ -19,6 +19,9 @@ let
   );
   # The launcher's vocabulary, which the rows it serves are said in.
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
+  # Where zoxide keeps its database, named once, so the folder Code reads
+  # visits from and the one zoxide is told to write in can't drift apart.
+  zoxideData = "${config.xdg.dataHome}/zoxide";
 in
 {
   imports = [ ../quickshell/recents.nix ];
@@ -64,8 +67,8 @@ in
       ]
       ++ lib.optionals config.programs.zoxide.enable [
         "PROGRAMS_ZOXIDE=${lib.getExe config.programs.zoxide.package}"
-        "PROGRAMS_VISITED=${config.xdg.dataHome}/zoxide/db.zo"
-        "_ZO_DATA_DIR=${config.xdg.dataHome}/zoxide"
+        "PROGRAMS_VISITED=${zoxideData}/db.zo"
+        "_ZO_DATA_DIR=${zoxideData}"
       ];
       Restart = "on-failure";
       RestartSec = 5;

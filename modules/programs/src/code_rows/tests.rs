@@ -720,15 +720,61 @@ fn a_visit_in_a_checkout_nested_in_another_counts_for_the_nested_one() {
     let visited = [
         ("/w/git/vendor/inner/src".to_owned(), 500),
         ("/s/aside".to_owned(), 400),
-        ("/w/git/".to_owned(), 100),
+        ("/w/git/".to_owned(), 450),
     ];
     let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
     let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
     assert_eq!(
         names,
-        ["inner", "aside", "outer"],
+        ["inner", "outer", "aside"],
         "the visit below both is the nested one's alone, and a trailing slash on either \
          side still counts"
+    );
+}
+
+#[test]
+fn a_tree_at_the_root_or_gone_holds_no_visit() {
+    let mut gone = named("gone", "/s/gone", "/w/gone", 1);
+    gone.checkouts[0].trees[0].present = false;
+    let record = record(vec![
+        named("rooted", "/s/rooted", "/", 2),
+        gone,
+        named("visited", "/s/visited", "/t/visited", 3),
+    ]);
+    let visited = [
+        ("/elsewhere".to_owned(), 900),
+        ("/w/gone".to_owned(), 800),
+        ("/s/visited".to_owned(), 100),
+    ];
+    let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
+    let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
+    assert_eq!(
+        names,
+        ["visited", "gone", "rooted"],
+        "a tree at / held every folder, or a tree gone from the disk still counted"
+    );
+}
+
+#[test]
+fn a_tree_written_through_a_link_holds_a_visit_to_its_real_folder() {
+    let folder = std::env::temp_dir().join(format!("code-rows-link-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&folder);
+    std::fs::create_dir_all(folder.join("real/tree/src")).unwrap();
+    std::os::unix::fs::symlink(folder.join("real"), folder.join("linked")).unwrap();
+    let written = folder.join("linked/tree").to_string_lossy().into_owned();
+    let real = std::fs::canonicalize(folder.join("real/tree/src")).unwrap();
+    let record = record(vec![
+        named("alpha", "/s/alpha", "/t/alpha", 1),
+        named("linked", "/s/linked", &written, 2),
+    ]);
+    let visited = [(real.to_string_lossy().into_owned(), 100)];
+    let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
+    std::fs::remove_dir_all(&folder).unwrap();
+    let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
+    assert_eq!(
+        names,
+        ["linked", "alpha"],
+        "a visit to a tree's real folder didn't count where repos wrote it through a link"
     );
 }
 

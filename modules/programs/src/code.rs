@@ -112,6 +112,9 @@ pub struct Code {
     counted_at: Mutex<Option<Instant>>,
     /// The rows the last read made: each repository's and those inside it.
     made: Mutex<Vec<Value>>,
+    /// The repositories the last read found, so a watch beginning can make
+    /// their rows again with zoxide's visits as they stand, walking no root.
+    found: Mutex<Option<Arc<Record>>>,
     /// The files listed of each Open a File by Name row ahead, and the
     /// branches of each Switch Branch row ahead, by its key.
     listed: Mutex<BTreeMap<String, Vec<Value>>>,
@@ -154,6 +157,7 @@ impl Code {
             uncommitted: Mutex::new(BTreeMap::new()),
             counted_at: Mutex::new(None),
             made: Mutex::new(Vec::new()),
+            found: Mutex::new(None),
             listed: Mutex::new(BTreeMap::new()),
         }
     }
@@ -175,18 +179,28 @@ impl Code {
         record
     }
 
+    /// zoxide's visits as they stand, each folder outside every checkout
+    /// and tree of `record` as written resolved to its real path, read once
+    /// a pass. It reads the disk, so it runs before the daemon's lock is
+    /// taken.
+    fn visits(&self, record: &Record) -> Vec<(String, u64)> {
+        let Some(database) = self.visited.as_deref() else {
+            return Vec::new();
+        };
+        let places = code_rows::places(record);
+        visited::resolved(visited::visits_in(database), |folder| {
+            code_rows::placed(&places, folder)
+        })
+    }
+
     /// Code's rows from `record`, with the uncommitted files last counted
-    /// and zoxide's visits as they stand, and the rows inside them. It reads
-    /// the disk, so it runs before the daemon's lock is taken.
-    fn made(&self, record: &Record) -> Vec<Value> {
+    /// and zoxide's `visits`, and the rows inside them. It looks at the
+    /// disk for each checkout's real path, so it runs before the daemon's
+    /// lock is taken.
+    fn made(&self, record: &Record, visits: &[(String, u64)]) -> Vec<Value> {
         let uncommitted = lock(&self.uncommitted).clone();
         let home = self.home.as_deref();
-        let visits = self
-            .visited
-            .as_deref()
-            .map(|database| visited::resolved(visited::visits_in(database)))
-            .unwrap_or_default();
-        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, &visits);
+        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, visits);
         rows.extend(code_rows::inside(record, &self.words));
         rows
     }
@@ -258,13 +272,23 @@ fn kept(held: &BTreeMap<String, u32>, counted: Vec<(&str, Option<u32>)>) -> BTre
 
 /// As a watch of Code's rows begins: the first ever reads the disk on
 /// this thread, outside the lock, so its answer holds them; any later one
-/// is answered from the rows held, and the disk read again behind it.
+/// is answered from the repositories last found, their rows made again
+/// with zoxide's visits as they stand, so the order Joel's last `cd` gave
+/// is in the answer, and the roots walked again behind it.
 pub fn begin(shared: &Arc<Shared>) {
-    if shared.code.read_once.load(Ordering::Acquire) {
+    let code = &shared.code;
+    if code.read_once.load(Ordering::Acquire) {
+        let found = lock(&code.found).clone();
+        if let Some(record) = found {
+            let rows = code.made(&record, &code.visits(&record));
+            take(shared, &mut lock(&shared.daemon), rows);
+        }
         again(shared);
         return;
     }
-    let rows = shared.code.made(&shared.code.record());
+    let record = code.record();
+    let rows = code.made(&record, &code.visits(&record));
+    *lock(&code.found) = Some(Arc::new(record));
     take(shared, &mut lock(&shared.daemon), rows);
     // Counted behind its answer, which never waits on git.
     again(shared);
@@ -287,13 +311,15 @@ fn again(shared: &Arc<Shared>) {
         loop {
             while code.wanted.swap(false, Ordering::SeqCst) {
                 // Served before counting, so nothing read waits on git.
-                let record = code.record();
-                // Made first, so zoxide's database is read with the
+                let record = Arc::new(code.record());
+                // Read first, so zoxide's database is read with the
                 // daemon's lock let go: an argument would be made after it.
-                let rows = code.made(&record);
+                let visits = code.visits(&record);
+                let rows = code.made(&record, &visits);
+                *lock(&code.found) = Some(Arc::clone(&record));
                 take(&shared, &mut lock(&shared.daemon), rows);
                 if code.count(&record) {
-                    let rows = code.made(&record);
+                    let rows = code.made(&record, &visits);
                     take(&shared, &mut lock(&shared.daemon), rows);
                 }
             }
@@ -405,8 +431,22 @@ fn list(shared: &Shared, stale: &[String]) {
 /// service a switch restarts, and niri, which spawned it, gives its window
 /// the keys. Answered at once and asked on a thread of its own, as a
 /// kitty tab's acts are (tabs.rs), so no other ask waits on niri.
-pub fn terminal(id: &Value, folder: &str) -> Value {
-    kitty(id, folder, &[], "terminal")
+pub fn terminal(shared: &Shared, id: &Value, folder: &str) -> Value {
+    kitty(id, folder, &[], "terminal", found(shared, folder))
+}
+
+/// Whether `folder` is a checkout or tree the last read found, so zoxide
+/// hears only of a folder Code offered Joel, not any path an ask names.
+fn found(shared: &Shared, folder: &str) -> bool {
+    lock(&shared.code.found).as_deref().is_some_and(|record| {
+        record
+            .repositories
+            .iter()
+            .flat_map(|repository| &repository.checkouts)
+            .any(|checkout| {
+                checkout.path == folder || checkout.trees.iter().any(|tree| tree.path == folder)
+            })
+    })
 }
 
 /// What Edit Here runs in its kitty: Neovim on the checkout, with its
@@ -420,8 +460,9 @@ const EDIT: &str = r#"cd -- "$0" && { eval "$(direnv export bash)"; exec nvim .;
 /// Edit Here on a repository's row: the kitty New Terminal Here starts,
 /// running Neovim in it, so kitty goes when Neovim ends, as an editor's
 /// window does.
-pub fn edit(id: &Value, folder: &str) -> Value {
-    kitty(id, folder, &["bash", "-c", EDIT, folder], "editor")
+pub fn edit(shared: &Shared, id: &Value, folder: &str) -> Value {
+    let program = ["bash", "-c", EDIT, folder];
+    kitty(id, folder, &program, "editor", found(shared, folder))
 }
 
 /// Has niri start kitty in `folder`, running `program` there if any, and
@@ -430,8 +471,9 @@ pub fn edit(id: &Value, folder: &str) -> Value {
 /// asked for it and a shell started in a folder tells zoxide nothing until
 /// its first `cd`, so Code's order and kitty's Recent move by this act of
 /// his too. niri answers before kitty is up, so a kitty that then fails
-/// still counts as his visit: he asked to be there.
-fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Value {
+/// still counts as his visit: he asked to be there. Only a folder `found`
+/// says Code offered is told.
+fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str, found: bool) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [
         niri.as_str(),
@@ -447,7 +489,9 @@ fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Valu
     .chain(program)
     .map(|&word| word.to_owned())
     .collect();
-    let zoxide = std::env::var("PROGRAMS_ZOXIDE").ok();
+    let zoxide = std::env::var("PROGRAMS_ZOXIDE")
+        .ok()
+        .filter(|zoxide| found && !zoxide.is_empty());
     let folder = folder.to_owned();
     std::thread::spawn(move || {
         if let Err(why) = command::run(&argv) {

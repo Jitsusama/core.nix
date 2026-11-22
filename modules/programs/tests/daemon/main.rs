@@ -238,16 +238,22 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, launcher: &[&str]) -> Running {
-        Running::started(test, launcher, None)
+        Running::started(test, launcher, None, true)
     }
 
     /// Started with a git that runs `before` in sh, then the git the path
     /// finds, as a slow one would.
     fn with_git(test: &str, before: &str) -> Running {
-        Running::started(test, &[], Some(before))
+        Running::started(test, &[], Some(before), true)
     }
 
-    fn started(test: &str, launcher: &[&str], git: Option<&str>) -> Running {
+    /// Started with no zoxide database named, as on an account without
+    /// zoxide.
+    fn unvisited(test: &str) -> Running {
+        Running::started(test, &[], None, false)
+    }
+
+    fn started(test: &str, launcher: &[&str], git: Option<&str>, visited: bool) -> Running {
         let folder = std::env::temp_dir().join(format!("programs-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let sources = fixture(&folder);
@@ -278,8 +284,12 @@ impl Running {
             .env("PROGRAMS_NIRI", folder.join("niri"))
             .env("PROGRAMS_KITTEN", folder.join("kitten"))
             .env("PROGRAMS_ZOXIDE", folder.join("zoxide"))
-            .env("PROGRAMS_VISITED", folder.join("visits/db.zo"))
             .stderr(Stdio::null());
+        if visited {
+            command.env("PROGRAMS_VISITED", folder.join("visits/db.zo"));
+        } else {
+            command.env_remove("PROGRAMS_VISITED");
+        }
         if let Some(before) = git {
             let path = folder.join("git");
             let script = format!("#!{}\n{before}\nexec git \"$@\"\n", shell().display());

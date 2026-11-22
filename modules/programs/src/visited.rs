@@ -1,6 +1,6 @@
 //! When zoxide last saw each folder, read from its own database as
 //! `visited:<database>` names it, for kitty's page in the launcher
-//! (modules/kitty/Kitty.qml), and for Code's order (code_rows.rs), since
+//! (modules/kitty/Kitty.qml), and for Code's order (`code_rows.rs`), since
 //! zoxide hears only the folders Joel's own shell goes into: each folder
 //! still there, the one visited
 //! last first, with when, in milliseconds. zoxide's `query` prints only a
@@ -51,13 +51,21 @@ pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
 /// `visits` with each folder's links resolved, since zoxide keeps the path
 /// the shell named, links and all, and repos names a checkout by its real
 /// one: a folder that can't be resolved, as one gone, is kept as written.
+/// One `placed` says is already within a checkout or tree as written is
+/// kept as it is, so only the rest touch the disk, and a folder on a mount
+/// that no longer answers stalls a read only where it could count.
 #[must_use]
-pub fn resolved(visits: Vec<(String, u64)>) -> Vec<(String, u64)> {
+pub fn resolved(visits: Vec<(String, u64)>, placed: impl Fn(&str) -> bool) -> Vec<(String, u64)> {
     visits
         .into_iter()
-        .map(|(folder, at)| match fs::canonicalize(&folder) {
-            Ok(real) => (real.to_string_lossy().into_owned(), at),
-            Err(_) => (folder, at),
+        .map(|(folder, at)| {
+            if placed(&folder) {
+                return (folder, at);
+            }
+            match fs::canonicalize(&folder) {
+                Ok(real) => (real.to_string_lossy().into_owned(), at),
+                Err(_) => (folder, at),
+            }
         })
         .collect()
 }
@@ -193,15 +201,25 @@ mod tests {
         std::os::unix::fs::symlink(folder.join("real"), folder.join("linked")).unwrap();
         let through = folder.join("linked/beta").to_string_lossy().into_owned();
         let real = fs::canonicalize(folder.join("real/beta")).unwrap();
-        let read = resolved(vec![(through, 2), ("/nowhere/gone".to_owned(), 1)]);
+        let placed = format!("{}/linked", folder.to_string_lossy());
+        let named = resolved(
+            vec![(through.clone(), 2), ("/nowhere/gone".to_owned(), 1)],
+            |_| false,
+        );
+        let kept = resolved(vec![(through.clone(), 2)], |seen| seen.starts_with(&placed));
         fs::remove_dir_all(&folder).unwrap();
         assert_eq!(
-            read,
+            named,
             [
                 (real.to_string_lossy().into_owned(), 2),
                 ("/nowhere/gone".to_owned(), 1),
             ],
             "a folder through a link wasn't named by its real path, or one gone was lost"
+        );
+        assert_eq!(
+            kept,
+            [(through, 2)],
+            "a folder already within a place as written was resolved all the same"
         );
     }
 

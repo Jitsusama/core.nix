@@ -32,6 +32,7 @@ use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 
 /// The place these rows are of.
@@ -216,17 +217,7 @@ pub fn rows(
 /// counts for the repository whose checkout or tree holds it most
 /// closely, so a checkout nested in another's folder keeps its own visits.
 fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'a str, u64> {
-    let places: Vec<(&str, &str)> = record
-        .repositories
-        .iter()
-        .flat_map(|repository| {
-            repository.checkouts.iter().flat_map(move |checkout| {
-                std::iter::once(checkout.path.as_str())
-                    .chain(checkout.trees.iter().map(|tree| tree.path.as_str()))
-                    .map(move |path| (path.trim_end_matches('/'), repository.key.as_str()))
-            })
-        })
-        .collect();
+    let places = places(record);
     let mut last: BTreeMap<&str, u64> = BTreeMap::new();
     for (folder, at) in visited {
         let holder = places
@@ -239,6 +230,46 @@ fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'
         }
     }
     last
+}
+
+/// The folder of each checkout and of each tree still on the disk, by its
+/// repository's key, as repos wrote it and, where links lead elsewhere, as
+/// they resolve, since repos writes a tree's path as git keeps it, links
+/// and all, while a visit is named by its real path. A folder that can't
+/// be resolved is kept as written, and one that trims to nothing, or
+/// resolves to `/`, is left out, since it would hold every visit.
+#[must_use]
+pub fn places(record: &Record) -> Vec<(String, &str)> {
+    let mut places = Vec::new();
+    for repository in &record.repositories {
+        let key = repository.key.as_str();
+        for checkout in &repository.checkouts {
+            let present = checkout.trees.iter().filter(|tree| tree.present);
+            let paths = std::iter::once(checkout.path.as_str())
+                .chain(present.map(|tree| tree.path.as_str()));
+            for path in paths {
+                let written = path.trim_end_matches('/');
+                if written.is_empty() {
+                    continue;
+                }
+                if let Ok(real) = fs::canonicalize(written) {
+                    let real = real.to_string_lossy().into_owned();
+                    if real != written && real != "/" {
+                        places.push((real, key));
+                    }
+                }
+                places.push((written.to_owned(), key));
+            }
+        }
+    }
+    places
+}
+
+/// Whether any of `places` holds `folder` as it's written, so it needs no
+/// resolving to be counted.
+#[must_use]
+pub fn placed(places: &[(String, &str)], folder: &str) -> bool {
+    places.iter().any(|(path, _)| holds(path, folder))
 }
 
 /// Whether `folder` is `path`, given with no trailing slash, or lies below

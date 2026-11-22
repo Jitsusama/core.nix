@@ -503,11 +503,34 @@ fn whats_typed_in_open_a_file_by_name_finds_its_files_by_name_or_folder() {
     );
 }
 
+/// A checkout of each of `folders` under the case's src, found by a watch
+/// of Code's rows, so an act on one is on a folder Code offered; each
+/// one's path as the daemon names it.
+fn offered(running: &Running, client: &mut daemon_client::Client, folders: &[&str]) -> Vec<String> {
+    for folder in folders {
+        cloned(
+            running,
+            folder,
+            &format!("git@github.com:someone/{folder}.git"),
+        );
+    }
+    client.ask(&json!({"id": 0, "ask": "watch", "kind": "row", "place": "code"}));
+    folders
+        .iter()
+        .map(|folder| {
+            real(&running.path(&format!("src/{folder}")))
+                .to_string_lossy()
+                .into_owned()
+        })
+        .collect()
+}
+
 #[test]
 fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     let running = Running::new("code-terminal");
     let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:terminal", "path": "/src/alpha"}));
+    let alpha = offered(&running, &mut client, &["alpha"]).remove(0);
+    let said = client.ask(&json!({"id": 1, "ask": "code:terminal", "path": alpha}));
     assert!(
         said.get("error").is_none(),
         "New Terminal Here was refused: {said}"
@@ -518,7 +541,7 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     });
     assert_eq!(
         asked().unwrap(),
-        "msg action spawn -- kitty --directory /src/alpha\n",
+        format!("msg action spawn -- kitty --directory {alpha}\n"),
         "niri wasn't asked to start kitty in the checkout, so it outlives the daemon"
     );
     let told = || std::fs::read_to_string(running.path("zoxide.asked"));
@@ -527,31 +550,46 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     });
     assert_eq!(
         told().unwrap(),
-        "add -- /src/alpha\n",
+        format!("add -- {alpha}\n"),
         "zoxide wasn't told Joel went into the checkout"
     );
 }
 
 #[test]
-fn a_terminal_niri_refused_tells_zoxide_of_no_visit() {
+fn a_terminal_niri_refused_or_in_a_folder_code_never_offered_tells_zoxide_nothing() {
     let running = Running::new("code-terminal-refused");
+    // A niri refusing only its first spawn, so the asks after it show what
+    // zoxide hears, and nothing waits on a refused spawn's silence.
     let niri = running.path("niri");
     let refuses = format!(
-        "#!{}\necho \"$@\" >> \"$0.asked\"\nexit 1\n",
+        "#!{}\necho \"$@\" >> \"$0.asked\"\n[ -e \"$0.refused\" ] && exit 0\n: > \"$0.refused\"\nexit 1\n",
         super::shell().display()
     );
     std::fs::write(&niri, refuses).unwrap();
     let mut client = running.client();
-    client.ask(&json!({"id": 1, "ask": "code:terminal", "path": "/src/alpha"}));
-    until("niri wasn't asked to start a terminal", || {
-        std::fs::read_to_string(running.path("niri.asked")).is_ok_and(|line| line.ends_with('\n'))
+    let offered = offered(&running, &mut client, &["alpha", "beta"]);
+    let elsewhere = running.path("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    let asks = [
+        offered[0].clone(),
+        elsewhere.to_string_lossy().into_owned(),
+        offered[1].clone(),
+    ];
+    for (at, folder) in asks.iter().enumerate() {
+        client.ask(&json!({"id": at + 1, "ask": "code:terminal", "path": folder}));
+        until("niri wasn't asked to start a terminal", || {
+            std::fs::read_to_string(running.path("niri.asked"))
+                .is_ok_and(|asked| asked.lines().count() == at + 1)
+        });
+    }
+    let told = || std::fs::read_to_string(running.path("zoxide.asked"));
+    until("zoxide wasn't told of the terminal niri started", || {
+        told().is_ok_and(|asked| asked.contains(&offered[1]))
     });
-    // Nothing marks that a refused spawn ended in nothing, so the daemon is
-    // given a second, many times the stand-in's run, to tell zoxide wrongly.
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    assert!(
-        !running.path("zoxide.asked").exists(),
-        "zoxide was told of a visit to a terminal niri refused"
+    assert_eq!(
+        told().unwrap(),
+        format!("add -- {}\n", offered[1]),
+        "zoxide was told of a terminal niri refused, or of a folder Code never offered"
     );
 }
 
@@ -601,10 +639,95 @@ fn the_repository_joel_was_in_last_comes_first() {
 }
 
 #[test]
+fn a_watch_after_joel_went_somewhere_answers_in_the_order_it_gave() {
+    let running = Running::new("code-visited-since");
+    cloned(&running, "beta", "git@github.com:someone/beta.git");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    std::fs::create_dir_all(running.path("visits")).unwrap();
+    std::fs::write(running.path("visits/db.zo"), zoxide_database(&[])).unwrap();
+    running
+        .client()
+        .ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let beta = real(&running.path("src/beta"));
+    std::fs::write(
+        running.path("visits/db.zo"),
+        zoxide_database(&[(&beta, 1_700_000_000)]),
+    )
+    .unwrap();
+    let answer = running
+        .client()
+        .ask(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "code"}));
+    let order = |key: &str| {
+        row_of(&answer, key).unwrap_or_else(|| panic!("no {key}: {answer}"))["row"]["order"]
+            .as_u64()
+            .unwrap()
+    };
+    assert!(
+        order("row:code:github:someone/beta") < order("row:code:github:someone/alpha"),
+        "a later watch answered in the order before Joel went into beta: {answer}"
+    );
+}
+
+#[test]
+fn with_no_database_named_a_database_zoxide_left_orders_nothing() {
+    let running = Running::unvisited("code-unvisited");
+    cloned(&running, "beta", "git@github.com:someone/beta.git");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    // Where zoxide keeps its database by default, a visit that would lift
+    // beta were it read.
+    let within = running.path("src/beta");
+    std::fs::create_dir_all(running.path("near/zoxide")).unwrap();
+    std::fs::write(
+        running.path("near/zoxide/db.zo"),
+        zoxide_database(&[(&within, 1_700_000_000)]),
+    )
+    .unwrap();
+    let mut client = running.client();
+    let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let order = |key: &str| {
+        row_of(&answer, key).unwrap_or_else(|| panic!("no {key}: {answer}"))["row"]["order"]
+            .as_u64()
+            .unwrap()
+    };
+    assert!(
+        order("row:code:github:someone/alpha") < order("row:code:github:someone/beta"),
+        "a database no setting named ordered Code, not A to Z: {answer}"
+    );
+}
+
+#[test]
+fn a_database_that_never_answers_holds_no_other_ask() {
+    let running = Running::new("code-visits-stuck");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    std::fs::create_dir_all(running.path("visits")).unwrap();
+    std::fs::write(running.path("visits/db.zo"), zoxide_database(&[])).unwrap();
+    let mut first = running.client();
+    first.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    // A pipe nobody writes, so reading the database waits until the case
+    // writes it, as a database on a mount that stopped answering would.
+    let database = running.path("visits/db.zo");
+    std::fs::remove_file(&database).unwrap();
+    let made = Command::new("mkfifo").arg(&database).status();
+    assert!(made.unwrap().success(), "mkfifo failed");
+    let mut second = running.client();
+    second.send(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "code"}));
+    let mut third = running.client();
+    let said = third.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "tabs"}));
+    // Freed before asserting, so no thread is left waiting on the pipe.
+    std::fs::write(&database, zoxide_database(&[])).unwrap();
+    assert!(
+        said.get("error").is_none(),
+        "an ask needing the daemon's lock wasn't answered while zoxide's database \
+         was read: {said}"
+    );
+}
+
+#[test]
 fn edit_here_has_niri_start_neovim_in_the_checkout() {
     let running = Running::new("code-edit");
     let mut client = running.client();
-    let said = client.ask(&json!({"id": 1, "ask": "code:edit", "path": "/src/alpha"}));
+    let alpha = offered(&running, &mut client, &["alpha"]).remove(0);
+    let said = client.ask(&json!({"id": 1, "ask": "code:edit", "path": alpha}));
     assert_eq!(
         said["asked"], "editor",
         "Edit Here wasn't answered as an editor: {said}"
@@ -615,7 +738,7 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
     });
     assert_eq!(
         told().unwrap(),
-        "add -- /src/alpha\n",
+        format!("add -- {alpha}\n"),
         "zoxide wasn't told Joel went into the checkout to edit it"
     );
     let asked = || std::fs::read_to_string(running.path("niri.argv"));
@@ -633,7 +756,7 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
             "--",
             "kitty",
             "--directory",
-            "/src/alpha",
+            alpha.as_str(),
             "bash",
             "-c"
         ],
@@ -650,7 +773,7 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
     );
     assert_eq!(
         words[10..],
-        ["/src/alpha", ""],
+        [alpha.as_str(), ""],
         "the shell wasn't told the checkout"
     );
 }
