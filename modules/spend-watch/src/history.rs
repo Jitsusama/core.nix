@@ -373,6 +373,19 @@ pub fn sql(error: rusqlite::Error) -> String {
     error.to_string()
 }
 
+/// Runs `step` with SQLite's sorts going through files, then puts them back
+/// in memory whether it worked or not. A step sorts every turn at once,
+/// unlike a pass, and once rather than every few minutes: on a history of
+/// 3.7 M turns the eleventh shape's took 640 MB in memory and 18 MB
+/// through files, so the disk takes it, and the passes after go back to
+/// memory.
+fn on_disk<T>(db: &Connection, step: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    db.pragma_update(None, "temp_store", "FILE").map_err(sql)?;
+    let stepped = step();
+    let restored = db.pragma_update(None, "temp_store", "MEMORY").map_err(sql);
+    stepped.and_then(|done| restored.map(|()| done))
+}
+
 impl History {
     /// Opens the history, setting aside one that doesn't read so it's
     /// built again from the sources. One a newer spend-watch keeps is left
@@ -476,28 +489,17 @@ impl History {
         let first = usize::try_from(from - 1)
             .map_err(|_| format!("the history's shape {from} has no upgrade"))?;
         let steps: String = UPGRADES[first..].concat();
-        // A step sorts every turn at once, unlike a pass, and once rather
-        // than every few minutes: on a history of 3.7 M turns the eleventh
-        // shape's took 640 MB in memory and 18 MB through files, so the
-        // disk takes it, and the passes after go back to memory.
-        self.db
-            .pragma_update(None, "temp_store", "FILE")
-            .map_err(sql)?;
-        let stepped = self
-            .db
-            .execute_batch(&format!(
-                "BEGIN IMMEDIATE; {steps} UPDATE meta SET value = '{SCHEMA}' \
-                 WHERE key = 'schema'; COMMIT;"
-            ))
-            .map_err(|error| {
-                let _ = self.db.execute_batch("ROLLBACK;");
-                format!("the history couldn't be brought up to date: {error}")
-            });
-        let restored = self
-            .db
-            .pragma_update(None, "temp_store", "MEMORY")
-            .map_err(sql);
-        stepped.and(restored)
+        on_disk(&self.db, || {
+            self.db
+                .execute_batch(&format!(
+                    "BEGIN IMMEDIATE; {steps} UPDATE meta SET value = '{SCHEMA}' \
+                     WHERE key = 'schema'; COMMIT;"
+                ))
+                .map_err(|error| {
+                    let _ = self.db.execute_batch("ROLLBACK;");
+                    format!("the history couldn't be brought up to date: {error}")
+                })
+        })
     }
 
     /// An empty history in memory, for tests.
@@ -809,6 +811,35 @@ mod tests {
             .unwrap();
         // 2 is MEMORY.
         assert_eq!(store, 2);
+    }
+
+    #[test]
+    fn a_step_sorts_through_files_and_the_passes_after_in_memory() {
+        let history = History::memory();
+        let store = || -> i64 {
+            history
+                .db
+                .pragma_query_value(None, "temp_store", |row| row.get(0))
+                .unwrap()
+        };
+        // 1 is FILE and 2 is MEMORY.
+        assert_eq!(
+            on_disk(&history.db, || Ok(store())),
+            Ok(1),
+            "a step sorted other than through files"
+        );
+        assert_eq!(store(), 2, "the passes after a step sort through files");
+        let failed: Result<(), String> = on_disk(&history.db, || Err("it failed".into()));
+        assert_eq!(
+            failed,
+            Err("it failed".into()),
+            "a failed step said something else"
+        );
+        assert_eq!(
+            store(),
+            2,
+            "the passes after a failed step sort through files"
+        );
     }
 
     #[test]
@@ -1553,14 +1584,6 @@ mod tests {
         }
         let history = History::open(&path).unwrap();
         assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
-        let store: i64 = history
-            .db
-            .pragma_query_value(None, "temp_store", |row| row.get(0))
-            .unwrap();
-        assert_eq!(
-            store, 2,
-            "the passes after a step sort through files, not memory"
-        );
         waste_hours_hold(&history);
         let rows = |history: &History| -> i64 {
             history
