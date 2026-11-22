@@ -69,6 +69,8 @@ it("draws every cell of a list that fits, whatever the cursor", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 48), "C47")), span(0, 47));
 });
 
+// The walk draws a list that fits whole either way, so this case, not the
+// one before, is what pins drawn()'s 48.
 it("draws 48 of a list one cell too long", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 49), "C00")), span(0, 47));
 });
@@ -238,6 +240,19 @@ it("keeps the floor drawn on a step it holds, and draws another for a step it le
   assert.equal(floorStepped(UNDRAWN, "C12"), UNDRAWN);
   const emptied = floorAfter([], kept, null);
   assert.equal(floorStepped(emptied, "C12"), emptied);
+});
+
+it("keeps the floor through a find that matches nothing, and moves it with the cursor", () => {
+  const kept = floorFor(LONG, "C55");
+  // A find that matches nothing leaves no cursor, and the floor stays.
+  const none = floorAfter(LONG, kept, null);
+  assert.equal(none.around, "C55");
+  assert.deepEqual(none.drawn, kept.drawn);
+  // A find that hides the cursor moves it to its first match, here C00, off the floor.
+  const moved = floorAfter(LONG, kept, "C00");
+  assert.equal(moved.around, "C00");
+  // Ending the find keeps the floor where the find left it.
+  assert.equal(floorAfter(LONG, moved, "C00").around, "C00");
 });
 
 it("keeps the floor still as the page steps and records arrive, until a step leaves it", () => {

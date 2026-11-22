@@ -36,6 +36,9 @@ a terminal, `mycelium forage` gathers the realm's.
   shifts the cells beside it. It draws again around the cell you're on when it
   leaves that cell off, or a cell that grew from it, unless it's drawn
   around that cell already, and when the cell it's drawn around ends.
+  A find that hides the cell you're on moves you to its first match, and
+  the floor with you when it leaves that match off; ending a find that
+  matched nothing opens the list's first cell.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you

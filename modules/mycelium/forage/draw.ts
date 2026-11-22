@@ -276,6 +276,7 @@ function* starts(first: readonly number[], centre: number, length: number): Gene
  * cell after its starter, but for a ring cut by the floor's last place.
  */
 function drawn(forages: readonly Forage[], around: string | null): readonly Forage[] {
+  // Only a shortcut: on a list that fits, the walk below draws it whole too.
   if (forages.length <= FLOOR.most) {
     return forages;
   }
