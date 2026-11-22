@@ -11281,7 +11281,7 @@ Scope {
             lap("telling");
             if (openAsked >= 0) {
                 openParts = parts;
-                openWorked = KeyTimes.now() - openAsked;
+                openWorkDone();
                 afterFrame(openDrawn);
             } else if (filling) {
                 fillParts = parts;
@@ -11340,6 +11340,13 @@ Scope {
     property var openAskedHeap: null
     property var openParts: ({})
     property real openWorked: 0
+    // The collector's and the shell thread's clocks at the ask and as its
+    // working was done, so its line says what the thread ran, waited for a
+    // CPU and slept of it, and what the collector took: Joel's openings
+    // into Now asked 15 to 22 ms, six of 19 over 50 ms to the frame, with
+    // nothing said of why (2026-11-21).
+    property var openAskedClocks: null
+    property var openWorkedClocks: null
     property var openingsTimed: []
     property int openingsDrawn: 0
     function askedToOpen() {
@@ -11348,6 +11355,8 @@ Scope {
             Heap.leaveRoom(openingRoom);
             openAskedHeap = Heap.standing();
             openAsked = KeyTimes.now();
+            openAskedClocks = feltClocks();
+            openWorkedClocks = null;
             openSettled = -1;
             openBegun = -1;
             openKept = false;
@@ -11937,7 +11946,7 @@ Scope {
         prompt.take();
         openLap("taking");
         if (openAsked >= 0) {
-            openWorked = KeyTimes.now() - openAsked;
+            openWorkDone();
             // A copy, and the laps let go, so nothing taken later writes
             // into what this opening says.
             openParts = Object.assign({}, openLaps.parts);
@@ -12404,6 +12413,8 @@ Scope {
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
         openAsked = -1;
+        openAskedClocks = null;
+        openWorkedClocks = null;
         fillEarly = null;
         wokeEarly = null;
         markOpen(false);
@@ -12765,6 +12776,14 @@ Scope {
         return by;
     }
 
+    // The opening's working done, from its ask, with the clocks it's said by.
+    // The clocks are read before the time, as the ask reads them after it,
+    // so a wait for a CPU between the two reads falls in the working timed
+    // and never in the clocks alone.
+    function openWorkDone() {
+        openWorkedClocks = feltClocks();
+        openWorked = KeyTimes.now() - openAsked;
+    }
     function openDrawn(beganAt, frame) {
         const asked = openAsked;
         openAsked = -1;
@@ -12773,6 +12792,8 @@ Scope {
         if (asked >= 0 && !open && !opening) {
             fillEarly = null;
             wokeEarly = null;
+            openAskedClocks = null;
+            openWorkedClocks = null;
         }
         if ((!open && !opening) || asked < 0)
             return;
@@ -12792,6 +12813,11 @@ Scope {
             waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
             sizing: Math.round(sized - drawn) };
         const worked = Math.round(openWorked);
+        const { thread, collecting } = Thread.workingSpent(openAskedClocks, openWorkedClocks);
+        const workingSaid = Collector.workingSaid(collecting)
+            + Thread.said(openWorked, thread, "its working");
+        openAskedClocks = null;
+        openWorkedClocks = null;
         const first = openingsDrawn === 0;
         openingsDrawn += 1;
         const now = openFirstMade ?? tallies();
@@ -12822,7 +12848,7 @@ Scope {
             marked, measured, toldEarly, toldLate, blocked, made: most,
             verbs: kept ? 0 : openVerbsWeighed, first, kept, felt,
             frames: kept ? openFramesWaited : 1, woke: kept ? {} : openWoke,
-            into: openChord };
+            into: openChord, thread, collecting: Math.round(collecting) };
         if (kept)
             Object.assign(timed, { shown: rowsSaid() }, wokeEarly ?? {});
         wokeEarly = null;
@@ -12836,7 +12862,8 @@ Scope {
                 + ` and ${after.sizing} ms` : "")
             + (first ? ", the first since the shell started" : "")
             + (openChord === "" ? "" : `, into ${openChord}`)
-            + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`));
+            + (felt < 0 ? "" : `; ${felt} ms from the chord, heard ${heard} ms after it`)
+            + workingSaid);
         // Once its record is made, so niri's answer, which may already
         // have come, is kept with this opening.
         presentedDrawn(feltFrom, feltFromChord, frame);
