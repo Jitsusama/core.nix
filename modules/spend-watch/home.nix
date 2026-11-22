@@ -572,6 +572,12 @@ in
         RuntimeDirectoryPreserve = "yes";
         Restart = "on-failure";
         RestartSec = "5s";
+        # A start that fails the same way each time, such as a step to a new
+        # shape with no room for its sort, would otherwise redo minutes of
+        # reading every 5 s; the waits grow to half an hour instead, and a
+        # switch or a restart by hand starts them short again.
+        RestartSteps = 5;
+        RestartMaxDelaySec = "30min";
       };
       Install.WantedBy = [ "default.target" ];
     };

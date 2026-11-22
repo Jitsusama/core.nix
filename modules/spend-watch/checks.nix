@@ -14,16 +14,18 @@
 }:
 {
   # spend-watch only watches, so it yields to whatever the account runs, and
-  # comes back when it fails.
+  # comes back when it fails, waiting longer each time it fails again.
   spend-watch-stays-in-the-background =
     let
       service = (account workstation).systemd.user.services.spend-watch.Service;
     in
     holds "spend-watch-stays-in-the-background"
-      "spend-watch runs outside background.slice, isn't restarted when it fails, or takes its status with it when it stops."
+      "spend-watch runs outside background.slice, isn't restarted when it fails, restarts a failing start without waiting longer each time, or takes its status with it when it stops."
       (
         service.Slice == "background.slice"
         && service.Restart == "on-failure"
+        && service.RestartSteps > 0
+        && service ? RestartMaxDelaySec
         && service.RuntimeDirectoryPreserve == "yes"
       );
 }
