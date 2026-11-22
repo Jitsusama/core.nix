@@ -5848,11 +5848,11 @@ mod tests {
     }
 
     // Agents held, then the VPN's own queue held while they paused, then
-    // agents waiting again: their share still climbs back, and caps them
-    // while it does, so the status names both holds, not the VPN's alone.
-    // The VPN's hold is given the state a cut leaves, agents' own, since
-    // the tunnel's judging takes longer than agents' share takes to climb
-    // back whole.
+    // agents waiting again: their share is still under one, and caps them
+    // while it is, so the status names both holds, not the VPN's alone.
+    // The VPN's hold is cut at its first judgement to find the wait, every
+    // ELSEWHERE_S, well within the tens of seconds agents' share takes to
+    // come back whole.
     #[test]
     fn agents_still_held_beside_the_vpn_s_own_hold_are_said_to_be() {
         let mut c = anchored(12_000.0);
@@ -5863,23 +5863,26 @@ mod tests {
             (7_000.0, 3_000.0, 9_000.0),
             &mut queued,
         );
-        c.tunnel = c.agents.clone();
-        let mut queued = 0.0;
-        filling_a_tunnel(&mut c, (30.0, 0.2), |_| 2_000.0, true, &mut queued);
+        let (mut queued, mut at) = (0.0, 30.0);
+        while c.tunnel_share() >= 1.0 && at < 30.0 + 2.0 * ELSEWHERE_S {
+            filling_a_tunnel(&mut c, (at, 0.5), |_| 2_000.0, false, &mut queued);
+            at += 0.5;
+        }
+        filling_a_tunnel(&mut c, (at, 0.2), |_| 2_000.0, true, &mut queued);
         assert!(
             c.tunnel_share() < 1.0 && c.agents_share() < 1.0,
-            "the case needs both held: the VPN's at {:.2}, agents' at {:.2}",
+            "the case needs both held at {at:.1} s: the VPN's at {:.2}, agents' at {:.2}",
             c.tunnel_share(),
             c.agents_share()
         );
         let why = c.why();
         assert!(why.contains("inside its tunnel"), "{why}");
-        assert!(why.contains("agents' lane, still climbing back"), "{why}");
-        filling_a_tunnel(&mut c, (30.2, 0.2), |_| 2_000.0, false, &mut queued);
+        assert!(why.contains("Agents' lane is still held"), "{why}");
+        filling_a_tunnel(&mut c, (at + 0.2, 0.2), |_| 2_000.0, false, &mut queued);
         let why = c.why();
         assert!(
-            !why.contains("agents' lane"),
-            "agents who stopped waiting were said to be held: {why}"
+            why.contains("inside its tunnel") && !why.contains("Agents' lane"),
+            "agents who stopped waiting were said to be held, or the VPN's hold went: {why}"
         );
     }
 
@@ -5981,6 +5984,11 @@ mod tests {
             c.tunnel_share()
         );
         assert!(c.why().contains("inside its tunnel"), "{}", c.why());
+        assert!(
+            !c.why().contains("Agents' lane"),
+            "agents let go whole were said to be held: {}",
+            c.why()
+        );
     }
 
     // A wait no hold drains is the far path's, as on 15 November, and

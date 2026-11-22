@@ -102,12 +102,16 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             agents,
         } => format!(
             "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
-             is held to {:.0}% of its lane{}; {held}.",
+             is held to {:.0}% of its lane; {held}.{}",
             share * 100.0,
+            // Agents' hold is said apart, with no time, since how long the
+            // VPN's has held says nothing of theirs, nor whether theirs is
+            // rising yet, which it does only once a judgement finds no
+            // wait. Floored, so a share under one never reads as 100%.
             agents.map_or_else(String::new, |agents| format!(
-                ", and agents' lane, still climbing back, to {:.0}% of its share, or its floor \
-                 if more",
-                agents * 100.0
+                " Agents' lane is still held from an earlier wait, to {:.0}% of its share, or \
+                 its floor if more.",
+                (agents * 100.0).floor()
             ))
         ),
         // The lanes never hold agents under their floor, which the
@@ -283,8 +287,22 @@ mod tests {
                 8.0
             ),
             "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
-             held to 72% of its lane, and agents' lane, still climbing back, to 81% of its \
-             share, or its floor if more; held so for 8 s."
+             held to 72% of its lane; held so for 8 s. Agents' lane is still held from an \
+             earlier wait, to 81% of its share, or its floor if more."
+        );
+        let nearly = say(
+            Why::Tunnel {
+                delay_ms: 118.6,
+                share: 0.723,
+                agents: Some(0.996),
+            },
+            Some(10_800),
+            Some(12_000.0),
+            8.0,
+        );
+        assert!(
+            nearly.contains("to 99% of its share"),
+            "a share under one read as whole: {nearly}"
         );
     }
 
