@@ -27,8 +27,14 @@ pub enum Why {
     /// cuts didn't drain it, so it goes unheeded.
     Far { delay_ms: f64 },
     /// The VPN waited this long, in ms, inside its own tunnel, under a
-    /// line with room, so its own queue is held to `share` of its lane.
-    Tunnel { delay_ms: f64, share: f64 },
+    /// line with room, so its own queue is held to `share` of its lane;
+    /// `agents` is the share agents straight are still held to, climbing
+    /// back from an earlier hold, while they wait, since it caps them too.
+    Tunnel {
+        delay_ms: f64,
+        share: f64,
+        agents: Option<f64>,
+    },
     /// The VPN waited this long, in ms, past our queues while agents sent
     /// straight on the connection, so their lane is held to `share` of
     /// what it's split.
@@ -90,10 +96,23 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             "Upload {rate}: the VPN reads {delay_ms:.0} ms past the line, which no cut here \
              reaches, so none is made."
         ),
-        Why::Tunnel { delay_ms, share } => format!(
+        Why::Tunnel {
+            delay_ms,
+            share,
+            agents,
+        } => format!(
             "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
-             is held to {:.0}% of its lane; {held}.",
-            share * 100.0
+             is held to {:.0}% of its lane; {held}.{}",
+            share * 100.0,
+            // Agents' hold is said apart, with no time, since how long the
+            // VPN's has held says nothing of theirs, nor whether theirs is
+            // rising yet, which it does only once a judgement finds no
+            // wait. Floored, so a share under one never reads as 100%.
+            agents.map_or_else(String::new, |agents| format!(
+                " Agents' lane is still held from an earlier wait, to {:.0}% of its share, or \
+                 its floor if more.",
+                (agents * 100.0).floor()
+            ))
         ),
         // The lanes never hold agents under their floor, which the
         // controller doesn't know, so the share is said as at most.
@@ -246,7 +265,8 @@ mod tests {
             say(
                 Why::Tunnel {
                     delay_ms: 118.6,
-                    share: 0.723
+                    share: 0.723,
+                    agents: None,
                 },
                 Some(10_800),
                 Some(12_000.0),
@@ -254,6 +274,35 @@ mod tests {
             ),
             "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
              held to 72% of its lane; held so for 8 s."
+        );
+        assert_eq!(
+            say(
+                Why::Tunnel {
+                    delay_ms: 118.6,
+                    share: 0.723,
+                    agents: Some(0.814),
+                },
+                Some(10_800),
+                Some(12_000.0),
+                8.0
+            ),
+            "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
+             held to 72% of its lane; held so for 8 s. Agents' lane is still held from an \
+             earlier wait, to 81% of its share, or its floor if more."
+        );
+        let nearly = say(
+            Why::Tunnel {
+                delay_ms: 118.6,
+                share: 0.723,
+                agents: Some(0.996),
+            },
+            Some(10_800),
+            Some(12_000.0),
+            8.0,
+        );
+        assert!(
+            nearly.contains("to 99% of its share"),
+            "a share under one read as whole: {nearly}"
         );
     }
 

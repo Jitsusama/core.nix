@@ -151,6 +151,25 @@ mod tests {
             }),
             "the rate it opened with went unsaid, or its stop stayed"
         );
+        let both = written(
+            "both",
+            concat!(
+                r#"[{"heard": {"up_limit": 10800, "why": "Upload 10.8 Mb/s: "#,
+                r#"the VPN waited 119 ms inside its tunnel, so its own queue is held to 72% "#,
+                r#"of its lane; held so for 8 s. Agents' lane is still held from an earlier "#,
+                r#"wait, to 81% of its share, or its floor if more."}}]"#,
+            ),
+        );
+        assert_eq!(
+            limit(&both),
+            json!({
+                "kbit": 10800,
+                "why": "the VPN waited 119 ms inside its tunnel, so its own queue is held to 72% \
+                        of its lane; held so for 8 s. Agents' lane is still held from an earlier \
+                        wait, to 81% of its share, or its floor if more",
+            }),
+            "a reason naming both holds lost its second sentence, or kept its last stop"
+        );
         let clear = written(
             "clear",
             r#"[{"heard": {"up_limit": 10800,

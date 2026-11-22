@@ -1994,9 +1994,10 @@ impl Controller {
             return Why::Unmeasured;
         }
         // The VPN's own hold is named first: agents don't yield while it
-        // works, so theirs is then only climbing back. Agents' hold is
-        // named only while they wait straight, since the lanes cap nothing
-        // otherwise.
+        // works, so theirs is then only climbing back. A share climbing
+        // back still caps agents who wait straight, so it's named beside
+        // the VPN's. Agents' hold is named only while they wait straight,
+        // since the lanes cap nothing otherwise.
         let share = self.tunnel.share();
         let held = self.agents.share();
         if heeded.is_none() && agents_wait && share >= 1.0 && held < 1.0 {
@@ -2009,6 +2010,7 @@ impl Controller {
             return Why::Tunnel {
                 delay_ms: self.tunnel.waited_ms(),
                 share,
+                agents: (agents_wait && held < 1.0).then_some(held),
             };
         }
         if heeded.is_none() && met > 0.0 {
@@ -5845,6 +5847,45 @@ mod tests {
         assert!(!c.why().contains("agents' own uploads"), "{}", c.why());
     }
 
+    // Agents held, then the VPN's own queue held while they paused, then
+    // agents waiting again: their share is still under one, and caps them
+    // while it is, so the status names both holds, not the VPN's alone.
+    // The VPN's hold is cut at its first judgement to find the wait, every
+    // ELSEWHERE_S, well within the tens of seconds agents' share takes to
+    // come back whole.
+    #[test]
+    fn agents_still_held_beside_the_vpn_s_own_hold_are_said_to_be() {
+        let mut c = anchored(12_000.0);
+        let mut queued = 0.0;
+        beside_agents(
+            &mut c,
+            (0.0, 30.0),
+            (7_000.0, 3_000.0, 9_000.0),
+            &mut queued,
+        );
+        let (mut queued, mut at) = (0.0, 30.0);
+        while c.tunnel_share() >= 1.0 && at < 30.0 + 2.0 * ELSEWHERE_S {
+            filling_a_tunnel(&mut c, (at, 0.5), |_| 2_000.0, false, &mut queued);
+            at += 0.5;
+        }
+        filling_a_tunnel(&mut c, (at, 0.2), |_| 2_000.0, true, &mut queued);
+        assert!(
+            c.tunnel_share() < 1.0 && c.agents_share() < 1.0,
+            "the case needs both held at {at:.1} s: the VPN's at {:.2}, agents' at {:.2}",
+            c.tunnel_share(),
+            c.agents_share()
+        );
+        let why = c.why();
+        assert!(why.contains("inside its tunnel"), "{why}");
+        assert!(why.contains("Agents' lane is still held"), "{why}");
+        filling_a_tunnel(&mut c, (at + 0.2, 0.2), |_| 2_000.0, false, &mut queued);
+        let why = c.why();
+        assert!(
+            why.contains("inside its tunnel") && !why.contains("Agents' lane"),
+            "agents who stopped waiting were said to be held, or the VPN's hold went: {why}"
+        );
+    }
+
     // An upload with no limit has no lanes main holds, so agents aren't
     // asked to yield on it. The controller would soon limit an upload
     // this full, so its rate is let go before each step.
@@ -5943,6 +5984,11 @@ mod tests {
             c.tunnel_share()
         );
         assert!(c.why().contains("inside its tunnel"), "{}", c.why());
+        assert!(
+            !c.why().contains("Agents' lane"),
+            "agents let go whole were said to be held: {}",
+            c.why()
+        );
     }
 
     // A wait no hold drains is the far path's, as on 15 November, and
