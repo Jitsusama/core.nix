@@ -30,6 +30,7 @@ heard "a daemon's search refused, its code whole" \
 heard "a row a search found, not served yet" \
   "launcher: wifi's search found \"wifi\", which isn't served yet"
 heard "an act of Wi-Fi's own, refused by its code" "launcher: wifi forget refused: gone"
+heard "a copy asked at Return, refused by its code" "launcher: verb:wifi-copy refused: locked"
 
 # The network the daemon's words name, and what the cases typed in a row and over the place.
 for words in Harbour door; do

@@ -1191,6 +1191,8 @@ QtObject {
         check(failures, "and a key of one word, which may be a record's name, as a row",
             Presented.actShown("eduroam", false), "row");
         check(failures, "as is an act with no key", Presented.actShown(undefined, false), "row");
+        check(failures, "and one whose second part is a name, not an act, by its kind alone",
+            Presented.actShown("wifi:eduroam", false), "wifi");
         check(failures, "but by its kind where what follows isn't an act, as a person's name",
             Presented.actShown("person:ada", false), "person");
         check(failures, "and a verb no further than keyShown says it",
