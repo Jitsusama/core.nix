@@ -1,4 +1,4 @@
-//! Why the upload holds where it does, in one sentence from a fixed
+//! Why the upload holds where it does, in a sentence or two from a fixed
 //! vocabulary, for `status.json`'s `heard.why`, the launcher's network row
 //! and `shaper status`. Each says the rate, what set it and how long it
 //! has held so, so a night like 15 November, when the upload sat at a
@@ -78,7 +78,9 @@ impl Why {
     }
 }
 
-/// Says `why` in one sentence: `limit` is what the upload is held to, in
+/// Says `why` in a sentence, or two where agents' hold stands beside the
+/// VPN's own; a share is rounded down, so a hold under one never reads as
+/// 100%. `limit` is what the upload is held to, in
 /// kbit/s, `anchor` the network's declared rate, if it has one, and
 /// `for_s` how long, in seconds, the reason has held.
 pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> String {
@@ -122,11 +124,11 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
         } => format!(
             "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
              is held to {:.0}% of its lane; {held}.{}",
-            share * 100.0,
+            (share * 100.0).floor(),
             // Agents' hold is said apart, with no time, since how long the
             // VPN's has held says nothing of theirs, nor whether theirs is
             // rising yet, which it does only once a judgement finds no
-            // wait. Floored, so a share under one never reads as 100%.
+            // wait.
             agents.map_or_else(String::new, |agents| format!(
                 " Agents' lane is still held from an earlier wait, to {:.0}% of its share, or \
                  its floor if more.",
@@ -139,7 +141,7 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             "Upload {rate}: the VPN waited {delay_ms:.0} ms past our queues beside agents' own \
              uploads, so their lane is held to {:.0}% of its share, or its floor if more; \
              {held}.",
-            share * 100.0
+            (share * 100.0).floor()
         ),
         Why::Router { plateau } => format!(
             "Upload {rate}: held under the router's own queue, which let {} through; {held}.",
@@ -312,7 +314,7 @@ mod tests {
         let nearly = say(
             Why::Tunnel {
                 delay_ms: 118.6,
-                share: 0.723,
+                share: 0.997,
                 agents: Some(0.996),
             },
             Some(10_800),
@@ -320,8 +322,21 @@ mod tests {
             8.0,
         );
         assert!(
-            nearly.contains("to 99% of its share"),
+            nearly.contains("to 99% of its lane") && nearly.contains("to 99% of its share"),
             "a share under one read as whole: {nearly}"
+        );
+        let agents = say(
+            Why::Agents {
+                delay_ms: 80.0,
+                share: 0.996,
+            },
+            Some(10_800),
+            Some(12_000.0),
+            8.0,
+        );
+        assert!(
+            agents.contains("to 99% of its share"),
+            "agents' share under one read as whole: {agents}"
         );
     }
 

@@ -1631,7 +1631,7 @@ impl Controller {
             .is_none_or(|anchor| carried >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD)
     }
 
-    /// Why the upload holds where it does, in one sentence.
+    /// Why the upload holds where it does, in a sentence or two (`why::say`).
     /// It names the upload's own rate, which letting go hands none of.
     pub fn why(&self) -> String {
         self.why_holding(self.up.limit())

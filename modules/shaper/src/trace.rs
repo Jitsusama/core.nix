@@ -347,8 +347,16 @@ mod tests {
     fn a_line_says_why_it_held_and_the_holds_under_its_rate() {
         let held = line(NOV16, Some(9_500), None).holding("tunnel", 0.8149, 0.996);
         assert_eq!(held.why.as_deref(), Some("tunnel"), "the kind of reason");
-        assert_eq!(held.vpn_share, Some(0.81), "the VPN's own queue's share, to a hundredth");
-        assert_eq!(held.agents_share, Some(0.99), "agents' share, rounded down under one");
+        assert_eq!(
+            held.vpn_share,
+            Some(0.81),
+            "the VPN's own queue's share, to a hundredth"
+        );
+        assert_eq!(
+            held.agents_share,
+            Some(0.99),
+            "agents' share, rounded down under one"
+        );
         let free = line(NOV16, Some(9_500), None).holding("clear", 1.0, 1.0);
         assert_eq!(
             (free.vpn_share, free.agents_share),

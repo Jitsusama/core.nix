@@ -75,7 +75,7 @@ pub struct Heard {
     /// controller heard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up_tins_kbit: Option<crate::qdisc::Tins>,
-    /// Why the upload holds where it does, in one sentence (src/why.rs).
+    /// Why the upload holds where it does, in a sentence or two (src/why.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
 }
@@ -438,8 +438,8 @@ impl Live {
     pub fn traced(&self) -> Option<crate::trace::Line> {
         let (link, heard) = self.follow.heard()?;
         let c = &self.follow.controller;
-        let line = crate::trace::Line::of(self.follow.last_at?, link, &heard);
-        Some(line.holding(c.why_kind(), c.tunnel_share(), c.agents_share()))
+        let second = crate::trace::Line::of(self.follow.last_at?, link, &heard);
+        Some(second.holding(c.why_kind(), c.tunnel_share(), c.agents_share()))
     }
 
     /// Probes through the VPN riding the link, or none, and takes what it
