@@ -193,12 +193,15 @@ its guide, the greeter or lock, `flake.lock` or nix-offload
 derivation moved from main, since the rest would give main's result. A
 `flake.lock` change that moves only inputs `tools/merge-net/lock-after.txt`
 names, mycelium alone today, leaves the lock's area untouched, since no
-unit before sign-in waits on them; its VM tests run after on the net. A
+unit before sign-in waits on them; its VM tests run after on the net,
+unless it moves a machine's initrd, which still runs the boot tests first,
+or `changed-checks` can't say what it moved, which runs every VM test. A
 broken node can still hold off sleep, and refuse a reboot or poweroff the
 account asks for until it is stopped, but can't stop a machine booting,
 unlocking or signing in, and a revert's switch needs no reboot. The list is
-read from the change's merge base, so a change can't widen it for itself,
-and `merge-net needs` says why a lock it keeps runs first. A
+read from the change's merge base, so a change asked against main from a
+clean tree can't widen it for itself, and `merge-net needs` says why a
+lock it keeps runs first. A
 change to nix-offload, which moves none, sends one VM test's subtests
 through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main

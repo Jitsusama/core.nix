@@ -2,11 +2,14 @@
 # merge: a flake.lock change that moves only these nodes is gated by
 # changed-checks, and the net runs its VM tests after, reverting a merge
 # that breaks one. Any other node moving, another node reading one of these,
-# or a lock that doesn't read, keeps must-run.txt's `flake.lock => vm-*`.
+# or a lock that doesn't read, keeps must-run.txt's `flake.lock => vm-*`;
+# so does one changed-checks can't compare, and one that moves a machine's
+# initrd still runs the boot tests first.
 # An input belongs here only when no unit before sign-in waits on what it
 # builds, so a broken one can't leave a machine unable to boot, unlock,
 # sign in or build. merge-net reads this list from the change's merge base,
-# so a change can't let itself through by editing it.
+# so a change asked against main from a clean tree can't let itself
+# through by editing it.
 #
 # mycelium, audited on 21 November across every module flake.nix hands it
 # (call-transcripts, google, mycelium's home and system modules, repos,
