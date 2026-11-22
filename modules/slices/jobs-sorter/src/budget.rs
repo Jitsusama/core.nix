@@ -11,16 +11,23 @@
 //! agents.slice's floor instead would take it from the account's, which
 //! is spent on Joel's own programs and his session.
 //!
-//! A claim is what a cgroup holds up to its floor, so a unit holding less
-//! than its floor leaves the rest to the next. A unit's own `MemoryLow`
-//! comes first, as its unit file asks; only the floor the sorter adds is
-//! fitted, in the order given, rounded down to a [`STEP`] so the floors
-//! don't follow every page a sibling takes.
+//! A claim is what a cgroup holds up to its floor. The windows beside the
+//! units, and the units' own `MemoryLow`, which their unit files ask for
+//! and the kernel keeps whatever this says, claim what they hold. Only
+//! the floor the sorter adds is fitted, in the order given, and it counts
+//! whole: a unit growing into it before the next look then can't push
+//! the claims past the slice's floor. A floor trimmed short is rounded
+//! down to a [`STEP`], and kept while the room wavers within one
+//! ([`steady`]), so it isn't set again on every look.
+//!
+//! The room is the slice's floor as set, not the protection the kernel
+//! leaves it, which no file says: it holds while the account's own
+//! children claim no more than the account's floor.
 
 use crate::hosts::Signs;
 
-/// What a fitted floor is rounded down to, so it changes, and is set
-/// again, only when the room moves by this much.
+/// What a floor trimmed short is rounded down to, and how far the room
+/// must clear it before it rises ([`steady`]).
 pub const STEP: u64 = 64 << 20;
 
 /// A unit's floor as the sorter would give it, beside what it holds.
@@ -42,9 +49,15 @@ pub fn room(low: u64, others: impl IntoIterator<Item = (u64, u64)>) -> u64 {
     })
 }
 
+/// What the `others` in a slice claim of its floor, each as what it holds
+/// and its floor.
+pub fn claimed(others: impl IntoIterator<Item = (u64, u64)>) -> u64 {
+    u64::MAX - room(u64::MAX, others)
+}
+
 /// How much of what each of `wanted` would add it's given, in the order
-/// given, out of `room`: whole while what they hold under their floors
-/// fits, then what's left rounded down to a [`STEP`], then none.
+/// given, out of `room` less what they hold under their own floors: whole
+/// while it fits, then what's left rounded down to a [`STEP`], then none.
 pub fn fit(wanted: &[Wanted], room: u64) -> Vec<u64> {
     let mut left = wanted.iter().fold(room, |left, unit| {
         left.saturating_sub(unit.current.min(unit.own))
@@ -57,11 +70,22 @@ pub fn fit(wanted: &[Wanted], room: u64) -> Vec<u64> {
             } else {
                 left / STEP * STEP
             };
-            let past_own = unit.current.saturating_sub(unit.own);
-            left = left.saturating_sub(past_own.min(given));
+            left = left.saturating_sub(given);
             given
         })
         .collect()
+}
+
+/// The floor to add to a unit, from what's `fitted` now, what fits a
+/// [`STEP`] less room, `margin`, and what was added `last`: the last
+/// while it's no more than fits now, raised only to what fits with a
+/// step to spare, so a room wavering by a page doesn't set it on every
+/// look. Never more than fits now, so the claims stay within the room.
+pub fn steady(fitted: u64, margin: u64, last: Option<u64>) -> u64 {
+    match last {
+        Some(last) if last <= fitted => last.max(margin).min(fitted),
+        _ => fitted,
+    }
 }
 
 /// The order units with these `signs` are given their floors in: those a
@@ -159,33 +183,64 @@ mod tests {
             [2 * GIB, 640 * MIB, 0],
             "the first keeps its whole floor, the second what's left in whole steps, the third none"
         );
-    }
-
-    #[test]
-    fn a_unit_holding_less_than_its_floor_leaves_the_rest_to_the_next() {
-        let wanted = [unit(GIB, 100 * MIB), unit(GIB, 2 * GIB)];
         assert_eq!(
-            fit(&wanted, GIB + 100 * MIB),
-            [GIB, GIB],
-            "the first claims only the 100 MiB it holds, so the second's floor fits too"
+            fit(&wanted, 3 * GIB + 63 * MIB),
+            [2 * GIB, GIB, 0],
+            "a floor filling the room to the byte is given whole, and less than a step left gives \
+             none"
         );
     }
 
     #[test]
-    fn a_units_own_floor_is_counted_first_and_never_fitted() {
+    fn a_floor_given_counts_whole_though_its_unit_holds_less() {
+        let wanted = [unit(GIB, 100 * MIB), unit(GIB, 2 * GIB)];
+        assert_eq!(
+            fit(&wanted, GIB + 100 * MIB),
+            [GIB, 64 * MIB],
+            "the first may grow into its whole floor before the next look, so the second gets \
+             what's left of the room in whole steps"
+        );
+    }
+
+    #[test]
+    fn a_later_units_own_floor_keeps_an_earlier_ones_added_floor_within_the_room() {
         let wanted = [
-            unit(GIB, 2 * GIB),
+            unit(2 * GIB, 2 * GIB),
             Wanted {
                 own: GIB,
-                added: GIB,
+                added: 0,
                 current: 3 * GIB,
             },
         ];
         assert_eq!(
             fit(&wanted, 2 * GIB),
             [GIB, 0],
-            "the second's own 1 GiB is taken from the room before anything added, which then \
-             leaves room for the first's alone"
+            "the second's own floor is kept first, so the first's added floor stops at what's \
+             left, not at the whole room"
+        );
+    }
+
+    #[test]
+    fn a_floor_trimmed_short_rises_only_once_the_room_clears_a_step() {
+        assert_eq!(
+            steady(2 * GIB, GIB + 960 * MIB, Some(GIB + 960 * MIB)),
+            GIB + 960 * MIB,
+            "a room a page past the whole floor keeps the floor a step under it"
+        );
+        assert_eq!(
+            steady(2 * GIB, 2 * GIB, Some(GIB + 960 * MIB)),
+            2 * GIB,
+            "a room a step past it gives it whole"
+        );
+        assert_eq!(
+            steady(GIB, 960 * MIB, Some(2 * GIB)),
+            GIB,
+            "a smaller room takes it down at once"
+        );
+        assert_eq!(
+            steady(640 * MIB, 576 * MIB, None),
+            640 * MIB,
+            "one never set gets what fits"
         );
     }
 }
