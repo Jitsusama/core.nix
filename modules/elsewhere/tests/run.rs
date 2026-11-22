@@ -25,8 +25,8 @@ const SCRATCHES: &str = ".cache/pi/agentic-harness.pi/quest-workspace";
 /// crossing keeps home what a shared quest does: anything hidden and any
 /// folder a build fills. The run stands as a strict fence does: it starts
 /// in the `--folder` named, at its place under the far home, refuses to
-/// start in the home itself, and can't write the far home or its `.cache`
-/// outside the quests' scratch. Every ask is kept in `asked`, a line each.
+/// start in the home itself, and can write nothing in the far home outside
+/// that folder. Every ask is kept in `asked`, a line each.
 const MYCELIUM: &str = r#"#!/bin/sh
 echo "$@" >> "$REALM/asked"
 case "$1" in
@@ -56,10 +56,11 @@ cross() {
 }
 cross "$here" "$far"
 echo "a login shell's welcome"
-chmod a-w "$REALM/far" "$REALM/far/.cache"
-(cd "$REALM/far/${folder#"$HOME"/}" && HOME="$REALM/far" "$@")
+start="$REALM/far/${folder#"$HOME"/}"
+chmod -R a-w "$REALM/far" && chmod -R u+w "$start"
+(cd "$start" && HOME="$REALM/far" "$@")
 code=$?
-chmod u+w "$REALM/far" "$REALM/far/.cache"
+chmod -R u+w "$REALM/far"
 cross "$far" "$here"
 exit $code
 "#;

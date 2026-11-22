@@ -196,13 +196,13 @@ pub(super) fn said(home: &Path) -> Vec<u8> {
     std::fs::read(home.join("said")).unwrap()
 }
 
-/// The job's handover folder in a far run's `home`.
 /// The folder the far line's copies run in under `home`, the `s` within
 /// the quest's scratch that `far_line_in` names.
 pub(super) fn work(home: &Path) -> PathBuf {
     home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s")
 }
 
+/// The job's handover folder in a far run's `home`.
 pub(super) fn handover(home: &Path) -> PathBuf {
     home.join(format!(
         ".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/{}/1",
