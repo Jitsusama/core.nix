@@ -626,8 +626,9 @@ const EVERY_REALM: &str = "every realm";
 /// The machine's boot and login, or its failure said stamped, as each
 /// realm's is, since what the run ends with is written without a time. A
 /// boot that can't be read is told apart from the Mac's busy minutes only
-/// by when, and a read gives up as much as a minute after it began, so it
-/// says when the run began as well, read by `now` before the boot is. It's
+/// by when, and its three reads, each given its limit and two seconds more
+/// to be read, give up as much as 66 s after they began, so it says when
+/// the run began as well, read by `now` before the boot is. It's
 /// said once, by `say`, since the boot is the machine's, not any one
 /// realm's.
 fn boot_told(
