@@ -13,10 +13,14 @@ description: >
 Software that isn't updated is the easiest way into a machine: a fix that
 upstream shipped weeks ago does nothing for one still running the old
 release. So core.nix takes every input to its newest each weekend, and at
-once when a fix for something its machines run is announced. A bump is a
-change every check reads, so it runs everything on the builders before it
-merges ([docs/testing.md][testing]), and the machine repositories take it
-afterwards with `nix flake update core` ([docs/machines.md][machines]).
+once when a fix for something its machines run is announced. A bump moves
+inputs every check reads, so `changed-checks` and `merge-net needs` name
+nearly every check and VM test, and step 6 builds them all on the builders
+before it merges ([docs/testing.md][testing]). Only a lock moving just the
+inputs `tools/merge-net/lock-after.txt` names runs its VM tests after the
+merge, and a weekly bump moves nixpkgs, which that list leaves out. The
+machine repositories take it afterwards with `nix flake update core`
+([docs/machines.md][machines]).
 
 The lock rarely updates cleanly: the 7 November bump needed a second
 commit, since nixpkgs had dropped the scripted initrd and changed

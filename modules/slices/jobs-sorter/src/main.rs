@@ -100,6 +100,7 @@
 //! sorter that can't read or sort the cgroups 1.
 
 mod brake;
+mod budget;
 mod calls;
 mod cli;
 mod door;
@@ -823,6 +824,9 @@ struct Ranks {
     reading: Option<u64>,
     /// Each pi host's rank, as last set.
     hosts: hosts::Hosts,
+    /// The slices whose floor couldn't be read to fit their units' floors
+    /// into, so each is said once.
+    unfitted: HashSet<String>,
     /// The orchestrators each pid holds, as the presences last said.
     orchestrating: HashMap<u32, usize>,
     /// The windows Joel was at within [`keep::SPARED_FOR`], by unit, which
@@ -852,17 +856,13 @@ fn left_held(
 /// journal.
 fn held_before(under: &[PathBuf], prefixes: &[String], pis: &[String]) -> holds::Holding {
     let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
-    let read = |scope: &Path, file: &str| -> Option<u64> {
-        fs::read_to_string(scope.join(file))
+    let min = |scope: &Path| -> Option<u64> {
+        fs::read_to_string(scope.join("memory.min"))
             .ok()
             .and_then(|value| value.trim().parse().ok())
     };
-    let holding = holds::Holding::left(
-        scopes,
-        |scope| read(scope, "memory.low"),
-        |scope| read(scope, "memory.min"),
-        pis,
-    );
+    // memory.low is read as fitting the floors reads it, so the file has one meaning here.
+    let holding = holds::Holding::left(scopes, memory_low, min, pis);
     if holding.held() > 0 {
         eprintln!(
             // A held window holds two scopes, its own and its pi's, so these
@@ -1373,6 +1373,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
+    let mut ranked = Vec::new();
     for path in units {
         let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -1413,7 +1414,40 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             ),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
-        if !ranks.hosts.changed(unit, &rank) {
+        ranked.push(Ranked {
+            path: path.clone(),
+            asked: rank.floor,
+            rank,
+            signs,
+            own: own.floor,
+            writeback: own.writeback,
+        });
+    }
+    fit_floors(
+        &mut ranked,
+        windows.prefixes,
+        &ranks.hosts,
+        &mut ranks.unfitted,
+    );
+    give_ranks(ranked, &mut ranks.hosts);
+    ranks.hosts.keep_only(&seen);
+}
+
+/// Gives each of the `ranked` units the rank it was fitted to, when it
+/// differs from the one `hosts` last gave it, saying once when it can't.
+fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
+    for Ranked {
+        path,
+        rank,
+        signs,
+        asked,
+        ..
+    } in ranked
+    {
+        let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !hosts.changed(unit, &rank) {
             continue;
         }
         match Command::new("busctl")
@@ -1422,9 +1456,16 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             .output()
         {
             Ok(output) if output.status.success() => {
+                // A floor fitted short says what it would have been, so a unit Joel is at
+                // left without one shows in the journal.
+                let short = if rank.floor < asked {
+                    format!(" of the {asked} it would have")
+                } else {
+                    String::new()
+                };
                 eprintln!(
-                    "Ranked {unit} at weight {}, floor {}, hard {}: {} windows Joel's at of {} \
-                     showing it, {} orchestrators.",
+                    "Ranked {unit} at weight {}, floor {}{short}, hard {}: {} windows Joel's at \
+                     of {} showing it, {} orchestrators.",
                     rank.weight,
                     rank.floor,
                     rank.hard,
@@ -1434,11 +1475,11 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
                 );
                 // A failure after this one is said again, as a hard floor that can't be given
                 // back would otherwise stay silent.
-                ranks.hosts.failed = false;
-                ranks.hosts.done(unit, rank);
+                hosts.failed = false;
+                hosts.done(unit, rank);
             }
             Ok(output) => {
-                if !std::mem::replace(&mut ranks.hosts.failed, true) {
+                if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!(
                         "Couldn't rank {unit}: {}",
                         String::from_utf8_lossy(&output.stderr).trim()
@@ -1446,13 +1487,130 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
                 }
             }
             Err(error) => {
-                if !std::mem::replace(&mut ranks.hosts.failed, true) {
+                if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!("Couldn't run busctl to rank {unit}: {error}");
                 }
             }
         }
     }
-    ranks.hosts.keep_only(&seen);
+}
+
+/// A host's or conversation's unit as ranked, before its floor is fitted
+/// into what its slice has left.
+struct Ranked {
+    path: PathBuf,
+    rank: hosts::Rank,
+    /// The floor it would have before it's fitted.
+    asked: u64,
+    signs: hosts::Signs,
+    /// The floor its unit file sets.
+    own: u64,
+    /// Whether its unit file leaves writeback to the disk's swap on.
+    writeback: bool,
+}
+
+/// Fits the floors the `ranked` units would be given into what each one's
+/// slice has left once the windows and others beside them keep theirs
+/// ([`budget`]), so the windows Joel types in, those under `prefixes`,
+/// keep theirs whole, each against the floor `hosts` last set on it. A
+/// slice whose floor can't be read is left as ranked, and said once, as
+/// `unfitted` remembers.
+fn fit_floors(
+    ranked: &mut [Ranked],
+    prefixes: &[String],
+    hosts: &hosts::Hosts,
+    unfitted: &mut HashSet<String>,
+) {
+    let mut slices: Vec<PathBuf> = ranked
+        .iter()
+        .filter_map(|unit| unit.path.parent().map(Path::to_path_buf))
+        .collect();
+    slices.sort();
+    slices.dedup();
+    for slice in slices {
+        let name = slice.display().to_string();
+        let Some(low) = memory_low(&slice) else {
+            if unfitted.insert(name) {
+                eprintln!(
+                    "Ranking the units in {} unfitted: its memory.low can't be read.",
+                    slice.display()
+                );
+            }
+            continue;
+        };
+        unfitted.remove(&name);
+        let mine: Vec<usize> = (0..ranked.len())
+            .filter(|&at| ranked[at].path.parent() == Some(slice.as_path()))
+            .collect();
+        // Only the windows' floors are taken first: any agent can start a scope here with a
+        // floor of max, which would leave the units Joel is at none.
+        let scopes = homes(&slice, prefixes);
+        let (windows, strays): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(&slice)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir() && !mine.iter().any(|&at| ranked[at].path == *path))
+            .partition(|path| scopes.contains(path));
+        // A child that can't be read has most likely just gone, so it claims nothing, while a
+        // unit that can't be read counts as holding its whole floor, below.
+        let claim = |path: &PathBuf| Some((holds::current(path)?, memory_low(path)?));
+        let room = budget::room(low, windows.iter().filter_map(claim));
+        let strays = budget::claimed(strays.iter().filter_map(claim));
+        let signs: Vec<hosts::Signs> = mine.iter().map(|&at| ranked[at].signs).collect();
+        let order: Vec<usize> = budget::order(&signs)
+            .into_iter()
+            .map(|at| mine[at])
+            .collect();
+        // A unit whose memory can't be read counts as holding its whole floor.
+        let mut wanted: Vec<budget::Wanted> = order
+            .iter()
+            .map(|&at| budget::Wanted {
+                own: ranked[at].own,
+                added: ranked[at].rank.floor.saturating_sub(ranked[at].own),
+                current: ranked[at].signs.current.unwrap_or(u64::MAX),
+            })
+            .collect();
+        // What the others claim is fitted after the units Joel is at and before the rest.
+        let viewed = order
+            .iter()
+            .take_while(|&&at| ranked[at].signs.viewed > 0)
+            .count();
+        wanted.insert(
+            viewed,
+            budget::Wanted {
+                own: 0,
+                added: strays,
+                current: 0,
+            },
+        );
+        let mut fitted = budget::fit(&wanted, room);
+        let mut margin = budget::fit(&wanted, room.saturating_sub(budget::STEP));
+        fitted.remove(viewed);
+        margin.remove(viewed);
+        for ((&at, fitted), margin) in order.iter().zip(fitted).zip(margin) {
+            let unit = &mut ranked[at];
+            let last = unit
+                .path
+                .file_name()
+                .and_then(|name| hosts.floor_set(&name.to_string_lossy()))
+                .map(|floor| floor.saturating_sub(unit.own));
+            unit.rank.floor = unit
+                .own
+                .saturating_add(budget::steady(fitted, margin, last));
+            unit.rank.writeback = hosts::writeback(unit.writeback, &unit.signs, unit.rank.floor);
+        }
+    }
+}
+
+/// The soft floor the cgroup at `path` keeps, as its memory.low says, with
+/// `max` read as the most there is; none when it can't be read.
+fn memory_low(path: &Path) -> Option<u64> {
+    let text = fs::read_to_string(path.join("memory.low")).ok()?;
+    match text.trim() {
+        "max" => Some(u64::MAX),
+        number => number.parse().ok(),
+    }
 }
 
 /// The settings `unit`, started by `pid` when one process did, holds of
@@ -3519,10 +3677,17 @@ mod tests {
             ("mycelium-pi-2.scope", Some("0")),
             ("kitty-3-9.scope", Some(hard.as_str())),
             ("mycelium-pi-3.scope", None),
+            ("kitty-4-9.scope", Some(hard.as_str())),
         ] {
             let dir = slice.join(scope);
             fs::create_dir_all(&dir).unwrap();
-            fs::write(dir.join("memory.low"), focus::FLOOR.to_string()).unwrap();
+            // A floor of max was set by someone else, so it isn't a hold to take up.
+            let low = if scope == "kitty-4-9.scope" {
+                "max".to_owned()
+            } else {
+                focus::FLOOR.to_string()
+            };
+            fs::write(dir.join("memory.low"), low).unwrap();
             if let Some(min) = min {
                 fs::write(dir.join("memory.min"), min).unwrap();
             }
@@ -3534,12 +3699,84 @@ mod tests {
             &["mycelium-pi-".to_owned()],
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
-        assert_eq!(holding.held(), 6, "every scope with the floor is taken up");
+        assert_eq!(
+            holding.held(),
+            6,
+            "every scope with the floor is taken up, and not the one whose floor is max"
+        );
         assert_eq!(
             holding.hard(),
             2,
             "the pi whose memory.min shows a floor and the one whose can't be read, not the \
              windows' own scopes or the pi held soft"
+        );
+    }
+
+    #[test]
+    fn the_unit_joel_is_at_is_fitted_first_into_what_the_slices_floor_leaves() {
+        const MIB: u64 = 1 << 20;
+        let slice = std::env::temp_dir()
+            .join(format!("fit-floors-{}", std::process::id()))
+            .join("agents.slice");
+        // Each child as what it holds and its floor: a window, a scope any agent could start
+        // with a floor of max, and the two units, whose floors as set last look must not count
+        // against them.
+        for (child, current, low) in [
+            ("kitty-1-1.scope", 1024 * MIB, "2147483648".to_owned()),
+            ("run-u7.scope", 2048 * MIB, "max".to_owned()),
+            ("pi-host-a.service", 2048 * MIB, (4096 * MIB).to_string()),
+            (
+                "pi-conversation-b@1.service",
+                2048 * MIB,
+                (4096 * MIB).to_string(),
+            ),
+        ] {
+            let dir = slice.join(child);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("memory.current"), current.to_string()).unwrap();
+            fs::write(dir.join("memory.low"), low).unwrap();
+        }
+        fs::write(slice.join("memory.low"), (4096 * MIB).to_string()).unwrap();
+        let ranked_at = |unit: &str, own: u64, floor: u64, signs: hosts::Signs| Ranked {
+            path: slice.join(unit),
+            rank: hosts::Rank {
+                weight: 100,
+                floor,
+                hard: 0,
+                writeback: hosts::writeback(true, &signs, floor),
+                preference: "none".to_owned(),
+            },
+            asked: floor,
+            signs,
+            own,
+            writeback: true,
+        };
+        let shown = hosts::Signs {
+            shown: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let viewed = hosts::Signs { viewed: 1, ..shown };
+        let mut ranked = [
+            ranked_at("pi-host-a.service", 0, 512 * MIB, shown),
+            ranked_at("pi-conversation-b@1.service", 256 * MIB, 2304 * MIB, viewed),
+        ];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut HashSet::new(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            [ranked[0].rank.floor, ranked[1].rank.floor],
+            [0, 2304 * MIB],
+            "of the 3 GiB the window leaves, the unit Joel is at keeps its whole floor, ahead of \
+             the scope no window holds, which claims the rest before the unit only shown"
+        );
+        assert!(
+            !ranked[1].rank.writeback,
+            "the unit Joel is at, fitting under its floor, has writeback off"
         );
     }
 

@@ -77,5 +77,32 @@
       "test_a_fenced_command_reads_no_secret_copy_through_x11"
     ],
     "test": "vm-desktop-keeps-copies"
+  },
+  {
+    "at": 1795369415,
+    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "still-windows-draw-nothing-as-animations-start-on-niri"
+  },
+  {
+    "at": 1795370179,
+    "commit": "f7ac6f58a5082a2265c27068330e16230cdb9f9b",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at f7ac6f58a508",
+    "test": "the-margin-cat-sits-above-its-column"
+  },
+  {
+    "at": 1795371090,
+    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "the-launcher-lists-inkscapes-drawings-lately"
   }
 ]

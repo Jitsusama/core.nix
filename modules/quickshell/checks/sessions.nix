@@ -271,7 +271,8 @@ in
   # Reopen Them All opens only the viewer of a session pi's host brought
   # back, quietly where the last boot kept it
   # (modules/quickshell/tests/sessions-hosted-reopen.qml), with the node and
-  # niri stood in.
+  # niri stood in. Its last stages walk plain pis too, since only this case
+  # has a realm, a node and a niri that opens windows.
   a-hosted-viewer-reopens-where-it-was =
     let
       # Joel's window on the monitor's first workspace, and the empty one

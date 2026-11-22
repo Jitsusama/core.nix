@@ -24,6 +24,7 @@ rustPlatform.buildRustPackage rec {
     fileset = lib.fileset.unions [
       ./Cargo.toml
       ./Cargo.lock
+      ./lock-after.txt
       ./must-run.txt
       ./src
       ./tests

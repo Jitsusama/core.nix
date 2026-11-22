@@ -263,7 +263,8 @@ fn a_read_with_no_daemon_moves_the_history_itself() {
         .expect("a history is made")
         .db
         .execute_batch(
-            "DROP INDEX turns_once; DROP INDEX refusals_once; DROP INDEX unresolved_once;
+            "DROP TRIGGER waste_hours_add; DROP TRIGGER waste_hours_take; DROP TABLE waste_hours;
+             DROP INDEX turns_once; DROP INDEX refusals_once; DROP INDEX unresolved_once;
              ALTER TABLE sessions DROP COLUMN machine;
              UPDATE meta SET value = '9' WHERE key = 'schema';",
         )
