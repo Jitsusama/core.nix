@@ -144,6 +144,7 @@ pub enum Going {
 pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Option<Going> {
     let (file, heading) = match name {
         Name::Link(href) => match target(href, page) {
+            Target::Here(anchor) if anchor.is_empty() => return Some(Going::Here),
             Target::Here(anchor) => return Some(Going::Heading(anchor)),
             Target::Page(file, heading) => (Some(file), heading),
             Target::Elsewhere(_) => (file_of(name, page), None),
