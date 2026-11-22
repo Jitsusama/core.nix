@@ -1059,26 +1059,23 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, read from structs serde reads plainly, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a lend with plain prefixes, dotted paths or a key package is refused on either system, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store, climbing out of it or named as text, a whole upstream, on NixOS or nix-darwin, an upstream climbing out with .., or a path lending everything or nothing is taken."
+      "A lending NixOS machine doesn't evaluate, its home realm node isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, from structs serde reads plainly and the lender parses the file into, the lender doesn't join a relative upstream onto its runtime folder, the struct scan takes a struct serde reads otherwise, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a Mac's lend isn't refused and kept from its node, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping or empty prefixes, a key outside the store, climbing out of it, named as text or empty, a whole upstream or one with a dot part, a host with a scheme, a header with a space, or a path lending everything or nothing is taken."
       (
         let
-          # Each machine whole, for its own pkgs, and its account.
-          machine = {
-            linux = lendingOn bareNixos self.nixosModules.workstation;
-            mac = lendingOn bareDarwin self.darwinModules.workstation;
-          };
-          lendingOn =
-            bare: role:
-            bare [
-              role
-              {
-                home-manager.users.someone.jitsusama.mycelium = both // {
-                  lend = lending;
-                };
-              }
-            ];
-          home = account machine.linux;
-          onMac = (account machine.mac).launchd.agents;
+          # The machine whole, for its own pkgs, and its account.
+          machine = bareNixos [
+            self.nixosModules.workstation
+            {
+              home-manager.users.someone.jitsusama.mycelium = both // {
+                lend = lending;
+              };
+            }
+          ];
+          home = account machine;
+          # A Mac lending, which only Linux may.
+          onMac = mac (both // { lend = lending; });
+          macRefusal = "jitsusama.mycelium.lend is set on a Mac";
+          refusesOnMac = check: !check.assertion && lib.hasPrefix macRefusal check.message;
           # The word after --lend, of the unit's words.
           after =
             words:
@@ -1087,54 +1084,91 @@ in
             in
             if at == null then null else builtins.elemAt words (at + 1);
           given = node: after (lib.splitString " " (toString node.Service.ExecStart));
-          # The store file, built as each machine's own: the budget with no
+          # The store file, built as the machine's own: the budget with no
           # key is written with none.
-          holding =
-            system: "${machine.${system}.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
-          # The fields of the locked mycelium's struct NAME, as its lender
-          # reads the file, each by its name to its type. serde reads them
-          # so only while the struct derives Deserialize with nothing but
-          # deny_unknown_fields over it, no field says more than default,
-          # and nothing deserialises it by hand. So the scan reads every
-          # attribute and doc line above the struct, back to a blank line
-          # or the end of another item, and throws on anything else there
-          # or in the body, as on a struct no longer found, rather than
-          # passing what it didn't read.
-          source = lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/lend/lender/mod.rs");
-          fields =
-            struct:
+          holding = "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
+          source = builtins.readFile "${self.inputs.mycelium}/src/lend/lender/mod.rs";
+          lines = lib.splitString "\n" source;
+          # Whether the lender's lines hold the first of WANTED, and the rest
+          # in order within SIZE lines after it.
+          reads =
+            size: wanted:
             let
-              from = lib.lists.findFirstIndex (line: line == "struct ${struct} {") null source;
-              body = lib.take to (lib.drop (from + 1) source);
-              to = lib.lists.findFirstIndex (line: line == "}") null (lib.drop (from + 1) source);
+              at = lib.lists.findFirstIndex (line: line == lib.head wanted) null lines;
+              follows =
+                rest: from:
+                let
+                  next = lib.lists.findFirstIndex (line: line == lib.head rest) null from;
+                in
+                rest == [ ] || next != null && follows (lib.tail rest) (lib.drop (next + 1) from);
+            in
+            at != null && follows (lib.tail wanted) (lib.take size (lib.drop (at + 1) lines));
+          # The lender joins a relative upstream onto the runtime folder
+          # place::login_runtime finds, refusing the request where there is
+          # none, which is all that keeps the type's relative upstream in
+          # the account's own folder; and it parses the file as Written,
+          # the struct the scan reads.
+          joins =
+            reads 14 [
+              "    let upstream = if budget.upstream.is_absolute() {"
+              "    } else {"
+              "        lender"
+              "            .runtime"
+              "            .join(&budget.upstream)"
+            ]
+            && lib.hasInfix "crate::place::login_runtime())" source;
+          parsing = ".map_err(|error| unparsed(&error)))";
+          parses = reads 3 [
+            "    fn written(&self) -> Result<Written, Refusal> {"
+            ("            .and_then(|text| serde_json::from_slice(&text)" + parsing)
+          ];
+          # The fields of struct NAME in LINES, each by its name to its
+          # type. serde reads them so only while the struct derives
+          # Deserialize with nothing but deny_unknown_fields over it, and no
+          # field says more than default. So the scan reads every attribute
+          # and doc line above the struct, back to a blank line or the end
+          # of another item, and throws on any other line there or in the
+          # body, on attributes across that blank line, and on a struct no
+          # longer found, rather than passing what it didn't read.
+          scan =
+            lines: struct:
+            let
+              from = lib.lists.findFirstIndex (line: line == "struct ${struct} {") null lines;
+              rest = lib.drop (from + 1) lines;
+              to = lib.lists.findFirstIndex (line: line == "}") null rest;
+              body = lib.take to rest;
               marked = line: lib.hasPrefix "#[" line || lib.hasPrefix "///" line;
-              before = lib.reverseList (lib.take from source);
+              before = lib.reverseList (lib.take from lines);
               reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
               above = lib.take reach before;
+              bounded = reach < lib.length before;
               bound = lib.elemAt before reach;
-              serde = lib.filter (lib.hasPrefix "#[serde") above;
-              deriving = builtins.match "#\\[derive\\(.*Deserialize.*\\)]";
-              derives = lib.any (line: deriving line != null) above;
+              across = reach + 1 < lib.length before && marked (lib.elemAt before (reach + 1));
+              # A derive naming Deserialize itself, not one named like it.
+              derive = "#\\[derive\\(([A-Za-z]+, )*Deserialize(, [A-Za-z]+)*\\)]";
+              deriving = line: builtins.match derive line != null;
+              told = line: lib.hasPrefix "///" line || deriving line || line == denying;
               # Each body line a doc line, the one field attribute serde
               # may carry, or a field of one line.
               field = builtins.match "    ([a-z_][a-z0-9_]*): (.*),";
               defaulted = "    #[serde(default)]";
               plain = line: lib.hasPrefix "    ///" line || line == defaulted || field line != null;
-              byHand = lib.any (
-                line: builtins.match ".*impl.*Deserialize.* for ${struct}( .*)?" line != null
-              ) source;
               fail = why: throw "mycelium's struct ${struct} ${why}, which this check can't read";
             in
             if from == null || to == null then
               throw "mycelium's lender has no lines 'struct ${struct} {' to '}'"
-            else if reach < lib.length before && bound != "" && bound != "}" then
+            else if bounded && bound != "" && bound != "}" then
               fail "has a line over its attributes that is neither blank nor an item's end"
-            else if !derives || serde != [ "#[serde(deny_unknown_fields)]" ] then
-              fail "doesn't derive Deserialize with only deny_unknown_fields over it"
+            else if bounded && bound == "" && across then
+              fail "has attributes across the blank line over it"
+            else if
+              !lib.all told above
+              || !lib.any deriving above
+              || lib.length (lib.filter (line: line == denying) above) != 1
+            then
+              fail "has over it other than doc lines, a Deserialize derive and deny_unknown_fields"
             else if !lib.all plain body then
               fail "has a line in its body other than a doc line, a field or #[serde(default)]"
-            else if byHand then
-              fail "is deserialised by hand"
             else
               lib.listToAttrs (
                 lib.concatMap (
@@ -1153,7 +1187,48 @@ in
                     ]
                 ) body
               );
+          fields = scan lines;
           named = struct: lib.attrNames (fields struct);
+          throws = value: !(builtins.tryEval (builtins.deepSeq value value)).success;
+          # A struct laid out as the lender's are, which the scan reads,
+          # and with each change that has serde read it otherwise, or that
+          # the scan can't read, in place of its line AT.
+          plainVm = [
+            "/// A machine lent to."
+            "#[derive(Debug, Deserialize)]"
+            denying
+            "struct Vm {"
+            "    /// Its name's start."
+            "    prefix: String,"
+            "    #[serde(default)]"
+            "    requests_a_day: u64,"
+            "}"
+          ];
+          plainFields = {
+            prefix = "String";
+            requests_a_day = "u64";
+          };
+          denying = "#[serde(deny_unknown_fields)]";
+          changedVm = at: lines: lib.take at plainVm ++ lines ++ lib.drop (at + 1) plainVm;
+          unread = [
+            (changedVm 0 [
+              "#[serde(rename_all = \"kebab-case\")]"
+              ""
+            ])
+            (changedVm 1 [ "#[derive(Debug, DeserializeFromStr)]" ])
+            (changedVm 2 [ "#[serde(deny_unknown_fields, rename_all = \"kebab-case\")]" ])
+            (changedVm 2 [
+              denying
+              "#[cfg_attr(test, serde(rename_all = \"camelCase\"))]"
+            ])
+            (changedVm 3 [ "pub struct Vm {" ])
+            (changedVm 5 [ "    pub prefix: String," ])
+            (changedVm 5 [
+              "    prefix:"
+              "        String,"
+            ])
+            (changedVm 6 [ "    #[serde(rename = \"name\")]" ])
+          ];
           # Each field's JSON shape as the module writes it: a keyless
           # budget with no key, read as none only while the key is
           # optional, a key and paths as lists of words, and a daily cap
@@ -1190,22 +1265,6 @@ in
                   (linux (both // { inherit lend; })).systemd.user.services.mycelium.Service.ExecStart;
             in
             !(builtins.tryEval (builtins.deepSeq words words)).success;
-          # The same on a Mac, which fails its agent's words.
-          macRefuses =
-            lend:
-            let
-              agent = (mac (both // { inherit lend; })).launchd.agents.mycelium;
-              words = agent.config.ProgramArguments;
-            in
-            !(builtins.tryEval (builtins.deepSeq words words)).success;
-          withKeyless =
-            change:
-            lending
-            // {
-              budgets = lending.budgets // {
-                keyless = lending.budgets.keyless // change;
-              };
-            };
           withModels =
             change:
             lending
@@ -1222,12 +1281,15 @@ in
           vm = lib.head lending.vms;
         in
         evaluates home
-        && evaluates (account machine.mac)
-        && given home.systemd.user.services.mycelium == holding "linux"
+        && given home.systemd.user.services.mycelium == holding
         && given home.systemd.user.services.mycelium-other == null
         && given bothLinux.mycelium == null
-        && after onMac.mycelium.config.ProgramArguments == holding "mac"
-        && after onMac.mycelium-other.config.ProgramArguments == null
+        && lib.any refusesOnMac onMac.assertions
+        && after onMac.launchd.agents.mycelium.config.ProgramArguments == null
+        && joins
+        && parses
+        && scan plainVm "Vm" == plainFields
+        && lib.all (lines: throws (scan lines "Vm")) unread
         && named "Written" == lib.attrNames lending
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
@@ -1279,18 +1341,23 @@ in
             ];
           }
         ) "jitsusama.mycelium.lend.vms has two prefixes"
-        # Any whole upstream, keyed or not, on either system: /tmp's,
-        # and a Mac's /private/tmp, which /tmp links to.
+        # A prefix that would match every machine.
+        && typeRefuses (lending // { vms = [ (vm // { prefix = ""; }) ]; })
         && typeRefuses (withModels {
           upstream = "/run/relay/agents.sock";
         })
-        && typeRefuses (withKeyless {
-          upstream = "/tmp/relay/agents.sock";
+        && typeRefuses (withModels {
+          upstream = "./agents.sock";
         })
-        && macRefuses (withKeyless {
-          upstream = "/private/tmp/relay.sock";
+        && typeRefuses (withModels {
+          host = "https://models.example";
         })
-        && !macRefuses lending
+        && typeRefuses (withModels {
+          auth_header = "Authorization: Bearer";
+        })
+        && typeRefuses (withModels {
+          key = [ ];
+        })
         && typeRefuses (withModels {
           key = [ "/tmp/models-key" ];
         })

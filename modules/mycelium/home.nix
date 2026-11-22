@@ -142,8 +142,12 @@ let
   # bind the relay's socket in the runtime folder, and it already reaches
   # every key that account holds, so the lend opens it nothing new. A key
   # left out is left out of the file, as mycelium reads a budget whose
-  # upstream adds its own.
-  lendArgs = lib.optionals (cfg.lend != null) [
+  # upstream adds its own. Only Linux lends: on a Mac the runtime folder the
+  # upstream sits in is DARWIN_USER_TEMP_DIR, every pi session's TMPDIR,
+  # which fenced agents write, so one could bind the socket and be handed
+  # the key; and model-relay, the upstream a lend is built for, is Linux's
+  # alone.
+  lendArgs = lib.optionals (isLinux && cfg.lend != null) [
     "--lend"
     "${pkgs.writeText "mycelium-lend.json" (
       builtins.toJSON {
@@ -229,13 +233,13 @@ let
                 # machine's requests, its sessions' prompts, is handed
                 # the key, and is taken as the model; and mycelium
                 # doesn't ask who owns the socket. So it is only ever
-                # within the node's runtime folder, the account's own at
-                # 0700, never a whole path, which could lie in a folder
-                # another account binds first (/tmp, a Mac's
-                # /private/tmp). mycelium's place::login_runtime finds
-                # that folder: XDG_RUNTIME_DIR, else on a Mac what
-                # `getconf DARWIN_USER_TEMP_DIR` says, else none, when
-                # it refuses the request.
+                # within the node's runtime folder, XDG_RUNTIME_DIR, the
+                # account's own at 0700, where fenced agents have one of
+                # their own; never a whole path, which could lie in a
+                # folder another account binds first, as /tmp. mycelium's
+                # lender joins a relative upstream onto the folder
+                # place::login_runtime finds, and refuses the request when
+                # there is none.
                 type = socket;
                 example = "model-relay/agents.sock";
                 description = ''
@@ -273,10 +277,11 @@ let
               key = lib.mkOption {
                 # Its program in the Nix store, with no `.` or `..` part
                 # that could climb out of it, and carrying the context of
-                # the package it comes from, so the lend file keeps it
-                # from the garbage collector and a bare string is refused.
-                # That shows the word came from a derivation, not that the
-                # program can't be a link to a file the account writes, or
+                # a store path, so the lend file keeps it from the garbage
+                # collector and a bare string is refused. That shows the
+                # word was spliced from a store path, not which package's,
+                # nor that the program can't be a link to a file the
+                # account writes, or
                 # that the words after it don't name one: the account,
                 # trusted as lendArgs says, may do either.
                 type = lib.types.nullOr (
@@ -668,11 +673,13 @@ in
       '';
       description = ''
         What the home realm's node lends the worker machines it made, or
-        null to lend nothing, so each one's lend is refused. Its names are
-        those of the file mycelium reads, which it reads again at every
-        request; mycelium's PROTOCOL.md says what each means. Lending a
-        machine model calls through a budget hands it no key: the node adds
-        the key to each request it carries upstream.
+        null to lend nothing, so each one's lend is refused; only Linux
+        lends. Its names are those of the file mycelium reads, a store file
+        it reads at every request; mycelium's PROTOCOL.md says what each
+        means. Lending a machine model calls through a budget hands it no
+        key: the node adds the key to each request it carries upstream. To
+        stop lending at once, set it to null and switch, which restarts the
+        node.
       '';
     };
     healthSocket = lib.mkOption {
@@ -765,6 +772,11 @@ in
         {
           assertion = cfg.lend != null -> cfg.realm != null;
           message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, the realm whose node lends.";
+        }
+        {
+          # As lendArgs says, a Mac's runtime folder is one its agents write.
+          assertion = isDarwin -> cfg.lend == null;
+          message = "jitsusama.mycelium.lend is set on a Mac, whose runtime folder is every pi session's TMPDIR, so an agent could bind the upstream and take the key: lend from Linux.";
         }
         {
           assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;
