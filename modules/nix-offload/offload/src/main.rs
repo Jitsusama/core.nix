@@ -4084,10 +4084,19 @@ fn down(settings: &Settings, name: &str) -> bool {
     // Runs waiting on this lender read this while it gives a builder back,
     // which writes no `lending`, as still answering: on 22 November sends
     // to -more gave up within 35 s of a give-back that took 160 s.
+    // The file is held locked while the helper runs, rather than read for
+    // a pid, since a fenced run counts pids in a namespace of its own; the
+    // kernel lets the lock go however this ends.
     let giving = settings.dir.join(there::GIVING_BACK);
-    let _ = fs::write(&giving, format!("{} {name}\n", std::process::id()));
+    let held = fs::File::create(&giving).and_then(|mut file| {
+        use std::io::Write;
+        file.lock()?;
+        writeln!(file, "{} {name}", std::process::id())?;
+        Ok(file)
+    });
     let gone = call_helper(settings, &["down", name]).is_some();
     let _ = fs::remove_file(&giving);
+    drop(held);
     if !gone {
         eprintln!("nix-offload: the helper couldn't give {name} back; it's asked again next tick");
     }

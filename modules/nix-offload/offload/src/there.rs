@@ -3593,13 +3593,14 @@ fn wanting(dir: &Path) -> Option<Want> {
     None
 }
 
-/// The file a lender keeps in its folder while it gives a builder back,
-/// holding its pid and the builder's name, so one a lender left as it
-/// stopped says nothing.
+/// The file a lender keeps in its folder, locked, while it gives a builder
+/// back, naming its pid and the builder for a person reading it. Only the
+/// lock counts, so one a lender left as it stopped says nothing.
 pub const GIVING_BACK: &str = "giving-back";
 
-/// The longest a give-back is waited out: past it, the helper giving it
-/// back is taken for stuck. The one seen on 22 November took 160 s.
+/// The longest a give-back is waited out, by its file's age and by what
+/// one run spends on give-backs: past it, the helper giving it back is
+/// taken for stuck. The one seen on 22 November took 160 s.
 const GIVING_BACK_LONGEST: std::time::Duration = std::time::Duration::from_secs(600);
 
 /// Whether `dir`'s lender is giving a builder back: it lends nothing
@@ -3611,13 +3612,7 @@ fn giving_back(dir: &Path) -> bool {
         .ok()
         .and_then(|at| at.elapsed().ok())
         .is_some_and(|age| age < GIVING_BACK_LONGEST);
-    fresh
-        && fs::read_to_string(&path).is_ok_and(|held| {
-            held.split_whitespace()
-                .next()
-                .and_then(|pid| pid.parse().ok())
-                .is_some_and(runs)
-        })
+    fresh && held(&path)
 }
 
 /// Waits for a builder when none stands, rather than building here: it
@@ -3662,7 +3657,7 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
             break Some(store);
         }
         let now = std::time::Instant::now();
-        if giving_back(dir) {
+        if given < GIVING_BACK_LONGEST && giving_back(dir) {
             if given.is_zero() {
                 eprintln!(
                     "nix-offload: its lender gives a builder back first, so this waits that out \
@@ -7355,14 +7350,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let pid = std::process::id();
         fs::write(dir.path().join("lender"), format!("{pid}\n")).unwrap();
-        fs::write(dir.path().join(GIVING_BACK), format!("{pid} old-builder\n")).unwrap();
+        // Held locked as the lender holds it, by its own open file, which
+        // the waiting run's lock is refused against.
+        let held = fs::File::create(dir.path().join(GIVING_BACK)).unwrap();
+        held.lock().unwrap();
         let lender = dir.path().to_owned();
         let giving = std::thread::spawn(move || {
             std::thread::sleep(QUICK.longest + std::time::Duration::from_secs(1));
-            fs::remove_file(lender.join(GIVING_BACK)).unwrap();
-            // A tick passes before it begins lending, shorter than `answered`.
-            std::thread::sleep(QUICK.answered / 2);
+            // It begins lending as it lets the give-back go, so a loaded
+            // machine's slow thread can't stretch a gap past `answered`.
             fs::write(lender.join("lending"), "a-builder\n").unwrap();
+            fs::remove_file(lender.join(GIVING_BACK)).unwrap();
+            drop(held);
             std::thread::sleep(std::time::Duration::from_millis(500));
             fs::write(lender.join("store"), "ssh-ng://far\n").unwrap();
         });
@@ -7382,12 +7381,32 @@ mod tests {
             format!("{}\n", std::process::id()),
         )
         .unwrap();
+        // Left behind, so nobody holds it locked.
         fs::write(dir.path().join(GIVING_BACK), "999999999 old-builder\n").unwrap();
         let began = std::time::Instant::now();
         assert_eq!(waited(dir.path(), QUICK), None);
         assert!(
             began.elapsed() < QUICK.longest,
             "a give-back whose lender is gone was waited out"
+        );
+    }
+
+    #[test]
+    fn a_give_back_held_past_its_longest_is_taken_for_stuck() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(GIVING_BACK);
+        let held = fs::File::create(&path).unwrap();
+        held.lock().unwrap();
+        assert!(
+            giving_back(dir.path()),
+            "a fresh, held give-back wasn't seen"
+        );
+        let old =
+            std::time::SystemTime::now() - GIVING_BACK_LONGEST - std::time::Duration::from_secs(60);
+        held.set_modified(old).unwrap();
+        assert!(
+            !giving_back(dir.path()),
+            "a give-back held for 11 minutes was still waited out"
         );
     }
 
