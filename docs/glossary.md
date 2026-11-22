@@ -415,6 +415,7 @@ off.
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zswap |
 | memory pressure | how long programs are waiting for memory | | PSI |
+| memory standstill | how much of the busy processors' time stood still because every program on them was waiting for memory | | PSI's `full` |
 | processor pressure | how long programs are waiting for the processor | | PSI's `cpu` |
 | disk pressure | how long programs are waiting for the disk, not how full it is | | PSI's `io` |
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |
