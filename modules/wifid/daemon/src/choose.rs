@@ -255,6 +255,13 @@ pub struct Chooser {
     /// The access point a move on trial never reached, kept off from the
     /// last choice, for the journal to say so.
     unreached: Option<String>,
+    /// When a move judged last never stood. Another within `SPURNED` of it
+    /// holds a whole settle, not a span: a stranger in radio range sending
+    /// the network's name from point after point, none of which answers,
+    /// could otherwise have the card leave its own every span, a second or
+    /// more off the network each time. One an hour or more on is taken as
+    /// a first again.
+    missed: Option<Instant>,
     /// When a card on a wider band was last slowed by its own download.
     queued: Option<Instant>,
     /// The card's access point and the narrower one a wider band holding
@@ -313,6 +320,18 @@ struct Trial {
     /// carried about 14, and kept 21 minutes at 45 to 57 ms, as it was
     /// only less bad than that minute.
     usual: Option<Measured>,
+    /// When the card last moved before this one, which counts again where
+    /// this one never stood.
+    moved_before: Option<Instant>,
+    /// Whether a choice has judged the card on the point it tried. One that
+    /// stood there and is later found back where it began went back some
+    /// other way, as when that point went or an account moved it, so its
+    /// settle holds. A move gone before a choice judged it is taken as one
+    /// that never stood: one that stood less than a minute, or only while
+    /// choices passed it over, as through a call or with its own point
+    /// unheard. That costs its settle cut to a span, its point still kept
+    /// off.
+    stood: bool,
     /// Whether the move was for a wider band's room, the card using it,
     /// kept unless it carries badly rather than unless it carries worse
     /// than the narrower one left. One made idle, the wider band known no
@@ -473,19 +492,43 @@ impl Chooser {
         let Some(chosen) = chosen else {
             return self.unchosen(now, on, others, (bad, holds_wide && !queued), crowded);
         };
-        let yielded = self.spurned.contains_key(&chosen.point);
-        self.yielded = yielded.then(|| chosen.point.clone());
-        self.moved = Some(now);
+        let banded = banded.is_some() && used(measured);
+        let widened = !wide(frequency) && wide(chosen.frequency);
+        let usual = trial_bar(usual, measured);
+        self.try_point(
+            now,
+            (point, measured),
+            &chosen.point,
+            usual,
+            (banded, widened),
+        )
+    }
+
+    /// Moves the card on trial to `to` from what it carried on `from`,
+    /// judged against `usual` where that's the bar: a point kept off is
+    /// tried as yielding, and the hold of any back before it ends.
+    fn try_point(
+        &mut self,
+        now: Instant,
+        (from, before): (&str, &Measured),
+        to: &str,
+        usual: Option<Measured>,
+        (banded, widened): (bool, bool),
+    ) -> Choice {
+        self.yielded = self.spurned.contains_key(to).then(|| to.to_owned());
+        let moved_before = self.moved.replace(now);
         self.back_to = None;
         self.trial = Some(Trial {
-            from: point.to_owned(),
-            to: chosen.point.clone(),
-            before: measured.clone(),
-            usual: trial_bar(usual, measured),
-            banded: banded.is_some() && used(measured),
-            widened: !wide(frequency) && wide(chosen.frequency),
+            from: from.to_owned(),
+            to: to.to_owned(),
+            before: before.clone(),
+            usual,
+            moved_before,
+            stood: false,
+            banded,
+            widened,
         });
-        Choice::Try(chosen.point.clone())
+        Choice::Try(to.to_owned())
     }
 
     /// Whether the card stays where it is whatever else it hears: a link
@@ -499,15 +542,12 @@ impl Chooser {
     /// keep-off that yields gives way. A roam back landing later starts
     /// `young` on landing, so the keep-off holds up to that much longer.
     fn holds_still(&self, now: Instant, point: &str, failing: bool) -> bool {
-        let settled = self
-            .moved
-            .is_none_or(|moved| now.duration_since(moved) >= SETTLE);
         if failing {
             self.back_to.as_ref().is_some_and(|(to, back)| {
                 to == point && now.saturating_duration_since(*back) < SPAN
             })
         } else {
-            !settled
+            !self.settled(now)
         }
     }
 
@@ -611,6 +651,13 @@ impl Chooser {
         self.again = Some(now);
     }
 
+    /// Whether the card's last move is a settle behind it, or it never
+    /// moved.
+    fn settled(&self, now: Instant) -> bool {
+        self.moved
+            .is_none_or(|moved| now.duration_since(moved) >= SETTLE)
+    }
+
     /// The access point the last choice kept off as a move never reached,
     /// if it did, said once.
     pub fn unreached(&mut self) -> Option<String> {
@@ -685,12 +732,33 @@ impl Chooser {
         (failing, queued, holds_wide): (bool, bool, bool),
     ) -> Option<Choice> {
         let (point, measured) = on;
-        let trial = self.trial.take()?;
+        let mut trial = self.trial.take()?;
         // What the card's on now isn't what was tried, as when the move
         // found it gone (NotNearby on 15 and 16 Nov 2026), so its figures
         // judge nothing: the tried point is kept off rather than tried again
         // each settle, and the card isn't sent back to where it may be.
+        // Back on the point it left, never having stood on the one tried,
+        // the move never got the card off it: it was sent back as the move
+        // didn't get there in time (arrive.rs), refused, found the point
+        // gone or kept the card in place. So the move doesn't hold the card
+        // from choosing again for a settle, only for a `SPAN`: the next
+        // choices then judge a span without the failed move's own outage,
+        // which would read as loss wifid caused, and a card hearing stale
+        // points on a link that isn't failing tries one a span on, each
+        // kept off once missed, and the next a settle on if that misses
+        // within an hour (`missed`). A failing link holds only after a
+        // back (`holds_still`), so it may try another at each choice.
         if point != trial.to {
+            if point == trial.from && !trial.stood {
+                let lately = self
+                    .missed
+                    .is_some_and(|missed| now.saturating_duration_since(missed) < SPURNED);
+                if !lately {
+                    let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
+                    self.moved = unmade(now, trial.moved_before, spanned);
+                }
+                self.missed = Some(now);
+            }
             let kept = Kept {
                 until: now + SPURNED,
                 yields: false,
@@ -700,6 +768,7 @@ impl Chooser {
             self.unreached = Some(trial.to);
             return None;
         }
+        trial.stood = true;
         let over = self
             .moved
             .is_none_or(|moved| now.duration_since(moved) >= TRIAL);
@@ -988,6 +1057,16 @@ pub fn slowed_by_its_own(measured: &Measured) -> bool {
         && measured.lost <= LOSSY
         && measured.moving.is_some_and(|moving| moving >= LEAST)
         && measured.p50.is_some_and(|p50| p50 <= steady)
+}
+
+/// When a move never made is taken to have been made, so it holds the
+/// card from choosing again only a `SPAN` (`spanned`, a settle less a span
+/// before now), or till the settle of the move before it, if later. On
+/// Linux an instant before boot is still one, so a boot's first minutes
+/// hold a span too; a clock that can't reach back that far, giving none,
+/// has the move hold a whole settle from now rather than none.
+fn unmade(now: Instant, before: Option<Instant>, spanned: Option<Instant>) -> Option<Instant> {
+    before.max(Some(spanned.unwrap_or(now)))
 }
 
 /// Whether a card moves enough for a wider band's room to count, which a
@@ -2515,6 +2594,31 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn a_move_never_made_holds_till_the_later_of_its_span_and_the_last_settle() {
+        let now = Instant::now() + SETTLE;
+        let spanned = now.checked_sub(SETTLE.saturating_sub(SPAN));
+        let earlier = spanned.and_then(|spanned| spanned.checked_sub(SPAN));
+
+        let first = unmade(now, None, spanned);
+        let after_a_late_one = unmade(now, Some(now), spanned);
+        let after_an_old_one = unmade(now, earlier, spanned);
+        let unreachable = unmade(now, None, None);
+
+        assert_eq!(first, spanned, "a first move holds a span");
+        assert_eq!(
+            after_a_late_one,
+            Some(now),
+            "a later settle before it holds"
+        );
+        assert_eq!(after_an_old_one, spanned, "an older one doesn't");
+        assert_eq!(
+            unreachable,
+            Some(now),
+            "no instant a span back, so a settle from now"
+        );
+    }
+
+    #[test]
     fn a_move_never_made_on_a_failing_link_tries_another_at_once() {
         let start = Instant::now();
         let near = [hall(-53, Some(20), None), elsewhere()];
@@ -2541,6 +2645,377 @@ pub(crate) mod tests {
             whole,
             Choice::Try(elsewhere().point),
             "and the hall stays kept off from a link failing a whole span"
+        );
+    }
+
+    /// A fourth access point on channel 52, known to carry far quicker than
+    /// a bad minute, so a card settled takes it.
+    fn quicker_still() -> Other {
+        Other {
+            point: "6c:ae:f6:ba:85:88".into(),
+            ..hall(-54, Some(20), Some(carried(15, 0.0)))
+        }
+    }
+
+    #[test]
+    fn a_move_sent_back_where_it_began_settles_from_the_move_before_it() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let well = carried(15, 0.0);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let minute = start + Duration::from_secs(60);
+        chooser.choose(minute, (HALL, &well, -50, CH52), &hall_alone, false);
+        let kept = chooser.choose(start + TRIAL, (HALL, &well, -50, CH52), &hall_alone, false);
+        assert_eq!(kept, Choice::Stay, "the hall stood its trial");
+
+        // Failing on the hall, a second move is tried before the first's
+        // settle, and sent back to the hall.
+        let failing = carried(400, 15.0);
+        let second = start + TRIAL + Duration::from_secs(60);
+        let on = (HALL, &failing, -50, CH52);
+        let tried_again = chooser.choose(second, on, &[elsewhere()], false);
+        let desk = Other {
+            point: DESK.into(),
+            ..hall(-53, Some(20), None)
+        };
+        let near = [desk, elsewhere()];
+        let back = second + Duration::from_secs(60);
+        let waits = chooser.choose(back, (HALL, &badly, -50, CH52), &near, false);
+        // Past a span-only hold from the way back, short of the first's
+        // settle, and a second past where a settle from the span alone
+        // would end, so that one shows on any comparison.
+        let spanned = back + SPAN + Duration::from_secs(1);
+        let held = chooser.choose(spanned, (HALL, &badly, -50, CH52), &near, false);
+        let settled = start + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, (HALL, &badly, -50, CH52), &near, false);
+
+        assert_eq!(held, Choice::Stay, "held to the first move's settle");
+        assert_eq!(
+            tried_again,
+            Choice::Try(elsewhere().point),
+            "tried as it failed"
+        );
+        assert_eq!(
+            waits,
+            Choice::Stay,
+            "the move before it still settles: the second never counted, nor cleared it"
+        );
+        assert_eq!(
+            next,
+            Choice::Try(DESK.into()),
+            "tried once the first move has settled, not the second"
+        );
+    }
+
+    #[test]
+    fn a_first_move_sent_back_where_it_began_waits_a_span_not_a_settle() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+        assert_eq!(
+            tried,
+            Choice::Try(HALL.into()),
+            "the card's first move is asked"
+        );
+
+        // The move never got there, and the card was sent back to the desk.
+        let near = [hall(-53, Some(20), None), quicker_still()];
+        let back = start + Duration::from_secs(60);
+        let waits = chooser.choose(back, (DESK, &badly, -50, CH52), &near, false);
+        let short = back + SPAN - Duration::from_secs(1);
+        let still = chooser.choose(short, (DESK, &badly, -50, CH52), &near, false);
+        // A second past the span, so it holds on any comparison.
+        let spanned = back + SPAN + Duration::from_secs(1);
+        let hall_only = chooser.choose(spanned, (DESK, &badly, -50, CH52), &hall_alone, false);
+        let next = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
+        // Exactly a stay, which moves nothing `next` is chosen from.
+        assert_eq!(hall_only, Choice::Stay, "the hall it missed is kept off");
+
+        assert_eq!(
+            waits,
+            Choice::Stay,
+            "its span still holds the failed move's outage"
+        );
+        assert_eq!(still, Choice::Stay, "short of a span since it came back");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "tried a span on, long before a settle"
+        );
+    }
+
+    #[test]
+    fn a_second_never_stood_miss_within_an_hour_holds_a_whole_settle() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let on = (DESK, &badly, -50, CH52);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, on, &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, on, &hall_alone, false);
+        let spanned = back + SPAN;
+        let second = chooser.choose(spanned, on, &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "a span after the first miss, another is tried"
+        );
+
+        // That one never got there either.
+        let near = [quicker_still()];
+        let back_again = spanned + Duration::from_secs(60);
+        chooser.choose(back_again, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = back_again + SPAN + Duration::from_secs(1);
+        let span_on = chooser.choose(past_span, on, &near, false);
+        let short = chooser.choose(spanned + SETTLE - Duration::from_secs(1), on, &near, false);
+        let settled = spanned + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, on, &near, false);
+
+        assert_eq!(
+            span_on,
+            Choice::Stay,
+            "a second miss within an hour holds past a span"
+        );
+        assert_eq!(short, Choice::Stay, "to a settle from its move");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "and tries once that has passed"
+        );
+    }
+
+    #[test]
+    fn a_move_that_stands_between_two_misses_still_has_the_second_hold_a_settle() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let well = carried(15, 0.0);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, (DESK, &badly, -50, CH52), &hall_alone, false);
+
+        // The next move stands, and holds well past a settle.
+        let spanned = back + SPAN;
+        let second = chooser.choose(spanned, (DESK, &badly, -50, CH52), &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "a span after the miss"
+        );
+        let there = elsewhere().point;
+        let stood = (there.as_str(), &well, -50, CH52);
+        chooser.choose(spanned + Duration::from_secs(60), stood, &[], false);
+        let kept = chooser.choose(spanned + TRIAL, stood, &[], false);
+        assert_eq!(kept, Choice::Stay, "the second stood its trial");
+
+        // Failing there a settle on, a third is tried and never made.
+        let failing = carried(400, 15.0);
+        let third = spanned + SETTLE + Duration::from_secs(60);
+        let on = (there.as_str(), &failing, -50, CH52);
+        let tried_again = chooser.choose(third, on, &[quicker_still()], false);
+        assert_eq!(
+            tried_again,
+            Choice::Try(quicker_still().point),
+            "tried as it failed"
+        );
+        let desk = Other {
+            point: DESK.into(),
+            ..hall(-53, Some(20), None)
+        };
+        let near = [desk];
+        let missed = third + Duration::from_secs(60);
+        let on = (there.as_str(), &badly, -50, CH52);
+        chooser.choose(missed, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = missed + SPAN + Duration::from_secs(1);
+        let span_on = chooser.choose(past_span, on, &near, false);
+        let next = chooser.choose(third + SETTLE + Duration::from_secs(1), on, &near, false);
+
+        assert_eq!(
+            span_on,
+            Choice::Stay,
+            "a stand between misses doesn't make the second a first"
+        );
+        assert_eq!(
+            next,
+            Choice::Try(DESK.into()),
+            "tried a settle from the move"
+        );
+    }
+
+    #[test]
+    fn the_hour_runs_from_the_last_miss_not_the_first() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let on = (DESK, &badly, -50, CH52);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, on, &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, on, &hall_alone, false);
+
+        // Fifty minutes on, a second misses, and holds a settle.
+        let second_try = back + Duration::from_mins(50);
+        let second = chooser.choose(second_try, on, &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "fifty minutes after the first miss, another is tried"
+        );
+        let near = [quicker_still()];
+        chooser.choose(second_try + Duration::from_secs(60), on, &near, false);
+
+        // A third, past an hour from the first miss but minutes from the
+        // second, misses too.
+        let third_try = second_try + SETTLE + Duration::from_secs(60);
+        let third = chooser.choose(third_try, on, &near, false);
+        assert_eq!(
+            third,
+            Choice::Try(quicker_still().point),
+            "a settle after the second, a third is tried"
+        );
+        let missed = third_try + Duration::from_secs(60);
+        chooser.choose(missed, on, &hall_alone, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = missed + SPAN + Duration::from_secs(1);
+        let span_on = chooser.choose(past_span, on, &hall_alone, false);
+        let settled = third_try + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, on, &hall_alone, false);
+
+        assert_eq!(
+            span_on,
+            Choice::Stay,
+            "within an hour of the second miss, the third holds past a span"
+        );
+        assert_eq!(
+            next,
+            Choice::Try(HALL.into()),
+            "tried a settle from its move"
+        );
+    }
+
+    #[test]
+    fn a_miss_an_hour_after_the_last_waits_a_span_again() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so taking one off is an instant on any clock.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let on = (DESK, &badly, -50, CH52);
+        let hall_alone = [hall(-53, Some(20), None)];
+        let tried = chooser.choose(start, on, &hall_alone, false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the first move is asked");
+        let back = start + Duration::from_secs(60);
+        chooser.choose(back, on, &hall_alone, false);
+        let later = back + SPURNED + Duration::from_secs(60);
+        let second = chooser.choose(later, on, &[elsewhere()], false);
+        assert_eq!(
+            second,
+            Choice::Try(elsewhere().point),
+            "an hour after the first miss, another is tried"
+        );
+
+        // That one never got there either, an hour after the first.
+        let near = [quicker_still()];
+        let back_again = later + Duration::from_secs(60);
+        chooser.choose(back_again, on, &near, false);
+        let short = back_again + SPAN - Duration::from_secs(1);
+        let still = chooser.choose(short, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let spanned = back_again + SPAN + Duration::from_secs(1);
+        let next = chooser.choose(spanned, on, &near, false);
+
+        assert_eq!(still, Choice::Stay, "short of a span since it came back");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "a miss an hour on is a first again, held a span, not a settle"
+        );
+    }
+
+    #[test]
+    fn a_move_ending_on_a_third_point_still_settles() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so a span's hold is an instant on any clock and
+        // can't pass as a full settle.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let hall_alone = [hall(-53, Some(20), None)];
+        chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+
+        let third = elsewhere().point;
+        let near = [hall(-53, Some(20), None), quicker_still()];
+        let on = (third.as_str(), &badly, -55, CH52);
+        let minute = start + Duration::from_secs(60);
+        let waits = chooser.choose(minute, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = minute + SPAN + Duration::from_secs(1);
+        let spanned = chooser.choose(past_span, on, &near, false);
+        let settled = start + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, on, &near, false);
+
+        assert_eq!(
+            waits,
+            Choice::Stay,
+            "not back where it began, so it settles"
+        );
+        assert_eq!(spanned, Choice::Stay, "held past a span, as a settle");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "and tries once settled"
+        );
+    }
+
+    #[test]
+    fn a_move_that_stood_then_ended_where_it_began_still_settles() {
+        let mut chooser = after_a_bad_minute(DESK);
+        // A settle on, so a span's hold is an instant on any clock and
+        // can't pass as a full settle.
+        let start = Instant::now() + SETTLE;
+        let badly = carried(119, 0.5);
+        let well = carried(15, 0.0);
+        let hall_alone = [hall(-53, Some(20), None)];
+        chooser.choose(start, (DESK, &badly, -50, CH52), &hall_alone, false);
+        let minute = start + Duration::from_secs(60);
+        let stood = chooser.choose(minute, (HALL, &well, -50, CH52), &hall_alone, false);
+
+        // The hall gone, the card rejoined the desk on its own.
+        let near = [quicker_still()];
+        let rejoined = minute + Duration::from_secs(60);
+        let waits = chooser.choose(rejoined, (DESK, &badly, -50, CH52), &near, false);
+        // A second past the span, so it holds on any comparison.
+        let spanned = rejoined + SPAN + Duration::from_secs(1);
+        let held = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
+        let settled = start + SETTLE + Duration::from_secs(1);
+        let next = chooser.choose(settled, (DESK, &badly, -50, CH52), &near, false);
+
+        assert_eq!(stood, Choice::Stay, "on trial on the hall");
+        assert_eq!(held, Choice::Stay, "held past a span, as a settle");
+        assert_eq!(
+            next,
+            Choice::Try(quicker_still().point),
+            "and tries once settled"
+        );
+        assert_eq!(
+            waits,
+            Choice::Stay,
+            "the move stood, so its settle holds however the card got back"
         );
     }
 
@@ -3354,6 +3829,8 @@ pub(crate) mod tests {
             to: HALL.into(),
             before,
             usual,
+            moved_before: None,
+            stood: false,
             banded,
             widened: false,
         });
@@ -3426,6 +3903,8 @@ pub(crate) mod tests {
                 to: HALL.into(),
                 before: unloaded(76),
                 usual: Some(unloaded(14)),
+                moved_before: None,
+                stood: false,
                 banded: false,
                 widened: false,
             });

@@ -242,14 +242,6 @@ pub fn left_its_network(before: &str, step: &str) -> bool {
     holds_a_network(before) && !holds_a_network(step)
 }
 
-/// Whether a card's other networks stay off as it's given its networks:
-/// only while it holds the one Joel picked in the launcher. A card on a
-/// network it chose itself has every network on, so a network newly saved
-/// or ranked above it can still win its next look.
-pub fn keeps_the_others_off(picked: bool, step: &str) -> bool {
-    picked && holds_a_network(step)
-}
-
 /// A text field as wpa_supplicant gives it back, quoted.
 pub fn unquoted(field: &str) -> Option<&str> {
     field.strip_prefix('"')?.strip_suffix('"')
@@ -342,6 +334,10 @@ pub trait Interface {
 
     #[zbus(property)]
     fn state(&self) -> zbus::Result<String>;
+
+    /// Whether the card is looking for networks now.
+    #[zbus(property)]
+    fn scanning(&self) -> zbus::Result<bool>;
 
     /// Has the card look for networks from an address made up for each
     /// look, keeping only the bits of its own each mask has.
@@ -723,18 +719,5 @@ mod tests {
         );
         assert!(!left_its_network("scanning", "disconnected"));
         assert!(!left_its_network("", "disconnected"));
-    }
-
-    #[test]
-    fn only_a_card_on_the_network_joel_picked_keeps_the_others_off() {
-        assert!(keeps_the_others_off(true, "completed"));
-        assert!(
-            !keeps_the_others_off(false, "completed"),
-            "a card on a network it chose itself has a newly saved one on"
-        );
-        assert!(
-            !keeps_the_others_off(true, "disconnected"),
-            "a card come off the network it was given has every network on"
-        );
     }
 }

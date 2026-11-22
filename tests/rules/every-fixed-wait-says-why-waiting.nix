@@ -27,5 +27,4 @@
   "tests/lib/qemu-after-its-sockets-test.py" = 1;
   "tests/vm/boot/plymouth-vm-test.py" = 1;
   "tests/vm/guide/secure-boot-vm-test.py" = 1;
-  "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
 }

@@ -280,7 +280,7 @@
   "modules/wifid/daemon/src/service.rs" = 5;
   "modules/wifid/daemon/src/state.rs" = 18;
   "modules/wifid/daemon/src/store.rs" = 17;
-  "modules/wifid/daemon/src/supplicant.rs" = 8;
+  "modules/wifid/daemon/src/supplicant.rs" = 7;
   "modules/wifid/sign-in/src/main.rs" = 6;
   "modules/wifid/sign-in/src/socks.rs" = 4;
   "modules/zathura/next-document/src/main.rs" = 4;
