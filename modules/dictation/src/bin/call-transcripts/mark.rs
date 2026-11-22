@@ -35,17 +35,20 @@ pub fn mark(file: &Path, reference: &Path, mine: &str) -> Result<(), String> {
 /// Joel's lines under `me`, against `reference`, whose speaker `mine` is
 /// Joel's side.
 fn marked(file: &str, reference: &[Said], mine: &str, me: &str) -> [Errors; 2] {
-    let _ = (
-        file,
-        reference,
-        mine,
-        me,
-        transcript::read,
-        filed::transcript,
-        said,
-        words,
-    );
-    [Errors::default(); 2]
+    let lines = transcript::read(filed::transcript(file), me);
+    [Side::Mine, Side::Theirs].map(|side| {
+        let spoken: Vec<String> = reference
+            .iter()
+            .filter(|line| score::whose(line, mine) == side)
+            .flat_map(|line| said(&line.text))
+            .collect();
+        let heard: Vec<String> = lines
+            .iter()
+            .filter(|line| line.side == side)
+            .flat_map(|line| words(&line.text))
+            .collect();
+        Errors::count(&spoken, &heard)
+    })
 }
 
 /// A call's errors, the whole of it and then each side.
