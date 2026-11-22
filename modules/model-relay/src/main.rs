@@ -281,12 +281,13 @@ fn serve(args: &[String]) -> Result<(), Failure> {
                 let _ = stop.try_send(());
             }
         });
-        relay.serve_until(listener, stops).await;
-        Ok(())
+        Ok(relay.serve_until(listener, stops).await)
     });
     // Dropped, the runtime would wait on a lookup for as long as it took.
     runtime.shutdown_timeout(LOOKUPS_GIVEN);
-    served
+    // The answers it cut count only as the runtime drops them, just now.
+    served?.say();
+    Ok(())
 }
 
 fn main() -> ExitCode {

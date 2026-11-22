@@ -42,7 +42,8 @@ onLinux {
   # seconds, then giving those a few seconds, even one pi says nothing on,
   # cutting its answers when its drain time runs out or at a second stop,
   # ending what it sends direct when stopped as it leaves idle, at once if
-  # stopped again, and saying what it waited on and its counts, a drain of
+  # stopped again, and saying what it waited on and its counts, its cuts
+  # apart from pi's cancels, a drain of
   # none and the flags it no longer takes refused, a socket the account's
   # alone, never taken from a relay answering it nor from a file or a link
   # that isn't a socket, and nothing of a header or body logged, a failure

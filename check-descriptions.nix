@@ -2055,7 +2055,8 @@
     leaving, past the ten seconds a relay leaving idle takes them, gives those a few seconds once
     its answers end, even one pi says nothing on, cuts its answers when its drain time runs out,
     not when those few seconds do, or at a second stop, ends what it sends direct when stopped as
-    it leaves idle, at once if stopped again, says what it waited on and its counts, refuses a
+    it leaves idle, at once if stopped again, says what it waited on and its counts, its cuts
+    apart from pi's cancels, refuses a
     drain of none and the flags it no longer takes, keeps its socket to its account, from a second
     relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
     failure included; and its own cases hold a ping from behind an upload, with little held

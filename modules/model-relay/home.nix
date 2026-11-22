@@ -97,8 +97,10 @@ in
         After = [ "model-relay-agents.socket" ];
         # A restart lets each answer the relay is streaming, each a turn
         # some agent is taking, end first, sending every new request direct
-        # meanwhile, and cuts one still going after drainsWithin; a second
-        # stop cuts them at once. A logout or a shutdown gives it only the
+        # meanwhile, and cuts one still going after drainsWithin. A second
+        # SIGTERM cuts them at once: systemctl --user kill model-relay-agents
+        # sends one, while a second stop or restart sends none, joining the
+        # stop already going. A logout or a shutdown gives it only the
         # user manager's own stop timeout. That sends a busy machine's
         # agents past the relay for as long as its longest answer, so a
         # switch leaves it be. It

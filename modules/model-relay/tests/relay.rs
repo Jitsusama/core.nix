@@ -88,6 +88,13 @@ const DRAINS_WITHIN: Duration = Duration::from_secs(2);
 /// it: well inside `SAYS_GO_DIRECT_WITHIN`, which a cut left to the relay
 /// leaving would take.
 const CUT_WITHIN: Duration = Duration::from_secs(2);
+/// How long an answer outlasting the drain surely streams before it's
+/// cut: well past half of `DRAINS_WITHIN`, so a drain cut short fails, and
+/// short of it by more than a stop takes to be heard.
+const STREAMS_AT_LEAST: Duration = Duration::from_millis(1500);
+/// What the counts say last of an answer the relay's stop cut rather than
+/// pi.
+const ONE_CUT_NONE_CANCELLED: &str = "pi cancelled 0; 1 cut as it was stopped;";
 /// When the drain test connects late: long past the relay hearing its
 /// stop, and inside its drain.
 const TAKEN_LATE_AFTER: Duration = Duration::from_secs(1);
@@ -2404,6 +2411,10 @@ async fn a_stopped_relay_cuts_an_answer_longer_than_its_drain() {
         cut_after < DRAINS_WITHIN + CUT_WITHIN,
         "an answer outlasting the drain was cut only {cut_after:?} after the stop"
     );
+    assert!(
+        cut_after >= STREAMS_AT_LEAST,
+        "an answer was cut {cut_after:?} after the stop, before its drain ran out"
+    );
     let left = relay.left_within(DRAINS_WITHIN + SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
     assert!(
         left.is_some_and(|status| status.success()),
@@ -2420,6 +2431,10 @@ async fn a_stopped_relay_cuts_an_answer_longer_than_its_drain() {
     assert!(
         said.contains("1 connections hadn't finished within 5 s, so they're cut"),
         "it didn't count the connection it sent direct alone as late: {said}"
+    );
+    assert!(
+        said.contains(ONE_CUT_NONE_CANCELLED),
+        "its counts didn't say it cut the answer, rather than pi: {said}"
     );
 }
 
@@ -2446,10 +2461,14 @@ async fn a_relay_stopped_again_leaves_at_once() {
         said.contains("stopped again, so it leaves now"),
         "it didn't say why it left: {said}"
     );
-    // Said as it was first stopped, since nothing it counts moves after.
     assert!(
         said.contains(COUNTS_SAID),
         "it didn't say its counts as it was stopped: {said}"
+    );
+    // Said once its runtime has dropped the answer, the only time it can.
+    assert!(
+        said.contains(ONE_CUT_NONE_CANCELLED),
+        "its counts didn't say it cut the answer, rather than pi: {said}"
     );
 }
 
@@ -2498,6 +2517,10 @@ async fn a_relay_stopped_twice_as_it_leaves_idle_leaves_at_once() {
     assert!(
         said.contains("stopped as it left"),
         "it wasn't stopped as it left idle: {said}"
+    );
+    assert!(
+        said.contains("stopped again, so it cuts the ") && !said.contains("hadn't finished within"),
+        "it didn't say the second stop cut what it was sending direct: {said}"
     );
 }
 

@@ -79,15 +79,17 @@
 //! body over 64 MiB is a 413, one pi leaves unfinished a 400 and one
 //! still coming after a minute a 408, both counted as pi's cancel.
 //!
-//! Stopped by systemd, with SIGTERM, it leaves the same way at once: it
-//! closes each connection as its answer ends, and sends every request
-//! taken meanwhile direct with a 421 until the last has, since nothing
-//! else can answer them before it's gone. systemd's stop timeout cuts an
-//! answer longer than that.
+//! Stopped by systemd, with SIGTERM, it leaves at once rather than once
+//! idle, and takes connections until it's gone: it closes each it holds as
+//! its answer ends, and sends every request on one taken meanwhile direct
+//! with a 421, since nothing else can answer them before it's gone. It
+//! cuts the answers still going after `--drain-within`, gives those it
+//! sent direct a few seconds more, and leaves, all inside the unit's stop
+//! timeout. A second SIGTERM cuts everything at once.
 //!
 //! A switch leaves a running relay be, since a restart would send every
 //! request direct until each answer still streaming ended, and cut those
-//! that outlast the stop timeout. So it leaves on its own once nothing has been
+//! that outlast the drain. So it leaves on its own once nothing has been
 //! forwarded for a while, with no answer in flight: it stops taking
 //! connections, gives one it took just then a moment to say its request,
 //! then closes each as its answer ends. systemd keeps the socket, so
@@ -415,6 +417,17 @@ impl Default for Clocks {
     }
 }
 
+/// What a relay that has left says last: the counts once more, once its
+/// runtime has dropped the answers it cut, which count only then.
+pub struct LastWord(Arc<Counts>);
+
+impl LastWord {
+    /// Says the counts, when the answers dropped since moved them.
+    pub fn say(&self) {
+        self.0.say();
+    }
+}
+
 /// What a relay has done, as counts alone.
 #[derive(Default)]
 struct Counts {
@@ -427,6 +440,12 @@ struct Counts {
     /// didn't are with the failed ones reset or left out.
     again: AtomicU64,
     cancelled: AtomicU64,
+    /// Answers the relay cut as it was stopped, rather than pi, so a
+    /// restart's cuts aren't read as Escape pressed.
+    cut: AtomicU64,
+    /// Whether an answer dropped unfinished from now on was cut by the
+    /// relay's stop rather than given up by pi.
+    cutting: AtomicBool,
     opened: AtomicU64,
     open: AtomicUsize,
     /// Answers broken off midway, so streams that broke show in the
@@ -434,7 +453,7 @@ struct Counts {
     broken: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 8]>,
+    said_as: Held<[u64; 9]>,
 }
 
 impl Counts {
@@ -456,6 +475,7 @@ impl Counts {
             &self.reset,
             &self.again,
             &self.cancelled,
+            &self.cut,
             &self.opened,
             &self.broken,
         ]
@@ -474,14 +494,15 @@ impl Counts {
             reset,
             again,
             cancelled,
+            cut,
             opened,
             broken,
         ] = now;
         Some(format!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
              reset or left out; {again} reset or left out and sent again; pi cancelled \
-             {cancelled}; {opened} \
-             connections opened, {} taking requests; {broken} broken off midway",
+             {cancelled}; {cut} cut as it was stopped; {opened} connections opened, {} taking \
+             requests; {broken} broken off midway",
             self.open.load(Ordering::Relaxed),
         ))
     }
@@ -539,6 +560,7 @@ struct Tally {
     number: u64,
     asked: AtomicU64,
     cancelled: AtomicU64,
+    cut: AtomicU64,
 }
 
 impl Tally {
@@ -549,6 +571,7 @@ impl Tally {
             number,
             asked: AtomicU64::new(0),
             cancelled: AtomicU64::new(0),
+            cut: AtomicU64::new(0),
         }
     }
 
@@ -569,10 +592,12 @@ impl Drop for Tally {
         // to say.
         if asked > 0 {
             eprintln!(
-                "model-relay: connection {}.{} carried {asked} asked, {} of them cancelled",
+                "model-relay: connection {}.{} carried {asked} asked, {} of them cancelled \
+                 and {} cut",
                 self.at,
                 self.number,
-                self.cancelled.load(Ordering::Relaxed)
+                self.cancelled.load(Ordering::Relaxed),
+                self.cut.load(Ordering::Relaxed)
             );
         }
     }
@@ -580,7 +605,8 @@ impl Drop for Tally {
 
 /// One request on a connection, from when it's sent down it until its
 /// answer ends or fails. Dropped before either, pi gave up on it, and it's
-/// counted as cancelled.
+/// counted as cancelled, or the relay's stop cut it, and it's counted as
+/// cut.
 struct OnTheWay {
     tally: Arc<Tally>,
     counts: Arc<Counts>,
@@ -613,7 +639,13 @@ impl OnTheWay {
 
 impl Drop for OnTheWay {
     fn drop(&mut self) {
-        if !self.ended.load(Ordering::Relaxed) {
+        if self.ended.load(Ordering::Relaxed) {
+            return;
+        }
+        if self.counts.cutting.load(Ordering::SeqCst) {
+            self.tally.cut.fetch_add(1, Ordering::Relaxed);
+            self.counts.cut.fetch_add(1, Ordering::Relaxed);
+        } else {
             self.tally.cancelled.fetch_add(1, Ordering::Relaxed);
             self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
         }
@@ -1099,8 +1131,14 @@ impl Relay {
     /// clocks' `drains_within` at most and then cuts them, and a second
     /// stop cuts them at once. Those it sends direct get
     /// `SAYS_GO_DIRECT_WITHIN` once its answers have ended, as they do when
-    /// it's stopped as it leaves idle.
-    pub async fn serve_until(self, listener: UnixListener, mut stops: mpsc::Receiver<()>) {
+    /// it's stopped as it leaves idle. What it hands back says the counts
+    /// once more, for the answers it cut, which end only as its runtime
+    /// drops them.
+    pub async fn serve_until(
+        self,
+        listener: UnixListener,
+        mut stops: mpsc::Receiver<()>,
+    ) -> LastWord {
         eprintln!(
             "model-relay: forwarding to {} over at most {} connections",
             self.origin.authority,
@@ -1129,11 +1167,12 @@ impl Relay {
         };
         // Said as it leaves too, or the last stretch's would go unsaid.
         relay.counts.say();
+        let last_word = LastWord(Arc::clone(&relay.counts));
         if was_stopped {
             relay
                 .leave_as_stopped(&listener, &leave, &leaving, &mut stops)
                 .await;
-            return;
+            return last_word;
         }
         let idle_for = relay.clocks.idle_exit.unwrap_or_default().as_secs();
         eprintln!("model-relay: idle for {idle_for} s, so it leaves; its socket starts it again");
@@ -1172,6 +1211,7 @@ impl Relay {
         }
         // Once more for those refused while it left.
         relay.counts.say();
+        last_word
     }
 
     /// Leaves as `serve_until` says once stopped, its counts said.
@@ -1199,6 +1239,7 @@ impl Relay {
             () = tokio::time::sleep(drains_within) => false,
             () = stopped(stops) => {
                 eprintln!("model-relay: stopped again, so it leaves now");
+                self.counts.cutting.store(true, Ordering::SeqCst);
                 self.counts.say();
                 return;
             }
@@ -1214,6 +1255,7 @@ impl Relay {
                 self.kept.now.load(Ordering::SeqCst),
                 drains_within.as_secs()
             );
+            self.counts.cutting.store(true, Ordering::SeqCst);
             // Nobody is left to tell when every connection has gone already.
             let _ = leave.send(Leave::Now);
         }
@@ -1227,16 +1269,23 @@ impl Relay {
     /// at a second stop.
     async fn lets_the_late_finish(&self, stops: &mut mpsc::Receiver<()>) {
         let late = tokio::time::timeout(SAYS_GO_DIRECT_WITHIN, self.late.none_held());
-        let finished = tokio::select! {
-            finished = late => finished.is_ok(),
-            () = stopped(stops) => false,
-        };
-        if !finished {
-            eprintln!(
-                "model-relay: {} connections hadn't finished within {} s, so they're cut",
-                self.late.now.load(Ordering::SeqCst),
-                SAYS_GO_DIRECT_WITHIN.as_secs()
-            );
+        tokio::select! {
+            finished = late => if finished.is_err() {
+                self.counts.cutting.store(true, Ordering::SeqCst);
+                eprintln!(
+                    "model-relay: {} connections hadn't finished within {} s, so they're cut",
+                    self.late.now.load(Ordering::SeqCst),
+                    SAYS_GO_DIRECT_WITHIN.as_secs()
+                );
+            },
+            () = stopped(stops) => {
+                self.counts.cutting.store(true, Ordering::SeqCst);
+                eprintln!(
+                    "model-relay: stopped again, so it cuts the {} connections it was \
+                     sending direct",
+                    self.late.now.load(Ordering::SeqCst)
+                );
+            }
         }
     }
 
@@ -2444,6 +2493,14 @@ mod tests {
         assert!(
             counts.line().is_some(),
             "an answer broken off alone didn't move the counts"
+        );
+        counts.cut.store(1, Ordering::Relaxed);
+        let line = counts
+            .line()
+            .expect("an answer cut alone didn't move the counts");
+        assert!(
+            line.contains("; pi cancelled 0; 1 cut as it was stopped;"),
+            "the counts didn't say what the stop cut apart from pi's cancels: {line}"
         );
     }
 
