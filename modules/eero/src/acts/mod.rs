@@ -63,8 +63,9 @@ impl Came {
 }
 
 /// A device's hardware address, written as eero writes it: six pairs of
-/// lowercase hex joined by colons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// lowercase hex joined by colons, in the journal too, so a search for
+/// the MAC the CLI and the change log show finds its lines there.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Mac([u8; 6]);
 
 impl Mac {
@@ -87,6 +88,12 @@ impl fmt::Display for Mac {
     fn fmt(&self, out: &mut fmt::Formatter) -> fmt::Result {
         let pairs: Vec<String> = self.0.iter().map(|byte| format!("{byte:02x}")).collect();
         out.write_str(&pairs.join(":"))
+    }
+}
+
+impl fmt::Debug for Mac {
+    fn fmt(&self, out: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(self, out)
     }
 }
 

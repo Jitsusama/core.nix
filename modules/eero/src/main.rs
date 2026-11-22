@@ -404,15 +404,20 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
             .because(why)
             .try_this("eero sign-in <email or phone>"),
         asking::Undone::Unknown(why) => {
-            // The device's record is rewritten only once the daemon's next
-            // read ends, which it starts as it answers, so read now it
-            // still shows the reservation as it was before the act.
+            // The reservations are rewritten only once the daemon's next
+            // read ends, which it starts as it answers, so read now they
+            // still show the reservation as it was before the act. The
+            // internet's view lists every reservation, a device that
+            // isn't on now included, which the device's own view refuses.
             Failure::new(
                 Exit::TryAgain,
-                "whether eero took it isn't known until the daemon's next read, a few seconds on",
+                format!(
+                    "whether eero took it for {mac} isn't known until the daemon's next read, \
+                     a few seconds on"
+                ),
             )
             .because(why)
-            .try_this(format!("eero devices {mac}"))
+            .try_this("eero internet")
         }
         asking::Undone::Unlogged(why) => Failure::new(
             Exit::Unavailable,
@@ -663,8 +668,8 @@ mod tests {
         );
         assert_eq!(
             undone_said(Undone::Unknown(why()), mac()).then.as_deref(),
-            Some("eero devices 02:00:00:00:00:38"),
-            "an outcome no one knows doesn't say to read the device again"
+            Some("eero internet"),
+            "an outcome no one knows doesn't say to read the reservations again"
         );
     }
 

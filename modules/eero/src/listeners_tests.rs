@@ -342,9 +342,11 @@ fn only_the_daemons_own_account_is_answered() {
 fn a_connection_from_another_account_is_told_so_and_shut_before_anything_is_read() {
     let (_listeners, woken, path) = listening_for("not-ours", ours().wrapping_add(1));
     let (mut stream, mut reader) = connected(&path);
-    ask(
+    // The daemon may shut the socket before the ask is written, which
+    // then fails; what's told back proves the refusal either way.
+    let _ = write_line(
         &mut stream,
-        &json!({"id": "act-1", "ask": "act", "act": "reboot"}),
+        &json!({"id": "act-1", "ask": "act", "act": "reboot"}).to_string(),
     );
 
     let mut first = String::new();

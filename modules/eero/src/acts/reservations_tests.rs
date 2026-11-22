@@ -489,7 +489,7 @@ fn a_reservations_outcome_is_what_eero_keeps_after_it() {
     );
     let unknown = |came: Result<Done, Failure>| {
         matches!(&came, Err(Failure::Unknown(why))
-            if why.contains("read eero devices 02:00:00:00:00:01 to see"))
+            if why.contains("read eero internet's reservations to see"))
     };
     for (sent, after, what) in [
         (

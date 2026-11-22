@@ -402,10 +402,14 @@ impl Daemon {
             if matches!(failure, Failure::SignedOut(_)) {
                 self.cloud = None;
             }
+            // A reason can hold a name a device on the network gave
+            // itself, so it's kept to one line, and no line break in it
+            // writes a journal entry of its own.
+            let why = terminal_kit::layout::one_line(&failure.to_string()).into_owned();
             if matches!(failure, Failure::Unknown(_)) {
-                eprintln!("eero: whether {act:?} was done isn't known: {failure}");
+                eprintln!("eero: whether {act:?} was done isn't known: {why}");
             } else {
-                eprintln!("eero: {act:?} wasn't done: {failure}");
+                eprintln!("eero: {act:?} wasn't done: {why}");
             }
         }
         came

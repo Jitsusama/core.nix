@@ -157,12 +157,14 @@ session, so the session is opened by the daemon and by `eero sign-in`,
 
 The socket is the door agents are meant to use, not a wall: a process
 running as the account, unfenced, can open the session itself as those
-three commands do. Only the fence keeps an agent from it, by hiding
-`session.cred` and systemd's credentials as well as the socket. The
-fence is the agent harness's, not this tree's: it binds an empty file
-over `session.cred`, keeps systemd's credential service and the socket
-out, and its own tests prove each, so a change to what it hides is made
-and checked there.
+three commands do. Only the fence keeps an agent from it, by keeping
+systemd's credential service out as well as the socket: `session.cred`
+opens only through that service, so its ciphertext alone is no use.
+The fence also binds an empty file over `session.cred`, but the daemon
+renames each refreshed session into place, which may leave a fenced
+shell the new file, so the line rests on the service. The fence is the
+agent harness's, not this tree's, and its own tests prove what it
+hides, so a change to that is made and checked there.
 
 A reservation changes which device DHCP gives which address, so each
 refuses rather than guesses ([`src/acts/reservations.rs`][reservations]). A
@@ -180,17 +182,21 @@ it rather than by eero's answer, whose shape for a change was taken
 from an open-source client rather than seen. Only eero's own refusal of
 a change it then doesn't keep is said refused: a send that timed out may
 still land, and eero's list may lag its answer, so a change that
-doesn't show yet is unknown. The CLI then exits 75 and says to read the
-device again, never that it was done or refused; an unreservation's
-says the address it kept, which keeping again undoes it. A reservation
+doesn't show yet is unknown. The CLI then exits 75 and says to read
+the reservations again with `eero internet`, which lists them all, a
+device off now included, never that it was done or refused. Where the
+daemon says it's unknown, an unreservation's answer says the address it
+kept, which keeping again undoes it; where the CLI stops waiting
+first, the act's last line in the change log holds it once the act
+ends. A reservation
 that already stood changed nothing, so it's said with no undo. An act
 whose asker has gone before the daemon reaches it is let go undone.
 The CLI's six minutes of patience leave room for a reservation behind
 the daemon's longest read; a slow cloud through every read falling due
 at once can take longer, and the act is then said unknown and let go,
 logged `gone`, unless the daemon had begun it. The daemon reads its
-reservations again as it answers, so reading the device once that read
-ends, a few seconds on, settles an unknown outcome.
+reservations again as it answers, so reading them once that read ends,
+a few seconds on, settles an unknown outcome.
 
 Each act the daemon is asked is logged as asked before it's done and
 with its result after, as JSON lines in

@@ -274,7 +274,7 @@ pub fn reserve(
     let asked = json!({"mac": mac.to_string(), "ip": address.to_string(),
         "description": mac.to_string()});
     let sent = eero.post(&reservations, Some(&asked));
-    let unknown = format!("read eero devices {mac} to see");
+    let unknown = "read eero internet's reservations to see".to_owned();
     settled(eero, &reservations, sent, &unknown, |kept| {
         to_reserve(kept, mac, address) == Ok(Change::Nothing)
     })
