@@ -48,6 +48,20 @@ pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
         .unwrap_or_default()
 }
 
+/// `visits` with each folder's links resolved, since zoxide keeps the path
+/// the shell named, links and all, and repos names a checkout by its real
+/// one: a folder that can't be resolved, as one gone, is kept as written.
+#[must_use]
+pub fn resolved(visits: Vec<(String, u64)>) -> Vec<(String, u64)> {
+    visits
+        .into_iter()
+        .map(|(folder, at)| match fs::canonicalize(&folder) {
+            Ok(real) => (real.to_string_lossy().into_owned(), at),
+            Err(_) => (folder, at),
+        })
+        .collect()
+}
+
 /// A database's bytes, read from the front.
 struct Bytes<'a> {
     bytes: &'a [u8],
@@ -168,6 +182,26 @@ mod tests {
         assert!(
             visits_in(Path::new("/nowhere/db.zo")).is_empty(),
             "a missing database said a folder"
+        );
+    }
+
+    #[test]
+    fn a_folder_reached_through_a_link_is_named_by_its_real_path() {
+        let folder = std::env::temp_dir().join(format!("resolved-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(folder.join("real/beta")).unwrap();
+        std::os::unix::fs::symlink(folder.join("real"), folder.join("linked")).unwrap();
+        let through = folder.join("linked/beta").to_string_lossy().into_owned();
+        let real = fs::canonicalize(folder.join("real/beta")).unwrap();
+        let read = resolved(vec![(through, 2), ("/nowhere/gone".to_owned(), 1)]);
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            read,
+            [
+                (real.to_string_lossy().into_owned(), 2),
+                ("/nowhere/gone".to_owned(), 1),
+            ],
+            "a folder through a link wasn't named by its real path, or one gone was lost"
         );
     }
 

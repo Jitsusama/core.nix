@@ -532,6 +532,29 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
     );
 }
 
+#[test]
+fn a_terminal_niri_refused_tells_zoxide_of_no_visit() {
+    let running = Running::new("code-terminal-refused");
+    let niri = running.path("niri");
+    let refuses = format!(
+        "#!{}\necho \"$@\" >> \"$0.asked\"\nexit 1\n",
+        super::shell().display()
+    );
+    std::fs::write(&niri, refuses).unwrap();
+    let mut client = running.client();
+    client.ask(&json!({"id": 1, "ask": "code:terminal", "path": "/src/alpha"}));
+    until("niri wasn't asked to start a terminal", || {
+        std::fs::read_to_string(running.path("niri.asked")).is_ok_and(|line| line.ends_with('\n'))
+    });
+    // Nothing marks that a refused spawn ended in nothing, so the daemon is
+    // given a second, many times the stand-in's run, to tell zoxide wrongly.
+    std::thread::sleep(std::time::Duration::from_secs(1));
+    assert!(
+        !running.path("zoxide.asked").exists(),
+        "zoxide was told of a visit to a terminal niri refused"
+    );
+}
+
 /// zoxide's database as it lays it out at version 3, each folder with
 /// when it was last visited, in seconds.
 fn zoxide_database(folders: &[(&Path, u64)]) -> Vec<u8> {
@@ -550,12 +573,17 @@ fn zoxide_database(folders: &[(&Path, u64)]) -> Vec<u8> {
 #[test]
 fn the_repository_joel_was_in_last_comes_first() {
     let running = Running::new("code-visited");
-    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    // beta first, so git's last write and A to Z both put alpha first and
+    // only the visit can lift beta.
     cloned(&running, "beta", "git@github.com:someone/beta.git");
-    let within = real(&running.path("src/beta")).join("docs");
-    std::fs::create_dir_all(running.path("near/zoxide")).unwrap();
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    // The shell went in through a link, as zoxide then keeps it.
+    std::os::unix::fs::symlink(running.path("src"), running.path("linked")).unwrap();
+    let within = running.path("linked/beta/docs");
+    std::fs::create_dir_all(&within).unwrap();
+    std::fs::create_dir_all(running.path("visits")).unwrap();
     std::fs::write(
-        running.path("near/zoxide/db.zo"),
+        running.path("visits/db.zo"),
         zoxide_database(&[(&within, 1_700_000_000)]),
     )
     .unwrap();
@@ -580,6 +608,15 @@ fn edit_here_has_niri_start_neovim_in_the_checkout() {
     assert_eq!(
         said["asked"], "editor",
         "Edit Here wasn't answered as an editor: {said}"
+    );
+    let told = || std::fs::read_to_string(running.path("zoxide.asked"));
+    until("zoxide wasn't told of the editor's folder", || {
+        told().is_ok_and(|line| line.ends_with('\n'))
+    });
+    assert_eq!(
+        told().unwrap(),
+        "add -- /src/alpha\n",
+        "zoxide wasn't told Joel went into the checkout to edit it"
     );
     let asked = || std::fs::read_to_string(running.path("niri.argv"));
     until("niri wasn't asked to start an editor", || {

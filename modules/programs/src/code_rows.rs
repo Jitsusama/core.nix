@@ -3,8 +3,8 @@
 //! checkouts of it lie on the disk, as `repos` reads them
 //! (modules/repos). The one Joel was in last comes first, by zoxide's
 //! last visit to a folder of its checkouts or trees (visited.rs), since a
-//! list of things returned to moves by his own acts alone and git's
-//! writes are mostly agents' (RSCH-20261030-GB56HX); those he hasn't
+//! list of things returned to moves by his own acts alone and agents write
+//! in those repositories too (RSCH-20261030-GB56HX); those he hasn't
 //! visited follow A to Z. Each is said beside it
 //! by how many changes are open on its remote, how far the checkout
 //! written to last is behind and ahead of the branch it follows (as repos'
@@ -223,7 +223,7 @@ fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'
             repository.checkouts.iter().flat_map(move |checkout| {
                 std::iter::once(checkout.path.as_str())
                     .chain(checkout.trees.iter().map(|tree| tree.path.as_str()))
-                    .map(move |path| (path, repository.key.as_str()))
+                    .map(move |path| (path.trim_end_matches('/'), repository.key.as_str()))
             })
         })
         .collect();
@@ -241,10 +241,9 @@ fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'
     last
 }
 
-/// Whether `folder` is `path` or lies below it: `/s/beta-old` isn't in
-/// `/s/beta`, though its name begins the same.
+/// Whether `folder` is `path`, given with no trailing slash, or lies below
+/// it: `/s/beta-old` isn't in `/s/beta`, though its name begins the same.
 fn holds(path: &str, folder: &str) -> bool {
-    let path = path.trim_end_matches('/');
     folder
         .strip_prefix(path)
         .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))

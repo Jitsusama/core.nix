@@ -52,7 +52,9 @@ in
       # kitty's tabs in Tabs and close it (src/tabs.rs). Code's rows are
       # read under the folders repos looks under (src/code.rs, modules/repos),
       # ordered by when Joel was last in each, by zoxide's database, which
-      # New Terminal Here and Edit Here tell of the folder they open.
+      # New Terminal Here and Edit Here tell of the folder they open. zoxide
+      # is told its folder, as the service has no XDG_DATA_HOME of the
+      # shell's, so what it writes is what Code reads.
       Environment = [
         "REPOS_ROOTS=${lib.concatStringsSep ":" (config.jitsusama.repos.roots or [ ])}"
         "PROGRAMS_GIT=${lib.getExe pkgs.git}"
@@ -63,6 +65,7 @@ in
       ++ lib.optionals config.programs.zoxide.enable [
         "PROGRAMS_ZOXIDE=${lib.getExe config.programs.zoxide.package}"
         "PROGRAMS_VISITED=${config.xdg.dataHome}/zoxide/db.zo"
+        "_ZO_DATA_DIR=${config.xdg.dataHome}/zoxide"
       ];
       Restart = "on-failure";
       RestartSec = 5;

@@ -278,6 +278,7 @@ impl Running {
             .env("PROGRAMS_NIRI", folder.join("niri"))
             .env("PROGRAMS_KITTEN", folder.join("kitten"))
             .env("PROGRAMS_ZOXIDE", folder.join("zoxide"))
+            .env("PROGRAMS_VISITED", folder.join("visits/db.zo"))
             .stderr(Stdio::null());
         if let Some(before) = git {
             let path = folder.join("git");

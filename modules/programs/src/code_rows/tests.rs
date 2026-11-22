@@ -681,24 +681,32 @@ fn named(name: &str, path: &str, tree: &str, written: u64) -> Repository {
 #[test]
 fn joels_own_last_visit_orders_them_and_the_rest_go_a_to_z_whatever_git_wrote() {
     let record = record(vec![
-        named("delta", "/s/delta", "/t/delta", 900),
-        named("Alpha", "/s/alpha", "/t/alpha", 800),
+        named("Delta", "/s/delta", "/t/delta", 900),
+        named("charlie", "/s/charlie", "/t/charlie", 800),
         named("beta", "/s/beta", "/t/beta", 100),
         named("gamma", "/s/gamma", "/t/gamma", 200),
+        named("alpha", "/s/alpha", "/t/alpha", 50),
     ]);
+    // alpha's older visit comes first and gamma's last, so only the newest
+    // of each repository's visits, wherever it's listed, puts alpha between
+    // gamma and beta.
     let visited = [
+        ("/s/alpha".to_owned(), 10_000),
         ("/s/beta-old".to_owned(), 900_000),
         ("/t/gamma".to_owned(), 300_000),
         ("/s/beta/src".to_owned(), 200_000),
+        ("/t/alpha".to_owned(), 250_000),
         ("/s/delta-two".to_owned(), 950_000),
+        ("/s/gamma".to_owned(), 100_000),
     ];
     let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
     let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
     assert_eq!(
         names,
-        ["gamma", "beta", "Alpha", "delta"],
-        "a visit in a tree or below a checkout is his act on it, a folder merely \
-         named alike is not, and git's writes order nothing"
+        ["gamma", "alpha", "beta", "charlie", "Delta"],
+        "a visit in a tree or below a checkout is his act on it, his newest counts, a \
+         folder merely named alike is not, the rest go A to Z with case alike, and git's \
+         writes order nothing"
     );
 }
 
@@ -707,11 +715,11 @@ fn a_visit_in_a_checkout_nested_in_another_counts_for_the_nested_one() {
     let record = record(vec![
         named("outer", "/w/git", "/w/trees/one", 1),
         named("inner", "/w/git/vendor/inner", "/t/inner", 2),
-        named("aside", "/s/aside", "/t/aside", 3),
+        named("aside", "/s/aside/", "/t/aside", 3),
     ]);
     let visited = [
         ("/w/git/vendor/inner/src".to_owned(), 500),
-        ("/s/aside/".to_owned(), 400),
+        ("/s/aside".to_owned(), 400),
         ("/w/git/".to_owned(), 100),
     ];
     let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
@@ -719,7 +727,8 @@ fn a_visit_in_a_checkout_nested_in_another_counts_for_the_nested_one() {
     assert_eq!(
         names,
         ["inner", "aside", "outer"],
-        "the visit below both is the nested one's alone, and a trailing slash still counts"
+        "the visit below both is the nested one's alone, and a trailing slash on either \
+         side still counts"
     );
 }
 

@@ -120,8 +120,9 @@ pub struct Code {
 impl Code {
     /// Code's settings from the environment: the folders `REPOS_ROOTS`
     /// names, colon-separated as PATH is, else ~/src, as repos itself reads
-    /// them, and zoxide's database where `PROGRAMS_VISITED` names it, else
-    /// where zoxide keeps it by default.
+    /// them, and zoxide's database where `PROGRAMS_VISITED` names it. With
+    /// none named, as on an account without zoxide, no visit orders Code,
+    /// so a database zoxide left behind can't hold the order still.
     pub fn new(home: &str, vocabulary: &serde_json::Value) -> Code {
         let home = (!home.is_empty()).then(|| PathBuf::from(home));
         let mut roots: Vec<PathBuf> = std::env::var("REPOS_ROOTS")
@@ -134,13 +135,8 @@ impl Code {
             roots.extend(home.as_ref().map(|home| home.join("src")));
         }
         let visited = std::env::var_os("PROGRAMS_VISITED")
-            .map(PathBuf::from)
-            .or_else(|| {
-                let data = std::env::var_os("XDG_DATA_HOME")
-                    .map(PathBuf::from)
-                    .or_else(|| home.as_ref().map(|home| home.join(".local/share")))?;
-                Some(data.join("zoxide/db.zo"))
-            });
+            .filter(|path| !path.is_empty())
+            .map(PathBuf::from);
         Code {
             roots,
             home,
@@ -180,14 +176,15 @@ impl Code {
     }
 
     /// Code's rows from `record`, with the uncommitted files last counted
-    /// and zoxide's visits as they stand, and the rows inside them.
+    /// and zoxide's visits as they stand, and the rows inside them. It reads
+    /// the disk, so it runs before the daemon's lock is taken.
     fn made(&self, record: &Record) -> Vec<Value> {
         let uncommitted = lock(&self.uncommitted).clone();
         let home = self.home.as_deref();
         let visits = self
             .visited
             .as_deref()
-            .map(visited::visits_in)
+            .map(|database| visited::resolved(visited::visits_in(database)))
             .unwrap_or_default();
         let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, &visits);
         rows.extend(code_rows::inside(record, &self.words));
@@ -291,9 +288,13 @@ fn again(shared: &Arc<Shared>) {
             while code.wanted.swap(false, Ordering::SeqCst) {
                 // Served before counting, so nothing read waits on git.
                 let record = code.record();
-                take(&shared, &mut lock(&shared.daemon), code.made(&record));
+                // Made first, so zoxide's database is read with the
+                // daemon's lock let go: an argument would be made after it.
+                let rows = code.made(&record);
+                take(&shared, &mut lock(&shared.daemon), rows);
                 if code.count(&record) {
-                    take(&shared, &mut lock(&shared.daemon), code.made(&record));
+                    let rows = code.made(&record);
+                    take(&shared, &mut lock(&shared.daemon), rows);
                 }
             }
             code.reading.store(false, Ordering::SeqCst);
@@ -424,10 +425,12 @@ pub fn edit(id: &Value, folder: &str) -> Value {
 }
 
 /// Has niri start kitty in `folder`, running `program` there if any, and
-/// answers that `what` was asked for. Once kitty starts, zoxide hears of
-/// the folder where `PROGRAMS_ZOXIDE` names it, since Joel asked for it and
-/// a shell started in a folder tells zoxide nothing until its first `cd`,
-/// so Code's order and kitty's Recent move by this act of his too.
+/// answers that `what` was asked for. Once niri has taken the spawn,
+/// zoxide hears of the folder where `PROGRAMS_ZOXIDE` names it, since Joel
+/// asked for it and a shell started in a folder tells zoxide nothing until
+/// its first `cd`, so Code's order and kitty's Recent move by this act of
+/// his too. niri answers before kitty is up, so a kitty that then fails
+/// still counts as his visit: he asked to be there.
 fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [

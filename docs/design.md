@@ -1517,9 +1517,10 @@ works the same way everywhere.
   | A search           | the same letters land on the same row         | everywhere typed                  |
 
   A to Z is only ever the last tie, or the order of many peers alike, as
-  a large folder's files. Open and last act are Joel's own: an agent's
-  window opens no program of his, and Code goes by the folder he was in
-  last, as zoxide heard it, never by git's last write.
+  a large folder's files. Open and last act are Joel's own: in the rows
+  the programs daemon serves, an agent's window opens no program of his,
+  and Code goes by the folder he was in last, as zoxide heard it, never
+  by git's last write.
 - **Under what it belongs to, a step in.** A session orchestrated by
   another sits right under it, its mark and its name a mark's column
   in, so its mark stands where the name above it starts, and two steps
