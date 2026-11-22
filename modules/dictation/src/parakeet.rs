@@ -57,12 +57,31 @@ const FRAME: usize = 8 * RATE / 100;
 /// halvings of the spectrogram's 1501 frames, each rounding up.
 const STEPPED: usize = 188;
 
-/// A word heard, and the sample of the sound it starts at, by the frame
-/// its first piece was written on.
+/// A word heard, the sample of the sound it starts at, by the frame its
+/// first piece was written on, and how loud it was there, in dB of full
+/// scale, so an echo can be told from its source by which is louder.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Word {
     pub text: String,
     pub at: usize,
+    pub level: f32,
+}
+
+/// How long a word's loudness is measured over from its start: a quarter
+/// second, as long as a short word, so a word's level is its own.
+const LOUDNESS: usize = RATE / 4;
+
+/// How loud `audio` is over `LOUDNESS` from sample `at`, in dB of full
+/// scale; silence, or nothing past the end, is near -120 dB rather than
+/// minus infinity, so levels stay comparable.
+fn level(audio: &[f32], at: usize) -> f32 {
+    let span = audio
+        .get(at..(at + LOUDNESS).min(audio.len()))
+        .unwrap_or_default();
+    let energy: f32 = span.iter().map(|s| s * s).sum();
+    #[expect(clippy::cast_precision_loss, reason = "a quarter second's samples")]
+    let power = energy / span.len().max(1) as f32;
+    10.0 * (power + 1e-12).log10()
 }
 
 /// Parakeet, loaded and compiled.
@@ -212,7 +231,7 @@ impl Parakeet {
     /// When a run of any of the models fails.
     pub fn transcribe_words(&mut self, audio: &[f32]) -> Result<(Vec<Word>, Timings)> {
         let (tokens, timings) = self.decode(audio)?;
-        Ok((self.vocab.words(&tokens), timings))
+        Ok((self.vocab.words(&tokens, |at| level(audio, at)), timings))
     }
 
     /// The tokens written over `audio`, each with the sample it was
@@ -578,6 +597,30 @@ mod tests {
             "the tokens, or the frames they were written on, were wrong"
         );
         assert_eq!(model.predicted, [2, 3, 4]);
+    }
+
+    #[test]
+    fn a_words_level_is_the_sounds_over_the_quarter_second_from_it() {
+        // A tenth of full scale is -20 dB; the quiet stretch before the
+        // word, and the silence a quarter second after it starts, aren't it.
+        let mut audio = vec![0.001; RATE];
+        audio[RATE / 4..RATE / 2].fill(0.1);
+        audio[RATE / 2..].fill(0.0);
+        let near = |at: usize, db: f32| (level(&audio, at) - db).abs() < 0.01;
+        assert!(
+            near(RATE / 4, -20.0),
+            "a word at -20 dB measured {}",
+            level(&audio, RATE / 4)
+        );
+        assert!(
+            near(0, -60.0),
+            "a quiet stretch measured {}",
+            level(&audio, 0)
+        );
+        assert!(
+            level(&audio, RATE / 2) < -100.0 && level(&audio, 2 * RATE) < -100.0,
+            "silence, or past the sound's end, wasn't as quiet as can be"
+        );
     }
 
     #[test]

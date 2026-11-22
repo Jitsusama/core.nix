@@ -117,6 +117,7 @@ fn word(text: &str, at: usize) -> Word {
     Word {
         text: text.to_owned(),
         at,
+        level: 0.0,
     }
 }
 

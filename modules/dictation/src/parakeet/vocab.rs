@@ -58,8 +58,13 @@ impl Vocab {
     }
 
     /// The words `tokens` spell, each at the sample its first piece was
-    /// written at; a piece that starts a word starts the next.
-    pub(super) fn words(&self, tokens: &[(usize, usize)]) -> Vec<Word> {
+    /// written at and as loud as `level` says the sound is there; a piece
+    /// that starts a word starts the next.
+    pub(super) fn words(
+        &self,
+        tokens: &[(usize, usize)],
+        level: impl Fn(usize) -> f32,
+    ) -> Vec<Word> {
         let mut words: Vec<Word> = Vec::new();
         for &(token, at) in tokens {
             let Some(piece) = self.pieces.get(token) else {
@@ -73,6 +78,7 @@ impl Vocab {
                 _ => words.push(Word {
                     text: text.to_owned(),
                     at,
+                    level: level(at),
                 }),
             }
         }
@@ -131,20 +137,22 @@ pub(super) mod tests {
     fn words_start_where_their_first_piece_was_written_and_spell_the_text() {
         let vocab = vocab();
         let tokens = [(2, 0), (3, 2 * FRAME), (4, 3 * FRAME)];
-        let words = vocab.words(&tokens);
+        let words = vocab.words(&tokens, |at| if at == 0 { -20.0 } else { -30.0 });
         assert_eq!(
             words,
             [
                 Word {
                     text: "hello".to_owned(),
-                    at: 0
+                    at: 0,
+                    level: -20.0
                 },
                 Word {
                     text: "world".to_owned(),
-                    at: 2 * FRAME
+                    at: 2 * FRAME,
+                    level: -30.0
                 }
             ],
-            "a word didn't start at its first piece"
+            "a word didn't start at its first piece, or wasn't as loud as it was there"
         );
         let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
         assert_eq!(
@@ -156,7 +164,7 @@ pub(super) mod tests {
 
     #[test]
     fn a_piece_that_doesnt_start_a_word_opens_one_when_nothing_came_before() {
-        let words = vocab().words(&[(4, FRAME), (7, 2 * FRAME)]);
+        let words = vocab().words(&[(4, FRAME), (7, 2 * FRAME)], |_| 0.0);
         let spelled: Vec<(&str, usize)> = words.iter().map(|w| (w.text.as_str(), w.at)).collect();
         assert_eq!(
             spelled,
@@ -173,7 +181,7 @@ pub(super) mod tests {
             let pieces = format!(r#"{{"0": "{mark}", "1": "ld", "2": "{mark}hello"}}"#);
             let vocab = Vocab::parse(&pieces).unwrap();
             let tokens = [(0, 0), (1, FRAME), (2, 2 * FRAME)];
-            let words = vocab.words(&tokens);
+            let words = vocab.words(&tokens, |_| 0.0);
             let spelled: Vec<(&str, usize)> =
                 words.iter().map(|w| (w.text.as_str(), w.at)).collect();
             assert_eq!(
@@ -215,7 +223,7 @@ pub(super) mod tests {
             .unwrap_or_else(|why| panic!("PARAKEET_VOCAB's {} isn't one: {why}", path.display()));
         let tokens: Vec<usize> = (0..vocab.blank()).filter(|&t| vocab.allowed(t)).collect();
         let timed: Vec<(usize, usize)> = tokens.iter().map(|&t| (t, t * FRAME)).collect();
-        let words = vocab.words(&timed);
+        let words = vocab.words(&timed, |_| 0.0);
         let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
         let text = vocab.text(&tokens);
         let said: Vec<&str> = text.split_whitespace().collect();

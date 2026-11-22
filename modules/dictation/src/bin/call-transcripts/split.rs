@@ -308,6 +308,7 @@ mod tests {
         Word {
             text: text.to_owned(),
             at: at_s * SECOND,
+            level: 0.0,
         }
     }
 

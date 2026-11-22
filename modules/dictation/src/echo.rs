@@ -324,8 +324,17 @@ mod tests {
             .map(|(i, word)| Word {
                 text: word.to_owned(),
                 at: (from + 300 * i) * RATE / 1000,
+                level: 0.0,
             })
             .collect()
+    }
+
+    /// `words` as heard at `level` dB.
+    fn at_level(mut words: Vec<Word>, level: f32) -> Vec<Word> {
+        for word in &mut words {
+            word.level = level;
+        }
+        words
     }
 
     /// A line of `side`'s holding `words`, from its first word to 300 ms
@@ -399,6 +408,64 @@ mod tests {
             cut_from(&[theirs], &[mine]),
             ["A seagull, right."],
             "Joel's own words were cut as their echo"
+        );
+    }
+
+    #[test]
+    fn joels_words_the_far_ends_microphone_picked_up_are_his_own() {
+        // On AMI's meetings the others' headsets pick up Joel's voice as he
+        // says it, far quieter than their own: this is his, not their echo.
+        let theirs = [
+            at_level(timed("So what should the remote do first then?", 0), -20.0),
+            at_level(timed("control all your household", 5_040), -45.0),
+        ];
+        let mine = "I think it should control all your household devices.";
+        assert_eq!(
+            cut_from(&theirs, &[at_level(timed(mine, 3_800), -20.0)]),
+            [mine],
+            "Joel's words their microphone picked up were cut as their echo"
+        );
+    }
+
+    #[test]
+    fn their_echo_quieter_in_joels_microphone_than_they_said_it_is_cut() {
+        let theirs = at_level(timed("Lunch at noon on Thursday then.", 5_000), -20.0);
+        let own = "Fine by me, I'll book the room for us.";
+        let mut mine = at_level(timed(own, 1_000), -20.0);
+        mine.extend(at_level(
+            timed("Lunch at noon on Thursday then.", 5_050),
+            -40.0,
+        ));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            [own],
+            "their echo, quieter in his microphone than in theirs, wasn't cut"
+        );
+    }
+
+    #[test]
+    fn one_word_of_joels_heard_just_after_theirs_is_his_own() {
+        // A lone "Okay" is as likely his own as their echo.
+        let theirs = timed("Okay so the next item", 2_000);
+        let mut mine = timed("Right, I see.", 1_100);
+        mine.extend(timed("Okay", 2_050));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["Right, I see. Okay"],
+            "Joel's lone word was cut as their echo"
+        );
+    }
+
+    #[test]
+    fn joels_words_said_well_before_theirs_are_his_own() {
+        // Echo is heard from 300 ms before their word, by each side's frame,
+        // to 400 ms after; Joel's "so it goes" comes 400 ms before theirs.
+        let theirs = timed("So it goes.", 5_400);
+        let mine = "Yeah, so it goes with these things every time.";
+        assert_eq!(
+            cut_from(&[theirs], &[timed(mine, 4_700)]),
+            [mine],
+            "Joel's words said before theirs were cut as their echo"
         );
     }
 
