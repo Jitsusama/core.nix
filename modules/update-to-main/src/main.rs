@@ -238,6 +238,12 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     // switch, a login or a boot doesn't bring back a minute's asks a
     // loaded machine refuses for what it runs.
     let runs_file = follow::runs_file();
+    if runs_file.is_none() {
+        eprintln!(
+            "update-to-main: no home to keep what the machine runs in, so a follower started \
+             again asks a loaded machine each minute until an ask ends"
+        );
+    }
     let mut kept = runs_file.as_deref().and_then(follow::kept_runs);
     let mut follower = Follower::knowing(kept.clone());
     let mut unreadable = None;
@@ -276,6 +282,7 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                 unread = None;
                 seen = Some(heads.clone());
                 let ended = fs::read_to_string(&config.ended).unwrap_or_default();
+                follower.saw_ended(&heads, &ended);
                 if let Some(at) = follow::profile_changed(&config.profile, Instant::now()) {
                     follower.saw_switch(at);
                 }
@@ -308,25 +315,29 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                         }
                     };
                     let ended = fs::read_to_string(&config.ended).unwrap_or_default();
-                    follower.saw_system(follow::system(&config.profile));
-                    if let Some(why) = follower.asked(heads, &ending, &ended, Instant::now()) {
-                        println!("stopped until someone asks by hand: {why}");
-                    }
-                    if let Some(file) = &runs_file
-                        && let Some(runs) = follower.runs()
-                        && kept.as_ref() != Some(runs)
+                    let system = follow::system(&config.profile);
+                    if let Some(why) =
+                        follower.asked(heads, &ending, &ended, system, Instant::now())
                     {
-                        // Not keeping it costs the next follower only a
-                        // minute's asks while the machine is loaded.
-                        match follow::keep_runs(file, runs) {
-                            Ok(()) => kept = Some(runs.clone()),
-                            Err(why) => eprintln!(
-                                "update-to-main: couldn't keep what the machine runs: {why}"
-                            ),
-                        }
+                        println!("stopped until someone asks by hand: {why}");
                     }
                     if let Some(why) = follower.to_tell() {
                         told(&config, &why);
+                    }
+                }
+                // Kept after any look, since someone else's update changes
+                // what the machine runs too.
+                if let Some(file) = &runs_file
+                    && let Some(runs) = follower.runs()
+                    && kept.as_ref() != Some(runs)
+                {
+                    // Not keeping it costs the next follower only a
+                    // minute's asks while the machine is loaded.
+                    match follow::keep_runs(file, runs) {
+                        Ok(()) => kept = Some(runs.clone()),
+                        Err(why) => {
+                            eprintln!("update-to-main: couldn't keep what the machine runs: {why}");
+                        }
                     }
                 }
             }

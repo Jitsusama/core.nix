@@ -37,7 +37,8 @@ const WAITS_AT_MOST: Duration = Duration::from_hours(1);
 
 /// How long after the last refusal a stretch of them ends, so the next
 /// starts its count again: a refused follower asks again within a minute,
-/// or within twenty minutes at heads the machine already runs (`follow`),
+/// or at heads the machine already runs at its usual every, at most twenty
+/// minutes on (`follow`),
 /// so a longer gap means another check refused first, or the machine slept.
 pub(crate) const A_STRETCH_ENDS_AFTER: u64 = 30 * 60;
 
