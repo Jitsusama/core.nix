@@ -1935,7 +1935,8 @@ impl Wifid<'_> {
                 let network = network.as_str();
                 eprintln!(
                     "<4>can't turn {card}'s {network} on again, so it may join only what's \
-                     on until it's handed its networks again: {error}"
+                     on until it next comes off its network or is handed its networks: \
+                     {error}"
                 );
             }
         }
