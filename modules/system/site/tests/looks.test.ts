@@ -18,11 +18,13 @@ function machine(name: string, health: Thing["health"], side: string[] = []): Th
 
 function part(name: string, health: Part["health"], side: string[], says = ""): Part {
   const site = { ...deeper, site: `${name}/` };
-  return { part: name, health, says, side, holds: undefined, things: [], untold: 0, deeper: site };
+  const read = { holds: undefined, things: [], named: [], untold: 0, deeper: site };
+  return { part: name, health, says, side, ...read };
 }
 
 function system(things: Thing[], others: Part[] = [], untold: string[] = []): System {
-  const machines: Part = { ...part("machines", "watch", []), things };
+  const named = things.map((thing) => thing.name);
+  const machines: Part = { ...part("machines", "watch", []), things, named };
   return {
     machine: "kestrel",
     readAt: "2026-11-21T06:20:00Z",
@@ -40,7 +42,7 @@ it("lists the worst first, across the machines and the parts, the daemon's order
       machine("osprey", "bad", ["out of reach", "nearly full disk, 3 GB free"]),
       machine("heron", "good"),
     ],
-    [part("network", "watch", ["the attic's radio is busy"]), part("code", "good", ["unseen"])],
+    [part("network", "watch", ["the attic's radio is busy"]), part("code", "good", [])],
   );
   const listed = looksOf(read, 8).looks.map((look) => [look.health, look.whose, look.words]);
   assert.deepEqual(
@@ -75,45 +77,54 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
 
 it("lists what the machines part has worth a look that no machine does", () => {
   const note = "as read at 11:54; just now mycelium machines gave no answer in 20 s";
-  const [machines] = system([machine("heron", "good")]).parts;
-  assert.ok(machines, "the machines part is there");
-  const listed = (read: Part, others: Part[] = []): string[][] =>
-    looksOf({ ...system([]), parts: [read, ...others] }, 8).looks.map((look) => [
-      look.health,
-      look.whose,
-      look.words,
-    ]);
   const said = `A${note.slice(1)}`;
+  const machinesOf = (things: Thing[], side: string[], health: Part["health"] = "watch"): Part => {
+    const named = things.map((thing) => thing.name);
+    return { ...part("machines", health, side), things, named };
+  };
+  const listed = (...parts: Part[]): string[][] =>
+    looksOf({ ...system([]), parts }, 8).looks.map((look) => [look.health, look.whose, look.words]);
   assert.deepEqual(
-    listed({ ...machines, health: "good", side: [note] }),
+    listed(machinesOf([machine("heron", "good")], [note], "good")),
     [["good", "Machines", said]],
     "machines read from a kept answer say so in the list",
   );
+  const osprey = machine("osprey", "bad", ["out of reach"]);
   const kestrel = machine("kestrel", "watch", ["on battery at 9%"]);
+  const both = ["osprey out of reach", "kestrel on battery at 9%", note];
   assert.deepEqual(
-    listed({ ...machines, things: [kestrel], side: ["kestrel on battery at 9%", note] }),
+    listed(machinesOf([osprey, kestrel], both, "bad")),
     [
+      ["bad", "osprey", "Out of reach"],
       ["watch", "kestrel", "On battery at 9%"],
-      ["watch", "Machines", said],
+      ["good", "Machines", said],
     ],
-    "what a machine says isn't said again for the part, and the note still is",
+    "what a machine says isn't said again, and the note is, good, not its worst machine's",
   );
   const cleared = [machine("kestrel", "good"), machine("osprey", "good")];
   const stale = ["kestrel booted 3 hours ago", "osprey says its code wants a look"];
   assert.deepEqual(
-    listed({ ...machines, things: cleared, side: stale }),
+    listed(machinesOf(cleared, stale)),
     [],
     "a machine's look the part still names is gone once the machine's record clears",
   );
   const many = [machine("m0", "watch", ["code wants a look"])];
   const counted = ["m0 code wants a look", "and 4 more worth a look"];
   assert.deepEqual(
-    listed({ ...machines, things: many, side: counted }),
+    listed(machinesOf(many, counted)),
     [["watch", "m0", "Code wants a look"]],
     "how many more the part counts is left to the machines' own looks",
   );
+  const coming: Part = { ...machinesOf([], ["wren out of reach"]), named: ["wren"], untold: 1 };
+  assert.deepEqual(listed(coming), [], "a machine named before its record waits for it");
+  const net = "as read at 11:56; just now net --json gave no answer in 20 s";
   assert.deepEqual(
-    listed({ ...machines, health: "good", side: [note] }, [part("network", "bad", ["down"])]),
+    listed(machinesOf([], []), part("network", "good", [net])),
+    [["good", "Network", `A${net.slice(1)}`]],
+    "a good part read from a kept answer says so in the list too",
+  );
+  assert.deepEqual(
+    listed(machinesOf([], [note], "good"), part("network", "bad", ["down"])),
     [
       ["bad", "Network", "Down"],
       ["good", "Machines", said],

@@ -64,6 +64,7 @@ function system(things: Thing[], others: Part[] = []): System {
     side: [],
     holds: undefined,
     things,
+    named: things.map((thing) => thing.name),
     untold: 0,
     deeper,
   };

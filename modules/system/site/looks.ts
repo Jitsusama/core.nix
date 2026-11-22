@@ -79,17 +79,20 @@ function machineLooks(part: Part, drawn: number): readonly Look[] {
 }
 
 /**
- * What the machines part says worth a look that no machine does. Its side
+ * What the machines part says worth a look that no machine does: the note
+ * it carries when it was read from its owner's last answer. Its side also
  * names each machine worth a look, "kestrel on battery at 9%", then how many
- * more; those are left to the machines' own looks, which also clear first
- * when a machine's record changes before the part's.
+ * more; those are left to the machines' own looks, which clear first when a
+ * machine's record changes before the part's, and wait with the list's
+ * settling for a machine named before its record. The note is good, since
+ * the part's health is its machines' and a kept answer raises no alarm.
  */
 function ownLooks(part: Part): readonly Look[] {
-  const machines = part.things.map((thing) => `${thing.name} `);
+  const machines = part.named.map((name) => `${name} `);
   const own = part.side.filter(
     (words) => !(MORE.test(words) || machines.some((name) => words.startsWith(name))),
   );
-  return keyed(own).map(({ words, key }) => lookOf(part, part.health, words, key));
+  return keyed(own).map(({ words, key }) => lookOf(part, "good", words, key));
 }
 
 /** Each machine's side, a look a word, leading to its section or the map. */
@@ -121,13 +124,14 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
   };
 }
 
-/** Another part's looks: each of its side's, or why it couldn't be read. */
+/**
+ * Another part's looks: each of its side's, or why it couldn't be read. A
+ * good part's side is empty but for the note it carries when it was read
+ * from its owner's last answer, which is listed as the machines' is.
+ */
 function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
-  }
-  if (part.health === "good") {
-    return [];
   }
   return keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
 }

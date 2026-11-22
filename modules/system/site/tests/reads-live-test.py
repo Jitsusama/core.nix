@@ -36,8 +36,8 @@ RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
-# about 472 KB and 397 elements since the list of what is worth a look, six to a row.
-BUDGET = Budget(files=25, kilobytes=475, elements=400)
+# about 477 KB and 397 elements since the list of what is worth a look, six to a row.
+BUDGET = Budget(files=25, kilobytes=480, elements=400)
 
 
 @pytest.fixture
@@ -242,6 +242,11 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     expect(
         system_page.locator("#looks a[data-row^='look:machine:kestrel:']"), "kestrel's look stayed"
     ).to_have_count(0, timeout=PACE_MS)
+    # The machines part still names it until its own record changes.
+    expect(
+        system_page.locator("#looks a", has_text="booted 3 hours ago"),
+        "kestrel's look stayed as the machines part's",
+    ).to_have_count(0)
     assert focused_row(system_page) == OSPREY_LOOK, "the cursor left a look that still stands"
     # One that clears under the cursor leaves it on the one now in its place.
     system_daemon.tell("machine", changed=[{"key": "machine:osprey", "side": []}])
