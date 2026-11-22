@@ -47,7 +47,9 @@ const DURATIONS: [usize; 5] = [0, 1, 2, 3, 4];
 /// The most tokens one frame writes before the next is read, so a frame
 /// that keeps naming a token and no move can't write forever.
 const MOST_PER_FRAME: usize = 10;
-/// The piece that starts a word.
+/// The tokenizer's mark on a piece that starts a word. Parakeet's
+/// exported vocabulary writes a plain space in its place, so `words`
+/// takes either.
 const SPACE: char = '\u{2581}';
 /// The samples an encoder frame stands for, 80 ms: the spectrogram's
 /// 10 ms hop, eight of which the encoder makes one.
@@ -468,7 +470,7 @@ impl Vocab {
             let Some(piece) = self.pieces.get(token) else {
                 continue;
             };
-            let text = piece.trim_start_matches(SPACE);
+            let text = piece.trim_start_matches([SPACE, ' ']);
             match words.last_mut() {
                 Some(word) if text.len() == piece.len() || word.text.is_empty() => {
                     word.text.push_str(text);
