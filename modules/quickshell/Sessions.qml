@@ -1972,10 +1972,16 @@ Singleton {
         const id = next.one.id;
         const session = root.hostedHere(id);
         const at = Reopening.atOf(next.at);
-        const into = at !== null || next.unplaced === true
+        const opens = at !== null || next.unplaced === true
             ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
                 next.back?.home === false ? "" : undefined)
             : null;
+        // One kept as unplaced with nowhere quiet to open, as while Joel is
+        // on the screen's empty workspace, is bound for his, so it waits for
+        // him to leave (joelThere), as a pi kept so opens beside him.
+        const joels = Niri.workspace();
+        const into = opens ?? (next.unplaced === true && joels
+            ? { workspace: joels.id, column: null } : null);
         if (session?.window || into === null) {
             console.info(`sessions: ${id}'s viewer not opened, since `
                 + (session?.window ? "it is open" : next.unplaced === true

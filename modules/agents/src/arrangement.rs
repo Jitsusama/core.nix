@@ -245,7 +245,7 @@ const SESSIONS_KITTY: &str = "the sessions kitty";
 /// window one terminal drew gone at once is that terminal or niri gone,
 /// as a crash takes them, so those are unsure. The terminal is the
 /// sessions kitty for one opened with an app id, else the kitty its pair
-/// names.
+/// names, else, for a held one, the sessions kitty.
 pub fn unwindowed<'a>(
     sessions: impl Iterator<Item = Session<'a>>,
     paired: &[Value],
@@ -271,9 +271,14 @@ pub fn unwindowed<'a>(
             .get(one.address())
             .is_some_and(|window| desk.windows.get(window).is_some())
     };
+    // A held pi draws in the sessions kitty too, its app id going with its
+    // window, as the node says no window once it's closed.
     let terminal = |one: &Session| {
         if one.opened().is_empty() {
-            kitties.get(one.address()).copied()
+            kitties
+                .get(one.address())
+                .copied()
+                .or_else(|| (!one.0["held"].is_null()).then_some(SESSIONS_KITTY))
         } else {
             Some(SESSIONS_KITTY)
         }
@@ -420,9 +425,11 @@ impl Arrangement {
             // One heard parked, ended or elsewhere keeps a closed mark and
             // lets its place go once that's due, since the host parks an
             // idle one minutes after Joel closes its window, or sooner while
-            // short of memory; only its orphaned mark goes, as nothing of it
-            // runs here to be unsure of. One not heard, as before the node's
-            // sessions are, keeps its marks.
+            // short of memory. Its orphaned mark stays as well, since the
+            // host parks idle ones soonest while short of memory, as a crash
+            // taking every viewer most often is, and one woken windowless
+            // later would read as closed by hand. One not heard, as before
+            // the node's sessions are, keeps its marks.
             let windowless = unwindowed.closed.contains(id) || unwindowed.unsure.contains(id);
             if now.contains_key(id) {
                 place.remove("closed");
@@ -430,7 +437,6 @@ impl Arrangement {
                 return true;
             }
             if !windowless && unwindowed.heard.contains(id) {
-                place.remove(ORPHANED);
                 return place
                     .get("closed")
                     .and_then(Value::as_u64)
@@ -453,8 +459,20 @@ impl Arrangement {
         for (id, place) in now {
             let placed_before = restored
                 .and_then(|those| those.get(&id))
-                .is_some_and(|there| there.get("unplaced").is_none());
-            if place["unplaced"] == true && (this.contains_key(&id) || placed_before) {
+                .filter(|there| there.get("unplaced").is_none());
+            if place["unplaced"] == true && this.contains_key(&id) {
+                continue;
+            }
+            // One with no place now that the boot being restored placed
+            // keeps that place here too, unmarked, so it goes back there all
+            // this boot and the boot after this one still has a place for it.
+            if let (true, Some(there)) = (place["unplaced"] == true, placed_before) {
+                let mut there = there.clone();
+                if let Some(marks) = there.as_object_mut() {
+                    marks.remove("closed");
+                    marks.remove(ORPHANED);
+                }
+                this.insert(id, there);
                 continue;
             }
             this.insert(id, place);
