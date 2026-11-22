@@ -332,14 +332,19 @@ or launchd, and [`home.nix`][2] the account's.
   machine whatever it deleted, so a batch closes only at its size, its
   paths going on Nix's standard input rather than its command line.
   Short of nearly full a pass makes one delete, and the next waits four
-  times as long as it took, so deleting takes at most a fifth of the
-  store's time, a rest a restart forgets at the cost of one delete;
-  nearly full and past, batches go back to back. No delete
-  begins while another process holds Nix's database for writing, as a
-  write lock on byte 120 of `db/db.sqlite-shm` beside the temp roots
-  shows in `/proc/locks`, since that writer, a build or an evaluation, would then
-  wait on the delete and read "database is busy"; the batch is kept and
-  the garbage's own rest spaces the next try. It expires
+  times as long as the last Nix ran took, refused or timed out included,
+  so deleting takes at most a fifth of the store's time, a rest a
+  restart forgets at the cost of one delete; a batch temporary roots
+  hold whole runs no Nix and earns none. Nor does a delete begin short
+  of nearly full while another process holds Nix's database for
+  writing, as the kernel answers for a write lock on byte 120 of
+  `db/db.sqlite-shm` beside the temp roots, since that writer, a build
+  or an evaluation, would then wait on the delete and read "database is
+  busy". Garbage kept for either is looked at again once it's over,
+  whatever pass kept it, under the garbage's own rest. Nearly full and
+  past, room comes first: batches go back to back, writer or none. A
+  delete runs at most half an hour, and keeps the paths it deleted when
+  stopped, as Nix deletes each in turn. It expires
   generations, never the current, running or booted one, the
   newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing

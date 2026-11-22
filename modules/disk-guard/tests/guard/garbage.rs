@@ -1,3 +1,5 @@
+#[cfg(target_os = "linux")]
+use disk_guard::garbage::database_written;
 use disk_guard::garbage::{Batch, Dead, Listing, delete, list, parse, temp_roots};
 use disk_guard::units::float;
 use std::fs;
@@ -262,14 +264,96 @@ fn a_delete_that_fails_otherwise_says_why() {
         failed.unwrap_err(),
         "nix failed: error: unexpected end-of-file"
     );
-    assert_eq!(
-        delete(
-            &dir.path().join("nix"),
-            &dir.path().join("roots"),
-            &["/nowhere/at/all".to_owned()],
-            false
-        ),
-        Ok(Vec::new())
+    let nothing = delete(
+        &dir.path().join("nix"),
+        &dir.path().join("roots"),
+        &["/nowhere/at/all".to_owned()],
+        false,
+    )
+    .unwrap();
+    assert!(nothing.refused.is_empty(), "refused what had gone");
+    assert!(!nothing.ran, "ran Nix with nothing left to delete");
+}
+
+/// A lock on `len` bytes of `path` from `start`, of `kind`, held by its
+/// own open file until the file drops, so it counts against any other
+/// lock this process asks about, as a POSIX lock of its own wouldn't.
+#[cfg(target_os = "linux")]
+pub(crate) fn locked(path: &Path, kind: libc::c_int, start: i64, len: i64) -> fs::File {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    // SAFETY: a lock of all zeroes is a valid one, filled in before use.
+    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+    lock.l_type = libc::c_short::try_from(kind).unwrap();
+    lock.l_whence = libc::c_short::try_from(libc::SEEK_SET).unwrap();
+    lock.l_start = start;
+    lock.l_len = len;
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&file);
+    // SAFETY: the descriptor is open for both and the lock is filled in.
+    let taken = unsafe { libc::fcntl(fd, libc::F_OFD_SETLK, &raw const lock) };
+    assert_eq!(taken, 0, "couldn't lock {}", path.display());
+    file
+}
+
+/// A database folder holding SQLite's shared memory, as Nix's does.
+#[cfg(target_os = "linux")]
+fn database() -> (tempfile::TempDir, std::path::PathBuf) {
+    let dir = tempfile::tempdir().unwrap();
+    let shared = dir.path().join("db.sqlite-shm");
+    fs::write(&shared, vec![0; 4096]).unwrap();
+    (dir, shared)
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn only_a_write_lock_on_sqlite_s_write_byte_says_the_database_is_written() {
+    // SQLite's writer locks byte 120 of the shared memory alone; its
+    // readers lock 123 to 127 and its checkpointer 121, all the time.
+    let (dir, shared) = database();
+    assert!(!database_written(dir.path()), "written with no lock held");
+    for (kind, start, len) in [
+        (libc::F_RDLCK, 120, 1),
+        (libc::F_WRLCK, 121, 1),
+        (libc::F_WRLCK, 128, 1),
+        (libc::F_RDLCK, 0, 0),
+    ] {
+        let held = locked(&shared, kind, start, len);
+        assert!(
+            !database_written(dir.path()),
+            "written by a lock of kind {kind} on {len} bytes from {start}"
+        );
+        drop(held);
+    }
+    let writing = locked(&shared, libc::F_WRLCK, 120, 1);
+    assert!(database_written(dir.path()), "a writer went unseen");
+    drop(writing);
+    assert!(
+        !database_written(dir.path()),
+        "still written once it let go"
+    );
+}
+
+#[test]
+#[cfg(target_os = "linux")]
+fn a_lock_on_another_file_or_a_whole_file_flock_isnt_the_database_s() {
+    let (dir, shared) = database();
+    let other = dir.path().join("other");
+    fs::write(&other, vec![0; 4096]).unwrap();
+    let elsewhere = locked(&other, libc::F_WRLCK, 0, 0);
+    let whole = fs::File::open(&shared).unwrap();
+    rustix::fs::flock(&whole, rustix::fs::FlockOperation::NonBlockingLockExclusive).unwrap();
+    assert!(
+        !database_written(dir.path()),
+        "another file's lock or a flock counted"
+    );
+    drop((elsewhere, whole));
+    let gone = tempfile::tempdir().unwrap();
+    assert!(
+        !database_written(gone.path()),
+        "written with no shared memory"
     );
 }
 

@@ -1,4 +1,4 @@
-use disk_guard::commands::{Job, Ran, run, stoppable};
+use disk_guard::commands::{Job, Ran, fed, run, stoppable};
 use std::ffi::OsString;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -281,6 +281,29 @@ fn a_stop_that_comes_while_a_command_runs_kills_it() {
     assert!(
         took < Duration::from_secs(5),
         "ran on {took:?} after the stop"
+    );
+}
+
+#[test]
+fn a_command_that_reads_little_of_its_input_still_says_what_it_did() {
+    // Past what a pipe holds, so the writer is left with most of it, and
+    // its write breaks off once the command has gone.
+    let input = vec![b'x'; 1 << 20];
+    let output = finished(fed(&job(&["head", "-c1"]), &input).unwrap());
+    assert_eq!(output.status, Some(0), "{output:?}");
+    assert_eq!(output.stdout, b"x", "read other than its first byte");
+}
+
+#[test]
+fn a_command_that_never_reads_its_input_is_killed_at_its_time() {
+    let mut job = job(&["sleep", "30"]);
+    job.timeout = Duration::from_millis(500);
+    let started = Instant::now();
+    let ran = fed(&job, &vec![b'x'; 1 << 20]).unwrap();
+    assert!(matches!(ran, Ran::TimedOut), "{ran:?}");
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "a writer blocked on its input held it"
     );
 }
 

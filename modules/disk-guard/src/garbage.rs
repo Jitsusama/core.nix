@@ -390,46 +390,52 @@ fn refused<'a>(said: &str, left: &[&'a String]) -> Option<&'a String> {
 /// writes, in write-ahead mode as Nix keeps its database: the first of the
 /// locks that follow the index's header (`WALINDEX_LOCK_OFFSET` and
 /// `WAL_WRITE_LOCK` in SQLite's wal.c).
-const WRITE_LOCK_BYTE: u64 = 120;
+const WRITE_LOCK_BYTE: libc::off_t = 120;
 
-/// Whether a process holds Nix's database in `database` for writing, by
-/// the record locks `locks` lists, as `/proc/locks` does. A delete would
-/// wait on it, and a build or an evaluation then waits on the delete,
-/// reading "database is busy": on 21 November, of 41 moments a sampler
-/// saw a writer, evaluations held it in most. Where the locks can't be
-/// read, as on a Mac, none is known to write. Lines name a device by
-/// numbers stat doesn't give on Btrfs, so the inode alone names the file.
-pub fn database_written(locks: &Path, database: &Path) -> bool {
-    let Ok(meta) = database.join("db.sqlite-shm").metadata() else {
+/// Whether another process holds Nix's database in `database` for
+/// writing, as the kernel answers for a write lock on its write byte. A
+/// delete would wait on it, and a build or an evaluation then waits on the
+/// delete, reading "database is busy": on 21 November, of 41 moments a
+/// sampler saw a writer, evaluations held it in most. Asked of the file
+/// itself, so no lock on another file, and no whole-file `flock`, can
+/// answer for it. Where its shared memory can't be opened, nothing has
+/// the database open to write.
+#[allow(
+    clippy::useless_conversion,
+    clippy::unnecessary_fallible_conversions,
+    reason = "libc types a lock's kind as an int on Linux and a short on a Mac"
+)]
+pub fn database_written(database: &Path) -> bool {
+    let Ok(shared) = std::fs::File::open(database.join("db.sqlite-shm")) else {
         return false;
     };
-    let inode = std::os::unix::fs::MetadataExt::ino(&meta).to_string();
-    let Ok(text) = std::fs::read_to_string(locks) else {
+    let (Ok(write), Ok(whence)) = (
+        libc::c_short::try_from(libc::F_WRLCK),
+        libc::c_short::try_from(libc::SEEK_SET),
+    ) else {
         return false;
     };
-    // Each line: id, an arrow for a waiter, kind, mode, access, pid, then
-    // major:minor:inode and the first and last byte, or EOF.
-    text.lines().any(|line| {
-        let words: Vec<&str> = line.split_whitespace().skip(1).collect();
-        let [kind, _, access, _, file, start, end, ..] = words.as_slice() else {
-            return false;
-        };
-        let reaches = |start: &str, end: &str| {
-            let start = start.parse::<u64>().ok();
-            let end = if end == "EOF" {
-                Some(u64::MAX)
-            } else {
-                end.parse().ok()
-            };
-            start
-                .zip(end)
-                .is_some_and(|(start, end)| (start..=end).contains(&WRITE_LOCK_BYTE))
-        };
-        *kind != "->"
-            && *access == "WRITE"
-            && file.rsplit(':').next() == Some(inode.as_str())
-            && reaches(start, end)
-    })
+    // SAFETY: a lock of all zeroes is a valid one, filled in below.
+    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+    lock.l_type = write;
+    lock.l_whence = whence;
+    lock.l_start = WRITE_LOCK_BYTE;
+    lock.l_len = 1;
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&shared);
+    // SAFETY: a plain system call on a file this holds open, filling in a
+    // lock it owns.
+    let asked = unsafe { libc::fcntl(fd, libc::F_GETLK, &raw mut lock) };
+    asked == 0 && lock.l_type == write
+}
+
+/// What a delete came to.
+#[derive(Debug)]
+pub struct Deleted {
+    /// The paths the system wouldn't let Nix change.
+    pub refused: Vec<String>,
+    /// Whether Nix ran, which it doesn't when temporary roots hold every
+    /// path, so a delete that cost nothing earns no rest.
+    pub ran: bool,
 }
 
 /// Whether a delete failed because the listing its batch came from is
@@ -447,15 +453,11 @@ pub fn stale(why: &str) -> bool {
 /// whole call when a root reaches any path again, naming one, so it's
 /// dropped and the rest tried again. A path the system won't let Nix
 /// change stops the call there too, and is dropped the same way; the
-/// paths the system refused are what it answers.
-pub fn delete(
-    nix: &Path,
-    roots: &Path,
-    paths: &[String],
-    idle: bool,
-) -> Result<Vec<String>, String> {
+/// paths the system refused are what it answers, and whether Nix ran.
+pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<Deleted, String> {
     let mut alive: Vec<String> = Vec::new();
     let mut forbidden: Vec<String> = Vec::new();
+    let mut ran = false;
     loop {
         let held = temp_roots(roots);
         let left: Vec<&String> = paths
@@ -465,7 +467,10 @@ pub fn delete(
             .filter(|path| Path::new(path).symlink_metadata().is_ok())
             .collect();
         if left.is_empty() {
-            return Ok(forbidden);
+            return Ok(Deleted {
+                refused: forbidden,
+                ran,
+            });
         }
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
         argv.extend(NIX_COMMAND.map(OsStr::new));
@@ -480,9 +485,13 @@ pub fn delete(
             input.extend_from_slice(path.as_bytes());
             input.push(b'\n');
         }
+        ran = true;
         let (ok, said) = output(&argv, DELETE_TIMEOUT, idle, &input)?;
         if ok {
-            return Ok(forbidden);
+            return Ok(Deleted {
+                refused: forbidden,
+                ran,
+            });
         }
         let revived = said
             .split("Cannot delete path '")

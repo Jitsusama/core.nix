@@ -1856,16 +1856,16 @@ impl Guard {
         self.deletes_rest.is_some_and(|until| now < until)
     }
 
-    /// Rests Nix's deletes [`DELETE_REST`] times as long as a pass's took,
-    /// from when it ended, and has the garbage looked at again then, as a
-    /// pass short of nearly full leaves its other batches; or once a pass
-    /// put one off for another writer, as the garbage's own rest allows.
+    /// Rests Nix's deletes [`DELETE_REST`] times as long as a pass's last
+    /// took, from when the pass ended, and has the garbage looked at again
+    /// once a pass kept some for that rest or for another writer, as the
+    /// garbage's own rest allows, whatever kind of pass it was.
     fn rest_deletes(&mut self, tick: &Tick, deletes: Deletes) {
-        if let Some(took) = deletes.took {
+        if let Some(took) = deletes.last {
             let ended = tick.wall + self.stepped.elapsed().as_secs_f64();
             self.deletes_rest = Some(ended + DELETE_REST * took);
         }
-        self.collect |= deletes.took.is_some() || deletes.put_off;
+        self.collect |= deletes.again;
     }
 
     /// Rests the garbage's own passes once one left every path it was

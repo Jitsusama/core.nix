@@ -129,7 +129,8 @@ pub fn run(job: &Job) -> io::Result<Ran> {
 }
 
 /// Runs `job` as `run` does, with `input` on its standard input, for what
-/// is too long for a command line.
+/// is too long for a command line; no input reads as none at all, as
+/// `run` gives.
 pub fn fed(job: &Job, input: &[u8]) -> io::Result<Ran> {
     running(job, None, input)
 }
@@ -173,11 +174,18 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>, input: &[u8]) -> io
         // Written apart, so a command that answers before it has read it
         // all still has its answers read; one that exits without reading
         // it all says why in what it prints and its status, so a write
-        // it broke off has nothing more to say.
+        // it broke off has nothing more to say. A machine that can't make
+        // the thread ends the command rather than the guard, as a loaded
+        // one at its task limit can't.
         let input = input.to_vec();
-        std::thread::spawn(move || {
+        let writing = std::thread::Builder::new().spawn(move || {
             let _ = io::Write::write_all(&mut stdin, &input);
         });
+        if let Err(error) = writing {
+            signal(&child, libc::SIGKILL);
+            child.wait()?;
+            return Err(error);
+        }
     }
     let deadline = Instant::now() + job.timeout;
     let mut streams = [

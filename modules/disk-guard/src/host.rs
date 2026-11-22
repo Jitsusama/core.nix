@@ -360,11 +360,14 @@ pub struct Reclaim<'a> {
 /// after it.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Deletes {
-    /// How long this pass's deletes took, in seconds, if it made any.
-    pub took: Option<f64>,
-    /// Whether one was put off for another process writing Nix's
-    /// database, so the garbage is looked at again.
-    pub put_off: bool,
+    /// How long the last delete Nix ran this pass took, in seconds: the
+    /// one a rest follows, as a pass nearly full runs them back to back
+    /// and a sum of those would hold the next for hours.
+    pub last: Option<f64>,
+    /// Whether garbage was kept for the rest or for another process
+    /// writing Nix's database, so it's looked at again once that's over:
+    /// a pass of another kind may meet it, and nothing else would.
+    pub again: bool,
     /// Whether the guard's rest after the last delete still ran as the
     /// pass began, so it makes none short of nearly full.
     resting: bool,
@@ -384,8 +387,9 @@ pub struct Elsewhere {
 const LOOK_ELSEWHERE: Duration = Duration::from_secs(5);
 
 /// How long the system daemon may take over the garbage a user daemon asks
-/// it to collect: a pass of many batches, each measured.
-const COLLECT_TIMEOUT: Duration = Duration::from_mins(30);
+/// it to collect: a pass of many batches, each measured, and a delete that
+/// runs to its own half-hour limit with room for one more.
+const COLLECT_TIMEOUT: Duration = Duration::from_hours(1);
 
 impl<'a> Reclaim<'a> {
     pub fn new(offers: &[Offer], scan: &'a mut Scan) -> Self {
@@ -476,6 +480,7 @@ impl<'a> Reclaim<'a> {
     /// nearly full a pass deletes once, and none while the guard rests
     /// after the last; and none while another process writes Nix's
     /// database, which would wait on it and keep that writer waiting.
+    /// Nearly full and past, room comes first.
     fn collect(
         &mut self,
         nix: PathBuf,
@@ -487,12 +492,15 @@ impl<'a> Reclaim<'a> {
         if self.stale {
             return Outcome::Kept("its listing was found stale this pass".to_owned());
         }
-        if self.band < Band::NearlyFull && (self.deletes.resting || self.deletes.took.is_some()) {
-            return Outcome::Kept("Nix's deletes rest, each reading all its links".to_owned());
-        }
-        if garbage::database_written(&self.scan.locks, database) {
-            self.deletes.put_off = true;
-            return Outcome::Kept("another process is writing Nix's database".to_owned());
+        if self.band < Band::NearlyFull {
+            if self.deletes.resting || self.deletes.last.is_some() {
+                self.deletes.again = true;
+                return Outcome::Kept("Nix's deletes rest, each reading all its links".to_owned());
+            }
+            if garbage::database_written(database) {
+                self.deletes.again = true;
+                return Outcome::Kept("another process is writing Nix's database".to_owned());
+            }
         }
         let free: Vec<String> = paths
             .into_iter()
@@ -505,11 +513,16 @@ impl<'a> Reclaim<'a> {
         let tried = free.len();
         let began = Instant::now();
         let deleting = self.waiting(move || garbage::delete(&nix, &roots, &free, gentle));
-        *self.deletes.took.get_or_insert(0.0) += began.elapsed().as_secs_f64();
+        if !matches!(
+            deleting,
+            Ok(Ok(garbage::Deleted { ran: false, .. })) | Err(Stopped)
+        ) {
+            self.deletes.last = Some(began.elapsed().as_secs_f64());
+        }
         let outcome = match deleting {
-            Ok(Ok(refused)) => {
-                let all = refused.len() == tried;
-                self.refused.extend(refused);
+            Ok(Ok(deleted)) => {
+                let all = deleted.refused.len() == tried;
+                self.refused.extend(deleted.refused);
                 if all {
                     return Outcome::Kept("the system refuses to let it go".to_owned());
                 }
