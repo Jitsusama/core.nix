@@ -265,9 +265,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
     }
     // A finding's drag carries its owner and its short id, and is back in
     // once the findings measure, read, holds no line of it but one held for
-    // good, by a fix cadence can't see run: its owner has done what they
-    // can, so it never goes late beside their name. A main unread for an
-    // hour keeps it open, so it isn't closed and filed again.
+    // good, by a change cadence can't read: its owner has done what they
+    // can, so it never goes late beside their name. An hour that can't
+    // look keeps it open, so it isn't closed and filed again.
     let finding = key
         .strip_prefix(FINDINGS)
         .and_then(|rest| rest.strip_prefix(':'))
@@ -627,20 +627,28 @@ mod tests {
             ["hour:symbiosis-findings:A2VLJN:cd34"],
             "a fixed finding's drag stayed open, or another's closed with it"
         );
-        // Held by a main unread for an hour, it stays on the card and its
-        // drag open, put to nobody; so does an hour the mesh went unread.
-        found.behind = vec![
-            "cd34 from CIJMZQ: the hosts, though cadence couldn't read core's main to see its \
-             check · A2VLJN"
-                .to_owned(),
-        ];
+        // Held by an hour that can't look, a main unread or a listing
+        // failed, it stays on the card and its drag open, put to nobody;
+        // so does an hour the mesh went unread.
         found.now = 0.0;
-        assert!(
-            filed(&found).is_empty()
-                && file(&mut ledger, &[found.clone()], "2026-11-21", 11_800).is_empty()
-                && ledger.iter().filter(|e| e.open).count() == 1,
-            "a finding held by a main unread was put to its owner, or its drag closed"
-        );
+        for (blind, at) in [
+            (
+                ", though cadence couldn't read core's main to see its check".to_owned(),
+                11_800,
+            ),
+            (
+                format!("{HELD}core #6000{UNRUN}cadence can't list the pi hosts"),
+                13_600,
+            ),
+        ] {
+            found.behind = vec![format!("cd34 from CIJMZQ: the hosts{blind} · A2VLJN")];
+            assert!(
+                filed(&found).is_empty()
+                    && file(&mut ledger, &[found.clone()], "2026-11-21", at).is_empty()
+                    && ledger.iter().filter(|e| e.open).count() == 1,
+                "a finding held by {blind:?} was put to its owner, or its drag closed"
+            );
+        }
         found.behind.clear();
         found.target = None;
         file(&mut ledger, &[found.clone()], "2026-11-21", 15_400);
@@ -648,13 +656,14 @@ mod tests {
             ledger.iter().filter(|e| e.open).count() == 1,
             "a drag closed while the hour couldn't look"
         );
-        // Held for good, by a fix cadence can't see run, its owner has done
+        // Held for good, by a change cadence can't read, its owner has done
         // what they can, so its drag closes rather than going late.
         found.target = Some(0.0);
-        found.behind = vec![format!(
-            "cd34 from CIJMZQ: the hosts{HELD}core #6000{UNRUN}cadence can't see what runs \
-             here · A2VLJN"
-        )];
+        found.behind = vec![
+            "cd34 from CIJMZQ: the hosts, though cadence can't read a change its landing notes \
+             name · A2VLJN"
+                .to_owned(),
+        ];
         assert!(
             file(&mut ledger, &[found], "2026-11-21", 19_000).is_empty()
                 && ledger.iter().all(|e| !e.open),

@@ -300,9 +300,9 @@ impl Findings {
                 && (line.is_none() || !readable);
             let note = if unnamed { Some(UNNAMED) } else { line };
             // A follow-up folds into a finding open; beneath one held for
-            // good, by a fix cadence can't see run, it counts on its own,
-            // so a regression still reaches an owner. A main unread for
-            // an hour keeps it folded, since its fix may still be merging.
+            // good, by a change cadence can't read, it counts on its own,
+            // so a regression still reaches an owner. An hour that can't
+            // look keeps it folded, since its fix may still be on its way.
             open[index] = note.is_some_and(|note| !held_for_good(note));
             if finding.follows.is_some_and(|it| open[it]) {
                 continue;
@@ -358,20 +358,22 @@ impl Findings {
 /// so its text can't read as the hour's.
 #[must_use]
 pub fn held_unseen(line: &str) -> bool {
-    line.contains(", though cadence couldn't read") || held_for_good(line)
-}
-
-/// Whether a finding's line is held by a fix the hour can't see run for as
-/// long as the finding is kept: a change a landing note names that cadence
-/// can't read, or one merged in a repository whose running revision it
-/// doesn't read. A main unread is held only until the next reading.
-#[must_use]
-pub fn held_for_good(line: &str) -> bool {
-    line.contains(UNNAMED)
+    line.contains(", though cadence couldn't read")
+        || held_for_good(line)
         || line.split_once(HELD).is_some_and(|(_, why)| {
             why.split_once(UNRUN)
                 .is_some_and(|(_, unrun)| unrun.starts_with(UNSEEN))
         })
+}
+
+/// Whether a finding's line is held for as long as the finding is kept: by
+/// a change a landing note names in a repository cadence can't read. A
+/// main unread, or what runs here unseen, is held only until a reading
+/// sees, since a fetch or a listing mends it; a merge in a repository
+/// whose running revision cadence doesn't read closes, counted apart.
+#[must_use]
+pub fn held_for_good(line: &str) -> bool {
+    line.contains(UNNAMED)
 }
 
 /// Whether `finding`, closed, was closed by a change in a repository

@@ -968,7 +968,7 @@ fn a_regression_beneath_a_finding_held_as_the_hours_blindness_counts() {
 }
 
 #[test]
-fn a_follow_up_beneath_a_fix_whose_main_goes_unread_an_hour_stays_folded() {
+fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
     let root = finding(3 * DAY, "IKQ63G", "IKQ63G finding for OSPHT4: y");
     let posted = [
         root.clone(),
@@ -985,25 +985,38 @@ fn a_follow_up_beneath_a_fix_whose_main_goes_unread_an_hour_stays_folded() {
         unread: None,
         orchestrator: "P9R1KI".to_owned(),
     };
-    let judged = Judged {
-        merged: &BTreeSet::new(),
-        unread: &BTreeSet::from(["core".to_owned()]),
-        unrun: &BTreeMap::new(),
-        here: "here",
-    };
     let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
-    let measure = findings.measured(&repos, &judged, NOW);
-    // Its fix may still be merging, so its owner isn't asked of it.
-    assert!(
-        measure.now.abs() < 1e-9
-            && !measure
-                .behind
-                .iter()
-                .any(|line| line.contains("still · OSPHT4")),
-        "a follow-up counted on its own while its fix's main went unread: {} {:?}",
-        measure.says,
-        measure.behind
-    );
+    let (none, merged) = (BTreeSet::new(), BTreeSet::from([core(6000)]));
+    let main_unread = BTreeSet::from(["core".to_owned()]);
+    let hosts_unlisted = BTreeMap::from([(core(6000), "cadence can't list the pi hosts")]);
+    // A main unread, or a listing that failed this hour: its fix may still
+    // be on its way, so the follow-up's owner isn't asked of it.
+    for judged in [
+        Judged {
+            merged: &none,
+            unread: &main_unread,
+            unrun: &BTreeMap::new(),
+            here: "here",
+        },
+        Judged {
+            merged: &merged,
+            unread: &none,
+            unrun: &hosts_unlisted,
+            here: "here",
+        },
+    ] {
+        let measure = findings.measured(&repos, &judged, NOW);
+        assert!(
+            measure.now.abs() < 1e-9
+                && !measure
+                    .behind
+                    .iter()
+                    .any(|line| line.contains("still · OSPHT4")),
+            "a follow-up counted on its own while the hour couldn't look at its fix: {} {:?}",
+            measure.says,
+            measure.behind
+        );
+    }
 }
 
 #[test]
