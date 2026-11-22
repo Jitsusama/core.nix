@@ -449,7 +449,10 @@ fn status_fits_a_narrow_terminal_without_folding() {
             .take_while(|line| line.starts_with("    "))
             .copied()
             .collect();
-        assert!(!hung.is_empty(), "the holder wraps at {cells} columns:\n{out}");
+        assert!(
+            !hung.is_empty(),
+            "the holder wraps at {cells} columns:\n{out}"
+        );
         for line in &hung {
             assert!(
                 !line.starts_with("     "),

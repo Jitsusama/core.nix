@@ -530,7 +530,10 @@ mod tests {
         );
         // The first line keeps the cells only the lines under it hang by,
         // so the next line's first word wouldn't have fit on it.
-        let word = next.split_whitespace().next().expect("the next line has words");
+        let word = next
+            .split_whitespace()
+            .next()
+            .expect("the next line has words");
         assert!(
             layout::width(&lines[at]) + 1 + layout::width(word) > 80,
             "{:?} left room for {word:?}, giving up the cells only the lines under it hang by",

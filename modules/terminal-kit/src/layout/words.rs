@@ -616,7 +616,10 @@ mod tests {
                 let most = room.max(inset + GAP + 1);
                 for line in hanging(said, inset, Room::Cells(room)) {
                     assert!(width(&line) <= most, "{line:?} passed {most} cells");
-                    assert!(!line.trim().is_empty(), "{said:?} drew an empty line at {room}");
+                    assert!(
+                        !line.trim().is_empty(),
+                        "{said:?} drew an empty line at {room}"
+                    );
                 }
             }
         }
@@ -629,7 +632,9 @@ mod tests {
         // gives them cause to be shortened.
         let lines = measured("aaaa bbbbbbbbbb ccccccccc", 20, 4);
         assert!(
-            lines.iter().any(|line| line.split(' ').any(|word| word == "bbbbbbbbbb")),
+            lines
+                .iter()
+                .any(|line| line.split(' ').any(|word| word == "bbbbbbbbbb")),
             "a word that fit its line was cut to the measure of the line under it: {lines:?}"
         );
     }
