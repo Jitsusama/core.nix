@@ -17,10 +17,10 @@ timed, `layout.test.ts` where everything stands and that it stays there,
 `canvas.test.ts` what the ground layer says and which line a pointer touches,
 `shape.test.ts` when a reading draws the whole map again, and `sprout.test.ts`
 the link new work hands the Launcher, judging addresses by `addresses.txt`; all
-twenty run as the site builds (`mycelium-site-holds`). `map-reads-live-test.py` proves the built page reads
-live through the sites' server in Chromium, from the realm in `node.json`, with
-a key of each kind pressed and the map's own page checks in `site-checks.js`
-(`mycelium-site-reads-live`).
+twenty run as the site builds (`mycelium-site-holds`). `map-reads-live-test.py`
+proves the built page reads live through the sites' server in Chromium, from
+the realm in `node.json`, with a key of each kind pressed and the map's own
+page checks in `site-checks.js` (`mycelium-site-reads-live`).
 
 ## The Address Cases
 

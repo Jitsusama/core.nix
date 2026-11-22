@@ -105,7 +105,9 @@ it("judges an address as the notices daemon and mycelium-link do", () => {
     const [kind, ...rest] = line.split(" ");
     const text = rest
       .join(" ")
-      .replace(/\\u\{([0-9A-F]{1,6})\}/gu, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)));
+      .replace(/\\u\{([0-9A-F]{1,6})\}/gu, (_, code) =>
+        String.fromCodePoint(Number.parseInt(code, 16)),
+      );
     assert.ok(!text.includes("\\"), `${JSON.stringify(line)} should escape only as \\u{HEX}`);
     assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
     const is = kind === "is";
