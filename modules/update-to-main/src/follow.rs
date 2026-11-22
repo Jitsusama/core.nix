@@ -12,12 +12,12 @@
 //! Everything that may stop a switch stays the daemon's to judge: a call,
 //! a hold, a low battery, a daemon whose restart needs a hold, and asks
 //! that come while an update runs join it. The asker only chooses when to
-//! ask: again soon after a refusal for being busy, unless the machine runs
-//! the heads already, not again at heads that failed until they move or a
-//! while has passed, sooner when what failed was a builder going away
-//! mid-build, and not at all after a refusal for a held daemon until the
-//! machine's last ending changes, since only a person's ask, with a hold
-//! sent, gets that one through.
+//! ask: again soon after a refusal for any reason but a hold, unless the
+//! machine runs the heads already, not again at heads that failed until
+//! they move or a while has passed, sooner when what failed was a builder
+//! going away mid-build, and not at all after a refusal for a held daemon
+//! until the machine's last ending changes, since only a person's ask,
+//! with a hold sent, gets that one through.
 //!
 //! Long because half of it is the tests of when to ask, each a timeline
 //! of asks and endings that reads only beside the `Follower` it drives.
@@ -29,6 +29,7 @@ use crate::hosted;
 use crate::line::Line;
 use crate::tell::Telling;
 use crate::update::NEEDS_HOLD;
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -40,6 +41,12 @@ pub const LOOK_EVERY: Duration = Duration::from_secs(30);
 /// How soon an ask refused for being busy, such as during a call, is made
 /// again.
 const BUSY_AGAIN: Duration = Duration::from_secs(60);
+
+/// The longest a refused ask at heads the machine runs waits before it's
+/// made again, however seldom the follower is told to ask: under the half
+/// hour that ends a stretch of refusals (`busy`), so a busy command that can
+/// never tell still lets one ask through at its two hours.
+const BUSY_AT_MOST: Duration = Duration::from_mins(20);
 
 /// How long heads whose update failed wait before they're asked for
 /// again, in case what failed was the builders and not the commit.
@@ -127,6 +134,57 @@ pub fn stale(asked: &Followed, now: &Followed, latest: Option<&Line>, since: Dur
 /// flake input can be named.
 const MAIN: &str = "";
 
+/// What the machine runs, as the follower last learnt it: the heads, as
+/// its own looks name them, and the system the machine ran then. It holds
+/// only while the machine still runs that system, so a switch or rollback
+/// someone else made ends it at once.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Runs {
+    pub heads: Followed,
+    pub system: PathBuf,
+}
+
+/// Where a follower keeps what the machine runs for the next one, which a
+/// switch, a login or a boot starts: in the account's own state, since
+/// root's is closed to it. None without a home to keep it in.
+pub fn runs_file() -> Option<PathBuf> {
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .filter(|state| !state.is_empty())
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .filter(|home| !home.is_empty())
+                .map(|home| PathBuf::from(home).join(".local/state"))
+        })?;
+    Some(state.join("update-to-main/follower-runs.json"))
+}
+
+/// What the last follower kept of what the machine runs: none when
+/// nothing was kept or it can't be read, which only costs a minute's asks.
+pub fn kept_runs(file: &Path) -> Option<Runs> {
+    serde_json::from_str(&fs::read_to_string(file).ok()?).ok()
+}
+
+/// Keeps what the machine runs for the next follower, whole: written
+/// beside the file, then moved into place.
+pub fn keep_runs(file: &Path, runs: &Runs) -> Result<(), String> {
+    let named = |e: std::io::Error| format!("{}: {e}", file.display());
+    if let Some(folder) = file.parent() {
+        fs::create_dir_all(folder).map_err(named)?;
+    }
+    let text = serde_json::to_string(runs).map_err(|e| e.to_string())?;
+    let making = file.with_extension("new");
+    fs::write(&making, text)
+        .and_then(|()| fs::rename(&making, file))
+        .map_err(named)
+}
+
+/// The system the machine runs, as its profile leads to it; none when the
+/// profile can't be followed.
+pub fn system(profile: &Path) -> Option<PathBuf> {
+    fs::canonicalize(profile).ok()
+}
+
 /// What the asker knows from its last ask.
 #[derive(Debug, Default)]
 pub struct Follower {
@@ -139,13 +197,20 @@ pub struct Follower {
     /// How many updates in a row lost their builders at the heads that
     /// failed.
     dropped: u32,
-    /// Whether the last ask was refused for being busy.
+    /// Whether the last ask was refused, for any reason but a hold: a
+    /// load, a call, a pause, a battery, or a daemon it couldn't reach.
     busy: bool,
-    /// The heads its last ask that ended done or unchanged was made at,
-    /// which the machine runs. A busy refusal there isn't asked again
-    /// each minute, since there's nothing to build: on 21 November a Mac
-    /// over its load refused 26 asks in half an hour for what it ran.
-    current: Option<Followed>,
+    /// What the machine runs, from the last ask that ended done or
+    /// unchanged, its own or kept by the follower before it. A refusal
+    /// there isn't asked again each minute, since there's nothing to
+    /// build: on 21 November a Mac over its load refused 26 asks in half
+    /// an hour for what it ran.
+    current: Option<Runs>,
+    /// The system the machine ran at its last look.
+    system: Option<PathBuf>,
+    /// Whether main is a host's, whose endings name main's head while the
+    /// follower's looks name where its folder last changed.
+    hosted: bool,
     /// When the machine last switched, for an ask of its own or as its
     /// system profile says.
     switched: Option<Instant>,
@@ -161,6 +226,59 @@ pub struct Follower {
 }
 
 impl Follower {
+    /// A follower knowing what the machine ran when the last one stopped,
+    /// as it kept it (`kept_runs`).
+    pub fn knowing(runs: Option<Runs>) -> Self {
+        Self {
+            current: runs,
+            ..Self::default()
+        }
+    }
+
+    /// Counts whether main is a host's, as the config read last says.
+    pub fn hosted(&mut self, hosted: bool) {
+        self.hosted = hosted;
+    }
+
+    /// Counts the system the machine runs now, as its profile leads to it.
+    pub fn saw_system(&mut self, system: Option<PathBuf>) {
+        self.system = system;
+    }
+
+    /// What the machine runs, as the follower knows it, to keep for the
+    /// next one.
+    pub fn runs(&self) -> Option<&Runs> {
+        self.current.as_ref()
+    }
+
+    /// What the machine runs after an ask at `heads` ended naming `commit`
+    /// and `followed`, when the follower can say. A main not a host's is
+    /// named by the ending, since the daemon fetches for itself and may
+    /// have found heads the follower's look didn't, or joined a person's
+    /// update at others. A hosted main's ending names main's head, which
+    /// the follower's looks never do, so the heads it asked at stand in,
+    /// when the ending's inputs agree with them.
+    fn ran(&self, heads: &Followed, commit: &str, followed: &Followed) -> Option<Runs> {
+        let system = self.system.clone()?;
+        let mut ran = followed.clone();
+        if self.hosted {
+            let inputs: Followed = heads
+                .iter()
+                .filter(|(name, _)| name.as_str() != MAIN)
+                .map(|(name, commit)| (name.clone(), commit.clone()))
+                .collect();
+            if inputs != *followed {
+                return None;
+            }
+            if let Some(main) = heads.get(MAIN) {
+                ran.insert(MAIN.to_owned(), main.clone());
+            }
+        } else {
+            ran.insert(MAIN.to_owned(), commit.to_owned());
+        }
+        Some(Runs { heads: ran, system })
+    }
+
     /// Counts a switch the machine made at `at`, whoever asked for it. On
     /// 9 November a person's switch at 18:03 restarted the follower, which
     /// asked again a minute later and built a switch by 18:08 that only
@@ -223,10 +341,13 @@ impl Follower {
         {
             return now.duration_since(*when) >= *wait;
         }
-        let behind = self.current.as_ref() != Some(heads);
+        let behind = self
+            .current
+            .as_ref()
+            .is_none_or(|runs| runs.heads != *heads || self.system.as_ref() != Some(&runs.system));
         self.last.as_ref() != Some(heads)
             || since >= every
-            || (self.busy && behind && since >= BUSY_AGAIN)
+            || (self.busy && (behind || since >= BUSY_AT_MOST) && since >= BUSY_AGAIN)
     }
 
     /// Why the machine can't update, once each time it stops being able
@@ -252,8 +373,11 @@ impl Follower {
             self.switched = Some(now);
         }
         match ending {
-            Line::Done { .. } | Line::Unchanged { .. } => {
-                self.current = Some(heads);
+            Line::Done {
+                commit, followed, ..
+            }
+            | Line::Unchanged { commit, followed } => {
+                self.current = self.ran(&heads, commit, followed);
                 self.failed = None;
                 self.dropped = 0;
                 self.telling.went_through();
@@ -659,38 +783,195 @@ pub(crate) mod tests {
         assert!(f.should_ask(&at("a"), "", t + BUSY_AGAIN, EVERY));
     }
 
+    /// Main, not a host's, at `commit`.
+    fn main_at(commit: &str) -> Followed {
+        Followed::from([(MAIN.to_owned(), commit.to_owned())])
+    }
+
+    /// An ending that switched nothing, the machine running `commit`.
+    fn unchanged(commit: &str) -> Line {
+        Line::Unchanged {
+            commit: commit.to_owned(),
+            followed: Followed::new(),
+        }
+    }
+
+    /// The system a profile leads to, the `n`th.
+    fn system_n(n: u32) -> PathBuf {
+        PathBuf::from(format!("/nix/store/system-{n}"))
+    }
+
+    const LOADED: &str = "the machine is over its load";
+
     #[test]
     fn a_busy_machine_running_the_heads_isnt_asked_again_soon() {
         let mut f = Follower::default();
+        f.saw_system(Some(system_n(1)));
         let t = Instant::now();
-        f.asked(at("a"), &done(), "", t);
-        f.asked(
-            at("a"),
-            &refused("the machine is over its load"),
-            "",
-            t + EVERY,
-        );
+        f.asked(main_at("a"), &unchanged("a"), "", t);
+        f.asked(main_at("a"), &refused(LOADED), "", t + EVERY);
         assert!(
-            !f.should_ask(&at("a"), "", t + EVERY + BUSY_AGAIN, EVERY),
+            !f.should_ask(&main_at("a"), "", t + EVERY + BUSY_AGAIN, EVERY),
             "a busy machine was asked again each minute for the heads it runs"
         );
         assert!(
-            f.should_ask(&at("a"), "", t + 2 * EVERY, EVERY),
+            f.should_ask(&main_at("a"), "", t + 2 * EVERY, EVERY),
             "a busy machine running the heads wasn't asked every so often"
         );
+        f.asked(main_at("b"), &refused(LOADED), "", t + EVERY + LOOK_EVERY);
         assert!(
-            f.should_ask(&at("b"), "", t + EVERY + LOOK_EVERY, EVERY),
-            "a head that moved wasn't asked for"
-        );
-        f.asked(
-            at("b"),
-            &refused("the machine is over its load"),
-            "",
-            t + EVERY + LOOK_EVERY,
-        );
-        assert!(
-            f.should_ask(&at("b"), "", t + EVERY + LOOK_EVERY + BUSY_AGAIN, EVERY),
+            f.should_ask(
+                &main_at("b"),
+                "",
+                t + EVERY + LOOK_EVERY + BUSY_AGAIN,
+                EVERY
+            ),
             "a busy machine with a new head to build wasn't asked again soon"
+        );
+    }
+
+    #[test]
+    fn a_follower_started_again_knows_what_the_machine_runs() {
+        let mut kept = Follower::default();
+        kept.saw_system(Some(system_n(1)));
+        let t = Instant::now();
+        kept.asked(main_at("a"), &unchanged("a"), "", t);
+        let mut f = Follower::knowing(kept.runs().cloned());
+        f.saw_system(Some(system_n(1)));
+        assert!(
+            f.should_ask(&main_at("a"), "", t, EVERY),
+            "it didn't ask when it started"
+        );
+        f.asked(main_at("a"), &refused(LOADED), "", t);
+        assert!(
+            !f.should_ask(&main_at("a"), "", t + BUSY_AGAIN, EVERY),
+            "a follower started again asked a busy machine each minute for what it runs"
+        );
+        let mut f = Follower::default();
+        f.saw_system(Some(system_n(1)));
+        f.asked(main_at("a"), &refused(LOADED), "", t);
+        assert!(
+            f.should_ask(&main_at("a"), "", t + BUSY_AGAIN, EVERY),
+            "a follower knowing nothing of what the machine runs wasn't asked again soon"
+        );
+    }
+
+    #[test]
+    fn a_switch_it_didnt_make_brings_the_soon_ask_back() {
+        let mut f = Follower::default();
+        f.saw_system(Some(system_n(1)));
+        let t = Instant::now();
+        f.asked(main_at("a"), &unchanged("a"), "", t);
+        f.asked(main_at("a"), &refused(LOADED), "", t + EVERY);
+        // Someone rolled the machine back, or switched it to other heads.
+        f.saw_system(Some(system_n(2)));
+        assert!(
+            f.should_ask(&main_at("a"), "", t + EVERY + BUSY_AGAIN, EVERY),
+            "a machine someone else switched still counted as running the heads"
+        );
+    }
+
+    #[test]
+    fn the_machine_runs_what_the_ending_names_not_what_the_follower_saw() {
+        let mut f = Follower::default();
+        f.saw_system(Some(system_n(1)));
+        let t = Instant::now();
+        // It looked at b, and joined a person's update that fetched a.
+        f.asked(main_at("b"), &unchanged("a"), "", t);
+        f.asked(main_at("b"), &refused(LOADED), "", t + EVERY);
+        assert!(
+            f.should_ask(&main_at("b"), "", t + EVERY + BUSY_AGAIN, EVERY),
+            "heads the machine doesn't run counted as running because the follower saw them"
+        );
+        f.asked(main_at("a"), &refused(LOADED), "", t + EVERY + BUSY_AGAIN);
+        assert!(
+            !f.should_ask(&main_at("a"), "", t + EVERY + 2 * BUSY_AGAIN, EVERY),
+            "the heads the ending named weren't counted as running"
+        );
+    }
+
+    #[test]
+    fn a_hosted_main_runs_the_heads_it_asked_at_when_the_inputs_agree() {
+        let mut f = Follower::default();
+        f.hosted(true);
+        f.saw_system(Some(system_n(1)));
+        let t = Instant::now();
+        let mut heads = main_at("folder");
+        heads.insert("core".to_owned(), "c1".to_owned());
+        let ending = |core: &str| Line::Unchanged {
+            commit: "mains-head".to_owned(),
+            followed: Followed::from([("core".to_owned(), core.to_owned())]),
+        };
+        f.asked(heads.clone(), &ending("c1"), "", t);
+        f.asked(heads.clone(), &refused(LOADED), "", t + EVERY);
+        assert!(
+            !f.should_ask(&heads, "", t + EVERY + BUSY_AGAIN, EVERY),
+            "a hosted main whose inputs agree didn't count as running its folder's heads"
+        );
+        f.asked(heads.clone(), &ending("c0"), "", t + 2 * EVERY);
+        assert_eq!(
+            f.runs(),
+            None,
+            "a hosted main whose ending named other inputs was said to run its folder's head"
+        );
+        f.asked(heads.clone(), &refused(LOADED), "", t + 3 * EVERY);
+        assert!(
+            f.should_ask(&heads, "", t + 3 * EVERY + BUSY_AGAIN, EVERY),
+            "a hosted main whose ending named other inputs counted as running the heads"
+        );
+    }
+
+    #[test]
+    fn any_refusal_but_a_hold_at_heads_the_machine_runs_waits() {
+        let mut f = Follower::default();
+        f.saw_system(Some(system_n(1)));
+        let t = Instant::now();
+        f.asked(main_at("a"), &unchanged("a"), "", t);
+        f.asked(main_at("a"), &refused("a call is on"), "", t + EVERY);
+        assert!(
+            !f.should_ask(&main_at("a"), "", t + EVERY + BUSY_AGAIN, EVERY),
+            "a call's refusal at heads the machine runs was asked again each minute"
+        );
+    }
+
+    #[test]
+    fn a_refusal_at_heads_the_machine_runs_is_asked_again_before_its_stretch_ends() {
+        let mut f = Follower::default();
+        f.saw_system(Some(system_n(1)));
+        let t = Instant::now();
+        let seldom = Duration::from_hours(1);
+        f.asked(main_at("a"), &unchanged("a"), "", t);
+        f.asked(main_at("a"), &refused(LOADED), "", t + seldom);
+        assert!(
+            f.should_ask(&main_at("a"), "", t + seldom + BUSY_AT_MOST, seldom),
+            "a follower told to ask hourly left a refusal past the stretch that counts it"
+        );
+        assert!(
+            BUSY_AT_MOST < Duration::from_secs(crate::busy::A_STRETCH_ENDS_AFTER),
+            "the longest wait isn't under the half hour that ends a stretch of refusals"
+        );
+    }
+
+    #[test]
+    fn what_the_machine_runs_is_kept_for_the_next_follower() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("state/update-to-main/follower-runs.json");
+        assert_eq!(kept_runs(&file), None, "nothing kept read as something");
+        let runs = Runs {
+            heads: main_at("a"),
+            system: PathBuf::from("/nix/store/system-1"),
+        };
+        keep_runs(&file, &runs).unwrap();
+        assert_eq!(
+            kept_runs(&file),
+            Some(runs),
+            "what was kept didn't read back"
+        );
+        fs::write(&file, "not json").unwrap();
+        assert_eq!(
+            kept_runs(&file),
+            None,
+            "a file it can't read counted as something"
         );
     }
 

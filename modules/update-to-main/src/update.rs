@@ -113,9 +113,9 @@ fn run(
     }
     // Switching what waited for a grant builds nothing, so a check that
     // refuses the ask alone is asked only past it: the load it reads may
-    // be the waiting build's own. It's asked before the fetch, which costs
-    // a loaded machine what the check spares it; the follower doesn't ask
-    // again soon for heads the machine runs (`follow`).
+    // be the waiting build's own. It's asked before the fetch, so a refused
+    // ask costs a loaded machine nothing; the follower doesn't ask again
+    // soon for heads the machine runs (`follow`).
     if let Some(why) = busy::at_the_ask(config, following) {
         return Line::Refused { commit: last, why };
     }

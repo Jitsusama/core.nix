@@ -234,7 +234,12 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
 /// it for good (switch 1036 on 18 November).
 fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
-    let mut follower = Follower::default();
+    // What the machine runs carries over from the follower before, so a
+    // switch, a login or a boot doesn't bring back a minute's asks a
+    // loaded machine refuses for what it runs.
+    let runs_file = follow::runs_file();
+    let mut kept = runs_file.as_deref().and_then(follow::kept_runs);
+    let mut follower = Follower::knowing(kept.clone());
     let mut unreadable = None;
     let mut unread = None;
     let mut unanswered = None;
@@ -264,6 +269,8 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
         if let Some(program) = follow::newer(config.program.as_deref(), started.as_deref()) {
             return started_in_place(&program);
         }
+        follower.hosted(config.hosted.is_some());
+        follower.saw_system(follow::system(&config.profile));
         match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {
                 unread = None;
@@ -301,8 +308,22 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                         }
                     };
                     let ended = fs::read_to_string(&config.ended).unwrap_or_default();
+                    follower.saw_system(follow::system(&config.profile));
                     if let Some(why) = follower.asked(heads, &ending, &ended, Instant::now()) {
                         println!("stopped until someone asks by hand: {why}");
+                    }
+                    if let Some(file) = &runs_file
+                        && let Some(runs) = follower.runs()
+                        && kept.as_ref() != Some(runs)
+                    {
+                        // Not keeping it costs the next follower only a
+                        // minute's asks while the machine is loaded.
+                        match follow::keep_runs(file, runs) {
+                            Ok(()) => kept = Some(runs.clone()),
+                            Err(why) => eprintln!(
+                                "update-to-main: couldn't keep what the machine runs: {why}"
+                            ),
+                        }
                     }
                     if let Some(why) = follower.to_tell() {
                         told(&config, &why);

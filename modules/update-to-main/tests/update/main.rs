@@ -4068,10 +4068,16 @@ const HOUR: u64 = 60 * 60;
 /// follower stamp their lines with the time now, in UTC.
 #[test]
 fn a_log_stamp_is_the_time_now_in_utc() {
+    use std::time::{Duration, UNIX_EPOCH};
     assert_eq!(
-        terminal_kit::time::rfc3339(0),
-        "1970-01-01T00:00:00Z",
+        update_to_main::stamp_at(UNIX_EPOCH + Duration::from_secs(86_400 + 3_661)),
+        "1970-01-02T01:01:01Z",
         "the stamp's time isn't said in UTC, as RFC 3339 says it"
+    );
+    assert_eq!(
+        update_to_main::stamp_at(UNIX_EPOCH - Duration::from_secs(1)),
+        "1970-01-01T00:00:00Z",
+        "a clock before 1970 wasn't stamped as 1970's start"
     );
     let before = now();
     let stamp = update_to_main::stamp();
@@ -4082,20 +4088,26 @@ fn a_log_stamp_is_the_time_now_in_utc() {
     );
 }
 
-/// Only a Mac's lines are stamped: the journal keeps the time, and its
+/// A stamped line is the time, a space, then the line as it was; only a
+/// Mac's lines are stamped, since the journal keeps the time and its
 /// readers read a line as it comes.
 #[test]
-fn only_a_mac_stamps_its_log_lines() {
-    let line = update_to_main::stamped("{\"step\":\"done\"}");
-    if cfg!(target_os = "macos") {
-        let (stamp, rest) = line.split_once(' ').expect("a Mac's line wasn't stamped");
-        assert!(
-            stamp.len() == 20 && stamp.ends_with('Z') && rest == "{\"step\":\"done\"}",
-            "a Mac's line wasn't the time in UTC and then the line: {line}"
-        );
-    } else {
+fn a_stamped_line_is_the_time_then_the_line() {
+    let line = "{\"step\":\"done\"}";
+    assert_eq!(
+        update_to_main::stamped_with(Some("1970-01-01T00:00:00Z"), line),
+        "1970-01-01T00:00:00Z {\"step\":\"done\"}",
+        "a Mac's line wasn't the time in UTC and then the line"
+    );
+    assert_eq!(
+        update_to_main::stamped_with(None, line),
+        line,
+        "a line with no stamp wasn't left as it was"
+    );
+    if !cfg!(target_os = "macos") {
         assert_eq!(
-            line, "{\"step\":\"done\"}",
+            update_to_main::stamped(line),
+            line,
             "a line the journal keeps was stamped"
         );
     }
