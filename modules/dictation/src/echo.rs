@@ -78,34 +78,22 @@ pub fn echoes(line: &Line, lines: &[Line]) -> bool {
     })
 }
 
-/// Each side's usual loudness over a call, the median of its words'
-/// levels, in dB, so a word's level is judged against its own side's.
-struct Usual {
-    mine: f32,
-    theirs: f32,
-}
-
-impl Usual {
-    /// Whether Joel's `heard` may be the echo of their `said` by how loud
-    /// each is: an echo is quieter in his microphone, against his own
-    /// voice there, than they said it, against theirs. Crosstalk is the
-    /// reverse, his voice far quieter in their microphone than in his.
-    fn may_echo(&self, heard: &Word, said: &Word) -> bool {
-        said.level - self.theirs >= heard.level - self.mine
-    }
-}
-
-/// The median of `levels`, or 0 dB with none.
-fn median(mut levels: Vec<f32>) -> f32 {
-    levels.sort_by(f32::total_cmp);
-    levels.get(levels.len() / 2).copied().unwrap_or(0.0)
+/// Whether Joel's `heard` may be the echo of their `said` by how loud
+/// each is: an echo is quieter in his microphone than they said it, while
+/// their microphones pick up his voice quieter than his does. On AMI's
+/// meetings, echo mixed in 20 or 30 dB down was 15 to 35 dB louder in
+/// theirs, and his voice in theirs 5 to 50 dB quieter, so even is the
+/// line. Judged against each side's usual level instead, echo was kept
+/// where he says little, since his side's usual level is then the echo's.
+fn may_echo(heard: &Word, said: &Word) -> bool {
+    said.level >= heard.level
 }
 
 /// For each of Joel's `mine`, the one of `theirs`, in the order they were
 /// said, it's the echo of, if it's one: a run of his words, each spelled
 /// as one of theirs, in their order, that his microphone heard within a
-/// moment of them saying it, and quieter, for each side's `usual`.
-fn echoes_of(mine: &[Word], theirs: &[Word], usual: &Usual) -> Vec<Option<usize>> {
+/// moment of them saying it, and quieter.
+fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
     // Each of his words' runs: which of theirs it may echo, and how long
     // the run ending on it is.
     let mut runs: Vec<Vec<(usize, usize)>> = Vec::with_capacity(mine.len());
@@ -120,7 +108,7 @@ fn echoes_of(mine: &[Word], theirs: &[Word], usual: &Usual) -> Vec<Option<usize>
             .filter(|&j| {
                 !spelling.is_empty()
                     && spelled(&theirs[j].text) == spelling
-                    && usual.may_echo(word, &theirs[j])
+                    && may_echo(word, &theirs[j])
             })
             .map(|j| {
                 let longest = before
@@ -194,26 +182,13 @@ pub fn cut_echoes<S: BuildHasher>(
         .cloned()
         .collect();
     theirs.sort_by_key(|word| word.at);
-    let usual = Usual {
-        mine: median(
-            lines
-                .iter()
-                .enumerate()
-                .filter(|(_, line)| line.side == Side::Mine)
-                .filter_map(|(index, _)| words.get(&index))
-                .flatten()
-                .map(|word| word.level)
-                .collect(),
-        ),
-        theirs: median(theirs.iter().map(|word| word.level).collect()),
-    };
     let mut cuts = Vec::new();
     let mut cut = lines.to_vec();
     for (index, line) in cut.iter_mut().enumerate() {
         let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
             continue;
         };
-        let echoes = echoes_of(mine, &theirs, &usual);
+        let echoes = echoes_of(mine, &theirs);
         if echoes.iter().all(Option::is_none) {
             continue;
         }
