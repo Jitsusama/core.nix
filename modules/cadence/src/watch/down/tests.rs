@@ -57,6 +57,7 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
         r#"{"name":"near","state":"ready","system":"macos","power":{"on_battery":false}},"#,
         r#"{"name":"lap","state":"ready","power":{"on_battery":false,"charge":80}},"#,
         r#"{"name":"desk","state":"ready","power":{"on_battery":false,"charge":null}},"#,
+        r#"{"name":"unmeasured","state":"ready","power":null},"#,
         r#"{"name":"odd","state":"starting"}]}}"#,
         "\n",
         r#"{"Ok":{"Builders":[]}}"#,
@@ -75,13 +76,14 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
                 heard: None,
                 ..one("far", Reading::Ready, false)
             },
+            // A Mac with no battery is a desktop, whose lid can't sleep it.
             Seen {
-                battery: true,
                 heard: None,
                 ..one("near", Reading::Ready, false)
             },
             // A laptop on mains, which a lid shut and an unplugging sleep
-            // before its node hears, beside a desktop with no battery.
+            // before its node hears, beside a desktop with no battery and
+            // one whose power its node couldn't read, which may have one.
             Seen {
                 battery: true,
                 heard: None,
@@ -92,12 +94,17 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
                 ..one("desk", Reading::Ready, false)
             },
             Seen {
+                battery: true,
+                heard: None,
+                ..one("unmeasured", Reading::Ready, false)
+            },
+            Seen {
                 heard: None,
                 ..one("odd", Reading::Unread, false)
             },
         ],
-        "the machines weren't read as the node says, a Mac on mains as one a lid \
-         shut sleeps, or this one wasn't left out"
+        "the machines weren't read as the node says, a down one's unread power as no \
+         battery, or this one wasn't left out"
     );
     assert!(
         seen("work", machines, r#"{"Err":"timed out"}"#, "here")
@@ -328,6 +335,28 @@ fn a_realm_not_saying_who_is_busy_never_reads_another_realms_idle_as_its_own() {
     );
 }
 
+#[test]
+fn a_battery_one_realm_reads_of_a_machine_both_read_ready_stands() {
+    let mut told = Told::default();
+    let personal = Seen {
+        realm: "personal".into(),
+        battery: true,
+        ..one("yonder", Reading::Ready, true)
+    };
+    let both = ["work".to_owned(), "personal".to_owned()];
+    due(
+        &[one("yonder", Reading::Ready, true), personal],
+        &both,
+        &both,
+        &mut told,
+        NOW,
+    );
+    assert!(
+        told.machines["yonder"].battery,
+        "the first realm's reading without a battery hid the battery the other read"
+    );
+}
+
 /// The machine as the personal realm reads it, ready, not saying who's busy.
 fn personal_unsaid() -> Seen {
     Seen {
@@ -454,7 +483,7 @@ fn a_going_down_is_told_to_joel_the_orchestrator_and_its_owner_each_once() {
         "Joel's notice wasn't as written"
     );
     let text = "Cadence alarm: yonder has read unreachable in the work realm for 10 min, after \
-                reading ready within the hour before, on mains power with a session on it \
+                reading ready within the hour before, with no battery and a session on it \
                 busy. Joel has a notice of it.";
     assert_eq!(
         findings.take(),

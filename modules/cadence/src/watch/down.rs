@@ -1,13 +1,13 @@
 //! Each realm's other machines gone down while they hold work: one its node
-//! read ready within the hour before, on mains power with a session on it
+//! read ready within the hour before, with no battery and a session on it
 //! busy, and that has read unreachable for ten minutes of readings since,
 //! is told to Joel by a desktop notice and to the orchestrator and its owner
 //! as a finding, once, and again once it's back. On 17 November this machine
 //! powered off by itself and no one heard for minutes; the node knows each
 //! link's state, so the tick reads it rather than wait on another session
 //! to. A machine with no work sleeps as its node lets it, and one with a
-//! battery or a Mac may sleep when its lid shuts whatever it holds, so
-//! neither is news: a laptop shut on mains and then unplugged sleeps
+//! battery, or whose power its node couldn't read, may sleep when its lid
+//! shuts whatever it holds, so neither is news: a laptop shut on mains and then unplugged sleeps
 //! before its node hears the battery, and until its node says it's going
 //! to sleep, nothing tells that from a crash. With
 //! none ready, this machine may be the one cut off: unless every network
@@ -72,16 +72,13 @@ pub struct Seen {
     /// when the node didn't say which sessions are.
     pub working: Option<bool>,
     /// Whether a lid shut may sleep it however busy: one with a battery,
-    /// which a lid shut on mains and then unplugged sleeps unheard, or a
-    /// Mac, whose lid sleeps it on any power; for one down, as its node
+    /// which a lid shut on mains and then unplugged sleeps unheard, or one
+    /// ready whose power its node couldn't read; for one down, as its node
     /// last heard.
     pub battery: bool,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
 }
-
-/// What a node names a Mac's system.
-const MAC: &str = "macos";
 
 /// The probe every node adds to say whether a call is on here, which says
 /// nothing of what this machine reaches.
@@ -138,10 +135,16 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
                 realm: realm.to_owned(),
                 reading,
                 working: working.as_ref().map(|busy| busy.contains(name)),
-                // A node gives a charge only for a machine with a battery.
-                battery: machine["power"]["on_battery"].as_bool() == Some(true)
-                    || machine["power"]["charge"].is_u64()
-                    || machine["system"] == MAC,
+                // A node gives a charge only for a machine's own battery, a
+                // Mac's included, never a peripheral's. Power it couldn't
+                // read may be a battery, though only a ready reading says so,
+                // as a down one may carry none of what was last heard.
+                battery: match &machine["power"] {
+                    serde_json::Value::Null => reading == Reading::Ready,
+                    power => {
+                        power["on_battery"].as_bool() == Some(true) || power["charge"].is_u64()
+                    }
+                },
                 heard: machine["measured_at"]
                     .as_str()
                     .and_then(|at| at.parse::<jiff::Timestamp>().ok())
@@ -236,7 +239,7 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             .or_insert_with(|| (one.clone(), BTreeSet::new()));
         realms.insert(one.realm.clone());
         // Read down by two realms, it was last heard when either last
-        // heard it, with a battery if either heard one.
+        // heard it.
         let both_down = kept.reading == Reading::Down && one.reading == Reading::Down;
         let (heard, battery) = (kept.heard.max(one.heard), kept.battery || one.battery);
         // A realm that didn't say keeps the word unsaid, unless another
@@ -250,9 +253,11 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             *kept = one.clone();
         }
         kept.working = working;
+        // Any realm's battery stands, ready or down, as one realm's node may
+        // not have read the power another's did.
+        kept.battery = battery;
         if both_down {
             kept.heard = heard;
-            kept.battery = battery;
         }
     }
     by
@@ -471,8 +476,8 @@ impl Tell {
                 };
                 format!(
                     "Cadence alarm: {machine} has read unreachable in the {realm} realm for \
-                     {minutes} min, after reading ready within the hour before, on mains \
-                     power with a session on it busy. {joel}"
+                     {minutes} min, after reading ready within the hour before, with no \
+                     battery and a session on it busy. {joel}"
                 )
             }
             Self::Back {
