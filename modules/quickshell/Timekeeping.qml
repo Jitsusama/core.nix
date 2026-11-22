@@ -4,9 +4,9 @@
 // server chrony asks, each one's figures and why it's chosen or set aside.
 // It's asked only while something shown watches it, home's Now or Time,
 // since the reader asks chronyd once a second for as long as it's asked
-// and nothing otherwise; the reading is dropped when it isn't, so nothing
-// stale is ever shown. A machine without chrony has no socket, and Time
-// says nothing keeps the time.
+// and nothing otherwise; the reading is kept no more than a minute past
+// the reader's last answer. A machine without chrony has no socket, and
+// Time says nothing keeps the time.
 pragma Singleton
 pragma ComponentBehavior: Bound
 import Quickshell
@@ -22,12 +22,23 @@ Singleton {
     property int watching: 0
 
     // The last reading, { synchronised, clock, servers, hardwareClock,
-    // activity }, or null while it isn't asked or hasn't answered.
+    // activity }, or null while it hasn't answered or was let go.
     property var reading: null
 
     // Whether the reader failed to answer since it was last heard: refused,
-    // gone, or chronyd not answering it. It's cleared once nothing watches.
+    // gone, or chronyd not answering it. It's cleared once nothing watches,
+    // so a step back asks afresh rather than saying nothing keeps the time
+    // while chrony keeps it (P9R1KI, 2026-11-15).
     property bool refused: false
+
+    // When the reader last answered, by the wall clock, and how long past
+    // it a reading is kept, watched or not: the reader answers each second
+    // while watched, so one a minute old was left by a reader gone quiet.
+    // The wall clock as well as `letGo`, as a Timer's minute stands still
+    // across a suspend, and a reading from before one is the likeliest to
+    // be wrong after it.
+    property real heardAt: 0
+    property int keptFor: 60000
 
     readonly property string path: `${Quickshell.env("XDG_RUNTIME_DIR")}/io.jitsusama.Timekeeping`
 
@@ -58,13 +69,52 @@ Singleton {
         }
         reading = reply.parameters;
         refused = false;
+        heardAt = Date.now();
+        letGo.interval = keptFor;
+        letGo.restart();
     }
 
+    // The reading is kept a while once nothing watches, not dropped at
+    // once: dropped, a step out of home made Now's plate again inside the
+    // step, for the row it was leaving (the keys lab, 2026-11-22). Watched
+    // again, it's shown until the reader's first answer replaces it, which
+    // comes at once, and is still let go in time if no answer comes, so a
+    // reader that takes the connection and says nothing can't hold it up.
+    // Its spans counted from when it was read, as a server's last sample
+    // is, read that much low until that answer. Each change of watching
+    // sets `letGo` again to what's left by the wall clock, so a suspend
+    // can't stretch the minute past a step back. A reading heard later
+    // than now, by a wall clock since stepped back, has no age it can be
+    // kept by, so it goes at once rather than earning a fresh minute at
+    // each change.
     onWatchingChanged: {
-        if (watching === 0) {
-            reading = null;
+        const age = Date.now() - heardAt;
+        if (watching === 0)
             refused = false;
+        if (reading === null)
+            return;
+        if (age < 0 || age >= keptFor) {
+            letGoOfReading();
+        } else {
+            letGo.interval = keptFor - age;
+            letGo.restart();
         }
+    }
+    // Only the reading: a refusal is said while watched and cleared once
+    // nothing watches, and is never the timer's to clear.
+    function letGoOfReading() {
+        letGo.stop();
+        reading = null;
+    }
+    // Whether a kept reading's time is still running, so a case can wait
+    // for it to run out rather than guess at a builder's pace.
+    function lettingGo() {
+        return letGo.running;
+    }
+
+    Timer {
+        id: letGo
+        onTriggered: root.letGoOfReading()
     }
 
     // A fresh connection each time: a socket refused once never connects
