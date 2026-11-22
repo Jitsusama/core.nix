@@ -476,6 +476,35 @@ fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
         None,
         "v over two of the file's lines set on one of the page's"
     );
+    // As vaw takes it, with the blank the file's line break is set as,
+    // which decides nothing, as a blank ahead of the name doesn't.
+    assert_eq!(
+        text.chars().nth(name + 8),
+        Some(' '),
+        "the break is a blank"
+    );
+    for (from, to, what) in [(name, name + 8, "after"), (name - 1, name + 8, "round")] {
+        assert_eq!(
+            named(&page, Kind::Chars, at(row, from), at(row, to)).as_deref(),
+            Some("notes.md"),
+            "v with the blanks {what} it"
+        );
+    }
+    let eyebrow = (page.lines.iter())
+        .position(|line| line.text.starts_with("READER-SELECT-"))
+        .expect("an eyebrow");
+    let eyebrowed = named(&page, Kind::Pieces, at(eyebrow, 0), at(eyebrow, 0));
+    assert!(
+        eyebrowed
+            .as_deref()
+            .is_some_and(|it| it.starts_with("READER-SELECT-")),
+        "V on the eyebrow, which the file doesn't hold, gives its words: {eyebrowed:?}"
+    );
+    assert_eq!(
+        named(&page, Kind::Chars, at(eyebrow, 0), at(eyebrow + 1, 0)),
+        None,
+        "v from the eyebrow onto the line after it"
+    );
     let words = "Words that run on past the measure. ".repeat(12);
     let page = set("named-wrapped", &format!("{words}\n"));
     let first = holding(&page, "Words");

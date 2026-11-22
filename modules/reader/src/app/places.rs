@@ -263,8 +263,10 @@ impl App {
         self.take_kept_marks();
         self.last_jump = None;
         self.selected = None;
-        // The cursor's character was on the other file's line.
+        // The cursor's character and the selection were on the other
+        // file's lines, and opening a file ends visual mode, as :e does.
         self.character = None;
+        self.drop_selection();
         if !self.measuring
             && let Err(error) = showing::keep(&file)
         {

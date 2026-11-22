@@ -81,12 +81,15 @@ impl App {
         if version != self.painter.version {
             return;
         }
+        let shown = (self.selection.is_some(), self.character.is_some());
         // A file that couldn't be read gives no lines, and the last page's
-        // go too, or a copy would take another file's words over this one.
+        // go too, or a copy would take another file's words over this one;
+        // the selection goes without them, so '<,'> keeps none of theirs.
         let Some(layout) = layout else {
-            self.end_selection();
+            self.drop_selection();
             self.character = None;
             self.layout = None;
+            self.draw_gone(shown);
             return;
         };
         if let (Some(selection), Some(old)) = (&self.selection, &self.layout) {
@@ -101,6 +104,38 @@ impl App {
             self.character = None;
         }
         self.layout = Some(Arc::new(layout));
+        self.draw_gone(shown);
+    }
+
+    /// Draws at once when the lines read ended the selection or took the
+    /// cursor's character, which nothing else would draw gone until it
+    /// drew for itself.
+    fn draw_gone(&mut self, shown: (bool, bool)) {
+        let now = (self.selection.is_some(), self.character.is_some());
+        if now != shown && !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Ends the selection without its lines, as another file opens or this
+    /// one's can't be read, where the last page's would put its place and
+    /// its '<,'> on this one.
+    pub(crate) fn drop_selection(&mut self) {
+        if self.selection.take().is_some() && keys_logged() {
+            eprintln!("selected: nothing");
+        }
+    }
+
+    /// Whether `layout` was read from the page as it's set now, saying it's
+    /// still reading when not: until a page set again has its lines read,
+    /// they're the last setting's, or another file's, and a copy of them
+    /// would be that file's words.
+    fn read_now(&mut self, layout: &select::Layout) -> bool {
+        let now = layout.of(self.painter.version).is_some();
+        if !now {
+            self.say(crate::app::STILL_READING);
+        }
+        now
     }
 
     /// Ends the selection, leaving the cursor on the character its cursor
@@ -202,15 +237,9 @@ impl App {
                 self.follow_cursor();
                 return true;
             }
-            // y leaves the cursor at the selection's start, as Vim's does.
             (None, Act::Copy) => {
                 let taken = selection.clone();
-                self.end_selection();
-                let (top, foot) = layout.line_extent(taken.ends().0.line);
-                self.aim = Some(top);
-                self.character = Some(Selection::new(Kind::Chars, taken.ends().0));
-                self.follow_line(top, foot, None);
-                self.copy(&layout, taken);
+                self.copy_selection(&layout, taken);
                 return true;
             }
             (None, Act::Rest) => {
@@ -372,6 +401,9 @@ impl App {
     /// yank, the cursor goes to the start of what it took when that's above
     /// it, as y i p's is from inside.
     fn copy_at_rest(&mut self, layout: &Arc<select::Layout>, act: Act, times: usize) {
+        if !self.read_now(layout) {
+            return;
+        }
         let (_, foot) = self.view_pt();
         let here = self.cursor_pt();
         let taken = layout.piece_at(here, foot).and_then(|unit| match act {
@@ -397,6 +429,9 @@ impl App {
         let Some(layout) = self.layout.clone() else {
             return;
         };
+        if !self.read_now(&layout) {
+            return;
+        }
         let (first, last) = match range {
             ex::Range::Here => return self.copy_at_rest(&layout, Act::CopyPiece, 1),
             ex::Range::Lines(first, last) => (first, last),
@@ -477,6 +512,20 @@ impl App {
 
     /// Copies a selection as the file's markdown, on a thread, through
     /// wl-copy, and flashes what it took for a moment.
+    /// Visual y: it ends the selection and leaves the cursor at its start,
+    /// as Vim's does, once the page's own lines are read.
+    fn copy_selection(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
+        if !self.read_now(layout) {
+            return;
+        }
+        self.end_selection();
+        let (top, foot) = layout.line_extent(taken.ends().0.line);
+        self.aim = Some(top);
+        self.character = Some(Selection::new(Kind::Chars, taken.ends().0));
+        self.follow_line(top, foot, None);
+        self.copy(layout, taken);
+    }
+
     fn copy(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
         self.flash(layout.pieces(&taken));
         clip(layout, taken);

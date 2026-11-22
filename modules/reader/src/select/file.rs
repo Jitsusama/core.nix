@@ -129,11 +129,18 @@ impl Layout {
     /// gives its line. Lines are the file's, as Vim's are its buffer's,
     /// found by the bytes the page's characters were set from, since the
     /// page joins a paragraph's lines and wraps them where it likes. A
-    /// selection over the file's lines, as Vim's, or of blanks alone names
-    /// none; words the file doesn't hold, the eyebrow, are a line each.
+    /// selection of characters is on the lines of the file's characters it
+    /// holds, so a blank at its end, which may be the line break the page
+    /// joined, decides nothing, at any width. A selection over the file's
+    /// lines, as Vim's, or of blanks alone names none; words the file
+    /// doesn't hold, the eyebrow, are a line each.
     pub fn named(&self, selection: &Selection) -> Option<String> {
         let (from, to) = selection.ends();
-        let text = match (self.file_line_at(from), self.file_line_at(to)) {
+        let (first, last) = match selection.kind {
+            Kind::Chars => self.matched_within(from, to).unwrap_or((from, to)),
+            Kind::Pieces => (from, to),
+        };
+        let text = match (self.file_line_at(first), self.file_line_at(last)) {
             (Some(top), Some(bottom)) if top != bottom => return None,
             (Some(line), Some(_)) if selection.kind == Kind::Pieces => {
                 self.file_line_shown(to, line)?
@@ -150,9 +157,27 @@ impl Layout {
         (!name.is_empty()).then(|| name.to_string())
     }
 
+    /// The first and last characters from `from` to `to` that the file's
+    /// bytes set; none when it holds only blanks and marks.
+    fn matched_within(&self, from: Pos, to: Pos) -> Option<(Pos, Pos)> {
+        let mut units: Vec<usize> = (from.line..=to.line)
+            .filter_map(|line| self.of_line.get(line).copied().flatten())
+            .collect();
+        units.dedup();
+        let within: Vec<Pos> = units
+            .into_iter()
+            .flat_map(|unit| self.matched(unit))
+            .map(|(at, _)| at)
+            .filter(|at| from <= *at && *at <= to)
+            .collect();
+        Some((*within.iter().min()?, *within.iter().max()?))
+    }
+
     /// The file's line, from 0, that the character at `pos` was set from:
-    /// a blank's or a mark's is the next word's on its page line, or the
-    /// last's past them. None on a line no word of the file is set on.
+    /// a blank's or a mark's is the word's before it on its page line, as a
+    /// line break the page joins ends the line before it, mid-row or at a
+    /// row's end alike, or the first word's ahead of them. None on a line
+    /// no word of the file is set on.
     fn file_line_at(&self, pos: Pos) -> Option<usize> {
         let unit = self.of_line.get(pos.line).copied().flatten()?;
         let matched = self.matched(unit);
@@ -162,8 +187,9 @@ impl Layout {
             .collect();
         let (_, byte) = on_line
             .iter()
-            .find(|(at, _)| at.ch >= pos.ch)
-            .or(on_line.last())?;
+            .rev()
+            .find(|(at, _)| at.ch <= pos.ch)
+            .or(on_line.first())?;
         self.source_lines
             .iter()
             .position(|range| range.start <= *byte && *byte < range.end)
