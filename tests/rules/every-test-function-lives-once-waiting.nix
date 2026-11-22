@@ -114,7 +114,7 @@
   "modules/quickshell/tests/now-moment.qml" = 1;
   "modules/quickshell/tests/order.qml" = 1;
   "modules/quickshell/tests/pacing.qml" = 1;
-  "modules/quickshell/tests/part-names.qml" = 2;
+  "modules/quickshell/tests/part-names.qml" = 1;
   "modules/quickshell/tests/passwords-on-niri-test.py" = 1;
   "modules/quickshell/tests/people.qml" = 2;
   "modules/quickshell/tests/piece-drawers.qml" = 1;
