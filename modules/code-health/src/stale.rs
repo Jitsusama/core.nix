@@ -13,7 +13,8 @@
 //! is as likely another project's, or a test's stand-in tree, and git's
 //! `refs/heads` is no path at all. A path cut just before a hyphen, as
 //! `tests/vm/screens/screens-` is, names where names begin rather than one
-//! file, so it's there while any path begins with it.
+//! file, so it's there while any path begins with it, hyphen and all:
+//! `screens.nix` beside it begins only with its letters.
 
 use std::collections::HashSet;
 
@@ -45,15 +46,16 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
             })
             .any(|folder| there.contains(format!("{folder}/{named}").as_str()))
     };
-    // Rare enough that reading every path for each is cheap.
+    // Rare enough that reading every path for each is cheap. Each start
+    // keeps the hyphen `named` was cut before.
     let begun = |file: &str, named: &str| {
         let mut folder = file;
         let above = std::iter::from_fn(|| {
             let (parent, _) = folder.rsplit_once('/')?;
             folder = parent;
-            Some(format!("{parent}/{named}"))
+            Some(format!("{parent}/{named}-"))
         });
-        let starts: Vec<String> = std::iter::once(named.to_owned()).chain(above).collect();
+        let starts: Vec<String> = std::iter::once(format!("{named}-")).chain(above).collect();
         paths
             .iter()
             .any(|path| starts.iter().any(|start| path.starts_with(start.as_str())))
@@ -243,8 +245,10 @@ mod tests {
         let files = [
             file(
                 "tools/a.rs",
-                "// It owned only `tests/vm/screens-`, not tests/vm/gone-.\n",
+                "// It owned only `tests/vm/screens-`, not tests/vm/gone-.\n\
+                 // Nor tests/vm/screens, which no file is.\n",
             ),
+            file("tests/vm/gone.nix", "{ }\n"),
             file(
                 "modules/b/src/c.rs",
                 "// Beside its tests/kept/one- cases.\n",
@@ -255,8 +259,12 @@ mod tests {
         ];
         assert_eq!(
             stale(&paths(&files), &files),
-            ["tools/a.rs:1: tests/vm/gone"],
-            "a beginning some path has was taken for gone, or one none has was missed"
+            [
+                "tools/a.rs:1: tests/vm/gone",
+                "tools/a.rs:2: tests/vm/screens"
+            ],
+            "a beginning some path has was taken for gone, one only its letters begin, \
+             or a whole name some path merely begins with, was missed"
         );
     }
 
