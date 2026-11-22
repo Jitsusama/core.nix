@@ -784,6 +784,7 @@ pub fn quoted(word: &str) -> String {
 
 mod heard;
 mod landing;
+pub mod spent;
 mod steps;
 
 use steps::{bringing, copying};

@@ -41,6 +41,8 @@ interface Part {
   /** What it holds, counted in a few words; none when it wasn't read. */
   readonly holds: string | undefined;
   readonly things: readonly Thing[];
+  /** The name of each thing it lists, its record read or not. */
+  readonly named: readonly string[];
   /** How many things it names whose records haven't arrived yet. */
   readonly untold: number;
   readonly deeper: Deeper;
@@ -170,6 +172,7 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     side: texts(record, "side") ?? [],
     holds: text(record, "holds"),
     things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
+    named: keys.map((key) => key.slice(key.indexOf(":") + 1)),
     untold: keys.filter((key) => things.get(key) === undefined).length,
     deeper: {
       command: copyable(says("command")) ? says("command") : "",

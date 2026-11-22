@@ -19,6 +19,7 @@ import {
   type Said,
   standing,
 } from "./machine.ts";
+import type { Look, Looks } from "./looks.ts";
 import {
   capital,
   type Health,
@@ -284,6 +285,43 @@ function partsOf(system: System, when: (at: string) => string): string {
 </section>`;
 }
 
+/** One look, drawn as a row: its mark, whose it is, then what it is. */
+function lookRow(look: Look): string {
+  const whose = `<span class="whose"${look.machine ? ' translate="no"' : ""}>${escaped(look.whose)}</span>`;
+  return `<li><a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a></li>`;
+}
+
+/** What the list, and a, say once nothing is worth a look. */
+const NOTHING = "Nothing is worth a look.";
+/** What the list, and a, say while a part or record to come may hold a look. */
+const NOT_KNOWN = "What is worth a look isn't known yet.";
+
+/**
+ * What is worth a look, the page's first list: a row each, those past it
+ * counted, or a line saying nothing is once every part has told. Its
+ * heading, in the page's markup, is for a screen reader, since the
+ * headline above says it already.
+ */
+function looksDrawn(list: Looks): string {
+  if (list.looks.length === 0) {
+    // Until every part and machine has told, and every record could be read,
+    // one of them may hold the look; the note says which couldn't be read.
+    return list.settled
+      ? `<p class="clear health good">${mark("good")}${NOTHING}</p>`
+      : `<p class="more">${NOT_KNOWN}</p>`;
+  }
+  const more =
+    list.more === 0
+      ? ""
+      : // Said without a place, since the rest may be machines past those drawn,
+        // or a part's looks its own site holds.
+        `<p class="more">${escaped(`And ${list.more.toLocaleString("en-CA")} more.`)}</p>`;
+  // A list role said outright, since Safari drops an unbulleted list's,
+  // and with it the count a screen reader says first.
+  const rows = `<ul class="looks" role="list">${list.looks.map(lookRow).join("")}</ul>`;
+  return `${rows}${more}`;
+}
+
 /**
  * The legend: each health's mark beside its word, said once, an item each
  * so a screen reader hears the words apart, the marks being hidden from it.
@@ -301,10 +339,13 @@ export {
   escaped,
   headlineOf,
   legend,
+  looksDrawn,
   MACHINES_DRAWN,
   MORE_ROW,
   machineRow,
   machinesOf,
+  NOT_KNOWN,
+  NOTHING,
   partsOf,
   placesOf,
 };

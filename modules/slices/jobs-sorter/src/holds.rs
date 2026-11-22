@@ -147,8 +147,8 @@ pub struct Holding {
     /// properties than [`hold_call`] does now.
     again: HashSet<PathBuf>,
     /// The scopes held with a hard floor, or taken up from a sorter
-    /// before this one, which may have set one: what each was held with,
-    /// as a pi held past [`crate::focus::MOST`] gets none.
+    /// before this one with one: what each was held with, as a pi held
+    /// past [`crate::focus::MOST`] gets none.
     hard: HashSet<PathBuf>,
     /// Whether a failure to hold a window has been said.
     pub failed: bool,
@@ -163,12 +163,33 @@ impl Holding {
     /// ended. An orchestrator's floor is smaller, and `src/keep.rs`'s.
     /// Those still wanted are held again, once: on 11 November a switch
     /// left three windows with their floor but without writeback held
-    /// off, which the sorter before had never set.
+    /// off, which the sorter before had never set. Of those, the ones
+    /// `hard` says keep a hard floor count as keeping one: counting each
+    /// window's own scope too took the hard floor off the pi of the window
+    /// Joel is at for a look after each restart, as three others seemed to
+    /// keep theirs. So only a scope this sorter would hold hard counts, a
+    /// window's own never, whatever memory.min it reads; and one whose
+    /// memory.min can't be read counts, as a failed give-back does, so
+    /// no floor past the three is given while it might still be set.
     pub fn left(
         scopes: impl IntoIterator<Item = PathBuf>,
         floor: impl Fn(&Path) -> Option<u64>,
+        min: impl Fn(&Path) -> Option<u64>,
+        pis: &[String],
     ) -> Self {
-        Self::taken_up(scopes, |scope| floor(scope) == Some(FLOOR))
+        let mut holding = Self::taken_up(scopes, |scope| floor(scope) == Some(FLOOR));
+        holding.hard = holding
+            .held
+            .iter()
+            .filter(|scope| hard_for(scope, pis) > 0 && min(scope).is_none_or(|min| min > 0))
+            .cloned()
+            .collect();
+        holding
+    }
+
+    /// How many scopes are held, taken up or not.
+    pub fn held(&self) -> usize {
+        self.held.len()
     }
 
     /// The scopes a sorter before this one set as `set` says, to give
@@ -180,7 +201,7 @@ impl Holding {
         let held: HashSet<PathBuf> = scopes.into_iter().filter(|scope| set(scope)).collect();
         Self {
             again: held.clone(),
-            hard: held.clone(),
+            hard: HashSet::new(),
             held,
             failed: false,
         }
@@ -239,10 +260,16 @@ impl Holding {
 
     /// The hard floor to hold `scope` with: [`hard_for`]'s while fewer
     /// than [`crate::focus::MOST`] other scopes held keep one, as a
-    /// give-back that fails still does, and none past them.
+    /// give-back that fails still does, and none past them. One that keeps
+    /// a hard floor already keeps it: the kernel holds it whatever this
+    /// says, and taking it off while a stale one's give-back fails took the
+    /// floor from the window Joel is at and left it on those he'd left. So
+    /// while one fails, more than `MOST` may hold one, past what the
+    /// assertion over agents.slice's floor allows, and the kernel shares
+    /// that floor among them until the give-back lands: meant, and brief.
     pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
         let others = self.hard.iter().filter(|held| *held != scope).count();
-        if others < crate::focus::MOST {
+        if self.hard.contains(scope) || others < crate::focus::MOST {
             hard_for(scope, pis)
         } else {
             0
@@ -315,6 +342,11 @@ mod tests {
             hard("/cg/app.slice/app-kitty-2684.scope"),
             0,
             "its own scope, a shell or a viewer, keeps none"
+        );
+        assert_eq!(
+            hard("/cg/agents.slice/kitty-1-9.scope"),
+            0,
+            "nor does a session window's own scope, in agents.slice beside its pi"
         );
     }
 
@@ -426,6 +458,11 @@ mod tests {
             3,
             "the fourth, held with none, isn't counted as keeping one"
         );
+        assert_eq!(
+            holding.changes(&[pi(1), pi(2), pi(3), pi(4)], &pis),
+            [],
+            "the fourth isn't offered again while the three keep theirs, or it'd be held each look"
+        );
         holding.done(&pi(1), None);
         assert_eq!(
             holding.changes(&[pi(2), pi(3), pi(4)], &pis),
@@ -449,7 +486,7 @@ mod tests {
             Some("kitty-1-2.scope") => Some(1 << 30),
             _ => Some(0),
         };
-        let holding = Holding::left([held.clone(), kept, bare], floors);
+        let holding = Holding::left([held.clone(), kept, bare], floors, |_| Some(0), &[]);
         assert!(holding.holds("kitty-1-1.scope"), "a held window's floor");
         assert!(
             !holding.holds("kitty-1-2.scope"),
@@ -461,7 +498,7 @@ mod tests {
     #[test]
     fn a_hold_taken_up_and_still_wanted_is_set_again_once() {
         let held = PathBuf::from("kitty-1-1.scope");
-        let mut holding = Holding::left([held.clone()], |_| Some(FLOOR));
+        let mut holding = Holding::left([held.clone()], |_| Some(FLOOR), |_| Some(0), &[]);
         let wanted = [held.clone()];
         assert_eq!(
             holding.changes(&wanted, &[]),
@@ -470,5 +507,91 @@ mod tests {
         );
         holding.done(&held, Some(0));
         assert_eq!(holding.changes(&wanted, &[]), [], "once is enough");
+    }
+
+    #[test]
+    fn after_a_restart_the_pi_of_the_window_joel_is_at_keeps_its_hard_floor() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let own = |n: u8| PathBuf::from(format!("/cg/agents.slice/kitty-{n}-9.scope"));
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        // As focus::held_and_kept lists them: each window's own scope, then its pi, the window
+        // Joel is at first.
+        let wanted = [own(1), pi(1), own(2), pi(2), own(3), pi(3)];
+        // Every scope reads a memory.min, as a window's own would if anything had set one there.
+        let mut holding = Holding::left(wanted.clone(), |_| Some(FLOOR), |_| Some(HARD), &pis);
+        assert_eq!(
+            holding.hard(),
+            3,
+            "only the pis count as keeping a hard floor, not a window's own scope with a \
+             memory.min left on it"
+        );
+        let mut given = Vec::new();
+        for (scope, hold) in holding.changes(&wanted, &pis) {
+            assert!(hold, "every window is still wanted");
+            let hard = holding.hard_floor(&scope, &pis);
+            holding.done(&scope, Some(hard));
+            given.push((scope, hard));
+        }
+        assert_eq!(
+            given,
+            [
+                (own(1), 0),
+                (pi(1), HARD),
+                (own(2), 0),
+                (pi(2), HARD),
+                (own(3), 0),
+                (pi(3), HARD)
+            ],
+            "each pi is held again with its hard floor"
+        );
+        assert_eq!(
+            holding.changes(&wanted, &pis),
+            [],
+            "and nothing is offered again on the next look"
+        );
+    }
+
+    #[test]
+    fn a_taken_up_pi_whose_memory_min_cant_be_read_counts_as_keeping_its_floor() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        let holding = Holding::left([pi(1), pi(2), pi(3)], |_| Some(FLOOR), |_| None, &pis);
+        assert_eq!(
+            holding.hard(),
+            3,
+            "a floor that can't be read is counted, as a failed give-back's is, so none past \
+             the three is given"
+        );
+        assert_eq!(holding.hard_floor(&pi(4), &pis), 0, "a fourth pi gets none");
+    }
+
+    #[test]
+    fn a_stale_fourth_failing_its_give_back_leaves_the_window_joel_is_at_its_floor() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        // The sorter before left four pis hard, one Joel has since left for good.
+        let mut holding = Holding::left(
+            [pi(0), pi(1), pi(2), pi(3)],
+            |_| Some(FLOOR),
+            |_| Some(HARD),
+            &pis,
+        );
+        let wanted = [pi(1), pi(2), pi(3)];
+        let mut given = Vec::new();
+        for (scope, hold) in holding.changes(&wanted, &pis) {
+            // The give-back fails, as busctl can just after a switch, so it's never noted done.
+            if !hold {
+                continue;
+            }
+            let hard = holding.hard_floor(&scope, &pis);
+            holding.done(&scope, Some(hard));
+            given.push((scope, hard));
+        }
+        assert_eq!(
+            given,
+            [(pi(1), HARD), (pi(2), HARD), (pi(3), HARD)],
+            "a pi already keeping its floor keeps it while the stale one waits to be given \
+             back, the window Joel is at's first among them"
+        );
     }
 }

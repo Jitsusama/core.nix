@@ -230,6 +230,11 @@ fn a_read_while_the_daemon_moves_the_history_is_to_try_again() {
     let _held = crate::daemon::lock(&dir.path().join("state")).expect("the lock is free");
     let read = ran(dir.path(), &["findings"]);
     assert_eq!(read.exit, Exit::TryAgain, "{}", read.stderr);
+    assert!(
+        read.stderr.contains("systemctl --user status spend-watch"),
+        "a lock that lasts wasn't pointed at the daemon: {}",
+        read.stderr
+    );
     assert_eq!(
         History::older(&path),
         Some(9),
@@ -245,6 +250,31 @@ fn a_read_beside_a_running_daemon_reads() {
     let _held = crate::daemon::lock(&dir.path().join("state")).expect("the lock is free");
     let read = ran(dir.path(), &["findings"]);
     assert_eq!(read.exit, Exit::Done, "{}", read.stderr);
+}
+
+// With no daemon, a read of a history of the ninth shape moves it itself
+// and then reads, rather than waiting on a daemon that isn't there to
+// move it.
+#[test]
+fn a_read_with_no_daemon_moves_the_history_itself() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let path = config_in(dir.path()).history();
+    History::open(&path)
+        .expect("a history is made")
+        .db
+        .execute_batch(
+            "DROP INDEX turns_once; DROP INDEX refusals_once; DROP INDEX unresolved_once;
+             ALTER TABLE sessions DROP COLUMN machine;
+             UPDATE meta SET value = '9' WHERE key = 'schema';",
+        )
+        .expect("the history is set back to the ninth shape");
+    let read = ran(dir.path(), &["findings"]);
+    assert_eq!(read.exit, Exit::Done, "{}", read.stderr);
+    assert_eq!(
+        History::older(&path),
+        None,
+        "the read left the history in its old shape"
+    );
 }
 
 fn long_finding() -> crate::findings::Finding {
