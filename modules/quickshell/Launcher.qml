@@ -7146,8 +7146,13 @@ Scope {
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
+            // What's typed finds rows by rank, where nothing stands under a
+            // heading, so it's steadied with none, as it shows none; and a
+            // list in its own order shows all it has, so nothing waits.
             if (steadying) {
-                matches = unheaded(live(ordering ? found : steadied(found)));
+                if (ordering)
+                    waitingRows = 0;
+                matches = unheaded(live(ordering ? found : steadied(unheaded(found))));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
@@ -11098,9 +11103,12 @@ Scope {
         // takes forever to load).
         let lapped = KeyTimes.now();
         const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
-        // A link's hold on the first keys lasts only the opening it made.
-        if (!open)
+        // A link's hold on the first keys lasts only the opening it made,
+        // and what waited to be shown afresh is, at the next.
+        if (!open) {
             prompt.unlinked();
+            waitingRows = 0;
+        }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;

@@ -33,9 +33,10 @@ function byCell(items, cellOf, leads) {
 }
 
 // The groups' rows, `rowsOf(items)` each, under each one's heading,
-// `headingOf(cell, holds)`, which says how many rows it holds, so a list
-// held still knows what follows them stands under none (Steady.js's
-// headingsUnder), a group whose rows all went as they were made left
+// `headingOf(cell, held)`, `held` the rows it holds, so a list held still
+// knows each row's heading wherever the row stands, and that what follows
+// them stands under none (Steady.js's headingsUnder), a group whose rows
+// all went as they were made left
 // out. Each is headed while a cell's rows are among those left; Joel's own
 // alone need no heading to say whose they are. Decided once the rows are
 // made, since decided before, his own heading stood alone once a cell's
@@ -59,7 +60,7 @@ function laidOut(groups, rowsOf, headingOf, asked) {
     if (made.some(group => group.cell !== null)) {
         return made.reduce((rows, group) => {
             const held = rowsIn(group.items);
-            return rows.concat([headingOf(group.cell, held.length)], held);
+            return rows.concat([headingOf(group.cell, held)], held);
         }, gathered);
     }
     const loose = made.reduce((items, group) => items.concat(group.items), []);
