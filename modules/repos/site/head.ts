@@ -65,7 +65,7 @@ function footOf(
 ): string {
   const where = grove === undefined ? "" : `Read on ${grove.machine}. `;
   const problems = [...(grove?.unread ?? []), ...heard];
-  const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
+  const trouble = problems.length > 0 ? ` Couldn't read ${problems.join("; ")}.` : "";
   return `${where}${now === undefined ? "" : said(now)}${trouble}`;
 }
 

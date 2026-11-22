@@ -38,9 +38,12 @@ something to do.
   of and what works in each, its
   changes with how their
   checks and reviews stand, and its trees by season: Written Today, This
-  Week, Resting and Gone, the last two folded until asked for. Within a
-  season they go by branch, so a tree keeps its place while it's written
-  in. Under each tree or checkout are the cells at work in it, each
+  Week, Resting and Gone, the last two folded until asked for. The
+  others list at most twelve, those cells work in or a change names
+  first, then the newest, and count the rest, snapshots always among
+  them, until asked for; the tree the cursor is on is always listed.
+  Within a season they go by branch, so a tree keeps its place while
+  it's written in. Under each tree or checkout are the cells at work in it, each
   linked home and followed by the other repositories it works across,
   each linked to where it's shown here, so its work can be followed on.
 - **How they join,** under the work: a row for each repository a cell's

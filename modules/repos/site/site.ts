@@ -7,7 +7,7 @@ import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { addressed, forgotten, landing, outward, type Place } from "./address.ts";
+import { addressed, forgotten, landing, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
 import { drawMap } from "./mapview.ts";
@@ -24,13 +24,14 @@ import {
 import { UNHEARD, watchMycelium } from "./mycelium.ts";
 import { footed, USING } from "./using.ts";
 import {
-  copyFolder,
+  copyFrom,
   element,
   keepIn,
   keepRoom,
   keepTime,
   markRows,
   markTree,
+  openOutward,
   paced,
   pressHead,
   write,
@@ -57,8 +58,8 @@ const held: { -readonly [kind in keyof Feed]: Held } = {
 };
 const standings = new Map<string, Standing>();
 const heard = new Map<string, string>();
-// The kinds whose records have arrived, and whether the node's cells have: draws go unpaced,
-// and the room kept from the last visit held, until they all have.
+// The kinds whose records have arrived, and whether the node's cells have: draws keep only their
+// own rest, and the room kept from the last visit is held, until they all have.
 const arrived = new Set<string>();
 let cellsHeard = false;
 const repos = (): boolean => KINDS.every((kind) => arrived.has(kind));
@@ -125,7 +126,7 @@ function drawOpen(): void {
     write(opened, '<p class="quiet">Step onto a repository to open it here.</p>');
     return;
   }
-  const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes };
+  const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes, keep: inner };
   write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
   if (!markInner(false) && inner !== null) {
     inner = null;
@@ -165,7 +166,8 @@ function drawList(): void {
   markRows(cursor, false);
 }
 
-// Draws on the frame after a record, then at most twice a second while records keep coming.
+// Draws on the frame after a record, then at most twice a second while records keep coming, and
+// never for more than a fifth of the time, however long the grove takes to draw.
 const soon = paced(draw, 500, repos);
 
 const followed: readonly (keyof Feed)[] = [...KINDS, USING];
@@ -349,7 +351,7 @@ function goOut(): void {
   }
 }
 
-/** Opens or folds the open repository's resting and gone trees. */
+/** Opens or folds the open repository's resting and gone trees, and lists or shortens the rest. */
 function fold(): void {
   const open = current();
   if (open === undefined) {
@@ -379,27 +381,6 @@ function fold(): void {
   }
 }
 
-/** Copies the tree's folder, or the repository's first checkout's, and says so. */
-function copy(): void {
-  const open = current();
-  const path = inner ?? open?.checkouts[0]?.path;
-  if (path !== undefined) {
-    copyFolder(path, asof);
-  }
-}
-
-/** Opens the tree's change, or the repository where its remote keeps it. */
-function openOut(): void {
-  const open = current();
-  if (open === undefined) {
-    return;
-  }
-  const url = outward(open, inner);
-  if (url !== undefined) {
-    globalThis.open(url, "_blank", "noopener");
-  }
-}
-
 const actions: Actions = {
   j: () => step(1),
   ArrowDown: () => step(1),
@@ -416,8 +397,8 @@ const actions: Actions = {
   Enter: goIn,
   "-": goOut,
   z: fold,
-  y: copy,
-  o: openOut,
+  y: () => copyFrom(current(), inner, asof),
+  o: () => openOutward(current(), inner),
   Escape: letGo,
   "/": () => {
     find.focus();
@@ -465,6 +446,12 @@ for (const region of [stand, list]) {
 }
 
 opened.addEventListener("click", (event) => {
+  // The button under a folded or shortened season opens every tree, as z does, from a tap.
+  if (event.target instanceof Element && event.target.closest(".unfold") !== null) {
+    fold();
+    keepIn(opened, inner);
+    return;
+  }
   const tree = event.target instanceof Element ? event.target.closest(".tree") : null;
   if (
     tree instanceof HTMLElement &&

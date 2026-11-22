@@ -17,6 +17,7 @@ import {
 } from "./model.ts";
 import type { Homes } from "./homes.ts";
 import { atWork, leads } from "./joins.ts";
+import { listedOf } from "./listed.ts";
 import { UNREAD, usedBriefly, usedFully } from "./using.ts";
 import { weighedBriefly, weighedFully, weightOfAll } from "./weight.ts";
 
@@ -26,6 +27,8 @@ interface Context {
   readonly now: number;
   readonly home: string | undefined;
   readonly homes: Homes;
+  /** The tree the cursor is on, which the drawer lists however its season is shortened. */
+  readonly keep?: string | null;
 }
 
 /** What the open repository's drawer reads besides: the other repositories each cell works
@@ -400,7 +403,20 @@ const GROUPS: readonly [Season, string][] = [
   ["gone", "Gone"],
 ];
 
-/** A repository's trees, grouped by season; resting and gone fold shut until opened. */
+/** What a season leaves unlisted, counted, with the button that lists it. */
+function unlisted(left: readonly Tree[]): string {
+  if (left.length === 0) {
+    return "";
+  }
+  const snapshots = left.filter((each) => each.snapshot).length;
+  const of = snapshots === 0 ? "" : `, ${counted(plural(snapshots, "snapshot"))} among them`;
+  return `<p class="folded">And ${left.length.toLocaleString("en-CA")} more${of}. <button type="button" class="unfold">List them</button></p>`;
+}
+
+/**
+ * A repository's trees, grouped by season; resting and gone fold shut, and the others list only
+ * the trees worth it, until opened, which `open` holding resting says.
+ */
 function treeGroups(repository: Repository, drawing: Drawing, open: ReadonlySet<Season>): string {
   return GROUPS.map(([season, title]) => {
     const trees = repository.trees.filter((each) => each.season === season);
@@ -408,11 +424,14 @@ function treeGroups(repository: Repository, drawing: Drawing, open: ReadonlySet<
       return "";
     }
     const folds = season === "resting" || season === "gone";
-    const shown = !folds || open.has(season);
     const head = `<h3 class="group"><span class="group-title">${title}</span> <span class="n">${trees.length.toLocaleString("en-CA")}</span></h3>`;
-    const list = shown
-      ? `<ul class="trees">${trees.map((each) => treeRow(each, repository.cutIn, drawing)).join("")}</ul>`
-      : `<p class="folded">Folded; press <kbd>z</kbd> to open ${plural(trees.length, "tree")}.</p>`;
+    if (folds && !open.has(season)) {
+      const folded = `<p class="folded">Folded: ${counted(plural(trees.length, "tree"))}. <button type="button" class="unfold">Open them</button></p>`;
+      return `<section class="season ${season}" data-season="${season}">${head}${folded}</section>`;
+    }
+    const listed = open.has("resting") ? trees : listedOf(trees, drawing.keep);
+    const left = trees.filter((each) => !listed.includes(each));
+    const list = `<ul class="trees">${listed.map((each) => treeRow(each, repository.cutIn, drawing)).join("")}</ul>${unlisted(left)}`;
     return `<section class="season ${season}" data-season="${season}">${head}${list}</section>`;
   }).join("");
 }

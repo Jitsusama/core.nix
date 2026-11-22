@@ -205,3 +205,21 @@
   font-size: var(--step-small);
   color: var(--muted);
 }
+
+/* What lists a season's trees reads as a link does, words with a line
+   under them, and keeps the whole target every control has. */
+.unfold {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-style: normal;
+  text-decoration-line: underline;
+  text-decoration-color: var(--rule);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+}
+
+.unfold:hover {
+  color: var(--strong);
+  text-decoration-color: var(--tint);
+}

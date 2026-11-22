@@ -309,6 +309,33 @@ def test_a_repository_that_goes_leaves_the_list(code_page: Page, repos_daemon: S
     expect(row(code_page, "github:owl/core"), "the one left went too").to_be_visible()
 
 
+def test_what_a_source_couldnt_read_is_said_once_for_each_reason(
+    code_page: Page, repos_daemon: StandIn
+) -> None:
+    says_it_stands(code_page, "live")
+    hidden = "not readable here: the App can't see it, or it's gone"
+    unread = [f"github:owl/{name}: {hidden}" for name in ("nest", "perch", "roost")]
+    sources = [
+        {"name": "git", "what": "the disk", "unread": []},
+        {"name": "github", "what": "changes", "unread": unread},
+    ]
+    repos_daemon.tell("reading", changed=[{"key": "reading", "sources": sources}])
+    expect(code_page.locator("#asof"), "the foot didn't say the reason once").to_contain_text(
+        f"Couldn't read owl/nest, owl/perch and owl/roost on github, {hidden}.", timeout=PACE_MS
+    )
+
+
+def test_a_tap_opens_a_folded_season_and_keeps_focus_in_the_drawer(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    row(code_page, "github:owl/core").click()
+    trees = code_page.locator("#open .tree")
+    expect(trees, "core's resting tree was drawn before it was asked for").to_have_count(1)
+    code_page.get_by_role("button", name="Open them").tap()
+    expect(trees, "the button didn't open the resting trees").to_have_count(2)
+    inside = code_page.evaluate("() => document.activeElement?.closest('.drawer') !== null")
+    assert inside, "focus left the drawer once the button it was on went"
+
+
 def test_a_repositorys_weight_and_due_upkeep_are_said(code_page: Page) -> None:
     says_it_stands(code_page, "live")
     # Only core's checkout weighs anything, reckoned from one folder, and git

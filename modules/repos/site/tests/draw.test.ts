@@ -296,3 +296,66 @@ it("says what works unread where the daemon's reading stopped, never as nothing 
   const row = rows(grove([...records, unread]).repositories, NOW, "");
   assert.ok(row.includes("processes unread"), `the row didn't say it's unread: ${row}`);
 });
+
+const TREE_ROW = /<li class="tree /gu;
+const MINUTE = 60_000;
+
+/** A tree of the hostile repository named `name`, written `ago` before now. */
+function treeNamed(name: string, ago: number, snapshot = false, named: string | null = null) {
+  const path = `/home/ada/trees/${name}`;
+  return {
+    key: `tree:${path}`,
+    kind: "tree",
+    repository,
+    checkout,
+    path,
+    snapshot,
+    present: true,
+    head: { branch: name, commit: "b2" },
+    written_at: at(ago),
+    change: named,
+  };
+}
+
+// Fourteen trees written today, the oldest naming a change, and three snapshots among them.
+const crowded = [
+  ...records.filter((each) => each.kind !== "tree"),
+  ...Array.from({ length: 13 }, (_, index) => treeNamed(`t${index}`, (index + 1) * MINUTE)),
+  treeNamed("named", 50 * MINUTE, false, change),
+  ...["s0", "s1", "s2"].map((name) => treeNamed(name, MINUTE / 2, true)),
+];
+
+/** The crowded repository's drawer, with `open` seasons and the cursor on `keep`. */
+function crowdedDrawer(open: ReadonlySet<"resting">, keep: string | null = null): string {
+  const whole = grove(crowded);
+  const [opened] = whole.repositories;
+  assert.ok(opened !== undefined, "the records drew no repository");
+  const context = { now: NOW, home: "/home/ada", homes: () => undefined, keep };
+  return drawer(opened, whole, context, open);
+}
+
+it("lists twelve of a season's trees, those a change names first, and counts the rest", () => {
+  const markup = crowdedDrawer(new Set());
+  assert.equal(markup.match(TREE_ROW)?.length, 12, `the season didn't list twelve: ${markup}`);
+  assert.ok(markup.includes('data-path="/home/ada/trees/named"'), "the named tree wasn't listed");
+  assert.ok(!markup.includes("/home/ada/trees/s0"), "a snapshot was listed");
+  assert.ok(
+    markup.includes(
+      'And 5 more, 3\u00a0snapshots among them. <button type="button" class="unfold">',
+    ),
+    `the season didn't count what it left out: ${markup}`,
+  );
+});
+
+it("lists the tree the cursor is on, even a snapshot the season leaves out", () => {
+  const markup = crowdedDrawer(new Set(), "/home/ada/trees/s1");
+  assert.equal(markup.match(TREE_ROW)?.length, 13, `the cursor's tree wasn't added: ${markup}`);
+  assert.ok(markup.includes('data-path="/home/ada/trees/s1"'), "the cursor's tree wasn't listed");
+  assert.ok(markup.includes("And 4 more"), `the count still held the cursor's tree: ${markup}`);
+});
+
+it("lists every tree once opened, and counts none", () => {
+  const markup = crowdedDrawer(new Set(["resting"]));
+  assert.equal(markup.match(TREE_ROW)?.length, 17, `an opened season left trees out: ${markup}`);
+  assert.ok(!markup.includes('class="unfold"'), `an opened season offered to list more: ${markup}`);
+});
