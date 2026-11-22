@@ -229,7 +229,8 @@ pub fn key(id: &str) -> String {
 
 /// Every network in the air, and the one each card is on even when it
 /// hides its name, the one connected first, then those saved, then the
-/// rest, each A to Z as launcher/Order.js's live order has it.
+/// rest, each A to Z as launcher/Order.js's live order has it, then by
+/// their letters as they are, which Order.js has no need of.
 fn networks(described: &Described) -> Vec<Network<'_>> {
     let mut heard: Vec<Network> = described
         .nearby
@@ -261,6 +262,11 @@ fn networks(described: &Described) -> Vec<Network<'_>> {
     // by nothing he did; how strong each is stays said on its row. Names
     // by_name reads alike, as Home and HOME, go by their letters as they
     // are, so not even those fall back to the air's strongest first.
+    // A stranger names a network as they do a Bluetooth device, so with
+    // nothing joined or saved in range, one called "!" heads the list. That
+    // is let be, unlike Nearby's: a network joined is trusted with nothing
+    // here, where a paired device may type, and by signal a stranger had
+    // only to be loudest.
     heard.sort_by(|one, other| {
         stands(one)
             .cmp(&stands(other))
@@ -442,7 +448,7 @@ mod tests {
     }
 
     #[test]
-    fn the_one_connected_comes_first_then_those_saved_then_by_name() {
+    fn the_one_connected_comes_first_then_those_saved() {
         let rows = rows(&described(), &words());
         assert_eq!(
             names(&rows),
@@ -461,8 +467,8 @@ mod tests {
     fn a_stronger_network_stands_no_higher_than_its_name_puts_it() {
         let mut heard = described();
         heard.nearby = vec![
-            nearby("Cafe 10", Security::Open, 1),
-            nearby("Cafe 9", Security::Open, 2),
+            nearby("Cafe 10", Security::Open, 2),
+            nearby("Cafe 9", Security::Open, 1),
             nearby("Campus", Security::Enterprise, 4),
             nearby("Lantern", Security::Personal, 3),
         ];
@@ -492,6 +498,22 @@ mod tests {
     }
 
     #[test]
+    fn with_nothing_joined_or_saved_a_strangers_name_can_head_the_list() {
+        let mut heard = described();
+        heard.cards = vec![card(None, None)];
+        heard.saved = Vec::new();
+        heard.nearby = vec![
+            nearby("Cafe", Security::Open, 4),
+            nearby("!free", Security::Open, 1),
+        ];
+        assert_eq!(
+            names(&rows(&heard, &words())),
+            ["!free", "Cafe", "Wi-Fi Off"],
+            "a stranger's name leads by its letters, as rows.rs says it may"
+        );
+    }
+
+    #[test]
     fn names_alike_but_for_case_keep_one_order_as_their_bars_change() {
         // The air lists the strongest first (state.rs), so whichever is
         // stronger comes in first.
@@ -512,7 +534,7 @@ mod tests {
         assert_eq!(
             listed(1, 4),
             listed(4, 1),
-            "two names alike but for case swap as their bars do"
+            "two names alike but for case keep one order whatever their bars"
         );
         assert_eq!(listed(1, 4), ["Lantern", "CAFE", "Cafe", "Wi-Fi Off"]);
     }

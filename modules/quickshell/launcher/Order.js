@@ -124,8 +124,8 @@ function stream(at, first) {
 // when it started (`since`), the earliest first so one that starts comes
 // after those there, then by `then` where a kind has one more measure,
 // then A to Z. Only Nearby has one, its devices' signal, since they're
-// heard afresh at each opening and a stranger names their own; a list that
-// stays between openings never takes a measure that moves by itself.
+// heard afresh at each opening and Return trusts the first (Nearby.js);
+// no other list ordered here takes a measure that moves by itself.
 function live(how) {
     return then(smaller(how.stands), smaller(how.since ?? (() => null)),
         how.then ?? (() => 0), byName(how.name));

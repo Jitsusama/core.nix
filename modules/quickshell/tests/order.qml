@@ -84,11 +84,12 @@ QtObject {
                 since: 9 }, { name: "keys", state: "connected", since: 2 },
             { name: "pad", state: "paired" }, { name: "dial", state: "seen" }], devices),
             "keys pods pad dial mouse");
-        const networks = Order.live({ stands: row => row.known ? 0 : 1,
-            then: (one, other) => other.strength - one.strength, name: byName });
+        // Nearby's devices, heard afresh at each opening (Nearby.js).
+        const heard = Order.live({ stands: row => row.paired ? 0 : 1,
+            then: (one, other) => other.rssi - one.rssi, name: byName });
         check(failures, "live: a kind's own measure before A to Z",
-            sorted([{ name: "cafe", strength: 40 }, { name: "home", known: true, strength: 20 },
-                { name: "airport", strength: 70 }, { name: "bus", strength: 40 }], networks),
+            sorted([{ name: "cafe", rssi: -60 }, { name: "home", paired: true, rssi: -80 },
+                { name: "airport", rssi: -40 }, { name: "bus", rssi: -60 }], heard),
             "home airport bus cafe");
 
         check(failures, "amounts: the largest first",
