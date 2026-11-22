@@ -313,11 +313,17 @@ let
   builders = import ./builders.nix;
   # The home realm's node writes, as it judges the machine, the carry it
   # would make to ease it, and makes none, so a day of those lines can be read
-  # before it may act; a further realm's sessions aren't its to move. It
+  # before it may act; a further realm's sessions aren't its to move. Where
+  # the machine says so, it asks the harness to park the idle sessions it
+  # would put to sleep, in the folder each session's harness reads. It
   # alone lends, since the machines it lends to are the ones it made.
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
+    ++ lib.optionals cfg.easesSleep [
+      "--eases-sleep"
+      "${config.xdg.stateHome}/pi/agentic-harness.pi/park-workflow/ease"
+    ]
     ++ lendArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
@@ -579,6 +585,17 @@ in
         daemon's (../system): on Linux in the user's runtime folder, `%t`,
         and on a Mac, which has none, in the account's state folder. A
         socket nobody answers reads as health unknown.
+      '';
+    };
+    easesSleep = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether the home realm's node asks the harness to park the idle
+        sessions it would put to sleep while this machine is over its room
+        and another has some, rather than only saying so. The harness parks
+        one only once its own rule holds, and it wakes on its next message.
+        Off, the node only writes what it would do.
       '';
     };
     agents = lib.mkOption {

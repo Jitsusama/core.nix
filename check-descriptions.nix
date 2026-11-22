@@ -2139,7 +2139,8 @@
     or the key its realm names, through that key's agent rather than one the account's SSH config
     names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
     finding the system's ssh before the account's programs; the home realm's node writes how it
-    would ease the machine, and a further realm's doesn't; one naming none runs it dialling
+    would ease the machine, asking the harness to park sessions only where told to, and a
+    further realm's doesn't; one naming none runs it dialling
     nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''
