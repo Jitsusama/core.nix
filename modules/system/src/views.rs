@@ -276,6 +276,7 @@ mod tests {
                            248 GB free, runs 70 busy and 20 idle sessions"
                         .to_owned(),
                     side: Vec::new(),
+                    note: None,
                     holds: Some("1 machine".to_owned()),
                     things: vec![Thing {
                         kind: "machine",
@@ -297,6 +298,7 @@ mod tests {
                     health: Health::Unread,
                     says: "net isn't on this machine".to_owned(),
                     side: Vec::new(),
+                    note: None,
                     holds: None,
                     things: Vec::new(),
                     deeper: deeper("net", "network/", "Network"),

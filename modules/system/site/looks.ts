@@ -19,16 +19,15 @@ const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch
 const MORE = /^and (\d+) more worth a look$/u;
 
 /**
- * The note a part carries when it was read from its owner's last answer, as
- * the daemon words it (modules/system/src/kept.rs). It is good wherever it
- * stands: a kept answer raises no alarm of its own, and the part keeps the
+ * `words`' own health in `part`'s side, whose looks are at the part's: good
+ * when they are the note the part carries when it was read from its owner's
+ * last answer, which the daemon says on its own as well as in the side
+ * (modules/system/src/kept.rs), so it is told by what it is and never by how
+ * it reads. A kept answer raises no alarm of its own, and the part keeps the
  * health that answer gave it, which the note is no part of.
  */
-const NOTE = /^as read at \d{2}:\d{2}; just now /u;
-
-/** `words`' own health, in a side whose looks are at `health`. */
-function healthIn(words: string, health: Health): Health {
-  return NOTE.test(words) ? "good" : health;
+function healthIn(words: string, part: Part): Health {
+  return words === part.note ? "good" : part.health;
 }
 
 /** How many more looks `side` counts past those it lists, as its last item says. */
@@ -107,24 +106,30 @@ function machineLooks(part: Part, drawn: number): readonly Look[] {
  * it carries when it was read from its owner's last answer. Its side also
  * names each machine worth a look, "kestrel on battery at 9%", then how many
  * more; those are left to the machines' own looks, which clear first when a
- * machine's record changes before the part's, and wait with the list's
- * settling for a machine named before its record, as is how many more it
- * counts. The note is never a machine's, whatever a machine is named. What
- * else it says is good too, since the part's health is its machines'.
+ * machine's record changes before the part's. A machine named before its
+ * record has arrived lists none, and counts none, until it does: an empty
+ * list says so by being unsettled, and one with rows by the page's note of
+ * what couldn't be read when it can't be. The note is never a machine's,
+ * whatever a machine is named. What else it says is good too, since the
+ * part's health is its machines'.
  */
 function ownLooks(part: Part): readonly Look[] {
   const machines = part.named.map((name) => `${name} `);
   const own = listed(part.side).filter(
-    (words) => NOTE.test(words) || !machines.some((name) => words.startsWith(name)),
+    (words) => words === part.note || !machines.some((name) => words.startsWith(name)),
   );
   return keyed(own).map(({ words, key }) => lookOf(part, "good", words, key));
 }
 
-/** Each machine's side, a look a word, leading to its section or the map. */
+/**
+ * Each machine's side, a look a word at the machine's health, leading to its
+ * section or the map. A machine's side holds only its own looks: the daemon
+ * says the machines' note in each machine's words and the part's side alone.
+ */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   return part.things.flatMap((thing, at) =>
     keyed(listed(thing.side)).map(({ words, key }) => ({
-      health: healthIn(words, thing.health),
+      health: thing.health,
       whose: thing.name,
       machine: true,
       words: capital(words),
@@ -160,7 +165,7 @@ function partLooks(part: Part): readonly Look[] {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
   return keyed(listed(part.side)).map(({ words, key }) =>
-    lookOf(part, healthIn(words, part.health), words, key),
+    lookOf(part, healthIn(words, part), words, key),
   );
 }
 
@@ -186,7 +191,9 @@ function uncounted(system: System): number {
  * Everything worth a look in `system`, the worst first and in the daemon's
  * own order within a health, `drawn` of its machines drawn whole on the
  * page. Past what the list holds, the rest are counted, with those the
- * sides count but don't list.
+ * sides count but don't list. The count is one number, unranked: what the
+ * sides count is said only as how many, so it can't be told apart by health
+ * or ranked among the rows, and the line follows them all.
  */
 function looksOf(system: System, drawn: number): Looks {
   const all = system.parts

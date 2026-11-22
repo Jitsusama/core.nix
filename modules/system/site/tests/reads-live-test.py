@@ -36,8 +36,9 @@ RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
-# about 477 KB and 397 elements since the list of what is worth a look, six to a row.
-BUDGET = Budget(files=25, kilobytes=480, elements=400)
+# about 477 KB and 404 elements since the list of what is worth a look, six to a row,
+# and the network's kept note.
+BUDGET = Budget(files=25, kilobytes=480, elements=407)
 
 
 @pytest.fixture
@@ -190,10 +191,14 @@ LOOKED_AT = [
     ("osprey", "Code wants a look"),
     ("Mycelium", "4 sessions say they run with their processes gone"),
     ("Network", "The attic's radio is busy 53% of the time"),
+    # Read from net's last answer: the note the part carries on its own as
+    # well, listed as good beneath the part's watch.
+    ("Network", "As read at 11:54; just now net --json gave no answer in 20 s"),
 ]
 # The network's side ends with how many more it holds, which the list counts
-# rather than listing as a look of its own.
-MORE_LOOKS = "And 3 more."
+# rather than listing as a look of its own. The summary's side says 3, so a
+# count read from it instead would show.
+MORE_LOOKS = "And 2 more."
 # The rows' keys a steps through: whose each is, then how many the same came
 # before it, then its own words.
 KESTREL_LOOK = "look:machine:kestrel:0:booted 3 hours ago after a firmware error"

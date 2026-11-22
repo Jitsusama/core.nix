@@ -1045,6 +1045,7 @@ mod tests {
                 health: Health::Good,
                 says: String::new(),
                 side: Vec::new(),
+                note: None,
                 holds: None,
                 things: vec![thing("laptop"), thing("studio")],
                 deeper: Deeper {

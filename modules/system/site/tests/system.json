@@ -50,8 +50,13 @@
         "part": "network",
         "health": "watch",
         "holds": "12 devices",
-        "says": "The attic's radio is busy 53% of the time. 3 more are worth a look. 12 devices.",
-        "side": ["the attic's radio is busy 53% of the time", "and 3 more worth a look"],
+        "says": "The attic's radio is busy 53% of the time. 2 more are worth a look. 12 devices. As read at 11:54; just now net --json gave no answer in 20 s.",
+        "side": [
+          "the attic's radio is busy 53% of the time",
+          "as read at 11:54; just now net --json gave no answer in 20 s",
+          "and 2 more worth a look"
+        ],
+        "note": "as read at 11:54; just now net --json gave no answer in 20 s",
         "things": [],
         "deeper": { "command": "net", "launcher": "Network", "site": "network/" }
       },

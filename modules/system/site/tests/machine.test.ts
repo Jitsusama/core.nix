@@ -62,6 +62,7 @@ function system(things: Thing[], others: Part[] = []): System {
     health: "watch",
     says: "",
     side: [],
+    note: undefined,
     holds: undefined,
     things,
     named: things.map((thing) => thing.name),

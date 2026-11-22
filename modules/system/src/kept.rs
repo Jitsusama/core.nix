@@ -75,8 +75,6 @@ impl Kept {
                 // isn't known to be recent, so it doesn't stand.
                 Some((at, value)) if (0..=KEPT_FOR).contains(&(now - at)) => Used {
                     answer: Ok(value),
-                    // The system page tells this note from a look by its
-                    // opening words (site/looks.ts NOTE), so change both.
                     note: Some(format!("as read at {}; just now {why}", clock(at))),
                 },
                 _ => Used {
@@ -187,7 +185,9 @@ pub fn realm_folder(realm: &str) -> String {
 /// read, and tell each other machine of the realm that this one's code
 /// wants a look, though nothing changed that anyone could act on. Each
 /// machine keeps its own health and says the machines' note only in its
-/// words; the part says it once.
+/// words; the part says it once, and carries it as its `note` too, so a
+/// reader such as the system page tells the note from a look by that and
+/// never by its wording.
 pub fn mark(system: &mut System, notes: &Notes) {
     let owners = [
         ("cells", &notes.health),
@@ -198,6 +198,7 @@ pub fn mark(system: &mut System, notes: &Notes) {
         if let Some(note) = notes.of(part.name) {
             part.says = told(&part.says, note);
             noted(&mut part.side, note);
+            part.note = Some(note.to_owned());
         }
         for thing in &mut part.things {
             if part.name == "machines"
@@ -478,6 +479,20 @@ mod tests {
         assert!(
             !system.parts[0].says.contains(cells),
             "the machines part, read from its own answer, says nothing of it"
+        );
+        assert_eq!(
+            (mycelium.note.as_deref(), system.parts[0].note.as_deref()),
+            (Some(cells), None),
+            "the note is carried on its own, by the part read from a kept answer alone"
+        );
+        let record = system
+            .records()
+            .into_iter()
+            .find(|record| record["key"] == "part:mycelium");
+        assert_eq!(
+            record.map(|record| record["note"].clone()),
+            Some(json!(cells)),
+            "the part's record carries its note, so a page needn't tell it by its words"
         );
         let kestrel = &system.parts[0].things[0];
         assert_eq!(

@@ -76,6 +76,11 @@ pub struct Part {
     /// case unless a name leads, with no closing stop, and without what
     /// it holds. None when nothing is.
     pub side: Vec<String>,
+    /// The note it carries when it was read from its owner's last answer,
+    /// as kept.rs puts it in `says` and `side`: said again on its own, so a
+    /// reader tells it from a look by what it is, never by how it reads.
+    /// None when the part was read just now.
+    pub note: Option<String>,
     /// What it holds, counted in a few words, as "21 devices": the end of
     /// what it says, apart from what is worth a look. None when it wasn't
     /// read.
@@ -207,6 +212,7 @@ fn part_json(part: &Part) -> Value {
         "health": part.health.word(),
         "says": part.says,
         "side": part.side,
+        "note": part.note,
         "holds": part.holds,
         "things": part.things.iter().map(|thing| json!({
             "kind": thing.kind,
@@ -235,6 +241,7 @@ mod tests {
             health,
             says: String::new(),
             side: Vec::new(),
+            note: None,
             holds: None,
             things: Vec::new(),
             deeper: Deeper {

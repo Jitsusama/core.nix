@@ -169,6 +169,7 @@ pub fn machines(
         health,
         says,
         side,
+        note: None,
         holds: Some(holds),
         things,
         deeper,

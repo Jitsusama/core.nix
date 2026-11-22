@@ -38,6 +38,11 @@ interface Part {
   readonly says: string;
   /** What in it is worth a look, an item each, the last maybe "and N more". */
   readonly side: readonly string[];
+  /**
+   * The note in its side when it was read from its owner's last answer, as
+   * the daemon carries it on its own; none when it was read just now.
+   */
+  readonly note: string | undefined;
   /** What it holds, counted in a few words; none when it wasn't read. */
   readonly holds: string | undefined;
   readonly things: readonly Thing[];
@@ -170,6 +175,7 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
+    note: text(record, "note"),
     holds: text(record, "holds"),
     things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
     named: keys.map((key) => key.slice(key.indexOf(":") + 1)),
