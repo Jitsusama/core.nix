@@ -336,7 +336,7 @@ fn text_of(node: &Handle) -> String {
 
 /// What a block's metadata says of it, as a Typst dictionary: its number,
 /// the source lines comrak says it was written on, and a heading's level
-/// and words (place.rs reads it back).
+/// and words (place/mod.rs reads it back).
 fn block_said(node: &Handle, name: &str, number: usize) -> String {
     // comrak's sourcepos is `3:1-5:10`: lines and columns, from and to.
     let lines = attr(node, "data-sourcepos").and_then(|pos| {

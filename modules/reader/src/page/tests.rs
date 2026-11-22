@@ -1,9 +1,9 @@
 use super::{Setter, Width};
 use crate::numbers::i32_of;
 
-#[path = "page_code_tests.rs"]
+#[path = "code_tests.rs"]
 mod code;
-#[path = "page_setter_tests.rs"]
+#[path = "setter_tests.rs"]
 mod setter;
 
 /// The measure and spread a window this many points wide sets.

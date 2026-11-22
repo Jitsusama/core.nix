@@ -187,7 +187,7 @@ impl Walker<'_> {
 
 /// A cell's words as they're set, each saying whether it's code. A span
 /// of code is one, since the page keeps its pieces whole as it chooses
-/// (page.rs's `code`), and the sheet measures them as it does. Math comes
+/// (page/mod.rs's `code`), and the sheet measures them as it does. Math comes
 /// as code too, but is drawn as an equation, so its source is measured
 /// word by word, as words are, rather than as one span of mono.
 fn cell_words(node: &Handle, out: &mut Vec<(String, bool)>) {

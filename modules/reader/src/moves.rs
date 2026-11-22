@@ -23,7 +23,7 @@ pub fn top_of(line: &Line) -> f64 {
     line.baseline_pt - line.size_pt
 }
 
-/// A line's top and baseline, in points down the page, as place.rs finds
+/// A line's top and baseline, in points down the page, as place/mod.rs finds
 /// the block it's in.
 pub fn ends_of(line: &Line) -> (f64, f64) {
     (top_of(line), line.baseline_pt)

@@ -816,5 +816,4 @@ fn keep_window_in(state: &Path, pt: f64) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
-#[path = "place_tests.rs"]
 mod tests;
