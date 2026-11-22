@@ -211,27 +211,7 @@ pub fn hear(
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
-                    let mut embedded = Vec::new();
-                    let cut = pieces::pieces(samples.len());
-                    let mut failed = (0, None);
-                    for &(from, to) in &cut {
-                        let piece = &samples[from..to];
-                        match embed(settings, &mut speakers, piece) {
-                            Ok(Some(embedding)) => {
-                                embedded.push((embedding, start + from, piece.len()));
-                            }
-                            Ok(None) => {}
-                            Err(why) => failed = (failed.0 + 1, Some(why)),
-                        }
-                    }
-                    // Once a take, so a model failing on every piece
-                    // doesn't bury the journal.
-                    if let (over, Some(why)) = failed {
-                        let of = cut.len();
-                        eprintln!(
-                            "call-transcripts: {over} of {of} pieces' voice not heard: {why}"
-                        );
-                    }
+                    let embedded = embed_take(settings, &mut speakers, start, &samples);
                     let line = text.is_some().then_some(writing.lines.len());
                     writing.heard(line, &words, embedded);
                 }
@@ -357,6 +337,34 @@ fn loaded<'a>(
         }
     }
     speech.as_mut()
+}
+
+/// Each piece of a take of theirs that starts `start` samples into the
+/// call, embedded, with the sample of the call it starts at and how many
+/// it holds. A piece the speaker model fails on is left out, logged once
+/// a take, so a model failing on every piece doesn't bury the journal.
+fn embed_take(
+    settings: &Settings,
+    speakers: &mut Speakers,
+    start: usize,
+    samples: &[f32],
+) -> Vec<(Vec<f32>, usize, usize)> {
+    let cut = pieces::pieces(samples.len());
+    let mut embedded = Vec::new();
+    let mut failed = (0, None);
+    for &(from, to) in &cut {
+        let piece = &samples[from..to];
+        match embed(settings, speakers, piece) {
+            Ok(Some(embedding)) => embedded.push((embedding, start + from, piece.len())),
+            Ok(None) => {}
+            Err(why) => failed = (failed.0 + 1, Some(why)),
+        }
+    }
+    if let (over, Some(why)) = failed {
+        let of = cut.len();
+        eprintln!("call-transcripts: {over} of {of} pieces' voice not heard: {why}");
+    }
+    embedded
 }
 
 /// How a piece of a take of theirs sounds, from the speaker model, loaded
