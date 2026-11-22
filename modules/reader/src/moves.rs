@@ -23,16 +23,20 @@ pub fn top_of(line: &Line) -> f64 {
     line.baseline_pt - line.size_pt
 }
 
-/// The top of the line `pt` falls on, the lowest standing at or above it,
-/// as a mark moved between lines is put back on one: never the line
-/// below, which past a block's last line is the next block's. A point a
-/// little over the first line, as rounding leaves one, takes that line.
-pub fn line_top_at(lines: &[Line], pt: f64) -> Option<f64> {
-    let tops = || lines.iter().map(top_of);
-    tops()
-        .filter(|top| *top <= pt + 0.5)
-        .max_by(f64::total_cmp)
-        .or_else(|| tops().min_by(f64::total_cmp))
+/// A line's top and baseline, in points down the page, as place.rs finds
+/// the block it's in.
+pub fn ends_of(line: &Line) -> (f64, f64) {
+    (top_of(line), line.baseline_pt)
+}
+
+/// The top and baseline of the line a mark or the cursor stands on, by
+/// its top `pt`; one set where no line is, before the page's lines are
+/// read, stands for both.
+pub fn line_topped(lines: &[Line], pt: f64) -> (f64, f64) {
+    lines
+        .iter()
+        .find(|line| (top_of(line) - pt).abs() < 0.5)
+        .map_or((pt, pt), ends_of)
 }
 
 /// Where a line's foot is, its descenders' room in, as a match's is.
@@ -391,24 +395,15 @@ mod tests {
     use crate::text::test_line as line;
 
     #[test]
-    fn a_point_between_lines_goes_to_the_top_of_the_line_it_falls_on() {
-        let lines = [line(20.0, "one"), line(40.0, "two"), line(60.0, "three")];
-        let tops: Vec<f64> = lines.iter().map(top_of).collect();
-        let at = |pt: f64| line_top_at(&lines, pt);
-        assert_eq!(at(tops[1]), Some(tops[1]), "on a line's top, it stays");
-        assert_eq!(at(tops[1] + 3.0), Some(tops[1]), "a little below, back up");
+    fn a_mark_stands_on_the_line_whose_top_it_is_or_alone() {
+        let lines = [line(20.0, "one"), line(40.0, "two")];
+        let top = top_of(&lines[1]);
+        assert_eq!(line_topped(&lines, top + 0.2), (top, 40.0), "its line");
         assert_eq!(
-            at(tops[2] - 3.0),
-            Some(tops[1]),
-            "nearer the next line, still the one it falls on, never the next block's"
+            line_topped(&lines, 25.0),
+            (25.0, 25.0),
+            "between lines, it stands for both"
         );
-        assert_eq!(
-            at(tops[0] - 0.3),
-            Some(tops[0]),
-            "rounded over the first, on it"
-        );
-        assert_eq!(at(0.0), Some(tops[0]), "over every line, the first");
-        assert_eq!(line_top_at(&[], 5.0), None, "no lines, no top");
     }
 
     /// The eyebrow's label, the words and a section's heading, at the

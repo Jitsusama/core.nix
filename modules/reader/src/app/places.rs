@@ -9,6 +9,7 @@ use crate::theme::PT_A_PX;
 use crate::{
     App, anchor, kept_marks, keys_logged, links, moves, page, place, showing, start, text,
 };
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
 use std::time::Instant;
@@ -209,9 +210,12 @@ impl App {
         self.painter.take(incoming.page, incoming.version);
         if let Some(before) = before {
             let after = place::starts(&self.painter.page().frame);
+            let was = self.words.as_deref().unwrap_or(&[]);
+            let now: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
             // The cursor's line goes with its block too, as far through it.
             for pt in self.marks.values_mut().chain(self.aim.as_mut()) {
-                *pt = place::moved(&before, &after, *pt).unwrap_or(*pt);
+                let line = moves::line_topped(was, *pt);
+                *pt = place::moved(&before, &after, line, &now).unwrap_or(*pt);
             }
         }
         self.offset = incoming.offset;
@@ -255,6 +259,7 @@ impl App {
         self.following = None;
         self.aim = None;
         self.marks.clear();
+        self.landed.clear();
         self.kept_marks = place::read(&file)
             .map(|kept| kept_marks(&kept))
             .unwrap_or_default();
@@ -286,37 +291,66 @@ impl App {
     /// whose height is known only once the next is set, so a mark kept
     /// with its block's height waits for the whole page there.
     pub(crate) fn take_kept_marks(&mut self) {
+        self.take_kept_marks_as(self.whole);
+    }
+
+    /// The rest of the page couldn't be set, so no block past the first
+    /// screen's comes: marks waiting on one land by their kept distance,
+    /// as one kept without its height does, rather than wait all session.
+    pub(crate) fn rest_failed(&mut self) {
+        self.take_kept_marks_as(true);
+    }
+
+    /// Takes back the kept marks whose blocks the page has, `whole` when
+    /// no block past the page's comes.
+    fn take_kept_marks_as(&mut self, whole: bool) {
         if self.kept_marks.is_empty() {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
-        let whole = self.whole;
-        let marks = &mut self.marks;
+        let (marks, landed) = (&mut self.marks, &mut self.landed);
         self.kept_marks.retain(|kept| {
             match place::mark_at(&starts, whole, kept.block, kept.into_pt, kept.block_pt) {
                 Some(pt) => {
-                    marks.entry(kept.letter).or_insert(pt);
+                    if let Entry::Vacant(mark) = marks.entry(kept.letter) {
+                        mark.insert(pt);
+                        landed.push((kept.letter, kept.block, pt));
+                    }
                     false
                 }
                 None => true,
             }
         });
+        self.marks_on_lines();
     }
 
-    /// Puts each mark on the line it falls on once the page's lines are
-    /// read: one moved through its block as the page was set at another
-    /// width, or kept from the last time, lands as far through it, between
-    /// lines, and going to it would take the line below, which may be the
-    /// next block's heading. A mark set on a line stays on it.
+    /// Puts each kept mark landed as far through its block on the line of
+    /// that block nearest it, once the page's lines are read: between
+    /// lines, going to it would take the line below, and past the block's
+    /// last line that's the next block's heading. One set or moved since
+    /// stays where it is.
     pub(crate) fn marks_on_lines(&mut self) {
         let Some(lines) = self.words.as_deref() else {
             return;
         };
-        for pt in self.marks.values_mut() {
-            if let Some(top) = moves::line_top_at(lines, *pt) {
-                *pt = top;
+        let lines: Vec<(f64, f64)> = lines.iter().map(moves::ends_of).collect();
+        let starts = place::starts(&self.painter.page().frame);
+        let marks = &mut self.marks;
+        self.landed.retain(|(letter, block, landed_pt)| {
+            let Some(pt) = marks
+                .get_mut(letter)
+                .filter(|pt| (**pt - landed_pt).abs() < 0.01)
+            else {
+                return false;
+            };
+            match place::line_in(&starts, *block, *pt, &lines) {
+                Some(top) => {
+                    *pt = top;
+                    false
+                }
+                None => true,
             }
-        }
+        });
     }
 
     /// Keeps where the view is on the file shown, and its marks, for the
@@ -350,16 +384,12 @@ impl App {
         // not of how far the view goes, and known as `most` is.
         let height = self.whole.then(|| self.end_px() / px_per_pt);
         let lines = self.words.as_deref().unwrap_or(&[]);
-        let line = |pt: f64| {
-            lines
-                .iter()
-                .find(|line| (moves::top_of(line) - pt).abs() < 0.5)
-                .map_or((pt, pt), |line| (pt, line.baseline_pt))
-        };
         let mut marks: Vec<place::Mark> = self
             .marks
             .iter()
-            .map(|(letter, pt)| place::mark(&blocks, *letter, line(*pt), height))
+            .map(|(letter, pt)| {
+                place::mark(&blocks, *letter, moves::line_topped(lines, *pt), height)
+            })
             .collect();
         marks.extend(place::still_waiting(
             &self.kept_marks,

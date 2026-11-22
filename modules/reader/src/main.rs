@@ -188,6 +188,9 @@ struct App {
     start_pt: Option<f64>,
     /// Marks kept from the last time, whose blocks aren't set yet.
     kept_marks: Vec<KeptMark>,
+    /// Kept marks landed as far through their block, each where, to go on
+    /// a line of it once the page's lines are read.
+    landed: Vec<(char, usize, f64)>,
     /// The places jumped from, oldest first, each with its file, and where
     /// Ctrl+O and Ctrl+I stand in them; at its length, past the newest.
     jumps: Vec<Spot>,
@@ -703,13 +706,17 @@ fn set_rest(
     rest: page::Rest,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let whole = heard(handle, |app: &mut App, (page, ms)| app.replace(page, ms))?;
+    let failed = heard(handle, |app: &mut App, ()| app.rest_failed())?;
     std::thread::Builder::new()
         .name("setter".into())
         .spawn(move || match rest.set() {
             Ok(done) => {
                 let _ = whole.send(done);
             }
-            Err(error) => eprintln!("can't set the rest: {error}"),
+            Err(error) => {
+                eprintln!("can't set the rest: {error}");
+                let _ = failed.send(());
+            }
         })?;
     Ok(())
 }

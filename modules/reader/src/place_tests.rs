@@ -1,6 +1,7 @@
 use super::{
-    Block, Mark, Opens, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in,
-    mark, mark_at, moved, opening, pt_of, read_in, still_waiting, through, window_in, write_in,
+    Block, Mark, Opens, Place, Said, at, heading_of, keep_window_in, kept_at, letter, line_in,
+    listed_in, mark, mark_at, moved, opening, pt_of, read_in, still_waiting, through, window_in,
+    write_in,
 };
 
 #[test]
@@ -233,7 +234,12 @@ fn a_place_kept_before_it_said_where_still_reads() {
         "block": 4,
         "into_pt": 2.5,
         "at_end": false,
-        "marks": [{"letter": "a", "block": 1, "into_pt": 0.0}],
+        "marks": [
+            {"letter": "a", "block": 1, "into_pt": 0.0},
+            {"letter": "b", "block": 1, "into_pt": 0.0, "block_pt": 0.5},
+            {"letter": "c", "block": 1, "into_pt": 0.0, "block_pt": -3},
+            {"letter": "d", "block": 1, "into_pt": 0.0, "block_pt": "tall"},
+        ],
     });
     std::fs::write(&kept, old.to_string()).expect("kept");
     let place = read_in(&state, &file).expect("read");
@@ -241,9 +247,15 @@ fn a_place_kept_before_it_said_where_still_reads() {
         (place.block, place.left, place.said, place.block_pt),
         (4, None, Said::default(), None)
     );
-    assert_eq!(place.marks.len(), 1);
+    assert_eq!(place.marks.len(), 4);
     assert_eq!(place.marks[0].said, Said::default());
     assert_eq!(place.marks[0].block_pt, None, "no height kept, none read");
+    for mark in &place.marks[1..] {
+        assert_eq!(
+            mark.block_pt, None,
+            "a height no block stands is a file gone wrong, read as none: {mark:?}"
+        );
+    }
     let listed = listed_in(&state, 9);
     assert_eq!(listed.len(), 1, "listed by its file's time");
     let line: serde_json::Value = serde_json::from_str(&listed[0]).expect("JSON");
@@ -324,8 +336,8 @@ fn a_place_is_the_last_block_starting_above_it_and_the_way_into_it() {
     assert_eq!(at(&starts, 400.0), (2, 0.0));
     assert_eq!(
         at(&starts, 10.0),
-        (0, 10.0),
-        "above the first block is the page's top"
+        (0, -26.0),
+        "above the first block, that far over it"
     );
     assert_eq!(pt_of(&starts, 1, 10.0, None), Some(130.0));
     assert_eq!(
@@ -369,12 +381,72 @@ fn a_place_kept_at_another_width_lands_as_far_through_its_block() {
         Some(190.0),
         "a height no block stands is a file gone wrong, and the distance stands"
     );
+    assert_eq!(
+        pt_of(&starts, 1, 900.0, Some(1.0)),
+        Some(400.0),
+        "a distance kept past its block's foot is a file gone wrong, held to the block"
+    );
     let after = [(0, 36.0), (1, 120.0), (2, 260.0)];
     assert_eq!(
-        moved(&starts, &after, 330.0),
+        moved(&starts, &after, (330.0, 330.0), &[]),
         Some(225.0),
         "three quarters through, set again at half the height"
     );
+}
+
+#[test]
+fn a_line_moved_to_another_width_lands_on_a_line_of_its_own_block() {
+    // Block 1 is twice as tall after; block 2 opens on a heading whose
+    // line's top stands 4 pt over its capitals, where the block starts.
+    let before = [(0, 36.0), (1, 120.0), (2, 400.0)];
+    let after = [(0, 36.0), (1, 120.0), (2, 680.0)];
+    assert_eq!(
+        moved(&before, &after, (396.0, 410.0), &[]),
+        Some(676.0),
+        "a heading's line keeps its lift over the block, however the block before grows"
+    );
+    assert_eq!(
+        moved(&before, &after, (30.0, 46.0), &[]),
+        Some(30.0),
+        "the page's first line, over its block's capitals, stays"
+    );
+    assert_eq!(
+        moved(&before, &before, (10.0, 10.0), &[]),
+        Some(10.0),
+        "a line over every block, as the eyebrow's, comes back where it was"
+    );
+    // Block 1's lines, 20 pt apart, with the line before it and the
+    // heading after it, each a top and a baseline 14 pt below it.
+    let lines =
+        |tops: &[f64]| -> Vec<(f64, f64)> { tops.iter().map(|top| (*top, top + 14.0)).collect() };
+    let five = lines(&[100.0, 124.0, 144.0, 164.0, 184.0, 204.0, 396.0]);
+    let ten = lines(&[
+        100.0, 124.0, 144.0, 164.0, 184.0, 204.0, 224.0, 244.0, 264.0, 284.0, 676.0,
+    ]);
+    let there = moved(&before, &after, (164.0, 178.0), &ten);
+    assert_eq!(there, Some(204.0), "as far through, on the nearest line");
+    assert_eq!(
+        moved(&after, &before, (204.0, 218.0), &five),
+        Some(164.0),
+        "and back, on the line it left, never one higher each time"
+    );
+    let shorter = [(0, 36.0), (1, 120.0), (2, 260.0)];
+    assert_eq!(
+        moved(
+            &before,
+            &shorter,
+            (124.0, 138.0),
+            &lines(&[100.0, 124.0, 144.0, 256.0])
+        ),
+        Some(124.0),
+        "a block's first line, its inset shrunk, stays in its block, not the line before"
+    );
+    assert_eq!(
+        line_in(&before, 1, 390.0, &five),
+        Some(204.0),
+        "past its last line, still its own, never the next heading"
+    );
+    assert_eq!(line_in(&before, 1, 300.0, &[]), None, "no lines, none");
 }
 
 #[test]

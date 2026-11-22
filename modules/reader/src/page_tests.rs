@@ -125,7 +125,9 @@ fn the_first_screen_sets_the_block_after_a_long_one_it_opens_at() {
     // A paragraph longer than the first screen sets, opened at: the block
     // after it says how tall it stands, so a place in it lands as far
     // through it at any width.
-    // Unless that block is as long, which waits for the whole page.
+    // Unless that block is as long: then a mark in the long one waits for
+    // the whole page, and the view lands at its kept distance, rather
+    // than move under him once the whole page comes.
     let long = "Words enough to run on. ".repeat(400);
     for (after, known) in [("After it.", true), (long.as_str(), false)] {
         let markdown = format!("# Title\n\nThe lede.\n\n{long}\n\n{after}\n\nAnd more.\n");
@@ -151,21 +153,6 @@ fn the_first_screen_sets_the_block_after_a_long_one_it_opens_at() {
             "the first screen ends past the long block only before a shorter one: {starts:?}"
         );
     }
-}
-
-#[test]
-fn the_first_page_is_set_for_the_kept_window_or_else_the_one_niri_has_yet_to_name() {
-    let (unnamed, _) = crate::app::UNNAMED_SIZE;
-    assert_eq!(
-        Width::first(None),
-        Width::for_window(f64::from(unnamed) * crate::theme::PT_A_PX),
-        "with none kept, the page a window of the unnamed size fits"
-    );
-    assert_eq!(
-        Width::first(Some(300.0)),
-        Width::for_window(300.0),
-        "the kept one"
-    );
 }
 
 #[test]

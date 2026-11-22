@@ -48,31 +48,63 @@ fn probed(body: &str, code: &str, window_pt: f64) -> Vec<String> {
 
 #[test]
 fn an_unboxed_piece_is_counted_in_the_stretches_typst_breaks_it_into() {
-    let code = "x--y a-1-b --release f(a-) x-.y";
+    // After a hyphen, each mark the pattern holds to it, and a flag.
+    let code = "x--y a-1-b --release f(a-) x-.y a-] a-} a-, a-; a-: a-! a-? a-' a-\" a-|b a-/b";
     // Its stretches as least-code reads them, and the lines Typst sets it
     // in when every break it may make is taken.
     let read = probed(
-        r#"text(size: 2pt, s.matches(unbroken).map(m => m.text).filter(t => t != "").join("|"))"#,
+        r#"text(size: 2pt, s.matches(unbroken).map(m => m.text).filter(t => t != "").join("¦"))"#,
         code,
         2560.0,
     )
     .join(" ");
-    let broken = probed("box(width: 0.1pt, raw(s))", code, 2560.0).join("|");
+    let broken = probed("box(width: 0.1pt, raw(s))", code, 2560.0).join("¦");
     assert_eq!(
         read, broken,
-        "least-code's stretches are where Typst breaks: after hyphens, \
-         but not before a figure or a closing mark"
+        "least-code's stretches are where Typst breaks: after hyphens, but not \
+         before a figure, a closing mark, a quote, a bar or a slash"
     );
-    assert_eq!(read.matches('|').count(), 7, "it breaks at all: {read}");
+    assert_eq!(read.matches('¦').count(), 18, "it breaks at all: {read}");
 }
 
 #[test]
 fn an_unboxed_pieces_first_stretch_counts_with_the_short_word_held_to_it() {
-    // In a narrow window the name is unboxed, and "run" is held to it, so
-    // the column needs "run a-" on one line, wider than any stretch alone.
+    // In a narrow window the name is unboxed, and "www" is held to it, so
+    // the column needs "www i-" on one line, wider than any stretch alone;
+    // i and l differ in width in the test theme's mono, so both are asked.
+    let code = format!("www {}", ["i-l"; 120].join("-"));
+    let [counted, joined, i, l] = narrow_widths(r#""www\u{a0}i-""#, &code);
+    assert!(
+        (counted - joined).abs() < 0.01 && joined > i.max(l),
+        "least-code counts {counted} pt; www i- is {joined} pt, i- alone {i} pt, l- {l} pt"
+    );
+}
+
+#[test]
+fn an_unboxed_pieces_last_stretch_counts_with_the_short_word_held_after_it() {
+    // "oo" is held after the unboxed name, so the column needs its last
+    // stretch, "l", and "oo" on one line.
+    let code = format!("{} oo", ["i-l"; 120].join("-"));
+    let pieces = held(&code, 360.0);
+    assert!(
+        pieces.ends_with("! +oo"),
+        "oo is held to the name: {pieces}"
+    );
+    let [counted, joined, i, l] = narrow_widths(r#""l\u{a0}oo""#, &code);
+    assert!(
+        (counted - joined).abs() < 0.01 && joined > i.max(l),
+        "least-code counts {counted} pt; l oo is {joined} pt, i- alone {i} pt, l- {l} pt"
+    );
+}
+
+/// The widths, in a 360 pt window, of what least-code counts for `code`,
+/// of the Typst string `joined` set as code, and of "i-" and "l-".
+fn narrow_widths(joined: &str, code: &str) -> [f64; 4] {
     let widths = probed(
-        r#"text(size: 2pt, (least-code(s), raw("www\u{a0}i-"), raw("i-"), raw("l-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
-        &format!("www {}", ["i-l"; 120].join("-")),
+        &format!(
+            r#"text(size: 2pt, (least-code(s), raw({joined}), raw("i-"), raw("l-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#
+        ),
+        code,
         360.0,
     )
     .join(" ");
@@ -83,10 +115,7 @@ fn an_unboxed_pieces_first_stretch_counts_with_the_short_word_held_to_it() {
     let [counted, joined, i, l] = parsed[..] else {
         panic!("four widths, not {widths:?}")
     };
-    assert!(
-        (counted - joined).abs() < 0.01 && joined > i.max(l),
-        "least-code counts {counted} pt; www i- is {joined} pt, i- alone {i} pt, l- {l} pt"
-    );
+    [counted, joined, i, l]
 }
 
 #[test]
@@ -322,10 +351,12 @@ fn set_in_a_list(name: &str, width: Width) -> (f64, f64, f64) {
 
 #[test]
 fn a_piece_wider_than_a_list_has_room_for_keeps_to_the_list() {
-    // Over two thirds of a 360 pt window's measure, and under all of it,
-    // in a list twice nested, which has less room than two thirds. The
-    // name is sized from a first setting, as the gap between the list's
-    // room and the measure is a few characters of whatever mono is set.
+    // Wider than a list twice nested has room for, and narrower than a
+    // 360 pt window's measure, so over two thirds of it: unboxed, it breaks
+    // within the list's room. The name is sized from a first setting, as
+    // the gap between the list's room and the measure is a few characters
+    // of whatever mono is set. Only an indent past a third of the measure
+    // leaves room for a boxed piece to run over, about nine levels deep here.
     let width = Width::for_window(360.0);
     let (item, probe_pt, _) = set_in_a_list(&"a-name".repeat(4), width);
     let room = width.measure_pt - item;

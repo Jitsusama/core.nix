@@ -155,13 +155,27 @@ fn said(value: &Value, top_pt: f64) -> Option<Block> {
 }
 
 /// The block a point is in, and how far into it: the last block starting
-/// at or above it.
+/// at or above it. A point over every block, as the eyebrow's line is,
+/// stands that far over the first, a distance less than nothing that
+/// lands it there again however far down the first block starts.
 pub fn at(starts: &[(usize, f64)], pt: f64) -> (usize, f64) {
     starts
         .iter()
         .rev()
         .find(|(_, top)| *top <= pt)
+        .or(starts.first())
         .map_or((0, pt), |(block, top)| (*block, pt - top))
+}
+
+/// The block a line is in, by its baseline, and how far its top stands
+/// from the block's: `line` is its top and baseline in points. A
+/// heading's block starts at its capitals, below its line's top, so a
+/// line found by its top alone is the block's before, and its distance
+/// into its own is less than nothing, which reaches the same top again.
+pub fn line_at(starts: &[(usize, f64)], line: (f64, f64)) -> (usize, f64) {
+    let (top, baseline) = line;
+    let (block, below_its_top) = at(starts, baseline);
+    (block, below_its_top - (baseline - top))
 }
 
 /// A letter's mark as it's kept: the block its line is in and how far the
@@ -170,10 +184,7 @@ pub fn at(starts: &[(usize, f64)], pt: f64) -> (usize, f64) {
 /// points, and the page's height is known only of the whole file's page.
 ///
 /// A line is in the block its baseline is in, as ]] finds a heading's
-/// line (moves.rs): a heading's block starts at its capitals, below its
-/// line's top, so a mark found by its top alone was kept under the
-/// heading before. Its distance into its block is then less than nothing,
-/// which reaches the same top again. And a mark is a point, not a view,
+/// line (moves.rs), by `line_at`. And a mark is a point, not a view,
 /// so how far down it is is its line's share of the page's whole height:
 /// a view's share of how far it can go reads every mark on the last
 /// screen as all of it.
@@ -182,16 +193,15 @@ pub fn mark(blocks: &[Block], letter: char, line: (f64, f64), height_pt: Option<
         .iter()
         .map(|block| (block.number, block.top_pt))
         .collect();
-    let (top, baseline) = line;
-    let (block, below_its_top) = at(&starts, baseline);
+    let (block, into_pt) = line_at(&starts, line);
     Mark {
         letter,
         block,
-        into_pt: below_its_top - (baseline - top),
+        into_pt,
         block_pt: height_of(&starts, block),
         said: Said {
             heading: heading_of(blocks, block),
-            through: height_pt.map(|height| share(top, height)),
+            through: height_pt.map(|height| share(line.0, height)),
         },
     }
 }
@@ -314,7 +324,9 @@ pub fn pt_of(
         (Some(was), Some(now))
             if was >= LEAST_BLOCK_PT && into_pt > 0.0 && (now - was).abs() >= 0.01 =>
         {
-            into_pt * now / was
+            // No place stands past its block's foot, so a distance kept
+            // further is a file gone wrong, held to the block.
+            into_pt.min(was) * now / was
         }
         _ => into_pt,
     };
@@ -368,11 +380,38 @@ pub fn height_of(starts: &[(usize, f64)], block: usize) -> Option<f64> {
     Some(next.1 - starts[at].1).filter(|pt| *pt >= LEAST_BLOCK_PT)
 }
 
-/// Where a point on a page set `before` lands on the same page set again
-/// `after`, at another width: as far through the same block.
-pub fn moved(before: &[(usize, f64)], after: &[(usize, f64)], pt: f64) -> Option<f64> {
-    let (block, into_pt) = at(before, pt);
-    pt_of(after, block, into_pt, height_of(before, block))
+/// Where a line, its top and baseline, on a page set `before` lands on
+/// the same page set again `after`, at another width: as far through the
+/// same block, and then on the line of that block nearest it, of the
+/// tops and baselines `lines_after`, or between them while it has none.
+pub fn moved(
+    before: &[(usize, f64)],
+    after: &[(usize, f64)],
+    line: (f64, f64),
+    lines_after: &[(f64, f64)],
+) -> Option<f64> {
+    let (block, into_pt) = line_at(before, line);
+    let pt = pt_of(after, block, into_pt, height_of(before, block))?;
+    Some(line_in(after, block, pt, lines_after).unwrap_or(pt))
+}
+
+/// The top of the line in `block` nearest `pt`, of `lines` given by their
+/// tops and baselines. A place landed as far through its block falls
+/// between its lines, and the line nearest it is the one it was on, but
+/// only among its own block's: past its last line the nearest may be the
+/// next block's heading, and over its first the line above it the block
+/// before's.
+pub fn line_in(
+    starts: &[(usize, f64)],
+    block: usize,
+    pt: f64,
+    lines: &[(f64, f64)],
+) -> Option<f64> {
+    lines
+        .iter()
+        .filter(|line| line_at(starts, **line).0 == block)
+        .map(|(top, _)| *top)
+        .min_by(|a, b| (a - pt).abs().total_cmp(&(b - pt).abs()))
 }
 
 /// The state home, where places are kept.
