@@ -138,7 +138,9 @@ let
   # own 42%, moved onto background alone (agentsUnceiled below), so that
   # it adds no limit the machine didn't already have. Past it background's
   # own allocations reclaim background's pages, slowing its turns rather
-  # than his windows. A default, so a machine may move it.
+  # than his windows. A default, so a machine may move it. Its floor is
+  # jobs-sorter's, the sum of those it gives the units in it, since a slice
+  # with none passes its units' floors nothing (modules/slices, nested.rs).
   backgroundSlice = {
     MemoryHigh = lib.mkDefault "42%";
   };

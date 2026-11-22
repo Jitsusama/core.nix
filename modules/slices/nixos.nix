@@ -886,8 +886,9 @@ in
             "agents.slice=jobs.slice/jobs.service"
             # Background pi hosts run in a slice of their own inside agents'
             # (modules/pi/host.nix says why), which holds only services, so
-            # its hosts are ranked and sorted as attended's are and nothing
-            # there is taken for a stray scope.
+            # its hosts are ranked and sorted as attended's are, the slice
+            # keeps their floors in all, and nothing there is taken for a
+            # stray scope.
             "--under"
             "agents.slice/agents-background.slice=jobs.slice/jobs.service"
             "--home"

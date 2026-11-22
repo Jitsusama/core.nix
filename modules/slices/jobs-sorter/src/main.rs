@@ -111,6 +111,7 @@ mod joins;
 mod keep;
 mod kitty;
 mod low;
+mod nested;
 mod oom;
 mod own;
 mod probe;
@@ -823,6 +824,8 @@ struct Ranks {
     reading: Option<u64>,
     /// Each pi host's rank, as last set.
     hosts: hosts::Hosts,
+    /// The floor of each slice nested in agents.slice that hosts run in, as last set.
+    nested: nested::Nested,
     /// The orchestrators each pid holds, as the presences last said.
     orchestrating: HashMap<u32, usize>,
     /// The windows Joel was at within [`keep::SPARED_FOR`], by unit, which
@@ -1347,6 +1350,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
+    let mut ranked = Vec::new();
     for path in units {
         let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -1387,6 +1391,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             ),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
+        ranked.push((path.clone(), rank.floor));
         if !ranks.hosts.changed(unit, &rank) {
             continue;
         }
@@ -1427,6 +1432,42 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         }
     }
     ranks.hosts.keep_only(&seen);
+    give_nested_floors(windows.under, &ranked, &mut ranks.nested);
+}
+
+/// Sets each slice nested right in agents.slice among `under` to the
+/// floors of the units `ranked` in it ([`nested::floors`] says why). A
+/// failure is said once, and tried again on the next look.
+fn give_nested_floors(under: &[PathBuf], ranked: &[(PathBuf, u64)], set: &mut nested::Nested) {
+    for (slice, floor) in nested::floors(under, ranked) {
+        if !set.changed(&slice, floor) {
+            continue;
+        }
+        match Command::new("busctl")
+            .args(nested::floor_call(&slice, floor))
+            .stdout(Stdio::null())
+            .output()
+        {
+            Ok(output) if output.status.success() => {
+                eprintln!("Gave {slice} a floor of {floor}, its units' in all.");
+                set.failed = false;
+                set.done(&slice, floor);
+            }
+            Ok(output) => {
+                if !std::mem::replace(&mut set.failed, true) {
+                    eprintln!(
+                        "Couldn't give {slice} its units' floor: {}",
+                        String::from_utf8_lossy(&output.stderr).trim()
+                    );
+                }
+            }
+            Err(error) => {
+                if !std::mem::replace(&mut set.failed, true) {
+                    eprintln!("Couldn't run busctl to give {slice} its units' floor: {error}");
+                }
+            }
+        }
+    }
 }
 
 /// The settings `unit`, started by `pid` when one process did, holds of
