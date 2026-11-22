@@ -121,10 +121,13 @@ filled them was runs that told nobody anything new.
 - A flake.lock bump of one input that moves no VM test, by `merge-net
   needs`, is gated by `changed-checks` alone, and so is one moving only
   inputs [`lock-after.txt`][6] names, whose VM tests the net runs after
-  the merge: on 21 November each mycelium bump ran about 51 VM tests
-  first, for about 90 minutes, though no unit before sign-in waits on the
-  node. The list is read from the change's merge base, and every other
-  flake.lock change runs everything.
+  the merge: on 21 November a mycelium bump ran 51 VM tests first, for
+  46 minutes across 14 lent builders, though no unit before sign-in waits
+  on the node. A broken node can hold off sleep, and a reboot or poweroff
+  the account asks for until it is stopped, but not boot, unlocking or
+  sign-in. The list is read from the change's merge base. Every other
+  flake.lock change runs `changed-checks` and the VM tests `merge-net
+  needs` names, whole, first.
 
 ## Waiting
 

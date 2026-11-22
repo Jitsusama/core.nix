@@ -30,10 +30,10 @@ core's main broke on 30 October on a change whose run named checks and
 built only some, and `--name-only` is for naming alone. With no
 `--system` it compares the system with the most checks, since core holds
 its checks about checks on Linux alone, and that change's run, on a Mac,
-compared only the Mac's. `nix flake check` runs only for a
-change every check reads, such as `flake.lock`: on a machine shared with
-other work, a whole run is what makes the loop slow, and the load it adds
-is what makes VM tests time out.
+compared only the Mac's. No change needs `nix flake check`, a
+`flake.lock` one included, which `changed-checks` and `merge-net needs`
+read as any other: on a machine shared with other work, a whole run is what
+makes the loop slow, and the load it adds is what makes VM tests time out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
@@ -193,9 +193,12 @@ its guide, the greeter or lock, `flake.lock` or nix-offload
 derivation moved from main, since the rest would give main's result. A
 `flake.lock` change that moves only inputs `tools/merge-net/lock-after.txt`
 names, mycelium alone today, leaves the lock's area untouched, since no
-unit before sign-in waits on them; its VM tests run after on the net. The
-list is read from the change's merge base, so a change can't widen it for
-itself. A
+unit before sign-in waits on them; its VM tests run after on the net. A
+broken node can still hold off sleep, and refuse a reboot or poweroff the
+account asks for until it is stopped, but can't stop a machine booting,
+unlocking or signing in, and a revert's switch needs no reboot. The list is
+read from the change's merge base, so a change can't widen it for itself,
+and `merge-net needs` says why a lock it keeps runs first. A
 change to nix-offload, which moves none, sends one VM test's subtests
 through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main

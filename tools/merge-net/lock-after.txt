@@ -8,15 +8,27 @@
 # sign in or build. merge-net reads this list from the change's merge base,
 # so a change can't let itself through by editing it.
 #
-# mycelium, audited across modules/mycelium/*.nix on 21 November:
+# mycelium, audited on 21 November across every module flake.nix hands it
+# (call-transcripts, google, mycelium's home and system modules, repos,
+# sessions-come-back and slices) and the checks that take it from
+# self.inputs (pi-conversations-come-back, quickshell's agents and core):
 # - its nodes, one a realm, are the account's own user services, wanted by
 #   the user manager's default.target, and only its own balance reader
 #   orders itself after one;
+# - call-transcripts, google and repos run it as the account, by store
+#   path, from user services; sessions-come-back runs it from a Mac launchd
+#   agent at sign-in, after sign-in has passed;
 # - the builder lists a node shows are nix-offload's, which it only reads;
-# - only the links' own ssh keys are pinned to run it; a person's are left be;
-# - the slice sorter counts a node it can't reach as no call.
-# The most a broken node can do is hold off idle sleep, since it blocks
-# sleep while it holds work; the lid and a person's own suspend still pass.
-# Each of its bumps ran about 51 VM tests first, for about 90 minutes,
+# - only the links' own ssh keys are pinned to run it, by a forced command
+#   in authorized_keys; a person's are left be;
+# - the slice sorter asks it for machines within 10 seconds and counts a
+#   node it can't reach as no call.
+# Polkit lets the node block or delay both sleep and shutdown
+# (modules/slices/agents-ask-last.rules). So a broken node can hold off
+# sleep, and refuse a reboot or poweroff the account asks for, until it is
+# stopped or the reboot ignores inhibitors (root, or an admin's password).
+# It can't stop a machine booting, unlocking or signing in, and a revert's
+# switch needs no reboot.
+# Each of its bumps ran 51 VM tests first, 46 minutes on 14 lent builders,
 # because every test machine carries the node.
 mycelium

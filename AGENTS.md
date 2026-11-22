@@ -130,9 +130,10 @@ a file it touches, which `merge-net needs` names, with `run-subtests --there`;
 and the VM tests
 `merge-net needs` names, whole. Its machine builds with core pointed at the
 checkout too. The net runs the other VM tests after the merge and reverts a
-merge that breaks one. Only a change every check reads, such as `flake.lock`,
-runs `nix flake check`: a whole run evaluates every check, about 15 minutes
-and over 20 GB on a machine other work shares. There's no CI, and nothing runs
+merge that breaks one. A `flake.lock` change runs those too: its VM tests
+first unless it moves only inputs `tools/merge-net/lock-after.txt` names.
+None needs `nix flake check`: a whole run evaluates every check, about 15
+minutes and over 20 GB on a machine other work shares. There's no CI, and nothing runs
 on a schedule but the net, which follows main ([docs/testing.md][1]). A
 refactor is done when the machine repositories' machines evaluate to the same
 derivations as before. A new check has to earn its place. All of
