@@ -186,21 +186,49 @@ pub fn give_back_proven(
 /// gives up on its own within 3 minutes, which ends what reaches it.
 pub const FAILS_WHILE_REACHED: u32 = 10;
 
+/// How many times in a row a builder that builds still reach may leave
+/// unanswered whether it answers at all before it's given back as lost. A
+/// builder whose every core is taken can be slow to answer too: on 22
+/// November one two hours into a model check missed a single answer and
+/// was given back, deleting it with the check. A dead one misses each.
+pub const SILENT_WHILE_REACHED: u32 = 3;
+
 /// Whether a builder whose proofs say it's dropped (`dropped`, after
 /// `failures` in a row) is given back as lost, given whether a build
 /// reaches it (`reached`) and, asked only once it has failed
-/// [`FAILS_WHILE_REACHED`] with builds on it, whether it `answers` at all.
-/// Dropped, it's named nowhere either way, so no new build goes there. One
-/// that answers is busy, not lost, and keeps what it builds until it ends:
-/// on 10 November a builder whose slots stayed full failed ten proofs in a
-/// row and was given back, ending three test suites 35 to 68 minutes in.
+/// [`FAILS_WHILE_REACHED`] with builds on it, whether it `answers` at all,
+/// counting in `silent` how many times in a row it hasn't, which an
+/// answer, a passed proof or a builder short of those failures (as one
+/// just lent is) starts again. Dropped, it's named nowhere
+/// either way, so no new build goes there. One that answers is busy, not
+/// lost, and keeps what it builds until it ends: on 10 November a builder
+/// whose slots stayed full failed ten proofs in a row and was given back,
+/// ending three test suites 35 to 68 minutes in. One that builds reach
+/// goes only once it has missed [`SILENT_WHILE_REACHED`] answers in a row.
 pub fn proven_lost(
     dropped: bool,
     failures: u32,
     reached: bool,
+    silent: &mut u32,
     answers: impl FnOnce() -> bool,
 ) -> bool {
-    dropped && (!reached || (failures >= FAILS_WHILE_REACHED && !answers()))
+    if !dropped {
+        *silent = 0;
+        return false;
+    }
+    if !reached {
+        return true;
+    }
+    if failures < FAILS_WHILE_REACHED {
+        *silent = 0;
+        return false;
+    }
+    if answers() {
+        *silent = 0;
+        return false;
+    }
+    *silent += 1;
+    *silent >= SILENT_WHILE_REACHED
 }
 
 /// Whether a builder last used at `used`, asked to live until `ends`, is
@@ -341,28 +369,70 @@ mod tests {
     #[test]
     fn a_builder_builds_still_reach_is_given_back_only_after_ten_failed_proofs() {
         let unasked = || panic!("it isn't asked whether it answers");
-        assert!(proven_lost(true, 2, false, unasked), "nothing reaches it");
-        assert!(!proven_lost(true, 2, true, unasked), "a build reaches it");
-        assert!(!proven_lost(true, FAILS_WHILE_REACHED - 1, true, unasked));
+        let mut silent = 0;
         assert!(
-            proven_lost(true, FAILS_WHILE_REACHED, true, || false),
-            "it doesn't answer"
+            proven_lost(true, 2, false, &mut silent, unasked),
+            "nothing reaches it"
         );
-        assert!(!proven_lost(false, 0, false, unasked), "it passes");
+        assert!(
+            !proven_lost(true, 2, true, &mut silent, unasked),
+            "a build reaches it"
+        );
+        assert!(!proven_lost(
+            true,
+            FAILS_WHILE_REACHED - 1,
+            true,
+            &mut silent,
+            unasked
+        ));
+        let lost: Vec<bool> = (0..SILENT_WHILE_REACHED)
+            .map(|_| proven_lost(true, FAILS_WHILE_REACHED, true, &mut silent, || false))
+            .collect();
+        assert_eq!(
+            lost,
+            [false, false, true],
+            "it goes once it hasn't answered three times in a row"
+        );
+        assert!(
+            !proven_lost(false, 0, false, &mut silent, unasked),
+            "it passes"
+        );
+        assert_eq!(silent, 0, "a passed proof starts the count again");
+        silent = SILENT_WHILE_REACHED;
+        assert!(!proven_lost(true, 2, true, &mut silent, unasked));
+        assert_eq!(silent, 0, "one just lent doesn't take the last one's count");
     }
 
     #[test]
     fn a_busy_builder_that_answers_keeps_what_it_builds_however_many_proofs_it_fails() {
+        let mut silent = 0;
         for failures in [FAILS_WHILE_REACHED, FAILS_WHILE_REACHED * 5] {
             assert!(
-                !proven_lost(true, failures, true, || true),
+                !proven_lost(true, failures, true, &mut silent, || true),
                 "{failures} failed proofs, but it answers"
             );
         }
         assert!(
-            proven_lost(true, FAILS_WHILE_REACHED * 5, false, || true),
+            proven_lost(true, FAILS_WHILE_REACHED * 5, false, &mut silent, || true),
             "once nothing reaches it, it goes"
         );
+    }
+
+    // vm-6 at 08:50 on 22 November: busy past ten failed proofs, it missed
+    // one answer and was given back two hours into a model check.
+    #[test]
+    fn a_busy_builder_that_misses_an_answer_keeps_what_it_builds() {
+        let mut silent = 0;
+        let answers = [true, false, true, false, false, true];
+        for (tick, answered) in answers.into_iter().enumerate() {
+            assert!(
+                !proven_lost(true, FAILS_WHILE_REACHED + 5, true, &mut silent, || {
+                    answered
+                }),
+                "tick {tick}: no three answers missed in a row"
+            );
+        }
+        assert_eq!(silent, 0, "an answer starts the count again");
     }
 
     #[test]

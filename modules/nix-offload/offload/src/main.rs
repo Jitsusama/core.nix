@@ -3256,6 +3256,8 @@ struct SaidKept {
     reached: bool,
     stalled: bool,
     busy: bool,
+    /// How many times in a row the builder hasn't said whether it answers.
+    silent: u32,
 }
 
 /// Whether `builder`, which a build `reached` this tick or not, is given
@@ -3277,9 +3279,31 @@ fn unanswered(
     // be lent again over the same way, cold, and a VM builder takes 17
     // minutes to warm.
     let stalled = keeper.as_ref().is_some_and(|keeper| keeper.health.stalled);
-    let unanswered = decide::proven_lost(dropped, failures, reached || stalled, || {
-        answers(settings, builder, ssh)
-    });
+    let silent_before = said.silent;
+    let unanswered = decide::proven_lost(
+        dropped,
+        failures,
+        reached || stalled,
+        &mut said.silent,
+        || answers(settings, builder, ssh),
+    );
+    if unanswered && (reached || stalled) {
+        eprintln!(
+            "nix-offload: {} didn't say whether it answers {} times in a row, so it's lost \
+             though builds reach it",
+            builder.name, said.silent
+        );
+    }
+    if !unanswered && said.silent > silent_before {
+        eprintln!(
+            "nix-offload: {} didn't say within {} s whether it answers, {} of {} in a row, so \
+             it keeps what it builds for now",
+            builder.name,
+            proof::ANSWERING.as_secs(),
+            said.silent,
+            decide::SILENT_WHILE_REACHED
+        );
+    }
     if dropped && !unanswered && stalled && !std::mem::replace(&mut said.stalled, true) {
         eprintln!(
             "nix-offload: {} builds but couldn't carry a copy up {failures} proofs in a row, \
@@ -3300,7 +3324,8 @@ fn unanswered(
         );
     }
     said.reached &= dropped;
-    let busy = dropped && !unanswered && failures >= decide::FAILS_WHILE_REACHED;
+    let busy =
+        dropped && !unanswered && said.silent == 0 && failures >= decide::FAILS_WHILE_REACHED;
     if busy && !std::mem::replace(&mut said.busy, true) {
         eprintln!(
             "nix-offload: {} still answers, so it's busy rather than lost, and keeps what it \
