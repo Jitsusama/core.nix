@@ -15190,9 +15190,10 @@ Scope {
                             // active"; VKCF3Z, 9d5caf24).
                             //
                             // Where the selection is drawn, set by pick as
-                            // the selection or its rows change, since where
-                            // a row stands is read from the rows drawn,
-                            // which no binding hears.
+                            // the selection or its rows change, and by
+                            // pickOn as Qt lays the selected row, since
+                            // where a row stands is read from the rows
+                            // drawn, which no binding hears.
                             property real pickY: 0
 
                             // Where the fill sits on a row, in the list's
@@ -15479,7 +15480,8 @@ Scope {
                                 width: listBox.width
                                 height: root.rowTall
                                 // Where its row is drawn (fillAt reads the
-                                // drawn rows), so rows coming or going above
+                                // drawn rows, and pickOn the selected row as
+                                // it's laid), so rows coming or going above
                                 // a scrolled list, which move its origin and
                                 // leave the rows in view where they are,
                                 // leave it on its row too (Joel, 2026-10-29:

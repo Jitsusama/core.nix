@@ -4292,7 +4292,12 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     none_drawn_cut(shell, "opened")
     count = opened["count"]
     assert count > 2 * opened["drawnRows"], parts(opened)
-    for key, at in [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0)]:
+    # Study, an eero, has a gap above it, so the selection's ground laid on it shows one put
+    # on the gap rather than its band, which none of the other landings has. The opening's
+    # rows name the list's first twenty, drawn or not, Study among them.
+    study = opened["rows"].index("Study")
+    landings = [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0), (f"{study}j", study)]
+    for key, at in landings:
         # The cursor's number, absolute, is drawn only beside a row the view draws.
         def landed(shown: Json, at: int = at) -> bool:
             return bool(
