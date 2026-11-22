@@ -325,9 +325,9 @@ pub mod tests {
             .expect("eero's golden record reads");
         let asked = listed(&eero);
         assert_eq!(
-            asked.len(),
-            1,
-            "eero's one generic Samsung isn't asked alone: {asked:?}"
+            asked,
+            [("02:00:00:00:00:15".to_owned(), "10.0.0.25".to_owned())],
+            "eero's one generic Samsung isn't asked alone, at its own address"
         );
     }
 

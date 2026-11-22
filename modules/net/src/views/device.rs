@@ -666,16 +666,17 @@ mod tests {
         else {
             panic!("the record has no television");
         };
+        // An old answer's power is still on the record, and isn't shown.
         tv.television = Some(crate::model::Television {
-            power: None,
+            power: Some("on".into()),
             answering: false,
         });
         let tv = find(&network, "Living Room").expect("the television");
         let text = device(&network, tv, now(), &Pen::plain(), ROOMS[0]);
         let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            words.contains("power not answering as a TV"),
-            "its silence isn't said: {text}"
+            words.contains("power not answering as a TV") && !words.contains("power on"),
+            "its silence isn't said, or an old answer's power is: {text}"
         );
     }
 }
