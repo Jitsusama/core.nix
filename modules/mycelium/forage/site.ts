@@ -19,12 +19,12 @@ import {
   command,
   type Floor,
   floorAfter,
-  floorFor,
   floorOf,
+  floorStepped,
   forageRow,
   onMap,
   panelOf,
-  stepsOff,
+  UNDRAWN,
 } from "./draw.ts";
 import { escaped } from "./lineage.ts";
 import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
@@ -113,7 +113,7 @@ const current = (): Forage | undefined => forages.find((each) => each.cell === c
 
 // The floor drawn, kept through live records and finds so the drawing holds
 // still until a step leaves it.
-let shownFloor: Floor = { around: null, holds: new Set() };
+let shownFloor: Floor = UNDRAWN;
 
 function select(): void {
   // Only the row leaving the cursor and the row taking it change, and the
@@ -134,9 +134,10 @@ function select(): void {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
   }
   // A step the floor leaves off draws it again around the cell stepped to.
-  if (forages.length > 0 && stepsOff(shownFloor, cursor)) {
-    shownFloor = floorFor(forages, cursor);
-    floor.innerHTML = floorOf(forages, cursor, machine());
+  const onStep = floorStepped(forages, shownFloor, cursor);
+  if (onStep !== shownFloor) {
+    shownFloor = onStep;
+    floor.innerHTML = floorOf(forages, onStep, cursor, machine());
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);
@@ -249,8 +250,8 @@ function draw(): void {
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
   if (forages.length > 0) {
-    shownFloor = floorAfter(forages, shownFloor.around, cursor);
-    floor.innerHTML = floorOf(forages, cursor, machine(), shownFloor.around);
+    shownFloor = floorAfter(forages, shownFloor, cursor);
+    floor.innerHTML = floorOf(forages, shownFloor, cursor, machine());
   }
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();

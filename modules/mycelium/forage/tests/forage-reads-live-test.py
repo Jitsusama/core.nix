@@ -17,6 +17,9 @@ answered and a cell going, say broken when the node stops with its cells kept
 and live again, its cells read again, when it's back, say stale when the
 server goes and keep what it drew, keep to its budget, and pass the
 web-design skill's page checks at a phone's width and a desk's in both looks.
+Beside a node holding more cells than the floor draws, its floor must follow the
+cursor to a booked start past the floor's 48th, drawn solid, and hold still as
+the cursor steps on it and a record arrives, until a step leaves it.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -224,6 +227,89 @@ def test_the_keys_step_the_cursor(forage_page: Page) -> None:
     expect(forage_page.locator("#panel-body h3"), "the panel didn't follow").to_have_text("OSPREY")
     forage_page.keyboard.press("g")
     selected(forage_page, "KESTRL", "g didn't go to the first row")
+
+
+# The tops a node longer than the floor holds, CELLAA to CELLCG, then the one
+# the last of them started, as its book holds: the list's 60th.
+TOPS = [f"CELL{chr(65 + at // 26)}{chr(65 + at % 26)}" for at in range(59)]
+SHOOT = "SHOOTS"
+
+
+def long_record(cell: str, started_by: str | None = None) -> dict[str, object]:
+    """Give a forage record for `cell` as the node does, started by `started_by` by its book."""
+    lineage: dict[str, object] = {"started_by": started_by, "parent": None}
+    if started_by is not None:
+        lineage |= {"started_by_from": "book", "parent": f"QEST-20261116-{started_by}"}
+    return {
+        "key": f"forage:{cell}",
+        "kind": "forage",
+        "heard": 0,
+        "cell": cell,
+        "session": f"0000-{cell.lower()}",
+        "machine": "kestrel",
+        "quest": f"QEST-20261116-{cell}",
+        "purpose": f"{cell} keeps one field.",
+        "status": "active",
+        "documents": [],
+        "lineage": lineage,
+    }
+
+
+@pytest.fixture
+def long_node(tmp_path: Path) -> Iterator[StandIn]:
+    records = [long_record(cell) for cell in TOPS] + [long_record(SHOOT, TOPS[-1])]
+    reading = tmp_path / "long.json"
+    reading.write_text(json.dumps({"domain": "node", "kinds": {"forage": records}}))
+    yield from standing_in(tmp_path / "long.sock", "node", reading)
+
+
+@pytest.fixture
+def long_page(browser: Browser, tmp_path: Path, long_node: StandIn) -> Iterator[Page]:
+    feed = {"socket": str(long_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"forage": os.environ["FORAGE_SITE"]}, {"node": feed}) as (root, _):
+        opened = Opened(browser, f"{root}forage/", SIZES[-1], "dark")
+        yield opened.page
+        opened.close()
+
+
+def on_the_floor(page: Page) -> list[str]:
+    """Give the cells the floor draws a compartment for, in its order."""
+    marks = page.locator("#floor rect[data-cell]")
+    return [str(each) for each in marks.evaluate_all("all => all.map((m) => m.dataset.cell)")]
+
+
+def ringed_on_the_floor(page: Page, name: str, why: str) -> None:
+    expect(page.locator("#floor rect.on"), why).to_have_attribute("data-cell", name)
+
+
+def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
+    long_page: Page, long_node: StandIn
+) -> None:
+    says_it_stands(long_page, "live")
+    marks = long_page.locator("#floor rect[data-cell]")
+    expect(marks, "the floor didn't draw 48 of the 60 cells").to_have_count(48)
+    cell(long_page, SHOOT).click()
+    selected(long_page, SHOOT, f"{SHOOT}'s row didn't take the cursor")
+    branch = long_page.locator(f'#floor path.hypha[data-cell="{SHOOT}"]')
+    expect(branch, f"the floor didn't follow the cursor to {SHOOT}").to_have_count(1)
+    expect(branch, f"{SHOOT}'s booked branch was dashed").to_have_css("stroke-dasharray", "none")
+    drawn = on_the_floor(long_page)
+    # The floor around the shoot holds the list's 21st, though one around it wouldn't.
+    held = TOPS[20]
+    cell(long_page, held).click()
+    selected(long_page, held, f"{held}'s row didn't take the cursor")
+    ringed_on_the_floor(long_page, held, "the ring didn't follow a step on the floor")
+    assert on_the_floor(long_page) == drawn, "a step the floor holds drew it again"
+    # A record arrives for a cell the floor draws, and the floor holds still.
+    long_node.tell("forage", changed=[{"key": f"forage:{TOPS[-1]}", "purpose": WRITTEN}])
+    expect(cell(long_page, TOPS[-1]), "the record wasn't followed").to_contain_text(
+        WRITTEN, timeout=PACE_MS
+    )
+    ringed_on_the_floor(long_page, held, "a record moved the ring")
+    assert on_the_floor(long_page) == drawn, "a record moved the floor"
+    long_page.keyboard.press("g")
+    selected(long_page, TOPS[0], "g didn't go to the first row")
+    ringed_on_the_floor(long_page, TOPS[0], "a step off the floor didn't draw it around the cursor")
 
 
 # A cell named by its whole link, as a notice or another page gives it.

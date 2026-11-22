@@ -25,8 +25,9 @@ a terminal, `mycelium forage` gathers the realm's.
   have landed steps, its gills lit as they land. The machine the cells
   stand on is named under the ground. It draws 48 cells, and the list
   holds every one. Past 48 it draws the cell you're on, the cells that
-  grew from it and those nearest it in the list, each with every cell it
-  grew from, so no branch is left hanging. It holds still as records
+  grew from it (those the node's book holds first) and those nearest it
+  in the list, each with every cell it grew from, so no branch is left
+  hanging. It holds still as records
   arrive, unless one would leave off the cell you're on or a cell that
   grew from it, and draws again when you step to a cell it leaves off, or
   to one that grew a cell it leaves off.

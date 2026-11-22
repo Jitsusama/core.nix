@@ -281,7 +281,7 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   }
   const { line, children } = kinOf(forages);
   const found = forages.findIndex((each) => each.cell === around);
-  const first = found < 0 ? [] : [found, ...children(found)];
+  const first = found < 0 ? [] : [found, ...bookedFirst(forages, children(found))];
   const chosen = new Set<number>();
   for (const start of starts(first, Math.max(found, 0), forages.length)) {
     // A line one longer than the room left can't fit, so it stops there; only
@@ -300,13 +300,32 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   return [...chosen].sort((one, other) => one - other).flatMap((each) => forages[each] ?? []);
 }
 
-/** A floor drawn around a cell, and the cells a step to which leaves it be. */
+/**
+ * The places `kids` of `forages`, those the node's book holds first, so
+ * cells that only claim to have grown from one can't crowd its booked
+ * starts off the floor.
+ */
+function bookedFirst(forages: readonly Forage[], kids: readonly number[]): readonly number[] {
+  const here = new Set(forages.map((each) => each.cell));
+  const claimed = (place: number): boolean => {
+    const kid = forages[place];
+    return kid === undefined || grewClaimed(kid, here);
+  };
+  return [...kids.filter((place) => !claimed(place)), ...kids.filter(claimed)];
+}
+
+/** A floor drawn around a cell, the cells it draws, and the cells a step to which leaves it be. */
 interface Floor {
   /** The cell it's drawn around. */
   readonly around: string | null;
+  /** The cells it draws, in the list's order. */
+  readonly drawn: readonly Forage[];
   /** The cells it draws with every cell that grew from them. */
   readonly holds: ReadonlySet<string>;
 }
+
+/** The floor before the page has drawn one. */
+const UNDRAWN: Floor = { around: null, drawn: [], holds: new Set() };
 
 /**
  * The floor drawn around `around`, worked out once a draw so that a step
@@ -314,7 +333,8 @@ interface Floor {
  * thousand.
  */
 function floorFor(forages: readonly Forage[], around: string | null): Floor {
-  const cells = new Set(drawn(forages, around).map((each) => each.cell));
+  const shown = drawn(forages, around);
+  const cells = new Set(shown.map((each) => each.cell));
   const here = new Set(forages.map((each) => each.cell));
   const holds = new Set(cells);
   for (const each of forages) {
@@ -323,7 +343,7 @@ function floorFor(forages: readonly Forage[], around: string | null): Floor {
       holds.delete(by);
     }
   }
-  return { around, holds };
+  return { around, drawn: shown, holds };
 }
 
 /**
@@ -337,23 +357,32 @@ function stepsOff(floor: Floor, cursor: string | null): boolean {
 }
 
 /**
- * The floor a redraw draws: around `kept` while the list still holds it
- * and the floor there holds the cursor, so a live record or a find leaves
- * it still; else around the cursor, as when a record pushes the cursor off
- * it or grows a cell from the cursor that it leaves off.
+ * The floor after a step to `cursor`: `shown` itself while it holds the
+ * cursor, so the page redraws only when this gives another, and else the
+ * floor around the cursor. With no cells, nothing's drawn to step off.
  */
-function floorAfter(forages: readonly Forage[], kept: string | null, cursor: string | null): Floor {
-  const around = kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
-  const floor = floorFor(forages, around);
-  return stepsOff(floor, cursor) ? floorFor(forages, cursor) : floor;
+function floorStepped(forages: readonly Forage[], shown: Floor, cursor: string | null): Floor {
+  return forages.length > 0 && stepsOff(shown, cursor) ? floorFor(forages, cursor) : shown;
 }
 
-/** Where each cell drawn sits on the floor, by its place among those drawn and its depth. */
+/**
+ * The floor a redraw draws: around the cell `shown` is drawn around while
+ * the list still holds it and the floor there holds the cursor, so a live
+ * record or a find leaves it still; else around the cursor, as when a
+ * record pushes the cursor off it or grows a cell from the cursor that it
+ * leaves off.
+ */
+function floorAfter(forages: readonly Forage[], shown: Floor, cursor: string | null): Floor {
+  const kept = shown.around;
+  const around = kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
+  return floorStepped(forages, floorFor(forages, around), cursor);
+}
+
+/** Where each cell `floor` draws sits, by its place among those drawn and its depth. */
 function placed(
-  forages: readonly Forage[],
-  around: string | null,
+  floor: Floor,
 ): readonly { readonly forage: Forage; readonly x: number; readonly y: number }[] {
-  return drawn(forages, around).map((forage, at) => ({
+  return floor.drawn.map((forage, at) => ({
     forage,
     x: FLOOR.margin + at * FLOOR.room + FLOOR.room / 2,
     y: FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop,
@@ -377,17 +406,17 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
  * of its own on the main line; a cell started by another branches down
  * from it, dashed where that's only claimed, each named for the cell it
- * leads to. `substrate` names the machine the cells stand on. A list
- * longer than the floor holds is drawn around `around`, the cursor unless
- * the page keeps the floor where it was.
+ * leads to. `substrate` names the machine the cells stand on. It draws
+ * the cells of `floor`, worked out for `forages`, so what's drawn is
+ * always what the page judges a step by.
  */
 function floorOf(
   forages: readonly Forage[],
+  floor: Floor,
   cursor: string | null,
   substrate: string,
-  around: string | null = cursor,
 ): string {
-  const cells = placed(forages, around);
+  const cells = placed(floor);
   const width = Math.max(FLOOR.margin * 2 + cells.length * FLOOR.room, 320);
   const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
   const height = deepest + 40;
@@ -579,4 +608,16 @@ ${goesOf(forage)}`;
 }
 
 export type { Floor };
-export { command, floorAfter, floorFor, floorOf, forageRow, onMap, panelOf, purposeOf, stepsOff };
+export {
+  command,
+  floorAfter,
+  floorFor,
+  floorOf,
+  floorStepped,
+  forageRow,
+  onMap,
+  panelOf,
+  purposeOf,
+  stepsOff,
+  UNDRAWN,
+};

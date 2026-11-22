@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { floorAfter, floorFor, floorOf, stepsOff } from "../draw.ts";
+import { floorAfter, floorFor, floorOf, floorStepped, stepsOff, UNDRAWN } from "../draw.ts";
 import type { Forage } from "../model.ts";
 
 /** A forage for `cell` with `more` over its fields, its documents none. */
@@ -57,12 +57,19 @@ const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
 /** The cell whose compartment `floor` rings. */
 const ringed = (floor: string): string | undefined => floor.match(RINGED)?.[1];
 
+/** The floor of `list` drawn around `around`, ringing `cursor`. */
+const floorAt = (
+  list: readonly Forage[],
+  cursor: string | null,
+  around: string | null = cursor,
+): string => floorOf(list, floorFor(list, around), cursor, "kestrel");
+
 it("draws every cell of a list that fits, whatever the cursor", () => {
-  assert.deepEqual(compartments(floorOf(LONG.slice(0, 5), "C04", "kestrel")), span(0, 4));
+  assert.deepEqual(compartments(floorAt(LONG.slice(0, 5), "C04")), span(0, 4));
 });
 
 it("draws the list's first 48 with no cursor, and counts the rest", () => {
-  const floor = floorOf(LONG, null, "kestrel");
+  const floor = floorAt(LONG, null);
   assert.deepEqual(compartments(floor), span(0, 47));
   assert.ok(floor.includes("and 12 more in the list"), floor);
   // C55's starter is drawn, but C55 isn't, so no branch is.
@@ -70,7 +77,7 @@ it("draws the list's first 48 with no cursor, and counts the rest", () => {
 });
 
 it("draws a cursor past the 48th with its starter, so its booked branch is solid", () => {
-  const floor = floorOf(LONG, "C55", "kestrel");
+  const floor = floorAt(LONG, "C55");
   // Its starter, then the 47 nearest it, kept in the list's order.
   assert.deepEqual(compartments(floor), ["C10", ...span(13, 59)]);
   assert.ok(floor.includes('<path class="hypha" data-cell="C55"'), floor);
@@ -78,14 +85,14 @@ it("draws a cursor past the 48th with its starter, so its booked branch is solid
 });
 
 it("draws the cells a cursor started, however far down the list", () => {
-  const floor = floorOf(LONG, "C10", "kestrel");
+  const floor = floorAt(LONG, "C10");
   assert.deepEqual(compartments(floor), [...span(0, 46), "C55"]);
   assert.ok(floor.includes('<path class="hypha" data-cell="C55"'), floor);
 });
 
 it("draws a cell near the cursor only with every cell it grew from", () => {
   const list = startedOn(LONG, "C30", "C02");
-  const floor = floorOf(list, "C40", "kestrel");
+  const floor = floorAt(list, "C40");
   const drawn = compartments(floor);
   assert.equal(drawn.length, 48);
   assert.ok(drawn.includes("C30") && drawn.includes("C02"), drawn.join(" "));
@@ -102,7 +109,7 @@ it("follows a ring of starts once round, drawing each cell in it", () => {
     [two, ["C10", "C55"]],
     [three, ["C10", "C30", "C55"]],
   ] as const) {
-    const drawn = compartments(floorOf(ring, "C55", "kestrel"));
+    const drawn = compartments(floorAt(ring, "C55"));
     assert.equal(drawn.length, 48, drawn.join(" "));
     assert.equal(new Set(drawn).size, 48, drawn.join(" "));
     assert.ok(
@@ -114,7 +121,7 @@ it("follows a ring of starts once round, drawing each cell in it", () => {
   // ring beside it shows the walk stops once round: followed round more than
   // once, it would ask for more room than is left, and go undrawn.
   const beside = startedOn(startedOn(LONG, "C51", "C52"), "C52", "C51");
-  const drawn = compartments(floorOf(beside, "C50", "kestrel"));
+  const drawn = compartments(floorAt(beside, "C50"));
   assert.ok(drawn.includes("C51") && drawn.includes("C52"), drawn.join(" "));
 });
 
@@ -131,7 +138,7 @@ const GROWN: readonly Forage[] = Array.from({ length: 90 }, (_, at) => {
 it("draws 48 cells around any cursor, with those it started, each with every cell it grew from", () => {
   const starter = new Map(GROWN.map((each) => [each.cell, each.startedBy]));
   for (const { cell } of GROWN) {
-    const drawn = compartments(floorOf(GROWN, cell, "kestrel"));
+    const drawn = compartments(floorAt(GROWN, cell));
     assert.equal(drawn.length, 48, `${cell}: ${drawn.join(" ")}`);
     assert.ok(drawn.includes(cell), `${cell}: ${drawn.join(" ")}`);
     for (const each of GROWN.filter((one) => one.startedBy === cell)) {
@@ -145,7 +152,7 @@ it("draws 48 cells around any cursor, with those it started, each with every cel
 });
 
 it("draws around the cell the page keeps it at, ringing the cursor there", () => {
-  const floor = floorOf(LONG, "C30", "kestrel", "C55");
+  const floor = floorAt(LONG, "C30", "C55");
   assert.deepEqual(compartments(floor), ["C10", ...span(13, 59)]);
   assert.equal(ringed(floor), "C30");
 });
@@ -158,22 +165,39 @@ const CHAIN: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
 );
 
 it("cuts a line deeper than the floor at its top, keeping the 48 nearest the cursor", () => {
-  const floor = floorOf(CHAIN, "C59", "kestrel");
+  const floor = floorAt(CHAIN, "C59");
   assert.deepEqual(compartments(floor), span(12, 59));
   // C12's starter isn't drawn, so no branch leads to it; C13's is.
   assert.ok(!floor.includes('data-cell="C12" d='), floor);
   assert.ok(floor.includes('data-cell="C13" d='), floor);
   // Its line fills the floor, so the cell C50 started goes undrawn, and a
   // step to C50 keeps the floor drawn around it.
-  assert.deepEqual(compartments(floorOf(CHAIN, "C50", "kestrel")), span(3, 50));
+  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(3, 50));
   assert.equal(stepsOff(floorFor(CHAIN, "C50"), "C50"), false);
+});
+
+it("stops a line at a cell already drawn, so a long line leaves room for the cells it started", () => {
+  // C40's line is 41 cells; the cell it started, C41, needs only itself.
+  assert.deepEqual(compartments(floorAt(CHAIN, "C40")), span(0, 47));
+});
+
+it("draws the starts the node's book holds before those only claimed", () => {
+  // Fifty cells claim C00 started them before the one its book holds, C51.
+  const crowded = LONG.map((each, at) => {
+    if (at === 51) {
+      return { ...each, startedBy: "C00", booked: true, depth: 1 };
+    }
+    return at > 0 && at <= 50 ? { ...each, startedBy: "C00", depth: 1 } : each;
+  });
+  const floor = floorAt(crowded, "C00");
+  assert.ok(floor.includes('<path class="hypha" data-cell="C51"'), floor);
 });
 
 it("draws a cell split from another with it, as one it started", () => {
   const split = LONG.map((each) =>
     each.cell === "C57" ? { ...each, splitFrom: "C03", depth: 1 } : each,
   );
-  const floor = floorOf(split, "C57", "kestrel");
+  const floor = floorAt(split, "C57");
   assert.ok(compartments(floor).includes("C03"), floor);
   assert.ok(floor.includes('data-cell="C57" d='), floor);
   // C03 is drawn, but the cell split from it isn't.
@@ -196,28 +220,59 @@ it("draws the floor again only for a step to a cell it leaves off, or one that g
   assert.equal(stepsOff(floorFor(LONG.slice(0, 5), null), "C04"), false);
 });
 
+it("keeps the floor drawn on a step it holds, and draws another for a step it leaves off", () => {
+  const kept = floorFor(LONG, "C55");
+  assert.equal(floorStepped(LONG, kept, "C30"), kept);
+  assert.equal(floorStepped(LONG, kept, "C12").around, "C12");
+  // With no cells, there's no floor to step off.
+  assert.equal(floorStepped([], UNDRAWN, "C12"), UNDRAWN);
+});
+
+it("keeps the floor still as the page steps and records arrive, until a step leaves it", () => {
+  // The page opens on C55, steps to C30 on the floor, hears a record, then steps off to C12.
+  let shown = floorAfter(LONG, UNDRAWN, "C55");
+  assert.equal(shown.around, "C55");
+  const opened = shown;
+  shown = floorStepped(LONG, shown, "C30");
+  assert.equal(shown, opened);
+  shown = floorAfter(startedOn(LONG, "C59", "C58"), shown, "C30");
+  assert.equal(shown.around, "C55");
+  assert.deepEqual(
+    shown.drawn.map((each) => each.cell),
+    opened.drawn.map((each) => each.cell),
+  );
+  shown = floorStepped(LONG, shown, "C12");
+  assert.equal(shown.around, "C12");
+});
+
 it("keeps the floor where it is while it holds the cursor, else draws it around the cursor", () => {
-  assert.equal(floorAfter(LONG, "C55", "C30").around, "C55");
-  assert.equal(floorAfter(LONG, null, "C02").around, "C02");
-  assert.equal(floorAfter(LONG, "C99", "C02").around, "C02");
+  assert.equal(floorAfter(LONG, floorFor(LONG, "C55"), "C30").around, "C55");
+  assert.equal(floorAfter(LONG, UNDRAWN, "C02").around, "C02");
+  assert.equal(floorAfter(LONG, floorFor(LONG, "C99"), "C02").around, "C02");
   // A record puts thirty cells between the kept cell and the cursor.
   const newcomers = Array.from({ length: 30 }, (_, at) =>
     forage(`N${String(at).padStart(2, "0")}`),
   );
   const pushed = [...LONG.slice(0, 31), ...newcomers, ...LONG.slice(31)];
-  assert.equal(floorAfter(pushed, "C55", "C30").around, "C30");
+  assert.equal(floorAfter(pushed, floorFor(LONG, "C55"), "C30").around, "C30");
   // A record grows a cell from the cursor that the kept floor leaves off.
-  assert.equal(floorAfter(startedOn(LONG, "C05", "C20"), "C55", "C20").around, "C20");
+  const grown = startedOn(LONG, "C05", "C20");
+  assert.equal(floorAfter(grown, floorFor(LONG, "C55"), "C20").around, "C20");
 });
 
 it("draws the cursor after a redraw around any kept cell, keeping it there while it can", () => {
   for (const { cell: kept } of GROWN.filter((_, at) => at % 9 === 0)) {
     const there = floorFor(GROWN, kept);
     for (const { cell: cursor } of GROWN) {
-      const floor = floorAfter(GROWN, kept, cursor);
-      const drawn = compartments(floorOf(GROWN, cursor, "kestrel", floor.around));
+      const floor = floorAfter(GROWN, there, cursor);
+      const drawn = compartments(floorOf(GROWN, floor, cursor, "kestrel"));
       assert.ok(drawn.includes(cursor), `${kept}, ${cursor}: ${drawn.join(" ")}`);
-      assert.equal(stepsOff(floor, cursor), false, `${kept}, ${cursor}`);
+      // Kept around another cell, it draws every cell the cursor started.
+      const started = GROWN.filter((each) => each.startedBy === cursor);
+      assert.ok(
+        floor.around === cursor || started.every((each) => drawn.includes(each.cell)),
+        `${kept}, ${cursor}: ${drawn.join(" ")}`,
+      );
       // Kept there, it holds still.
       assert.ok(!there.holds.has(cursor) || floor.around === kept, `${kept}, ${cursor}`);
     }

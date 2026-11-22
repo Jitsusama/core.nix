@@ -31,9 +31,11 @@ run by Node's own test runner when the local sites build the page.
   drawn around, the cells that grew from that one and those nearest it,
   each with every cell it grew from, once round a ring, so a booked start
   far down the list still draws solid, and a line deeper than the floor
-  cut at its top; that a step draws the floor again only for a cell it
-  leaves off or one that grew a cell it leaves off; and that a live redraw
-  keeps the floor where it was while it holds the cursor.
+  cut at its top, but stopped at a cell already drawn; the cells the
+  node's book holds started before those only claimed; that a step draws
+  the floor again only for a cell it leaves off or one that grew a cell it
+  leaves off; and that a live redraw keeps the floor where it was while it
+  holds the cursor, through a page's steps and records in turn.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.
@@ -48,4 +50,7 @@ headless browser through the sites' server beside a stand-in node holding
 need served, a start the node's book holds and a split. It steps the
 cursor by keys, follows the records as they change, stop and come back,
 and keeps the page within its budget and passing the web-design skill's
-page checks.
+page checks. Beside a second stand-in holding 60 cells, more than the
+floor draws, it follows the cursor to a booked start past the 48th, drawn
+solid, and holds the floor still as the cursor steps on it and a record
+arrives, until a step leaves it.
