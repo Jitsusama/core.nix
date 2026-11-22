@@ -125,7 +125,10 @@ function when(at: string): string {
   return whenSaid(at, Date.now());
 }
 
-/** The worst of the three watches' states, the one the page says. */
+/**
+ * The worst of the four watches' states, the one the page says: the
+ * builders' among them, since a page whose builders aren't live isn't.
+ */
 function standing(): Standing | undefined {
   const order = ["broken", "stale", "connecting", "live"];
   return [...standings.values()].sort(

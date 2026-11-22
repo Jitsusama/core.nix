@@ -4,6 +4,16 @@
 //! What it has is whether it takes builds, and that is what it's judged by.
 //! Its own module because it changes for the builders' reasons (what the
 //! node and nix-offload say of them), which the machines don't share.
+//!
+//! What the node can say bounds what this can. It hears the builders
+//! nix-offload names as standing or beside a machine, and nix-offload names
+//! one only while it answers, so one it leaves out, as full or failing its
+//! proofs, drops out of the list rather than turning up worth a look. A
+//! dialled builder is said answering, not answering or unknown, with the
+//! node's reason; only a lent one is said running, with its lender's word
+//! for how its proofs stand, or not running. So a dialled builder turns up
+//! not answering only in the moment before nix-offload drops it, or when the
+//! node can't reach one nix-offload can.
 
 use serde_json::Value;
 
@@ -21,7 +31,8 @@ const PROOFS: [&str; 6] = ["none", "unproven", "passing", "failing", "dropped", 
 
 /// Each builder the answer names, worst first, then by name, with the
 /// words for a side of what in it is worth a look. None where the answer
-/// names none, as one from a node too old to say them.
+/// names none: one from a node too old to say them, or one that couldn't
+/// read them, since the node then writes no builders' line at all.
 pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
     let mut read: Vec<(Thing, Vec<String>)> = said
         .pointer("/Ok/Builders")
@@ -36,12 +47,15 @@ pub fn builders(said: &Value) -> Vec<(Thing, Vec<String>)> {
 /// side says it; none for a builder without a name.
 ///
 /// Only a builder that should take builds and can't is worth a look: one
-/// that didn't answer, or one nix-offload left out after its proofs failed
-/// or found its store full. One that rests until its lender runs it waits
+/// that didn't answer, or a lent one whose lender says its proofs left it
+/// out or its store is full. One that rests until its lender runs it waits
 /// for work, and one nobody has heard from is often so by design, as a
 /// builder behind a jump host that isn't dialled so as not to wake it;
-/// both are said, and neither is a look nobody could clear. A state this
-/// build doesn't know is said in the node's own word.
+/// both are said, and neither is a look nobody could clear. A state or a
+/// lender's word this build doesn't know is worth a look, said in the
+/// node's own words, rather than passed as good: it may be a way of not
+/// building that this build was never told of. A look carries the node's
+/// reason whole, since what to do about a builder is in it.
 fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     let name = said.get("name").and_then(Value::as_str)?.trim();
     if name.is_empty() {
@@ -50,6 +64,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     let word = |key: &str| said.get(key).and_then(Value::as_str);
     let proof = word("said").filter(|said| PROOFS.contains(said));
     let why = word("said").filter(|_| proof.is_none()).and_then(plain);
+    let unknown = |words: String| (Health::Watch, words.clone(), Some(words));
     let lent = said.get("lent").and_then(Value::as_bool) == Some(true);
     let takes = match said.get("jobs").and_then(Value::as_u64) {
         Some(0) | None => "takes builds".to_owned(),
@@ -62,7 +77,10 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
     };
     let (health, says, look) = match word("state").unwrap_or("unknown") {
         "answering" => (Health::Good, format!("answers and {takes}"), None),
-        "running" => running(lent, &takes, proof),
+        "running" => match &why {
+            Some(why) => unknown(format!("runs, its lender saying {why}")),
+            None => running(lent, &takes, proof),
+        },
         "not running" => (
             Health::Good,
             with_why("rests until its lender runs it"),
@@ -74,7 +92,7 @@ fn builder(said: &Value) -> Option<(Thing, Vec<String>)> {
             Some("not answering".to_owned()),
         ),
         other => match plain(other).filter(|_| other != "unknown") {
-            Some(state) => (Health::Good, with_why(&format!("is {state}")), None),
+            Some(state) => unknown(with_why(&format!("is {state}"))),
             None => (Health::Good, with_why("hasn't been heard from"), None),
         },
     };
@@ -122,7 +140,9 @@ fn running(lent: bool, takes: &str, proof: Option<&str>) -> (Health, String, Opt
 
 /// A node's words as one plain clause of a line: the first line, with
 /// what a terminal would act on as a space, no closing stop, and cut at a
-/// word past `REASON_AT_MOST`; none when nothing is left.
+/// word past `REASON_AT_MOST`; none when nothing is left. The system
+/// page's update why has a fuller filter, which drops escape sequences
+/// whole; this takes it once both are on main.
 fn plain(said: &str) -> Option<String> {
     let line: String = said
         .lines()
@@ -213,6 +233,7 @@ mod tests {
                 { "name": "heron", "state": "running", "said": "full" },
                 { "name": "wren", "state": "running", "said": "failing" },
                 { "name": "swift", "state": "resting" },
+                { "name": "lark", "state": "running", "lent": true, "said": "melting" },
             ])),
             [
                 (
@@ -228,21 +249,27 @@ mod tests {
                     vec!["left out, its store full".to_owned()]
                 ),
                 (
+                    "lark".to_owned(),
+                    Health::Watch,
+                    "runs, its lender saying melting".to_owned(),
+                    vec!["runs, its lender saying melting".to_owned()]
+                ),
+                (
                     "osprey".to_owned(),
                     Health::Watch,
                     "runs but is left out, its proofs failing".to_owned(),
                     vec!["left out, its proofs failing".to_owned()]
                 ),
                 (
+                    "swift".to_owned(),
+                    Health::Watch,
+                    "is resting".to_owned(),
+                    vec!["is resting".to_owned()]
+                ),
+                (
                     "kestrel".to_owned(),
                     Health::Good,
                     "rests until its lender runs it".to_owned(),
-                    vec![]
-                ),
-                (
-                    "swift".to_owned(),
-                    Health::Good,
-                    "is resting".to_owned(),
                     vec![]
                 ),
                 (
@@ -261,7 +288,8 @@ mod tests {
                 ),
             ],
             "the worst first, then by name; a builder resting or unheard is said, not a look, \
-             and a proof's word is no reason"
+             a proof's word is no reason, and a state or a lender's word this build doesn't \
+             know is a look"
         );
     }
 
@@ -274,23 +302,29 @@ mod tests {
             { "name": "osprey", "state": "not answering",
               "said": "refused\u{1b}[31m red\nsecond line" },
             { "name": "heron", "state": "not answering", "said": long },
+            { "name": "gull", "state": "not answering", "said": "über ".repeat(40) },
             { "name": "wren", "state": "not answering", "said": " . " },
             { "name": "tern" },
         ]));
         let says: Vec<&str> = said.iter().map(|(_, _, says, _)| says.as_str()).collect();
-        assert_eq!(said.len(), 4, "a builder without a name is left out");
+        assert_eq!(said.len(), 5, "a builder without a name is left out");
         assert_eq!(
-            says[1], "isn't answering (refused [31m red)",
+            says[2], "isn't answering (refused [31m red)",
             "only the first line is kept, a control character as a space"
         );
-        assert!(
-            says[0].ends_with("word\u{2026})") && says[0].chars().count() < 200,
-            "a long reason is cut at a word: {}",
-            says[0]
-        );
-        assert_eq!(says[2], "isn't answering", "a reason of nothing is none");
         assert_eq!(
-            says[3], "hasn't been heard from",
+            says[1],
+            format!("isn't answering ({}word\u{2026})", "word ".repeat(30)),
+            "a long reason is cut at the last word that fits"
+        );
+        assert_eq!(
+            says[0],
+            format!("isn't answering ({}über\u{2026})", "über ".repeat(30)),
+            "a reason is cut by characters, not bytes"
+        );
+        assert_eq!(says[3], "isn't answering", "a reason of nothing is none");
+        assert_eq!(
+            says[4], "hasn't been heard from",
             "a builder with no state is unheard"
         );
         assert!(

@@ -46,7 +46,7 @@ interface Look {
   /** The machine, builder or part it is in, as the page names it. */
   readonly whose: string;
   /** Whether `whose` is a thing's name, which no translator may change. */
-  readonly machine: boolean;
+  readonly thing: boolean;
   readonly words: string;
   /**
    * Where it is seen whole: a machine's section here, a builder on the map,
@@ -167,7 +167,7 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
       .map(({ words, key, matters }) => ({
         health: thing.health,
         whose: thing.name,
-        machine: true,
+        thing: true,
         words: capital(words),
         href: hrefOf(thing),
         row: `look:${thing.kind}:${encodeURIComponent(thing.name)}:${key}`,
@@ -208,7 +208,7 @@ function awayLook(away: readonly Thing[]): Look {
     return {
       health: only.health,
       whose: only.name,
-      machine: true,
+      thing: true,
       words: capital(OUT_OF_REACH),
       href: "#away",
       row: "look:away",
@@ -225,7 +225,7 @@ function awayLook(away: readonly Thing[]): Look {
   return {
     health: worstOf(away),
     whose: `${capital(numbered(away.length))} machines`,
-    machine: false,
+    thing: false,
     words: `${capital(OUT_OF_REACH)}: ${listed}`,
     href: "#away",
     row: "look:away",
@@ -239,7 +239,7 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
   return {
     health,
     whose: named(part.part),
-    machine: false,
+    thing: false,
     words: capital(words),
     href: siteOf(part),
     row: `look:part:${encodeURIComponent(part.part)}:${key}`,

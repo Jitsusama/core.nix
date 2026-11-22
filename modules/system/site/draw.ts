@@ -376,8 +376,10 @@ function builderLine(builder: Thing): string {
 /**
  * The builders the machines send builds to, said across them as a part is:
  * the worst one's line, or how many there are when none is worth a look,
- * then the rest's, and the way to them on the map. None is drawn where the
- * node names no builders, or the machines weren't read.
+ * then the rest's, and the way to them on the map, which lands on the
+ * worst, or the first: the map draws its builders only once its address
+ * names one. None is drawn where the node names no builders, or the
+ * machines weren't read.
  */
 function buildersAcross(system: System): string {
   const builders = buildersOf(system);
@@ -391,7 +393,7 @@ function buildersAcross(system: System): string {
   const said = health === "good" ? escaped(count) : builderLine(worst);
   const rest = health === "good" ? builders : builders.slice(1);
   const aside = rest.map(builderLine).join("; ");
-  const hash = builders.length === 1 ? `#builder=${encodeURIComponent(worst.name)}` : "";
+  const hash = `#builder=${encodeURIComponent(worst.name)}`;
   return `<section class="tie part ${health}" data-part="part-builders"><h3>${mark(health)}Builders${spoken(health)}</h3><p class="said">${said}</p><p class="aside">${aside}</p><div class="onward"><a class="row deeper" data-row="builders" data-health="${health}" href="../mycelium/${escaped(hash)}">See ${builders.length === 1 ? "it" : "them"} on the map</a></div></section>`;
 }
 
@@ -424,7 +426,7 @@ function partsOf(system: System, when: (at: string) => string): string {
  * each run of text an item of its own and drop the spaces between them.
  */
 function lookRow(look: Look): string {
-  const machine = look.machine ? ' translate="no"' : "";
+  const machine = look.thing ? ' translate="no"' : "";
   const whose = `<span class="whose"${machine}>${escaped(look.whose)}</span>`;
   const row = `<a class="row look" data-row="${escaped(look.row)}" data-health="${look.health}" href="${escaped(look.href)}">${mark(look.health)}${whose}${spoken(look.health)}<span class="words">${escaped(look.words)}</span></a>`;
   const matters = look.matters === "" ? "" : `<span>${escaped(look.matters)}</span>`;
