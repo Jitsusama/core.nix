@@ -29,7 +29,11 @@ export QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0
 
 said=$logs/shell.log
 ran=0
-timeout 120 qs -p "$shell" > "$said" 2>&1 || ran=$?
+# The case may take up to 60 s settling, 3 s for each of its ten starts
+# and 2 s for the still window's change, about 93 s, before the shell
+# starts on a loaded builder; this leaves room for that, so a case that
+# waits out every start still gives its own verdict rather than this.
+timeout 150 qs -p "$shell" > "$said" 2>&1 || ran=$?
 # What each window drew, and Qt's own lines on its timer, which say how
 # many windows it found shown, said before every verdict below so a
 # failure reads beside them, since the log goes with a failed build;
@@ -43,7 +47,7 @@ if [ "$ran" -eq 2 ]; then
   exit 1
 fi
 if [ "$ran" -ne 0 ]; then
-  echo "The shell failed (exit $ran), or didn't finish in 120 s (124):" >&2
+  echo "The shell failed (exit $ran), or didn't finish in 150 s (124):" >&2
   grep -v 'qt.scenegraph.renderloop' "$said" >&2
   exit 1
 fi

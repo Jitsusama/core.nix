@@ -33,11 +33,27 @@ ShellRoot {
     property var emptyStarts: []
     property var thinStarts: []
     readonly property int startsAsked: 10
+    // When the latest start began, so a start that never draws still ends,
+    // and when its animations last stopped, on the GUI thread's clock.
+    property real startedAt: 0
+    property real stoppedAt: 0
+    // How long a start may wait for its frames: on a clock of 600 ms a
+    // start lost frames that came late on a loaded builder and drew none
+    // (22 November), so a start ends on what the windows did, or here.
+    readonly property int startWaitsFor: 3000
+    // How long the windows stay quiet, after both animations stopped and
+    // after the last frame, before a start ends: past the 350 ms the old
+    // clock left after a 250 ms animation, which late frames still
+    // outran, so one queued behind a stall isn't counted in the next.
+    readonly property int quietFor: 500
     // Each start's first frame drawn, and one of its ticks beside it in
-    // every start but one: a 250 ms animation draws about fifteen at 60 Hz,
-    // but a loaded builder once drew one in a start (21 November). Its
-    // first frame alone may be the NumberAnimation's `from` written on the
-    // GUI thread, so only the second shows the start's ticks reached it.
+    // every start but one. A start ends early only once both moving windows
+    // drew twice, so a thin one is a start that waited its 3 s: a 250 ms
+    // animation draws about fifteen at 60 Hz, but a loaded builder once
+    // drew one in a start (21 November, on the 600 ms clock), and one stall
+    // that long is allowed, a window that draws once in every start isn't.
+    // Its first frame alone may be the NumberAnimation's `from` written on
+    // the GUI thread, so only the second shows the start's ticks reached it.
     readonly property int thinAllowed: 1
 
     function fail(why: string): void {
@@ -49,11 +65,18 @@ ShellRoot {
         root.lastDrawn = Date.now();
     }
 
-    // How many frames each moving window drew for the start just ended.
+    // How many frames each moving window drew for the start just ended,
+    // said as it ends, so a run cut off by the script's timeout still says
+    // how far it got, and whether it waited its longest, which leaves the
+    // next start's timer line and frames to read beside it.
     function startEnded(): void {
         const movedFrames = root.movingDrawn - root.movingBefore;
         const slidFrames = root.slidingDrawn - root.slidingBefore;
         const said = `${root.starts} (moving ${movedFrames}, sliding ${slidFrames})`;
+        const capped = Date.now() - root.startedAt >= root.startWaitsFor;
+        const how = capped ? `after ${root.startWaitsFor} ms` : "quiet";
+        const running = (moving.running || sliding.running) ? ", an animation still running" : "";
+        console.log(`Start ${said} drew, ending ${how}${running}.`);
         if (movedFrames < 1 || slidFrames < 1)
             root.emptyStarts.push(said);
         if (movedFrames < 2 || slidFrames < 2)
@@ -118,6 +141,11 @@ ShellRoot {
                 from: 0
                 to: 180
                 duration: 250
+
+                onRunningChanged: {
+                    if (!running)
+                        root.stoppedAt = Date.now();
+                }
             }
         }
     }
@@ -155,6 +183,11 @@ ShellRoot {
 
                 target: slider
                 duration: 250
+
+                onRunningChanged: {
+                    if (!running)
+                        root.stoppedAt = Date.now();
+                }
             }
         }
     }
@@ -185,24 +218,19 @@ ShellRoot {
         }
     }
 
-    // When the latest start began, so a start that never draws still ends.
-    property real startedAt: 0
-    // How long a start may wait for its frames: a start on a clock of
-    // 600 ms lost frames that came late on a loaded builder, drawing none
-    // in one start (22 November), so a start ends on what the windows did.
-    readonly property int startWaitsFor: 3000
-
     // Whether the latest start is over: both animations have stopped,
     // both moving windows have drawn twice since it began, and none has
-    // drawn for 300 ms, or it has waited its longest.
+    // drawn, nor an animation stopped, for quietFor, or it has waited its
+    // longest.
     function startOver(): bool {
         const waited = Date.now() - root.startedAt;
         if (waited >= root.startWaitsFor)
             return true;
         const drawnTwice = root.movingDrawn - root.movingBefore >= 2
             && root.slidingDrawn - root.slidingBefore >= 2;
+        const quietSince = Math.max(root.lastDrawn, root.stoppedAt);
         return !moving.running && !sliding.running && drawnTwice
-            && Date.now() - root.lastDrawn >= 300;
+            && Date.now() - quietSince >= root.quietFor;
     }
 
     // Each animation ends, and its windows go quiet, before the next
