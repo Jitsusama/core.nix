@@ -786,6 +786,40 @@ QtObject {
             Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
         expect("nothing served, cellOf's search",
             Looks.cellFor(naming("AAAAAA"), undefined, [heir], [leaver]).address, "AAAAAA");
+        // The daemon reads the cell's quest, and names a lone lister on any
+        // once the node forgets it (cells.rs), so its answer is followed only
+        // onto the look's quest, or for a look on none to the one that left it.
+        expect("the daemon naming a session on another quest, not followed",
+            Looks.cellFor(naming("AAAAAA"), { "agent-cell:agents:AAAAAA": { goes: "DDDDDD" } },
+                [stranger], []), null);
+        expect("a look on no quest, the daemon naming a lister, not followed",
+            Looks.cellFor({ cell: "GGGGGG", session: "s-0" },
+                { "agent-cell:agents:GGGGGG": { goes: "LLLLLL" } }, [{ address: "LLLLLL",
+                    presence: { session: "s-8", quest: "Q-2" } }], []), null);
+        expect("a look on no quest, the daemon naming the one that left it, followed",
+            Looks.cellFor({ cell: "GGGGGG", session: "s-8" },
+                { "agent-cell:agents:GGGGGG": { goes: "LLLLLL" } }, [{ address: "LLLLLL",
+                    presence: { session: "s-8", quest: "Q-2" } }], []).address, "LLLLLL");
+        const moved = { address: "NNNNNN", presence: { session: "s-1", quest: "Q-1" } };
+        expect("said to go nowhere, the one that left it under a new address, by its id",
+            Looks.cellFor(naming("GGGGGG"), cells, [heir, moved], []).address, "NNNNNN");
+        expect("the one that left it, by its id, on another quest now",
+            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "NNNNNN",
+                presence: { session: "s-1", quest: "Q-9" } }], []).address, "NNNNNN");
+        // Its quest as the daemon reads it (session.rs): the first it owns.
+        expect("a session owning the look's quest only, found on it",
+            Looks.cellFor({ cell: "GGGGGG", quest: "QEST-1-ABCDEF" }, cells, [{ address: "OOOOOO",
+                presence: { owns: ["PLAN-1-AAAAAA", "QEST-1-ABCDEF"] } }], []).address, "OOOOOO");
+        expect("the quest it owns before its questInfo's",
+            Looks.cellFor({ cell: "GGGGGG", quest: "QEST-1-ABCDEF" }, cells, [{ address: "OOOOOO",
+                presence: { owns: ["QEST-2-BBBBBB"], questInfo: { id: "QEST-1-ABCDEF" } } }],
+                []), null);
+        // A lent cell is the shell's own mark, never read from a file.
+        const lentRead = Looks.look(JSON.stringify({ v: 1, id: "l-1", title: "A look",
+            target: "/x", kind: "file", state: "cleared", cell: "BBBBBB", cellLent: true }));
+        expect("a file's lent mark is not read", "cellLent" in lentRead, false);
+        expect("so a cell it names stays written as its own", JSON.parse(Looks.rewritten(
+            Looks.doneWith(lentRead), "cleared", "cleared", now)).cell, "BBBBBB");
 
         if (failures.length > 0) {
             for (const failure of failures)

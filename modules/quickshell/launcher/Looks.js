@@ -50,6 +50,9 @@ function look(text) {
     if (!whole(read)) {
         return null;
     }
+    // A lent cell is the shell's own mark (doneWith), never a file's, so one
+    // a file carries can't drop its own cell from the settled text.
+    delete read.cellLent;
     return Object.assign({}, read, {
         why: typeof read.why === "string" ? read.why : "",
         // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
@@ -134,10 +137,20 @@ function cellOf(one, running, parked) {
         ?? on[0] ?? null;
 }
 
-// The quest a session works on, as pi publishes it: its questInfo's, else
-// its `quest` (Holders.js and Sessions.qml read it so too).
+// The quest a session works on, as the agents daemon reads it, so the two
+// agree on whose a look is (modules/agents/src/session.rs `quest`): the
+// first quest it owns, else its questInfo's, else its `quest`.
 function questOf(session) {
-    return session.presence?.questInfo?.id ?? session.presence?.quest;
+    const owned = (Array.isArray(session.presence?.owns) ? session.presence.owns : [])
+        .find(one => typeof one === "string" && one.startsWith("QEST-"));
+    return owned ?? session.presence?.questInfo?.id ?? session.presence?.quest;
+}
+
+// Whether `session` is the one that left look `one`, by pi's own id for it,
+// which no other session lists and which carries across a move.
+function leftByItsId(one, session) {
+    return typeof one.session === "string" && one.session !== ""
+        && session.presence?.session === one.session;
 }
 
 // The address the agents daemon says the cell a look names (`cell`) goes
@@ -155,17 +168,19 @@ function cellGoes(one, cells) {
 
 // The cell a look leads to: the cell itself while the lists hold it, else
 // the live session the agents daemon names (cellGoes), found among
-// `running` and `parked` by the address it goes to. Where the daemon names
-// a session those lists don't hold, says the cell goes nowhere, or has not
-// answered (away, or not yet served), cellOf's search decides among the
-// sessions on the look's quest alone; a look on none, sharing no quest,
-// reaches only the session that left it, by that session's own id: the
-// daemon and the lists each read the node and either can be a beat
-// behind, so a cell back again wins over an older answer. A session that
-// merely lists the cell's address is never found by that search; the
-// daemon names one only where cells.rs finds it was the cell, its one
-// lister while no session goes by the name. A look naming no cell searches
-// every session until every look names its cell, by Mon 23 Nov 2026.
+// `running` and `parked` by the address it goes to, where it is on the
+// look's quest, or for a look on none is the session that left it, by its
+// own id; else that session wherever it is. The daemon reads the cell's
+// quest, not the look's, and once the node forgets the cell it names its
+// one lister on any quest (cells.rs `claim`), so its answer alone never
+// sends Talk to another quest. Where none of those is held, or the daemon
+// says the cell goes nowhere or hasn't answered (away, or not yet served),
+// cellOf's search decides among the sessions on the look's quest alone,
+// and a look on none reaches nobody else: the daemon and the lists each
+// read the node and either can be a beat behind, so a cell back again wins
+// over an older answer. A session that merely lists the cell's address is
+// never found by that search. A look naming no cell searches every session
+// until every look names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
     if (typeof one.cell !== "string" || one.cell === "") {
         return cellOf(one, running, parked);
@@ -174,14 +189,17 @@ function cellFor(one, cells, running, parked) {
     const held = (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
     const quest = typeof one.quest === "string" ? one.quest : "";
+    const ours = session => quest === "" ? leftByItsId(one, session)
+        : questOf(session) === quest;
     const named = held.find(session => session.address === one.cell)
-        ?? held.find(session => goes !== null && goes !== "" && session.address === goes);
+        ?? held.find(session => goes !== null && goes !== "" && session.address === goes
+            && ours(session))
+        ?? held.find(session => leftByItsId(one, session));
     if (named !== undefined) {
         return named;
     }
     if (quest === "") {
-        return held.find(session => typeof one.session === "string" && one.session !== ""
-            && session.presence?.session === one.session) ?? null;
+        return null;
     }
     return cellOf(one, held.filter(session => questOf(session) === quest), []);
 }

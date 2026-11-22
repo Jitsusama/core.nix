@@ -1165,10 +1165,12 @@ Provider {
     // Opening a look: a terminal's session gone to, anything else opened
     // by what opens its link or its file. Opened, it no longer needs Joel,
     // so a waiting one is written so and moves to History, as does one
-    // gone quiet there, whose file still says it waits.
+    // gone quiet there, whose file still says it waits. A terminal whose
+    // session is gone opened nothing, so it stays as it was.
     function openLook(one) {
         if (one.kind === "terminal") {
-            goToCell(one);
+            if (!goToCell(one))
+                return;
         } else {
             Niri.spawn(["xdg-open", one.target]);
         }
@@ -1203,11 +1205,18 @@ Provider {
 
     // Goes to the window of the cell a look leads to, as it stands when
     // pressed, waking it first where it's parked, as a want's Go To does.
+    // Where none is held it says so, in a notice's Go To's own words, so
+    // a press never goes nowhere unsaid. Whether it went.
     function goToCell(one) {
         const cell = lookCell(one);
-        if (cell === null)
-            return;
+        if (cell === null) {
+            const gone = Words.of("verb:notice:goTo").said ?? {};
+            console.warn(`Now: no session held for look ${one.id} to go to`);
+            provider.launcher?.toldThat?.(gone.gone ?? "", gone.why ?? "");
+            return false;
+        }
         Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
+        return true;
     }
 
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
@@ -1349,13 +1358,14 @@ Provider {
         };
     }
 
-    // Who asks, in plain words (Looks.js's askerOf), else its session's
-    // title, never an id: "from Trunkd Disk Saturation During Compaction
-    // (INV-31016) \u00b7 to look at" told Joel nothing (2026-11-19).
+    // Who asks, in plain words (Looks.js's askerOf), else the title of the
+    // cell Talk goes to (lookCell), never an id: "from Trunkd Disk
+    // Saturation During Compaction (INV-31016) \u00b7 to look at" told Joel
+    // nothing (2026-11-19), and a session Talk won't reach misleads him.
     function lookAsker(one) {
         const title = one.quest ? WaitingOnYou.titles?.[one.quest] : undefined;
         return Looks.askerOf(one, title === undefined ? null : { title: title })
-            || lookSession(one)?.title || "";
+            || lookCell(one)?.title || "";
     }
 
     // What becomes of a look its session says nothing of: it expires at its
