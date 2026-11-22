@@ -164,7 +164,9 @@ pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Optio
 /// for the name under or after it, when it names a heading here or a file
 /// `is_file` finds. The name is settled first and only then asked of the
 /// disk, so one naming no file here is said, as Vim's E447, rather than
-/// passed for the next; none at all is `Err(None)`, as Vim's E446.
+/// passed for the next; none at all is `Err(None)`, as Vim's E446. The
+/// page's own name written after it is no stop, as gf from a line skips
+/// it too, since it leads nowhere short of a link further on.
 pub fn file_here(
     pieces: &[Link],
     line: &crate::text::Line,
@@ -172,10 +174,23 @@ pub fn file_here(
     page: &Path,
     is_file: impl Fn(&Path) -> bool,
 ) -> Result<Going, Option<String>> {
-    let there =
-        |path: &str| file_of(&Name::Written(path.into()), page).is_some_and(|f| is_file(&f));
+    let there = |path: &str| {
+        file_of(&Name::Written(path.into()), page).is_some_and(|f| is_file(&f) && !same(&f, page))
+    };
     let name = name_here(pieces, line, x_pt, there).ok_or(None)?;
     going(&name, page, &is_file).ok_or_else(|| Some(name.said().to_string()))
+}
+
+/// What gf says staying on the page shown, as Vim's says of a file it
+/// edits again: its name, and how many lines and bytes `text` takes.
+pub fn file_info(page: &Path, text: &str) -> String {
+    let name = page
+        .file_name()
+        .unwrap_or(page.as_os_str())
+        .to_string_lossy();
+    let unended = usize::from(!text.is_empty() && !text.ends_with('\n'));
+    let lines = text.matches('\n').count() + unended;
+    format!("\"{name}\" {lines}L, {}B", text.len())
 }
 
 /// Where gf goes from a whole line, `from_pt` down the page, in a view

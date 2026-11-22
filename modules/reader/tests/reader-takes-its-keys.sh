@@ -725,16 +725,16 @@ logged '^key Last None' $((lasts + 1))
 press mz
 logged '^key SetMark\(.z.\)' 1
 
-# Selecting, gf ends the selection and takes what's under or after its
-# cursor, here past the lede's link, so no name, never the file from the
-# line down.
+# Selecting, gf ends the selection and takes the words it held on one
+# line as the name, as Vim's v_gf does, here the lede's, which no file
+# has, never the link they hold.
 press gg
 logged '^key First None' $((tops + 6))
 press '2jv$'
 ended=$(how_many '^selected: nothing')
 press gf
 logged '^selected: nothing' $((ended + 1))
-logged '^said: E446: No file name under cursor' 1
+logged '^said: E447: Can.t find file "Some of it is on .*" in path' 1
 
 # gf opens the file the top's link names, and Ctrl+] follows it.
 press gg

@@ -123,6 +123,20 @@ impl Layout {
         found
     }
 
+    /// The words a selection of characters on one line holds as the page
+    /// sets them, blanks round them left off: what Vim's v_gf takes as a
+    /// file's name. One of pieces, over lines or of blanks alone names
+    /// none.
+    pub fn named(&self, selection: &Selection) -> Option<String> {
+        let (from, to) = selection.ends();
+        if selection.kind != Kind::Chars || from.line != to.line {
+            return None;
+        }
+        let text = self.page_text(from, to);
+        let name = text.trim();
+        (!name.is_empty()).then(|| name.to_string())
+    }
+
     /// What a selection copies: the file's own markdown for what it covers.
     /// A selection of pieces copies the lines they were written on, whole,
     /// each ending with its newline, as Neovim's V does. A selection of

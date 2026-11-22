@@ -39,12 +39,34 @@ impl App {
                 is_file,
             )
         };
+        self.go(going);
+    }
+
+    /// gf over a selection on one line: goes by the words it held as a
+    /// file's name, as Vim's v_gf does, or says it can't find that one.
+    pub(crate) fn follow_named(&mut self, name: String) {
+        let name = links::Name::Written(name);
+        match links::going(&name, &self.file, std::path::Path::is_file) {
+            None => self.say(&format!(
+                "E447: Can't find file \"{}\" in path",
+                name.said()
+            )),
+            going => self.go(going),
+        }
+    }
+
+    /// Goes where gf found: a heading here, another file, or nowhere, the
+    /// page shown itself said by its name, lines and bytes, as Vim says a
+    /// file it edits again.
+    fn go(&mut self, going: Option<links::Going>) {
         match going {
             None => self.say("E446: No file name under cursor"),
             Some(links::Going::Here) => {
                 if keys_logged() {
                     eprintln!("file: here");
                 }
+                let text = std::fs::read_to_string(&self.file).unwrap_or_default();
+                self.say(&links::file_info(&self.file, &text));
             }
             Some(links::Going::Heading(anchor)) => self.follow(&format!("#{anchor}")),
             Some(links::Going::File(file, heading)) => {

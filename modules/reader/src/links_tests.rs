@@ -141,7 +141,7 @@ fn followed(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize
 }
 
 #[test]
-fn gf_on_the_pages_own_name_stays_where_it_is() {
+fn gf_stays_on_the_pages_own_name_written_and_goes_to_its_top_linked() {
     let page = Path::new("/notes/page.md");
     let there = in_notes(&["page.md", "other.md"]);
     let gone = |name: Name| going(&name, page, &there).map_or_else(|| "none".into(), |g| read(&g));
@@ -150,17 +150,19 @@ fn gf_on_the_pages_own_name_stays_where_it_is() {
     assert_eq!(gone(Name::Link("page.md".into())), "# here", "linked");
     assert_eq!(gone(Name::Link("#".into())), "# here", "linked bare");
     // The page's name written another way is still the page, on a real
-    // disk, where it's the file that's compared and not its spelling.
+    // disk, where it's the file that's compared and not its spelling:
+    // through its folder's parent, and by a link to it of another name.
     let dir = std::env::temp_dir().join(format!("reader-links-own-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
     let file = dir.join("page.md");
     std::fs::write(&file, "# Page\n").expect("the file");
+    std::os::unix::fs::symlink(&file, dir.join("alias.md")).expect("a link to it");
     let folder = dir
         .file_name()
         .and_then(|name| name.to_str())
         .expect("a name");
     let on_disk = |written: &str| going(&Name::Written(written.into()), &file, Path::is_file);
-    let spelt = ["./page.md".to_string(), format!("../{folder}/page.md")];
+    let spelt = ["alias.md".to_string(), format!("../{folder}/page.md")];
     let read_back: Vec<_> = spelt.iter().map(|written| on_disk(written)).collect();
     std::fs::remove_dir_all(&dir).expect("cleaned");
     assert_eq!(
@@ -416,6 +418,34 @@ fn a_word_read_as_a_path_after_the_character_stops_gf_only_when_its_a_file() {
         "/notes/and/or",
         "a written path that is a file comes first"
     );
+}
+
+#[test]
+fn the_pages_own_name_after_the_character_is_no_stop() {
+    let (lines, pieces) = set("own-after", "See page.md and the [guide](guide.md).\n");
+    let there = ["page.md", "guide.md"];
+    assert_eq!(
+        opened(&lines, &pieces, ("See", 0), &there),
+        "/notes/guide.md",
+        "past the page's own name, to the link, as gf from a line goes"
+    );
+    assert_eq!(
+        opened(&lines, &pieces, ("page.md", 2), &there),
+        "stays",
+        "under the character, it's where he is"
+    );
+}
+
+#[test]
+fn staying_says_the_page_as_vim_says_a_file_it_edits_again() {
+    let page = Path::new("/notes/page.md");
+    assert_eq!(file_info(page, "# Page\n\nWords.\n"), "\"page.md\" 3L, 15B");
+    assert_eq!(
+        file_info(page, "Unended"),
+        "\"page.md\" 1L, 7B",
+        "a last line unended"
+    );
+    assert_eq!(file_info(page, ""), "\"page.md\" 0L, 0B", "empty");
 }
 
 #[test]

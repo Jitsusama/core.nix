@@ -1,3 +1,6 @@
+//! Long because a selection's motions, objects, copies and names are each
+//! proven over the one page this file sets, beside it.
+
 use super::*;
 use crate::numbers::f64_of;
 
@@ -364,6 +367,34 @@ fn characters_copy_the_files_bytes_and_a_spans_markup_only_when_its_words_are_wh
         "first item\n- second",
         "a bullet the file spells its own way"
     );
+}
+
+#[test]
+fn a_selection_names_what_it_holds_on_one_line_as_vims_v_gf_takes_it() {
+    let page = page();
+    let named = |kind, from, to| {
+        let mut selection = Selection::new(kind, from);
+        selection.cursor = to;
+        page.named(&selection)
+    };
+    let bold = Some("bold words".to_string());
+    assert_eq!(named(Kind::Chars, at(1, 5), at(1, 14)), bold);
+    assert_eq!(
+        named(Kind::Chars, at(1, 15), at(1, 4)),
+        bold,
+        "blanks off, either way"
+    );
+    assert_eq!(
+        named(Kind::Chars, at(1, 4), at(1, 4)),
+        None,
+        "a blank names nothing"
+    );
+    assert_eq!(
+        named(Kind::Chars, at(1, 18), at(2, 3)),
+        None,
+        "over two lines"
+    );
+    assert_eq!(named(Kind::Pieces, at(1, 5), at(1, 14)), None, "pieces");
 }
 
 #[test]
