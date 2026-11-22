@@ -208,8 +208,14 @@ fn readable(context: &Context, config: &Config) -> Result<History, Failure> {
     let Some(shape) = History::older(&path) else {
         return History::open(&path).map_err(unread);
     };
+    let _lock = moving(config, shape)?;
+    moved(context, &path, shape)
+}
+
+/// The history at `path`, of an older `shape`, opened under the lock and
+/// so brought up to date, saying the move as it goes.
+fn moved(context: &Context, path: &Path, shape: i64) -> Result<History, Failure> {
     let to = crate::history::SCHEMA;
-    let _lock = moving(config, shape, to)?;
     // Said on stderr whatever the answer's form but the JSON ones, where
     // stderr carries the error as JSON, which words ahead of it would stop
     // parsing. A wait stderr can't take leaves the move to go on unsaid.
@@ -220,7 +226,7 @@ fn readable(context: &Context, config: &Config) -> Result<History, Failure> {
             ))
         })
         .and_then(Result::ok);
-    let opened = History::open(&path).map_err(unread);
+    let opened = History::open(path).map_err(unread);
     if let Some(wait) = wait {
         // Said as it ends; a stderr gone meanwhile leaves the answer to
         // stand on its own.
@@ -233,7 +239,8 @@ fn readable(context: &Context, config: &Config) -> Result<History, Failure> {
 }
 
 /// The lock to move a history of an older shape under.
-fn moving(config: &Config, shape: i64, to: i64) -> Result<std::fs::File, Failure> {
+fn moving(config: &Config, shape: i64) -> Result<std::fs::File, Failure> {
+    let to = crate::history::SCHEMA;
     crate::daemon::lock(&config.state).map_err(|why| {
         Failure::new(
             Exit::TryAgain,
@@ -241,11 +248,11 @@ fn moving(config: &Config, shape: i64, to: i64) -> Result<std::fs::File, Failure
         )
         .because(format!(
             "it's moving the history from shape {shape} to {to}, which takes a few \
-                 minutes on a large one, and {why}"
+                 minutes on a large one, so try again then, and {why}"
         ))
         // Whatever holds the lock may not be moving it: an older
         // daemon still running, or one whose step fails and restarts.
-        .try_this("try again in a few minutes; if it lasts, systemctl --user status spend-watch")
+        .try_this("systemctl --user status spend-watch")
     })
 }
 
@@ -732,7 +739,11 @@ fn show(context: &Context, config: &Config, collection: bool) -> Result<(), Fail
 fn import(context: &Context, config: &Config) -> Result<(), Failure> {
     no_own_form(context, "import")?;
     let _lock = held(config)?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let path = config.history();
+    let history = match History::older(&path) {
+        Some(shape) => moved(context, &path, shape)?,
+        None => History::open(&path).map_err(unread)?,
+    };
     let began = std::time::Instant::now();
     crate::daemon::harness(&history, config);
     crate::daemon::catch_up(&history, config).map_err(unread)?;

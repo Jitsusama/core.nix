@@ -54,7 +54,8 @@ pub struct Carry {
     #[serde(skip)]
     pub brought: Option<String>,
     /// The session the header names as its parent, when the history holds
-    /// its turns from before the fork, read from whichever machine's logs.
+    /// any of its turns from before the fork, read from whichever machine's
+    /// logs.
     /// Given afresh each read, so never kept.
     #[serde(skip)]
     pub held_parent: Option<String>,
