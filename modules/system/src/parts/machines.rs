@@ -10,6 +10,7 @@ use std::io;
 
 use serde_json::Value;
 
+use super::builders::builders;
 use super::ties::ties;
 use super::{Answer, and, count, side_of, unread};
 use crate::record::{Deeper, Health, Part, Thing};
@@ -83,7 +84,8 @@ const ITS_OWN: [&str; 1] = ["code"];
 /// sessions from `mycelium health` where that was read, and its ties to
 /// the network and the code from `net --json` and `repos --json` where
 /// those were, and this machine's with when its quest backup last backed up,
-/// where it keeps one.
+/// where it keeps one; then the builders they send builds to, as the same
+/// answer names them (builders.rs), each a thing of its own kind.
 pub fn machines(
     machines: &Answer,
     health: &Answer,
@@ -106,14 +108,15 @@ pub fn machines(
         }
         part
     };
-    let list = match machines {
-        Ok(said) => said
-            .pointer("/Ok/Machines")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
+    let said = match machines {
+        Ok(said) => said,
         Err(why) => return unknown(why),
     };
+    let list = said
+        .pointer("/Ok/Machines")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if list.is_empty() {
         return unknown("the node knows of no machine");
     }
@@ -133,8 +136,12 @@ pub fn machines(
             (thing, looks)
         })
         .collect();
-    // The worst first, then by name, so the line a look wants leads.
+    // The worst first, then by name, so the line a look wants leads. The
+    // builders follow the machines, each kind the worst first.
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
+    let machine_count = read.len();
+    read.extend(builders(said));
+    let builder_count = read.len() - machine_count;
     let side = side_of(
         read.iter()
             .filter(|(thing, _)| thing.health > Health::Good)
@@ -154,7 +161,7 @@ pub fn machines(
     {
         0 => format!(
             "{} ready",
-            count(things.len() as u64, "machine", "machines")
+            count(machine_count as u64, "machine", "machines")
         ),
         _ => things
             .iter()
@@ -163,7 +170,14 @@ pub fn machines(
             .collect::<Vec<_>>()
             .join("; "),
     };
-    let holds = count(things.len() as u64, "machine", "machines");
+    let holds = match builder_count {
+        0 => count(machine_count as u64, "machine", "machines"),
+        _ => format!(
+            "{} and {}",
+            count(machine_count as u64, "machine", "machines"),
+            count(builder_count as u64, "builder", "builders")
+        ),
+    };
     Part {
         name: "machines",
         health,
@@ -947,6 +961,57 @@ mod tests {
             "this machine's code is its own part, and the rest are the same whole \
              read from every machine: {}",
             part.says
+        );
+    }
+
+    #[test]
+    fn the_builders_follow_the_machines_and_a_stalled_one_is_worth_a_look() {
+        let mut said = realm(&[laptop(&[], "healthy")]);
+        said["Ok"]["Builders"] = json!([
+            {"name": "osprey", "state": "running", "lent": true, "jobs": 16},
+            {"name": "gull", "state": "not answering"},
+        ]);
+        let part = machines(&Ok(said.clone()), &Err(String::new()), None, None);
+        let kinds: Vec<(&str, &str)> = part
+            .things
+            .iter()
+            .map(|thing| (thing.kind, thing.name.as_str()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("machine", "laptop"),
+                ("builder", "gull"),
+                ("builder", "osprey")
+            ],
+            "the machines first, then the builders, each the worst first"
+        );
+        assert_eq!(
+            part.health,
+            Health::Watch,
+            "a stalled builder is the part's"
+        );
+        assert_eq!(part.side, ["gull isn't answering"]);
+        assert_eq!(part.says, "gull isn't answering");
+        assert_eq!(part.holds.as_deref(), Some("1 machine and 2 builders"));
+        said["Ok"]["Builders"] = json!([{"name": "osprey", "state": "running"}]);
+        let part = machines(&Ok(said), &Err(String::new()), None, None);
+        assert_eq!(
+            (part.health, part.says.as_str()),
+            (Health::Good, "1 machine ready"),
+            "a ready part counts its machines, which a builder isn't"
+        );
+        assert_eq!(part.holds.as_deref(), Some("1 machine and 1 builder"));
+        let part = machines(
+            &Ok(realm(&[laptop(&[], "healthy")])),
+            &Err(String::new()),
+            None,
+            None,
+        );
+        assert_eq!(
+            part.holds.as_deref(),
+            Some("1 machine"),
+            "an answer naming no builders holds none"
         );
     }
 }

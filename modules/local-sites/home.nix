@@ -363,14 +363,17 @@ in
       };
     };
     feeds = {
-      # The system daemon's summary, its parts and their things
-      # (modules/system), each told whole: a page shows all of each.
+      # The system daemon's summary, its parts and their things, the
+      # machines and the builders they send builds to (modules/system), each
+      # told whole: a page shows all of each. A kind the daemon keeps but
+      # this doesn't name never reaches a page.
       system = {
         socket = "daemons/system.sock";
         kinds = {
           summary = { };
           part = { };
           machine = { };
+          builder = { };
         };
       };
       # net's devices, the links between them, the sources it read them from,

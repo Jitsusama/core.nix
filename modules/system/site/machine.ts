@@ -3,7 +3,15 @@
 // each one. A machine is the bridge between the others (Joel, 2026-11-17),
 // so the page leads with them. Nothing here touches the page.
 
-import { capital, type Health, numbered, type System, type Thing, WORDS } from "./model.ts";
+import {
+  capital,
+  type Health,
+  numbered,
+  type System,
+  type Thing,
+  thingsOf,
+  WORDS,
+} from "./model.ts";
 import type { Figures, Place, Ties } from "./ties.ts";
 
 /** A gigabyte and a terabyte, as a node counts bytes. */
@@ -60,23 +68,26 @@ function howMany(count: number, all: number): string {
   return count === all && all > 2 ? "all" : numbered(count);
 }
 
-/** The headline over the machines: how many there are, then how they stand. */
+/**
+ * The headline over the machines: how many there are, then how they stand.
+ * The builders they send builds to are no machines, so it counts none.
+ */
 function machineHeadline(system: System): MachineHeadline {
   const part = system.parts.find((each) => each.part === "machines");
-  const things = part?.things ?? [];
+  const things = thingsOf(part, "machine");
   // A part not told, or naming machines whose records haven't come, isn't none.
-  const awaited = part === undefined || (things.length === 0 && part.untold > 0);
+  const awaited = part === undefined || (things.length === 0 && part.machinesUntold > 0);
   if (awaited || part.health === "unread") {
     return { machines: "Your machines", stand: "not read", health: "unread" };
   }
   // Those named whose records haven't come are counted, as not read.
-  const all = things.length + part.untold;
+  const all = things.length + part.machinesUntold;
   const machines = capital(`${numbered(all)} ${all === 1 ? "machine" : "machines"}`);
   if (all === 0) {
     return { machines, stand: "none known", health: "unread" };
   }
   const stands = STANDS.map(([health, words]) => {
-    const untold = health === "unread" ? part.untold : 0;
+    const untold = health === "unread" ? part.machinesUntold : 0;
     const count = things.filter((thing) => thing.health === health).length + untold;
     return { health, count, words };
   }).filter((each) => each.count > 0);

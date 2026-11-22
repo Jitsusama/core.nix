@@ -9,17 +9,22 @@ import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { escaped, headlineOf, legend, partsOf, placesOf } from "../draw.ts";
 import { machineHeadline } from "../machine.ts";
-import { allTold, systemOf } from "../model.ts";
+import { allTold, systemOf, thingsHeld } from "../model.ts";
 
-/** The three watches, told `these` whole, each to its kind's. */
+/**
+ * The four watches, told `these` whole, each to its kind's; the machines'
+ * and the builders' read as the things, as the page reads them.
+ */
 function told(these: readonly { readonly key: string; readonly kind: string }[]) {
-  const summary = new Held();
-  const part = new Held();
-  const machine = new Held();
-  summary.took({ records: these.filter((record) => record.kind === "summary") });
-  part.took({ records: these.filter((record) => record.kind === "part") });
-  machine.took({ records: these.filter((record) => record.kind === "machine") });
-  return { summary, part, machine };
+  const [summary, part, machines, builders] = ["summary", "part", "machine", "builder"].map(
+    (kind) => {
+      const held = new Held();
+      held.took({ records: these.filter((record) => record.kind === kind) });
+      return held;
+    },
+  );
+  assert.ok(summary && part && machines && builders);
+  return { summary, part, machine: thingsHeld(machines, builders) };
 }
 
 const deeper = { command: "mycelium machines", site: "mycelium/", launcher: "Agents" };

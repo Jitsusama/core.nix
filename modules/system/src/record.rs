@@ -42,7 +42,8 @@ pub struct Deeper {
     pub launcher: &'static str,
 }
 
-/// One thing in a part worth naming on its own: a machine, for now.
+/// One thing in a part worth naming on its own: a machine, or a builder
+/// the machines send builds to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Thing {
     /// What kind of thing it is, as VKCF3Z's home addresses name kinds.
@@ -157,7 +158,7 @@ impl System {
 
     /// The record split as the daemon holds it, in the shell's daemon
     /// interface: the whole's `summary`, a `part` record for each part and
-    /// one for each thing in a part, a `machine` for now. Each holds only
+    /// one for each thing in a part, a `machine` or a `builder`. Each holds only
     /// what changes with it, so a part that stands as it stood isn't told
     /// again when another moves; only the summary says when it was read.
     pub fn records(&self) -> Vec<Value> {

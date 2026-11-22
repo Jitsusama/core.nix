@@ -5,7 +5,7 @@
 // nothing the `system` command doesn't; each says whose it is and leads
 // to where it can be seen whole. Nothing here touches the page.
 
-import { capital, type Health, named, type Part, type System } from "./model.ts";
+import { capital, type Health, named, type Part, type System, type Thing } from "./model.ts";
 
 /** The most looks listed, so a bad night keeps the list a glance. */
 const LOOKS_LISTED = 8;
@@ -44,12 +44,15 @@ function listed(side: readonly string[]): readonly string[] {
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {
   readonly health: Health;
-  /** The machine or part it is in, as the page names it. */
+  /** The machine, builder or part it is in, as the page names it. */
   readonly whose: string;
-  /** Whether `whose` is a machine's name, which no translator may change. */
+  /** Whether `whose` is a thing's name, which no translator may change. */
   readonly machine: boolean;
   readonly words: string;
-  /** Where it is seen whole: a machine's section here, or a part's own site. */
+  /**
+   * Where it is seen whole: a machine's section here, a builder on the map,
+   * or a part's own site.
+   */
   readonly href: string;
   /** The row's key, the same across redraws while the look stands. */
   readonly row: string;
@@ -122,9 +125,22 @@ function ownLooks(part: Part): readonly Look[] {
 }
 
 /**
- * Each machine's side, a look a word at the machine's health, leading to its
- * section or the map. A machine's side holds only its own looks: the daemon
- * says the machines' note in each machine's words and the part's side alone.
+ * Where a thing's look leads: a machine drawn whole to its section, the
+ * `at`th, and any other thing to itself on the map, as a builder, which
+ * has no section here.
+ */
+function hrefOf(thing: Thing, at: number, drawn: number): string {
+  return thing.kind === "machine" && at < drawn
+    ? `#machine-${at + 1}`
+    : `../mycelium/#${thing.kind}=${encodeURIComponent(thing.name)}`;
+}
+
+/**
+ * Each thing's side, a look a word at the thing's health, leading to its
+ * section or the map. The machines lead the part's things, so a machine's
+ * place among them is its section's. A thing's side holds only its own
+ * looks: the daemon says the machines' note in each machine's words and the
+ * part's side alone.
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   return part.things.flatMap((thing, at) =>
@@ -133,11 +149,8 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
       whose: thing.name,
       machine: true,
       words: capital(words),
-      href:
-        at < drawn
-          ? `#machine-${at + 1}`
-          : `../mycelium/#machine=${encodeURIComponent(thing.name)}`,
-      row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
+      href: hrefOf(thing, at, drawn),
+      row: `look:${thing.kind}:${encodeURIComponent(thing.name)}:${key}`,
     })),
   );
 }

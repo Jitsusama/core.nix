@@ -23,10 +23,11 @@ use system::record::{Health, System};
 use terminal_kit::{Exit, Failure, flags};
 
 /// The daemon as its clients know it: the whole's one summary, a record
-/// for each part, and one for each machine.
+/// for each part, and one for each machine and each builder the machines
+/// send builds to.
 const DOMAIN: Domain = Domain {
     name: "system",
-    kinds: &["summary", "part", "machine"],
+    kinds: &["summary", "part", "machine", "builder"],
     sole: &["summary"],
     named_only: &[],
 };
