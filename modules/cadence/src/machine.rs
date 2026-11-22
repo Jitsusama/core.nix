@@ -148,7 +148,7 @@ pub const MEASURES: &[Measure] = &[
         "resources",
         "what a typical hosted conversation's process held",
         " MiB",
-        None,
+        Some(300.0),
         64.0,
     ),
     measure(
@@ -394,6 +394,29 @@ mod tests {
                 .any(|finding| finding.key == "health.boot.seconds" && finding.bar == Some(30.0)),
             "a 41.5 s boot wasn't held against its 30 s bar: {:?}",
             judged.worse
+        );
+    }
+
+    #[test]
+    fn a_typical_conversation_past_its_bar_is_a_finding_and_a_heavy_one_isnt() {
+        let day = Day {
+            figures: figures(
+                r#"{"figures": {"memory.pi-conversation.copy-median-mib": 340.0,
+                    "memory.pi-conversation.copy-p95-mib": 900.0}}"#,
+            ),
+            ..Day::default()
+        };
+        let judged = judge(&day, &[]);
+        let barred: Vec<(&str, Option<f64>)> = judged
+            .worse
+            .iter()
+            .map(|finding| (finding.key.as_str(), finding.bar))
+            .collect();
+        assert_eq!(
+            barred,
+            [("health.memory.pi-conversation.copy-median-mib", Some(300.0))],
+            "a typical conversation over 300 MiB wasn't held against its bar, \
+             or a heavy one with no bar was"
         );
     }
 
