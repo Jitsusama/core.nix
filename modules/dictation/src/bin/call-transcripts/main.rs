@@ -163,20 +163,7 @@ fn help() -> Help {
                     "a file can't be read, or it's above the ceiling",
                 ),
         )
-        .subcommand(
-            Help::new("mark", "how many words of a call's file are wrong")
-                .argument("<transcript>", "the call's transcript.md")
-                .argument(
-                    "<reference>",
-                    "what was said on it, as a meeting's reference",
-                )
-                .argument("<mine>", "the reference's speaker on Joel's side")
-                .example(
-                    "call-transcripts mark transcript.md ES2004a.ref B",
-                    "B's lines are Joel's",
-                )
-                .exit(Exit::Failed, "a file can't be read"),
-        )
+        .subcommand(mark::help())
         .subcommand(
             Help::new("voices", "how well it tells meetings' voices apart")
                 .argument("<speaker-model>", "the speaker model's ONNX file")

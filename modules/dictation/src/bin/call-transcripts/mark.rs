@@ -16,9 +16,26 @@ use std::path::Path;
 
 use dictation::transcript::{self, Side};
 use dictation::wer::{Errors, said, words};
+use terminal_kit::{Exit, Help};
 
 use crate::filed;
 use crate::score::{self, Said};
+
+/// What `call-transcripts mark --help` says, kept beside what it runs.
+pub fn help() -> Help {
+    Help::new("mark", "how many words of a call's file are wrong")
+        .argument("<transcript>", "the call's transcript.md")
+        .argument(
+            "<reference>",
+            "what was said on it, as a meeting's reference",
+        )
+        .argument("<mine>", "the reference's speaker on Joel's side")
+        .example(
+            "call-transcripts mark transcript.md ES2004a.ref B",
+            "B's lines are Joel's",
+        )
+        .exit(Exit::Failed, "a file can't be read")
+}
 
 /// Marks the call's file `file` against `reference`, whose speaker `mine`
 /// is Joel's side, and prints each side's errors.
