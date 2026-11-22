@@ -561,11 +561,6 @@ in
       Unit = {
         Description = "Keeps the account told what its AI use costs";
         X-Restart-Triggers = [ "${configFile}" ];
-        # The first pass after a start reads the whole history cold, and
-        # while its week sums read every turn that holds fresh figures back
-        # for hours, so a switch leaves the watch running and a new config
-        # or program takes over at its next start.
-        X-RestartIfChanged = false;
       };
       Service = {
         ExecStart = "${lib.getExe package} --config ${configFile} run";
