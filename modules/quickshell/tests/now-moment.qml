@@ -1143,6 +1143,22 @@ ShellRoot {
         expect("refused, the plate's clock says nothing keeps the time",
             JSON.stringify(refusedSays) === JSON.stringify(["nothing keeps the time"]),
             JSON.stringify(refusedSays));
+        // A step out of home stops chrony being asked, and the reading it
+        // left is kept a while rather than dropped there: dropped, the
+        // plate of the row left behind was made again inside the step,
+        // and made again once more as the reader answered a step back
+        // (the keys lab, 2026-11-22). Asked again, it's kept for good.
+        Timekeeping.watching += 1;
+        Timekeeping.reading = { synchronised: true };
+        Timekeeping.watching -= 1;
+        expect("unwatched, the reading is kept a while",
+            Timekeeping.reading !== null && Timekeeping.dropping,
+            JSON.stringify(Timekeeping.reading));
+        Timekeeping.watching += 1;
+        expect("watched again, nothing drops the reading", !Timekeeping.dropping,
+            JSON.stringify(Timekeeping.dropping));
+        Timekeeping.watching -= 1;
+        Timekeeping.reading = null;
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the

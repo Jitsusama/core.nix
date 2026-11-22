@@ -4,8 +4,8 @@
 // server chrony asks, each one's figures and why it's chosen or set aside.
 // It's asked only while something shown watches it, home's Now or Time,
 // since the reader asks chronyd once a second for as long as it's asked
-// and nothing otherwise; the reading is dropped when it isn't, so nothing
-// stale is ever shown. A machine without chrony has no socket, and Time
+// and nothing otherwise; the reading is dropped a minute after it isn't,
+// so nothing staler than chrony's own last poll is shown. A machine without chrony has no socket, and Time
 // says nothing keeps the time.
 pragma Singleton
 pragma ComponentBehavior: Bound
@@ -22,11 +22,11 @@ Singleton {
     property int watching: 0
 
     // The last reading, { synchronised, clock, servers, hardwareClock,
-    // activity }, or null while it isn't asked or hasn't answered.
+    // activity }, or null while it hasn't answered or was let go.
     property var reading: null
 
     // Whether the reader failed to answer since it was last heard: refused,
-    // gone, or chronyd not answering it. It's cleared once nothing watches.
+    // gone, or chronyd not answering it. It's cleared with the reading.
     property bool refused: false
 
     readonly property string path: `${Quickshell.env("XDG_RUNTIME_DIR")}/io.jitsusama.Timekeeping`
@@ -60,10 +60,29 @@ Singleton {
         refused = false;
     }
 
+    // Whether the reading left once nothing watched is still kept, to be
+    // dropped once `letGo` runs out.
+    readonly property bool dropping: letGo.running
+
+    // The reading is kept a minute once nothing watches, not dropped at
+    // once: dropped, a step out of home made Now's plate again inside the
+    // step, for the row it was leaving, and again as the reader answered a
+    // step back (the keys lab, 2026-11-22). Chrony asks its servers every
+    // 64 s at the quickest here, so a reading kept a minute is no staler
+    // than its own last poll.
     onWatchingChanged: {
-        if (watching === 0) {
-            reading = null;
-            refused = false;
+        if (watching > 0)
+            letGo.stop();
+        else
+            letGo.restart();
+    }
+
+    Timer {
+        id: letGo
+        interval: 60000
+        onTriggered: {
+            root.reading = null;
+            root.refused = false;
         }
     }
 
