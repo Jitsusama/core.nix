@@ -11,7 +11,8 @@
 //! lag-watch's history and the launcher's openings from the journal, to
 //! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges. The
 //! run beside them sets the launcher's openings while the test ran against
-//! the same span just before, and says when the test made them worse.
+//! the same span just before, and says when the test made them worse, or
+//! that too few openings were seen to tell.
 //!
 //! It keeps out of Joel's calls: it asks `a-call-is-on --here`, which hears
 //! a call on this machine by its microphone, before it starts and every five seconds after,
@@ -155,6 +156,7 @@ fn now(context: &Context) -> Result<(), Failure> {
             "at": hour["at"],
             "age_s": age,
             "measures": hour["measures"],
+            "run": hour["run"],
         })),
     }
     .map_err(|error| unwritten(&error))
@@ -180,7 +182,36 @@ fn said(hour: &Value, age: u64) -> String {
             m["measure"].as_str().unwrap_or("?")
         );
     }
+    if let Some(line) = beside_said(&hour["run"]["launcher"]) {
+        text.push_str(&line);
+    }
     text
+}
+
+/// The launcher's openings during the test against just before it, as a
+/// line, or none for an hour written before the run carried them.
+fn beside_said(launcher: &Value) -> Option<String> {
+    if let Some(why) = launcher["unread"].as_str() {
+        return Some(format!("launcher during the test: unread, {why}\n"));
+    }
+    let span = |side: &str| {
+        let opens = launcher[side]["opens"].as_u64()?;
+        let p99 = launcher[side]["p99"]
+            .as_f64()
+            .map_or_else(String::new, |ms| format!(", p99 {ms} ms"));
+        let plural = if opens == 1 { "" } else { "s" };
+        Some(format!("{opens} opening{plural}{p99}"))
+    };
+    let verdict = match launcher["worse"].as_bool() {
+        Some(true) => "worse".to_string(),
+        Some(false) => "not worse".to_string(),
+        None => format!("can't tell under {} openings a side", launcher::FEWEST),
+    };
+    Some(format!(
+        "launcher during the test: {}; just before: {}; {verdict}\n",
+        span("during")?,
+        span("before")?
+    ))
 }
 
 /// Refuses the call where a test browser could join anyone's management
@@ -300,12 +331,18 @@ fn run(context: &Context) -> Result<(), Failure> {
         history::ran(&std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default());
     let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
     let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
-    let opens = launcher::read();
+    let read = launcher::read();
+    let opens = read.as_deref().unwrap_or_default();
     let took: Vec<f64> = opens.iter().map(|(_, ms)| *ms).collect();
     let measures = hour::measures(&call, call::STAND_IN, &chrome_waits, &slack_waits, &took);
     // From the run's start, Chromium's own included, to now: the whole of
     // the load the test put beside Joel's programs.
-    let launcher = launcher::beside(&opens, started, at);
+    // A journal that couldn't be read says why, so nothing gating on the
+    // spans takes it for an hour with none.
+    let launcher = match &read {
+        Ok(opens) => json!(launcher::beside(opens, started, at)),
+        Err(why) => json!({"unread": why}),
+    };
     let run = json!({"started": started, "seconds": SECONDS, "call": call, "launcher": launcher});
     hour::write(&folder(), at, &measures, &run).map_err(|error| {
         Failure::new(Exit::Failed, "the hour couldn't be written")
@@ -313,7 +350,7 @@ fn run(context: &Context) -> Result<(), Failure> {
             .try_this(format!("ls -ld {}", folder().display()))
     })?;
     context
-        .say(&said(&json!({"measures": measures}), 0))
+        .say(&said(&json!({"measures": measures, "run": run}), 0))
         .map_err(|error| unwritten(&error))
 }
 
@@ -347,6 +384,37 @@ mod tests {
             said(&hour, 125),
             "measured 2 min ago\ncall sent fps p10: 29.8, at least 30\n\
              launcher open ms p99: unread, at most 50\n"
+        );
+    }
+
+    #[test]
+    fn the_launcher_s_spans_are_said_with_whether_they_tell() {
+        let told = json!({"before": {"opens": 3, "p99": 30.0},
+                          "during": {"opens": 4, "p99": 46.0}, "worse": true});
+        assert_eq!(
+            beside_said(&told).as_deref(),
+            Some(
+                "launcher during the test: 4 openings, p99 46 ms; \
+                 just before: 3 openings, p99 30 ms; worse\n"
+            )
+        );
+        let thin = json!({"before": {"opens": 1, "p99": 30.0},
+                          "during": {"opens": 0, "p99": null}, "worse": null});
+        assert_eq!(
+            beside_said(&thin).as_deref(),
+            Some(
+                "launcher during the test: 0 openings; just before: 1 opening, p99 30 ms; \
+                 can't tell under 3 openings a side\n"
+            )
+        );
+        assert_eq!(
+            beside_said(&json!({"unread": "journalctl exited 1: no"})).as_deref(),
+            Some("launcher during the test: unread, journalctl exited 1: no\n")
+        );
+        assert_eq!(
+            beside_said(&Value::Null),
+            None,
+            "an older hour says nothing"
         );
     }
 
