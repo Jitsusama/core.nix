@@ -82,11 +82,11 @@ feed speaks.
   another machine's logs are read: its subagent runs and quest
   workspaces stay there, so its runs' spend beyond their logs is
   elsewhere. A copy's turns from before its header are its parent's when
-  the parent's log is beside it or the parent's turns from before the
-  fork are held already, read from any machine's logs, so every copy of a
-  session agrees, and a header alone naming the parent takes nothing; a copy
-  brought before its parent counts whole until the parent lands, then is
-  read again for its own turns. A brought log drops what a session of
+  the parent's log is beside it or any of the parent's turns from before
+  the fork are held already, read from any machine's logs, so every copy of a
+  session agrees, and a parent the history knows only by its header takes
+  nothing; a copy brought before its parent counts whole until the parent
+  lands, then is read again for its own turns. A brought log drops what a session of
   this machine's was counted for only when its header begins when this
   machine's log of it does. Each machine's sessions folder
   stands apart from every other's where it really is, links passed over

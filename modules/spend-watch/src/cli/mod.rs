@@ -125,7 +125,7 @@ pub fn act(context: &Context, help: &Help) -> Result<(), Failure> {
         ["findings", key] => finding(context, &config(&path)?, key),
         ["backtest"] => {
             let config = config(&path)?;
-            let (history, picture) = picture(&config)?;
+            let (history, picture) = picture(context, &config)?;
             let replayed =
                 crate::backtest::backtest(&history, &picture, &config).map_err(unread)?;
             give_report(context, "spend-watch.backtest/1", &replayed, false)
@@ -200,25 +200,60 @@ fn held(config: &Config) -> Result<std::fs::File, Failure> {
 /// does that as it starts, so beside it a reader is told to try again
 /// rather than wait out the lock and call the history unreadable, or move
 /// the history itself from under the daemon; with no daemon, the reader
-/// moves it, holding the lock so none starts meanwhile.
-fn readable(config: &Config) -> Result<History, Failure> {
+/// moves it, holding the lock so none starts meanwhile, and says so as a
+/// wait, since minutes of silence read as a hang, and a reader stopped
+/// partway leaves the history as it was, for the next one to start again.
+fn readable(context: &Context, config: &Config) -> Result<History, Failure> {
     let path = config.history();
-    let _lock = match History::older(&path) {
-        Some(shape) => Some(crate::daemon::lock(&config.state).map_err(|why| {
-            Failure::new(
-                Exit::TryAgain,
-                "spend-watch is bringing the history up to date",
-            )
-            .because(format!(
-                "it's moving the history from shape {shape} to {}, which takes a few \
-                     minutes on a large one, and {why}",
-                crate::history::SCHEMA
-            ))
-            .try_this("try again in a few minutes")
-        })?),
-        None => None,
+    let Some(shape) = History::older(&path) else {
+        return History::open(&path).map_err(unread);
     };
-    History::open(&path).map_err(unread)
+    let _lock = moving(config, shape)?;
+    moved(context, &path, shape)
+}
+
+/// The history at `path`, of an older `shape`, opened under the lock and
+/// so brought up to date, saying the move as it goes.
+fn moved(context: &Context, path: &Path, shape: i64) -> Result<History, Failure> {
+    let to = crate::history::SCHEMA;
+    // Said on stderr whatever the answer's form but the JSON ones, where
+    // stderr carries the error as JSON, which words ahead of it would stop
+    // parsing. A wait stderr can't take leaves the move to go on unsaid.
+    let wait = (!context.shared.format.is_json())
+        .then(|| {
+            context.wait(&format!(
+                "bringing the history from shape {shape} to {to}, a few minutes on a large one"
+            ))
+        })
+        .and_then(Result::ok);
+    let opened = History::open(path).map_err(unread);
+    if let Some(wait) = wait {
+        // Said as it ends; a stderr gone meanwhile leaves the answer to
+        // stand on its own.
+        let _ = match &opened {
+            Ok(_) => wait.done(&format!("the history is in shape {to}")),
+            Err(_) => wait.failed("the history stays as it was"),
+        };
+    }
+    opened
+}
+
+/// The lock to move a history of an older shape under.
+fn moving(config: &Config, shape: i64) -> Result<std::fs::File, Failure> {
+    let to = crate::history::SCHEMA;
+    crate::daemon::lock(&config.state).map_err(|why| {
+        Failure::new(
+            Exit::TryAgain,
+            "spend-watch is bringing the history up to date",
+        )
+        .because(format!(
+            "it's moving the history from shape {shape} to {to}, which takes a few \
+                 minutes on a large one, so try again then, and {why}"
+        ))
+        // Whatever holds the lock may not be moving it: an older
+        // daemon still running, or one whose step fails and restarts.
+        .try_this("systemctl --user status spend-watch")
+    })
 }
 
 /// Facts as an answer under their schema.
@@ -245,8 +280,8 @@ fn no_own_form(context: &Context, command: &str) -> Result<(), Failure> {
     }
 }
 
-fn picture(config: &Config) -> Result<(History, Picture), Failure> {
-    let history = readable(config)?;
+fn picture(context: &Context, config: &Config) -> Result<(History, Picture), Failure> {
+    let history = readable(context, config)?;
     let picture = Picture::read(&history, config, crate::time::now()).map_err(unread)?;
     Ok((history, picture))
 }
@@ -280,7 +315,7 @@ fn give_report(
 
 /// `report`: the week at a glance, one focus, or a period cut one way.
 fn report_command(context: &Context, config: &Config, rest: &[&str]) -> Result<(), Failure> {
-    let (history, picture) = picture(config)?;
+    let (history, picture) = picture(context, config)?;
     let joined = rest.join(" ").to_lowercase();
     let focused = match joined.as_str() {
         "waste" => Some(report::waste(&picture)),
@@ -354,7 +389,7 @@ fn budgets(context: &Context, config: &Config, session: Option<&str>) -> Result<
     {
         return answer(context, schema, written);
     }
-    let (_, picture) = picture(config)?;
+    let (_, picture) = picture(context, config)?;
     let standing = crate::standing::standing(&picture, config, session);
     if context.format().is_json() {
         return answer(context, schema, &standing);
@@ -381,7 +416,7 @@ fn budgets(context: &Context, config: &Config, session: Option<&str>) -> Result<
 /// `findings`: every standing finding.
 fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
-    let history = readable(config)?;
+    let history = readable(context, config)?;
     let findings = crate::findings::standing(&history).map_err(unread)?;
     if context.format().is_json() {
         return answer(
@@ -405,7 +440,7 @@ fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
 /// starts so, as `findings` says each.
 fn finding(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
-    let history = readable(config)?;
+    let history = readable(context, config)?;
     let standing = crate::findings::standing(&history).map_err(unread)?;
     let exact: Vec<_> = standing
         .iter()
@@ -457,7 +492,7 @@ fn said_finding(finding: &crate::findings::Finding, room: terminal_kit::layout::
 /// on, as `budgets --session` says it beside the budgets.
 fn session_spend(context: &Context, config: &Config, id: &str) -> Result<(), Failure> {
     no_own_form(context, "sessions")?;
-    let (_, picture) = picture(config)?;
+    let (_, picture) = picture(context, config)?;
     let standing = crate::standing::standing(&picture, config, Some(id));
     let Some(session) = standing.session.filter(|session| session.budget.is_some()) else {
         return Err(
@@ -481,7 +516,7 @@ fn session_spend(context: &Context, config: &Config, id: &str) -> Result<(), Fai
 /// so, expected.
 fn expect(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
-    let history = readable(config)?;
+    let history = readable(context, config)?;
     let marked =
         crate::findings::mark(&history, key, crate::time::now()).map_err(
             |unmarked| match unmarked {
@@ -518,7 +553,7 @@ fn replay(context: &Context, config: &Config, from: &str, to: &str) -> Result<()
     let zone = config.zone().map_err(|why| {
         Failure::new(Exit::Config, "the config's zone can't be read").because(why)
     })?;
-    let history = readable(config)?;
+    let history = readable(context, config)?;
     let budgets = crate::budgets::Budgets::of(config);
     let changes = crate::tokens::replay(&history, &budgets, &zone, from, to).map_err(unread)?;
     if context.format().is_json() {
@@ -666,7 +701,7 @@ fn check_config(context: &Context, file: &str) -> Result<(), Failure> {
 /// forms are the file's JSON, since that's what it shows.
 fn show(context: &Context, config: &Config, collection: bool) -> Result<(), Failure> {
     no_own_form(context, "show")?;
-    let history = readable(config)?;
+    let history = readable(context, config)?;
     let now = crate::time::now();
     let began = std::time::Instant::now();
     let picture = Picture::read(&history, config, now).map_err(unread)?;
@@ -704,7 +739,11 @@ fn show(context: &Context, config: &Config, collection: bool) -> Result<(), Fail
 fn import(context: &Context, config: &Config) -> Result<(), Failure> {
     no_own_form(context, "import")?;
     let _lock = held(config)?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let path = config.history();
+    let history = match History::older(&path) {
+        Some(shape) => moved(context, &path, shape)?,
+        None => History::open(&path).map_err(unread)?,
+    };
     let began = std::time::Instant::now();
     crate::daemon::harness(&history, config);
     crate::daemon::catch_up(&history, config).map_err(unread)?;
