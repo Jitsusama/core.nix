@@ -3033,6 +3033,11 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
+  pi-hosted-keeps-compiled-extensions-off-tmp = ''
+    pi built with the host's patches, applied exactly, keeps the extensions jiti compiled under
+    $XDG_RUNTIME_DIR/pi-jiti and none under TMPDIR, and with no runtime folder keeps jiti's own
+    default under TMPDIR, where unpatched they always went to os.tmpdir()/jiti
+  '';
   pi-hosted-loads-one-bundle = ''
     pi built with the host's patches, applied exactly, has a bundle host entry that hands on the
     bundle's own coding agent, durable and chord, and a host module for each library its

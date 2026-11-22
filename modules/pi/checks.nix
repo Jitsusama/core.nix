@@ -387,6 +387,17 @@ import ./host-checks.nix args
     touch $out
   '';
 
+  # A hosted pi keeps the extensions jiti compiled in the runtime folder,
+  # since a sweep of /tmp emptied jiti's default there mid-load and a
+  # conversation lost nine tools until its next reload.
+  pi-hosted-keeps-compiled-extensions-off-tmp =
+    pkgs.runCommandLocal "pi-hosted-keeps-compiled-extensions-off-tmp" { }
+      ''
+        HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+          ${./tests/pi-hosted-keeps-compiled-extensions-off-tmp.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+        touch $out
+      '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one
