@@ -12,7 +12,7 @@
 //! on the disk (src/ring.rs, which says what it costs the disk).
 //! `last-seconds` (src/main.rs) reads the rings back as the account that
 //! asks: how each boot's record ended, stopped, asleep or cut short, and
-//! its last seconds.
+//! its last seconds, set out as a table (src/table.rs).
 //!
 //! What it records is a second's average, the same as the shell's own
 //! readings; the energy counters are kept from other accounts because a
@@ -24,6 +24,7 @@ pub mod ring;
 pub mod sample;
 /// The tests' folders, the crate's and the recorder's run whole alike.
 pub mod scratch;
+pub mod table;
 
 /// Where the rings are kept, one folder a boot.
 pub const STATE: &str = "/var/lib/last-seconds";
