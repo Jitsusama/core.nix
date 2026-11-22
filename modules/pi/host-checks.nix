@@ -382,10 +382,9 @@ in
   # fourth start in ten minutes, says and fails on a missing harness or a
   # temporary or cache folder that isn't the account's alone, and otherwise
   # becomes the realm's node in its own place, with its words, every value
-  # of its environment as one word whatever it holds, TMPDIR the temporary
-  # folder and XDG_RUNTIME_DIR the cache folder the system gave, the call
-  # probe its own restart waits on, and none of loadsCode though each was
-  # set.
+  # of its environment whole, TMPDIR the temporary folder and
+  # XDG_RUNTIME_DIR the cache folder the system gave, the call probe its
+  # own restart waits on, and none of loadsCode though each was set.
   the-mac-pi-host-starts-as-its-account =
     let
       start = builtins.unsafeDiscardStringContext (
