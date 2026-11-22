@@ -12563,8 +12563,8 @@ Scope {
                 + ` ${Math.round(allocator.kept)} MB freed and kept`));
         if (KeyTimes.now() >= censusDue)
             censusLater.restart();
-        else if (holdersCounted && freeingNext.length > 0)
-            freedLater.restart();
+        else if (holdersOwed || freeingNext.length > 0)
+            resumeLater.restart();
     }
 
     // What's live is said by kind, from the shell's tenth minute and then
@@ -12615,6 +12615,7 @@ Scope {
                 + (lines.said || "none"));
             console.info(`launcher: what's live once collected in ${took} ms, `
                 + (live.busy ? "not counted, a collection under way" : live.said));
+            root.holdersOwed = !root.holdersCounted;
             holdersLater.restart();
         }
     }
@@ -12625,10 +12626,18 @@ Scope {
     // Each holder counted first takes all it shares with those after it,
     // so what letting go of it frees is weighed apart: every other holder
     // marked first, a whole heap's marking each, so one a turn, a second
-    // apart, and only while the launcher is shut; a second after the next
-    // closing takes up any an opening or a collection put off.
+    // apart, and only while the launcher is shut. Whatever an opening or a
+    // collection put off, the count or a weighing, the next closing takes
+    // up 5 s later, as the census waits, and a turn or two on, so none stalls an
+    // opening in the seconds after a closing when Joel most often reopens.
     property bool holdersCounted: false
+    property bool holdersOwed: false
     property var freeingNext: []
+    Timer {
+        id: resumeLater
+        interval: 5000
+        onTriggered: holdersLater.restart()
+    }
     Timer {
         id: holdersLater
         interval: 1000
@@ -12647,6 +12656,7 @@ Scope {
             if (holders.busy)
                 return;
             root.holdersCounted = true;
+            root.holdersOwed = false;
             root.freeingNext = holders.holders.slice(0, 3).map(row => row[0]);
             freedLater.restart();
         }

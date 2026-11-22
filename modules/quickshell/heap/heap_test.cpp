@@ -1032,9 +1032,11 @@ constexpr int EACH = 20;
 // holders() counts it all for the one whose name sorts first, nor for one
 // whose array a connected closure keeps too, as the collector does through
 // its persistent values, nor for one holding an object made in script
-// whose parent's tree keeps it, as the collector's weak values do; none
-// for a name no property has, said as held by none without saying the
-// name; and the same asked twice, so it cleared the marks it set.
+// whose parent's tree keeps it, as the collector's weak values do, though
+// its own parent is made in script; all of a parentless object made in
+// script and its child, which nothing else keeps; none for a name no
+// property has, said as held by none without saying the name; and the
+// same asked twice, so it cleared the marks it set.
 bool freesWhatItAloneHolds() {
     QTemporaryDir shell;
     QDir files(shell.path());
@@ -1043,6 +1045,7 @@ bool freesWhatItAloneHolds() {
         written(files, QStringLiteral("Sharing.qml"),
                 QStringLiteral("import QtQml\nQtObject {\n    id: root\n"
                                "    property var alone: []\n    property var adopted: null\n"
+                               "    property var floating: null\n"
                                "    property var aShares: []\n    property var bShares: null\n"
                                "    property var closed: null\n    property var made: []\n"
                                "    property Component piece: Component {\n"
@@ -1061,10 +1064,16 @@ bool freesWhatItAloneHolds() {
                                "            kept.push({ n: i, s: 'c' + i });\n"
                                "        closed = kept;\n"
                                "        poked.connect(() => kept.length);\n"
-                               "        const kid = piece.createObject(root);\n"
+                               "        const mid = piece.createObject(root);\n"
+                               "        const kid = piece.createObject(mid);\n"
                                "        for (let i = 0; i < %3; i++)\n"
                                "            kid.own.push({ n: i, s: 'e' + i });\n"
                                "        adopted = kid;\n"
+                               "        const loose = piece.createObject(null);\n"
+                               "        const child = piece.createObject(loose);\n"
+                               "        for (let i = 0; i < %3; i++)\n"
+                               "            child.own.push({ n: i, s: 'f' + i });\n"
+                               "        floating = loose;\n"
                                "        for (let i = 0; i < %4; i++) {\n"
                                "            const one = piece.createObject(null);\n"
                                "            for (let j = 0; j < %5; j++)\n"
@@ -1107,6 +1116,7 @@ bool freesWhatItAloneHolds() {
     const QVariantMap closed = heap.freedBy(QStringLiteral("pieces/Sharing.qml closed"));
     const QVariantMap madeAlone = heap.freedBy(QStringLiteral("pieces/Sharing.qml made"));
     const QVariantMap adopted = heap.freedBy(QStringLiteral("pieces/Sharing.qml adopted"));
+    const QVariantMap floating = heap.freedBy(QStringLiteral("pieces/Sharing.qml floating"));
     const Holding sorted =
         holding(heap.holders(EVERY, UNHURRIED_MS), QStringLiteral("pieces/Sharing.qml aShares"));
     const bool cleared = !anyMarked(engine.handle()->memoryManager);
@@ -1128,6 +1138,10 @@ bool freesWhatItAloneHolds() {
                             closedMB < aloneMB / 50 &&
                             adopted.value(QStringLiteral("held")).toBool() &&
                             adoptedMB < aloneMB / 50;
+    // Its child holds as many items as `alone` holds, alike in shape.
+    const double floatingMB = floating.value(QStringLiteral("freed")).toDouble();
+    const bool loosed = floating.value(QStringLiteral("held")).toBool() &&
+                        floatingMB > aloneMB * 0.8 && floatingMB < aloneMB * 1.2;
     const double aloneCount = alone.value(QStringLiteral("count")).toDouble();
     const double firstMB = first.value(QStringLiteral("freed")).toDouble();
     const double secondMB = second.value(QStringLiteral("freed")).toDouble();
@@ -1140,25 +1154,28 @@ bool freesWhatItAloneHolds() {
     const bool unheld = !none.value(QStringLiteral("held")).toBool() &&
                         none.value(QStringLiteral("freed")).toDouble() == 0 &&
                         none.contains(QStringLiteral("said")) &&
+                        !none.contains(QStringLiteral("holder")) &&
                         !none.value(QStringLiteral("said")).toString().contains(
-                            QStringLiteral("nothing"));
+                            QStringLiteral("Sharing"));
     const bool same = !again.value(QStringLiteral("busy")).toBool() &&
                       again.value(QStringLiteral("count")).toDouble() == aloneCount;
     const bool said = line.contains(QStringLiteral("pieces/Sharing.qml alone ")) &&
                       alone.value(QStringLiteral("ms")).toDouble() > 0;
     const bool held =
-        frees && shared && unheld && same && said && cleared && scripted && persisting;
+        frees && shared && unheld && same && said && cleared && scripted && persisting && loosed;
     if (!held)
         std::fprintf(stderr,
                      "FAIL freedBy() counts what a property alone reaches, about what letting "
                      "it go frees, objects made in script included, next to nothing for two "
                      "sharing one array, one a connected closure shares or an object its tree "
-                     "keeps, none for a name no "
+                     "keeps, all a loose object and its child hold, none for a name no "
                      "property has, the same twice and no mark left: alone %.2f MB (%.0f) "
                      "against %.2f freed, made %.2f MB (%.0f) against %.2f freed, closed "
-                     "%.2f MB, adopted %.2f MB, again %.0f, shared %.2f and %.2f MB against %.2f "
+                     "%.2f MB, adopted %.2f MB, floating %.2f MB, again %.0f, shared %.2f and "
+                     "%.2f MB against %.2f "
                      "(%.0f) sorted first, none held %s, cleared %s: %s; none: %s\n",
                      aloneMB, aloneCount, freed, madeMB, madeCount, madeFreed, closedMB, adoptedMB,
+                     floatingMB,
                      again.value(QStringLiteral("count")).toDouble(), firstMB, secondMB,
                      sorted.mb, sorted.count,
                      none.value(QStringLiteral("held")).toBool() ? "yes" : "no",
@@ -1198,8 +1215,14 @@ bool waitsOutACollection() {
     if (!held)
         std::fprintf(stderr,
                      "FAIL holders() and freedBy() say only that they're busy during a "
-                     "collection and leave what it keeps: left running %s, busy %s, kept %s\n",
-                     running ? "yes" : "no", busy ? "yes" : "no", kept ? "yes" : "no");
+                     "collection and leave what it keeps: left running %s, busy %s (holders() "
+                     "busy %s, freedBy() busy %s, marked %s, said %s), kept %s\n",
+                     running ? "yes" : "no", busy ? "yes" : "no",
+                     during.value(QStringLiteral("busy")).toBool() ? "yes" : "no",
+                     freeing.value(QStringLiteral("busy")).toBool() ? "yes" : "no",
+                     freeing.value(QStringLiteral("marked")).toBool() ? "yes" : "no",
+                     freeing.contains(QStringLiteral("said")) ? "yes" : "no",
+                     kept ? "yes" : "no");
     return held;
 }
 
@@ -1234,10 +1257,14 @@ bool leavesAStrayMark() {
     if (!held)
         std::fprintf(stderr,
                      "FAIL holders() and freedBy() say marks were left set outside a "
-                     "collection and leave them: busy %s, marked %s, counted %s, left %s\n",
+                     "collection and leave them: busy %s, marked %s, counted %s, left %s; "
+                     "freedBy() busy %s, marked %s, counted %s\n",
                      stray.value(QStringLiteral("busy")).toBool() ? "yes" : "no",
                      stray.value(QStringLiteral("marked")).toBool() ? "yes" : "no",
-                     stray.contains(QStringLiteral("said")) ? "yes" : "no", left ? "yes" : "no");
+                     stray.contains(QStringLiteral("said")) ? "yes" : "no", left ? "yes" : "no",
+                     strayFreeing.value(QStringLiteral("busy")).toBool() ? "yes" : "no",
+                     strayFreeing.value(QStringLiteral("marked")).toBool() ? "yes" : "no",
+                     strayFreeing.contains(QStringLiteral("said")) ? "yes" : "no");
     return held;
 }
 

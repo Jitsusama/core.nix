@@ -942,11 +942,10 @@ QVariantMap Heap::freedBy(const QString &holder) const {
             if (each.key == holder)
                 own[each.storage].insert(each.index);
         });
-    // A name nothing holds isn't said back, since only holders()' own
-    // names, filtered for the journal, are known to be safe to say.
+    // A name nothing holds isn't said or given back, since only holders()'
+    // own names, filtered for the journal, are known to be safe to say.
     if (own.isEmpty())
-        return {{QStringLiteral("holder"), holder},
-                {QStringLiteral("held"), false},
+        return {{QStringLiteral("held"), false},
                 {QStringLiteral("freed"), 0.0},
                 {QStringLiteral("count"), 0.0},
                 {QStringLiteral("ms"), static_cast<double>(clock.nsecsElapsed()) / 1e6},
@@ -982,7 +981,7 @@ QVariantMap Heap::freedBy(const QString &holder) const {
             {QStringLiteral("count"), alone.count},
             {QStringLiteral("ms"), ms},
             {QStringLiteral("said"),
-             QStringLiteral("letting go of %1 would free %2 MB (%3), counted in %4 ms")
+             QStringLiteral("letting go of %1 would free %2 MB of the heap (%3), counted in %4 ms")
                  .arg(holder, sized(megabytes(alone.bytes)))
                  .arg(alone.count, 0, 'f', 0)
                  .arg(ms, 0, 'f', 0)}};
