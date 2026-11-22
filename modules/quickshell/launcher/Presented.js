@@ -1,11 +1,15 @@
-// How long what the launcher showed took to reach niri's screen, as its journal says it as it
-// closes: keys from their press, and a daemon's changes from the line that made them, each place
-// on its own (Y2YBTS, 2026-11-11), so a slow update path is seen against Joel's 50 ms bar as keys
-// are, and a drawer from the key that selected its row (Joel, 2026-11-11 20:28: "the drawer in the
-// launcher and its time to appear needs to be kept to the same performance requirements as
-// everything else"). ChangesPresented.js says a daemon's changes
-// with these. Apart from the shell, so
-// tests/pacing.qml holds it in Qt's own engine.
+// What the launcher's journal says, apart from the shell, so tests/pacing.qml holds it in Qt's own
+// engine. Two things:
+// - How long what the launcher showed took to reach niri's screen, as its journal says it as it
+//   closes: keys from their press, and a daemon's changes from the line that made them, each
+//   place on its own (Y2YBTS, 2026-11-11), so a slow update path is seen against Joel's 50 ms bar
+//   as keys are, and a drawer from the key that selected its row (Joel, 2026-11-11 20:28: "the
+//   drawer in the launcher and its time to appear needs to be kept to the same performance
+//   requirements as everything else"). ChangesPresented.js says a daemon's changes with these.
+// - What a line may say with reports off (Options.reports): a key by its kind, words typed by how
+//   many letters, and a daemon's refusal by its code and length, since each may carry what Joel
+//   typed, a window's title or a daemon's words. SetWords.js, Displays.qml, Wireless.qml and
+//   ReadyRows.qml say their lines through these.
 .pragma library
 
 const bar = 50;
@@ -285,7 +289,10 @@ const actWords = new Set(`act add address afresh again ahead archive ask attachm
     start-anywhere start-new-work starts stop switch take-back talk terminal timers title
     to-reopen transcript unlock unmark-all update username waiting wake wave website window write
     yes`.split(/\s+/));
-const keysSaidByKind = /^(row|window|verb):/;
+// Keys actShown says only as keyShown does, whose second part may be an act's word and say more
+// than keyShown would: a record's `row:network:<name>`, or a window keyed `window:mail` with no
+// title. A `verb:` key needs no place here, since keyShown already keeps as much of it.
+const keysSaidByKind = /^(row|window):/;
 
 // A program's own id, as kitty, 1Password or org.gnome.Evolution. A browser's app window may build
 // one from a page's address, with underscores for its slashes, so one that isn't shaped like this

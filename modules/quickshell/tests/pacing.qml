@@ -1182,8 +1182,8 @@ QtObject {
             Presented.actShown("displays:night-light", false), "displays:night-light");
         check(failures, "but a window's by its app, as its row is",
             Presented.actShown("window:Firefox:Inbox", false), "window:Firefox");
-        check(failures, "even where its title is shaped as a kind's word",
-            Presented.actShown("window:kitty:inbox", false), "window:kitty");
+        check(failures, "and one with no title by its kind, even where its app is an act's word",
+            Presented.actShown("window:mail", false), "window");
         check(failures, "and a record's by its kind, whatever its network's name is shaped as",
             Presented.actShown("row:wifi:network:eduroam", false), "wifi");
         check(failures, "and a daemon's own act no further than its act",

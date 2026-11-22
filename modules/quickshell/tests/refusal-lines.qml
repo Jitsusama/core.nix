@@ -61,9 +61,14 @@ ShellRoot {
     }
 
     // The cases run once ReadyRows' daemon is loaded, which its LazyLoader may do after the
-    // shell starts.
+    // shell starts, and nothing here waits forever: a daemon that never loads fails, by name.
     property bool begun: false
     Component.onCompleted: begin()
+    Timer {
+        running: !root.begun
+        interval: 30000
+        onTriggered: Expect.fail("never came: ReadyRows' daemon loaded")
+    }
     Connections {
         target: wireless.served
         function onLinkChanged() {

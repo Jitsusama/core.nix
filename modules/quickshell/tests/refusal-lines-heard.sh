@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Reads what the shell said running tests/refusal-lines.qml with reports off, given as $1:
 # each refusal's line says how many letters the daemon's words held, its codes whole, and no
-# line says the network the words named (Y2YBTS, 2026-11-20, 41ca61c4). Every case is read,
-# so one failing doesn't hide another.
+# line says the network the words named or the words typed (Y2YBTS, 2026-11-20, 41ca61c4).
+# Every case is read, so one failing doesn't hide another.
 set -euo pipefail
 said=$1
 failed=0
@@ -31,10 +31,13 @@ heard "a row a search found, not served yet" \
   "launcher: wifi's search found \"wifi\", which isn't served yet"
 heard "an act of Wi-Fi's own, refused by its code" "launcher: wifi forget refused: gone"
 
-if grep -a 'launcher:' "$said" | grep -aF 'Harbour'; then
-  echo "a line says the daemon's words with reports off"
-  failed=1
-fi
+# The network the daemon's words name, and what the cases typed in a row and over the place.
+for words in Harbour door; do
+  if grep -a 'launcher:' "$said" | grep -aF -- "$words"; then
+    echo "a line says \"$words\" with reports off"
+    failed=1
+  fi
+done
 
 if [ "$failed" -ne 0 ]; then
   echo "what the launcher said:"
