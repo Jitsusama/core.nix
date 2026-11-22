@@ -4,7 +4,8 @@ pragma ComponentBehavior: Bound
 // (stand-ins/hosted-reopen-niri.qml): the laptop's screen with Joel's
 // window on its one workspace, and the monitor's two. niri sends the monitor's two workspaces to
 // the laptop's screen, and the shell hears the screens as niri said them
-// before, the monitor still among them, and sends nothing to it. Once the
+// before, the monitor still among them, and sends nothing to it until
+// niri catches up and names the laptop's screen alone. Once the
 // monitor is back, niri gives back only the
 // first, since a window opened in the second meanwhile. niri never answers
 // the shell's look at the screens as the monitor comes, as when it lagged
@@ -137,6 +138,11 @@ ShellRoot {
         const away = (Sessions.awayFrom["Gull Wide 2"] ?? []).map(one => one.id);
         Expect.expect("both still wait for the monitor", away.includes(10) && away.includes(14),
             JSON.stringify(Sessions.awayFrom));
+        // niri catches up, and a later look hears the laptop's screen alone,
+        // so what the shell last heard before the redock is true again.
+        Sessions.lookAtScreens(() => {});
+        if (!root.answerOutputs({ "Virtual-1": root.laptop }))
+            Expect.fail("the shell didn't look at the screens again");
         root.heldSince = 0;
         // The monitor comes back. niri gives it its first workspace and an
         // empty one, and keeps the second, a window having opened in it.
