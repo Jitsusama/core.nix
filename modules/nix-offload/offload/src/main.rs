@@ -1211,14 +1211,15 @@ fn at_once<'a>(
                     .collect();
                 scope.spawn(move || {
                     let began = now();
-                    let (dir, _claim, waiting) = if vm {
+                    let (dir, _claim, first) = if vm {
                         let rank = there::rank(part);
                         there::admitted(dir, &others, there::count(part), room, rank, waiting)
                     } else {
                         (dir.as_path(), None, waiting)
                     };
                     let roomed = now().saturating_sub(began);
-                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waiting);
+                    let waits = [first, waiting];
+                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waits);
                     (part, began, now(), roomed + stood, ran)
                 })
             })
@@ -1235,18 +1236,19 @@ fn at_once<'a>(
 /// 70 s after it's asked for. One asked for beside another, as `fallbacks`
 /// pairs them, that doesn't come leaves the build to the other. VM tests,
 /// as `vm` says these are, wait through their lender's restart. It waits
-/// as `waiting` says. Says how it ran, and the seconds it waited for its
-/// builder to stand.
+/// for its builder as `first` says, what's left once it held for root,
+/// and for one lost mid-run as `waiting` says. Says how it ran, and the
+/// seconds it waited for its builder to stand.
 fn sent(
     part: &there::Asked,
     dir: &Path,
     vm: bool,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
-    waiting: there::Waiting,
+    [first, waiting]: [there::Waiting; 2],
 ) -> (there::Ran, u64) {
     let asked = std::time::Instant::now();
-    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, waiting)) {
+    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, first)) {
         None => match fallbacks.iter().find(|(beside, _)| beside.as_path() == dir) {
             Some((_, other)) => (other.as_path(), standing(other)),
             None => (dir, None),
@@ -1258,7 +1260,7 @@ fn sent(
     // ones timed out beside kernel builds.
     let store = match store {
         None if vm && !there::lends(dir) => {
-            there::stood_again(dir, waiting, std::time::Instant::now())
+            there::stood_again(dir, first, std::time::Instant::now())
         }
         store => store,
     };

@@ -6200,6 +6200,41 @@ fn a_vm_run_held_off_a_builder_goes_back_once_root_vouches_for_it() {
     );
 }
 
+// The 22 November hand-over itself: no VM builder vouched yet, so the run
+// holds for root rather than claiming room on one it can't be sent to, and
+// goes there once root names it.
+#[test]
+fn a_vm_run_holds_for_root_while_none_is_vouched_then_goes() {
+    let rig = TwoVm::new();
+    let lent = rig.folder.path().join("lent");
+    fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let began = std::time::Instant::now();
+    while !rig
+        .said()
+        .contains("root vouches for none of the VM builders yet")
+    {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never held for root: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.contains("#checks.x.vm-"),
+        "a VM test went out before root vouched: {sent}"
+    );
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm vm-1 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 3, "{built:?} {said}");
+}
+
 // A run that never asks waits for nothing, so with no VM builder vouched
 // it isn't held for root, as the gate's runs would be for four minutes
 // after each hand-over, and nothing goes to the unvouched builder.
@@ -6233,6 +6268,10 @@ fn a_vm_run_that_never_asks_is_not_held_for_root() {
     assert!(
         !said.contains("root vouches for none of the VM builders yet"),
         "{said}"
+    );
+    assert!(
+        said.contains("isn't one root vouches for, and --never-ask waits for nothing"),
+        "it ended for another reason: {said}"
     );
     let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
     assert!(

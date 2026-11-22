@@ -3722,6 +3722,14 @@ fn waited_vouching(dir: &Path, waiting: Waiting, file: &Path) -> Option<String> 
     if !lender_runs(dir, waiting) {
         return None;
     }
+    // A run held for root its whole wait before it was sent has none left.
+    if waiting.longest.is_zero() {
+        eprintln!(
+            "nix-offload: this run spent its wait holding for root to vouch for a VM builder, \
+             so it waits no longer"
+        );
+        return None;
+    }
     let want = wanting(dir)?;
     let minutes = waiting.longest.as_secs().div_ceil(60);
     if builder_stands(dir) {
@@ -4137,7 +4145,9 @@ pub const VM_ROOM: usize = 4;
 ///
 /// It gives the builder's folder, the room claimed there, and what is left
 /// of `waiting` once the time it held for root is taken from its
-/// `longest`, so a run waits on root once, not here and again once sent.
+/// `longest`, for the run's first wait as it's sent, so a run waits on
+/// root once, not here and again once sent. Later waits, for a builder
+/// lost mid-run, are the run's own.
 pub fn admitted<'a>(
     dir: &'a Path,
     others: &[&'a Path],
@@ -4168,9 +4178,12 @@ fn admitted_holding<'a>(
     let mut said = false;
     let mut held_said = false;
     let mut place: Option<Claim> = None;
-    let began = std::time::Instant::now();
+    // Time held for root, counted only while holding, so a run that
+    // waited for room before a hand-over is still held its full time.
     let mut held = std::time::Duration::ZERO;
+    let mut holding_since: Option<std::time::Instant> = None;
     loop {
+        let was_holding = holding_since.take();
         // A builder root doesn't vouch for takes no room, so a run isn't
         // held there waiting on root while another stands that root does
         // vouch for. It queues on that one instead, in its order, with
@@ -4193,8 +4206,11 @@ fn admitted_holding<'a>(
                 let rest: Vec<&Path> = std::iter::once(dir)
                     .chain(others.iter().copied().filter(|other| *other != vouched))
                     .collect();
-                let (dir, claim, more) =
-                    admitted_holding(vouched, &rest, count, room, rank, waiting);
+                let left = Waiting {
+                    longest: waiting.longest.saturating_sub(held),
+                    ..waiting
+                };
+                let (dir, claim, more) = admitted_holding(vouched, &rest, count, room, rank, left);
                 return (dir, claim, held + more);
             }
             // With none vouched, nothing is claimed while root may yet
@@ -4203,8 +4219,10 @@ fn admitted_holding<'a>(
             // it after another was vouched with room. Past that, it
             // claims room here, and is sent with that wait spent. A run
             // that never asks waits for nothing, so it isn't held.
-            if waiting.asks && began.elapsed() < waiting.longest {
-                held = began.elapsed();
+            if waiting.asks && held < waiting.longest {
+                let now = std::time::Instant::now();
+                held += was_holding.map_or(std::time::Duration::ZERO, |since| now - since);
+                holding_since = Some(now);
                 if !held_said {
                     eprintln!(
                         "nix-offload: root vouches for none of the VM builders yet, so this \
