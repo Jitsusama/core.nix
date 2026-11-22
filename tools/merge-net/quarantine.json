@@ -78,5 +78,17 @@
       "test_joels_yes_releases_the_value_into_the_one_command"
     ],
     "test": "vm-desktop-answers-secret-asks"
+  },
+  {
+    "at": 1795335524,
+    "commit": "a60435126103b2901210023deae7a9bda4bfe616",
+    "due": "2026-11-24",
+    "owner_pr": 6062,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at a60435126103",
+    "subtests": [
+      "test_a_fenced_command_reads_no_secret_copy_through_x11"
+    ],
+    "test": "vm-desktop-keeps-copies"
   }
 ]
