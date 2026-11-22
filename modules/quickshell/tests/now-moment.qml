@@ -1339,26 +1339,39 @@ ShellRoot {
         expect("and leads what :filter narrows, as the list does",
             filtered[0]?.forYou?.source === "desktop",
             JSON.stringify(filtered.map(row => [row.key, row.forYou?.source ?? ""])));
-        // And lists what the list does in its order, past the first: each
-        // kind's row stands for those it holds, a cell's heading for none
-        // (our council on #5916, F7, 2026-11-20).
-        const listed = rows => Array.from(rows).reduce((keys, row) => keys.concat(row.heading
-            ? [] : String(row.key).startsWith("on:waitingOnYou:kind:")
-                ? Array.from(row.targets()).map(one => one.key) : [row.key]), []);
+        // And lists what the list does in its order, past the first, as
+        // the list stands with no heading, which :filter draws none of: two
+        // sessions asking are gathered in Agents Asking, so no cell stands
+        // among what needs Joel now, and the asks stand where the heaviest
+        // weighs (ForYou.js's agentAt). Each kind's row stands for those it
+        // holds (our council on #5916, F7, 2026-11-20).
+        const standsFor = row => String(row.key).startsWith("on:waitingOnYou:kind:")
+            ? Array.from(row.targets()).map(one => one.key) : [row.key];
+        const askingOf = (address, said) => ({ address, title: `Session ${address}`, presence: {
+            session: `s-${address}`, addresses: [], wants: { kind: "question", said } } });
         const signHeld = { title: "Sign in to the bank", minutes: 2 };
-        Sessions.wanting = [{ address: "WANTF", title: "Session F", presence: {
-            session: "s-f", addresses: [], wants: { kind: "question", said: "Which?" } } }];
-        WaitingOnYou.now = [signHeld];
-        WaitingOnYou.foremost = signHeld;
-        const wholeList = listed(now.waitingRows());
-        const narrowed = Array.from(now.filterable()).map(row => row.key);
-        Sessions.wanting = [];
-        WaitingOnYou.now = [];
-        WaitingOnYou.foremost = null;
+        let drawn = [];
+        let narrowed = [];
+        try {
+            Sessions.wanting = [askingOf("WANTF", "Which?"), askingOf("WANTG", "Where?")];
+            WaitingOnYou.now = [signHeld];
+            WaitingOnYou.foremost = signHeld;
+            drawn = Array.from(now.waitingRows());
+            narrowed = Array.from(now.filterable()).map(row => row.key);
+        } finally {
+            Sessions.wanting = [];
+            WaitingOnYou.now = [];
+            WaitingOnYou.foremost = null;
+        }
+        const wholeList = drawn.reduce((keys, row) => keys.concat(standsFor(row)), []);
+        const seeded = ["on:waiting:desktop", "on:waiting:want:WANTF", "on:waiting:want:WANTG",
+            "on:waiting:Sign in to the bank", "on:look:p"];
         expect("and lists the rest of For You in the list's order",
-            narrowed.length >= 4 && JSON.stringify(wholeList.filter(key => narrowed.includes(key)))
-                === JSON.stringify(narrowed),
-            JSON.stringify([wholeList, narrowed]));
+            !drawn.some(row => row.heading) && drawn.some(row => row.key
+                === "on:waitingOnYou:kind:agent") && JSON.stringify([...narrowed].sort())
+                === JSON.stringify([...seeded].sort())
+                && JSON.stringify(wholeList) === JSON.stringify(narrowed),
+            JSON.stringify([drawn.map(row => row.key), wholeList, narrowed]));
         now.lookTexts = beforeLook;
         // Ahead of a session's question too, in For You and home alike.
         Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
