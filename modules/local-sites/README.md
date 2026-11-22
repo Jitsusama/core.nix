@@ -86,6 +86,7 @@ builds, each document still loading a script file of its own.
 | [`rows-homes.nix`][rows-homes]      | what a switch refuses in the declared rows' homes       |
 | [`site.nix`][site]                  | how the kit and a live site are built and tested        |
 | [`standalone.sh`][standalone]       | a built live site laid out as a folder standing alone   |
+| [`kept-comments.sh`][kept]          | what fails a script still holding a comment to stay     |
 | [`headless-browsers.nix`][browsers] | the one browser a headless launch opens                 |
 | [`src/`][src]                       | the server: config, door, files, gate, feeds, pages     |
 | [`tests/`][tests]                   | the server run beside a stand-in daemon, and scripts'   |
@@ -107,6 +108,7 @@ map's `mycelium-site-reads-live`.
 [map]: ../mycelium/site
 [murmurs]: ../mycelium/murmurs
 [home]: ./home
+[kept]: ./kept-comments.sh
 [kit]: ./kit
 [main]: ./src/main.rs
 [module]: ./home.nix

@@ -1006,7 +1006,9 @@
     linking home one folder up and saying only that it's an app, and reads the theme from the
     sites' one copy with no kit of its own; and a page carrying a strip of its own, reading no
     theme from that copy, or with its styles reading a kit of their own, fails its build, saying
-    which page
+    which page; and so does a sheet esbuild refuses, warns on or crashes on, or a sheet or a
+    script keeping a comment, saying which; and the sheets a site, the kit and the theme build
+    reach a page without their comments, and a site's scripts without one marked to stay
   '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and

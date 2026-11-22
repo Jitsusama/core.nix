@@ -17,9 +17,15 @@
 let
   tsc = lib.getExe' pkgs.typescript "tsc";
   node = lib.getExe pkgs.nodejs;
+  # What writes a sheet again without its comments, and the script that
+  # holds it to that (bare-sheet.sh says why).
+  esbuild = lib.getExe pkgs.esbuild;
+  bareSheet = ../theme/web/bare-sheet.sh;
+  # What fails a compiled script still holding a comment marked to stay.
+  keptComments = ./kept-comments.sh;
 
   # The kit, typechecked and tested, as the browser's modules and the
-  # switch's styles.
+  # switch's styles, without their comments as a site's are.
   kit = pkgs.runCommandLocal "local-sites-kit" { } ''
     cp -r ${./kit} kit
     chmod -R u+w kit
@@ -27,7 +33,8 @@ let
     ${tsc} -p tsconfig.json
     ${node} --test --test-reporter=spec tests/*.test.ts
     ${tsc} -p tsconfig.json --noEmit false --outDir $out/kit
-    cp switch.css $out/kit/
+    ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} switch.css $out/kit/switch.css
+    ${lib.getExe pkgs.bash} ${keptComments} $(find $out/kit -name '*.js')
   '';
 in
 {
@@ -74,6 +81,9 @@ in
         lib.escapeShellArgs [
           tsc
           node
+          esbuild
+          "${bareSheet}"
+          "${keptComments}"
           "${./kit}"
           "${src}"
           name

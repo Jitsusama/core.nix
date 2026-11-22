@@ -8,12 +8,19 @@
 # theme-color and its favicon, the two places a site can't name a role. Each
 # page gets the strip every one of Joel's sites opens with, written here
 # rather than carried by each page, so no app's copy says more than its kind.
-# usage: site.sh <tsc> <node> <kit> <site> <name> <out>
-#   <dark ground> <light ground> <dark tint> <light tint>
+# usage: site.sh <tsc> <node> <esbuild> <bare-sheet.sh> <kept-comments.sh> <kit>
+#   <site> <name> <out> <dark ground> <light ground> <dark tint> <light tint>
 set -euo pipefail
 
-tsc=$1 node=$2 kit=$3 site=$4 name=$5 out=$6
-dark_ground=$7 light_ground=$8 dark_tint=$9 light_tint=${10}
+tsc=$1 node=$2 esbuild=$3 bare_sheet=$4 kept_comments=$5 kit=$6 site=$7 name=$8 out=$9
+dark_ground=${10} light_ground=${11} dark_tint=${12} light_tint=${13}
+
+# The name is written into paths and a config below, so it's held to what
+# needs no quoting in either.
+[[ ${name} =~ ^[a-z0-9-]+$ ]] || {
+  echo "a site's name is lowercase letters, digits and dashes, not ${name}" >&2
+  exit 1
+}
 
 # The sources as they sit in the tree, so the site's imports of the kit
 # resolve here as they do there.
@@ -32,13 +39,52 @@ fi
 
 mkdir -p "${out}"
 cp "${work}/emitted/${name}/site/"*.js "${out}/"
-# The files the browser reads as they are: the page, its styles, its icon,
-# any script written by hand rather than in TypeScript, and its Markdown and
-# plain-text twins. A README.md is the folder's note for whoever reads the
-# tree, not a page, so it stays behind.
+# The files the browser reads as they are: the page, its styles and any
+# script written by hand rather than in TypeScript (both laid over below
+# without their comments), its icon, and its Markdown and plain-text twins. A README.md
+# is the folder's note for whoever reads the tree, not a page, so it stays
+# behind.
 find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.svg' \
   -o -name '*.js' -o -name '*.md' -o -name '*.txt' \) -not -name README.md \
   -exec cp -t "${out}/" {} +
+# A script written by hand goes through the same compiler, so it reaches the
+# browser without its comments as the TypeScript does. The compiler is the
+# tokenizer because a pattern can't tell a comment from a string, a template
+# or a regular expression holding two slashes. It reads the script alone,
+# neither checking it nor following its imports, which name TypeScript
+# siblings, and keeps its syntax as written. Its own config, since the
+# compiler refuses files named beside the site's tsconfig.json. A glob rather
+# than compgen, which the builder's bash leaves out, and which then said no
+# script was there.
+hand_written=(./*.js)
+if [[ -e ${hand_written[0]} ]]; then
+  cat > "${work}/plain.json" <<EOF
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "removeComments": true,
+    "noCheck": true,
+    "noResolve": true,
+    "target": "esnext",
+    "module": "preserve",
+    "rootDir": "modules/${name}/site",
+    "outDir": "plain"
+  },
+  "include": ["modules/${name}/site/*.js"]
+}
+EOF
+  "${tsc}" -p "${work}/plain.json"
+  cp "${work}/plain/"*.js "${out}/"
+fi
+# The compiler keeps a comment marked to stay however it's told to drop the
+# rest, so a script still holding one fails (kept-comments.sh says why).
+bash "${kept_comments}" "${out}"/*.js
+# The styles go through a CSS compiler for the same reason, as the theme's
+# own do (bare-sheet.sh says how, and what it refuses).
+for sheet in "${out}"/*.css; do
+  [[ -f ${sheet} ]] || continue
+  bash "${bare_sheet}" "${esbuild}" "${sheet}" "${sheet}"
+done
 for page in "${out}"/*.html "${out}"/*.svg; do
   [[ -f ${page} ]] || continue
   sed -i -e "s|@dark-ground@|${dark_ground}|g" -e "s|@light-ground@|${light_ground}|g" \
