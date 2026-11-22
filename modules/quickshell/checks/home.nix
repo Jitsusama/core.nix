@@ -59,9 +59,10 @@
     '';
 
   # A look's Talk and Go To reach the session that left it, the agents
-  # daemon's answer for its cell, or a session on its quest, never one on
-  # another, a Go whose session works on another quest now says it moved
-  # on, and a served look settles only once it opened, as
+  # daemon's answer for its cell, or a session on its quest, and another
+  # quest's only as the one that left a look naming no cell, a Go whose
+  # session works on another quest now says it moved on, a file's lent mark
+  # is never read, and a served look settles only once it opened, as
   # modules/quickshell/tests/look-cells.qml holds Looks.js to it in Qt's own
   # engine.
   a-look-leads-to-its-cell =
@@ -134,8 +135,10 @@
   # A look Joel acts on shows so at once; one the to-do daemon refuses to
   # settle is put back as it read and said in the journal, and one it
   # settles stays as its stream then tells it, the same look in the
-  # daemon's own words leaving the act's text, the daemon stood in on its
-  # socket by the case itself (modules/quickshell/tests/now-look-unwritten.qml).
+  # daemon's own words leaving the act's text, and a served look whose
+  # session is gone is never settled, Now telling the launcher once, the
+  # daemon stood in on its socket by the case itself
+  # (modules/quickshell/tests/now-look-unwritten.qml).
   the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
     name = "the-launcher-puts-back-a-look-it-couldnt-write";
     test = ../tests/now-look-unwritten.qml;

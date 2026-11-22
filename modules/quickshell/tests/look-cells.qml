@@ -5,8 +5,10 @@
 // `qml -platform offscreen look-cells.qml`. Each case is a rule of the
 // cell a look's Talk and Go To reach (Looks.js's cellOf and cellFor): the
 // session that left it, the agents daemon's answer for its cell, and the
-// sessions on its quest, never one on another; and when a served look is
-// settled once it opened. How For You weighs a look is for-you.qml's.
+// sessions on its quest, and another quest's only as the one that left a
+// look naming no cell; when a Go says its session moved on (movedOn); a
+// file's lent mark never read; and when a served look is settled once it
+// opened. How For You weighs a look is for-you.qml's.
 import QtQuick
 import "Looks.js" as Looks
 
@@ -274,6 +276,13 @@ QtObject {
         const lentRead = Looks.look(JSON.stringify({ v: 1, id: "l-1", title: "A look",
             target: "/x", kind: "file", state: "cleared", cell: "BBBBBB", cellLent: true }));
         expect("a file's lent mark is not read", "cellLent" in lentRead, false);
+        // Written by hand, since a literal's __proto__ is no key of its own.
+        const protoText = '{"v":1,"id":"l-2","title":"A look","target":"/x",'
+            + '"kind":"file","state":"cleared","cell":"BBBBBB","__proto__":{"cellLent":true}}';
+        expect("the engine parses a __proto__ key as the file's own",
+            Object.keys(JSON.parse(protoText)).includes("__proto__"), true);
+        expect("nor one lent through its prototype",
+            Looks.look(protoText).cellLent === true, false);
         expect("so a cell it names stays written as its own", JSON.parse(Looks.rewritten(
             Looks.doneWith(lentRead), "cleared", "cleared", now)).cell, "BBBBBB");
 

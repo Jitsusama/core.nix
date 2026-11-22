@@ -1305,8 +1305,9 @@ Provider {
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
     // into a pi sessino that has already moved on from it is a waste of my
     // time"): a steer tells the session that left it, where that is the
-    // look's cell (lookCell), by the address Talk reaches, never one on
-    // another quest that lists its address, or else its quest's, which
+    // look's cell (lookCell) and left it (Looks.leftIt), at the address
+    // Talk reaches, or the look's own where the cell only lists that, never
+    // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
     // leaves what waits at once; one it didn't is no longer shown as given,
     // so its choices come back.
