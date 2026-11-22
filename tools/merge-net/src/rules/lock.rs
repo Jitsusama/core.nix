@@ -130,7 +130,8 @@ pub fn lock_judged(base: &str, head: &str, after: &[String]) -> Result<Vec<Strin
         Ok(moved)
     } else {
         Err(format!(
-            "it moves {}, which lock-after.txt doesn't name",
+            "it moves {}, which isn't the node of a root input lock-after.txt names; only \
+             the root's own inputs can be named there",
             others.join(" ")
         ))
     }
@@ -386,6 +387,27 @@ mod tests {
         assert!(
             judged.as_ref().is_err_and(|why| why.contains("version")),
             "a lock changing its version beside mycelium should run first, not {judged:?}"
+        );
+    }
+
+    #[test]
+    fn a_let_through_input_gaining_a_node_of_its_own_says_it_cant_be_named() {
+        // Round 2 of #6039: mycelium taking up a crane of its own moved a
+        // node no root input names, and the refusal pointed at a list
+        // entry that could never let it through.
+        let after = words("mycelium");
+        let inputs = serde_json::json!({ "mycelium": "mycelium" });
+        let mycelium =
+            serde_json::json!({ "locked": { "rev": "b" }, "inputs": { "crane": "crane" } });
+        let base = shaped(&inputs, &[("mycelium", at("a"))]);
+        let head = shaped(&inputs, &[("mycelium", mycelium), ("crane", at("c"))]);
+        let judged = lock_judged(&base, &head, &after);
+        assert!(
+            judged
+                .as_ref()
+                .is_err_and(|why| why.contains("crane") && why.contains("root's own inputs")),
+            "a node only mycelium reads should run first, saying the list can't name it, not \
+             {judged:?}"
         );
     }
 
