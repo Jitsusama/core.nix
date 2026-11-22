@@ -236,12 +236,13 @@ As omni-ref had them, set into the page's composition as the Crossing
 (`examples/tour.md`) sets them: under the contents, centred, above the switch, small and muted, never
 as a strip of chrome at the top. It's drawn at every width, and never in
 a footer, the length of the page away. On a device whose only pointer is
-coarse and can't hover, its words wait for the first key pressed, then
-stay for the visit: a phone has no keys, and the audit of 22 Nov found
+coarse and can't hover, its words wait for the first key pressed outside
+a field, then stay for the visit: a phone has no keys, and the audit of 22 Nov found
 Code and the machines page telling one to press j and k. A tablet with a
 keyboard still sees the line the moment it types, which is why this was
 never a plain `(hover: none)`. Keycaps drawn as buttons that act when
-tapped are the touch way in, so a line holding them always shows. The
+tapped (`pressable`) are the touch way in, so a line holding them always
+shows, each a whole target; a help button alone doesn't keep it. The
 kit's `head.css` and `keys.ts` do both, so a page using the kit's head
 writes nothing for it:
 

@@ -100,7 +100,7 @@ refused "${work}/themeless" "index.html doesn't read the theme from the sites' o
   "a page reading no theme"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
-# and nor do the kit's sheet or the theme's base.css, so their builds still
+# and nor do the kit's sheets or the theme's base.css, so their builds still
 # send each through the same script: those builds take no source but their
 # own, so a comment arriving in one is what shows it. The kit's scripts are
 # checked by the kit's own build.
@@ -110,7 +110,8 @@ sheets=("${built}"/*.css)
   exit 1
 }
 status=0
-commented=$(grep -l '/\*' "${sheets[@]}" "${built_kit}/switch.css" "${web_kit}/base.css") ||
+commented=$(grep -l '/\*' "${sheets[@]}" "${built_kit}/switch.css" "${built_kit}/head.css" \
+  "${web_kit}/base.css") ||
   status=$?
 ((status <= 1)) || {
   echo "a built sheet couldn't be read" >&2

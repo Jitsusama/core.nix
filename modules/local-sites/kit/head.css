@@ -6,7 +6,11 @@
    eyebrows and five ledes in five faces. A page to read stacks them on one
    centre axis; an interface starts them on its gutter's edge. A site may
    still turn a part to its own world (forage's cap for a glyph, murmurs'
-   bird) after this sheet, but never reorders them or draws one apart. */
+   bird) after this sheet, but never reorders them or draws one apart.
+
+   Every part is read only inside .page-head: the pages already use
+   .standing, .glyph, .lede and .keys for their own heads, so linking this
+   sheet changes nothing on a page until it moves its markup into one. */
 
 .page-head {
   display: flex;
@@ -28,7 +32,7 @@
 }
 
 /* Two short phrases, what this is · whose or where, in the tint's word. */
-.eyebrow {
+.page-head .eyebrow {
   color: color-mix(in oklab, var(--tint) 60%, var(--strong));
   font: var(--label-weight) var(--step-small) / 1.5 var(--label-face);
   font-feature-settings: var(--mono-features);
@@ -36,13 +40,13 @@
   text-transform: lowercase;
 }
 
-.eyebrow .sep {
+.page-head .eyebrow .sep {
   padding-inline: var(--mark);
   color: var(--muted);
 }
 
 /* What stands now, in one sentence, in the voice. */
-.lede {
+.page-head .lede {
   --soft: var(--voice-soft);
   --wonk: var(--voice-wonk);
 
@@ -59,18 +63,18 @@
 /* How live the page is and since when (status.ts writes the words), after a
    glyph: a dot lit by half while it's reaching its daemon, whole while
    live, and an empty ring in the alert's colour once it has stopped, so the
-   state is said by its shape and its words, never by colour alone. */
-.standing {
+   state is said by its shape and its words, never by colour alone. It takes
+   no tap, so it's as tall as its words. */
+.page-head .standing {
   display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--mark);
-  min-block-size: 44px;
   color: var(--muted);
   font-size: var(--step-small);
 }
 
-.standing .glyph {
+.page-head .standing .glyph {
   inline-size: 0.6em;
   block-size: 0.6em;
   flex: none;
@@ -80,51 +84,71 @@
 }
 
 /* The state is on the line itself or on the words inside it, as status.ts
-   was handed one or the other. */
-.standing:is([data-state="live"], :has([data-state="live"])) .glyph {
+   was handed one or the other. Each :has sits inside :is, whose list
+   forgives what a browser can't read, so one without :has still reads a
+   state on the line itself. */
+.page-head .standing:is([data-state="live"], :has([data-state="live"])) .glyph {
   background: var(--tint);
 }
 
-.standing:is([data-state="stale"], [data-state="broken"]),
-.standing:has([data-state="stale"], [data-state="broken"]) {
+.page-head
+  .standing:is(
+    [data-state="stale"],
+    [data-state="broken"],
+    :has([data-state="stale"], [data-state="broken"])
+  ) {
   color: var(--strong);
 }
 
-.standing:is([data-state="stale"], [data-state="broken"]) .glyph,
-.standing:has([data-state="stale"], [data-state="broken"]) .glyph {
+.page-head
+  .standing:is(
+    [data-state="stale"],
+    [data-state="broken"],
+    :has([data-state="stale"], [data-state="broken"])
+  )
+  .glyph {
   border-color: var(--alert);
   background: transparent;
 }
 
 /* The quiet row: one line saying how to move, small and muted, the keys as
    keycaps, then the switch under it. */
-.quiet {
+.page-head .quiet {
   display: flex;
   flex-direction: column;
   align-items: inherit;
   gap: var(--mark);
 }
 
-.keys {
+.page-head .keys {
   margin: 0;
   color: var(--muted);
   font-size: var(--step-small);
   line-height: 1.5;
 }
 
-.keys kbd {
+.page-head .keys kbd {
   padding: 0 0.3em;
   border: var(--border) solid var(--rule);
   border-radius: var(--radius);
 }
 
 /* A phone has no keys to press, so the line's words wait there for the first
-   key pressed (keys.ts marks it), and then stay for the visit: a tablet
-   with a keyboard sees them the moment it types. Keycaps drawn as buttons
-   that act when tapped are the touch way in, so they show at every width. */
+   key pressed outside a field (keys.ts marks it), and then stay for the
+   visit: a tablet with a keyboard sees them the moment it types. Keycaps
+   that act when tapped, which steps.ts's pressable makes buttons, are the
+   touch way in, so a line holding one always shows, each a whole target
+   for a finger. A help button that only opens the list of keys isn't one. */
 @media (hover: none) and (pointer: coarse) {
-  :root:not([data-keyed]) .keys:not(:has(button)) {
+  :root:not([data-keyed]) .page-head .keys:not(:has(kbd[role="button"])) {
     display: none;
+  }
+
+  .page-head .keys kbd[role="button"] {
+    display: inline-grid;
+    place-items: center;
+    min-inline-size: var(--target);
+    min-block-size: var(--target);
   }
 }
 

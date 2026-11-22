@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { clockTime, type Shown, said, show } from "../status.ts";
+import { clockTime, type Shown, said, show, tell } from "../status.ts";
 
 const at = new Date(2026, 10, 16, 0, 41).getTime();
 
@@ -34,6 +34,12 @@ it("the same state told again leaves the words alone, so it isn't heard again", 
   show(element, { state: "stale", since: at });
   assert.equal(writes, 2, "a new state's words weren't written");
   assert.equal(element.dataset["state"], "stale");
+  show(element, { state: "stale", since: at }, " Couldn't read: the disk.");
+  assert.equal(writes, 3, "the page's own words after the state weren't written");
+  assert.ok(words?.endsWith("Trying again. Couldn't read: the disk."), words ?? "");
+  tell(element, words ?? "", "broken");
+  assert.equal(writes, 3, "a page's own words were written again unchanged");
+  assert.equal(element.dataset["state"], "broken");
 });
 
 it("stale and broken say it stopped, when, and why", () => {

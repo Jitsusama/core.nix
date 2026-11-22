@@ -135,9 +135,11 @@ fault "stretched and grotesque" names.
 Run 390 and 834 a second time as a touch screen, with a coarse pointer and
 no hover (`browser_go` emulate with a phone's or a tablet's `device`, or
 Playwright's `has_touch` and `is_mobile`), and pass `gate.js` there too. A rule behind
-`(hover: none)` or `(pointer: coarse)` shows only then: one such rule hid
-two sites' key lines on touch, against the key line's own rule (`craft.md`),
-and passed every run with a mouse.
+`(hover: none)` or `(pointer: coarse)` shows only then. There a key line's
+words wait for the first key on purpose (`craft.md`): check that they're
+hidden before a key, that they show once a key is pressed outside a field,
+and that a line holding tappable keycaps shows from the start, each keycap
+a whole target.
 
 ## Layout
 

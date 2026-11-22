@@ -2,8 +2,9 @@
 // is, its own keys only bare and never while Joel types.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
-import { type Actions, chosen, listen, type Press } from "../keys.ts";
+import { type Actions, chosen, listen, type Press, showsKeys } from "../keys.ts";
 
 const down = (): void => undefined;
 const actions: Actions = { j: down, ArrowDown: down };
@@ -35,13 +36,26 @@ it("a key pressed where Joel types is the field's", () => {
   assert.equal(chosen(press("?", { typing: true }), actions), undefined);
 });
 
-it("any key pressed marks the page as having keys, so its key line shows on touch", () => {
+it("a key shows a keyboard at hand, but not one typed in a field or composed", () => {
+  assert.equal(showsKeys("j", false), true);
+  assert.equal(showsKeys("Escape", false), true);
+  assert.equal(showsKeys("j", true), false, "a phone's keyboard typing in a field");
+  assert.equal(showsKeys("Unidentified", false), false, "Android's keyboard composing");
+  assert.equal(showsKeys("Process", false), false, "an input method composing");
+});
+
+it("a key pressed outside a field marks the page as having keys; one in a field doesn't", () => {
   const root = { dataset: {} as Record<string, string> };
   let heard: ((event: unknown) => void) | undefined;
   const page = globalThis as unknown as Record<string, unknown>;
   const before = { ...page };
+  class Element {
+    closest(_: string): unknown {
+      return {};
+    }
+  }
   Object.assign(page, {
-    Element: class {},
+    Element,
     document: { documentElement: root, body: { closest: () => null } },
     addEventListener: (_: string, then: (event: unknown) => void) => {
       heard = then;
@@ -51,7 +65,12 @@ it("any key pressed marks the page as having keys, so its key line shows on touc
   try {
     listen({ actions: {} });
     assert.equal(root.dataset["keyed"], undefined, "marked before any key was pressed");
-    heard?.({ key: "x", altKey: false, ctrlKey: false, metaKey: false, target: null });
+    const bare = { altKey: false, ctrlKey: false, metaKey: false };
+    heard?.({ ...bare, key: "x", target: new Element() });
+    assert.equal(root.dataset["keyed"], undefined, "a key typed in a field marked the page");
+    heard?.({ ...bare, key: "Unidentified", target: null });
+    assert.equal(root.dataset["keyed"], undefined, "a composing key marked the page");
+    heard?.({ ...bare, key: "x", target: null });
     assert.equal(root.dataset["keyed"], "", "a key pressed didn't mark the page");
   } finally {
     for (const name of ["Element", "document", "addEventListener", "removeEventListener"]) {
@@ -62,6 +81,12 @@ it("any key pressed marks the page as having keys, so its key line shows on touc
       }
     }
   }
+});
+
+it("head.css reads the mark keys.ts writes and the keycaps pressable makes", () => {
+  const sheet = readFileSync(new URL("../head.css", import.meta.url), "utf8");
+  assert.ok(sheet.includes(":root:not([data-keyed])"), "head.css doesn't read data-keyed");
+  assert.ok(sheet.includes('kbd[role="button"]'), "head.css doesn't keep tappable keycaps");
 });
 
 it("a key the page doesn't name is nothing, even one every object answers to", () => {

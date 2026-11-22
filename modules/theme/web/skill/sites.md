@@ -218,20 +218,32 @@ Its parts come in this order, each said once:
   turn in the tint at most.
 - **The lede** says what stands now in his terms: never a session's
   address, a sha or a command's name.
-- **The standing line** is `status.ts`'s, which writes its words only when
-  they change, so a screen reader hears a change and never a repeat. Only
-  it is a live region; a lede rewritten as the feed moves is not one.
+- **The standing line** is written through `status.ts`: `show` for the
+  feed's state and any words the page adds after it, or `tell` for words
+  the page builds itself. Each writes only when the words change, so a
+  screen reader hears a change and never a repeat. Only it is a live
+  region; a lede rewritten as the feed moves is not one.
 - **The quiet row** holds the key line and the switch under it, as Joel's
-  Crossing has them.
+  Crossing has them. On a phone the line's words wait for the first key
+  pressed outside a field, which `listen` marks; a page answering its keys
+  its own way calls `watchForKeys`. Keycaps made tappable with `pressable`
+  keep the line showing; a help button alone doesn't.
+
+`head.css` reads each part only inside `.page-head`, so linking it changes
+nothing until a page moves its head into one; check that move with
+`shots-changed`.
 
 An interface (`data-kind="interface"` on the root) starts the same parts on
 its gutter's edge rather than the centre.
 
 **A long list folds** with `fold.ts`: at most seven rows, ranked by the
-page, then a button saying how many more ("And 117 more snapshots"). The
-page keeps the rows that must show wherever they rank, such as the
-cursor's own, and owns whether the fold is open. What Joel never acts on
-one by one, a repository's snapshots, is counted, never listed.
+page, then a button saying how many more rows opening shows ("And 13 more
+snapshots"), never more than it opens. A list no longer than the fold has
+no button, even opened by the page's key. The page keeps the rows that
+must show wherever they rank, such as the cursor's own, and owns whether
+the fold is open. What Joel never acts on one by one, a repository's
+snapshots, is counted, never listed: `fold.ts` gives that count apart as
+`unlisted`, and the page says it in its own sentence.
 
 **An empty place says what will fill it**, as a `.empty` sentence where
 the rows would be ("Murmurs land here as sessions talk to each other"),
