@@ -95,6 +95,10 @@ const STREAMS_AT_LEAST: Duration = Duration::from_millis(1500);
 /// What the counts say last of an answer the relay's stop cut rather than
 /// pi.
 const ONE_CUT_NONE_CANCELLED: &str = "pi cancelled 0; 1 cut as it was stopped;";
+/// How often `/drip` sends a piece of its answer, which never ends: a
+/// relay hears pi gone only as it next writes to it, so a pi leaving is
+/// heard within this.
+const DRIPS_EVERY: Duration = Duration::from_millis(200);
 /// When the drain test connects late: long past the relay hearing its
 /// stop, and inside its drain.
 const TAKEN_LATE_AFTER: Duration = Duration::from_secs(1);
@@ -421,6 +425,22 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
     let answer = match path.as_str() {
         "/stream" | "/long" | "/longer" | "/sized" | "/broken" | "/cut" => in_halves(&path, gone),
         "/small-frames" => in_small_frames(sent),
+        "/drip" => {
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                // Until the relay drops the stream, with pi or with a cut.
+                while sender
+                    .send_data(Bytes::from_static(b"drip\n"))
+                    .await
+                    .is_ok()
+                {
+                    tokio::time::sleep(DRIPS_EVERY).await;
+                }
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(boxed(body))
+        }
         "/held" => {
             let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
             held.most.fetch_max(now, Ordering::SeqCst);
@@ -2104,7 +2124,7 @@ async fn a_connection_says_how_many_requests_pi_gave_up_on_it() {
         "the reset didn't say how many requests its connection carried: {said}"
     );
     assert!(
-        said.contains("connection 0.0 carried 6 asked, 2 of them cancelled"),
+        said.contains("connection 0.0 carried 6 asked, 2 of them cancelled and 0 cut"),
         "the connection didn't count as given up on just the two pi left, or counted a \
          request handed back unsent: {said}"
     );
@@ -2436,6 +2456,61 @@ async fn a_stopped_relay_cuts_an_answer_longer_than_its_drain() {
         said.contains(ONE_CUT_NONE_CANCELLED),
         "its counts didn't say it cut the answer, rather than pi: {said}"
     );
+    assert!(
+        said.contains("connection 0.0 carried 1 asked, 0 of them cancelled and 1 cut"),
+        "its connection didn't count the answer as cut, rather than pi's: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn an_answer_pi_leaves_during_a_drain_is_its_cancel_and_not_a_cut() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let drain = DRAINS_WITHIN.as_secs().to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--drain-within", &drain],
+    );
+    let (_pi, _, _body) = longer_begun(&relay, &host).await;
+    let (mut leaver, connection) = pi_asks(&relay.socket).await;
+    // One that keeps writing, so the relay hears pi leave it at once.
+    let left_alone = leaver
+        .send_request(request(&host, "/drip", b""))
+        .await
+        .expect("an answer begun");
+
+    relay.stop();
+    // Well inside the drain, so the relay is still waiting on both answers
+    // when pi leaves one, as its person pressing Escape does, and hears it
+    // a drip later.
+    tokio::time::sleep(DRAINS_WITHIN / 4).await;
+    drop(left_alone);
+    drop(leaver);
+    connection.abort();
+    // Its socket closes only once the aborted task has been dropped.
+    let _ = connection.await;
+    // The origin drips from this process, so the drain is waited out here,
+    // where it can, rather than in the blocking wait for the relay to
+    // leave.
+    tokio::time::sleep(DRAINS_WITHIN).await;
+
+    let left = relay.left_within(DRAINS_WITHIN + SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave on its own once its drain ran out: {left:?}"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("pi cancelled 1; 1 cut as it was stopped;"),
+        "an answer pi left during the drain wasn't its cancel, or the one the drain \
+         ended wasn't cut: {said}"
+    );
+    assert!(
+        said.contains("connection 0.0 carried 2 asked, 1 of them cancelled and 1 cut"),
+        "its connection didn't tell pi's cancel from the cut: {said}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -2458,8 +2533,11 @@ async fn a_relay_stopped_again_leaves_at_once() {
     );
     let said = relay.said();
     assert!(
-        said.contains("stopped again, so it leaves now"),
-        "it didn't say why it left: {said}"
+        said.contains(
+            "stopped again, so it leaves now, cutting the 1 connections it had taken and the 0 \
+             it was sending direct"
+        ),
+        "it didn't say why it left, and what it cut: {said}"
     );
     assert!(
         said.contains(COUNTS_SAID),

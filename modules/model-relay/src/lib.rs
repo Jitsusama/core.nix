@@ -70,7 +70,8 @@
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
-//! every ten minutes and as it leaves, idle or stopped.
+//! every ten minutes and as it leaves, idle or stopped, unless a logout or
+//! a shutdown kills it first.
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
@@ -80,12 +81,14 @@
 //! still coming after a minute a 408, both counted as pi's cancel.
 //!
 //! Stopped by systemd, with SIGTERM, it leaves at once rather than once
-//! idle, and takes connections until it's gone: it closes each it holds as
-//! its answer ends, and sends every request on one taken meanwhile direct
-//! with a 421, since nothing else can answer them before it's gone. It
-//! cuts the answers still going after `--drain-within`, gives those it
-//! sent direct a few seconds more, and leaves, all inside the unit's stop
-//! timeout. A second SIGTERM cuts everything at once.
+//! idle: it closes each connection it holds as its answer ends, and sends
+//! every request on one taken meanwhile direct with a 421, since nothing
+//! else can answer them before it's gone. It takes connections until those
+//! answers have ended or `--drain-within` runs out, and cuts the answers
+//! still going then. It gives those it sent direct a few seconds more and
+//! leaves, all inside the unit's stop timeout; a pi connecting in those
+//! seconds waits on the socket for the relay systemd starts next. A second
+//! SIGTERM cuts everything at once.
 //!
 //! A switch leaves a running relay be, since a restart would send every
 //! request direct until each answer still streaming ended, and cut those
@@ -520,7 +523,7 @@ enum ForAgain {
 
 /// A request reset and waiting on a connection to go once more. Should pi
 /// leave meanwhile, hyper drops the request with nothing said, so it's
-/// counted as pi's cancel.
+/// counted as pi's cancel, or as cut when a stop's cut drops it.
 struct WaitingAgain<'a>(Option<&'a Counts>);
 
 impl<'a> WaitingAgain<'a> {
@@ -538,7 +541,11 @@ impl<'a> WaitingAgain<'a> {
 impl Drop for WaitingAgain<'_> {
     fn drop(&mut self) {
         if let Some(counts) = self.0 {
-            counts.cancelled.fetch_add(1, Ordering::Relaxed);
+            if counts.cutting.load(Ordering::SeqCst) {
+                counts.cut.fetch_add(1, Ordering::Relaxed);
+            } else {
+                counts.cancelled.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -1125,9 +1132,9 @@ impl Relay {
     /// or `stops` says, as systemd's stop does. Then it leaves: each
     /// connection it holds is closed as its answer ends, and while any is
     /// open, a request on a connection taken since is sent direct with a
-    /// 421, so no pi waits on a relay that's going. Stopped, it does so
-    /// however long they keep coming, since a restart's new relay can't
-    /// answer them until this one is gone. It waits on its answers its
+    /// 421, so no pi waits on a relay that's going. Stopped, it takes them
+    /// until its answers have ended or its drain runs out, since a
+    /// restart's new relay can't answer them until this one is gone. It waits on its answers its
     /// clocks' `drains_within` at most and then cuts them, and a second
     /// stop cuts them at once. Those it sends direct get
     /// `SAYS_GO_DIRECT_WITHIN` once its answers have ended, as they do when
@@ -1238,7 +1245,12 @@ impl Relay {
             () = self.kept.none_held() => true,
             () = tokio::time::sleep(drains_within) => false,
             () = stopped(stops) => {
-                eprintln!("model-relay: stopped again, so it leaves now");
+                eprintln!(
+                    "model-relay: stopped again, so it leaves now, cutting the {} connections \
+                     it had taken and the {} it was sending direct",
+                    self.kept.now.load(Ordering::SeqCst),
+                    self.late.now.load(Ordering::SeqCst)
+                );
                 self.counts.cutting.store(true, Ordering::SeqCst);
                 self.counts.say();
                 return;
