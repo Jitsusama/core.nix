@@ -165,9 +165,10 @@ rec {
       # A carry lands only where no door is wider than here's, but the
       # person may allow one machine a wider door for sessions carried
       # from here. The machine there still declares every door it opens,
-      # so the gain is said beside the allowance, never hidden. Each
-      # machine is named as the realm names it, so a misspelt one fails
-      # here rather than leaving the carry refused with nothing said.
+      # so the gain is said beside the allowance, never hidden. A name no
+      # realm could give a machine fails here, rather than leaving the
+      # carry refused with nothing said; a well-shaped name for a machine
+      # that isn't there can't be caught here, since realms are read live.
       accepts = lib.mkOption {
         type = byMachine accepted;
         default = { };
@@ -181,7 +182,11 @@ rec {
   # `machines`, whose merge refuses a key no realm could name a machine,
   # saying which. `addCheck` can't: the module system rebuilds a set of
   # submodules from its functor to give them their file, dropping any
-  # check added beside it, so the rebuilt set is wrapped again too.
+  # check added beside it, so the rebuilt set is wrapped again too. The
+  # names are read from the merged set, so one under a false `mkIf` is
+  # dropped first, as attrsOf drops it. The functor is still attrsOf's, so
+  # two declarations of this option merged by type would lose the check;
+  # declares declares it once.
   namingMachines =
     machines:
     machines
@@ -189,12 +194,11 @@ rec {
       merge =
         loc: defs:
         let
-          misnamed = lib.filter (machine: !name.check machine) (
-            lib.concatMap (def: lib.attrNames def.value) defs
-          );
+          merged = machines.merge loc defs;
+          misnamed = lib.filter (machine: !name.check machine) (lib.attrNames merged);
         in
         if misnamed == [ ] then
-          machines.merge loc defs
+          merged
         else
           throw "${lib.showOption loc} names ${lib.concatStringsSep ", " misnamed}, which no realm could name a machine: ${name.description}.";
       substSubModules = modules: namingMachines (machines.substSubModules modules);
