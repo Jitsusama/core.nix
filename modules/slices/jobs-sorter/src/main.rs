@@ -1084,6 +1084,9 @@ fn children(pid: u32) -> Vec<u32> {
 /// keeping writeback off on one given back that's among `kept`.
 fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
+    // A host's give-back that failed leaves its hard floors with the kernel, so they count
+    // against the pis' as a pi's own failed give-back does.
+    ranks.holding.elsewhere = ranks.hosts.hard_left(&[]);
     for (scope, hold) in ranks.holding.changes(held, pis) {
         let unit = scope
             .file_name()
@@ -1377,7 +1380,8 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         unslotted,
     } = viewers_and_shown(windows, prefix, held, &units, &command_lines);
     say_unslotted(&mut ranks.unslotted, unslotted);
-    let shares = shares(ranks.holding.hard(), &units, &viewers);
+    let left = ranks.hosts.hard_left(&viewers);
+    let shares = shares(ranks.holding.hard() + left, &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
@@ -1484,9 +1488,10 @@ fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
                 // A failure after this one is said again, as a hard floor that can't be given
                 // back would otherwise stay silent.
                 hosts.failed = false;
-                hosts.done(unit, rank);
+                hosts.done(unit, rank, signs.held);
             }
             Ok(output) => {
+                hosts.fail(unit);
                 if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!(
                         "Couldn't rank {unit}: {}",
@@ -1495,6 +1500,7 @@ fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
                 }
             }
             Err(error) => {
+                hosts.fail(unit);
                 if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!("Couldn't run busctl to rank {unit}: {error}");
                 }

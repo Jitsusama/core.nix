@@ -280,6 +280,12 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
 pub struct Hosts {
     own: HashMap<String, (u32, Instant, Own)>,
     set: HashMap<String, Rank>,
+    /// The hard floors each unit's rank as last set keeps for windows
+    /// Joel is at ([`Signs::held`]).
+    held: HashMap<String, usize>,
+    /// The units whose last rank call failed, so the kernel still keeps
+    /// what they were last set with.
+    failing: HashSet<String>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
     /// The units said to hold no one host, ranked by all their roots, so
@@ -323,9 +329,31 @@ impl Hosts {
         self.set.get(unit).is_none_or(|set| set != rank)
     }
 
-    /// Notes a unit as set to `rank`.
-    pub fn done(&mut self, unit: &str, rank: Rank) {
+    /// Notes a unit as set to `rank`, keeping `held` hard floors for
+    /// windows Joel is at.
+    pub fn done(&mut self, unit: &str, rank: Rank, held: usize) {
         self.set.insert(unit.to_owned(), rank);
+        self.held.insert(unit.to_owned(), held);
+        self.failing.remove(unit);
+    }
+
+    /// Notes a unit's rank call as failed, so the hard floors it was
+    /// last set with count as kept until one lands.
+    pub fn fail(&mut self, unit: &str) {
+        self.failing.insert(unit.to_owned());
+    }
+
+    /// The hard floors units outside `except` keep for windows only as
+    /// their last rank call failed: a give-back that fails leaves them
+    /// with the kernel, as a pi's does (`holds::Holding::hard_floor`).
+    /// A unit among `except`, a viewed one, is given its shares again,
+    /// so its own are counted there.
+    pub fn hard_left(&self, except: &[String]) -> usize {
+        self.failing
+            .iter()
+            .filter(|unit| !except.contains(unit))
+            .filter_map(|unit| self.held.get(unit))
+            .sum()
     }
 
     /// Forgets the units no longer among `units`, whose hosts stopped.
@@ -335,6 +363,8 @@ impl Hosts {
         self.own
             .retain(|unit, _| units.contains(unit) || templates.contains(unit));
         self.set.retain(|unit, _| units.contains(unit));
+        self.held.retain(|unit, _| units.contains(unit));
+        self.failing.retain(|unit| units.contains(unit));
         self.unclear.retain(|unit| units.contains(unit));
     }
 }
@@ -478,7 +508,7 @@ mod tests {
                 10,
             )
         };
-        hosts.done("u", viewed(0, 300 << 20));
+        hosts.done("u", viewed(0, 300 << 20), 0);
         assert!(
             !hosts.changed("u", &viewed(0, 310 << 20)),
             "what a held unit holds moving isn't asked for again"
@@ -744,7 +774,7 @@ mod tests {
             hosts.changed("u", &rank),
             "a unit this sorter never set is set, as one before it may have held it"
         );
-        hosts.done("u", rank.clone());
+        hosts.done("u", rank.clone(), 0);
         assert!(
             !hosts.changed("u", &rank),
             "a rank already set isn't asked for again"
@@ -762,6 +792,53 @@ mod tests {
         assert!(
             hosts.changed("u", &rank),
             "a stopped host's unit is forgotten"
+        );
+    }
+
+    #[test]
+    fn a_host_whose_rank_fails_counts_the_hard_floors_it_still_keeps() {
+        let mut hosts = Hosts::default();
+        let rank = |held| {
+            wanted(
+                &attended(),
+                Signs {
+                    viewed: 1,
+                    held,
+                    ..Signs::default()
+                },
+                10,
+            )
+        };
+        hosts.done("a", rank(2), 2);
+        hosts.done("b", rank(1), 1);
+        assert_eq!(
+            hosts.hard_left(&[]),
+            0,
+            "hosts ranked as asked leave no hard floor behind"
+        );
+        hosts.fail("a");
+        assert_eq!(
+            hosts.hard_left(&[]),
+            2,
+            "a host whose give-back failed still keeps the two it was set with"
+        );
+        assert_eq!(
+            hosts.hard_left(&["a".to_owned()]),
+            0,
+            "a viewed host's are counted as its shares are given again, so not here"
+        );
+        hosts.done("a", rank(0), 0);
+        assert_eq!(
+            hosts.hard_left(&[]),
+            0,
+            "once a rank lands, a host keeps what it was set with"
+        );
+        hosts.fail("b");
+        hosts.keep_only(&[]);
+        assert_eq!(
+            hosts.hard_left(&[]),
+            0,
+            "a stopped host's floors went with its unit"
         );
     }
 

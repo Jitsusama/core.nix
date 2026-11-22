@@ -154,6 +154,9 @@ pub struct Holding {
     /// each counts against the others, but keeps no floor of its own
     /// until it's held again.
     unread: HashSet<PathBuf>,
+    /// The hard floors hosts keep only as their give-back failed
+    /// ([`crate::hosts::Hosts::hard_left`]), which count against the pis'.
+    pub elsewhere: usize,
     /// Whether a failure to hold a window has been said.
     pub failed: bool,
 }
@@ -215,6 +218,7 @@ impl Holding {
             again: held.clone(),
             hard: HashSet::new(),
             unread: HashSet::new(),
+            elsewhere: 0,
             held,
             failed: false,
         }
@@ -225,7 +229,7 @@ impl Holding {
     /// free for a hold after it. A pi held without the hard floor it
     /// would have is held again once one is free.
     pub fn changes(&self, wanted: &[PathBuf], pis: &[String]) -> Vec<(PathBuf, bool)> {
-        let free = self.hard.len() < crate::focus::MOST;
+        let free = self.hard.len() + self.elsewhere < crate::focus::MOST;
         let hold = wanted
             .iter()
             .filter(|scope| {
@@ -284,7 +288,7 @@ impl Holding {
     /// One whose memory.min couldn't be read keeps none it isn't known to
     /// have, so it's given one only as any other pi is.
     pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
-        let others = self.hard.iter().filter(|held| *held != scope).count();
+        let others = self.hard.iter().filter(|held| *held != scope).count() + self.elsewhere;
         let keeps = self.hard.contains(scope) && !self.unread.contains(scope);
         if keeps || others < crate::focus::MOST {
             hard_for(scope, pis)
@@ -609,6 +613,38 @@ mod tests {
         );
         fewer.done(&pi(4), Some(HARD));
         assert_eq!(fewer.hard(), 2, "and once held, it counts as keeping it");
+    }
+
+    #[test]
+    fn a_hard_floor_a_hosts_failed_give_back_keeps_counts_against_the_pis() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        let mut holding = Holding::default();
+        holding.done(&pi(1), Some(HARD));
+        holding.done(&pi(2), Some(HARD));
+        holding.done(&pi(3), Some(0));
+        holding.elsewhere = 1;
+        assert_eq!(
+            holding.hard_floor(&pi(3), &pis),
+            0,
+            "a third pi gets none while a host still keeps a share it couldn't give back"
+        );
+        assert_eq!(
+            holding.changes(&[pi(1), pi(2), pi(3)], &pis),
+            [],
+            "and the pi held without one isn't held again for one"
+        );
+        holding.elsewhere = 0;
+        assert_eq!(
+            holding.hard_floor(&pi(3), &pis),
+            HARD,
+            "once the host's share is given back, the third pi gets one"
+        );
+        assert_eq!(
+            holding.changes(&[pi(1), pi(2), pi(3)], &pis),
+            [(pi(3), true)],
+            "and is held again for it"
+        );
     }
 
     #[test]
