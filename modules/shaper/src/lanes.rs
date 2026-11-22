@@ -490,6 +490,9 @@ fn need(carried: f64) -> f64 {
     carried * HEADROOM + JOEL_LEAST
 }
 
+/// Agents' lane's class, under which their CAKE stands.
+pub const AGENTS_CLASS: &str = "1:5";
+
 fn cmd(words: &str) -> Vec<String> {
     words.split_whitespace().map(str::to_string).collect()
 }
@@ -511,7 +514,7 @@ fn classes(verb: &str, dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> 
         class("1:2", "1:4", (kbit(split.vpn), rate), 0),
         class(
             "1:2",
-            "1:5",
+            AGENTS_CLASS,
             (agents, split.agents_most.map_or(rate, kbit)),
             1,
         ),
@@ -637,7 +640,7 @@ pub fn laned(json: &str) -> bool {
     all.iter().any(|q| q["kind"] == "htb" && q["root"] == true)
         && has("cake", "1:3")
         && has("fq_codel", "1:4")
-        && has("cake", "1:5")
+        && has("cake", AGENTS_CLASS)
 }
 
 /// Takes every filter off the queues `json` lists on `dev` but its ingress,

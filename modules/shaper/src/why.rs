@@ -57,6 +57,25 @@ impl Why {
     pub fn same_kind(self, other: Why) -> bool {
         std::mem::discriminant(&self) == std::mem::discriminant(&other)
     }
+
+    /// This kind of reason in a word, as a trace keeps it each second: the
+    /// sentence `say` makes is too long for every line of a day.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Why::Unmeasured => "unmeasured",
+            Why::Unanswered => "unanswered",
+            Why::GaveUp => "gave-up",
+            Why::Clear => "clear",
+            Why::Line { .. } => "line",
+            Why::Vpn { .. } => "vpn",
+            Why::Far { .. } => "far",
+            Why::Tunnel { .. } => "tunnel",
+            Why::Agents { .. } => "agents",
+            Why::Router { .. } => "router",
+            Why::Guarded => "guarded",
+            Why::Ceiling => "ceiling",
+        }
+    }
 }
 
 /// Says `why` in one sentence: `limit` is what the upload is held to, in

@@ -417,6 +417,22 @@ pub fn holding(json: &str) -> Option<(u64, u64)> {
     }))
 }
 
+/// What the shaped queues the VPN's flow passes through in `tc -s -j qdisc
+/// show dev` hold now, in bytes: every one but agents' lane's CAKE, or
+/// none without a CAKE. Agents' lane is a class of its own, which borrows
+/// the line only after the others (src/lanes.rs), so what stands there
+/// while it is held waits apart from the VPN's packets: counted as the
+/// link's wait, it would read as the VPN's wait drained by the very hold
+/// that only moved it there.
+pub fn before_the_vpn(json: &str) -> Option<u64> {
+    shaping(json).map(|all| {
+        all.iter()
+            .filter(|q| q["parent"] != crate::lanes::AGENTS_CLASS)
+            .map(|q| q["backlog"].as_u64().unwrap_or(0))
+            .sum()
+    })
+}
+
 /// The packets the shaped queues in `tc -s -j qdisc show dev` have
 /// dropped, marks aside: what TCP sends again of these never crossed the
 /// link.
@@ -702,6 +718,12 @@ mod tests {
             Some((7_100, 11)),
             "every lane's backlog, drops and marks"
         );
+        assert_eq!(
+            before_the_vpn(LANES),
+            Some(3_100),
+            "Joel's lane and the VPN's, not agents' behind them or the local class"
+        );
+        assert_eq!(before_the_vpn("[]"), None, "no CAKE");
         assert_eq!(drops(LANES), Some(7), "every lane's drops");
     }
 

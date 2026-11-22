@@ -369,8 +369,10 @@ pub struct Ours {
     /// link's did.
     #[serde(default)]
     pub vpn_queued: bool,
-    /// How long the link's CAKE kept what it held, in ms: a wait of ours,
-    /// which the VPN's flow takes too before it reaches the router.
+    /// How long the link's queues kept what they held, in ms, agents' lane
+    /// aside: a wait of ours, which the VPN's flow takes too before it
+    /// reaches the router. A line written before 23 November counts what
+    /// agents' lane held under its hold in it too.
     #[serde(default)]
     pub link_wait_ms: u64,
     pub waiting: bool,
@@ -1633,6 +1635,11 @@ impl Controller {
     /// It names the upload's own rate, which letting go hands none of.
     pub fn why(&self) -> String {
         self.why_holding(self.up.limit())
+    }
+
+    /// The kind of the controller's reason, in a word (`Why::kind`).
+    pub fn why_kind(&self) -> &'static str {
+        self.why.kind()
     }
 
     /// The controller's reason, said of the upload held to `up`, for one

@@ -339,7 +339,8 @@ struct Shaped {
     /// the controller was last told, how many found a queue in it.
     holding: Option<(u64, u64)>,
     queued_reads: (u32, u32),
-    /// What the upload's CAKE held, in bytes, over those reads together.
+    /// What the upload's queues before the VPN's packets held, in bytes,
+    /// over those reads together (`qdisc::before_the_vpn`).
     held_bytes: u64,
     /// Of the reads of the VPNs riding the link since, how many found a
     /// queue in one: a VPN held under the link holds the queue in its own
@@ -443,7 +444,7 @@ impl Shaped {
             let (queued, reads) = &mut self.queued_reads;
             *queued += u32::from(qdisc::queued(self.holding, now));
             *reads += 1;
-            self.held_bytes += now.0;
+            self.held_bytes += up.as_deref().and_then(qdisc::before_the_vpn).unwrap_or(0);
             self.holding = Some(now);
         }
         if let Some(now) = up.as_deref().and_then(qdisc::drops) {

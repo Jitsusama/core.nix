@@ -44,7 +44,9 @@ pub struct Line {
     pub up: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub down: Option<u64>,
-    /// Whose the upload's queue was.
+    /// Whose the upload's queue was. A line written before 21 November has
+    /// no `agents_straight` in it, so a replay of such a day never takes
+    /// the path where agents yield.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ours: Option<Ours>,
     /// A call's round trip through the VPN, and the least it was taken to
@@ -68,6 +70,16 @@ pub struct Line {
     pub house_sent: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub house_most: Option<u64>,
+    /// The kind of reason the upload held where it did (`Why::kind`), and
+    /// the shares the VPN's own queue and agents' lane were held to, down
+    /// to a hundredth, while under one: holds that leave the upload's rate as
+    /// it was, and that the journal says only as they begin or end.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vpn_share: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agents_share: Option<f64>,
 }
 
 impl Line {
@@ -87,6 +99,22 @@ impl Line {
             ceiling: heard.ceiling.map(crate::rate::whole),
             house_sent: None,
             house_most: None,
+            why: None,
+            vpn_share: None,
+            agents_share: None,
+        }
+    }
+
+    /// This line, saying the controller's kind of reason and the shares it
+    /// held the VPN's own queue and agents' lane to, those under one.
+    pub fn holding(self, why: &str, vpn_share: f64, agents_share: f64) -> Line {
+        // Rounded down, so a share held under one never reads as one.
+        let held = |share: f64| (share < 1.0).then(|| (share * 100.0).floor() / 100.0);
+        Line {
+            why: Some(why.to_owned()),
+            vpn_share: held(vpn_share),
+            agents_share: held(agents_share),
+            ..self
         }
     }
 }
@@ -312,6 +340,25 @@ mod tests {
         assert!(
             !line.expect("a line").contains("ceiling"),
             "wrote no ceiling"
+        );
+    }
+
+    #[test]
+    fn a_line_says_why_it_held_and_the_holds_under_its_rate() {
+        let held = line(NOV16, Some(9_500), None).holding("tunnel", 0.8149, 0.996);
+        assert_eq!(held.why.as_deref(), Some("tunnel"), "the kind of reason");
+        assert_eq!(held.vpn_share, Some(0.81), "the VPN's own queue's share, to a hundredth");
+        assert_eq!(held.agents_share, Some(0.99), "agents' share, rounded down under one");
+        let free = line(NOV16, Some(9_500), None).holding("clear", 1.0, 1.0);
+        assert_eq!(
+            (free.vpn_share, free.agents_share),
+            (None, None),
+            "no share at one"
+        );
+        let written = serde_json::to_string(&free).expect("a line");
+        assert!(
+            written.contains(r#""why":"clear""#) && !written.contains("share"),
+            "wrote the reason alone: {written}"
         );
     }
 
