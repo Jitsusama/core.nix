@@ -3035,9 +3035,12 @@
   '';
   pi-hosted-loads-one-bundle = ''
     pi built with the host's patches, applied exactly, has a bundle host entry that hands on the
-    bundle's own coding agent and libraries, durable and chord, reading none of pi's files outside
-    the bundle; ids its pi-ai and durable mint in turn keep their order, one copy of the session
-    cleanups runs, and it holds 5 MiB less heap and spends less CPU than loading pi file by file
+    bundle's own coding agent, durable and chord, and a host module for each library its
+    extensions get that re-exports their very copy, so pi-tui's kitty flag set through one is read
+    through the other; it runs durable's SQLite and Node environment, reads none of pi's files
+    outside the bundle, declares pi-ai's, pi-tui's and pi-agent-core's state once, keeps the order
+    of ids its pi-ai and durable mint in turn, and on the median of three runs holds 5 MiB less
+    heap and spends less CPU than loading pi file by file
   '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
