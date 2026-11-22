@@ -1,0 +1,45 @@
+A host keeps the extensions jiti compiled in the runtime folder.
+
+pi's extension loader gave jiti no fsCache, so jiti cached compiled
+extensions in os.tmpdir()/jiti. A host's child has no TMPDIR, so that
+was /tmp/jiti, which a sweep of /tmp empties: on 21 November one
+emptied it mid-load, a conversation's reload failed with ENOENT on a
+compiled file there, and nine of its tools were gone until a later
+reload. The account's runtime folder is private to it and no sweep
+of /tmp reaches it, so the cache goes to $XDG_RUNTIME_DIR/pi-jiti. A
+pi without a runtime folder keeps jiti's default, as before. On tmpfs
+the cache is memory, one copy for the account (about 51 MB warm for
+three packages, measured on another machine), not one per child.
+
+Apply only to the host's private pi build; ordinary interactive pi stays
+unchanged.
+
+--- a/packages/coding-agent/src/core/extensions/loader.ts
++++ b/packages/coding-agent/src/core/extensions/loader.ts
+@@ -56,6 +56,18 @@ function getCreateJiti(): Promise<typeof createJiti> {
+ 	return createJitiPromise;
+ }
+ 
++/**
++ * Where jiti keeps the extensions it compiled: the account's runtime folder
++ * when it has one, which is private to the account and no sweep of /tmp
++ * empties, else jiti's own default, os.tmpdir()/jiti. A host's child has no
++ * TMPDIR, so that default was /tmp/jiti, and a sweep of /tmp mid-load failed
++ * the load and dropped its extension's tools until the next reload.
++ */
++function jitiCacheDir(): string | true {
++	const runtime = process.env.XDG_RUNTIME_DIR;
++	return runtime ? path.join(runtime, "pi-jiti") : true;
++}
++
+ let virtualModulesPromise: Promise<Record<string, unknown>> | undefined;
+ 
+ function getVirtualModules(): Promise<Record<string, unknown>> {
+@@ -710,6 +722,7 @@ async function loadExtensionModule(extensionPath: string, cacheToken?: Extension
+ 			: { alias: getAliases() };
+ 	const jiti = createJitiImpl(import.meta.url, {
+ 		moduleCache: false,
++		fsCache: jitiCacheDir(),
+ 		...resolutionOptions,
+ 	});
+ 

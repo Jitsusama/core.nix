@@ -23,6 +23,7 @@ let
     ./host-patches/pi-host-yields-between-extensions.patch
     ./host-patches/pi-host-freezes-context-without-a-set.patch
     ./host-patches/pi-host-loads-one-bundle.patch
+    ./host-patches/pi-host-jiti-cache-runtime.patch
   ];
 in
 pkgs.pi-coding-agent.overrideAttrs (old: {
