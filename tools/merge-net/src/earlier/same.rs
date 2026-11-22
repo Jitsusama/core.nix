@@ -22,16 +22,46 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// change have their base asked after, one git each: on 21 November the
 /// rounds held about 2,300 bases, and asking after every one held each
 /// `ready` past 15 minutes while four ran at once.
+///
+/// The rounds mirrored from other machines are asked only when this
+/// machine's read nothing for the head, so a mirror that's broken or slow
+/// never holds back a head reviewed here.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
     let repo = Path::new(".");
-    let rounds = seen::witnessed(&seen::rounds_folder())?;
-    read_in(
-        commit,
-        &rounds,
-        on_main_at(repo, main),
-        |witnessed| candidates(commit, main, files, witnessed).unwrap_or_default(),
-        |read| same_patch(repo, commit, main, read, read_patch_id),
+    here_or_mirrored(
+        seen::witnessed(&seen::rounds_folder())?,
+        || seen::mirrored(&seen::mirrors_folder()),
+        |rounds| {
+            read_in(
+                commit,
+                rounds,
+                on_main_at(repo, main),
+                |witnessed| candidates(commit, main, files, witnessed).unwrap_or_default(),
+                |read| same_patch(repo, commit, main, read, read_patch_id),
+            )
+        },
     )
+}
+
+/// Whether `ask` finds the head read among this machine's `rounds`, or,
+/// only when it doesn't, among them and those `mirrors` reads. A refusal
+/// says which mirrors were asked and which couldn't be.
+fn here_or_mirrored(
+    mut rounds: HashSet<seen::Read>,
+    mirrors: impl FnOnce() -> seen::Mirrored,
+    mut ask: impl FnMut(&HashSet<seen::Read>) -> Result<(), String>,
+) -> Result<(), String> {
+    let Err(unread) = ask(&rounds) else {
+        return Ok(());
+    };
+    let mirrored = mirrors();
+    // No mirror read means nothing new to find the head among, so the
+    // head isn't asked after again, only told with why.
+    if mirrored.asked.is_empty() {
+        return Err(seen::unread_with_mirrors(unread, &mirrored));
+    }
+    rounds.extend(mirrored.rounds.iter().cloned());
+    ask(&rounds).map_err(|why| seen::unread_with_mirrors(why, &mirrored))
 }
 
 /// Whether `rounds` read `commit` in full, or an earlier commit of its
@@ -174,6 +204,99 @@ mod tests {
             commit: commit.to_owned(),
             from: from.map(str::to_owned),
         }
+    }
+
+    /// Asks whether `head` is among the rounds, as `read_in` would.
+    fn asks(head: &str) -> impl FnMut(&HashSet<seen::Read>) -> Result<(), String> + '_ {
+        move |rounds| {
+            if rounds.iter().any(|read| read.commit == head) {
+                Ok(())
+            } else {
+                Err(format!("unread {head}"))
+            }
+        }
+    }
+
+    /// What a mirror read: the rounds of `commits`, from the nodes `asked`,
+    /// with `trouble`.
+    fn mirror(commits: &[&str], asked: &[&str], trouble: &[&str]) -> seen::Mirrored {
+        seen::Mirrored {
+            rounds: commits.iter().map(|one| round(one, None)).collect(),
+            asked: asked.iter().map(|one| (*one).to_owned()).collect(),
+            trouble: trouble.iter().map(|one| (*one).to_owned()).collect(),
+        }
+    }
+
+    // A head this machine's rounds read passes without a mirror asked, so
+    // a mirror that's broken or slow never holds back a head reviewed here.
+    #[test]
+    fn a_head_read_here_asks_no_mirror() {
+        let here = HashSet::from([round("aaa", None)]);
+        let found = here_or_mirrored(
+            here,
+            || panic!("a mirror was asked for a head read here"),
+            asks("aaa"),
+        );
+        assert_eq!(found, Ok(()), "a head read here was refused");
+    }
+
+    // A head only another machine's round read passes once its mirror is
+    // asked, and one none read is refused naming the mirrors asked and
+    // those that couldn't be.
+    #[test]
+    fn a_head_unread_here_is_read_from_the_mirrors() {
+        let found = here_or_mirrored(
+            HashSet::new(),
+            || mirror(&["bbb"], &["equilibrius"], &[]),
+            asks("bbb"),
+        );
+        assert_eq!(found, Ok(()), "a head a mirrored round read was refused");
+        let said = here_or_mirrored(
+            HashSet::from([round("aaa", None)]),
+            || {
+                mirror(
+                    &["bbb"],
+                    &["equilibrius"],
+                    &["the mirror from penelope can't be read"],
+                )
+            },
+            asks("ccc"),
+        )
+        .unwrap_err();
+        assert!(
+            said.starts_with("unread ccc")
+                && said.contains("mirrored from equilibrius were asked too")
+                && said.contains("penelope can't be read"),
+            "the refusal didn't say what was asked: {said}"
+        );
+    }
+
+    // With no mirror on the machine, a refusal reads as it always did; with
+    // one that couldn't be read, it says why, and the head isn't asked
+    // after a second time over the same rounds.
+    #[test]
+    fn no_mirror_read_refuses_as_before_and_says_why() {
+        let said = here_or_mirrored(HashSet::new(), seen::Mirrored::default, asks("ccc"));
+        assert_eq!(
+            said,
+            Err("unread ccc".to_owned()),
+            "no mirror changed the refusal"
+        );
+        let mut times = 0;
+        let said = here_or_mirrored(
+            HashSet::new(),
+            || mirror(&[], &[], &["the rounds mirrored under /x can't be listed"]),
+            |rounds| {
+                times += 1;
+                asks("ccc")(rounds)
+            },
+        );
+        assert_eq!(
+            said,
+            Err("unread ccc; the rounds mirrored under /x can't be listed".to_owned()),
+            "an unlisted mirror wasn't said"
+        );
+        assert_eq!(times, 1, "the head was asked after again with nothing new");
     }
 
     // A head a round read in full passes with nothing searched; one it

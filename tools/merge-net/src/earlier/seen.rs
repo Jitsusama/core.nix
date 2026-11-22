@@ -32,6 +32,94 @@ pub fn rounds_folder() -> PathBuf {
     state.join("pi/agentic-harness.pi/review/runs")
 }
 
+/// Where other machines' review rounds are mirrored, one folder (or a link
+/// to one) a node, beside the rounds folder: `review/runs-from`, as the
+/// harness's own review gate reads them. Rounds now run on another machine
+/// while this one's memory holds councils back, and a mirror copies its
+/// rounds here rather than merging them into ours.
+pub fn mirrors_folder() -> PathBuf {
+    rounds_folder().with_file_name("runs-from")
+}
+
+/// The rounds mirrored from other machines: what they read, the nodes whose
+/// rounds were read, and why any node's weren't.
+#[derive(Debug, Default)]
+pub struct Mirrored {
+    pub rounds: HashSet<Read>,
+    pub asked: Vec<String>,
+    pub trouble: Vec<String>,
+}
+
+/// Every round mirrored under `root`, node by node in name order. A root
+/// not made yet mirrors nothing, as on a machine no mirror fills. A node
+/// that can't be read, or whose rounds can't be, is said so and left out
+/// rather than refusing every head: the rounds here still count. A stray
+/// file beside the nodes is left out.
+pub fn mirrored(root: &Path) -> Mirrored {
+    let mut mirrored = Mirrored::default();
+    let nodes = match fs::read_dir(root) {
+        Ok(nodes) => nodes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return mirrored,
+        Err(error) => {
+            mirrored.trouble.push(format!(
+                "the rounds mirrored under {} can't be listed ({error})",
+                root.display()
+            ));
+            return mirrored;
+        }
+    };
+    let mut names: Vec<String> = nodes
+        .flatten()
+        .map(|node| node.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    for name in names {
+        let node = root.join(&name);
+        // A link to a folder is a node too, so its target is asked after.
+        match fs::metadata(&node) {
+            Ok(found) if found.is_dir() => match witnessed(&node) {
+                Ok(rounds) => {
+                    if rounds.is_empty() && node.join("runs").is_dir() {
+                        mirrored.trouble.push(format!(
+                            "the mirror from {name} holds a runs folder and no rounds, as if \
+                             mirrored one folder too high"
+                        ));
+                    }
+                    mirrored.rounds.extend(rounds);
+                    mirrored.asked.push(name);
+                }
+                Err(why) => mirrored
+                    .trouble
+                    .push(format!("the mirror from {name} wasn't read: {why}")),
+            },
+            Ok(_) => {}
+            Err(error) => mirrored
+                .trouble
+                .push(format!("the mirror from {name} can't be read ({error})")),
+        }
+    }
+    mirrored
+}
+
+/// `why`, a head unread, with what the mirrors said: which nodes' rounds
+/// were asked as well, and any that couldn't be.
+pub fn unread_with_mirrors(why: String, mirrored: &Mirrored) -> String {
+    use std::fmt::Write;
+    let mut said = why;
+    // Writing to a String can't fail.
+    if !mirrored.asked.is_empty() {
+        let _ = write!(
+            said,
+            "; the rounds mirrored from {} were asked too",
+            mirrored.asked.join(", ")
+        );
+    }
+    for trouble in &mirrored.trouble {
+        let _ = write!(said, "; {trouble}");
+    }
+    said
+}
+
 /// A commit a round read, and where it read from when the round was over
 /// a range of commits rather than a change: such a round read only what
 /// lies between, so its commit counts as read in full only where that
@@ -348,6 +436,67 @@ mod tests {
         let said = witnessed(&folder.join("file")).unwrap_err();
         fs::remove_dir_all(&folder).unwrap();
         assert!(said.contains("can't be read"), "{said}");
+    }
+
+    // Each node's rounds are read, a link to a folder's too, in name order
+    // past a stray file; a root not made yet mirrors nothing.
+    #[test]
+    fn every_mirrored_node_is_read_in_name_order() {
+        let root = folder("mirrors");
+        let elsewhere = folder("mirrored-elsewhere");
+        let change =
+            |commit: char| json!({"change": {}, "runs": [round(&json!({"witness": id(commit)}))]});
+        fs::create_dir(root.join("zebra")).unwrap();
+        written(&root.join("zebra"), "one.json", &change('b'), 0);
+        written(&elsewhere, "two.json", &change('c'), 0);
+        std::os::unix::fs::symlink(&elsewhere, root.join("aardvark")).unwrap();
+        fs::write(root.join("stray"), "").unwrap();
+        let mirrored = mirrored(&root);
+        let gone = super::mirrored(&root.join("gone"));
+        fs::remove_dir_all(&root).unwrap();
+        fs::remove_dir_all(&elsewhere).unwrap();
+        assert_eq!(mirrored.asked, ["aardvark", "zebra"], "the nodes asked");
+        assert_eq!(
+            mirrored.rounds,
+            HashSet::from([change_read('b'), change_read('c')]),
+            "the rounds read"
+        );
+        assert!(mirrored.trouble.is_empty(), "{:?}", mirrored.trouble);
+        assert!(
+            gone.asked.is_empty() && gone.trouble.is_empty() && gone.rounds.is_empty(),
+            "a root not made yet mirrored something: {gone:?}"
+        );
+    }
+
+    // A node that can't be read is said and left out, so the rest still
+    // count; one holding a runs folder is said to be mirrored too high.
+    #[test]
+    fn a_mirror_that_cant_be_read_is_said_and_the_rest_count() {
+        let root = folder("mirrors-trouble");
+        std::os::unix::fs::symlink(root.join("nowhere"), root.join("dangling")).unwrap();
+        fs::create_dir_all(root.join("high/runs")).unwrap();
+        fs::create_dir(root.join("good")).unwrap();
+        written(
+            &root.join("good"),
+            "one.json",
+            &json!({"change": {}, "runs": [round(&json!({}))]}),
+            0,
+        );
+        let mirrored = mirrored(&root);
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(mirrored.asked, ["good", "high"], "the nodes asked");
+        assert_eq!(
+            mirrored.rounds,
+            HashSet::from([change_read('a')]),
+            "the good node's rounds"
+        );
+        assert!(
+            mirrored.trouble.len() == 2
+                && mirrored.trouble[0].starts_with("the mirror from dangling can't be read")
+                && mirrored.trouble[1].contains("from high holds a runs folder"),
+            "{:?}",
+            mirrored.trouble
+        );
     }
 
     // Newest round files of another shape, as a change to the harness's
