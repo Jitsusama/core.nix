@@ -62,8 +62,8 @@ pub fn owned(job: &Path, machine: &str) -> io::Result<File> {
     // Locked before it names anyone, so a run that finds this machine
     // named finds it held; one that finds it empty leaves it a day. Where
     // the filesystem takes no locks, it names nobody, and is left a day.
-    // Tried, never waited on, as a landing's is, so no stalled lock
-    // server holds the run.
+    // Tried, never waited on, as a landing's is, so a lock someone else
+    // holds on it never holds the run.
     if owner.try_lock().is_ok() {
         writeln!(owner, "{machine}\t{}", std::process::id())?;
     }
@@ -315,12 +315,12 @@ mod tests {
     fn a_folder_that_wont_go_is_said_by_name() {
         use std::os::unix::fs::PermissionsExt;
         let handover = Handover::new("stuck");
-        let stuck = handover.unowned(&format!("{SPENT}8-8"));
-        std::fs::create_dir_all(stuck.join("tree")).unwrap();
-        std::fs::write(stuck.join("tree/Spec.tla"), "spec").unwrap();
+        // A run here left it and ended, so it's renamed spent, then stuck.
+        let left = handover.left("8-8", "kestrel");
         let locked = std::fs::Permissions::from_mode(0o500);
-        std::fs::set_permissions(stuck.join("tree"), locked).unwrap();
+        std::fs::set_permissions(left.join("tree"), locked).unwrap();
         let cleared = handover.clear(SystemTime::now());
+        let stuck = handover.path.join(format!("{SPENT}8-8"));
         let open = std::fs::Permissions::from_mode(0o700);
         std::fs::set_permissions(stuck.join("tree"), open).unwrap();
         assert!(stuck.exists(), "a folder it couldn't write went");
