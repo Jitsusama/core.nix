@@ -52,6 +52,7 @@ mod notices;
 mod opens;
 mod pace;
 mod pass;
+mod pass_lines;
 mod plan;
 mod pmset;
 mod pool;
