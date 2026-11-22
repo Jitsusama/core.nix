@@ -331,12 +331,14 @@
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
         linux-builder = ./modules/linux-builder/darwin.nix;
+        local-name = ./modules/local-name/darwin.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
         macos-defaults = ./modules/macos-defaults/darwin.nix;
         netconsole = ./modules/netconsole/darwin.nix;
         nix-daemon = ./modules/nix-daemon/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         openssh = ./modules/openssh/darwin.nix;
+        pi = ./modules/pi/darwin.nix;
         sudo = ./modules/sudo/darwin.nix;
         update-to-main = ./modules/update-to-main/darwin.nix;
         yubikey = ./modules/yubikey/system.nix;

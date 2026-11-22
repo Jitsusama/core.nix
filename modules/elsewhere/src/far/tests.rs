@@ -56,14 +56,15 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     let line = script(
         "QEST-20261115-ABC123",
         "7-9",
-        ".cache/e/",
+        ".e",
         Path::new("a b"),
         &kind("export PATH=/far/bin:$PATH"),
         &command,
     );
     for says in [
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
-        "work=\"$HOME\"/.cache/e/7-9\n",
+        "work=\"${XDG_CACHE_HOME:-$HOME/.cache}\"/pi/agentic-harness.pi/quest-workspace/\
+         QEST-20261115-ABC123/.e/7-9\n",
         "until arrived; do",
         "cd \"$work\"/'a b' || {\n",
         "  say 'elsewhere: refusing 7-9'\n  exit 77\n}\nsay 'elsewhere: running 7-9'\n",
@@ -193,6 +194,12 @@ pub(super) const SHARE_BYTES: u64 = 1000;
 /// What a far run in `home` said on stdout, for the near side to hear.
 pub(super) fn said(home: &Path) -> Vec<u8> {
     std::fs::read(home.join("said")).unwrap()
+}
+
+/// The folder the far line's copies run in under `home`, the `s` within
+/// the quest's scratch that `far_line_in` names.
+pub(super) fn work(home: &Path) -> PathBuf {
+    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s")
 }
 
 /// The job's handover folder in a far run's `home`.
@@ -729,7 +736,9 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
         "a job over a file under target didn't run: {err}"
     );
     assert_eq!(
-        std::fs::read_to_string(home.join("s/seen")).ok().as_deref(),
+        std::fs::read_to_string(work(&home).join("seen"))
+            .ok()
+            .as_deref(),
         Some("ok!123"),
         "a marked file didn't land at its own name"
     );
@@ -762,8 +771,8 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
             "a list naming {named:?} wasn't refused ({code:?}): {err}"
         );
         assert!(
-            !home.join("s/out").exists()
-                && !home.join("s/1").exists()
+            !work(&home).join("out").exists()
+                && !work(&home).join("1").exists()
                 && !handover(&home).join(super::TREE).exists(),
             "a refused job left a file outside its folder, or its copies, for {named:?}"
         );

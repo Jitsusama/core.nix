@@ -119,8 +119,22 @@ filled them was runs that told nobody anything new.
   no gate asks for it: on 2026-11-06 one run for a change to the shell
   alone held every VM builder for 66 minutes.
 - A flake.lock bump of one input that moves no VM test, by `merge-net
-  needs`, is gated by `changed-checks` alone; every other flake.lock change
-  runs everything.
+  needs`, is gated by `changed-checks` alone, and so is one moving only
+  inputs [`lock-after.txt`][6] names, whose VM tests the net runs after
+  the merge unless one moves a machine's initrd, which still runs the boot
+  tests first: on 21 November a mycelium bump ran 51 VM tests first, for
+  46 minutes across 14 lent builders, though no unit before sign-in waits
+  on the node. A broken node can hold off sleep, and a reboot or poweroff
+  the account asks for until it is stopped, but not boot, unlocking or
+  sign-in. The list is read from the change's merge base, when needs is
+  asked against main from a clean tree. The tests
+  move rather than go: the net builds them itself after the merge, about
+  an hour of its round at the rate below. A second bump of the same input
+  that lands before that round ends rewrites the same lock lines, so the
+  first won't revert, and a test it breaks goes on the quarantine list
+  with its PR as owner instead. Every other
+  flake.lock change runs `changed-checks` and the VM tests `merge-net
+  needs` names, whole, first.
 
 ## Waiting
 
@@ -163,3 +177,4 @@ the measurement that shows it. A rule that no longer holds a number goes.
 [3]: ../tools/merge-net/quarantine.json
 [4]: ../modules/cargo/dependencies.nix
 [5]: ../modules/cadence/home.nix
+[6]: ../tools/merge-net/lock-after.txt

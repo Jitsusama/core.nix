@@ -126,6 +126,12 @@
     answering is a thing too, the Adapter's row in Bluetooth, its notice naming bluetooth-again
     for one on PCI and a restart for any other, and saying a device may need pairing again
   '';
+  a-mac-refuses-another-accounts-pi-hosts = ''
+    a Mac refuses an account other than its primary one that names a pi host's realm, by that
+    account's name, and gives it none; a Mac naming no primary account refuses every realm with a
+    message saying so, and gives none; and a realm giving a DYLD_ variable is refused, naming the
+    realm and only that variable
+  '';
   a-mac-sshd-lets-a-gone-caller-go = ''
     every Mac's sshd asks a quiet caller every 15 s and lets it go after four unanswered
   '';
@@ -216,7 +222,11 @@
   a-hosted-viewer-reopens-where-it-was = ''
     Reopen Them All opens only the viewer of a session pi's host brought back, never its pi,
     quietly where the last boot kept it, and keeps the place of one no host serves yet, opens none
-    for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it
+    for one kept nowhere, and holds one bound for the workspace Joel is on until he leaves it; opens
+    a viewer and a plain pi kept where their orchestrator isn't at their kept place; and of plain
+    pis, brings back held,
+    at the walk's pace, those kept nowhere, even one whose folder went, but in a window when no
+    boot's places are known
   '';
   a-screen-niri-is-late-to-name-takes-its-workspaces-back = ''
     a monitor plugged back in takes back the workspace niri kept on the laptop's screen, leaving
@@ -327,7 +337,9 @@
   agents-lists-spec-once-on-niri = ''
     on the account's whole shell on niri, over the cadence-spec daemon itself, Agents lists Spec
     once, the cursor staying on it as the daemon's answer changes, and a step held in Spec takes
-    the rows the daemon serves after a restart
+    the rows the daemon serves after a restart; over spend-watch serve, a - out of Now makes
+    neither Spec nor Budgets again while what each is made of stands, a change made while Now is
+    held shows after, and Budgets goes while spend-watch is down
   '';
   agents-makes-the-launchers-rows = ''
     the agents daemon says how each pi session stands, its acts and what Return does, lays
@@ -585,7 +597,8 @@
   call-under-load-tells-the-hour = ''
     call-under-load counts a call's frame rates by frame slots and its freezes per ten minutes,
     keeps a run ten minutes from any meeting and refuses a stale calendar, takes Chrome's and
-    Slack's waits from lag-watch's last hour, and writes the hour in the shape cadence reads
+    Slack's waits from lag-watch's last hour, sets the launcher's openings during the run against
+    the same span before it, and writes the hour in the shape cadence reads
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine
@@ -1821,9 +1834,10 @@
   '';
   linux-builder-keeps-its-network-where-it-is-set = ''
     a changed Linux builder guest's network is the one its option sets, 192.168.239.0/24 unless
-    given another, through a vzvm patched to hand it to vmnet, a network that isn't private, has an
-    octet past 255 or a host bit set is refused at build, one set on an unchanged guest is warned
-    of, and a guest given nothing keeps its own
+    given another, handed to vmnet by its first address, the Mac's, through a vzvm patched to
+    pass it on; a network that isn't private, has an octet past 255 or a host bit set is refused
+    at build, one set on an unchanged guest is warned of, and a guest given nothing keeps its
+    own; it pins the address handed, not what vmnet makes of it
   '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
@@ -1867,6 +1881,20 @@
     the boot step gives the loader an entry of its own on the ESP, never taking a past install's
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
+  '';
+  local-name-comes-back = ''
+    a Mac macOS renamed gets its declared local name back, said once with what it was, at most
+    once in five minutes by the time its stamp holds, a time still to come counting as old; a
+    name already right is left unwritten with its stamp kept, a warning beside it not read as
+    part of it, an unset one is set, one that can't be read is left alone, its stamp kept, and
+    is said again five minutes on, one read again a moment on isn't said, and a name it
+    couldn't read or set is said, and a set tried, once in five minutes
+  '';
+  local-name-is-kept-by-a-job = ''
+    a Mac with a local name runs a root job under bash that sets it back, by that name and not
+    the host name, from its start, whenever macOS writes its network settings and once a
+    minute, finding its tools only in macOS's own folders and saying what it does in its log,
+    and a Mac with none runs nothing
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
@@ -3071,12 +3099,13 @@
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, Chromium as its browser, node's heap limit set to its realm's heapMb,
+    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers and
+    sixteen libuv threads for its conversations to share, Chromium as its browser, the account's
+    home realm, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
     frame, and pi's SSH agent proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
-    restart, and a machine naming none, or a Mac, gets none
+    restart, a machine naming none gets none, and a Mac gets no systemd unit
   '';
   pi-hosts-ignore-sigusr1 = ''
     node 22, which pi is built with, and this tree's own node, each given the --disable-sigusr1 a
@@ -4440,6 +4469,12 @@
     the kind for the head, and Tab offers only the kinds and sources that would keep something,
     each with how many, its name as the head says it, and its kind's, source's or program's mark
   '';
+  the-launcher-weighs-what-it-owes = ''
+    the launcher's weighing plan, apart from its timers, starts nothing before the census, counts
+    the shell's holders once, then weighs what letting go of each of the six largest by that count
+    would free, one a turn, leaving out names folded under a tilde; and a busy count or weighing
+    stays owed for the next closing to take up rather than being dropped
+  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
@@ -4773,6 +4808,25 @@
   '';
   the-mac-guards-its-disk = ''
     a Mac's guards run under launchd, with a Mac's paths and nothing to confine a run
+  '';
+  the-mac-pi-host-outlives-a-log-out = ''
+    a realm a Mac's primary account names gets two pi hosts as launchd daemons run as that
+    account, started at boot once the store is mounted and again after a failure, given 150 s
+    to park and 8192 open files, naming no store path a switch would restart it for, with no
+    log launchd opens as root, and becoming node under a name mycelium tells as an agent's, as
+    its own kind with a log of its own, on a Mac that evaluates whole; a Mac naming none gets none
+  '';
+  the-mac-pi-host-starts-as-its-account = ''
+    a Mac's pi host start, run under dash and bash with the Mac's programs stood in for, passes
+    shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes,
+    counting from the oldest of three, and not after two or one recent start of three, saying
+    that removing its record of starts ends the wait, which then ends within ten seconds,
+    says why and fails on a missing harness or a temporary folder that isn't there, is a link,
+    is another's or others may read, and otherwise becomes the realm's node in its own place
+    with its words, its output in its log, every environment value whole, the realm's LANG and
+    no LC_ALL to outrank it, the account's home realm, TMPDIR and XDG_RUNTIME_DIR the account's
+    temporary folder, the probes its own restart waits on with their % single, and none of the
+    eight variables that would run code as node starts
   '';
   the-macs-faces-are-the-themes = ''
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give

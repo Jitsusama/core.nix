@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 10;
+pub const SCHEMA: i64 = 11;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -89,6 +89,53 @@ CREATE TRIGGER turn_hours_take AFTER DELETE ON turns BEGIN
 END;
 CREATE TRIGGER turns_stay BEFORE UPDATE ON turns BEGIN
     SELECT RAISE(ABORT, 'a turn is added or forgotten, never changed');
+END;
+"
+    };
+}
+
+/// Each hour's turns summed by what the waste and work figures split them
+/// by, kept as they're added and forgotten, for the reason `turn_hours`
+/// is: a week's or a month's figures summed from the turns fetched each
+/// one at random through `turns_at`, and on 21 November a pass read 22 GB
+/// that way from a history of 2 GB. Kept apart from `turn_hours`, which
+/// every pass reads for every hour, since splitting those by cause too
+/// would grow every one of those reads. Its sums are the turns' but for
+/// rounding, as `turn_hours`' are: each adds and takes a turn as it comes.
+macro_rules! waste_hours {
+    () => {
+        "
+CREATE TABLE waste_hours (
+    hour INTEGER NOT NULL, session TEXT NOT NULL, quest TEXT, model TEXT NOT NULL,
+    kind TEXT NOT NULL, cause TEXT, turns INTEGER NOT NULL, cost REAL NOT NULL,
+    cost_cache_write REAL NOT NULL, rebuilt_cost REAL NOT NULL, cache_read REAL NOT NULL,
+    prompt REAL NOT NULL);
+CREATE INDEX waste_hours_key ON waste_hours (hour, session, quest, model, kind, cause);
+CREATE TRIGGER waste_hours_add AFTER INSERT ON turns BEGIN
+    INSERT INTO waste_hours SELECT NEW.hour, NEW.session, NEW.quest, NEW.model, NEW.kind,
+        NEW.cause, 0, 0, 0, 0, 0, 0
+        WHERE NOT EXISTS (SELECT 1 FROM waste_hours WHERE hour = NEW.hour
+            AND session = NEW.session AND quest IS NEW.quest AND model = NEW.model
+            AND kind = NEW.kind AND cause IS NEW.cause);
+    UPDATE waste_hours SET turns = turns + 1, cost = cost + NEW.cost,
+        cost_cache_write = cost_cache_write + NEW.cost_cache_write,
+        rebuilt_cost = rebuilt_cost + NEW.rebuilt_cost,
+        cache_read = cache_read + NEW.cache_read,
+        prompt = prompt + NEW.input + NEW.cache_read + NEW.cache_write
+        WHERE hour = NEW.hour AND session = NEW.session AND quest IS NEW.quest
+            AND model = NEW.model AND kind = NEW.kind AND cause IS NEW.cause;
+END;
+CREATE TRIGGER waste_hours_take AFTER DELETE ON turns BEGIN
+    UPDATE waste_hours SET turns = turns - 1, cost = cost - OLD.cost,
+        cost_cache_write = cost_cache_write - OLD.cost_cache_write,
+        rebuilt_cost = rebuilt_cost - OLD.rebuilt_cost,
+        cache_read = cache_read - OLD.cache_read,
+        prompt = prompt - OLD.input - OLD.cache_read - OLD.cache_write
+        WHERE hour = OLD.hour AND session = OLD.session AND quest IS OLD.quest
+            AND model = OLD.model AND kind = OLD.kind AND cause IS OLD.cause;
+    DELETE FROM waste_hours WHERE turns = 0 AND hour = OLD.hour AND session = OLD.session
+        AND quest IS OLD.quest AND model = OLD.model AND kind = OLD.kind
+        AND cause IS OLD.cause;
 END;
 "
     };
@@ -187,7 +234,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 9] = [
+const UPGRADES: [&str; 10] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -235,6 +282,13 @@ const UPGRADES: [&str; 9] = [
          DELETE FROM unresolved WHERE rowid NOT IN
              (SELECT MIN(rowid) FROM unresolved GROUP BY session, at, budget);",
         once!()
+    ),
+    concat!(
+        waste_hours!(),
+        "INSERT INTO waste_hours SELECT hour, session, quest, model, kind, cause, COUNT(*),
+         SUM(cost), SUM(cost_cache_write), SUM(rebuilt_cost), SUM(cache_read),
+         SUM(input + cache_read + cache_write) FROM turns
+         GROUP BY hour, session, quest, model, kind, cause;"
     ),
 ];
 
@@ -302,7 +356,8 @@ CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
 ",
     crossings!(),
     hours!(),
-    once!()
+    once!(),
+    waste_hours!()
 );
 
 pub struct History {
@@ -316,6 +371,19 @@ pub struct History {
 )]
 pub fn sql(error: rusqlite::Error) -> String {
     error.to_string()
+}
+
+/// Runs `step` with SQLite's sorts going through files, then puts them back
+/// in memory whether it worked or not. A step sorts every turn at once,
+/// unlike a pass, and once rather than every few minutes: on a history of
+/// 3.7 M turns the eleventh shape's took 640 MB in memory and 18 MB
+/// through files, so the disk takes it, and the passes after go back to
+/// memory.
+fn on_disk<T>(db: &Connection, step: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    db.pragma_update(None, "temp_store", "FILE").map_err(sql)?;
+    let stepped = step();
+    let restored = db.pragma_update(None, "temp_store", "MEMORY").map_err(sql);
+    stepped.and_then(|done| restored.map(|()| done))
 }
 
 impl History {
@@ -421,15 +489,17 @@ impl History {
         let first = usize::try_from(from - 1)
             .map_err(|_| format!("the history's shape {from} has no upgrade"))?;
         let steps: String = UPGRADES[first..].concat();
-        self.db
-            .execute_batch(&format!(
-                "BEGIN IMMEDIATE; {steps} UPDATE meta SET value = '{SCHEMA}' \
-                 WHERE key = 'schema'; COMMIT;"
-            ))
-            .map_err(|error| {
-                let _ = self.db.execute_batch("ROLLBACK;");
-                format!("the history couldn't be brought up to date: {error}")
-            })
+        on_disk(&self.db, || {
+            self.db
+                .execute_batch(&format!(
+                    "BEGIN IMMEDIATE; {steps} UPDATE meta SET value = '{SCHEMA}' \
+                     WHERE key = 'schema'; COMMIT;"
+                ))
+                .map_err(|error| {
+                    let _ = self.db.execute_batch("ROLLBACK;");
+                    format!("the history couldn't be brought up to date: {error}")
+                })
+        })
     }
 
     /// An empty history in memory, for tests.
@@ -744,6 +814,35 @@ mod tests {
     }
 
     #[test]
+    fn on_disk_sorts_through_files_and_then_in_memory_again() {
+        let history = History::memory();
+        let store = || -> i64 {
+            history
+                .db
+                .pragma_query_value(None, "temp_store", |row| row.get(0))
+                .unwrap()
+        };
+        // 1 is FILE and 2 is MEMORY.
+        assert_eq!(
+            on_disk(&history.db, || Ok(store())),
+            Ok(1),
+            "a step sorted other than through files"
+        );
+        assert_eq!(store(), 2, "the passes after a step sort through files");
+        let failed: Result<(), String> = on_disk(&history.db, || Err("it failed".into()));
+        assert_eq!(
+            failed,
+            Err("it failed".into()),
+            "a failed step said something else"
+        );
+        assert_eq!(
+            store(),
+            2,
+            "the passes after a failed step sort through files"
+        );
+    }
+
+    #[test]
     fn the_log_shrinks_back_once_a_large_write_is_checkpointed() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("history.db");
@@ -1053,6 +1152,7 @@ mod tests {
             .replace(unresolved!(), "")
             .replace(SESSIONS_10, "")
             .replace(once!(), "")
+            .replace(waste_hours!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1213,7 +1313,8 @@ mod tests {
                 &TABLES
                     .replace(unresolved!(), "")
                     .replace(SESSIONS_10, "")
-                    .replace(once!(), ""),
+                    .replace(once!(), "")
+                    .replace(waste_hours!(), ""),
             )
             .unwrap();
             db.execute_batch(
@@ -1252,8 +1353,13 @@ mod tests {
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace(SESSIONS_10, "").replace(once!(), ""))
-                .unwrap();
+            db.execute_batch(
+                &TABLES
+                    .replace(SESSIONS_10, "")
+                    .replace(once!(), "")
+                    .replace(waste_hours!(), ""),
+            )
+            .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '9');
                  INSERT INTO sessions VALUES ('here', '/x', 'x', 1.0, NULL, NULL);
@@ -1317,6 +1423,9 @@ mod tests {
             "a turn kept twice before machines wasn't kept once, or a side call in the same \
              millisecond was taken for it, with its hour's sum"
         );
+        // The waste hours are summed after the turns kept twice are dropped,
+        // so they count each once too, and a turn read again adds nothing.
+        waste_hours_hold(&history);
         let kept: (i64, i64) = history
             .db
             .query_row(
@@ -1329,6 +1438,199 @@ mod tests {
             kept,
             (1, 1),
             "a refusal or unresolved budget kept twice before machines wasn't kept once"
+        );
+    }
+
+    /// What a waste hour splits its turns by besides the hour, session and
+    /// cause: the quest, model and kind.
+    type Split<'a> = (Option<&'a str>, &'a str, &'a str);
+
+    /// The split most turns here are taken under.
+    const MOST: Split<'static> = (Some("q"), "opus", "agent");
+
+    /// A turn as the waste figures read it: everything they sum, by what
+    /// they split it by.
+    fn wasted(
+        history: &History,
+        session: &str,
+        at: f64,
+        (quest, model, kind): Split<'_>,
+        cause: Option<&str>,
+        cost: f64,
+    ) {
+        history
+            .db
+            .execute(
+                "INSERT INTO turns (session, at, hour, model, provider, kind, quest, input,
+                 output, cache_read, cache_write, cache_write_long, cost, cost_cache_write,
+                 cost_output, gap, rebuilt, rebuilt_cost, cause) VALUES
+                 (?1, ?2, ?3, ?4, 'anthropic', ?5, ?6, 3, 1, 5, 7, 0, ?7, ?7 / 4,
+                 0, NULL, 0, ?7 / 2, ?8)",
+                params![
+                    session,
+                    at,
+                    crate::time::hour_of(at),
+                    model,
+                    kind,
+                    quest,
+                    cost,
+                    cause
+                ],
+            )
+            .unwrap();
+    }
+
+    /// The waste hours as kept, against the turns summed afresh: every
+    /// key alike, and every sum alike but for rounding, since a kept sum
+    /// adds and takes each turn as it comes where a fresh one adds them
+    /// all at once.
+    fn waste_hours_hold(history: &History) {
+        type Key = (i64, String, Option<String>, String, String, Option<String>);
+        const KEY: &str = "hour, session, quest, model, kind, cause";
+        let read = |sql: &str| -> Vec<(Key, [f64; 6])> {
+            let mut statement = history.db.prepare(sql).unwrap();
+            statement
+                .query_map([], |row| {
+                    let key = (
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                    );
+                    let mut sums = [0.0; 6];
+                    for (at, sum) in sums.iter_mut().enumerate() {
+                        *sum = row.get(6 + at)?;
+                    }
+                    Ok((key, sums))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        let kept = read(&format!(
+            "SELECT {KEY}, turns, cost, cost_cache_write, rebuilt_cost, cache_read, prompt
+             FROM waste_hours ORDER BY {KEY}"
+        ));
+        let summed = read(&format!(
+            "SELECT {KEY}, COUNT(*), SUM(cost), SUM(cost_cache_write), SUM(rebuilt_cost),
+             SUM(cache_read), SUM(input + cache_read + cache_write)
+             FROM turns GROUP BY {KEY} ORDER BY {KEY}"
+        ));
+        let keys =
+            |rows: &[(Key, [f64; 6])]| rows.iter().map(|row| row.0.clone()).collect::<Vec<_>>();
+        assert_eq!(
+            keys(&kept),
+            keys(&summed),
+            "the waste hours kept other keys than their turns have"
+        );
+        for ((key, kept), (_, summed)) in kept.iter().zip(&summed) {
+            assert!(
+                kept.iter()
+                    .zip(summed)
+                    .all(|(one, other)| (one - other).abs() < 1e-9),
+                "the waste hour {key:?} drifted from its turns: {kept:?} against {summed:?}"
+            );
+        }
+    }
+
+    // The tenth shape summed no waste by the hour; the eleventh builds the
+    // sums from the turns it holds, and keeps them as turns come and go.
+    #[test]
+    fn the_tenth_shape_gains_waste_by_the_hour() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history
+                .db
+                .execute_batch(&TABLES.replace(waste_hours!(), ""))
+                .unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '10');")
+                .unwrap();
+            wasted(&history, "a", 10.0, MOST, None, 0.1);
+            wasted(&history, "a", 20.0, MOST, Some("gap"), 0.2);
+            wasted(&history, "a", 30.0, MOST, Some("gap"), 0.3);
+            wasted(
+                &history,
+                "a",
+                35.0,
+                (None, "opus", "agent"),
+                Some("gap"),
+                0.7,
+            );
+            wasted(
+                &history,
+                "a",
+                36.0,
+                (Some("q"), "sonnet", "agent"),
+                Some("gap"),
+                1.1,
+            );
+            wasted(
+                &history,
+                "a",
+                37.0,
+                (Some("q"), "opus", "side"),
+                Some("gap"),
+                1.3,
+            );
+            wasted(&history, "b", 4000.0, MOST, Some("fresh"), 8.0);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        waste_hours_hold(&history);
+        let rows = |history: &History| -> i64 {
+            history
+                .db
+                .query_row("SELECT COUNT(*) FROM waste_hours", [], |row| row.get(0))
+                .unwrap()
+        };
+        assert_eq!(
+            rows(&history),
+            6,
+            "the step didn't sum one row for each hour, session, quest, model, kind and cause"
+        );
+        wasted(&history, "a", 40.0, MOST, Some("gap"), 0.4);
+        wasted(
+            &history,
+            "a",
+            41.0,
+            (None, "opus", "agent"),
+            Some("gap"),
+            0.9,
+        );
+        waste_hours_hold(&history);
+        // Part of a group forgotten, as a copy's turns before its fork are,
+        // leaves the rest of it summed.
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'a' AND at < 21.0", [])
+            .unwrap();
+        history
+            .db
+            .execute("DELETE FROM turns WHERE at = 41.0", [])
+            .unwrap();
+        waste_hours_hold(&history);
+        assert_eq!(
+            rows(&history),
+            5,
+            "a group with turns left was dropped, or one with none was kept"
+        );
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'b'", [])
+            .unwrap();
+        waste_hours_hold(&history);
+        assert_eq!(
+            rows(&history),
+            4,
+            "an hour whose turns were all forgotten was kept"
         );
     }
 

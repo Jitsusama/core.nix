@@ -3,7 +3,10 @@ pragma ComponentBehavior: Bound
 // (modules/quickshell/Sessions.qml), with niri stood in
 // (stand-ins/hosted-reopen-niri.qml): the laptop's screen with Joel's
 // window on its one workspace, and the monitor's two. niri sends the monitor's two workspaces to
-// the laptop's screen and, once the monitor is back, gives back only the
+// the laptop's screen, and the shell hears the screens as niri said them
+// before, the monitor still among them, and sends nothing to it until
+// niri catches up and names the laptop's screen alone. Once the
+// monitor is back, niri gives back only the
 // first, since a window opened in the second meanwhile. niri never answers
 // the shell's look at the screens as the monitor comes, as when it lagged
 // and dropped its connection at a redock on 2026-11-15, and the second
@@ -62,6 +65,8 @@ ShellRoot {
                 looked();
             else if (stage === "undocked")
                 undocked();
+            else if (stage === "heardLate")
+                heardLate();
             else if (stage === "redocked")
                 redocked();
             else if (stage === "answered")
@@ -110,13 +115,35 @@ ShellRoot {
     }
 
     // The shell notes both away from the monitor, then looks at the screens
-    // as they settle, and hears the laptop's alone.
+    // as they settle, and hears them as niri said them before the monitor
+    // went, as a niri slow under load does (vm-screens-keep-places, 21 and
+    // 22 Nov): the monitor isn't there to go back to, since niri lists no
+    // workspace on it.
     function undocked() {
         const away = (Sessions.awayFrom["Gull Wide 2"] ?? []).map(one => one.id);
-        if (away.length < 2 || !root.answerOutputs({ "Virtual-1": root.laptop }))
+        if (away.length < 2 || !root.answerOutputs({ "Virtual-1": root.laptop,
+            "Virtual-2": root.monitor }))
             return;
         Expect.expect("both the monitor's workspaces are noted away from it",
             away.includes(10) && away.includes(14), JSON.stringify(Sessions.awayFrom));
+        root.heldSince = Date.now();
+        stage = "heardLate";
+    }
+
+    function heardLate() {
+        if (Date.now() - root.heldSince < 3000)
+            return;
+        Expect.expect("nothing went to the monitor niri said before it went",
+            movedHome(10).length === 0 && movedHome(14).length === 0, JSON.stringify(Niri.acts));
+        const away = (Sessions.awayFrom["Gull Wide 2"] ?? []).map(one => one.id);
+        Expect.expect("both still wait for the monitor", away.includes(10) && away.includes(14),
+            JSON.stringify(Sessions.awayFrom));
+        // niri catches up, and a later look hears the laptop's screen alone,
+        // so what the shell last heard before the redock is true again.
+        Sessions.lookAtScreens(() => {});
+        if (!root.answerOutputs({ "Virtual-1": root.laptop }))
+            Expect.fail("the shell didn't look at the screens again");
+        root.heldSince = 0;
         // The monitor comes back. niri gives it its first workspace and an
         // empty one, and keeps the second, a window having opened in it.
         root.workspacesAre([

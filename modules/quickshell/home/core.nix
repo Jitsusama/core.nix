@@ -58,6 +58,7 @@
   "launcher/Seen.js"
   "launcher/Pacing.js"
   "launcher/Collector.js"
+  "launcher/Weighing.js"
   "launcher/Flash.js"
   "launcher/Makings.js"
   "launcher/Presented.js"

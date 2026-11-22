@@ -561,11 +561,6 @@ in
       Unit = {
         Description = "Keeps the account told what its AI use costs";
         X-Restart-Triggers = [ "${configFile}" ];
-        # The first pass after a start reads the whole history cold, and
-        # while its week sums read every turn that holds fresh figures back
-        # for hours, so a switch leaves the watch running and a new config
-        # or program takes over at its next start.
-        X-RestartIfChanged = false;
       };
       Service = {
         ExecStart = "${lib.getExe package} --config ${configFile} run";
@@ -577,6 +572,15 @@ in
         RuntimeDirectoryPreserve = "yes";
         Restart = "on-failure";
         RestartSec = "5s";
+        # A start that fails the same way each time, such as a step to a new
+        # shape with no room for its sort, would otherwise redo minutes of
+        # reading every 5 s; the waits grow to half an hour instead, and a
+        # switch that restarts it or a restart by hand starts them short again. systemd counts
+        # every failure since then, however long the runs between them, so
+        # crashes weeks apart end at the half hour too: nothing is lost, as
+        # the watch reads what it missed from the logs when it comes back.
+        RestartSteps = 5;
+        RestartMaxDelaySec = "30min";
       };
       Install.WantedBy = [ "default.target" ];
     };

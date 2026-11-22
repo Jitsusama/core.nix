@@ -139,6 +139,14 @@ function placed(places, screens, inUse, moments) {
     });
 }
 
+// Of `screens` (screensOf), those niri lists a workspace on, as on each connected one, all while it
+// lists none: screens heard apart from workspaces can predate one going (vm-screens-keep-places).
+function connected(screens, workspaces) {
+    const listed = new Set((workspaces ?? []).map(each => each.output));
+    return Object.keys(screens ?? {}).filter(name => listed.size === 0 || listed.has(name))
+        .reduce((there, name) => Object.assign(there, { [name]: screens[name] }), {});
+}
+
 // The moves that take workspaces given in place of a gone screen to it once
 // it's connected again. `away` holds, by each screen's description (or its
 // connector, for a place kept before screens were named so), the workspaces
@@ -154,6 +162,7 @@ function placed(places, screens, inUse, moments) {
 function homeward(away, screens, workspaces) {
     const moves = [];
     const waiting = {};
+    const there = connected(screens, workspaces);
     for (const screen of Object.keys(away ?? {}).sort()) {
         const given = [];
         const held = [];
@@ -164,7 +173,7 @@ function homeward(away, screens, workspaces) {
         for (const one of live) {
             const claimed = [...new Set(given.filter(was => twins(one, was.one)).map(was => was.to)
                 .concat(live.filter(was => was !== one && was.output && twins(one, was)).map(was => was.output)))];
-            const output = wayBack(one, screen, screens, claimed);
+            const output = wayBack(one, screen, there, claimed);
             if (output === null) {
                 const others = Object.assign({}, one.others, ...claimed.map(name => ({ [name]: screen })));
                 held.push(claimed.length > 0 ? Object.assign({}, one, { others }) : one);

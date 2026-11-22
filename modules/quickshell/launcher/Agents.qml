@@ -416,9 +416,9 @@ Provider {
     // an opening or a step out of Now makes one again only if that changed
     // while nothing read it: each - out of Now made 4 to 6 of them anew as
     // home was held, 47 to 72 ms of Joel's (2026-11-21, 13:13). Budgets
-    // and Spec are made of rows other sources hold, found through calls
-    // that name nothing a list of parts could hold, so they're made again
-    // each time. For You's (forYou)
+    // is kept by AI spend's row it's made of, and Spec by what
+    // cadence-spec's head says, since each is another place's. For
+    // You's (forYou)
     // are made shut too, since the tray counts what waits there, but only
     // as a landing comes, goes or changes. A keeper (Provider.qml's), so
     // keeping one notifies nothing.
@@ -429,11 +429,6 @@ Provider {
     // Made here and kept by its name while `parts` are as they were.
     function ownKept(name, parts, make) {
         return keptAlike(ownMade, name, parts, make);
-    }
-    // Made anew, and kept by its name for while nothing reads it.
-    function ownAnew(name, row) {
-        ownMade.rows[name] = { from: null, row: row };
-        return row;
     }
 
     // The daemon's rows of Agents, each record held by its key, its fields
@@ -2924,16 +2919,24 @@ Provider {
     // lists no budgets: with one budget, which its periods already say,
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
-    readonly property var budgets: readNow ? ownAnew("budgets", budgetsMade())
-        : madeBefore("budgets")
-    function budgetsMade() {
+    readonly property var budgets: readNow ? budgetsKept() : madeBefore("budgets")
+    // Kept while AI spend's row is the one it was made of: a row it
+    // serves is made again only once its record changes (ReadyRows.qml's
+    // rowAt and took), so the same row says the same, and a - out of Now
+    // made it again for nothing (core.nix#6037's follow-up).
+    function budgetsKept() {
         // AI spend's row as it reads now, since AI spend makes its rows
         // only while it's wanted, which it isn't while Agents is held;
-        // found among them where it can't say (1KZFHC, 2026-11-10).
+        // found among them where it can't say (1KZFHC, 2026-11-10). Its
+        // words and weight are the vocabulary's and the settings', as the
+        // other rows kept here are.
         const spend = source("spend");
         const now = spend?.rowNow("spend:budgets");
         const spent = now !== undefined ? now : (spend?.everything() ?? [])
             .find(row => row.key === "spend:budgets") ?? null;
+        return ownKept("budgets", [Words.all, provider.weight, spent], () => budgetsOf(spent));
+    }
+    function budgetsOf(spent) {
         if (spent === null)
             return null;
         return Object.assign(thingRow({
@@ -2956,10 +2959,17 @@ Provider {
     // cadence-spec hasn't answered or isn't on this machine. Listed as its
     // part, as Budgets is, and never among Agents' own rows as well, where
     // its key twice over moved the cursor between them (2026-11-18).
-    readonly property var spec: readNow ? ownAnew("spec", specMade()) : madeBefore("spec")
-    function specMade() {
+    readonly property var spec: readNow ? specKept() : madeBefore("spec")
+    // Kept while the head says the same. Spec's head() is a new object each
+    // time it's asked, so what it says is compared rather than the object.
+    function specKept() {
         const place = source("spec");
         const head = place?.head() ?? null;
+        const says = head === null ? [null] : [String(head.said ?? ""), head.glyph, head.hue];
+        return ownKept("spec", [Words.all, provider.weight, place].concat(says),
+            () => specOf(place, head));
+    }
+    function specOf(place, head) {
         if (head === null)
             return null;
         return thingRow({

@@ -6,7 +6,7 @@
 //! what comes back, so splitting it would copy those or split one path.
 
 use super::*;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -775,6 +775,165 @@ fn a_macs_era_is_its_boot_and_its_console_login() {
     assert!(era_of(" \n", WHO, "someone").is_err(), "no boot is said");
 }
 
+/// A Mac's three boot reads, each checked for the words and time zone it
+/// runs with and answered by `answer` given its program, and any other
+/// command refused, so a read's path, words or time zone changing fails
+/// here rather than first on a Mac.
+fn mac_reads(
+    answer: impl Fn(&str) -> Result<String, Unheard>,
+) -> impl Fn(&mut Command) -> Result<String, Unheard> {
+    move |command: &mut Command| {
+        let text = |word: &std::ffi::OsStr| word.to_string_lossy().into_owned();
+        let program = text(command.get_program());
+        let words: Vec<String> = command.get_args().map(text).collect();
+        let zone: Vec<(String, Option<String>)> = command
+            .get_envs()
+            .map(|(name, value)| (text(name), value.map(text)))
+            .collect();
+        let (expected, utc) = match program.as_str() {
+            "/usr/sbin/sysctl" => (vec!["-n", "kern.bootsessionuuid"], false),
+            "/usr/bin/who" => (vec![], true),
+            "/usr/bin/id" => (vec!["-un"], false),
+            other => panic!("a Mac's boot read ran {other}, which isn't one of its three"),
+        };
+        assert_eq!(words, expected, "{program}'s words");
+        let asked_in_utc = vec![("TZ".to_owned(), Some("UTC0".to_owned()))];
+        assert_eq!(zone.is_empty(), !utc, "{program}'s environment: {zone:?}");
+        if utc {
+            assert_eq!(zone, asked_in_utc, "who is asked in UTC");
+        }
+        answer(&program)
+    }
+}
+
+/// What a Mac's three boot reads answer when each does.
+fn answered(program: &str) -> String {
+    match program {
+        "/usr/sbin/sysctl" => "40DCF87A-79B7-469D-80E0-C06F4FAACF06\n".to_owned(),
+        "/usr/bin/who" => WHO.to_owned(),
+        _ => "someone\n".to_owned(),
+    }
+}
+
+#[test]
+fn a_macs_boot_reads_name_the_one_that_stalls_and_read_three_answers_as_its_boot() {
+    let stalled = Unheard::Late(LOOK_WITHIN);
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/bin/who" => Err(stalled.clone()),
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
+    .expect_err("a stalled read fails")
+    .to_string();
+    assert!(
+        said.contains(&format!("/usr/bin/who: {stalled}")),
+        "said {said:?}, not which read stalled"
+    );
+    assert_eq!(
+        mac_era(&mac_reads(|program| Ok(answered(program))), &|_| {}).ok(),
+        Some("40DCF87A-79B7-469D-80E0-C06F4FAACF06 Nov 19 12:42".to_owned()),
+        "three answers read as the boot and login"
+    );
+}
+
+#[test]
+fn a_macs_boot_read_that_fails_names_its_program_and_keeps_its_words() {
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/sbin/sysctl" => Err(Unheard::Failed(
+                "sysctl: unknown oid 'kern.bootsessionuuid'".into(),
+            )),
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
+    .expect_err("a failed read fails")
+    .to_string();
+    assert!(
+        said.contains("/usr/sbin/sysctl: sysctl: unknown oid 'kern.bootsessionuuid'"),
+        "said {said:?}"
+    );
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/bin/id" => Err(Unheard::Failed("exit status: 1".into())),
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
+    .expect_err("the last read failing fails")
+    .to_string();
+    assert!(
+        said.contains("/usr/bin/id: exit status: 1"),
+        "said {said:?}"
+    );
+    assert!(
+        !said.contains("after"),
+        "a read failing at once says no time: {said:?}"
+    );
+}
+
+#[test]
+fn a_macs_boot_read_that_fails_slowly_says_how_long_it_took() {
+    let said = mac_era(
+        &mac_reads(|program| match program {
+            "/usr/bin/who" => {
+                thread::sleep(SLOW_READ + Duration::from_millis(300));
+                Err(Unheard::Failed("exit status: 1".into()))
+            }
+            _ => Ok(answered(program)),
+        }),
+        &|_| {},
+    )
+    .expect_err("a failed read fails")
+    .to_string();
+    let took = said
+        .split("/usr/bin/who: exit status: 1, after ")
+        .nth(1)
+        .and_then(|rest| rest.split(" s").next()?.parse::<f64>().ok());
+    assert!(
+        took.is_some_and(|took| took >= SLOW_READ.as_secs_f64()),
+        "a slow failure says its time: {said:?}"
+    );
+}
+
+#[test]
+fn a_boot_that_cant_be_read_is_said_once_with_when_its_run_began() {
+    let unread = || {
+        Failure::new(Exit::Unavailable, "it couldn't read which boot this is")
+            .because("/usr/bin/who: no answer within 20 s")
+    };
+    let said = RefCell::new(Vec::new());
+    let say = |line: &str| said.borrow_mut().push(line.to_owned());
+    // The read takes a minute, so a stamp read after it says 22:55:01.
+    let clock = Cell::new(1_795_215_241);
+    let now = || clock.get();
+    let read = || {
+        clock.set(clock.get() + 60);
+        Err(unread())
+    };
+    let told = boot_told(read, &now, &say);
+    assert_eq!(
+        told.map_err(|failure| failure.to_string()),
+        Err(unread().to_string()),
+        "the run ends with the boot's failure"
+    );
+    assert_eq!(
+        said.take(),
+        vec![format!(
+            "{} (the run began at 2026-11-20T22:54:01Z)",
+            unread()
+        )],
+        "said once, with when the run began, before the read"
+    );
+    assert_eq!(
+        boot_told(|| Ok("a boot".into()), &now, &say).ok(),
+        Some("a boot".to_owned())
+    );
+    assert!(said.take().is_empty(), "a boot read says nothing");
+}
+
 #[test]
 fn a_command_that_hangs_is_stopped_at_its_limit() {
     let _turn = one_at_a_time();
@@ -788,7 +947,7 @@ fn a_command_that_hangs_is_stopped_at_its_limit() {
 }
 
 #[test]
-fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
+fn a_command_whose_child_keeps_its_output_open_is_stopped_soon_after_it_ends() {
     let _turn = one_at_a_time();
     let begun = Instant::now();
     let folder = folder("held-open");
@@ -801,7 +960,11 @@ fn a_command_whose_child_keeps_its_output_open_is_stopped_at_its_limit() {
         ]),
         Duration::from_secs(1),
     );
-    assert_eq!(said, Err(Unheard::Late(Duration::from_secs(1))));
+    assert_eq!(
+        said,
+        Err(Unheard::Unread(Duration::from_secs(1))),
+        "one that ended is told apart from one still running"
+    );
     assert!(
         begun.elapsed() < Duration::from_secs(5),
         "it didn't wait for the sleep to close the pipe"
@@ -835,6 +998,106 @@ fn a_command_that_answers_in_time_is_read_and_one_that_fails_says_why() {
         ),
         Err(Unheard::Failed("refused; {\"Err\":1}".into())),
         "what it printed on either stream is said"
+    );
+    assert_eq!(
+        within(
+            Command::new("sh").args(["-c", "exit 3"]),
+            Duration::from_secs(10)
+        ),
+        Err(Unheard::Failed("exit status: 3".into())),
+        "one that said nothing is told by how it ended"
+    );
+    assert_eq!(
+        within(
+            Command::new("sh").args(["-c", "kill -9 $$"]),
+            Duration::from_secs(10)
+        ),
+        Err(Unheard::Failed("signal: 9 (SIGKILL)".into())),
+        "or by the signal that stopped it"
+    );
+}
+
+#[test]
+fn a_macs_boot_read_that_answers_slowly_is_told_with_how_long_it_took() {
+    let said = RefCell::new(Vec::new());
+    let slow = |line: &str| said.borrow_mut().push(line.to_owned());
+    let boot = mac_era(
+        &mac_reads(|program| {
+            if program == "/usr/bin/who" {
+                thread::sleep(SLOW_READ + Duration::from_millis(100));
+            }
+            Ok(answered(program))
+        }),
+        &slow,
+    );
+    assert!(boot.is_ok(), "a slow read still reads the boot");
+    let said = said.take();
+    let took = said.first().and_then(|line| {
+        line.strip_prefix("/usr/bin/who answered the boot read, but took ")?
+            .strip_suffix(" s")?
+            .parse::<f64>()
+            .ok()
+    });
+    assert!(
+        said.len() == 1 && took.is_some_and(|took| took >= SLOW_READ.as_secs_f64()),
+        "only the slow read is told, with its time: {said:?}"
+    );
+}
+
+#[test]
+fn a_read_still_running_and_one_whose_output_never_came_read_apart_in_the_log() {
+    let limit = Duration::from_secs(20);
+    assert_eq!(Unheard::Late(limit).to_string(), "no answer within 20 s");
+    assert_eq!(
+        late(limit, Duration::from_millis(30)),
+        Unheard::Late(limit),
+        "a read started at once is plain late"
+    );
+    assert_eq!(
+        late(limit, Duration::from_millis(19_400)).to_string(),
+        "no answer within 20 s, 19.4 s of which went on starting it",
+        "a read whose start took most of its limit says so"
+    );
+    assert_eq!(
+        late(limit, Duration::from_secs(25)).to_string(),
+        "no answer, since starting it took 25.0 s, past its 20 s limit",
+        "a read whose start took longer than its limit says so"
+    );
+    assert_eq!(
+        Unheard::Unread(limit).to_string(),
+        "it ended, but what it printed wasn't read within 20 s, nor 2 s after it ended"
+    );
+}
+
+#[test]
+fn a_command_whose_output_comes_just_after_its_limit_is_read() {
+    let _turn = one_at_a_time();
+    // It ends at once, and what it started prints and lets go of its
+    // output a little after the limit, well within `READ_AFTER_END`.
+    assert_eq!(
+        within(
+            Command::new("sh").args(["-c", "(sleep 1.1; echo late) & exit 0"]),
+            Duration::from_secs(1)
+        ),
+        Ok("late\n".into()),
+        "output that came through just after the limit was told as unread"
+    );
+}
+
+#[test]
+fn a_command_that_ends_at_its_limit_still_has_its_output_read() {
+    let ended = Instant::now();
+    let deadline = ended + Duration::from_millis(10);
+    assert_eq!(
+        read_by(deadline, ended),
+        ended + READ_AFTER_END,
+        "what it printed has time to come through after its limit"
+    );
+    let deadline = ended + Duration::from_secs(15);
+    assert_eq!(
+        read_by(deadline, ended),
+        deadline,
+        "and the whole limit before it"
     );
 }
 
