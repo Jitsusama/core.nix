@@ -12,7 +12,11 @@
 //! parts that are then in one voice are one. A bracketed note is never
 //! cut, so tidying each part leaves it out as tidying the whole did. A
 //! take split when the call was last told apart is joined again before
-//! it's split, so a rejoin's grouping decides its parts afresh.
+//! it's split, so a rejoin's grouping decides its parts afresh. A piece
+//! the speaker model failed on is missing, and its words go by time to
+//! the run before it: where it's the piece the voice changes in, the next
+//! voice's first words are written under the voice before, since nothing
+//! says where in it the change came.
 //!
 //! Joel's microphone hearing their take is told against the take whole,
 //! as it was heard, never against its parts: an echo of a take that runs
@@ -447,6 +451,25 @@ mod tests {
             said(&lines),
             [("Yes.", Some(0), 0, 6), ("No.", Some(1), 6, 9)],
             "the part after a wordless first one didn't start the line"
+        );
+    }
+
+    #[test]
+    fn a_wordless_first_run_left_one_part_never_gives_the_line_its_voice() {
+        // A breath in another voice opens the take, and Bo says it all.
+        let mut lines = vec![theirs(0, 6, "Not yet.")];
+        let mut pieces = pieces_of(0, 0, &[0, 3]);
+        let mut words = HashMap::from([(0, vec![word("Not", 4), word("yet.", 5)])]);
+        let mut call = Call {
+            lines: &mut lines,
+            pieces: &mut pieces,
+            words: &mut words,
+        };
+        by_voice(&mut call, &[Some(2), Some(1)]);
+        assert_eq!(
+            said(&lines),
+            [("Not yet.", Some(1), 0, 6)],
+            "a line left whole took the voice of a run with no words in it"
         );
     }
 
