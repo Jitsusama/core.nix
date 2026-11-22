@@ -93,6 +93,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     if said.is_none() {
         println!("(changed-checks couldn't say which VM tests moved, so every one named runs)");
     }
+    let files = lock_kept_unsaid(files, lock_moved, said.as_deref());
     let found = rules::first(&areas, &files, said.as_deref(), known.as_deref());
     let moved = said.as_deref().map(rules::moved);
     let owning: Vec<String> = owning
@@ -153,6 +154,22 @@ fn nothing_asked(
     lock_moved: bool,
 ) -> bool {
     owning.is_empty() && found.touched.is_empty() && (named.is_some() || !lock_moved)
+}
+
+/// `files` with the lock put back where it was let through but
+/// changed-checks couldn't say what moved (`said`), since only that says
+/// whether a let-through input reached a machine's initrd; so the lock's
+/// area names every VM test, as it did before any lock was let through.
+fn lock_kept_unsaid(mut files: Vec<String>, lock_moved: bool, said: Option<&str>) -> Vec<String> {
+    if lock_moved && said.is_none() {
+        println!(
+            "({} runs its VM tests first after all: what its inputs moved couldn't be read)",
+            lock::LOCK
+        );
+        files.push(lock::LOCK.to_owned());
+        files.sort();
+    }
+    files
 }
 
 /// `files` as `lock_decided` leaves them, reading each file as
@@ -405,8 +422,11 @@ mod tests {
         in_repo(&["commit", "-qm", "base"]);
         let base = in_repo(&["rev-parse", "HEAD"]);
         let files = vec![lock::LOCK.to_owned()];
+        // The change commits its widened list, so reading HEAD's list, not
+        // the merge base's, would let it through too.
         fs::write(repo.join(lock::LOCK_AFTER), "mycelium\nnixpkgs\n").unwrap();
         fs::write(repo.join(lock::LOCK), lock_at("a", "m")).unwrap();
+        in_repo(&["commit", "-qam", "widen"]);
         assert_eq!(
             lock_left(files.clone(), &base, &repo),
             (files.clone(), false),
@@ -458,6 +478,28 @@ mod tests {
         assert!(
             nothing_asked(&[], &found, None, false),
             "a change touching nothing, with no lock, was asked of changed-checks"
+        );
+    }
+
+    #[test]
+    fn a_let_through_lock_changed_checks_cant_compare_runs_every_vm_test() {
+        // Round 3 of #6039: with no record and changed-checks unable to
+        // compare, the let-through lock's area was gone and needs answered
+        // no, naming no test though it said every one named runs.
+        let known = vec!["vm-boot".to_owned(), "vm-desktop".to_owned()];
+        let files = lock_kept_unsaid(Vec::new(), true, None);
+        let found = rules::first(&rules::areas(), &files, None, Some(&known));
+        assert_eq!(
+            found.tests, known,
+            "a let-through lock nobody could compare ran fewer than every VM test"
+        );
+        assert!(
+            lock_kept_unsaid(Vec::new(), true, Some("")).is_empty(),
+            "a let-through lock changed-checks compared was kept"
+        );
+        assert!(
+            lock_kept_unsaid(Vec::new(), false, None).is_empty(),
+            "a change with no let-through lock gained one"
         );
     }
 
