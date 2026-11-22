@@ -444,18 +444,18 @@ static REACHED: Mutex<Vec<(String, Instant, bool)>> = Mutex::new(Vec::new());
 /// Whether ssh reaches `host`, as it said within [`REACHED_FOR`] or as it
 /// says now, saying each time it's asked, since asking can take seconds.
 fn ssh_reaches_lately(host: &str) -> bool {
-    let mut reached = REACHED
+    let mut said = REACHED
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    reached.retain(|(_, at, _)| at.elapsed() < REACHED_FOR);
-    if let Some((_, _, reaches)) = reached.iter().find(|(name, _, _)| name == host) {
+    said.retain(|(_, at, _)| at.elapsed() < REACHED_FOR);
+    if let Some((_, _, reaches)) = said.iter().find(|(name, _, _)| name == host) {
         return *reaches;
     }
     eprintln!(
         "nix-offload: nothing listens at {host}'s address, so asking ssh whether it reaches it"
     );
     let reaches = ssh_reaches("ssh", host);
-    reached.push((host.to_owned(), Instant::now(), reaches));
+    said.push((host.to_owned(), Instant::now(), reaches));
     reaches
 }
 
@@ -1034,7 +1034,7 @@ mod tests {
 
     #[test]
     fn ssh_asked_of_a_machine_nearby_never_asks_and_gives_up_in_15_s() {
-        let args = reaching_args("methuselah");
+        let args = reaching_args("mac");
         let options: Vec<&str> = args.iter().skip(1).step_by(2).map(String::as_str).collect();
         for option in [
             "BatchMode=yes",
@@ -1045,7 +1045,7 @@ mod tests {
         }
         assert_eq!(
             args[args.len() - 2..],
-            ["methuselah", "true"],
+            ["mac", "true"],
             "it runs true there"
         );
     }
@@ -1055,18 +1055,21 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let ssh = folder.path().join("ssh");
         executable(&ssh, "#!/bin/sh\nexit 0\n");
-        assert!(ssh_reaches(&ssh.display().to_string(), "methuselah"));
+        assert!(
+            ssh_reaches(&ssh.display().to_string(), "mac"),
+            "an ssh that ran true there is nearby"
+        );
         executable(
             &ssh,
             "#!/bin/sh\necho 'Host key verification failed.' >&2\nexit 255\n",
         );
         assert!(
-            !ssh_reaches(&ssh.display().to_string(), "methuselah"),
+            !ssh_reaches(&ssh.display().to_string(), "mac"),
             "a refused key is away"
         );
         let missing = folder.path().join("missing");
         assert!(
-            !ssh_reaches(&missing.display().to_string(), "methuselah"),
+            !ssh_reaches(&missing.display().to_string(), "mac"),
             "no ssh to ask"
         );
     }
