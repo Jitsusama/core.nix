@@ -147,11 +147,24 @@ Provider {
     onShownChanged: {
         if (shown)
             Qt.callLater(provider.askCalendars);
+        else
+            askedShown = false;
     }
     function askCalendars() {
-        if (shown)
-            Calendars.ask(Moment.iso(new Date()), Location.here);
+        if (!shown)
+            return;
+        askedShown = true;
+        Calendars.ask(Moment.iso(new Date()), Location.here);
     }
+    // Whether this showing of the date has asked yet. Its rows are made as
+    // it's stepped into, before that ask, so a refusal standing then is an
+    // earlier one's, which the ask on its way clears: until it has asked,
+    // Calendars reads as asking rather than refused, whose Return closes.
+    // A Return on Date's first frame after a refusal closed the launcher,
+    // on a builder slow enough to answer it before the ask (039ab50d0).
+    // Asking clears a refusal at once, and the reader refuses only later,
+    // so one heard once it has asked is this showing's own.
+    property bool askedShown: false
 
     Connections {
         target: Calendars
@@ -270,14 +283,14 @@ Provider {
     // top, no step holds Date, so the place stays "..." until he steps back
     // to the answer, which shows them, as any part stepped into from an
     // answer at the top is made again only as he steps back. Only a reader that refused
-    // gives a row whose Return closes, as it has nothing to wait for, and a
-    // step held on it then leaves by itself. A reader that takes the
+    // this showing's ask (askedShown) gives a row whose Return closes, as it
+    // has nothing to wait for, and a step held on it then leaves by itself. A reader that takes the
     // question and never answers leaves the place saying "...", as the row
     // did before, since Calendars.qml gives a question no deadline.
     function calendarsRow(at, now) {
         const reading = Calendars.reading;
         const said = calendarsSaid;
-        if (reading?.day !== Moment.iso(at) && Calendars.refused)
+        if (reading?.day !== Moment.iso(at) && Calendars.refused && askedShown)
             return copyRow({ key: "today:calendars", name: Words.name("today:calendars"),
                 side: said.silent, copiesNothing: true, note: "", glyph: Theme.glyph.date });
         if (reading?.day !== Moment.iso(at))

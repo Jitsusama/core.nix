@@ -256,6 +256,7 @@ ShellRoot {
     function asAsked() {
         const stoodIn = Calendars.reading;
         const wasRefused = Calendars.refused;
+        const hadAsked = today.askedShown;
         const date = () => today.answer("date").rows;
         const calendarsOf = rows => rows
             .find(row => row.name === Words.name("today:calendars"));
@@ -284,6 +285,12 @@ ShellRoot {
                 answered.steps[1].rows.map(each => each.name).join(", "));
             Calendars.reading = null;
             Calendars.refused = true;
+            today.askedShown = false;
+            const earlier = calendarsOf(date());
+            expect("a refusal from before this showing asked reads as asking, stepping in",
+                earlier?.side === "\u2026" && earlier?.verb === "more",
+                `${earlier?.side} ${earlier?.verb}`);
+            today.askedShown = true;
             const refusedRows = date();
             const refused = calendarsOf(refusedRows);
             const silent = (Words.of("today:calendars").said ?? {}).silent;
@@ -294,6 +301,7 @@ ShellRoot {
             expect("held as it's refused, the step leaves by itself",
                 !left.all && left.leave === 1, JSON.stringify(left.leave));
         } finally {
+            today.askedShown = hadAsked;
             Calendars.refused = wasRefused;
             Calendars.reading = stoodIn;
         }
