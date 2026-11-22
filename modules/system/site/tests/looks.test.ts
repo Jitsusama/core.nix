@@ -15,12 +15,20 @@ const deeper = { command: "net", site: "network/", launcher: "Network" };
 const ACT_AS_ROW = /<a class="launch"[^>]*data-row/u;
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, looks: undefined, address: undefined, ties: tiesOf({}) };
+  const [kind, ties] = ["machine", tiesOf({})];
+  return { kind, name, health, says: "", side, looks: undefined, address: undefined, ties };
 }
 
 function part(name: string, health: Part["health"], side: string[], says = ""): Part {
   const site = { ...deeper, site: `${name}/` };
-  const read = { holds: undefined, things: [], named: [], untold: 0, deeper: site };
+  const read = {
+    holds: undefined,
+    things: [],
+    named: [],
+    untold: 0,
+    machinesUntold: 0,
+    deeper: site,
+  };
   return { part: name, health, says, side, ...read };
 }
 

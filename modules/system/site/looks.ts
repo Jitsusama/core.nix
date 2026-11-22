@@ -17,6 +17,7 @@ import {
   type System,
   type Thing,
   type ThingLook,
+  thingsOf,
 } from "./model.ts";
 
 /** The most looks listed, so a bad night keeps the list a glance. */
@@ -42,12 +43,15 @@ const KEPT = /^as read at /u;
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {
   readonly health: Health;
-  /** The machine or part it is in, as the page names it. */
+  /** The machine, builder or part it is in, as the page names it. */
   readonly whose: string;
-  /** Whether `whose` is a machine's name, which no translator may change. */
+  /** Whether `whose` is a thing's name, which no translator may change. */
   readonly machine: boolean;
   readonly words: string;
-  /** Where it is seen whole: a machine's section here, or a part's own site. */
+  /**
+   * Where it is seen whole: a machine's section here, a builder on the map,
+   * or a part's own site.
+   */
   readonly href: string;
   /** The row's key, the same across redraws while the look stands. */
   readonly row: string;
@@ -131,17 +135,22 @@ function keptOf(system: System): string {
 }
 
 /**
- * Each machine's side, a look a word, leading to its section or the map;
- * one drawn whole is told by its place among those in reach, `drawn` of
+ * Each thing's side, a look a word, leading to its section or the map. A
+ * machine drawn whole is told by its place among those in reach, `drawn` of
  * them drawn. Those out of reach are one look between them, in the place
  * after those in reach, so many gone at once read as one thing to know and
  * leave room for the few that need Joel; anything else their sides say
- * stays a look of its own.
+ * stays a look of its own. A builder, which has no section here, leads to
+ * itself on the map, after the machines in reach.
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
-  const reached = part.things.filter((thing) => thing.ties.reached);
-  const away = part.things.filter((thing) => !thing.ties.reached);
+  const machines = thingsOf(part, "machine");
+  const reached = machines.filter((thing) => thing.ties.reached);
+  const away = machines.filter((thing) => !thing.ties.reached);
   const hrefOf = (thing: Thing): string => {
+    if (thing.kind !== "machine") {
+      return `../mycelium/#${thing.kind}=${encodeURIComponent(thing.name)}`;
+    }
     const at = reached.indexOf(thing);
     if (at < 0) {
       return "#away";
@@ -161,7 +170,7 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
         machine: true,
         words: capital(words),
         href: hrefOf(thing),
-        row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
+        row: `look:${thing.kind}:${encodeURIComponent(thing.name)}:${key}`,
         matters,
         act: thing.ties.acts.link,
       }));
@@ -169,6 +178,7 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
   // Those in reach first, so within a health the few that need Joel lead.
   return [
     ...reached.flatMap(own),
+    ...part.things.filter((thing) => thing.kind !== "machine").flatMap(own),
     ...(away.length === 0 ? [] : [awayLook(away)]),
     ...away.flatMap(own),
   ];

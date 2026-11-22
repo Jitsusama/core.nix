@@ -4,15 +4,20 @@
 // case is proven in node, and a reading the page couldn't make sense of is
 // said rather than drawn as if it were whole.
 
-import type { Fields, Held } from "../../local-sites/kit/records.ts";
+import type { Fields, Held, Record } from "../../local-sites/kit/records.ts";
 import { isObject, object, text, texts } from "../../local-sites/kit/records.ts";
 import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
 type Health = "good" | "watch" | "bad" | "unread";
 
-/** One thing in a part: a machine, for now. */
+/**
+ * One thing in a part: a machine, or a builder the machines send builds to,
+ * which is no machine of the realm and has no ties.
+ */
 interface Thing {
+  /** Its kind, as its key opens: machine or builder. */
+  readonly kind: string;
   readonly name: string;
   readonly health: Health;
   readonly says: string;
@@ -57,6 +62,8 @@ interface Part {
   readonly named: readonly string[];
   /** How many things it names whose records haven't arrived yet. */
   readonly untold: number;
+  /** How many of those are machines, as a headline counts them. */
+  readonly machinesUntold: number;
   readonly deeper: Deeper;
 }
 
@@ -165,7 +172,7 @@ function looksOf(record: Fields): readonly ThingLook[] | undefined {
  * out unsaid: its part and its record are two watches, so a new machine can
  * reach its part one push before its own record arrives.
  */
-function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
+function thingOf(held: Holds, key: string, unread: string[]): Thing | undefined {
   const record = held.get(key);
   if (record === undefined) {
     return undefined;
@@ -176,6 +183,7 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     return undefined;
   }
   return {
+    kind: kindOf(key),
     name,
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
@@ -186,8 +194,33 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
   };
 }
 
+/** Where a thing's record is found by its key: one watch's, or several kinds'. */
+interface Holds {
+  get(key: string): Record | undefined;
+}
+
+/**
+ * The things of the two watches as one, each key found in its kind's: a
+ * machine's record and a builder's come on watches of their own.
+ */
+function thingsHeld(machines: Held, builders: Held): Holds {
+  return {
+    get: (key) => (kindOf(key) === "builder" ? builders : machines).get(key),
+  };
+}
+
+/** The kind a thing's key names, as `machine:kestrel` opens. */
+function kindOf(key: string): string {
+  return key.slice(0, Math.max(0, key.indexOf(":")));
+}
+
+/** The things of the kind `kind` in `part`, in its order. */
+function thingsOf(part: Part | undefined, kind: string): readonly Thing[] {
+  return part?.things.filter((thing) => thing.kind === kind) ?? [];
+}
+
 /** The part `name`, read from its record and its things'. */
-function partOf(parts: Held, things: Held, name: string, unread: string[]): Part | undefined {
+function partOf(parts: Held, things: Holds, name: string, unread: string[]): Part | undefined {
   const record = parts.get(`part:${name}`);
   if (record === undefined) {
     unread.push(`part:${name} wasn't told`);
@@ -199,6 +232,7 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     return typeof value === "string" ? value : "";
   };
   const keys = texts(record, "things") ?? [];
+  const untold = keys.filter((key) => things.get(key) === undefined);
   return {
     part: name,
     health: healthOf(text(record, "health")),
@@ -207,7 +241,8 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     holds: text(record, "holds"),
     things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),
     named: keys.map((key) => key.slice(key.indexOf(":") + 1)),
-    untold: keys.filter((key) => things.get(key) === undefined).length,
+    untold: untold.length,
+    machinesUntold: untold.filter((key) => kindOf(key) === "machine").length,
     deeper: {
       command: copyable(says("command")) ? says("command") : "",
       site: says("site"),
@@ -216,8 +251,11 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
   };
 }
 
-/** The system the three watches hold, or none until the summary is told. */
-function systemOf(summaries: Held, parts: Held, things: Held): System | undefined {
+/**
+ * The system the watches hold, or none until the summary is told: the
+ * summary's, the parts' and the things' (`thingsHeld`).
+ */
+function systemOf(summaries: Held, parts: Held, things: Holds): System | undefined {
   const summary = summaries.get("summary");
   if (summary === undefined) {
     return undefined;
@@ -256,4 +294,4 @@ function allTold(
 }
 
 export type { Deeper, Health, Part, System, Thing, ThingLook };
-export { allTold, capital, named, numbered, systemOf, WORDS };
+export { allTold, capital, named, numbered, systemOf, thingsHeld, thingsOf, WORDS };

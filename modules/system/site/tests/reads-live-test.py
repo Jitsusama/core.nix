@@ -57,7 +57,8 @@ def system_daemon(tmp_path: Path) -> Iterator[StandIn]:
 
 @pytest.fixture
 def system_served(tmp_path: Path, system_daemon: StandIn) -> Iterator[Served]:
-    whole = {"socket": str(system_daemon.path), "kinds": {"summary": {}, "part": {}, "machine": {}}}
+    kinds = {"summary": {}, "part": {}, "machine": {}, "builder": {}}
+    whole = {"socket": str(system_daemon.path), "kinds": kinds}
     with serving(tmp_path, {"system": os.environ["SYSTEM_SITE"]}, {"system": whole}) as served:
         yield served
 
@@ -681,6 +682,30 @@ def test_a_long_name_leaves_its_words_room_at_every_size(
         room = system_page.evaluate(WORDS_ROOM)
         assert room["past"] <= 0, f"at {width} px a look's words ran {room['past']} px past"
         assert room["least"] >= WORDS_KEEP, f"at {width} px a look's words kept {room['least']}"
+
+
+def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    card = system_page.locator('#parts [data-part="part-builders"]')
+    expect(card, "builders were drawn while the node named none").to_have_count(0)
+    gull = {
+        "key": "builder:gull",
+        "kind": "builder",
+        "name": "gull",
+        "health": "watch",
+        "says": "isn't answering (connection refused)",
+        "side": ["not answering"],
+        "ties": None,
+    }
+    system_daemon.tell("builder", changed=[gull])
+    named = ["machine:kestrel", "machine:osprey", "builder:gull"]
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": named}])
+    expect(card, "gull's record never reached the page").to_contain_text(
+        "gull (watch) isn't answering", timeout=PACE_MS
+    )
+    look = system_page.locator("#looks a[data-row^='look:builder:gull:']")
+    expect(look, "gull's look wasn't listed").to_have_attribute("href", "../mycelium/#builder=gull")
+    counted(system_page)
 
 
 def test_a_machine_that_goes_leaves_its_part(system_page: Page, system_daemon: StandIn) -> None:

@@ -97,7 +97,7 @@ fn one(words: &[String], clock: Duration) -> Answer {
     }
     let answer = gathered(&reading, until);
     match answer.end {
-        Some(Ok(())) => first(&said, &answer.bytes),
+        Some(Ok(())) => whole(&said, &answer.bytes),
         Some(Err(error)) => Err(format!("{said}'s answer couldn't be read: {error}")),
         // It ended well, but something it left holds its answer open, so
         // what it wrote may not be the whole of it.
@@ -218,20 +218,33 @@ fn reason(line: &str) -> String {
     }
 }
 
-/// The document an owner's answer opens with. An owner may say more on
-/// the lines after it, as `mycelium machines` says the builders it sends
-/// to, and none of that is what its part is judged by.
-fn first(said: &str, bytes: &[u8]) -> Answer {
-    serde_json::Deserializer::from_slice(bytes)
-        .into_iter::<Value>()
+/// The document an owner's answer opens with, and what the documents after
+/// it add to its `Ok`: `mycelium machines` says its machines, then the
+/// builders it sends to on a line of their own. A later document adds only
+/// what the first doesn't say, so it can't overwrite the answer, and one
+/// that isn't an `Ok` or isn't JSON adds nothing, nor does what follows it.
+fn whole(said: &str, bytes: &[u8]) -> Answer {
+    let mut documents = serde_json::Deserializer::from_slice(bytes).into_iter::<Value>();
+    let mut answer = documents
         .next()
         .and_then(Result::ok)
-        .ok_or_else(|| format!("{said} said something not JSON"))
+        .ok_or_else(|| format!("{said} said something not JSON"))?;
+    if let Some(ok) = answer.get_mut("Ok").and_then(Value::as_object_mut) {
+        for later in documents.map_while(Result::ok) {
+            let Some(Value::Object(adds)) = later.get("Ok").cloned() else {
+                continue;
+            };
+            for (key, value) in adds {
+                ok.entry(key).or_insert(value);
+            }
+        }
+    }
+    Ok(answer)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{COMPLAINT_KEPT, failed, first, gathered, one, reader};
+    use super::{COMPLAINT_KEPT, failed, gathered, one, reader, whole};
     use serde_json::json;
     use std::time::{Duration, Instant};
 
@@ -417,19 +430,37 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_followed_by_another_line_is_read_as_its_first() {
+    fn an_answer_takes_in_what_its_later_lines_add() {
         let said = b"{\"Ok\":{\"Machines\":[]}}\n{\"Ok\":{\"Builders\":[]}}\n";
         assert_eq!(
-            first("mycelium machines", said),
-            Ok(json!({ "Ok": { "Machines": [] } })),
+            whole("mycelium machines", said),
+            Ok(json!({ "Ok": { "Machines": [], "Builders": [] } })),
             "mycelium machines writes its builders on a line after its machines"
+        );
+        let over = b"{\"Ok\":{\"Machines\":[1]}}\n{\"Ok\":{\"Machines\":[2]}}";
+        assert_eq!(
+            whole("mycelium machines", over),
+            Ok(json!({ "Ok": { "Machines": [1] } })),
+            "a later line never overwrites what the first said"
+        );
+        let failed = b"{\"Ok\":{\"Machines\":[]}}\n{\"Err\":{\"Builders\":[9]}}\nnot json\n\
+            {\"Ok\":{\"B\":1}}";
+        assert_eq!(
+            whole("mycelium machines", failed),
+            Ok(json!({ "Ok": { "Machines": [] } })),
+            "a later Err adds nothing, and nothing past words that aren't JSON is read"
+        );
+        assert_eq!(
+            whole("net --json", b"{\"Err\":\"down\"}\n{\"Ok\":{\"B\":1}}"),
+            Ok(json!({ "Err": "down" })),
+            "an answer that isn't an Ok takes in nothing"
         );
     }
 
     #[test]
     fn an_answer_that_opens_with_no_document_is_not_json() {
         assert_eq!(
-            first("net --json", b"warning: stale\n{}"),
+            whole("net --json", b"warning: stale\n{}"),
             Err("net --json said something not JSON".to_owned()),
             "words before the document aren't read past"
         );

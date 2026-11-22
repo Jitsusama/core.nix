@@ -33,6 +33,7 @@ import {
   type Part,
   type System,
   type Thing,
+  thingsOf,
   WORDS,
 } from "./model.ts";
 
@@ -123,7 +124,18 @@ function homeHere(thing: Thing): string {
 
 /** The machines drawn whole, worst first as the machines part lists them. */
 function machinesOf(system: System): readonly Thing[] {
-  return system.parts.find((part) => part.part === "machines")?.things ?? [];
+  return thingsOf(
+    system.parts.find((part) => part.part === "machines"),
+    "machine",
+  );
+}
+
+/** The builders the machines send builds to, worst first as the machines part lists them. */
+function buildersOf(system: System): readonly Thing[] {
+  return thingsOf(
+    system.parts.find((part) => part.part === "machines"),
+    "builder",
+  );
 }
 
 /** The machines in reach, worst first, which the bridge and the sections draw whole. */
@@ -347,11 +359,40 @@ function bareOf(system: System): string {
     return "";
   }
   // Its machines' records still to come, its own words would say them read.
-  if (part.untold > 0) {
-    const awaited = `${capital(numbered(part.untold))} ${part.untold === 1 ? "machine" : "machines"}`;
+  if (part.machinesUntold > 0) {
+    const untold = part.machinesUntold;
+    const awaited = `${capital(numbered(untold))} ${untold === 1 ? "machine" : "machines"}`;
     return `<p class="bare health unread">${mark("unread")}${escaped(`${awaited} named, none read yet.`)}</p>`;
   }
   return `<p class="bare health ${part.health}">${mark(part.health)}${escaped(capital(part.says))}</p>`;
+}
+
+/** One builder's line: its name, then how it stands. */
+function builderLine(builder: Thing): string {
+  const name = `<span translate="no">${escaped(builder.name)}</span>`;
+  return `${name}${spoken(builder.health)} ${escaped(builder.says)}`;
+}
+
+/**
+ * The builders the machines send builds to, said across them as a part is:
+ * the worst one's line, or how many there are when none is worth a look,
+ * then the rest's, and the way to them on the map. None is drawn where the
+ * node names no builders, or the machines weren't read.
+ */
+function buildersAcross(system: System): string {
+  const builders = buildersOf(system);
+  const [worst] = builders;
+  if (worst === undefined) {
+    return "";
+  }
+  const health = worst.health;
+  const noun = builders.length === 1 ? "builder" : "builders";
+  const count = `${capital(numbered(builders.length))} ${noun}`;
+  const said = health === "good" ? escaped(count) : builderLine(worst);
+  const rest = health === "good" ? builders : builders.slice(1);
+  const aside = rest.map(builderLine).join("; ");
+  const hash = builders.length === 1 ? `#builder=${encodeURIComponent(worst.name)}` : "";
+  return `<section class="tie part ${health}" data-part="part-builders"><h3>${mark(health)}Builders${spoken(health)}</h3><p class="said">${said}</p><p class="aside">${aside}</p><div class="onward"><a class="row deeper" data-row="builders" data-health="${health}" href="../mycelium/${escaped(hash)}">See ${builders.length === 1 ? "it" : "them"} on the map</a></div></section>`;
 }
 
 /**
@@ -369,8 +410,7 @@ function partsOf(system: System, when: (at: string) => string): string {
   return `${bareOf(system)}${machines.join("\n")}${moreOf(system)}${awaySection(system, when)}
 <section class="across" id="across" data-part="across" aria-labelledby="name-across">
   <h2 class="name" id="name-across">Across <em>them</em></h2>
-  <div class="ties">${across}</div>
-  <p class="later">Not shown yet: the builders your machines lend work to.</p>
+  <div class="ties">${across}${buildersAcross(system)}</div>
 </section>`;
 }
 

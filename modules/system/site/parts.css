@@ -426,13 +426,6 @@ span.mark {
   font-style: italic;
 }
 
-.later {
-  margin: var(--groups) 0 0;
-  color: var(--muted);
-  font: var(--note-weight) var(--step-small) / 1.5 var(--serif);
-  font-style: italic;
-}
-
 /* ---- The foot: each mark's word, once. ---- */
 
 .note {
