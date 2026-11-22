@@ -3895,10 +3895,8 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             lay("NUDGER", "Nudging Quest", ask)
             shell.launcher_until(partial(moved, was))
             way = time.monotonic() - laid
-            # No lead is laid after Return, so AHEAD goes no further back than the way: below
-            # it, steps would move AHEAD but not the lead, spending turns climbing back.
-            ahead = max(ahead, -way)
-            lead = way + ahead
+            # No lead is laid after Return, so one AHEAD would put after it is laid as none.
+            lead = max(0.0, way + ahead)
             key = f"turn {turn}, {lead:.3f} s before ({way:.3f} s way, {ahead:+.3f} s ahead)"
             shell.down_to("For You")
             step = {
@@ -3931,9 +3929,12 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             shell.launcher_until(lambda shown: shown["held"] == ["now"])
             if len(beside) >= ENOUGH_BESIDE:
                 break
-            # Only a turn that moves a row is heard, every other one, so only those steer.
+            # Only a turn that moves a row is heard, every other one, so only those steer. Each
+            # steers from no further back than its own way: below it, steps would move AHEAD
+            # but not the lead, spending turns climbing back. Floored on a turn that doesn't
+            # steer, a way shorter than most would put AHEAD later with nothing to bring it back.
             if turn % 2 == 0:
-                ahead, back = steered(ahead, back, min(after, default=None))
+                ahead, back = steered(max(ahead, -way), back, min(after, default=None))
         print(f"turns heard within {KEYED_WITHIN} ms of Return, by their leads: {beside}")
         assert beside, (
             f"no turn was heard within {KEYED_WITHIN} ms of Return (one heard before it, or a "

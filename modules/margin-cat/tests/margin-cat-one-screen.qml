@@ -295,12 +295,14 @@ QtObject {
             Paths.frame(crack, crack.ends).beat, "sits");
         // Told to go up while still under the screen on its way up from the
         // workspace below, it has no ground to leave: it comes up as the
-        // walk brings it, where before it threw in Routes' route().
+        // walk brings it, leaping up from under the screen (Paths' comesUp),
+        // where before it threw in Routes' route().
         const risen = Stacked.moves({ x: 400, y: 850 }, { x: 900, y: 7 }, halves);
         const seated = Paths.frame(risen, risen.ends);
+        const leapsUp = risen.beats.some(beat => beat.name === "leaps" && beat.from.y > 800
+            && beat.to.y < 800);
         expect("up from under the screen, the walk brings it up to its seat",
-            [risen.stacked === undefined, Paths.frame(risen, 0).y > 800, seated.x, seated.y,
-                seated.beat],
+            [risen.stacked === undefined, leapsUp, seated.x, seated.y, seated.beat],
             [true, true, 900, 7, "sits"]);
 
         const narrow = [{ left: 100, top: 16, width: 200, height: 768, column: 0, id: 9 }];
