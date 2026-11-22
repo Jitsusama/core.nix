@@ -309,15 +309,15 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
 
 #[test]
 fn a_takes_pieces_are_timed_from_the_call_and_a_failing_one_left_out() {
-    // A 10 s take 40 s in: pieces of 3, 3 and 4 s, the second failing.
-    let samples = vec![0.0; 10 * SECOND];
+    // A 13 s take 40 s in: pieces of 3, 3, 3 and 4 s, two failing apart.
+    let samples = vec![0.0; 13 * SECOND];
     let mut tried = 0;
     let (embedded, failed) = embed_take(40 * SECOND, &samples, |_| {
         tried += 1;
-        if tried == 2 {
-            Err("refused".to_owned())
-        } else {
-            Ok(Some(ADA.to_vec()))
+        match tried {
+            2 => Err("refused".to_owned()),
+            3 => Err("busy".to_owned()),
+            _ => Ok(Some(ADA.to_vec())),
         }
     });
     let timed: Vec<(usize, usize)> = embedded
@@ -326,13 +326,13 @@ fn a_takes_pieces_are_timed_from_the_call_and_a_failing_one_left_out() {
         .collect();
     assert_eq!(
         timed,
-        [(40, 3), (46, 4)],
-        "the pieces kept weren't timed from the call's start, or the failing one wasn't left out"
+        [(40, 3), (49, 4)],
+        "the pieces kept weren't timed from the call's start, or the failing ones weren't left out"
     );
     assert_eq!(
         failed.as_deref(),
-        Some("1 of 3 pieces' voice not heard: refused"),
-        "the take's failures weren't told in one line"
+        Some("2 of 4 pieces' voice not heard: refused"),
+        "the take's failures weren't told in one line with the first one's reason"
     );
     let (_, none) = embed_take(40 * SECOND, &samples, |_| Ok(None));
     assert_eq!(

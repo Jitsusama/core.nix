@@ -357,7 +357,8 @@ fn embed_theirs(
 /// call, as `embed` hears it, with the sample of the call it starts at
 /// and how many it holds. A piece `embed` fails on is left out, and the
 /// failures are told in one line a take, so a model failing on every
-/// piece doesn't bury the journal.
+/// piece doesn't bury the journal. The line gives the first failure's
+/// reason, since it's most often the cause and later ones repeat it.
 fn embed_take(
     start: usize,
     samples: &[f32],
@@ -371,7 +372,10 @@ fn embed_take(
         match embed(piece) {
             Ok(Some(embedding)) => embedded.push((embedding, start + from, piece.len())),
             Ok(None) => {}
-            Err(why) => failed = (failed.0 + 1, Some(why)),
+            Err(why) => {
+                failed.0 += 1;
+                failed.1.get_or_insert(why);
+            }
         }
     }
     let of = cut.len();
@@ -560,9 +564,13 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
         pieces: &mut writing.pieces,
         words: &mut writing.words,
     };
-    let split::Splits { of, split, into } = split::by_voice(&mut call, &voiced);
+    let split::Splits {
+        of,
+        split: cut,
+        into,
+    } = split::by_voice(&mut call, &voiced);
     if of > 0 {
-        eprintln!("call-transcripts: {split} of {of} takes of theirs split by voice, into {into}");
+        eprintln!("call-transcripts: {cut} of {of} takes of theirs split by voice, into {into}");
     }
     true
 }
