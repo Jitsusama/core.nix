@@ -110,9 +110,10 @@
     "at": 1795384050,
     "commit": "e9a62305b022e4f5beb11f49f70ba293926c50d2",
     "due": "2026-11-24",
+    "due_why": "Its owner, Y2YBTS, who owns For You and Now, by 2026-11-24 23:00 UTC makes the case lay its turn beside Return by holding the turn's line until the launcher has heard Return's key, rather than steering a lead in time until one lands within 50 ms. It failed 6 of 73 net runs from 20 to 22 Nov, on main at ed3c843822c2, 0e420d94fa78, f76d551d20c1, 82ec1c141cda, 1e68b60f40fe and e9a62305b022, and on the train at 72509e55ecec, each time saying no turn was heard within 50 ms of Return: on a loaded builder the node-to-Now way varies by more than the 50 ms it aims for, so the case never reached the race it is about, and nothing was drawn as Return's act in any of them. It comes off once twenty net runs in a row after the fix exit 0. While it stands, a session's turn redrawn as Return's act on For You goes uncaught here; tests/now-moment.qml still proves Now's own comparison in Qt's engine on every run",
     "owner_pr": 6086,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at e9a62305b022",
+    "owner_session": "Y2YBTS",
+    "reason": "failed on main at ed3c843822c2, 0e420d94fa78, f76d551d20c1, 82ec1c141cda, 1e68b60f40fe and e9a62305b022, passing between; never reaching its race under load, not a change's fault",
     "subtests": [
       "test_a_session_turning_beside_return_into_for_you_draws_nothing"
     ],
@@ -128,6 +129,20 @@
     "reason": "failed, then passed, at a6901f968d03",
     "subtests": [
       "test_a_walk_holds_where_it_got_to_while_the_launcher_is_up"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1795386900,
+    "commit": "1e68b60f40fe90967c6cb28effeae33696a30809",
+    "due": "2026-11-24",
+    "due_why": "Its owner, XY9H5C, who owns the margin cat, by 2026-11-24 23:00 UTC counts the cat's frames against those its moves asked for rather than within a wall-clock window, the root fix the entry for its sibling test_a_walk_holds_where_it_got_to_while_the_launcher_is_up waits on too. test_a_row_closed_under_it_has_it_fall_at_once failed on main at 0e420d94fa78 twice and f76d551d20c1, and test_a_second_move_holds_on_from_where_the_first_got_to at 0e420d94fa78 and 1e68b60f40fe, passing between, in 6 failed runs of 66 from 20 to 22 Nov, each beside other frame-timed cases failing in the same run, which points at the builder's load. It comes off once twenty net runs in a row after the fix exit 0. While it stands, nothing here catches the cat hanging where a closed row was, or a second move starting from the wrong place",
+    "owner_pr": 6132,
+    "owner_session": "XY9H5C",
+    "reason": "failed on main at 0e420d94fa78, f76d551d20c1 and 1e68b60f40fe, passing between, under builder load",
+    "subtests": [
+      "test_a_row_closed_under_it_has_it_fall_at_once",
+      "test_a_second_move_holds_on_from_where_the_first_got_to"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
   }
