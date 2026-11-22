@@ -370,19 +370,19 @@ fn judge(
         unit: files.lines().any(|file| file == HOST_UNIT),
         program: false,
     };
-    let touched = !reaches.patches.is_empty() || reaches.unit;
-    let built = files.lines().any(|file| file == HOSTED_PI);
-    let lacking = (touched || built).then(|| hosts(sha, reaches)).flatten();
+    let lacking = (!reaches.patches.is_empty() || reaches.unit)
+        .then(|| hosts(sha, reaches))
+        .flatten();
     // A fix to how core builds its runtime can't be seen in a runtime built
     // elsewhere, which copies only its patches, so it isn't told fixed;
     // `changed` leaves the build out where it only listed the patches. What
     // the hosts lack beside it, or an hour can't read of them, speaks
-    // first, as a reason a passing failure gives must never last; with the
-    // build alone, only a host it may have failed does, as nothing else.
-    if built {
-        return lacking
-            .filter(|why| touched || !why.starts_with(UNSEEN))
-            .or(Some(LOADS_UNSEEN));
+    // first, as a reason a passing failure gives must never last. The
+    // build alone never asks them: it never reads as run, so any host
+    // failing in its four weeks, for whatever cause, would ask its owner,
+    // and a blind hour would close and refile that ask.
+    if files.lines().any(|file| file == HOSTED_PI) {
+        return lacking.or(Some(LOADS_UNSEEN));
     }
     lacking
 }

@@ -192,26 +192,21 @@ fn a_change_reaching_the_hosts_waits_on_them() {
 }
 
 #[test]
-fn a_fix_to_cores_runtime_build_alone_waits_only_on_a_host_it_failed() {
+fn a_fix_to_cores_runtime_build_alone_is_unseen_whatever_its_hosts_say() {
     let all = |_: &str, _: &str| Some(true);
     let at = Some("a1b2c3d");
     // A fix to how core builds its runtime, with no patch, can't be seen in
     // a runtime built elsewhere.
     let build =
         |_: &str| Some("modules/pi/hosted-pi.nix\nmodules/pi/host-patches/README.md".into());
-    // Only a host the build may have failed is its owner's; an hour that
-    // can't list the hosts leaves the build unseen, as every hour would.
+    // It never reads as run, so a host failing in its four weeks, for
+    // whatever cause, would ask its owner, and a blind hour would close and
+    // refile that ask: the hosts aren't asked of it.
     let unseen = "cadence can't tell what a pi host loads";
-    let failed = "a pi host failed and waits on a reset";
-    for (seen, hosts, why) in [
-        (None, "lacking nothing", unseen),
-        (Some("cadence can't list the pi hosts"), "unlisted", unseen),
-        (
-            Some("cadence can't list the pi conversations"),
-            "talking unlisted",
-            unseen,
-        ),
-        (Some(failed), "failed", failed),
+    for (seen, hosts) in [
+        (None, "lacking nothing"),
+        (Some("cadence can't list the pi hosts"), "unlisted"),
+        (Some("a pi host failed and waits on a reset"), "failed"),
     ] {
         let judged = judge(
             "core",
@@ -223,7 +218,7 @@ fn a_fix_to_cores_runtime_build_alone_waits_only_on_a_host_it_failed() {
         );
         assert_eq!(
             judged,
-            Some(why),
+            Some(unseen),
             "a fix to core's runtime build alone, its hosts {hosts}, was judged wrongly"
         );
     }
