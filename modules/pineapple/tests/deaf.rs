@@ -222,6 +222,20 @@ fn the_row_says_what_isnt_heard_and_how_to_fix_it() {
         ),
         "no sign-in mends it, so only Joel's word marks it done"
     );
+    for whole in [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable] {
+        let item = &waits(whole, AT, AT)["items"][0];
+        let why = item["why"].as_str().unwrap_or_default();
+        assert!(
+            why.ends_with("so a stop said in Slack isn't heard; one said elsewhere still is"),
+            "{whole:?} says what is still heard: {why}"
+        );
+        assert_eq!(item["title"], "The Safe Word Can't Hear Slack");
+    }
+    let half = &waits(Deafness::Unread(Search::Tag), AT, AT)["items"][0];
+    assert_eq!(
+        half["title"], "The Safe Word Can't Hear Part of Slack",
+        "one search deaf isn't said as all of Slack"
+    );
 }
 
 #[test]
@@ -275,10 +289,48 @@ fn one_search_that_cant_be_read_is_told_by_name_and_as_it_changes() {
     assert_eq!(deaf.heard(tag, AT + 60_000), Change::Keep, "told once");
     assert_eq!(
         deaf.heard(both, AT + 90_000),
-        Change::Tell(waits(Deafness::Unreadable, AT + 30_000, AT + 90_000)),
-        "the other going deaf too is told, as the same time of not hearing"
+        Change::Tell(waits(Deafness::Unreadable, AT + 90_000, AT + 90_000)),
+        "the other going deaf too is a row of its own, so one marked done can't hide it"
     );
-    assert_eq!(deaf.heard(Round::Heard, AT + 120_000), Change::Untell);
+    assert_eq!(
+        deaf.heard(tag, AT + 120_000),
+        Change::Tell(waits(
+            Deafness::Unread(Search::Tag),
+            AT + 90_000,
+            AT + 120_000
+        )),
+        "one search coming back narrows the row, as the same time of not hearing"
+    );
+    let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    assert_eq!(
+        deaf.heard(phrase, AT + 150_000),
+        Change::Tell(waits(
+            Deafness::Unread(Search::Phrase),
+            AT + 150_000,
+            AT + 150_000
+        )),
+        "the other search going deaf in its place is a row of its own"
+    );
+    assert_eq!(deaf.heard(Round::Heard, AT + 180_000), Change::Untell);
+}
+
+#[test]
+fn a_row_after_one_search_deaf_is_never_the_one_marked_done() {
+    for after in [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable] {
+        let mut deaf = Deaf::new();
+        let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+        deaf.heard(tag, AT);
+        let Change::Tell(half) = deaf.heard(tag, AT + 30_000) else {
+            panic!("two half rounds are told");
+        };
+        let Change::Tell(whole) = deaf.heard(Round::Deaf(after), AT + 60_000) else {
+            panic!("{after:?} after a half round is told");
+        };
+        assert_ne!(
+            half["items"][0]["id"], whole["items"][0]["id"],
+            "{after:?} is named apart from the half row Joel may have marked done"
+        );
+    }
 }
 
 #[test]

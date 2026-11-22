@@ -11,6 +11,7 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -24,6 +25,10 @@ use super::{
 
 /// Where the reader over a gateway keeps all it writes, under its home.
 const OWN: &str = "state/pineapple-gateway";
+
+/// How an answer from the fake gateway's tool starts when the tool
+/// failed, as the gateway says one Slack refused.
+const FAILS: &str = "failed: ";
 
 /// What the fake gateway was asked: each tool, with its arguments.
 type Called = Arc<Mutex<Vec<(String, Value)>>>;
@@ -87,7 +92,13 @@ fn serving(answer: fn(&str, &Value, u64) -> String) -> (String, Called) {
                     kept.lock()
                         .expect("what was called")
                         .push((tool.to_owned(), asked));
-                    Some(json!({ "content": [{ "type": "text", "text": text }] }))
+                    let (failed, text) = text
+                        .strip_prefix(FAILS)
+                        .map_or((false, text.as_str()), |why| (true, why));
+                    Some(json!({
+                        "content": [{ "type": "text", "text": text }],
+                        "isError": failed,
+                    }))
                 }
                 _ => None,
             };
@@ -385,19 +396,33 @@ fn poisoned() -> String {
     .to_string()
 }
 
-/// What a reader over a fake gateway came to once it told its row and
-/// judged `judging` messages: the row's why, the decisions in its folder,
-/// when its judged.json says Slack was last read whole, the searches it
-/// asked, and whether it wrote the live reader's row.
+/// When Slack was last read whole, as a case keeps it before the reader
+/// starts, in milliseconds.
+const READ_WHOLE: u64 = 1_700_000_000_000;
+
+/// What a reader over a fake gateway is waited on for: its row told,
+/// `judging` messages judged and `asks` searches asked, from a judged.json
+/// saying Slack was last read whole at `read_at`, if it says so.
+struct Until {
+    judging: usize,
+    asks: usize,
+    read_at: Option<u64>,
+}
+
+/// What a reader over a fake gateway came to: the row's why, the
+/// decisions in its folder, when its judged.json says Slack was last read
+/// whole and how many messages it keeps as judged, the searches it asked,
+/// and whether it wrote the live reader's row.
 struct Came {
     why: String,
     said: Vec<Value>,
     read_at: Option<u64>,
+    keys: usize,
     asked: Vec<Value>,
     wrote_live: bool,
 }
 
-fn hearing(answer: fn(&str, &Value, u64) -> String, judging: usize) -> Came {
+fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
     let (origin, _) = stand_in();
     let (url, called) = serving(answer);
     let home = home();
@@ -406,6 +431,25 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, judging: usize) -> Came {
     let named = home.join("named-waiting.json");
     let own = home.join(OWN);
     let waiting = own.join("waiting.json");
+    if let Some(read_at) = until.read_at {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("after the epoch")
+            .as_secs();
+        std::fs::create_dir_all(&own).expect("its folder");
+        let kept =
+            json!({ "since": format!("{}.000000", now - 600), "keys": [], "read_at": read_at });
+        std::fs::write(own.join("judged.json"), kept.to_string()).expect("what it judged");
+    }
+    let searches = || {
+        called
+            .lock()
+            .expect("what was called")
+            .iter()
+            .filter(|(tool, _)| tool == "slack_search_public_and_private")
+            .map(|(_, asked)| asked["query"].clone())
+            .collect::<Vec<_>>()
+    };
     let mut reader = reading(
         &home,
         &origin,
@@ -413,7 +457,11 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, judging: usize) -> Came {
         Some(&named),
     );
     let began = Instant::now();
-    while !(waiting.exists() && decisions_in(&own).len() >= judging) && began.elapsed() < PATIENCE {
+    while !(waiting.exists()
+        && decisions_in(&own).len() >= until.judging
+        && searches().len() >= until.asks)
+        && began.elapsed() < PATIENCE
+    {
         // The reader goes round every tenth of a second in a case.
         thread::sleep(Duration::from_millis(20));
     }
@@ -432,13 +480,8 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, judging: usize) -> Came {
             .to_owned(),
         said: decisions_in(&own),
         read_at: read("judged.json")["read_at"].as_u64(),
-        asked: called
-            .lock()
-            .expect("what was called")
-            .iter()
-            .filter(|(tool, _)| tool == "slack_search_public_and_private")
-            .map(|(_, asked)| asked["query"].clone())
-            .collect(),
+        keys: read("judged.json")["keys"].as_array().map_or(0, Vec::len),
+        asked: searches(),
         wrote_live: named.exists(),
     };
     std::fs::remove_dir_all(&home).expect("the case's home goes");
@@ -455,7 +498,11 @@ fn a_tag_search_that_cant_be_read_is_told_while_the_phrase_is_judged() {
                 said(tool, now)
             }
         },
-        1,
+        &Until {
+            judging: 1,
+            asks: 0,
+            read_at: Some(READ_WHOLE),
+        },
     );
     assert!(
         came.why
@@ -469,8 +516,9 @@ fn a_tag_search_that_cant_be_read_is_told_while_the_phrase_is_judged() {
         "the stop the phrase's search found is judged, once"
     );
     assert_eq!(
-        came.read_at, None,
-        "Slack was never read whole, so none says it was"
+        (came.read_at, came.keys),
+        (Some(READ_WHOLE), 1),
+        "Slack wasn't read whole, so its last whole read stays, beside the stop judged"
     );
     assert!(!came.wrote_live, "the live reader's row is never written");
 }
@@ -485,7 +533,11 @@ fn a_phrase_search_that_cant_be_read_is_told_while_the_tag_is_judged() {
                 said(tool, now)
             }
         },
-        1,
+        &Until {
+            judging: 1,
+            asks: 0,
+            read_at: None,
+        },
     );
     assert!(
         came.asked.contains(&json!(format!("<@{JOEL}>"))),
@@ -503,7 +555,65 @@ fn a_phrase_search_that_cant_be_read_is_told_while_the_tag_is_judged() {
         ["stop"],
         "the stop the tag's search found is judged, once"
     );
-    assert_eq!(came.read_at, None, "and Slack wasn't read whole");
+    assert_eq!(
+        (came.read_at, came.keys),
+        (None, 1),
+        "Slack was never read whole, so none says it was"
+    );
+}
+
+#[test]
+fn a_search_slack_refuses_stops_the_round_though_the_other_reads() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool == "slack_search_public_and_private" && asked["query"] != "pineapple" {
+                format!("{FAILS}Slack said: invalid_auth")
+            } else {
+                said(tool, now)
+            }
+        },
+        &Until {
+            judging: 0,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.why
+            .starts_with("Slack refused the safe word's sign-in"),
+        "a refusal is told as one, not as a search that can't be read: {}",
+        came.why
+    );
+    assert!(came.said.is_empty(), "and the round judges nothing");
+}
+
+#[test]
+fn a_search_that_blinks_beside_one_that_cant_be_read_isnt_told_as_both() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                poisoned()
+            } else if TAGS.fetch_add(1, Ordering::SeqCst) < 2 {
+                said(tool, now)
+            } else {
+                format!("{FAILS}Slack said: ratelimited")
+            }
+        },
+        &Until {
+            judging: 1,
+            asks: 12,
+            read_at: None,
+        },
+    );
+    assert!(
+        came.why
+            .contains("search of Slack for pineapple can't be read"),
+        "rounds whose tag search wasn't asked leave the row as it was: {}",
+        came.why
+    );
 }
 
 #[test]
@@ -516,7 +626,11 @@ fn searches_that_cant_be_read_judge_nothing_and_are_told() {
                 said(tool, now)
             }
         },
-        0,
+        &Until {
+            judging: 0,
+            asks: 8,
+            read_at: None,
+        },
     );
     assert!(
         came.why
@@ -526,8 +640,8 @@ fn searches_that_cant_be_read_judge_nothing_and_are_told() {
     );
     assert!(came.said.is_empty(), "and nothing is judged");
     assert!(
-        came.asked.len() >= 4,
-        "each round asks both again, with no rest: {:?}",
+        came.asked.len() >= 8 && came.why.starts_with("Slack's answers"),
+        "it goes on asking both, and still tells them as both: {:?}",
         came.asked
     );
 }

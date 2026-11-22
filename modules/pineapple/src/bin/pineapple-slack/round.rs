@@ -72,13 +72,17 @@ pub(super) fn round(
         (Err(phrase), Ok(tagged)) if phrase == unread => (Vec::new(), tagged, Some(Search::Phrase)),
         (phrase, tagged) => {
             let failed = [phrase.err(), tagged.err()];
-            // A refusal is said first, then a sign-in none could give,
-            // then an answer none could read.
-            return [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable]
-                .into_iter()
-                .map(Round::Deaf)
-                .find(|deaf| failed.contains(&Some(*deaf)))
-                .unwrap_or(Round::Unasked);
+            // A refusal is said first, then a sign-in none could give.
+            // One search unasked, its network blinking, says nothing new
+            // of the other, so only both unread are told as both.
+            return [
+                Round::Deaf(Deafness::Refused),
+                Round::Deaf(Deafness::NoSignIn),
+                Round::Unasked,
+            ]
+            .into_iter()
+            .find(|round| failed.contains(&Some(*round)))
+            .unwrap_or(unread);
         }
     };
     let mut seen = HashSet::new();
@@ -98,7 +102,9 @@ pub(super) fn round(
         judged.judged(message);
     }
     // judged.json's read_at says when Slack was last read whole, so a
-    // round with one search deaf leaves it as it was. What it judged is
+    // round with one search deaf leaves it as it was. Only a gateway's
+    // answers are ever half read, and in shadow the gateway reader keeps
+    // its own judged.json, apart from the one `heard` reads today. What it judged is
     // kept by key, so the other search's messages are judged once it reads.
     let read_at = match deaf {
         None => Some(millis()),

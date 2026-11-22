@@ -1,6 +1,7 @@
 //! Whether the safe word's Slack reader can hear Slack, said to Joel where
-//! Slack isn't needed. Once [`ROUNDS`] rounds in a row read nothing for a
-//! reason he can fix (Slack refused the sign-in, or none can be read), it
+//! Slack isn't needed. Once [`ROUNDS`] rounds in a row read nothing, or
+//! only one of its two searches, for a reason he can fix or should know
+//! of (Slack refused the sign-in, none can be read, or an answer), it
 //! writes a file of what waits on him, which For You shows as a row and
 //! says as a notice (the shell's WaitingOnYou.qml); a round that reads
 //! Slack again takes it away. Its phone alert goes through Slack, so that
@@ -14,16 +15,17 @@
 //! wording changed, or a message among the newest is shaped like its
 //! markup), so read as nothing it would look like a quiet Slack. One
 //! search of the two that can't be read is told by name, while the
-//! other's messages are still judged: one message typed in a gateway's
-//! markup would otherwise keep both deaf until twenty newer pushed it
-//! out (ISXEG8, 2026-11-22).
+//! other's messages are still judged: one message only one search finds,
+//! typed in a gateway's markup, would otherwise keep both deaf until
+//! twenty newer pushed it out (ISXEG8, 2026-11-22). One both searches
+//! find still keeps both deaf.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-/// How many rounds in a row read nothing before Joel is told: one is a
+/// How many rounds in a row are deaf before Joel is told: one is a
 /// blip a sign-in renewed mid-round makes, two at the reader's 30 seconds
 /// is a minute of stops unheard.
 pub const ROUNDS: u32 = 2;
@@ -32,7 +34,7 @@ pub const ROUNDS: u32 = 2;
 /// crate's own list, so this reader counts the words slack-unreads does.
 pub use slack_people::refuses_the_sign_in;
 
-/// Why a round read nothing that Joel can fix.
+/// Why a round read nothing, or only one search, that Joel should know.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Deafness {
     /// Slack refused the sign-in.
@@ -128,8 +130,10 @@ impl Deaf {
     }
 
     /// What `round`, at `at` in milliseconds, changes. Joel is told once
-    /// [`ROUNDS`] in a row read nothing, again only when why changes, and
-    /// untold once a round reads Slack.
+    /// [`ROUNDS`] in a row are deaf, again only when why changes, and
+    /// untold once a round reads Slack whole. A change from one search
+    /// deaf starts a time of its own, so it isn't hidden under a row Joel
+    /// marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
         match round {
             Round::Heard => {
@@ -146,6 +150,12 @@ impl Deaf {
                 self.rounds = self.rounds.saturating_add(1);
                 if self.rounds < ROUNDS || self.told == Some(why) {
                     return Change::Keep;
+                }
+                // A one-search row is one Joel may mark done while the
+                // other still hears, and For You keeps a done row gone by
+                // name. So anything after it is a time of its own.
+                if matches!(self.told, Some(Deafness::Unread(_))) {
+                    self.since = None;
                 }
                 self.told = Some(why);
                 self.left = false;
@@ -173,6 +183,10 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
     const UNHEARD: &str = "so a stop said in Slack isn't heard; one said elsewhere still is";
     const READ_JOURNAL: &str =
         "Ask an agent to read the reader's journal, which says what it couldn't read";
+    let title = match why {
+        Deafness::Unread(_) => "The Safe Word Can't Hear Part of Slack",
+        _ => "The Safe Word Can't Hear Slack",
+    };
     let (said, steps, done): (String, Vec<&str>, Value) = match why {
         Deafness::Refused => (
             format!("Slack refused the safe word's sign-in, {UNHEARD}"),
@@ -217,7 +231,7 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         "quest": "pineapple",
         "items": [{
             "id": format!("pineapple-slack-deaf-{since}"),
-            "title": "The Safe Word Can't Hear Slack",
+            "title": title,
             "why": said,
             "raisedAt": slack_people::messages::iso(since),
             "minutes": 1,
