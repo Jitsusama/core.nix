@@ -17,6 +17,7 @@ import qs
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
+import "launcher/Held.js" as Held
 
 ShellRoot {
     id: root
@@ -40,6 +41,29 @@ ShellRoot {
         id: today
 
         settings: ({ zone: "America/Toronto" })
+    }
+
+    // The launcher as a showing of Date reads it, for the cases followed
+    // turn by turn (asShowing): open or shut, with Date as its answer or
+    // a step held in it.
+    QtObject {
+        id: showing
+
+        property bool open: false
+        property bool cataloguing: false
+        property var answer: null
+        property var held: []
+    }
+
+    // How often the date shown has been answered again.
+    property int answeredAgain: 0
+
+    Launcher.Today {
+        id: shownToday
+
+        launcher: showing
+        settings: ({ zone: "America/Toronto" })
+        onAnswered: root.answeredAgain += 1
     }
 
     Launcher.Waits {
@@ -90,14 +114,37 @@ ShellRoot {
     Component.onCompleted: Qt.callLater(root.cases)
 
     function cases() {
-        let status = 0;
         try {
             run();
         } catch (error) {
             console.warn(`FAIL ${error.message ?? error}`);
-            status = 1;
+            Qt.callLater(() => Qt.exit(1));
+            return;
         }
-        Qt.callLater(() => Qt.exit(status));
+        turns(asShowing());
+    }
+
+    // Each step a turn of its own, so what a step left for later
+    // (Qt.callLater) has run by the next, the last putting back what it
+    // changed whether the rest held or not; then it exits.
+    function turns(steps) {
+        if (steps.length === 0) {
+            Qt.callLater(() => Qt.exit(0));
+            return;
+        }
+        try {
+            steps[0]();
+        } catch (error) {
+            console.warn(`FAIL ${error.message ?? error}`);
+            Qt.callLater(() => Qt.exit(1));
+            try {
+                steps[steps.length - 1]();
+            } catch (again) {
+                console.warn(`FAIL putting back: ${again.message ?? again}`);
+            }
+            return;
+        }
+        Qt.callLater(() => turns(steps.slice(1)));
     }
 
     function run() {
@@ -146,6 +193,7 @@ ShellRoot {
         asNowShows();
         asKept();
         asUnkept();
+        asAsked();
         const stoodIn = Calendars.reading;
         // Its day as it is before sunset, whenever the check runs.
         Calendars.reading = evening(stoodIn, Date.now() + 3600000);
@@ -241,6 +289,159 @@ ShellRoot {
                 === `${Words.name("today:calendars:dayBegins")} ${said.noSunset}`
                 && none[2].words && none[2].row.endsWith(" false"),
             JSON.stringify(none[2]));
+    }
+
+    // Until the reader answers today, Date's Calendars says it's asking and
+    // steps in all the same, to a place saying "..." that the calendars fill
+    // as they come, so a Return on the way to them never closes the launcher
+    // (Joel, 2026-11-07: "Now -> Date -> Calendars does not work from the
+    // launcher"). Once the reader has refused, it says so, and its Return
+    // only closes, with nothing to wait for. The step held on the asking
+    // row is made again by Held.js as Date answers, finding its row by key
+    // as the launcher's sameRow does, so the answer takes its place.
+    function asAsked() {
+        const stoodIn = Calendars.reading;
+        const wasRefused = Calendars.refused;
+        const hadAsked = today.askedThisShowing;
+        const date = () => today.answer("date").rows;
+        const calendarsOf = rows => rows
+            .find(row => row.name === Words.name("today:calendars"));
+        const ways = {
+            same: (row, was) => row.key === was.key,
+            into: thing => Held.offers(thing.verbs ? thing.verbs() : [], 0, thing.empty),
+            keep: (step, into) => into
+        };
+        try {
+            Calendars.reading = null;
+            const asked = date();
+            const asking = calendarsOf(asked);
+            expect("asking, Calendars says so", asking?.side === "\u2026", asking?.side);
+            expect("and its Return steps in rather than closing", asking?.verb === "more",
+                asking?.verb);
+            expect("keyed as the answer will be", asking?.key === "today:calendars", asking?.key);
+            const steps = [{ row: { key: "date" }, rows: asked }, { row: asking, rows: [] }];
+            const still = Held.remade(steps, 1, date(), ways);
+            expect("held while still asking, the step stays, holding nothing yet",
+                still.all && still.steps[1].rows.length === 0, JSON.stringify(still.leave));
+            Calendars.reading = stoodIn;
+            const answered = Held.remade(steps, 1, date(), ways);
+            expect("as Date answers, the four calendars take its place",
+                answered.all && answered.steps[1].rows.map(each => each.name).join(", ")
+                    === "Chinese, Japanese, Hebrew, Islamic",
+                answered.steps[1].rows.map(each => each.name).join(", "));
+            Calendars.reading = null;
+            Calendars.refused = true;
+            today.askedThisShowing = false;
+            const standing = calendarsOf(date());
+            expect("with no launcher, as a check's, a refusal standing is said, and only closes",
+                standing?.verb === "close", `${standing?.side} ${standing?.verb}`);
+            today.askedThisShowing = true;
+            Calendars.refused = false;
+            const unrefused = calendarsOf(date());
+            expect("asked, with nothing refused, it still reads as asking",
+                unrefused?.side === "\u2026" && unrefused?.verb === "more",
+                `${unrefused?.side} ${unrefused?.verb}`);
+            Calendars.refused = true;
+            const refusedRows = date();
+            const refused = calendarsOf(refusedRows);
+            const silent = (Words.of("today:calendars").said ?? {}).silent;
+            expect("refused, it says the reader isn't answering",
+                !!silent && refused?.side === silent, refused?.side);
+            expect("and its Return only closes", refused?.verb === "close", refused?.verb);
+            const left = Held.remade(steps, 1, refusedRows, ways);
+            expect("held as it's refused, the step leaves by itself",
+                !left.all && left.leave === 1, JSON.stringify(left.leave));
+        } finally {
+            today.askedThisShowing = hadAsked;
+            Calendars.refused = wasRefused;
+            Calendars.reading = stoodIn;
+        }
+    }
+
+    // A showing of Date, turn by turn. Its first frame after a refusal
+    // reads as asking, the refusal being an earlier one's; it asks a turn
+    // on, clearing that, and answers Date again; a refusal then is its own,
+    // whose Return closes. Shut, the next showing starts unasked, and with
+    // nothing refused still answers Date again once it asks, since what it
+    // opens on can be older than it. Held as a step, as Now holds it, it
+    // reads and asks the same.
+    function asShowing() {
+        const stoodIn = Calendars.reading;
+        const wasRefused = Calendars.refused;
+        const calendarsNow = () => shownToday.answer("date").rows
+            .find(row => row.name === Words.name("today:calendars"));
+        const told = () => `${root.answeredAgain} answered`;
+        let before = 0;
+        const aTurn = () => {};
+        return [
+            () => {
+                Calendars.reading = null;
+                Calendars.refused = true;
+                showing.answer = shownToday.answer("date");
+                before = root.answeredAgain;
+                showing.open = true;
+                expect("shown, it hasn't asked yet", !shownToday.askedThisShowing, "it had");
+                const first = calendarsNow();
+                expect("its first frame after a refusal reads as asking, stepping in",
+                    first?.side === "\u2026" && first?.verb === "more",
+                    `${first?.side} ${first?.verb}`);
+            },
+            aTurn,
+            () => {
+                expect("a turn on, it has asked", shownToday.askedThisShowing, "it hadn't");
+                expect("which cleared the earlier refusal", !Calendars.refused, "still refused");
+                expect("and Date was answered again, here as the refusal cleared",
+                    root.answeredAgain > before, told());
+                Calendars.refused = true;
+                const refused = calendarsNow();
+                expect("a refusal once it has asked is its own, and Return only closes",
+                    refused?.verb === "close", refused?.verb);
+                showing.open = false;
+                expect("shut, the showing is over, unasked", !shownToday.askedThisShowing,
+                    "still asked");
+                Calendars.refused = false;
+                before = root.answeredAgain;
+                showing.open = true;
+            },
+            aTurn,
+            () => {
+                expect("shown again with nothing refused, it asks and answers Date again",
+                    shownToday.askedThisShowing && root.answeredAgain > before, told());
+                showing.open = false;
+                showing.answer = null;
+                Calendars.refused = true;
+                showing.held = [{ row: shownToday.answer("date") }];
+                showing.open = true;
+                const held = calendarsNow();
+                expect("held, as from Now, its first frame after a refusal reads as asking",
+                    held?.verb === "more", `${held?.side} ${held?.verb}`);
+                const kept = showing.held[0].row.rows
+                    .find(row => row.name === Words.name("today:calendars"));
+                expect("and the rows it holds, made shut as a start warms them, read so too",
+                    kept?.verb === "more", `${kept?.side} ${kept?.verb}`);
+            },
+            aTurn,
+            () => {
+                expect("held, a turn on, it has asked, clearing the refusal",
+                    shownToday.askedThisShowing && !Calendars.refused, told());
+                showing.open = false;
+                showing.held = [];
+                Calendars.refused = true;
+                showing.cataloguing = true;
+                const walked = calendarsNow();
+                expect("walked from outside, as a terminal reads it, a refusal is said, closing",
+                    walked?.verb === "close", `${walked?.side} ${walked?.verb}`);
+                showing.cataloguing = false;
+            },
+            () => {
+                showing.open = false;
+                showing.cataloguing = false;
+                showing.answer = null;
+                showing.held = [];
+                Calendars.refused = wasRefused;
+                Calendars.reading = stoodIn;
+            }
+        ];
     }
 
     // The day in other calendars, from a reading as timekeeping gives it

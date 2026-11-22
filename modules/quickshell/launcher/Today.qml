@@ -147,11 +147,36 @@ Provider {
     onShownChanged: {
         if (shown)
             Qt.callLater(provider.askCalendars);
+        else
+            askedThisShowing = false;
     }
+    // Asked, the date is answered again from what's held now, as the rows
+    // a showing opens on can be older than it: Now keeps the Date it lists
+    // from the minute it was made, so they can hold an earlier showing's
+    // refusal, or "..." for a reading come since, which no change of the
+    // reader's would answer again.
     function askCalendars() {
-        if (shown)
-            Calendars.ask(Moment.iso(new Date()), Location.here);
+        if (!shown)
+            return;
+        askedThisShowing = true;
+        Calendars.ask(Moment.iso(new Date()), Location.here);
+        provider.answered();
     }
+    // Whether this showing of the date has asked yet. Its rows are made
+    // before that ask, so a refusal standing then is an earlier one's,
+    // which the ask on its way clears: until it has asked, Calendars reads
+    // as asking rather than refused, whose Return closes. A Return on
+    // Date's first frame after a refusal closed the launcher, on a builder
+    // slow enough to answer it before the ask (039ab50d0). Asking clears a
+    // refusal at once, and the reader refuses only later, so one heard
+    // once it has asked is this showing's own. Walked from outside, as a
+    // terminal reads Date (`launcher show`), no showing will ask, so a
+    // refusal standing is said as it stands; rows made shut otherwise, as
+    // the shell starts and the first opening draws from, read as asking.
+    // Rows Now kept from an earlier showing that had asked aren't covered:
+    // a refusal kept in them reads on the first frame until this
+    // showing's ask answers Date again.
+    property bool askedThisShowing: false
 
     Connections {
         target: Calendars
@@ -262,16 +287,30 @@ Provider {
     // takes the answer in its place: keyed apart, the asking row stayed
     // where it was, dimmed and doing nothing, and the answer came in at
     // the end (Joel, 2026-11-07: "Now -> Date -> Calendars does not work
-    // from the launcher").
+    // from the launcher"). Still asking, Return steps in all the same, to
+    // a place saying "..." that the four calendars fill as they come where
+    // Date is a step held, from Now or followed into, since the steps below
+    // it are made again as Date answers: a Return on the way to them never
+    // closes the launcher under him. Stepped into from what's typed at the
+    // top, no step holds Date, so the place stays "..." until he steps back
+    // to the answer, which shows them, as any part stepped into from an
+    // answer at the top is made again only as he steps back. Only a reader
+    // that refused this showing's ask (askedThisShowing), or any as the
+    // launcher is walked from outside, gives a row whose Return closes, as it has nothing
+    // to wait for, and a step held on it then leaves by itself. A reader
+    // that takes the question and never answers leaves the place saying "...", as the row
+    // did before, since Calendars.qml gives a question no deadline.
     function calendarsRow(at, now) {
         const reading = Calendars.reading;
         const said = calendarsSaid;
-        if (reading?.day !== Moment.iso(at)) {
-            const side = Calendars.refused ? said.silent : "\u2026";
+        const refusalCounts = askedThisShowing || !launcher
+            || launcher.cataloguing === true;
+        if (reading?.day !== Moment.iso(at) && Calendars.refused && refusalCounts)
             return copyRow({ key: "today:calendars", name: Words.name("today:calendars"),
-                side: side,
-                copiesNothing: true, note: "", glyph: Theme.glyph.date });
-        }
+                side: said.silent, copiesNothing: true, note: "", glyph: Theme.glyph.date });
+        if (reading?.day !== Moment.iso(at))
+            return holderRow({ key: "today:calendars", name: Words.name("today:calendars"),
+                side: "\u2026", empty: "\u2026", glyph: Theme.glyph.date }, () => []);
         // From sunset, a calendar whose day begins then is on the day begun;
         // before the day before's sunset, where it comes after midnight far
         // north in summer, it's still on the day before's. It's reckoned
