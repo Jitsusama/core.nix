@@ -17,6 +17,11 @@ const OWNER: &str = "5193FV";
 const LAUNCHER: &str = "XY9H5C";
 /// The one sound figure cadence always reads, higher being better.
 const HEARD: &str = "call sound heard and counted";
+/// Each app's wait figure: the p99 across the hour's 10 s windows of each
+/// window's worst drawing-thread wait, which the name says, so no one
+/// reads it as the p99 of every wakeup.
+const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
+const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
 
 /// What stands in for Joel's voice, said beside the sound's figures. The
 /// far end plays on this machine too, under the same load, so what it
@@ -46,9 +51,21 @@ fn measure(
     lower_is_better: bool,
     behind: Vec<String>,
 ) -> Measure {
+    // Rounded to the tenth cadence shows, toward the worse side, so a
+    // figure just past its target never shows as on it. The nudge keeps a
+    // whole tenth's float error from moving it a tenth.
+    let tenth = |x: f64| {
+        let tenths = x * 10.0;
+        let whole = if lower_is_better {
+            (tenths - 1e-9).ceil()
+        } else {
+            (tenths + 1e-9).floor()
+        };
+        (whole + 0.0) / 10.0
+    };
     Measure {
         measure,
-        now: now.map(|x| (x * 10.0).round() / 10.0),
+        now: now.map(tenth),
         target,
         lower_is_better,
         owner: OWNER,
@@ -200,14 +217,14 @@ pub fn measures(
             ],
         ),
         measure(
-            "Chrome CPU wait per wakeup p99 ms",
+            CHROME_WAIT,
             chrome.worst_p99,
             2.0,
             true,
             left_out("Chrome", chrome),
         ),
         measure(
-            "Slack CPU wait per wakeup p99 ms",
+            SLACK_WAIT,
             slack.worst_p99,
             2.0,
             true,
@@ -244,6 +261,22 @@ pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::R
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_figure_is_rounded_toward_its_worse_side() {
+        let now = |x: f64, lower_is_better: bool| {
+            measure("x", Some(x), 30.0, lower_is_better, vec![]).now
+        };
+        assert_eq!(now(30.04, true), Some(30.1), "30.04 ms showed on a 30 ms target");
+        assert_eq!(now(29.96, false), Some(29.9), "29.96 fps showed on a 30 fps target");
+        assert_eq!(now(1.1, true), Some(1.1), "a whole tenth moved up");
+        assert_eq!(now(28.8, false), Some(28.8), "a whole tenth moved down");
+        let none = now(0.0, true).unwrap_or(f64::NAN);
+        assert!(
+            none == 0.0 && none.is_sign_positive(),
+            "no wait is 0, not -0: {none}"
+        );
+    }
 
     fn call() -> Call {
         Call {
@@ -310,13 +343,13 @@ mod tests {
                 if m.lower_is_better { "lower" } else { "higher" }
             );
         }
-        assert_eq!(named("Chrome CPU wait per wakeup p99 ms").now, Some(19.7));
-        let behind = &named("Chrome CPU wait per wakeup p99 ms").behind;
+        assert_eq!(named(CHROME_WAIT).now, Some(19.7));
+        let behind = &named(CHROME_WAIT).behind;
         assert!(
             behind[1].contains("12 windows"),
             "Chrome's wait doesn't say how many windows it read: {behind:?}"
         );
-        assert_eq!(named("Slack CPU wait per wakeup p99 ms").now, None);
+        assert_eq!(named(SLACK_WAIT).now, None);
         assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
         assert_eq!(named("launcher open ms p99").now, Some(31.0));
         assert_eq!(
