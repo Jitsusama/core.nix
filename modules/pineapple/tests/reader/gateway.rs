@@ -18,8 +18,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use super::{
-    JOEL, PATIENCE, decisions, decisions_in, each, home, reader_with, reading, stand_in,
-    the_one_reply_in, until_decided_in,
+    JOEL, PATIENCE, decisions, decisions_in, each, home, reader_with, reading, reading_in,
+    stand_in, the_one_reply_in, until_decided_in,
 };
 
 /// Where the reader over a gateway keeps all it writes, under its home.
@@ -334,7 +334,44 @@ fn a_gateway_with_no_sign_in_to_give_writes_its_row_in_its_own_folder() {
         tools(&called).is_empty(),
         "no tool is called without a sign-in"
     );
-    assert!(decisions(&home).is_empty(), "and nothing is judged");
+    assert!(
+        decisions_in(&home.join(OWN)).is_empty(),
+        "and nothing is judged"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_gateway_reader_given_a_relative_state_home_keeps_to_its_own_row() {
+    let (origin, _) = stand_in();
+    let (url, _) = gateway();
+    let home = home();
+    let program = sign_in(&home, true);
+    let program = program.to_str().expect("a path in UTF-8");
+    let waiting = home.join(OWN).join("waiting.json");
+    let mut reader = reading_in(
+        &home,
+        Path::new("state"),
+        &origin,
+        &["--gateway", &url, "--gateway-sign-in", program],
+        None,
+    );
+    let began = Instant::now();
+    while !waiting.exists() && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    assert!(
+        waiting.exists(),
+        "a state home named from where it runs still holds its own row"
+    );
+    for for_you in ["state/mission", ".local/state/mission"] {
+        assert!(
+            !home.join(for_you).exists(),
+            "For You's own row, {for_you}, is the live reader's, so it's never written"
+        );
+    }
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
@@ -387,7 +424,61 @@ fn a_gateway_whose_search_cant_be_read_writes_its_row_in_its_own_folder() {
         "it did ask: {:?}",
         tools(&called)
     );
-    assert!(decisions(&home).is_empty(), "and nothing is judged");
+    assert!(
+        decisions_in(&home.join(OWN)).is_empty(),
+        "and nothing is judged"
+    );
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_phrase_search_that_cant_be_read_still_asks_for_joels_tag() {
+    let (origin, _) = stand_in();
+    // The phrase's search counts two and gives one; the tag's reads.
+    let (url, called) = serving(|tool, asked, now| {
+        if tool == "slack_search_public_and_private" && asked["query"] == "pineapple" {
+            json!({ "results": "## Messages (2 results)\n### Result 1 of 2\n\
+                Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
+                Message_ts: 1.000100\nText: \nhi\n\n---\n" })
+            .to_string()
+        } else {
+            said(tool, now)
+        }
+    });
+    let home = home();
+    let program = sign_in(&home, false);
+    let program = program.to_str().expect("a path in UTF-8");
+    let waiting = home.join(OWN).join("waiting.json");
+    let mut reader = reading(
+        &home,
+        &origin,
+        &["--gateway", &url, "--gateway-sign-in", program],
+        None,
+    );
+    let began = Instant::now();
+    while !waiting.exists() && began.elapsed() < PATIENCE {
+        thread::sleep(Duration::from_millis(20));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    let asked: Vec<Value> = called
+        .lock()
+        .expect("what was called")
+        .iter()
+        .filter(|(tool, _)| tool == "slack_search_public_and_private")
+        .map(|(_, asked)| asked["query"].clone())
+        .collect();
+    assert!(
+        asked
+            .iter()
+            .any(|query| query == &json!(format!("<@{JOEL}>"))),
+        "the tag's search is asked though the phrase's couldn't be read: {asked:?}"
+    );
+    assert!(waiting.exists(), "and it's told it can't hear");
+    assert!(
+        decisions_in(&home.join(OWN)).is_empty(),
+        "and nothing is judged"
+    );
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 

@@ -112,6 +112,7 @@ impl Through {
             let round = match &called {
                 Called::Refused => Round::Deaf(Deafness::Refused),
                 Called::NoSignIn(_) => Round::Deaf(Deafness::NoSignIn),
+                Called::Unreadable(_) => Round::Deaf(Deafness::Unreadable),
                 Called::Failed(why)
                     if why
                         .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')

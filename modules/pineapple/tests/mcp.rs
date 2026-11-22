@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::{fs, thread};
 
+use pineapple::deaf::{Deafness, Round};
+use pineapple::ears::{Ears, Through};
 use pineapple::mcp::{Called, Gateway};
 use pineapple::sign_in::SignIn;
 use serde_json::{Value, json};
@@ -29,7 +31,13 @@ struct Reply {
     session: Option<&'static str>,
     kind: &'static str,
     body: String,
+    /// Bytes promised beyond the body, so the answer is cut short.
+    short: usize,
 }
+
+/// What refuses a sign-in: unauthorized, forbidden, and a redirect, which
+/// sends its caller off to sign in again.
+const REFUSALS: [u16; 3] = [401, 403, 302];
 
 /// A tool's answer saying `text`, failed when `failed`.
 fn tool(text: &str, failed: bool) -> Reply {
@@ -45,6 +53,7 @@ fn json_reply(body: &Value) -> Reply {
         session: None,
         kind: "application/json",
         body: body.to_string(),
+        short: 0,
     }
 }
 
@@ -62,6 +71,7 @@ fn status(status: u16) -> Reply {
         session: None,
         kind: "text/plain",
         body: String::new(),
+        short: 0,
     }
 }
 
@@ -120,7 +130,7 @@ fn gateway(
                  Connection: close\r\n\r\n{}",
                 reply.status,
                 reply.kind,
-                reply.body.len(),
+                reply.body.len() + reply.short,
                 reply.body
             );
         }
@@ -260,8 +270,7 @@ fn a_tool_whose_backend_went_quiet_has_it_turned_on_and_is_asked_again() {
 
 #[test]
 fn a_refused_sign_in_is_asked_for_again_once() {
-    // Unauthorized and forbidden both refuse the sign-in.
-    for refused in [401, 403] {
+    for refused in REFUSALS {
         let dir = scratch(&format!("refused-{refused}"));
         let (url, seen) = gateway(move |one, calls| match (one.method.as_str(), calls) {
             ("initialize", _) => opened("s1"),
@@ -286,7 +295,7 @@ fn a_refused_sign_in_is_asked_for_again_once() {
 
 #[test]
 fn a_sign_in_refused_twice_is_said_as_refused() {
-    for refused in [401, 403] {
+    for refused in REFUSALS {
         let dir = scratch(&format!("refused-twice-{refused}"));
         let (url, _) = gateway(move |one, _| match one.method.as_str() {
             "initialize" => opened("s1"),
@@ -298,6 +307,11 @@ fn a_sign_in_refused_twice_is_said_as_refused() {
             gateway.call("slack_who_am_i", &json!({})),
             Err(Called::Refused),
             "a gateway refusing every sign-in with {refused} is said so, not asked for good"
+        );
+        assert_eq!(
+            runs(&dir),
+            2,
+            "the sign-in is fetched once more after a {refused}, and no more"
         );
         let _ = fs::remove_dir_all(&dir);
     }
@@ -329,25 +343,50 @@ fn a_forgotten_session_is_opened_again() {
 
 #[test]
 fn a_sign_in_refused_as_the_gateway_opens_is_asked_for_again_once() {
-    let dir = scratch("refused-opening");
-    let (url, seen) = gateway(|one, _| match one.method.as_str() {
-        "initialize" if one.sign_in.as_deref() == Some("Bearer tok-1") => status(401),
-        "initialize" => opened("s1"),
-        "tools/call" => tool("me", false),
-        _ => status(202),
-    });
-    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    assert_eq!(
-        gateway.call("slack_who_am_i", &json!({})),
-        Ok("me".to_owned()),
-        "a gateway checking the sign-in as it opens gets a fresh one"
-    );
-    assert_eq!(
-        last(&seen).sign_in.as_deref(),
-        Some("Bearer tok-2"),
-        "the program is run again once"
-    );
-    let _ = fs::remove_dir_all(&dir);
+    for refused in REFUSALS {
+        let dir = scratch(&format!("refused-opening-{refused}"));
+        let (url, seen) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" if one.sign_in.as_deref() == Some("Bearer tok-1") => status(refused),
+            "initialize" => opened("s1"),
+            "tools/call" => tool("me", false),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Ok("me".to_owned()),
+            "a gateway refusing the sign-in with {refused} as it opens gets a fresh one"
+        );
+        assert_eq!(
+            last(&seen).sign_in.as_deref(),
+            Some("Bearer tok-2"),
+            "the program is run again once after a {refused} as it opens"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn a_sign_in_refused_twice_as_the_gateway_opens_is_said_as_refused() {
+    for refused in REFUSALS {
+        let dir = scratch(&format!("refused-opening-twice-{refused}"));
+        let (url, seen) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => status(refused),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Err(Called::Refused),
+            "a gateway refusing every sign-in with {refused} as it opens is said so"
+        );
+        assert_eq!(runs(&dir), 2, "the sign-in is fetched twice, no more");
+        assert!(
+            !methods(&seen).contains(&"tools/call".to_owned()),
+            "no tool is asked of a gateway that never opened"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[test]
@@ -539,6 +578,80 @@ fn an_answer_as_an_event_stream_is_read() {
          answer to another request before it and a notice after"
     );
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down() {
+    for (code, unreadable) in [(200, true), (400, true), (502, false)] {
+        let dir = scratch(&format!("not-json-rpc-{code}"));
+        let (url, _) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => opened("s1"),
+            "tools/call" => Reply {
+                kind: "text/html",
+                body: "<html>sign in</html>".to_owned(),
+                ..status(code)
+            },
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        let called = gateway.call("slack_who_am_i", &json!({}));
+        assert!(
+            if unreadable {
+                matches!(called, Err(Called::Unreadable(_)))
+            } else {
+                matches!(called, Err(Called::Unreachable(_)))
+            },
+            "a page in a {code} is unreadable, a cause that lasts, unless it's the gateway's \
+             own failing: {called:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[test]
+fn an_answer_cut_short_says_it_couldnt_be_read() {
+    let dir = scratch("cut-short");
+    let (url, _) = gateway(|one, _| match one.method.as_str() {
+        "initialize" => opened("s1"),
+        "tools/call" => Reply {
+            short: 10,
+            ..tool("me", false)
+        },
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    let called = gateway.call("slack_who_am_i", &json!({}));
+    assert!(
+        matches!(&called, Err(Called::Unreachable(why)) if why.contains("couldn't read")),
+        "an answer ending before its length says it couldn't be read, not that it \
+         isn't JSON-RPC: {called:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_gateway_passing_on_slacks_refusal_counts_as_refused() {
+    for (said, round) in [
+        ("invalid_auth", Round::Deaf(Deafness::Refused)),
+        ("token_revoked", Round::Deaf(Deafness::Refused)),
+        ("channel_not_found", Round::Unasked),
+    ] {
+        let dir = scratch(&format!("slack-said-{said}"));
+        let (url, _) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => opened("s1"),
+            "tools/call" => tool(&format!("Slack said: {said}"), true),
+            _ => status(202),
+        });
+        let mut through = Through {
+            gateway: Gateway::new(&url, sign_in(&dir).as_os_str()),
+        };
+        assert_eq!(
+            through.search("pineapple"),
+            Err(round),
+            "a search failing with Slack's {said} counts as {round:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[test]

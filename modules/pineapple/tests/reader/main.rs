@@ -416,6 +416,18 @@ fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Running {
 /// own environment names. It runs in its home, so a relative name lands
 /// there rather than in the crate, and says to its journal there.
 fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Running {
+    reading_in(home, &home.join("state"), origin, more, waiting)
+}
+
+/// As [`reading`], with `state` as its state home, which may be relative
+/// to `home`, where it runs.
+fn reading_in(
+    home: &Path,
+    state: &Path,
+    origin: &str,
+    more: &[&str],
+    waiting: Option<&Path>,
+) -> Running {
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
     reader
         .current_dir(home)
@@ -429,7 +441,7 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
         .args(more)
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
-        .env("XDG_STATE_HOME", home.join("state"))
+        .env("XDG_STATE_HOME", state)
         .stdout(Stdio::null())
         .stderr(journal_of(home))
         .spawn()

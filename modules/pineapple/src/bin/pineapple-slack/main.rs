@@ -380,9 +380,8 @@ fn said(decisions: &[Value]) -> String {
 }
 
 /// What either reader starts from: what it has judged, saying what of
-/// that couldn't be read, and where For You is told it can't hear Slack,
-/// `named` or else where For You reads.
-fn begin(state: &Path, named: Option<&OsStr>) -> (Judged, Waiting) {
+/// that couldn't be read.
+fn begin(state: &Path) -> Judged {
     let (judged, afresh) = judged::read(state, seconds().saturating_sub(LOOK_BACK));
     match afresh {
         Some(Afresh::Unreadable) => eprintln!(
@@ -395,8 +394,12 @@ fn begin(state: &Path, named: Option<&OsStr>) -> (Judged, Waiting) {
         ),
         Some(Afresh::Nothing) | None => {}
     }
-    // Where For You reads what waits on Joel: told there when Slack
-    // can't be heard, since the phone's alert goes through Slack.
+    judged
+}
+
+/// Where the live reader tells For You it can't hear Slack, since the
+/// phone's alert goes through Slack: `named`, or else where For You reads.
+fn told_in(named: Option<&OsStr>) -> Waiting {
     let waiting = deaf::waiting(named, &env_dir("XDG_STATE_HOME", ".local/state"));
     if let Some(refused) = &waiting.refused {
         eprintln!(
@@ -406,7 +409,7 @@ fn begin(state: &Path, named: Option<&OsStr>) -> (Judged, Waiting) {
             waiting.file.to_string_lossy()
         );
     }
-    (judged, waiting)
+    waiting
 }
 
 /// Tells For You whether this round heard Slack, as it changes.
@@ -428,7 +431,8 @@ fn run(how: &Run) -> Result<(), Failure> {
         words: Words::from_object(REPLIES).unwrap_or_default(),
         shadow: how.shadow,
     };
-    let (mut judged, waiting) = begin(&state, std::env::var_os("SAFE_WORD_WAITING").as_deref());
+    let mut judged = begin(&state);
+    let waiting = told_in(std::env::var_os("SAFE_WORD_WAITING").as_deref());
     let mut phone = Phone {
         origin: how.origin.clone(),
         own: None,
@@ -500,8 +504,13 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         words: Words::from_object(REPLIES).unwrap_or_default(),
         shadow: true,
     };
-    let waiting = state.join("waiting.json");
-    let (mut judged, waiting) = begin(&state, Some(waiting.as_os_str()));
+    let mut judged = begin(&state);
+    // Named here rather than as the live reader's is, whose fallback for a
+    // name that isn't whole is For You's own row.
+    let waiting = Waiting {
+        file: state.join("waiting.json"),
+        refused: None,
+    };
     let mut through = Through {
         gateway: Gateway::new(url, program),
     };
@@ -557,9 +566,11 @@ fn round(
     let tag = format!("<@{me}>");
     // A round counts as read only once both searches answered, so
     // judged.json's read_at never says Slack was read when it wasn't. A
-    // sign-in refused or missing for the first isn't asked for again.
+    // sign-in refused or missing for the first isn't asked for again; an
+    // answer that couldn't be read is, so the journal says if the other
+    // reads.
     let (phrase, tagged) = match ears.search("pineapple") {
-        Err(deaf @ Round::Deaf(_)) => return deaf,
+        Err(deaf @ Round::Deaf(Deafness::Refused | Deafness::NoSignIn)) => return deaf,
         phrase => (phrase, ears.search(&tag)),
     };
     let (phrase, tagged) = match (phrase, tagged) {

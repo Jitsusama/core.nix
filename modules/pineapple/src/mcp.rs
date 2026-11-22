@@ -8,7 +8,8 @@
 //! it ran over or found its keyring locked, since a locked keyring asks
 //! Joel to unlock it each time. Three things a gateway does on its own are
 //! taken in stride, each once a call: a session it forgot is opened again,
-//! a sign-in it refused, opening or calling, is asked for again, and a
+//! a sign-in it refused, opening or calling, is asked for again (a
+//! redirect, never followed, is one refused), and a
 //! tool whose backend it turned off after a quiet spell has that backend
 //! turned back on. Any other failure lets the session go, so the next call
 //! opens one afresh. A tool's answer is the text it said, as the gateway
@@ -46,8 +47,19 @@ const REFUSED: u16 = 401;
 const FORBIDDEN: u16 = 403;
 const NOT_FOUND: u16 = 404;
 
-/// Where HTTP's failures start.
+/// Where HTTP's failures start, and where a server's own do.
 const FAILING: u16 = 400;
+const SERVER_FAILING: u16 = 500;
+
+/// HTTP's redirects, which are never followed, since one would carry the
+/// sign-in wherever it pointed.
+const REDIRECTS: std::ops::Range<u16> = 300..400;
+
+/// Whether `status` refuses the sign-in given: a 401 or 403, or a
+/// redirect, which is a gateway sending its caller off to sign in again.
+fn refuses(status: u16) -> bool {
+    status == REFUSED || status == FORBIDDEN || REDIRECTS.contains(&status)
+}
 
 /// Why a call came to nothing.
 #[derive(Debug, PartialEq, Eq)]
@@ -57,8 +69,11 @@ pub enum Called {
     NoSignIn(SignIn),
     /// The gateway refused the sign-in given, twice.
     Refused,
-    /// The gateway couldn't be reached, or answered what isn't JSON-RPC.
+    /// The gateway couldn't be reached, or its answer couldn't be read
+    /// to its end.
     Unreachable(String),
+    /// The gateway answered what isn't JSON-RPC, a cause that lasts.
+    Unreadable(String),
     /// The gateway or its tool said it failed, in these words.
     Failed(String),
 }
@@ -166,12 +181,12 @@ impl Gateway {
                 }
             };
             match answer.status {
-                REFUSED | FORBIDDEN if !refused => {
+                status if refuses(status) && !refused => {
                     refused = true;
                     self.token = None;
                     self.forget();
                 }
-                REFUSED | FORBIDDEN => return Err(Called::Refused),
+                status if refuses(status) => return Err(Called::Refused),
                 NOT_FOUND if !forgotten => {
                     forgotten = true;
                     self.forget();
@@ -226,7 +241,7 @@ impl Gateway {
                 "clientInfo": { "name": "pineapple", "version": env!("CARGO_PKG_VERSION") },
             })),
         )?;
-        if opened.status == REFUSED || opened.status == FORBIDDEN {
+        if refuses(opened.status) {
             return Ok(false);
         }
         let session = opened.session.clone();
@@ -269,11 +284,19 @@ impl Gateway {
             .get(SESSION)
             .and_then(|value| value.to_str().ok())
             .map(str::to_owned);
-        let text = answer.body_mut().read_to_string().unwrap_or_default();
-        let refused = [REFUSED, FORBIDDEN, NOT_FOUND].contains(&status);
+        let refused = refuses(status) || status == NOT_FOUND;
         let body = if params.is_some() && !refused {
+            let text = answer.body_mut().read_to_string().map_err(|error| {
+                Called::Unreachable(format!("couldn't read the gateway's answer: {error}"))
+            })?;
             Some(answered(&text, self.asked).ok_or_else(|| {
-                Called::Unreachable(format!("the gateway answered {status}, not JSON-RPC"))
+                let why = format!("the gateway answered {status}, not JSON-RPC");
+                // A gateway that's down says so in its own page, and passes.
+                if status >= SERVER_FAILING {
+                    Called::Unreachable(why)
+                } else {
+                    Called::Unreadable(why)
+                }
             })?)
         } else {
             None
