@@ -70,8 +70,8 @@
 
   # dictation's tests run as it builds: its spectrogram matches the one that
   # transcribed a clip word for word, its transform the plain sum, its
-  # vocabulary reads back into text and words into tokens, and silence or a
-  # moment isn't heard.
+  # vocabulary reads back into text and words into tokens, Parakeet's own
+  # gives each word its text has, and silence or a moment isn't heard.
   dictation-works-it-out = pkgs.callPackage ./package.nix { };
 
   # The whole of dictation's Whisper, on the CPU as a machine with no NPU

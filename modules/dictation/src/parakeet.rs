@@ -23,6 +23,9 @@
 //! another ("Look at all this stuff man" once came out as "Legal, ne?"),
 //! so it's held to English: no token with a letter outside ASCII, and no
 //! special token, is ever chosen.
+//!
+//! Long because over a third of it is its cases, each pinning a step of
+//! decoding or spelling against a scripted model or a vocabulary.
 
 use std::path::Path;
 use std::time::{Duration, Instant};
@@ -650,6 +653,7 @@ mod tests {
         let vocab = vocab();
         let allowed: Vec<usize> = (0..vocab.blank()).filter(|&t| vocab.allowed(t)).collect();
         assert_eq!(allowed, [2, 3, 4, 6, 7]);
+        assert!(english("\u{2581}hello"), "the tokenizer's mark refused");
     }
 
     #[test]
@@ -721,21 +725,54 @@ mod tests {
 
     #[test]
     fn a_bare_word_start_opens_the_word_its_next_piece_spells() {
-        let vocab = Vocab::parse(r#"{"0": "▁", "1": "ld", "2": "▁hello"}"#).unwrap();
-        let tokens = [(0, 0), (1, FRAME), (2, 2 * FRAME)];
-        let words = vocab.words(&tokens);
-        let spelled: Vec<(&str, usize)> = words.iter().map(|w| (w.text.as_str(), w.at)).collect();
-        assert_eq!(
-            spelled,
-            [("ld", 0), ("hello", 2 * FRAME)],
-            "a bare word start didn't open the word after it"
+        // Parakeet's export has one bare piece, a plain space; the
+        // tokenizer's own vocabularies write its mark, which `words` takes too.
+        for mark in [" ", "\u{2581}"] {
+            let pieces = format!(r#"{{"0": "{mark}", "1": "ld", "2": "{mark}hello"}}"#);
+            let vocab = Vocab::parse(&pieces).unwrap();
+            let tokens = [(0, 0), (1, FRAME), (2, 2 * FRAME)];
+            let words = vocab.words(&tokens);
+            let spelled: Vec<(&str, usize)> =
+                words.iter().map(|w| (w.text.as_str(), w.at)).collect();
+            assert_eq!(
+                spelled,
+                [("ld", 0), ("hello", 2 * FRAME)],
+                "a bare {mark:?} didn't open the word after it"
+            );
+            let joined: Vec<&str> = spelled.iter().map(|(text, _)| *text).collect();
+            assert_eq!(
+                joined.join(" "),
+                vocab.text(&[0, 1, 2]),
+                "{mark:?} spelled otherwise"
+            );
+        }
+    }
+
+    #[test]
+    fn the_shipped_vocabulary_gives_a_word_for_each_its_text_has() {
+        // The build names the vocabulary Parakeet ships with (package.nix),
+        // so one spaced another way fails here rather than leaving every
+        // call's takes whole; a plain `cargo test` has none to read.
+        let Some(path) = std::env::var_os("PARAKEET_VOCAB") else {
+            assert!(
+                std::env::var_os("NIX_BUILD_TOP").is_none(),
+                "the build named no vocabulary"
+            );
+            return;
+        };
+        let vocab = Vocab::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let tokens: Vec<usize> = (0..vocab.blank()).filter(|&t| vocab.allowed(t)).collect();
+        let timed: Vec<(usize, usize)> = tokens.iter().map(|&t| (t, t * FRAME)).collect();
+        let words = vocab.words(&timed);
+        let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+        let text = vocab.text(&tokens);
+        let said: Vec<&str> = text.split_whitespace().collect();
+        assert!(
+            said.len() > 1000,
+            "the vocabulary spelled only {} words",
+            said.len()
         );
-        let joined: Vec<&str> = spelled.iter().map(|(text, _)| *text).collect();
-        assert_eq!(
-            joined.join(" "),
-            vocab.text(&[0, 1, 2]),
-            "the words spell other than the text"
-        );
+        assert_eq!(spelled, said, "its words aren't the ones its text has");
     }
 
     #[test]
