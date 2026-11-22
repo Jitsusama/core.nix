@@ -15,7 +15,17 @@ import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { command, floorOf, forageRow, keptAround, onMap, panelOf, stepsOffFloor } from "./draw.ts";
+import {
+  command,
+  type Floor,
+  floorAfter,
+  floorFor,
+  floorOf,
+  forageRow,
+  onMap,
+  panelOf,
+  stepsOff,
+} from "./draw.ts";
 import { escaped } from "./lineage.ts";
 import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
 
@@ -101,13 +111,14 @@ function sayWhen(): void {
 
 const current = (): Forage | undefined => forages.find((each) => each.cell === cursor);
 
-// The cell a long list's floor is drawn around, kept through live records
-// and finds so the drawing holds still until a step leaves it.
-let floorAround: string | null = null;
+// The floor drawn, kept through live records and finds so the drawing holds
+// still until a step leaves it.
+let shownFloor: Floor = { around: null, holds: new Set() };
 
 function select(): void {
-  // Only the row leaving the cursor and the row taking it change, so a step
-  // costs the same whether the list holds five cells or ten thousand.
+  // Only the row leaving the cursor and the row taking it change, and the
+  // floor only when the step leaves it, so a step on the floor costs the same
+  // whether the list holds five cells or ten thousand.
   for (const row of list.querySelectorAll<HTMLElement>('[aria-selected="true"]')) {
     if (row.dataset["cell"] !== cursor) {
       row.setAttribute("aria-selected", "false");
@@ -119,14 +130,12 @@ function select(): void {
     list.setAttribute("aria-activedescendant", row.id);
     row.scrollIntoView({ block: "nearest" });
   }
-  const marked = new Set<string>();
   for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
-    marked.add(mark.dataset["cell"] ?? "");
   }
   // A step the floor leaves off draws it again around the cell stepped to.
-  if (stepsOffFloor(forages, cursor, marked, floorAround)) {
-    floorAround = cursor;
+  if (forages.length > 0 && stepsOff(shownFloor, cursor)) {
+    shownFloor = floorFor(forages, cursor);
     floor.innerHTML = floorOf(forages, cursor, machine());
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
@@ -240,8 +249,8 @@ function draw(): void {
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
   if (forages.length > 0) {
-    floorAround = keptAround(forages, floorAround, cursor);
-    floor.innerHTML = floorOf(forages, cursor, machine(), floorAround);
+    shownFloor = floorAfter(forages, shownFloor.around, cursor);
+    floor.innerHTML = floorOf(forages, cursor, machine(), shownFloor.around);
   }
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();

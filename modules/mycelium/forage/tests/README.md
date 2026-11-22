@@ -28,10 +28,12 @@ run by Node's own test runner when the local sites build the page.
   the book doesn't hold said "as claimed" in the panel at either end.
 - `floor.test.ts` tries which cells the floor draws of a list longer
   than it holds: the first 48 with no cursor, and otherwise the cell it's
-  drawn around, the cells that one started and those nearest it, each
-  with every cell it grew from, once round a ring, so a booked start far
-  down the list still draws solid; and that a step draws the floor again
-  only for a cell it doesn't draw.
+  drawn around, the cells that grew from that one and those nearest it,
+  each with every cell it grew from, once round a ring, so a booked start
+  far down the list still draws solid, and a line deeper than the floor
+  cut at its top; that a step draws the floor again only for a cell it
+  leaves off or one that grew a cell it leaves off; and that a live redraw
+  keeps the floor where it was while it holds the cursor.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.

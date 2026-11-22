@@ -215,11 +215,11 @@ ${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
 /** How the cells of `forages` grew from each other, by their places in it. */
 interface Kin {
   /**
-   * The cell at `start` and each it grew from, up to the floor's most, once
+   * The cell at `start` and each it grew from, up to `most` of them, once
    * round a ring, stopping at a cell `known` holds, as each cell there came
    * with those it grew from.
    */
-  readonly line: (start: number, known: ReadonlySet<number>) => readonly number[];
+  readonly line: (start: number, known: ReadonlySet<number>, most: number) => readonly number[];
   /** The cells that grew from the cell at `parent`, in the list's order. */
   readonly children: (parent: number) => readonly number[];
 }
@@ -231,14 +231,14 @@ function kinOf(forages: readonly Forage[]): Kin {
     const by = grewFrom(each, here);
     return by === undefined ? undefined : index.get(by);
   });
-  const line = (start: number, known: ReadonlySet<number>): readonly number[] => {
-    const found: number[] = [];
+  const line = (start: number, known: ReadonlySet<number>, most: number): readonly number[] => {
+    const found = new Set<number>();
     let at: number | undefined = start;
-    while (at !== undefined && !known.has(at) && !found.includes(at) && found.length < FLOOR.most) {
-      found.push(at);
+    while (at !== undefined && !known.has(at) && !found.has(at) && found.size < most) {
+      found.add(at);
       at = from[at];
     }
-    return found;
+    return [...found];
   };
   const children = (parent: number): readonly number[] =>
     from.flatMap((by, place) => (by === parent ? [place] : []));
@@ -271,7 +271,7 @@ function* starts(first: readonly number[], centre: number, length: number): Gene
  * no branch drawn hangs from a starter that isn't; only a line deeper than
  * the floor holds is cut at its top, as the nearest of it beats none. With
  * no `around` on the list, that's the list's first, as the list puts each
- * cell after its starter.
+ * cell after its starter, but for a ring cut by the floor's last place.
  */
 function drawn(forages: readonly Forage[], around: string | null): readonly Forage[] {
   if (forages.length <= FLOOR.most) {
@@ -282,11 +282,11 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   const first = found < 0 ? [] : [found, ...children(found)];
   const chosen = new Set<number>();
   for (const start of starts(first, Math.max(found, 0), forages.length)) {
-    if (chosen.has(start)) {
-      continue;
-    }
-    const wanted = line(start, chosen);
-    if (chosen.size + wanted.length <= FLOOR.most) {
+    // A line one longer than the room left can't fit, so it stops there; only
+    // the first may fill the floor, cut at its top.
+    const room = FLOOR.most - chosen.size;
+    const wanted = line(start, chosen, chosen.size === 0 ? room : room + 1);
+    if (wanted.length <= room) {
       for (const each of wanted) {
         chosen.add(each);
       }
@@ -298,40 +298,52 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   return [...chosen].sort((one, other) => one - other).flatMap((each) => forages[each] ?? []);
 }
 
-/**
- * Whether a step to `cursor` draws the floor again, around it: when the
- * floor, drawing fewer than the list holds and around another cell than
- * `around`, leaves off the cursor or a cell that grew from it. `marked` are
- * the cells it draws. A cell whose name reads back otherwise from the page
- * can't be marked, so once the floor is drawn around it, it stays.
- */
-function stepsOffFloor(
-  forages: readonly Forage[],
-  cursor: string | null,
-  marked: ReadonlySet<string>,
-  around: string | null,
-): boolean {
-  if (cursor === null || cursor === around || marked.size >= forages.length) {
-    return false;
-  }
-  if (!marked.has(cursor)) {
-    return true;
-  }
-  const here = new Set(forages.map((each) => each.cell));
-  return forages.some((each) => !marked.has(each.cell) && grewFrom(each, here) === cursor);
+/** A floor drawn around a cell, and the cells a step to which leaves it be. */
+interface Floor {
+  /** The cell it's drawn around. */
+  readonly around: string | null;
+  /** The cells it draws with every cell that grew from them. */
+  readonly holds: ReadonlySet<string>;
 }
 
 /**
- * The cell a redraw keeps the floor around: `kept` while the list still
- * holds it, so a live record or a find leaves the floor still, else the
- * cursor.
+ * The floor drawn around `around`, worked out once a draw so that a step
+ * only looks its cell up, whether the list holds five cells or ten
+ * thousand.
  */
-function keptAround(
-  forages: readonly Forage[],
-  kept: string | null,
-  cursor: string | null,
-): string | null {
-  return kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
+function floorFor(forages: readonly Forage[], around: string | null): Floor {
+  const cells = new Set(drawn(forages, around).map((each) => each.cell));
+  const here = new Set(forages.map((each) => each.cell));
+  const holds = new Set(cells);
+  for (const each of forages) {
+    const by = grewFrom(each, here);
+    if (by !== undefined && !cells.has(each.cell)) {
+      holds.delete(by);
+    }
+  }
+  return { around, holds };
+}
+
+/**
+ * Whether a step to `cursor` draws `floor` again, around it: when it's
+ * drawn around another cell and leaves off the cursor or a cell that grew
+ * from it. Drawn around the cursor, it stays, even when the cells that
+ * grew from it don't all fit.
+ */
+function stepsOff(floor: Floor, cursor: string | null): boolean {
+  return cursor !== null && cursor !== floor.around && !floor.holds.has(cursor);
+}
+
+/**
+ * The floor a redraw draws: around `kept` while the list still holds it
+ * and the floor there holds the cursor, so a live record or a find leaves
+ * it still; else around the cursor, as when a record pushes the cursor off
+ * it or grows a cell from the cursor that it leaves off.
+ */
+function floorAfter(forages: readonly Forage[], kept: string | null, cursor: string | null): Floor {
+  const around = kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
+  const floor = floorFor(forages, around);
+  return stepsOff(floor, cursor) ? floorFor(forages, cursor) : floor;
 }
 
 /** Where each cell drawn sits on the floor, by its place among those drawn and its depth. */
@@ -564,4 +576,5 @@ ${waitsOf(forage)}${documentsOf(forage)}
 ${goesOf(forage)}`;
 }
 
-export { command, floorOf, forageRow, keptAround, onMap, panelOf, purposeOf, stepsOffFloor };
+export type { Floor };
+export { command, floorAfter, floorFor, floorOf, forageRow, onMap, panelOf, purposeOf, stepsOff };
