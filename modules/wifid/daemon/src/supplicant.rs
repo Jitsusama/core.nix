@@ -773,7 +773,17 @@ mod tests {
     }
 
     #[test]
-    fn a_card_left_between_tries_keeps_its_networks_till_its_next_is_taken_off() {
+    fn a_card_in_a_move_or_left_between_tries_keeps_its_networks_as_they_are() {
+        assert_eq!(
+            others_given(true, false, false, "disconnected"),
+            Others::Kept,
+            "a card in a move keeps them off till the move ends"
+        );
+        assert_eq!(
+            others_given(true, false, true, "disconnected"),
+            Others::Kept,
+            "a move outranks a pick come off its network"
+        );
         assert_eq!(
             others_given(false, true, false, "disconnected"),
             Others::KeptTillTakenOff,

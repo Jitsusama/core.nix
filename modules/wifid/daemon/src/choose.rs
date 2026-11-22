@@ -2731,7 +2731,8 @@ pub(crate) mod tests {
         let waits = chooser.choose(back, (DESK, &badly, -50, CH52), &near, false);
         let short = back + SPAN - Duration::from_secs(1);
         let still = chooser.choose(short, (DESK, &badly, -50, CH52), &near, false);
-        let spanned = back + SPAN;
+        // A second past the span, so it holds on any comparison.
+        let spanned = back + SPAN + Duration::from_secs(1);
         let hall_only = chooser.choose(spanned, (DESK, &badly, -50, CH52), &hall_alone, false);
         let next = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
         // Exactly a stay, which moves nothing `next` is chosen from.
@@ -2929,7 +2930,9 @@ pub(crate) mod tests {
         chooser.choose(back_again, on, &near, false);
         let short = back_again + SPAN - Duration::from_secs(1);
         let still = chooser.choose(short, on, &near, false);
-        let next = chooser.choose(back_again + SPAN, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let spanned = back_again + SPAN + Duration::from_secs(1);
+        let next = chooser.choose(spanned, on, &near, false);
 
         assert_eq!(still, Choice::Stay, "short of a span since it came back");
         assert_eq!(

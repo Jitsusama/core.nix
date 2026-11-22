@@ -291,6 +291,16 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     since = wifid.journal_now()
     answer = wifid.acting({"act": "roam", "bssid": "02:00:00:00:05:00"})
     assert answer == {"id": 1, "done": True}, answer
+    # wifid answers once it has turned the Inn off and asked the move, and says it turns the
+    # networks on again before it does, so an Inn found on before that line is one the move
+    # never turned off. The journal is read after the Inn, so a way back ending between the
+    # two reads passes rather than racing.
+    inn_on = inn_is_on(machine)
+    on_again = machine.succeed(
+        f"journalctl -o cat -u wifid --after-cursor='{since}'"
+        " | grep -x 'wlan2.s other networks are on again' || true"
+    )
+    assert not inn_on or on_again, "the Inn is off while the card moves"
     # The way back is timed by its journal, kept whether it comes or not. A card sent back only
     # once its time is up is waited for too, so it fails on its time below, not as a timeout.
     try:

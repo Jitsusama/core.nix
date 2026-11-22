@@ -155,7 +155,8 @@ pub struct Unreached {
 /// Why a move is sent back.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Short {
-    /// It was still joining its point so long after the ask, `BACK_FOR`.
+    /// It was still joining its point so long after its time began,
+    /// `BACK_FOR`: from the ask, or from the look it waited on.
     Late { after: Duration },
     /// Its card came off its network on the way.
     Off,
@@ -348,8 +349,10 @@ impl Arrivals {
                 let why = if moving.left.is_none() {
                     Short::Unstarted
                 } else {
+                    // From when its time began, so the line says the bound
+                    // it was held to rather than the look before it.
                     Short::Late {
-                        after: now - moving.asked,
+                        after: now - moving.started(),
                     }
                 };
                 Some(Unreached {
@@ -1034,6 +1037,12 @@ mod tests {
             due,
             Some(ended + BACK_FOR),
             "a way back's time from the look"
+        );
+        let late = arrivals.unreached(ended + BACK_FOR);
+        assert_eq!(
+            late.first().map(|unreached| unreached.why),
+            Some(Short::Late { after: BACK_FOR }),
+            "said late by its time from the look, not the ask"
         );
 
         arrivals.asked("wlan0", Some(DESK), FAR, now);

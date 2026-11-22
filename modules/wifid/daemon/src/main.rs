@@ -945,10 +945,16 @@ impl<'a> Air<'a> {
                 return;
             };
             let moving = self.arrivals.borrow().moving(card);
+            let new = step != "scanning";
             if let Some(changed) = stranger_look(changed, step, moving) {
                 // Said apart, so the journal shows a look wpa_supplicant
-                // never said, as the stall it can set off is read there.
-                println!("<7>another account says {card} is scanning");
+                // never said, as the stall it can set off is read there;
+                // and only as it changes the card's step, as one taken
+                // again changes nothing, so a flood of them can't crowd
+                // wifid's own lines out.
+                if new {
+                    println!("<7>another account says {card} is scanning");
+                }
                 self.card_changed(bus, path, &changed).await;
             } else if self.passed.insert(card.clone()) {
                 // Said once a step, so a look passed over as its card still
