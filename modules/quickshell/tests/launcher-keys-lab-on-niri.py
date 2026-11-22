@@ -557,10 +557,16 @@ def debugged(given: str) -> bool:
     """Say whether QS_GIVEN opens the shell to the profiler's port, read as the shell gets it.
 
     launcher_on_niri gives the shell QS_GIVEN split on whitespace, so `--debug 37680` opens
-    another port, and two spaces between the words still open this one.
+    another port, and two spaces between the words still open this one. qs takes the port as
+    `--debug 3768` or `--debug=3768`, and refuses to start when given `--debug` twice.
     """
     words = given.split()
-    return any(word == "--debug" and port == PORT for word, port in itertools.pairwise(words))
+    ports = [
+        port if word == "--debug" else word.removeprefix("--debug=")
+        for word, port in itertools.pairwise([*words, ""])
+        if word == "--debug" or word.startswith("--debug=")
+    ]
+    return ports == [PORT]
 
 
 def lab_asks_known(launcher: Path) -> None:

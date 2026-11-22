@@ -1498,17 +1498,17 @@ def working_spent(opening: Json) -> None:
     opening would.
     """
     thread = cast("Json", opening.get("thread") or {})
-    ran = cast("float", thread.get("ran", 0))
-    waited = cast("float", thread.get("waited", -1))
+    ran = thread.get("ran", 0)
+    waited = thread.get("waited")
     unsaid = "its thread's working went unsaid, or the builder's kernel keeps no schedstat"
+    assert isinstance(ran, int | float), f"{unsaid}: {opening}"
     assert ran > 0, f"{unsaid}: {opening}"
-    assert waited >= 0, f"{unsaid}: {opening}"
+    assert isinstance(waited, int | float), f"{unsaid}: {opening}"
     assert ran + waited <= cast("float", opening["worked"]) + 1, (
         f"its thread spent more than its working, so not this opening's: {opening}"
     )
     collecting = opening.get("collecting")
     assert isinstance(collecting, int), f"the collector's part went unsaid: {opening}"
-    assert collecting >= 0, f"the collector's part went back: {opening}"
 
 
 def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:

@@ -12708,9 +12708,12 @@ Scope {
     }
 
     // The opening's working done, from its ask, with the clocks it's said by.
+    // The clocks are read before the time, as the ask reads them after it,
+    // so a wait for a CPU between the two reads falls in the working timed
+    // and never in the clocks alone.
     function openWorkDone() {
-        openWorked = KeyTimes.now() - openAsked;
         openWorkedClocks = feltClocks();
+        openWorked = KeyTimes.now() - openAsked;
     }
     function openDrawn(beganAt, frame) {
         const asked = openAsked;
