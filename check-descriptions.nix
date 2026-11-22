@@ -3882,19 +3882,27 @@
   forage-site-holds = ''
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
     cell's forage under the cell that started it, even in a ring, plans first with their steps
-    added up, how many cells have no purpose written, what each quest waits on its person for, and
-    a record it can't read said, not dropped
+    added up, how many cells have no purpose written, what each quest waits on its person for, a
+    record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
+    with the cells it started and every cell each grew from, kept on its cell through records
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
     headless Chromium: every cell drawn in order, a started or split cell under the one it grew
     from, what waits on its person and the plan furthest to go said in its lede, each cell's plans,
     quest, needs and split in its panel and a need as a dotted arc, its keys stepping the cursor, a
-    purpose written followed and drawn as words though it holds markup, a wait answered no longer
+    purpose written followed and drawn as words though it holds markup, a cell a purpose takes out
+    of the view of cells without purpose taking the cursor with it, a wait answered no longer
     said, a cell going, broken while the node is away with its cells kept and live with them read
     again once it's back, stale once the server goes with its cells kept, a first visit within its
     budget and a second answered unchanged, the web-design skill's page checks passing at a phone's
-    width and a desk's in both looks, and nothing logged but what a test causes
+    width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
+    floor following the cursor to a booked start past the 48th, drawn solid, not drawn again on a
+    step it holds, kept on its cells through a find, one matching nothing keeping the cursor and
+    the floor through its end, a record on it drawn with it kept, drawn again on a step off it
+    over the list the record left, and during a find matching nothing a link naming the cursor's
+    cell in another form bringing its row back and that cell ending leaving a floor drawn around
+    another where it was
   '';
   murmurs-site-holds = ''
     the murmurs page typechecks on the kit at its strictest and builds, its tests passing: murmurs

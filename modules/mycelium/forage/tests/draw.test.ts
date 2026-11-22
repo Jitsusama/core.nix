@@ -6,8 +6,12 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { clockTime } from "../../../local-sites/kit/status.ts";
-import { floorOf, forageRow, panelOf } from "../draw.ts";
+import { floorFor, floorOf, forageRow, panelOf } from "../draw.ts";
 import type { Forage } from "../model.ts";
+
+/** The floor of `list`, drawn with no cursor. */
+const floorOfAll = (list: readonly Forage[]): string =>
+  floorOf(floorFor(list, null), null, "kestrel");
 
 /** A forage of kestrel's on `quest`, with `more` over its fields. */
 function forage(more: Partial<Forage> = {}): Forage {
@@ -317,7 +321,7 @@ it("draws no joins on the floor and says none in the panel when the node sends n
   for (const label of ["Split from", "Split into", "Serves", "Relies on"]) {
     assert.ok(!panel.includes(`<dt>${label}</dt>`), label);
   }
-  assert.ok(!floorOf([forage()], null, "kestrel").includes('class="join"'));
+  assert.ok(!floorOfAll([forage()]).includes('class="join"'));
 });
 
 /** The panel's line for the cell TERNAA split from, linked to its row. */
@@ -434,16 +438,12 @@ it("says a need's month from its own table, whatever the runtime's locale says",
 });
 
 it("draws one dotted arc for each pair a need joins on the floor, and a branch for a split", () => {
-  const floor = floorOf(
-    [
-      forage({ cell: "KESTRL", serves: [{ cell: "OSPREY", need: "", since: undefined }] }),
-      forage({ cell: "OSPREY", relies: [{ cell: "KESTRL", need: "", since: undefined }] }),
-      forage({ cell: '<b a="1">', splitFrom: "KESTRL", depth: 1 }),
-      forage({ cell: "SKIFFS", startedBy: "OSPREY", depth: 1 }),
-    ],
-    null,
-    "kestrel",
-  );
+  const floor = floorOfAll([
+    forage({ cell: "KESTRL", serves: [{ cell: "OSPREY", need: "", since: undefined }] }),
+    forage({ cell: "OSPREY", relies: [{ cell: "KESTRL", need: "", since: undefined }] }),
+    forage({ cell: '<b a="1">', splitFrom: "KESTRL", depth: 1 }),
+    forage({ cell: "SKIFFS", startedBy: "OSPREY", depth: 1 }),
+  ]);
   assert.equal(floor.match(/class="join"/gu)?.length, 1);
   // It runs from the cell relied on, first on the floor, to the one relying, next.
   assert.match(floor, JOIN_FROM_FIRST_TO_SECOND);
@@ -455,14 +455,10 @@ it("draws one dotted arc for each pair a need joins on the floor, and a branch f
 
 it("draws a start the node's book holds solid, and one only claimed dashed", () => {
   const floor = (startedBy: string, booked: boolean) =>
-    floorOf(
-      [
-        forage({ cell: "KESTRL" }),
-        forage({ cell: "TERNAA", startedBy, booked, splitFrom: "KESTRL", depth: 1 }),
-      ],
-      null,
-      "kestrel",
-    );
+    floorOfAll([
+      forage({ cell: "KESTRL" }),
+      forage({ cell: "TERNAA", startedBy, booked, splitFrom: "KESTRL", depth: 1 }),
+    ]);
   assert.equal(floor("KESTRL", true).match(/class="hypha"/gu)?.length, 2);
   assert.ok(!floor("KESTRL", true).includes("claimed"));
   assert.equal(floor("KESTRL", false).match(/class="hypha claimed"/gu)?.length, 1);

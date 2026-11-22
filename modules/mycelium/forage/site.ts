@@ -15,7 +15,17 @@ import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { command, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
+import {
+  command,
+  type Floor,
+  floorAfter,
+  floorOf,
+  floorStepped,
+  forageRow,
+  onMap,
+  panelOf,
+  UNDRAWN,
+} from "./draw.ts";
 import { escaped } from "./lineage.ts";
 import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
 
@@ -101,9 +111,14 @@ function sayWhen(): void {
 
 const current = (): Forage | undefined => forages.find((each) => each.cell === cursor);
 
+// The floor drawn, kept through live records and finds so the drawing holds
+// still until a step leaves it.
+let shownFloor: Floor = UNDRAWN;
+
 function select(): void {
-  // Only the row leaving the cursor and the row taking it change, so a step
-  // costs the same whether the list holds five cells or ten thousand.
+  // Only the row leaving the cursor and the row taking it change, and the
+  // floor only when the step leaves it, so a step on the floor costs the same
+  // whether the list holds five cells or ten thousand.
   for (const row of list.querySelectorAll<HTMLElement>('[aria-selected="true"]')) {
     if (row.dataset["cell"] !== cursor) {
       row.setAttribute("aria-selected", "false");
@@ -117,6 +132,12 @@ function select(): void {
   }
   for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
+  }
+  // A step the floor leaves off draws it again around the cell stepped to.
+  const onStep = floorStepped(shownFloor, cursor);
+  if (onStep !== shownFloor) {
+    shownFloor = onStep;
+    floor.innerHTML = floorOf(onStep, cursor, machine());
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);
@@ -221,15 +242,25 @@ function openCell(cell: string): void {
 
 function draw(): void {
   const rows = shown();
+  // A find that matches nothing keeps the cursor while its cell lasts and the
+  // view still lists it, so ending the find finds it again; a cell that ends,
+  // or that a record takes out of the view of cells without purpose, takes the
+  // cursor with it. Only a find can then be what hides the cursor's cell.
   if (!rows.some((each) => each.cell === cursor)) {
-    cursor = rows[0]?.cell ?? null;
+    const open = current();
+    const listed = open !== undefined && (!hollowOnly || open.purpose === "");
+    cursor = rows[0]?.cell ?? (listed ? cursor : null);
   }
   list.innerHTML =
     rows.length === 0 && forages.length > 0
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
+  // Worked out for every list, an empty one too, so a step never draws a
+  // floor over a list the page no longer holds; an emptied list leaves the
+  // last drawing up, as it always has.
+  shownFloor = floorAfter(forages, shownFloor, cursor);
   if (forages.length > 0) {
-    floor.innerHTML = floorOf(forages, cursor, machine());
+    floor.innerHTML = floorOf(shownFloor, cursor, machine());
   }
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();
@@ -415,7 +446,9 @@ listen({
 
 addEventListener("hashchange", () => {
   const named = cellIn(location.hash);
-  if (named !== null && named !== cursor) {
+  // The cursor's own cell opens too while a find hides it, so a link naming it in
+  // another form ends the find. The page's own form changes no hash, so fires nothing.
+  if (named !== null && (named !== cursor || !shown().some((each) => each.cell === named))) {
     openCell(named);
   }
 });
