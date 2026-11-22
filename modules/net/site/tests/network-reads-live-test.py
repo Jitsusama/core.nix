@@ -49,7 +49,7 @@ TV_NAME = "<b>Den</b> TV"
 # The laptop mycelium runs on, by the id net gives it and the name both give it.
 KESTREL = "mac:00:00:5e:00:53:20"
 # What a first visit to the network page may cost, drawn from the stand-in's house.
-BUDGET = Budget(files=36, kilobytes=545, elements=335)
+BUDGET = Budget(files=36, kilobytes=522, elements=335)
 
 
 @pytest.fixture
