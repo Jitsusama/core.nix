@@ -12530,6 +12530,11 @@ Scope {
     // collects, so whether 32 is still ample is read there.
     readonly property real openingRoom: 32
     function collectClosed() {
+        // A count or a weighing already due would land within a second of
+        // this closing, so it waits for the resume below instead; what it
+        // was to do stays owed in holdersOwed and freeingNext.
+        holdersLater.stop();
+        freedLater.stop();
         if (open || opening || parting !== "")
             return;
         // How far the opening went, against where the collector would have
@@ -12629,7 +12634,10 @@ Scope {
     // apart, and only while the launcher is shut. Whatever an opening or a
     // collection put off, the count or a weighing, the next closing takes
     // up 5 s later, as the census waits, and a turn or two on, so none stalls an
-    // opening in the seconds after a closing when Joel most often reopens.
+    // opening in the seconds after a closing when Joel most often reopens;
+    // a closing stops any already due. A name holding `~` is every property
+    // the journal's filter folded into it, which no one cut could free, so
+    // it isn't weighed.
     property bool holdersCounted: false
     property bool holdersOwed: false
     property var freeingNext: []
@@ -12657,7 +12665,8 @@ Scope {
                 return;
             root.holdersCounted = true;
             root.holdersOwed = false;
-            root.freeingNext = holders.holders.slice(0, 3).map(row => row[0]);
+            root.freeingNext = holders.holders.map(row => row[0])
+                .filter(name => !name.split(" ").includes("~")).slice(0, 3);
             freedLater.restart();
         }
     }

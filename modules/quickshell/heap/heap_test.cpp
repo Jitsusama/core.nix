@@ -1184,6 +1184,77 @@ bool freesWhatItAloneHolds() {
     return held;
 }
 
+// How many objects each object made in script holds in the test of what
+// the sweep takes anyway.
+constexpr int DROPPED = 20000;
+
+// Whether freedBy() leaves out what an object nothing reaches holds under
+// the holder's name, which the next sweep takes whether or not the
+// holder's let go: one made in script and dropped since the last
+// collection, beside another kept by a property, counts as the kept one
+// alone did, though it's still in the heap.
+bool leavesTheSweepsAlone() {
+    QTemporaryDir shell;
+    QDir files(shell.path());
+    const bool wrote =
+        files.mkdir(QStringLiteral("pieces")) && files.cd(QStringLiteral("pieces")) &&
+        written(files, QStringLiteral("Dropping.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    id: root\n"
+                               "    property var keep: null\n"
+                               "    property Component piece: Component {\n"
+                               "        QtObject { property var own: [] }\n    }\n"
+                               "    function made(tag) {\n"
+                               "        const one = piece.createObject(null);\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            one.own.push({ n: i, s: tag + i });\n"
+                               "        return one;\n    }\n"
+                               "    function keepOne() { keep = made('k'); }\n"
+                               "    function dropOne() { made('g'); }\n}\n")
+                    .arg(DROPPED));
+    if (!wrote) {
+        std::fprintf(stderr, "FAIL the sweep's test file wasn't written in %s\n",
+                     qPrintable(shell.path()));
+        return false;
+    }
+    QQmlEngine engine;
+    Heap heap(&engine);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(files.filePath(QStringLiteral("Dropping.qml"))));
+    const std::unique_ptr<QObject> made(component.create());
+    if (!made) {
+        std::fprintf(stderr, "FAIL the sweep's test object wasn't made: %s\n",
+                     qPrintable(component.errorString()));
+        return false;
+    }
+    QMetaObject::invokeMethod(made.get(), "keepOne");
+    weighed(engine, heap);
+    // Room enough that dropping one starts no collection to sweep it.
+    heap.leaveRoom(ROOM_MB);
+    const QString holder = QStringLiteral("pieces/Dropping.qml own");
+    const QVariantMap kept = heap.freedBy(holder);
+    const double before = heap.weigh().value(QStringLiteral("live")).toDouble();
+    QMetaObject::invokeMethod(made.get(), "dropOne");
+    const double grew = heap.weigh().value(QStringLiteral("live")).toDouble() - before;
+    const QVariantMap after = heap.freedBy(holder);
+    const double keptMB = kept.value(QStringLiteral("freed")).toDouble();
+    const double keptCount = kept.value(QStringLiteral("count")).toDouble();
+    const double afterCount = after.value(QStringLiteral("count")).toDouble();
+    const bool unswept = grew > keptMB * 0.8;
+    const bool held = kept.value(QStringLiteral("held")).toBool() && keptCount >= 2 * DROPPED &&
+                      after.value(QStringLiteral("held")).toBool() &&
+                      !after.value(QStringLiteral("busy")).toBool() && unswept &&
+                      afterCount < keptCount * 1.1;
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL freedBy() leaves out what an object nothing reaches holds: kept one "
+                     "%.2f MB (%.0f), with one dropped and unswept %.2f MB (%.0f), the heap "
+                     "grew %.2f MB with it, busy %s\n",
+                     keptMB, keptCount, after.value(QStringLiteral("freed")).toDouble(),
+                     afterCount, grew,
+                     after.value(QStringLiteral("busy")).toBool() ? "yes" : "no");
+    return held;
+}
+
 // Whether holders() and freedBy() count nothing while a collection is under
 // way between its slices, saying only that they're busy, rather than
 // clearing the marks the collection has set: what the collection keeps
@@ -1364,10 +1435,12 @@ int main(int argc, char **argv) {
     const bool waitsItOut = waitsOutACollection();
     const bool stray = leavesAStrayMark();
     const bool alone = freesWhatItAloneHolds();
+    const bool swept = leavesTheSweepsAlone();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && fits && whole && census &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone
+                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
+                   swept
                ? 0
                : 1;
 }

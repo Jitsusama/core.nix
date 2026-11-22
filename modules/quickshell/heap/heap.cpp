@@ -934,10 +934,20 @@ QVariantMap Heap::freedBy(const QString &holder) const {
     // in the engine's heap or run JavaScript.
     QElapsedTimer clock;
     clock.start();
-    // Where the holder's values sit, by the storage holding them.
+    // Where the holder's values sit, by the storage holding them, and the
+    // wrapper of the object each storage is for, which eachHolder() finds
+    // just before the object's storage.
     QHash<QV4::Heap::MemberData *, QSet<uint>> own;
+    QHash<QV4::Heap::MemberData *, QV4::Heap::Base *> wrapperOf;
+    QV4::Heap::Base *lastWrapper = nullptr;
     eachHolder(
-        v4, [](QV4::Heap::Base *, Found) {},
+        v4,
+        [&wrapperOf, &lastWrapper](QV4::Heap::Base *item, Found found) {
+            if (found == Found::Object)
+                lastWrapper = item;
+            else if (found == Found::Storage)
+                wrapperOf.insert(static_cast<QV4::Heap::MemberData *>(item), lastWrapper);
+        },
         [&own, &holder](const Held &each) {
             if (each.key == holder)
                 own[each.storage].insert(each.index);
@@ -952,25 +962,45 @@ QVariantMap Heap::freedBy(const QString &holder) const {
                 {QStringLiteral("said"), QStringLiteral("no property holds anything so named")}};
     // Marked as the next collection would mark, but for the holder's own
     // values: the storage holding them first, without what it reaches, then
-    // its other values, then the collector's roots. What the holder's values
-    // add after them is what nothing else keeps, so what that collection
-    // would free were they let go.
+    // the collector's roots, then the other values of each storage whose
+    // object those reach. What the holder's values add after them is what
+    // nothing else keeps, so what that collection would free were they let
+    // go. A storage whose object nothing reaches is the sweep's whatever
+    // happens, as an object made in script and dropped since the last
+    // collection is, so none of what it holds is counted.
     QV4::MarkStack stack(v4);
     for (auto at = own.cbegin(); at != own.cend(); ++at)
         at.key()->setMarkBit();
-    for (auto at = own.cbegin(); at != own.cend(); ++at) {
-        for (uint index = 0; index < at.key()->values.size; ++index) {
-            if (!at.value().contains(index))
-                markHeld(Held{QString(), at.key(), index}, stack);
-        }
-    }
     markRoots(v4, stack);
+    // Takes in each storage whose object is now reached, marking its
+    // values, all of them or all but the holder's, until marking them
+    // reaches no other; an object reached only through another's storage
+    // is kept or freed with it.
+    QSet<QV4::Heap::MemberData *> reached;
+    const auto takeIn = [&](bool holderToo) {
+        for (bool more = true; more;) {
+            more = false;
+            for (auto at = own.cbegin(); at != own.cend(); ++at) {
+                QV4::Heap::Base *wrapper = wrapperOf.value(at.key());
+                if (reached.contains(at.key()) || wrapper == nullptr || !wrapper->isMarked())
+                    continue;
+                reached.insert(at.key());
+                more = true;
+                for (uint index = 0; index < at.key()->values.size; ++index) {
+                    if (holderToo || !at.value().contains(index))
+                        markHeld(Held{QString(), at.key(), index}, stack);
+                }
+            }
+        }
+    };
+    takeIn(false);
     Tally kept;
     marks.take(kept);
-    for (auto at = own.cbegin(); at != own.cend(); ++at) {
-        for (const uint index : at.value())
-            markHeld(Held{QString(), at.key(), index}, stack);
+    for (QV4::Heap::MemberData *storage : std::as_const(reached)) {
+        for (const uint index : own.value(storage))
+            markHeld(Held{QString(), storage, index}, stack);
     }
+    takeIn(true);
     Tally alone;
     marks.take(alone);
     marks.clear();
