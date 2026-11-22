@@ -135,13 +135,14 @@ pub fn read_at(state: &Path) -> Option<u64> {
 }
 
 /// Keeps `judged` whole in `state`, with `at`, in milliseconds, as when
-/// Slack was read, through a file renamed into place, so no reader sees
-/// half. Written every round, a few hundred bytes each 30 s.
+/// Slack was last read whole, none if it hasn't been, through a file
+/// renamed into place, so no reader sees half. Written every round, a few
+/// hundred bytes each 30 s.
 ///
 /// # Errors
 ///
 /// Why it couldn't be kept.
-pub fn write(state: &Path, judged: &Judged, at: u64) -> std::io::Result<()> {
+pub fn write(state: &Path, judged: &Judged, at: Option<u64>) -> std::io::Result<()> {
     let kept = json!({ "since": judged.since, "keys": judged.keys, "read_at": at });
     let path = state.join(FILE);
     let written = path.with_extension("new");

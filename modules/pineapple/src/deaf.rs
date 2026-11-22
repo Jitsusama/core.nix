@@ -12,7 +12,11 @@
 //! journal says it. An answer that came but can't be read counts as
 //! deaf, though no sign-in mends it: its cause lasts (a gateway's
 //! wording changed, or a message among the newest is shaped like its
-//! markup), so read as nothing it would look like a quiet Slack.
+//! markup), so read as nothing it would look like a quiet Slack. One
+//! search of the two that can't be read is told by name, while the
+//! other's messages are still judged: one message typed in a gateway's
+//! markup would otherwise keep both deaf until twenty newer pushed it
+//! out (ISXEG8, 2026-11-22).
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -38,6 +42,19 @@ pub enum Deafness {
     NoSignIn,
     /// Slack answered in words that can't be read.
     Unreadable,
+    /// One search's answer can't be read, so only the other's messages
+    /// are judged.
+    Unread(Search),
+}
+
+/// Each of a round's two searches.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Search {
+    /// For "pineapple", which finds a stop however it's addressed.
+    Phrase,
+    /// For Joel's tag, which finds someone asking him to stop his agents
+    /// without the phrase.
+    Tag,
 }
 
 /// What a round of the reader came to, as far as hearing goes.
@@ -45,7 +62,7 @@ pub enum Deafness {
 pub enum Round {
     /// Both searches answered.
     Heard,
-    /// Nothing was read, for a reason Joel can fix.
+    /// Nothing was read, or one search wasn't, for a reason Joel can fix.
     Deaf(Deafness),
     /// Slack couldn't be asked: counted neither way.
     Unasked,
@@ -153,15 +170,20 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         "Sign in to Slack in the browser it opens",
         "Or type /slack-auth in a pi session",
     ];
-    let (said, steps, done): (&str, Vec<&str>, Value) = match why {
+    const UNHEARD: &str = "so a stop said in Slack isn't heard; one said elsewhere still is";
+    const READ_JOURNAL: &str =
+        "Ask an agent to read the reader's journal, which says what it couldn't read";
+    let (said, steps, done): (String, Vec<&str>, Value) = match why {
         Deafness::Refused => (
-            "Slack refused the safe word's sign-in",
+            format!("Slack refused the safe word's sign-in, {UNHEARD}"),
             SIGN_IN.to_vec(),
             json!({"signal": "signin:slack"}),
         ),
         Deafness::NoSignIn => (
-            "The safe word has no Slack sign-in it can read, signed out or with the keyring \
-             locked",
+            format!(
+                "The safe word has no Slack sign-in it can read, signed out or with the \
+                 keyring locked, {UNHEARD}"
+            ),
             ["Unlock your keyring if it asks"]
                 .into_iter()
                 .chain(SIGN_IN)
@@ -170,8 +192,22 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         ),
         // No sign-in mends it, so only Joel's word marks it done.
         Deafness::Unreadable => (
-            "Slack's answers to the safe word can't be read",
-            vec!["Ask an agent to read the reader's journal, which says what it couldn't read"],
+            format!("Slack's answers to the safe word can't be read, {UNHEARD}"),
+            vec![READ_JOURNAL],
+            json!({"by": "person"}),
+        ),
+        Deafness::Unread(Search::Phrase) => (
+            "The safe word's search of Slack for pineapple can't be read, so a stop that \
+             doesn't tag you isn't heard; one that tags you still is"
+                .to_owned(),
+            vec![READ_JOURNAL],
+            json!({"by": "person"}),
+        ),
+        Deafness::Unread(Search::Tag) => (
+            "The safe word's search of Slack for your tag can't be read, so a stop that tags \
+             you without saying pineapple isn't heard; one saying it still is"
+                .to_owned(),
+            vec![READ_JOURNAL],
             json!({"by": "person"}),
         ),
     };
@@ -182,9 +218,7 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
         "items": [{
             "id": format!("pineapple-slack-deaf-{since}"),
             "title": "The Safe Word Can't Hear Slack",
-            "why": format!(
-                "{said}, so a stop said in Slack isn't heard; one said elsewhere still is"
-            ),
+            "why": said,
             "raisedAt": slack_people::messages::iso(since),
             "minutes": 1,
             "ready": true,

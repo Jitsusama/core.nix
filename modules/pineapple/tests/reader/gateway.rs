@@ -375,26 +375,37 @@ fn a_gateway_reader_given_a_relative_state_home_keeps_to_its_own_row() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
-#[test]
-fn a_gateway_whose_search_cant_be_read_writes_its_row_in_its_own_folder() {
+/// A search's answer counting two results and giving one, as a message
+/// typing a result into its text leaves it, or a gateway's wording
+/// changed under the reader.
+fn poisoned() -> String {
+    json!({ "results": "## Messages (2 results)\n### Result 1 of 2\n\
+        Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
+        Message_ts: 1.000100\nText: \nhi\n\n---\n" })
+    .to_string()
+}
+
+/// What a reader over a fake gateway came to once it told its row and
+/// judged `judging` messages: the row's why, the decisions in its folder,
+/// when its judged.json says Slack was last read whole, the searches it
+/// asked, and whether it wrote the live reader's row.
+struct Came {
+    why: String,
+    said: Vec<Value>,
+    read_at: Option<u64>,
+    asked: Vec<Value>,
+    wrote_live: bool,
+}
+
+fn hearing(answer: fn(&str, &Value, u64) -> String, judging: usize) -> Came {
     let (origin, _) = stand_in();
-    // The search for Joel's tag counts two results and gives one, as one
-    // would whose wording changed under the reader; the phrase's reads.
-    let (url, called) = serving(|tool, asked, now| {
-        if tool == "slack_search_public_and_private" && asked["query"] != "pineapple" {
-            json!({ "results": "## Messages (2 results)\n### Result 1 of 2\n\
-                Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
-                Message_ts: 1.000100\nText: \nhi\n\n---\n" })
-            .to_string()
-        } else {
-            said(tool, now)
-        }
-    });
+    let (url, called) = serving(answer);
     let home = home();
     let program = sign_in(&home, false);
     let program = program.to_str().expect("a path in UTF-8");
     let named = home.join("named-waiting.json");
-    let waiting = home.join(OWN).join("waiting.json");
+    let own = home.join(OWN);
+    let waiting = own.join("waiting.json");
     let mut reader = reading(
         &home,
         &origin,
@@ -402,84 +413,123 @@ fn a_gateway_whose_search_cant_be_read_writes_its_row_in_its_own_folder() {
         Some(&named),
     );
     let began = Instant::now();
-    while !waiting.exists() && began.elapsed() < PATIENCE {
+    while !(waiting.exists() && decisions_in(&own).len() >= judging) && began.elapsed() < PATIENCE {
         // The reader goes round every tenth of a second in a case.
         thread::sleep(Duration::from_millis(20));
     }
     reader.kill().expect("the reader stops");
     reader.wait().expect("the reader is gone");
-    let row: Value = std::fs::read_to_string(&waiting)
-        .ok()
-        .and_then(|said| serde_json::from_str(&said).ok())
-        .unwrap_or_default();
-    assert!(
-        row["items"][0]["why"]
+    let read = |file: &str| -> Value {
+        std::fs::read_to_string(own.join(file))
+            .ok()
+            .and_then(|said| serde_json::from_str(&said).ok())
+            .unwrap_or_default()
+    };
+    let came = Came {
+        why: read("waiting.json")["items"][0]["why"]
             .as_str()
-            .is_some_and(|why| why.contains("can't be read")),
-        "answers it can't read are told, not taken for a quiet Slack: {row}"
-    );
-    assert!(!named.exists(), "the live reader's row is never written");
-    assert!(
-        tools(&called).contains(&"slack_search_public_and_private".to_owned()),
-        "it did ask: {:?}",
-        tools(&called)
-    );
-    assert!(
-        decisions_in(&home.join(OWN)).is_empty(),
-        "and nothing is judged"
-    );
+            .unwrap_or_default()
+            .to_owned(),
+        said: decisions_in(&own),
+        read_at: read("judged.json")["read_at"].as_u64(),
+        asked: called
+            .lock()
+            .expect("what was called")
+            .iter()
+            .filter(|(tool, _)| tool == "slack_search_public_and_private")
+            .map(|(_, asked)| asked["query"].clone())
+            .collect(),
+        wrote_live: named.exists(),
+    };
     std::fs::remove_dir_all(&home).expect("the case's home goes");
+    came
 }
 
 #[test]
-fn a_phrase_search_that_cant_be_read_still_asks_for_joels_tag() {
-    let (origin, _) = stand_in();
-    // The phrase's search counts two and gives one; the tag's reads.
-    let (url, called) = serving(|tool, asked, now| {
-        if tool == "slack_search_public_and_private" && asked["query"] == "pineapple" {
-            json!({ "results": "## Messages (2 results)\n### Result 1 of 2\n\
-                Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
-                Message_ts: 1.000100\nText: \nhi\n\n---\n" })
-            .to_string()
-        } else {
-            said(tool, now)
-        }
-    });
-    let home = home();
-    let program = sign_in(&home, false);
-    let program = program.to_str().expect("a path in UTF-8");
-    let waiting = home.join(OWN).join("waiting.json");
-    let mut reader = reading(
-        &home,
-        &origin,
-        &["--gateway", &url, "--gateway-sign-in", program],
-        None,
+fn a_tag_search_that_cant_be_read_is_told_while_the_phrase_is_judged() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool == "slack_search_public_and_private" && asked["query"] != "pineapple" {
+                poisoned()
+            } else {
+                said(tool, now)
+            }
+        },
+        1,
     );
-    let began = Instant::now();
-    while !waiting.exists() && began.elapsed() < PATIENCE {
-        thread::sleep(Duration::from_millis(20));
-    }
-    reader.kill().expect("the reader stops");
-    reader.wait().expect("the reader is gone");
-    let asked: Vec<Value> = called
-        .lock()
-        .expect("what was called")
-        .iter()
-        .filter(|(tool, _)| tool == "slack_search_public_and_private")
-        .map(|(_, asked)| asked["query"].clone())
-        .collect();
     assert!(
-        asked
-            .iter()
-            .any(|query| query == &json!(format!("<@{JOEL}>"))),
-        "the tag's search is asked though the phrase's couldn't be read: {asked:?}"
+        came.why
+            .contains("search of Slack for your tag can't be read"),
+        "its row names the search it can't read: {}",
+        came.why
     );
-    assert!(waiting.exists(), "and it's told it can't hear");
+    assert_eq!(
+        each(&came.said, "verdict"),
+        ["stop"],
+        "the stop the phrase's search found is judged, once"
+    );
+    assert_eq!(
+        came.read_at, None,
+        "Slack was never read whole, so none says it was"
+    );
+    assert!(!came.wrote_live, "the live reader's row is never written");
+}
+
+#[test]
+fn a_phrase_search_that_cant_be_read_is_told_while_the_tag_is_judged() {
+    let came = hearing(
+        |tool, asked, now| {
+            if tool == "slack_search_public_and_private" && asked["query"] == "pineapple" {
+                poisoned()
+            } else {
+                said(tool, now)
+            }
+        },
+        1,
+    );
     assert!(
-        decisions_in(&home.join(OWN)).is_empty(),
-        "and nothing is judged"
+        came.asked.contains(&json!(format!("<@{JOEL}>"))),
+        "the tag's search is asked though the phrase's couldn't be read: {:?}",
+        came.asked
     );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
+    assert!(
+        came.why
+            .contains("search of Slack for pineapple can't be read"),
+        "its row names the search it can't read: {}",
+        came.why
+    );
+    assert_eq!(
+        each(&came.said, "verdict"),
+        ["stop"],
+        "the stop the tag's search found is judged, once"
+    );
+    assert_eq!(came.read_at, None, "and Slack wasn't read whole");
+}
+
+#[test]
+fn searches_that_cant_be_read_judge_nothing_and_are_told() {
+    let came = hearing(
+        |tool, _, now| {
+            if tool == "slack_search_public_and_private" {
+                poisoned()
+            } else {
+                said(tool, now)
+            }
+        },
+        0,
+    );
+    assert!(
+        came.why
+            .starts_with("Slack's answers to the safe word can't be read"),
+        "answers it can't read are told, not taken for a quiet Slack: {}",
+        came.why
+    );
+    assert!(came.said.is_empty(), "and nothing is judged");
+    assert!(
+        came.asked.len() >= 4,
+        "each round asks both again, with no rest: {:?}",
+        came.asked
+    );
 }
 
 /// What `pineapple-slack run` says, and how it ends, given `args`.

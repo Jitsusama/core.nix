@@ -5,7 +5,8 @@ use std::ffi::OsStr;
 use std::path::Path;
 
 use pineapple::deaf::{
-    Change, Deaf, Deafness, ROUNDS, Round, Waiting, make, refuses_the_sign_in, waiting, waits,
+    Change, Deaf, Deafness, ROUNDS, Round, Search, Waiting, make, refuses_the_sign_in, waiting,
+    waits,
 };
 
 const AT: u64 = 1_795_000_000_000;
@@ -233,6 +234,51 @@ fn answers_that_cant_be_read_two_rounds_running_are_told() {
         Change::Tell(waits(Deafness::Unreadable, AT + 30_000, AT + 30_000)),
         "two in a row are no quiet Slack"
     );
+}
+
+#[test]
+fn one_search_that_cant_be_read_is_told_by_name_and_as_it_changes() {
+    for (search, named, still) in [
+        (
+            Search::Phrase,
+            "for pineapple",
+            "one that tags you still is",
+        ),
+        (Search::Tag, "for your tag", "one saying it still is"),
+    ] {
+        let item = &waits(Deafness::Unread(search), AT, AT)["items"][0];
+        let why = item["why"].as_str().unwrap_or_default();
+        assert!(
+            why.contains(&format!("search of Slack {named} can't be read")) && why.ends_with(still),
+            "it says which search is deaf, and what's still heard: {why}"
+        );
+        assert_eq!(
+            item["raisedAt"],
+            slack_people::messages::iso(AT),
+            "and since when"
+        );
+        assert_eq!(item["doneWhen"], serde_json::json!({"by": "person"}));
+    }
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let both = Round::Deaf(Deafness::Unreadable);
+    assert_eq!(deaf.heard(tag, AT), Change::Keep, "one round is a blip");
+    assert_eq!(
+        deaf.heard(tag, AT + 30_000),
+        Change::Tell(waits(
+            Deafness::Unread(Search::Tag),
+            AT + 30_000,
+            AT + 30_000
+        )),
+        "two in a row are told"
+    );
+    assert_eq!(deaf.heard(tag, AT + 60_000), Change::Keep, "told once");
+    assert_eq!(
+        deaf.heard(both, AT + 90_000),
+        Change::Tell(waits(Deafness::Unreadable, AT + 30_000, AT + 90_000)),
+        "the other going deaf too is told, as the same time of not hearing"
+    );
+    assert_eq!(deaf.heard(Round::Heard, AT + 120_000), Change::Untell);
 }
 
 #[test]

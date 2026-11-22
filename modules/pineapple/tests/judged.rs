@@ -81,16 +81,23 @@ fn what_was_judged_is_kept_whole_across_a_restart() {
     assert_eq!(read_at(&state), None, "and was never read");
     let mut judged = Judged::starting(1_795_000_000);
     judged.judged(&said("C1", "1795000001.000000"));
-    write(&state, &judged, 1_795_000_002_000).expect("kept");
+    write(&state, &judged, Some(1_795_000_002_000)).expect("kept");
     assert_eq!(
         read(&state, FRESH),
-        (judged, None),
+        (judged.clone(), None),
         "what's read back is what was kept"
     );
     assert_eq!(
         read_at(&state),
         Some(1_795_000_002_000),
         "with when Slack was read"
+    );
+    judged.judged(&said("C1", "1795000003.000000"));
+    write(&state, &judged, read_at(&state)).expect("kept again");
+    assert_eq!(
+        (read(&state, FRESH), read_at(&state)),
+        ((judged, None), Some(1_795_000_002_000)),
+        "a round that judged without reading Slack whole keeps when it last was"
     );
     assert!(
         !state.join(FILE).with_extension("new").exists(),
@@ -207,7 +214,7 @@ fn a_state_that_cant_be_written_says_so() {
     let state = state("unwritable");
     std::fs::write(&state, "a file, not a folder").expect("in the way");
     assert!(
-        write(&state, &Judged::starting(FRESH), 1).is_err(),
+        write(&state, &Judged::starting(FRESH), Some(1)).is_err(),
         "a folder that can't be made is an error, not a silence"
     );
     std::fs::remove_file(&state).expect("the case's file goes");
