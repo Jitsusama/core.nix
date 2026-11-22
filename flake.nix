@@ -337,6 +337,7 @@
         nix-daemon = ./modules/nix-daemon/darwin.nix;
         nixpkgs = ./modules/nixpkgs/system.nix;
         openssh = ./modules/openssh/darwin.nix;
+        pi = ./modules/pi/darwin.nix;
         sudo = ./modules/sudo/darwin.nix;
         update-to-main = ./modules/update-to-main/darwin.nix;
         yubikey = ./modules/yubikey/system.nix;

@@ -6,6 +6,7 @@
   # Names whose word means something the glossary doesn't replace, often a
   # program's own word for its own thing.
   otherSenses = {
+    a-mac-refuses-another-accounts-pi-hosts = "a pi host is the harness's process holding many pi conversations, not a machine";
     a-quiet-file-says-nothing = "quiet is FileView printing no errors, not Do not disturb";
     backlight-passes-clippy = "the backlight program sets a screen's brightness";
     bluetooth-keeps-its-power-limits = "the limits are a radio's SAR table, not an allowance";
@@ -41,6 +42,8 @@
     pi-hosts-start-with-the-session = "a pi host is the harness's process holding many pi conversations, not a machine";
     platform-profiles-reach-the-legacy-file = "the kernel's platform_profile file, by its name";
     quickshell-restarts-with-its-files = "a program restarts; the machine isn't rebooted";
+    the-mac-pi-host-outlives-a-log-out = "a pi host is the harness's process holding many pi conversations, not a machine";
+    the-mac-pi-host-starts-as-its-account = "a pi host is the harness's process holding many pi conversations, not a machine";
     the-panel-slows-on-a-low-battery = "the panel's refresh rate slows, not lag";
     the-splash-keeps-systemd-quiet = "quiet is the kernel's quiet argument, not Do not disturb";
     vm-apps-come-first = "app is systemd's app.slice, by its name";
