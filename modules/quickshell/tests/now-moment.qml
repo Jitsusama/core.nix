@@ -920,8 +920,10 @@ ShellRoot {
 
     // The kept reading's minute, shortened, run out on `letGo` itself: a
     // reader gone quiet while watched has its reading let go; a refusal
-    // said while watched isn't the timer's to clear; and a wall clock
-    // stepped back can't keep a reading past its time. No socket is made,
+    // said while watched isn't the timer's to clear; a wall clock stepped
+    // back lets a reading go at once; and unwatched, a reading is kept only
+    // for what's left of its time. Each is read first, so a reading never
+    // there can't pass for one let go. No socket is made,
     // so the sandbox's want of a reader can't answer in its place: it's
     // unwatched first, past the second a failed socket waits to try again,
     // so none left from the cases above is made anew mid-stage.
@@ -952,6 +954,9 @@ ShellRoot {
             Timekeeping.keptFor = 100;
             Timekeeping.watching = 1;
             answerTime();
+            if (!tried(() => expect("answered, the reader's reading is read",
+                Timekeeping.reading !== null, "null")))
+                return;
             keptStage.step = 0;
             keptStage.at = Date.now();
         } else if (keptStage.step === 0) {
@@ -978,14 +983,29 @@ ShellRoot {
             Timekeeping.watching = 0;
             Timekeeping.watching = 1;
             answerTime();
+            if (!tried(() => expect("answered again, it's read again",
+                Timekeeping.reading !== null, "null")))
+                return;
             Timekeeping.heardAt = Date.now() + 1e9;
+            Timekeeping.watching = 0;
+            if (!tried(() => expect("a reading heard later than a wall clock stepped back goes",
+                Timekeeping.reading === null, JSON.stringify(Timekeeping.reading))))
+                return;
+            // Its timer set long, so only a re-arm to what's left lets it go.
+            Timekeeping.keptFor = 2000;
+            Timekeeping.watching = 1;
+            answerTime();
+            if (!tried(() => expect("answered once more, it's read",
+                Timekeeping.reading !== null, "null")))
+                return;
+            Timekeeping.heardAt = Date.now() - 1950;
             Timekeeping.watching = 0;
             keptStage.step = 2;
             keptStage.at = Date.now();
         } else {
-            if (Timekeeping.reading !== null && since < 5000)
+            if (Timekeeping.reading !== null && since < 300)
                 return;
-            if (!tried(() => expect("a wall clock stepped back keeps it no longer than its time",
+            if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
                 Timekeeping.reading === null, read)))
                 return;
             waiting = "";

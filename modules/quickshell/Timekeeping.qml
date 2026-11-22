@@ -49,7 +49,6 @@ Singleton {
     function unanswered() {
         if (watching === 0)
             return;
-        letGo.stop();
         reading = null;
         refused = true;
     }
@@ -83,19 +82,21 @@ Singleton {
     // reader that takes the connection and says nothing can't hold it up.
     // Its spans counted from when it was read, as a server's last sample
     // is, read that much low until that answer. Each change of watching
-    // sets `letGo` again by the wall clock, so a suspend can't stretch the
-    // minute past a step back; what's left is held to the minute, so a
-    // wall clock stepped back can't stretch it either.
+    // sets `letGo` again to what's left by the wall clock, so a suspend
+    // can't stretch the minute past a step back. A reading heard later
+    // than now, by a wall clock since stepped back, has no age it can be
+    // kept by, so it goes at once rather than earning a fresh minute at
+    // each change.
     onWatchingChanged: {
-        const left = Math.min(keptFor, keptFor - (Date.now() - heardAt));
+        const age = Date.now() - heardAt;
         if (watching === 0)
             refused = false;
         if (reading === null)
             return;
-        if (left <= 0) {
+        if (age < 0 || age >= keptFor) {
             letGoOfReading();
         } else {
-            letGo.interval = left;
+            letGo.interval = keptFor - age;
             letGo.restart();
         }
     }
