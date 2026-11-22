@@ -486,7 +486,9 @@ mod tests {
             "T\\u{}",
             "T\\u{41",
             "T\\u{D800}",
+            "T\\u{DFFF}",
             "T\\u{110000}",
+            "T\\\\",
         ] {
             let read = std::panic::catch_unwind(|| case_text(written));
             assert!(read.is_err(), "{written:?} is refused");
@@ -495,6 +497,16 @@ mod tests {
             case_text("T\\u{5C}\\u{9}"),
             "T\\\t",
             "each escape the one way"
+        );
+        assert_eq!(
+            case_text("\\u{000041}\\u{10FFFF}\\u{E000}\\u{D7FF}"),
+            "A\u{10FFFF}\u{E000}\u{D7FF}",
+            "six digits, the top and each side of the surrogates are read"
+        );
+        assert_eq!(
+            case_text("T\\u{5C}u{41}"),
+            "T\\u{41}",
+            "what an escape gives is never read again"
         );
     }
 

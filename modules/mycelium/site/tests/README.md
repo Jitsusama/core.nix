@@ -54,16 +54,21 @@ patterns and `is_ascii_uppercase` found these, so there may be more:
   and workspace (`modules/quickshell/Sessions.qml`), and cadence's sender of a
   hold (`modules/cadence/src/watch/held.rs`, after trimming and dropping an
   `@`).
-- Stricter: rhythm's reading of a session's message
-  (`modules/rhythm/src/seed.rs`) takes exactly 6, so a message from a
-  shorter or longer address counts there as typed by Joel.
+- Stricter, exactly 6: rhythm's reading of a session's message
+  (`modules/rhythm/src/seed.rs`), so a message from a shorter or longer
+  address counts there as typed by Joel; and nix-offload's gate
+  (`plain_session` in `modules/nix-offload/offload/src/gate.rs`), which
+  refuses a gate request, and `nix-offload ask --session`, from any other
+  length as no mesh address.
 
 Outside this tree, the harness that sends the addresses and mycelium hold
 copies too.
 
-Both Rust packages build with this file in their source, and they are the
-packages every desktop runs. So editing it, its notes included, rebuilds the
-notices daemon and mycelium-link, and the next switch restarts the notices
-daemon, which is safe since the bus holds notices meanwhile. A bad line fails
-both builds, so every machine's switch fails until it is reverted. The notes
-are kept here so a rebuild comes only when a case changes.
+Three builds read this file. The notices daemon and mycelium-link hold it in
+their source, and only graphical NixOS machines build them; the map site
+builds this whole folder and runs these tests, on any machine with local
+sites in a realm. So editing the file, its notes included, rebuilds all
+three, and the next switch restarts the notices daemon, which is safe since
+the bus holds notices meanwhile. A bad line fails all three, so those
+machines' switches fail until it is reverted. The notes kept in this README
+spare the two Rust packages a rebuild, though not the map site.

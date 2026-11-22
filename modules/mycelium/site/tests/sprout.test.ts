@@ -122,11 +122,23 @@ it("refuses a case escaped any other way", () => {
     "T\\u{}",
     "T\\u{41",
     "T\\u{D800}",
+    "T\\u{DFFF}",
     "T\\u{110000}",
+    "T\\\\",
   ]) {
     assert.throws(() => caseText(written), `${JSON.stringify(written)} should be refused`);
   }
   assert.equal(caseText("T\\u{5C}\\u{9}"), "T\\\t", "each escape should be read the one way");
+  assert.equal(
+    caseText("\\u{000041}\\u{10FFFF}\\u{E000}\\u{D7FF}"),
+    "A\u{10FFFF}\u{E000}\u{D7FF}",
+    "six digits, the top and each side of the surrogates should be read",
+  );
+  assert.equal(
+    caseText("T\\u{5C}u{41}"),
+    "T\\u{41}",
+    "what an escape gives should never be read again",
+  );
 });
 
 it("judges each shared address case", () => {
