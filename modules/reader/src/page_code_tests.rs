@@ -71,8 +71,8 @@ fn an_unboxed_pieces_first_stretch_counts_with_the_short_word_held_to_it() {
     // In a narrow window the name is unboxed, and "run" is held to it, so
     // the column needs "run a-" on one line, wider than any stretch alone.
     let widths = probed(
-        r#"text(size: 2pt, (least-code(s), raw("run a-"), raw("name-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
-        &format!("run {}", ["a-name"; 30].join("-")),
+        r#"text(size: 2pt, (least-code(s), raw("www\u{a0}i-"), raw("i-"), raw("l-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
+        &format!("www {}", ["i-l"; 120].join("-")),
         360.0,
     )
     .join(" ");
@@ -80,12 +80,12 @@ fn an_unboxed_pieces_first_stretch_counts_with_the_short_word_held_to_it() {
         .split(' ')
         .map(|width| width.parse::<f64>().unwrap_or(f64::NAN))
         .collect();
-    let [counted, joined, alone] = parsed[..] else {
-        panic!("three widths, not {widths:?}")
+    let [counted, joined, i, l] = parsed[..] else {
+        panic!("four widths, not {widths:?}")
     };
     assert!(
-        (counted - joined).abs() < 0.01 && joined > alone,
-        "least-code counts {counted} pt; run a- is {joined} pt, and name- alone {alone} pt"
+        (counted - joined).abs() < 0.01 && joined > i.max(l),
+        "least-code counts {counted} pt; www i- is {joined} pt, i- alone {i} pt, l- {l} pt"
     );
 }
 
