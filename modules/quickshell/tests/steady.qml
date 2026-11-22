@@ -234,6 +234,62 @@ QtObject {
                 failures.push(`${what}: "${got}", not "${want}"`);
         }
 
+        // [what, the rows shown, the rows now, how they're shown after]: a
+        // row that arrives comes at the end, which reads as under the last
+        // heading there, so where that's another cell's, its own is said
+        // again over it, as it reads above, and nowhere else (Y2YBTS,
+        // 2026-11-22 [228cdeb9]). A heading is "#" and its name, one said
+        // again "+" after it, and one gone "-".
+        const underHeadings = said => said.split(" ").filter(one => one !== "").map(one => {
+            const gone = one.endsWith("-");
+            const bare = gone ? one.slice(0, -1) : one;
+            const again = bare.endsWith("+");
+            const key = again ? bare.slice(0, -1) : bare;
+            return Object.assign({ key: key, side: "" },
+                key.startsWith("#") ? { heading: true } : {},
+                again ? { repeated: true } : {}, gone ? { gone: true, went: true } : {});
+        });
+        const readHeaded = list => list.map(row => row.key + (row.repeated ? "+" : "")
+            + (row.gone ? "-" : "")).join(" ");
+        const headings = [
+            ["a row new to another cell's end gets its heading", "#A a1 #B b1", "#A a1 a2 #B b1",
+                "#A a1 #B b1 #A+ a2"],
+            ["a row new to its own cell's end gets none", "#A a1 #B b1", "#A a1 #B b1 b2",
+                "#A a1 #B b1 b2"],
+            ["a reopening has one heading for each cell", "", "#A a1 a2 #B b1", "#A a1 a2 #B b1"],
+            ["rows new to one cell share its heading", "#A a1 #B b1", "#A a1 a2 a3 #B b1",
+                "#A a1 #B b1 #A+ a2 a3"],
+            ["rows new to two cells get one each", "#A a1 #B b1", "#A a1 a2 #B b1 b2",
+                "#A a1 #B b1 #A+ a2 #B+ b2"],
+            ["a new cell's heading is said once", "#A a1", "#A a1 #C c1", "#A a1 #C c1"],
+            ["a heading said again stays where it was said", "#A a1 #B b1 #A+ a2",
+                "#A a1 a2 #B b1", "#A a1 #B b1 #A+ a2"],
+            ["and needs no other for a row new under it", "#A a1 #B b1 #A+ a2",
+                "#A a1 a2 a3 #B b1", "#A a1 #B b1 #A+ a2 a3"],
+            ["and goes dim with its cell", "#A a1 #B b1 #A+ a2", "#B b1",
+                "#A- a1- #B b1 #A+- a2-"],
+            ["a row above every heading is said as it is", "#A a1", "x #A a1", "#A a1 x"]
+        ];
+        for (const [what, shown, now, want] of headings) {
+            const got = readHeaded(Steady.kept(underHeadings(shown), underHeadings(now), id));
+            if (got !== want)
+                failures.push(`${what}: "${got}", not "${want}"`);
+        }
+        const saidAgain = Steady.kept(underHeadings("#A a1 #B b1 #A+ a2"),
+            [{ key: "#A", side: "two", heading: true }].concat(underHeadings("a1 a2 #B b1")), id);
+        if (saidAgain[4].side !== "two" || saidAgain[4].repeated !== true)
+            failures.push(`a heading said again reads as it reads now: "${saidAgain[4].side}"`);
+        // While the rows hold still, a heading said again or new is never
+        // counted among the rows that wait.
+        for (const [what, shown, now, waiting] of [
+            ["a row new to another cell waits as one", "#A a1 #B b1", "#A a1 a2 #B b1", 1],
+            ["and a new cell's row as one", "#A a1", "#A a1 #C c1", 1]
+        ]) {
+            const got = Steady.held(underHeadings(shown), underHeadings(now), id).waiting;
+            if (got !== waiting)
+                failures.push(`${what}: ${got} waiting, not ${waiting}`);
+        }
+
         // [what, the rows shown, whether an answer gave way, those that may
         // stand]: an ending is made again, and an answer given only while
         // nothing else was goes once something comes, rather than standing
