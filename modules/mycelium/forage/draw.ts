@@ -377,11 +377,13 @@ function floorStepped(shown: Floor, cursor: string | null): Floor {
  * around while the list still holds it and the floor there holds the
  * cursor, so a live record or a find keeps it on the same cell; else around
  * the cursor, as when a record pushes the cursor off it or grows a cell
- * from the cursor that it leaves off. A record that adds or ends a cell
- * near the one kept can still shift the cells drawn beside it.
+ * from the cursor that it leaves off. A floor that drew its whole list
+ * kept no cell in place, so a list grown past it is drawn around the
+ * cursor too. A record that adds or ends a cell near the one kept can
+ * still shift the cells drawn beside it.
  */
 function floorAfter(forages: readonly Forage[], shown: Floor, cursor: string | null): Floor {
-  const kept = shown.around;
+  const kept = shown.of.length > FLOOR.most ? shown.around : null;
   const around = kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
   return floorStepped(floorFor(forages, around), cursor);
 }

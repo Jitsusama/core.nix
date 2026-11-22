@@ -254,6 +254,16 @@ it("keeps the floor still as the page steps and records arrive, until a step lea
   assert.equal(shown.of, recorded);
 });
 
+it("draws the floor around the cursor once a list that fit grows past it", () => {
+  // The page opens on forty cells at C00, steps to C39, then records bring twenty more.
+  let shown = floorAfter(LONG.slice(0, 40), UNDRAWN, "C00");
+  shown = floorStepped(shown, "C39");
+  assert.equal(shown.around, "C00");
+  shown = floorAfter(LONG, shown, "C39");
+  assert.equal(shown.around, "C39");
+  assert.equal(shown.of, LONG);
+});
+
 it("keeps the floor on its cell when a record adds one near it, shifting the cells beside it", () => {
   // A record brings C40X in after C40, inside the floor kept around C55.
   const inserted = LONG.flatMap((each) => (each.cell === "C40" ? [each, forage("C40X")] : [each]));
