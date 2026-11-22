@@ -17,6 +17,7 @@ use std::fs::OpenOptions;
 use std::io::{self, Write};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
@@ -58,11 +59,18 @@ pub fn gone(log: &Path, asked: &Asked, at: i64) -> io::Result<()> {
     )
 }
 
-/// Logs to `log` an ask the daemon refused as no act it does, naming the
+/// Logs to `log` an ask the daemon refused as no act it does, under the
+/// code it was answered by, `bad-act` or `bad-ask` (acts.rs), naming the
 /// act it said, cut short, since that's what an agent reaching past the
 /// acts it may ask for would show.
-pub fn refused(log: &Path, peer: Option<&Peer>, said: &Value, at: i64) -> io::Result<()> {
-    let mut line = line(peer, None, "bad-act", at);
+pub fn refused(
+    log: &Path,
+    peer: Option<&Peer>,
+    said: &Value,
+    code: &str,
+    at: i64,
+) -> io::Result<()> {
+    let mut line = line(peer, None, code, at);
     line["act"] = json!(said["act"].as_str().map(acts::named));
     append(log, &line)
 }
@@ -79,14 +87,32 @@ pub fn file() -> io::Result<PathBuf> {
     Ok(session::folder()?.join("changes.jsonl"))
 }
 
-/// Adds `line` to the log at `path`, which is the account's alone.
+/// Held while a line is added, since the daemon's loop and its
+/// listeners' threads both log, and a line must land whole.
+static WRITING: Mutex<()> = Mutex::new(());
+
+/// Adds `line` to the log at `path`, which is the account's alone. It
+/// goes in one write, under `WRITING`, so lines never interleave; one
+/// that fails partway, as on a full disk, is cut back off, so it never
+/// glues itself to the next; and it's on the disk before this returns,
+/// since an act goes ahead only once its line could be kept.
 fn append(path: &Path, line: &Value) -> io::Result<()> {
+    let mut text = line.to_string();
+    text.push('\n');
+    let _writing = WRITING
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let mut out = OpenOptions::new()
         .create(true)
         .append(true)
         .mode(0o600)
         .open(path)?;
-    writeln!(out, "{line}")
+    let before = out.metadata()?.len();
+    if let Err(error) = out.write_all(text.as_bytes()) {
+        let _ = out.set_len(before);
+        return Err(error);
+    }
+    out.sync_data()
 }
 
 /// One line: who asked, in which unit, the act and what it names, and
@@ -244,12 +270,13 @@ mod tests {
 
     #[test]
     fn a_refused_ask_is_logged_by_its_name_cut_short_and_nothing_else() {
-        let folder = std::env::temp_dir().join(format!("eero-refused-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("eero-changes-refused-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("the test's folder is made");
         let log = folder.join("changes.jsonl");
         let _ = std::fs::remove_file(&log);
         let said = json!({"ask": "act", "act": "forward".repeat(10), "port": 22});
-        refused(&log, Some(&peer()), &said, 7).expect("the line is written");
+        refused(&log, Some(&peer()), &said, "bad-act", 7).expect("the line is written");
         let logged: Value = serde_json::from_str(&std::fs::read_to_string(&log).expect("the log"))
             .expect("the line is JSON");
         assert_eq!(
@@ -329,7 +356,8 @@ mod tests {
 
     #[test]
     fn the_log_is_the_accounts_alone_and_only_grows() {
-        let folder = std::env::temp_dir().join(format!("eero-changes-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("eero-changes-grows-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("the test's folder is made");
         let file = folder.join("changes.jsonl");
         let _ = std::fs::remove_file(&file);
@@ -345,6 +373,37 @@ mod tests {
             std::fs::read_to_string(&file).expect("the log reads"),
             "{\"at\":1}\n{\"at\":2}\n",
             "a line overwrote another"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn lines_logged_at_once_land_whole() {
+        let folder =
+            std::env::temp_dir().join(format!("eero-changes-at-once-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("the test's folder is made");
+        let file = folder.join("changes.jsonl");
+        let _ = std::fs::remove_file(&file);
+        let said = json!({"act": "forward".repeat(4)});
+        std::thread::scope(|scope| {
+            for _ in 0..8 {
+                scope.spawn(|| {
+                    for at in 0..50 {
+                        refused(&file, Some(&peer()), &said, "bad-act", at)
+                            .expect("the line is written");
+                    }
+                });
+            }
+        });
+        let text = std::fs::read_to_string(&file).expect("the log reads");
+        let torn: Vec<&str> = text
+            .lines()
+            .filter(|line| serde_json::from_str::<Value>(line).is_err())
+            .collect();
+        assert_eq!(
+            (text.lines().count(), torn),
+            (400, Vec::<&str>::new()),
+            "lines logged at once were lost or torn"
         );
         let _ = std::fs::remove_dir_all(&folder);
     }

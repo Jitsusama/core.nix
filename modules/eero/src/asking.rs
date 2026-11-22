@@ -13,10 +13,12 @@ use serde_json::{Value, json};
 use crate::watch;
 
 /// How long an act may take, all told: a reservation makes six calls of
-/// up to the cloud's 20 s each, and waits behind whatever read the daemon
-/// is in, the longest of which makes ten. Past it, the outcome is said
-/// unknown; the daemon then lets the act go, logged `gone`, unless it has
-/// begun it.
+/// up to the cloud's 20 s each, behind whatever read the daemon is in,
+/// the longest of which makes ten. That's room for the usual worst; it
+/// isn't for a slow cloud through every read falling due at once, or a
+/// refresh doubling a call. Past it, the outcome is said unknown, and the
+/// daemon lets the act go, logged `gone`, unless it has begun it, so
+/// reading the device again settles which.
 const PATIENCE: Duration = Duration::from_mins(6);
 
 /// How long a daemon that took no ask is given to say it refused the
@@ -42,6 +44,10 @@ pub enum Undone {
     /// The daemon knows no such act, as one older than this command
     /// wouldn't, so nothing was done.
     NoSuchAct(String),
+    /// The daemon knows the act but couldn't read the ask's fields,
+    /// which this command checks first, so the two disagree; nothing
+    /// was done.
+    Misasked(String),
     /// The daemon answers only its own account, so nothing was read.
     NotOurs(String),
 }
@@ -74,36 +80,69 @@ fn act_at(socket: &Path, act: &Value, patience: Duration) -> Result<Value, Undon
         Instant::now() + REFUSAL.min(patience)
     };
     let mut reading = BufReader::new(stream);
-    let unknown = |what: &str| {
-        Undone::Unknown(format!(
-            "{what}; it may have been done, so read it again before asking again"
-        ))
-    };
-    let mut line = String::new();
     loop {
-        let left = deadline.saturating_duration_since(Instant::now());
-        line.clear();
-        let read = if left.is_zero() {
-            None
-        } else {
-            reading
-                .get_ref()
-                .set_read_timeout(Some(left))
-                .ok()
-                .and_then(|()| reading.read_line(&mut line).ok())
-        };
-        let answer = match (read, &sent) {
-            (Some(0), Ok(())) => return Err(unknown("the daemon went before it answered")),
-            (None, Ok(())) => return Err(unknown("the daemon didn't answer in time")),
-            (Some(0) | None, Err(error)) => {
-                return Err(absent(std::io::Error::new(error.kind(), error.to_string())));
-            }
-            (Some(_), _) => answered(line.trim_end()),
+        let answer = match line_by(&mut reading, deadline) {
+            Ok(line) => answered(line.trim_end()),
+            Err(hung_up) => return Err(unanswered(socket, hung_up, &sent)),
         };
         match (answer, &sent) {
             (Some(answer @ Err(Undone::NotOurs(_))), _) | (Some(answer), Ok(())) => return answer,
             _ => {}
         }
+    }
+}
+
+/// The longest line read whole; anything longer is no answer of ours.
+const LONGEST: usize = 64 * 1024;
+
+/// The next line the daemon says, by `deadline` however it arrives: each
+/// read waits only what's left, so a line sent a little at a time can't
+/// hold the wait past it. Its end is `Err(true)` when the daemon hung up
+/// and `Err(false)` when the deadline passed.
+fn line_by(reading: &mut BufReader<UnixStream>, deadline: Instant) -> Result<String, bool> {
+    let mut line = Vec::new();
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() || reading.get_ref().set_read_timeout(Some(left)).is_err() {
+            return Err(false);
+        }
+        let got = match reading.fill_buf() {
+            Ok(got) => got,
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(_) => return Err(false),
+        };
+        if got.is_empty() {
+            return Err(true);
+        }
+        let (taken, ended) = got
+            .iter()
+            .position(|&byte| byte == b'\n')
+            .map_or((got.len(), false), |at| (at + 1, true));
+        if line.len() < LONGEST {
+            line.extend_from_slice(&got[..taken]);
+        }
+        reading.consume(taken);
+        if ended {
+            return Ok(String::from_utf8_lossy(&line).into_owned());
+        }
+    }
+}
+
+/// What the wait for our answer came to when the daemon said no more,
+/// having `hung_up` or let the deadline pass: an ask sent may have been
+/// done, so it's unknown, but one that couldn't be sent was never read,
+/// so the daemon is as good as absent.
+fn unanswered(socket: &Path, hung_up: bool, sent: &std::io::Result<()>) -> Undone {
+    match sent {
+        Ok(()) => Undone::Unknown(format!(
+            "{}; it may have been done, so read it again before asking again",
+            if hung_up {
+                "the daemon went before it answered"
+            } else {
+                "the daemon didn't answer in time"
+            }
+        )),
+        Err(error) => Undone::Absent(format!("{}: {error}", socket.display())),
     }
 }
 
@@ -135,6 +174,7 @@ fn answered(line: &str) -> Option<Result<Value, Undone>> {
         Some("unknown") => Undone::Unknown(why),
         Some("unlogged") => Undone::Unlogged(why),
         Some("bad-act") => Undone::NoSuchAct(why),
+        Some("bad-ask") => Undone::Misasked(why),
         _ => Undone::Refused(why),
     }))
 }
@@ -162,6 +202,7 @@ mod tests {
                 answered(unknown),
                 answered(unlogged),
                 answered(r#"{"id":1,"error":{"code":"bad-act"}}"#),
+                answered(r#"{"id":1,"error":{"code":"bad-ask"}}"#),
                 answered(NOT_OURS),
                 answered(r#"{"id":2,"done":true}"#),
                 answered(r#"{"change":"devices"}"#),
@@ -175,6 +216,7 @@ mod tests {
                 Some(Err(Undone::Unknown("read it".into()))),
                 Some(Err(Undone::Unlogged("disk full".into()))),
                 Some(Err(Undone::NoSuchAct("bad-act".into()))),
+                Some(Err(Undone::Misasked("bad-ask".into()))),
                 Some(Err(Undone::NotOurs(
                     "eero-daemon answers only its own account".into()
                 ))),
@@ -287,6 +329,54 @@ mod tests {
     }
 
     #[test]
+    fn a_line_said_a_little_at_a_time_holds_the_wait_no_longer_than_our_patience() {
+        let (socket, listener) = socket("trickle");
+        let daemon = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("the ask connects");
+            let until = Instant::now() + Duration::from_secs(3);
+            while Instant::now() < until && write!(stream, "x").is_ok() {
+                thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let started = Instant::now();
+        let answer = act_at(
+            &socket,
+            &json!({"act": "speedtest"}),
+            Duration::from_millis(300),
+        );
+        let waited = started.elapsed();
+        assert!(
+            matches!(&answer, Err(Undone::Unknown(_))) && waited < Duration::from_secs(2),
+            "a line said a little at a time held the ask {waited:?}, to {answer:?}"
+        );
+        let _ = daemon.join();
+        let _ = std::fs::remove_dir_all(socket.parent().expect("the socket's folder"));
+    }
+
+    #[test]
+    fn an_ask_never_sent_is_said_never_read_and_one_sent_unknown() {
+        let socket = Path::new("/run/eero/socket");
+        let broken = || Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+        assert_eq!(
+            [
+                unanswered(socket, true, &broken()),
+                unanswered(socket, false, &broken()),
+            ],
+            [
+                Undone::Absent("/run/eero/socket: broken pipe".into()),
+                Undone::Absent("/run/eero/socket: broken pipe".into()),
+            ],
+            "an ask that couldn't be sent was said as one that may have been done"
+        );
+        for hung_up in [true, false] {
+            assert!(
+                matches!(unanswered(socket, hung_up, &Ok(())), Undone::Unknown(_)),
+                "an ask sent and unanswered was said as never read"
+            );
+        }
+    }
+
+    #[test]
     fn a_daemon_refusing_the_connection_is_said_to_have_read_nothing() {
         let (socket, listener) = socket("not-ours");
         let daemon = thread::spawn(move || {
@@ -316,12 +406,10 @@ mod tests {
             ),
             "a daemon gone after the ask read as one never asked"
         );
+        let slow = asked_of("slow", &[], Duration::from_secs(1));
         assert!(
-            matches!(
-                asked_of("slow", &[], Duration::from_secs(1)),
-                Err(Undone::Unknown(_))
-            ),
-            "a daemon slower than our patience read as one never asked"
+            matches!(&slow, Err(Undone::Unknown(why)) if why.contains("didn't answer in time")),
+            "a daemon slower than our patience wasn't given up on at it: {slow:?}"
         );
         let nowhere = std::env::temp_dir().join(format!("eero-asking-none-{}", std::process::id()));
         assert!(

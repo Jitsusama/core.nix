@@ -382,14 +382,19 @@ impl Daemon {
     }
 
     /// Does an act the shell asked for, and has the network read at once
-    /// after, so the row it changed is served as eero now says it. A
-    /// session eero refuses is let go, as a read's is.
+    /// after, so the row it changed is served as eero now says it; after a
+    /// reservation, its routing too, which holds the reservations, so
+    /// `eero devices <MAC>` can settle an outcome said unknown. A session
+    /// eero refuses is let go, as a read's is.
     fn act(&mut self, act: Act) -> Came {
         let came = match session(&mut self.cloud, &mut self.network) {
             Ok((cloud, network)) => acts::done(cloud, &network, act),
             Err(failure) => Came::of(Err(failure)),
         };
         self.schedule.ask();
+        if matches!(act, Act::Reserve { .. } | Act::Unreserve { .. }) {
+            self.schedule.again(Read::Rest);
+        }
         if came.done.is_ok() && act == Act::SpeedTest {
             self.testing = Some(now_unix());
         }
@@ -397,7 +402,11 @@ impl Daemon {
             if matches!(failure, Failure::SignedOut(_)) {
                 self.cloud = None;
             }
-            eprintln!("eero: {act:?} wasn't done: {failure}");
+            if matches!(failure, Failure::Unknown(_)) {
+                eprintln!("eero: whether {act:?} was done isn't known: {failure}");
+            } else {
+                eprintln!("eero: {act:?} wasn't done: {failure}");
+            }
         }
         came
     }

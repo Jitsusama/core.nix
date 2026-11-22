@@ -368,7 +368,16 @@ fn reported(mac: acts::Mac, address: Option<std::net::Ipv4Addr>, answered: &Valu
             format!("eero devices {mac} reserve {held}"),
             format!("eero keeps no address for {mac}"),
         ),
-        (None, _, _) => unchanged_said(format!("eero kept no address for {mac}")),
+        (None, true, _) => unchanged_said(format!("eero kept no address for {mac}")),
+        // Done and changed, yet no address said: it did change something,
+        // so it's never said as nothing, though its undo can't be given.
+        (None, false, None) => Report {
+            undo: None,
+            said: format!(
+                "eero keeps no address for {mac}; the daemon didn't say which it kept, so \
+                 see the eero app to undo it.\n"
+            ),
+        },
     }
 }
 
@@ -406,6 +415,11 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
         )
         .because(why)
         .try_this("systemctl --user status eero-daemon"),
+        asking::Undone::Misasked(why) => Failure::new(
+            Exit::Bug,
+            "eero-daemon couldn't read this command's ask, so nothing was done",
+        )
+        .because(why),
         asking::Undone::NotOurs(why) => Failure::new(
             Exit::Refused,
             "eero-daemon answers only its own account, so nothing was asked",
@@ -617,6 +631,7 @@ mod tests {
             Undone::Unknown(why()),
             Undone::Unlogged(why()),
             Undone::NoSuchAct(why()),
+            Undone::Misasked(why()),
             Undone::NotOurs(why()),
         ]
         .map(|undone| undone_said(undone, mac()).exit);
@@ -630,6 +645,7 @@ mod tests {
                 Exit::TryAgain,
                 Exit::Unavailable,
                 Exit::Unavailable,
+                Exit::Bug,
                 Exit::Refused,
             ],
             "an act undone exits as something other mends it, which an agent would act on"
@@ -654,6 +670,7 @@ mod tests {
                 reported(mac(), kept, &json!({"done": true, "unchanged": true})),
                 reported(mac(), None, &json!({"done": true, "held": "10.0.0.208"})),
                 reported(mac(), None, &json!({"done": true, "unchanged": true})),
+                reported(mac(), None, &json!({"done": true})),
             ],
             [
                 report(
@@ -673,6 +690,11 @@ mod tests {
                 report(
                     None,
                     "eero kept no address for 02:00:00:00:00:38; nothing changed.\n"
+                ),
+                report(
+                    None,
+                    "eero keeps no address for 02:00:00:00:00:38; the daemon didn't say which \
+                     it kept, so see the eero app to undo it.\n"
                 ),
             ],
             "a reservation that changed nothing gave an undo, or one that did gave none"

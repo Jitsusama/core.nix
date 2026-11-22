@@ -62,11 +62,15 @@ pub fn open() -> io::Result<String> {
 }
 
 /// Seals the token in its file, replacing any before it only once the new
-/// one is whole.
+/// one is whole and on the disk. The daemon and a command may both seal
+/// at once, as when each refreshes an aged session, so each seals into a
+/// file named for its own process, and neither moves or removes the
+/// other's half-written one.
 pub fn keep(token: &str) -> io::Result<()> {
     let file = file()?;
-    let fresh = file.with_extension("cred.new");
+    let fresh = sealing(&file, std::process::id());
     let sealed = private(&fresh)?;
+    let whole = sealed.try_clone()?;
     let mut seal = Command::new("systemd-creds")
         .args([
             "--user",
@@ -87,7 +91,35 @@ pub fn keep(token: &str) -> io::Result<()> {
         let _ = fs::remove_file(&fresh);
         return Err(io::Error::other("systemd-creds couldn't seal the session"));
     }
-    fs::rename(&fresh, &file)
+    whole.sync_all()?;
+    fs::rename(&fresh, &file)?;
+    let _ = forget_unfinished(&file);
+    Ok(())
+}
+
+/// The file process `pid` seals a new session into, beside `file`.
+fn sealing(file: &Path, pid: u32) -> PathBuf {
+    file.with_extension(format!("cred.{pid}.new"))
+}
+
+/// Removes what a sealer that died partway left beside `file`: its
+/// process is gone, so it will never finish or move it.
+fn forget_unfinished(file: &Path) -> io::Result<()> {
+    let folder = file.parent().ok_or_else(|| io::Error::other("no folder"))?;
+    for entry in fs::read_dir(folder)? {
+        let name = entry?.file_name();
+        let pid = name
+            .to_str()
+            .and_then(|name| name.strip_prefix("session.cred."))
+            .and_then(|rest| rest.strip_suffix(".new"))
+            .and_then(|pid| pid.parse::<u32>().ok());
+        if let Some(pid) = pid
+            && !Path::new(&format!("/proc/{pid}")).exists()
+        {
+            let _ = fs::remove_file(folder.join(&name));
+        }
+    }
+    Ok(())
 }
 
 /// A fresh file at `path`, and its folder, the account's alone from the
@@ -144,6 +176,33 @@ mod tests {
             ),
             (0o700, 0o600, 0),
             "an open folder wasn't narrowed, or a stale file was written through"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn each_sealer_seals_apart_and_only_a_dead_ones_leftover_is_removed() {
+        let root = std::env::temp_dir().join(format!("eero-session-apart-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("the test's folder");
+        let file = root.join("session.cred");
+        let ours = std::process::id();
+        assert_ne!(
+            sealing(&file, ours),
+            sealing(&file, ours + 1),
+            "two sealers share a file"
+        );
+        // A pid past the kernel's largest is never running.
+        let dead = sealing(&file, 4_194_305);
+        for leftover in [&dead, &sealing(&file, ours)] {
+            fs::write(leftover, "half a seal").expect("a leftover");
+        }
+        fs::write(root.join("session.cred"), "the session").expect("the session");
+        forget_unfinished(&file).expect("the folder reads");
+        assert_eq!(
+            (dead.exists(), sealing(&file, ours).exists(), file.exists()),
+            (false, true, true),
+            "a running sealer's file or the session went, or a dead one's stayed"
         );
         let _ = fs::remove_dir_all(&root);
     }

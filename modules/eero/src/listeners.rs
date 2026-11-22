@@ -133,6 +133,12 @@ pub const KIND: &str = "home-network";
 /// that stopped reading can't hold up the others or the daemon.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// How many asks that are no act one listener may make before it's let
+/// go, each logged: they're answered without the daemon's loop, so one
+/// asking in a loop would otherwise grow the change log as fast as it
+/// wrote, and a full disk refuses every act, since each must be logged.
+const UNASKED_KEPT: u32 = 8;
+
 /// Everyone connected, and the record each newcomer is answered with.
 #[derive(Clone)]
 pub struct Listeners {
@@ -182,6 +188,8 @@ struct Listener {
     /// an ask naming none takes.
     words: Option<String>,
     numbers: Option<String>,
+    /// How many asks it made that were no act (`UNASKED_KEPT`).
+    unasked: u32,
 }
 
 impl Listeners {
@@ -398,6 +406,7 @@ impl Listeners {
                 rows: Vec::new(),
                 words: None,
                 numbers: None,
+                unasked: 0,
             });
             id
         };
@@ -491,10 +500,14 @@ impl Listeners {
                         peer: listener.peer.clone(),
                     }));
                 }
-                Err(why) => {
-                    refusal = log.clone().map(|log| (log, listener.peer.clone()));
+                Err(unasked) => {
+                    listener.unasked += 1;
+                    refusal = log
+                        .clone()
+                        .map(|log| (log, listener.peer.clone(), unasked.code()));
                     (
-                        json!({"id": said, "error": {"code": "bad-act", "message": why}}),
+                        json!({"id": said, "error":
+                            {"code": unasked.code(), "message": unasked.why()}}),
                         None,
                     )
                 }
@@ -504,12 +517,14 @@ impl Listeners {
                 None,
             ),
         };
-        if write_line(&mut listener.stream, &answer.to_string()).is_err() {
+        if write_line(&mut listener.stream, &answer.to_string()).is_err()
+            || listener.unasked >= UNASKED_KEPT
+        {
             let _ = listener.stream.shutdown(Shutdown::Both);
         }
         drop(hub);
-        if let Some((log, peer)) = refusal
-            && let Err(error) = changes::refused(&log, peer.as_ref(), &asked, changes::now())
+        if let Some((log, peer, code)) = refusal
+            && let Err(error) = changes::refused(&log, peer.as_ref(), &asked, code, changes::now())
         {
             eprintln!("eero: couldn't log a refused act: {error}");
         }

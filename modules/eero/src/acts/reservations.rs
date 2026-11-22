@@ -22,12 +22,13 @@ use crate::acts::{Came, Done, Mac};
 use crate::cloud::{Asks, Failure};
 
 /// A reservation eero keeps: where it lives, for which device and which
-/// address.
+/// address, and the url eero names that device by, if it does.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Kept {
     pub url: String,
     pub mac: Mac,
     pub address: Ipv4Addr,
+    pub device: Option<String>,
 }
 
 /// The reservations in the data of `networks/<id>/reservations`, or why
@@ -48,6 +49,7 @@ fn one_kept(reservation: &Value) -> Option<Kept> {
         url: reservation["url"].as_str()?.to_owned(),
         mac: reservation["mac"].as_str().and_then(Mac::parse)?,
         address: reservation["ip"].as_str()?.parse().ok()?,
+        device: reservation["device"].as_str().map(str::to_owned),
     })
 }
 
@@ -182,40 +184,61 @@ pub fn holder(
 /// reaches a device by its reserved address, so taking the reservation
 /// away could leave the forward reaching whichever device DHCP gives the
 /// address next. No forward has been seen to know its shape, so the whole
-/// answer is searched for anything naming the reservation: its address,
-/// with a port or a mask or as a number, its url, its device's url, or the
-/// device's MAC, in either case or bare. A list that isn't one can't say
-/// none does, so it's refused.
+/// answer is searched for anything naming the reservation anywhere in a
+/// string or a number: its address, dotted or as one number, however it's
+/// written around (with a port, a mask, in a range or after a word); its
+/// id or its device's, as eero's urls end, in any url or alone; or the
+/// device's MAC, in either case, with any separator or none. A match
+/// that wasn't meant only costs a refusal, so it's matched loosely. A
+/// list that isn't one can't say none does, so it's refused.
 pub fn forwarded(forwards: &Value, held: &Kept) -> Result<bool, String> {
     if !forwards.is_array() {
         return Err("eero lists its port forwards in a way this can't read".into());
     }
     let address = held.address.to_string();
-    let url = held.url.to_ascii_lowercase();
-    let mac = held.mac.to_string();
-    let bare = mac.replace(':', "");
+    let number = u32::from(held.address).to_string();
+    let last = |url: &str| {
+        url.rsplit('/')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    };
+    let ids: Vec<String> = [Some(held.url.as_str()), held.device.as_deref()]
+        .into_iter()
+        .flatten()
+        .map(last)
+        .filter(|id| !id.is_empty())
+        .collect();
+    let bare = held.mac.to_string().replace(':', "");
     let names = |text: &str| {
         let text = text.to_ascii_lowercase();
-        text == address
-            || text
-                .strip_prefix(&address)
-                .is_some_and(|rest| rest.starts_with([':', '/']))
-            || text == url
-            || text == mac
-            || text == bare
-            || text.ends_with(&format!("/devices/{bare}"))
+        let unseparated: String = text
+            .chars()
+            .filter(|c| !matches!(c, ':' | '-' | '.'))
+            .collect();
+        words(&text, |c| c.is_ascii_digit() || c == '.')
+            .map(|word| word.trim_matches('.'))
+            .any(|word| word == address || word == number)
+            || words(&text, char::is_alphanumeric).any(|word| ids.iter().any(|id| id == word))
+            || words(&unseparated, char::is_alphanumeric).any(|word| word == bare)
     };
-    Ok(reaches(forwards, &names, u32::from(held.address)))
+    Ok(reaches(forwards, &names))
 }
 
-/// Whether anything in `answer` is a string `names` says names the
-/// reservation, or the number `address` is.
-fn reaches(answer: &Value, names: &impl Fn(&str) -> bool, address: u32) -> bool {
+/// The runs of `text` made only of what `within` takes.
+fn words(text: &str, within: impl Fn(char) -> bool) -> impl Iterator<Item = &str> {
+    text.split(move |c| !within(c))
+        .filter(|word| !word.is_empty())
+}
+
+/// Whether anything in `answer`, a string or a number as it's written,
+/// is one `names` says names the reservation.
+fn reaches(answer: &Value, names: &impl Fn(&str) -> bool) -> bool {
     match answer {
         Value::String(text) => names(text),
-        Value::Number(number) => number.as_u64() == Some(u64::from(address)),
-        Value::Array(items) => items.iter().any(|item| reaches(item, names, address)),
-        Value::Object(fields) => fields.values().any(|field| reaches(field, names, address)),
+        Value::Number(number) => names(&number.to_string()),
+        Value::Array(items) => items.iter().any(|item| reaches(item, names)),
+        Value::Object(fields) => fields.values().any(|field| reaches(field, names)),
         _ => false,
     }
 }
@@ -267,6 +290,21 @@ pub fn unreserve(eero: &mut impl Asks, network: &str, mac: Mac) -> Came {
         Err(failure) => return Came::of(Err(failure)),
     };
     let reservations = format!("{network}/reservations");
+    // Its undo is to keep the address again, which `reserve` refuses
+    // outside the range eero gives out, so one there is left to the app
+    // rather than taken away with an undo that couldn't be done.
+    let undoable = eero
+        .get(&format!("{network}/subnets_config"))
+        .and_then(|subnets| {
+            within(&subnets, held.address).map_err(|why| {
+                Failure::Refused(format!(
+                    "{why}, so keeping it again couldn't undo this; change it in the eero app"
+                ))
+            })
+        });
+    if let Err(failure) = undoable {
+        return Came::of(Err(failure));
+    }
     let checked = eero
         .get(&format!("{network}/forwards"))
         .and_then(|forwards| forwarded(&forwards, &held).map_err(Failure::Refused));

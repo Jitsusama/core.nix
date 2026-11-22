@@ -95,23 +95,56 @@ impl Act {
     /// "act": "speedtest"}` or `{"ask": "act", "act": "sqm", "on": true}`,
     /// or why it isn't one. Only the act's name is said back: nothing
     /// else the ask held.
-    pub fn asked(said: &Value) -> Result<Act, String> {
+    pub fn asked(said: &Value) -> Result<Act, Unasked> {
+        let malformed = |why: &str| Unasked::Malformed(why.to_owned());
         match said["act"].as_str() {
             Some("speedtest") => Ok(Act::SpeedTest),
             Some("sqm") => said["on"]
                 .as_bool()
                 .map(Act::Conferencing)
-                .ok_or_else(|| "conferencing and gaming is asked on or off".to_owned()),
+                .ok_or_else(|| malformed("conferencing and gaming is asked on or off")),
             Some("reserve") => Ok(Act::Reserve {
-                mac: mac(said)?,
+                mac: mac(said).map_err(Unasked::Malformed)?,
                 address: said["address"]
                     .as_str()
                     .and_then(|address| address.parse().ok())
-                    .ok_or_else(|| "a reservation names an IPv4 address".to_owned())?,
+                    .ok_or_else(|| malformed("a reservation names an IPv4 address"))?,
             }),
-            Some("unreserve") => Ok(Act::Unreserve { mac: mac(said)? }),
-            Some(other) => Err(format!("eero does nothing called {}", named(other))),
-            None => Err("an act names what it does".to_owned()),
+            Some("unreserve") => Ok(Act::Unreserve {
+                mac: mac(said).map_err(Unasked::Malformed)?,
+            }),
+            Some(other) => Err(Unasked::Unknown(format!(
+                "eero does nothing called {}",
+                named(other)
+            ))),
+            None => Err(Unasked::Unknown("an act names what it does".to_owned())),
+        }
+    }
+}
+
+/// Why an ask is no act the daemon does, told apart since they mean
+/// different things to whoever asked: an act it doesn't know, as a
+/// daemon older than its asker wouldn't, or one it knows asked with
+/// fields it can't read, which is the asker's own mistake.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Unasked {
+    Unknown(String),
+    Malformed(String),
+}
+
+impl Unasked {
+    /// The code the daemon answers and logs it by.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Unasked::Unknown(_) => "bad-act",
+            Unasked::Malformed(_) => "bad-ask",
+        }
+    }
+
+    /// Why, as said back: nothing of the ask but the act's name.
+    pub fn why(&self) -> &str {
+        match self {
+            Unasked::Unknown(why) | Unasked::Malformed(why) => why,
         }
     }
 }
@@ -181,16 +214,31 @@ mod tests {
     fn an_ask_eero_has_no_act_for_is_refused() {
         assert_eq!(
             Act::asked(&json!({"ask": "act", "act": "sqm"})),
-            Err("conferencing and gaming is asked on or off".to_owned())
+            Err(Unasked::Malformed(
+                "conferencing and gaming is asked on or off".to_owned()
+            ))
         );
         assert_eq!(
             Act::asked(&json!({"ask": "act", "act": "reboot"})),
-            Err("eero does nothing called reboot".to_owned())
+            Err(Unasked::Unknown(
+                "eero does nothing called reboot".to_owned()
+            ))
+        );
+        assert_eq!(
+            [
+                Unasked::Unknown(String::new()).code(),
+                Unasked::Malformed(String::new()).code()
+            ],
+            ["bad-act", "bad-ask"],
+            "an act asked wrongly was coded as one the daemon doesn't know, or the other way"
         );
         let long = "dns".repeat(40);
         assert_eq!(
             Act::asked(&json!({"ask": "act", "act": long})),
-            Err(format!("eero does nothing called {}", &long[..32])),
+            Err(Unasked::Unknown(format!(
+                "eero does nothing called {}",
+                &long[..32]
+            ))),
             "a long act's name was said back whole"
         );
     }
@@ -243,9 +291,15 @@ mod tests {
                 Ok(Act::Unreserve {
                     mac: mac("02:00:00:00:00:01"),
                 }),
-                Err("a reservation names an IPv4 address".into()),
-                Err("a reservation names a device's MAC, such as 02:00:00:00:00:01".into()),
-                Err("a reservation names a device's MAC, such as 02:00:00:00:00:01".into()),
+                Err(Unasked::Malformed(
+                    "a reservation names an IPv4 address".into()
+                )),
+                Err(Unasked::Malformed(
+                    "a reservation names a device's MAC, such as 02:00:00:00:00:01".into()
+                )),
+                Err(Unasked::Malformed(
+                    "a reservation names a device's MAC, such as 02:00:00:00:00:01".into()
+                )),
             ],
             "a reservation's ask read wrongly"
         );

@@ -60,19 +60,20 @@ impl Cloud {
         self.call(Method::Get, path, None)
     }
 
-    /// The data of an answer to a POST.
+    /// The data of an answer to a POST, null when eero took it with none
+    /// (`judge`).
     pub fn post(&mut self, path: &str, body: Option<&Value>) -> Result<Value, Failure> {
         self.call(Method::Post, path, body)
     }
 
-    /// The data of an answer to a PUT, which is how a setting changes.
+    /// The data of an answer to a PUT, which is how a setting changes,
+    /// null when eero took it with none (`judge`).
     pub fn put(&mut self, path: &str, body: &Value) -> Result<Value, Failure> {
         self.call(Method::Put, path, Some(body))
     }
 
-    /// An answer to a DELETE, which is how a reservation goes. eero may
-    /// answer one with no data, so its data is null then rather than a
-    /// refusal (`judge`).
+    /// An answer to a DELETE, which is how a reservation goes, null when
+    /// eero took it with no data (`judge`).
     pub fn delete(&mut self, path: &str) -> Result<Value, Failure> {
         self.call(Method::Delete, path, None)
     }
@@ -161,11 +162,13 @@ impl Cloud {
 /// The data of an answer to `path`, or why there's none: an aged session
 /// apart, since a refresh mends it, and eero failing on its side apart
 /// from eero refusing, since only the first may answer if asked again.
-/// A DELETE eero took may come back with no data, which is null then
-/// rather than a refusal; only a DELETE, since a read with no data is
+/// A change eero took may come back with no data, which is null then
+/// rather than a refusal, since only a status eero refused with says it
+/// was refused, and each change is judged by what eero reads after it
+/// (or, signing in, by the token it must carry). A read with no data is
 /// one eero couldn't answer, never an empty one.
 fn judge(method: Method, path: &str, status: u16, read: &Value) -> Result<Value, Refused> {
-    if matches!(method, Method::Delete) && (200..300).contains(&status) {
+    if !matches!(method, Method::Get) && (200..300).contains(&status) {
         return Ok(api::data(read).cloned().unwrap_or(Value::Null));
     }
     if api::session_expired(status, read) {
@@ -237,7 +240,7 @@ pub enum Failure {
     /// eero's cloud couldn't be reached, or failed on its side; asking
     /// again later may work.
     Unreachable(String),
-    /// eero answered, but refused this request or gave it no data.
+    /// eero answered, but refused this request, or gave a read no data.
     Refused(String),
     /// A change was sent, but neither eero's answer nor a read after it
     /// says whether eero took it, so whoever asked reads it again rather
@@ -339,41 +342,41 @@ mod tests {
     }
 
     #[test]
-    fn only_a_delete_eero_took_may_come_back_without_data() {
+    fn only_a_read_must_come_back_with_data() {
         let path = "/2.2/networks/1001/reservations/2c8db13091a2";
         let judged = |method, status, read: Value| match judge(method, path, status, &read) {
             Ok(data) => Ok(data),
             Err(refused) => Err(Failure::from(refused)),
         };
         let missing = json!({"meta": {"code": 404, "error": "error.reservation.missing"}});
-        assert_eq!(
-            [
-                judged(Method::Delete, 204, Value::Null),
-                judged(Method::Delete, 200, json!({"meta": {"code": 200}})),
-                judged(
-                    Method::Delete,
-                    200,
-                    json!({"meta": {"code": 200}, "data": {}})
-                ),
-            ],
-            [Ok(Value::Null), Ok(Value::Null), Ok(json!({}))],
-            "a DELETE eero took read as refused"
-        );
-        assert!(
-            matches!(
-                judged(Method::Delete, 404, missing),
-                Err(Failure::Refused(_))
-            ),
-            "a DELETE eero refused read as taken"
-        );
-        for method in [Method::Get, Method::Post, Method::Put] {
+        for method in [Method::Delete, Method::Post, Method::Put] {
+            assert_eq!(
+                [
+                    judged(method, 204, Value::Null),
+                    judged(method, 201, json!({"meta": {"code": 201}})),
+                    judged(method, 200, json!({"meta": {"code": 200}, "data": {}})),
+                ],
+                [Ok(Value::Null), Ok(Value::Null), Ok(json!({}))],
+                "a {method:?} eero took read as refused for its answer's shape"
+            );
             assert!(
                 matches!(
-                    judged(method, 200, json!({"meta": {"code": 200}, "data": null})),
+                    judged(method, 404, missing.clone()),
                     Err(Failure::Refused(_))
                 ),
-                "a {method:?} answered with no data read as taken"
+                "a {method:?} eero refused read as taken"
             );
         }
+        assert!(
+            matches!(
+                judged(
+                    Method::Get,
+                    200,
+                    json!({"meta": {"code": 200}, "data": null})
+                ),
+                Err(Failure::Refused(_))
+            ),
+            "a read answered with no data read as an empty one"
+        );
     }
 }

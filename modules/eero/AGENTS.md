@@ -158,7 +158,11 @@ session, so the session is opened by the daemon and by `eero sign-in`,
 The socket is the door agents are meant to use, not a wall: a process
 running as the account, unfenced, can open the session itself as those
 three commands do. Only the fence keeps an agent from it, by hiding
-`session.cred` and systemd's credentials as well as the socket.
+`session.cred` and systemd's credentials as well as the socket. The
+fence is the agent harness's, not this tree's: it binds an empty file
+over `session.cred`, keeps systemd's credential service and the socket
+out, and its own tests prove each, so a change to what it hides is made
+and checked there.
 
 A reservation changes which device DHCP gives which address, so each
 refuses rather than guesses ([`src/acts/reservations.rs`][reservations]). A
@@ -180,9 +184,13 @@ doesn't show yet is unknown. The CLI then exits 75 and says to read the
 device again, never that it was done or refused; an unreservation's
 says the address it kept, which keeping again undoes it. A reservation
 that already stood changed nothing, so it's said with no undo. An act
-whose asker has gone before the daemon reaches it is let go undone,
-which the CLI's six minutes of patience leaves room for behind the
-daemon's longest read.
+whose asker has gone before the daemon reaches it is let go undone.
+The CLI's six minutes of patience leave room for a reservation behind
+the daemon's longest read; a slow cloud through every read falling due
+at once can take longer, and the act is then said unknown and let go,
+logged `gone`, unless the daemon had begun it. The daemon reads its
+reservations again at once after one, so reading the device settles an
+unknown outcome.
 
 Each act the daemon is asked is logged as asked before it's done and
 with its result after, as JSON lines in
@@ -196,9 +204,14 @@ process's pid and uid from the socket's peer credentials, the unit or
 scope it ran in as it connected, and its result by kind alone. An
 unreservation's last line names the address eero kept for it, its undo,
 whatever it came to. An act let go because its asker left is logged as
-`gone`, and an ask refused as `bad-act` is logged too, its act's name
-cut short; the CLI says `bad-act` as a daemon older than itself, exit
-69. The log holds no session and nothing eero answered, whose refusals
+`gone`, and an ask refused as no act is logged too, its act's name cut
+short: `bad-act` for an act the daemon doesn't know, which the CLI says
+as a daemon older than itself, exit 69, and `bad-ask` for one it knows
+asked with fields it can't read, which the CLI checks first, so it says
+that as a bug, exit 70. A listener asking no act eight times is let go,
+so one asking in a loop can't fill the disk the log, and so every act,
+needs. Each line is written whole in one write, on the disk before the
+act goes ahead. The log holds no session and nothing eero answered, whose refusals
 can carry their whole body. Nothing trims it, since it grows by a line
 or two an act. It's a record the daemon keeps, not an audit: any
 process running as the account can write the file, and a process can

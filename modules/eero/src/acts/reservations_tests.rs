@@ -123,6 +123,7 @@ fn the_contracts_reservation_is_kept() {
             url: KEPT_URL.into(),
             mac: mac("02:00:00:00:00:38"),
             address: address("10.0.0.208"),
+            device: Some("/2.2/networks/1001/devices/020000000038".into()),
         }],
         "eero's reservation didn't read as it answered it"
     );
@@ -255,6 +256,28 @@ fn an_address_a_device_or_an_eero_holds_is_another_devices() {
         ],
         "a held address was missed, or the device's own counted as another's"
     );
+    // A device holding the address only among its others, or one whose
+    // MAC eero lists oddly, is still another's: only our own MAC is ours.
+    let odd = json!([
+        {"mac": "02:00:00:00:00:44", "ip": null, "ips": ["fe80::4", "10.0.0.77"],
+            "nickname": "second address"},
+        {"mac": "02-00-00-00-00-45", "ip": "10.0.0.78", "nickname": "odd MAC"},
+        {"mac": null, "ip": "10.0.0.79", "nickname": "no MAC"},
+    ]);
+    assert_eq!(
+        ["10.0.0.77", "10.0.0.78", "10.0.0.79"].map(|held| holder(
+            &odd,
+            &eeros,
+            ours,
+            address(held)
+        )),
+        [
+            Ok(Some("held by second address".to_owned())),
+            Ok(Some("held by odd MAC".to_owned())),
+            Ok(Some("held by no MAC".to_owned())),
+        ],
+        "an address held among a device's others, or by one eero lists oddly, was free"
+    );
     let wrapped = json!({"data": []});
     assert_eq!(
         [
@@ -280,13 +303,23 @@ fn a_port_forward_naming_the_reservation_any_way_is_found_wherever_it_says_it() 
         json!("10.0.0.208"),
         json!("10.0.0.208:25565"),
         json!("10.0.0.208/32"),
+        json!("10.0.0.208-10.0.0.210"),
+        json!("ip=10.0.0.208"),
+        json!("tcp 10.0.0.208:22"),
+        json!(" 10.0.0.208."),
         json!(KEPT_URL),
         json!(KEPT_URL.to_ascii_uppercase()),
+        json!(format!("https://api-user.e2ro.com{KEPT_URL}/")),
+        json!("2c8db13091a2"),
         json!("/2.2/networks/1001/devices/020000000038"),
         json!("02:00:00:00:00:38"),
         json!("02:00:00:00:00:38".to_ascii_uppercase()),
+        json!("02-00-00-00-00-38"),
+        json!("0200.0000.0038"),
+        json!("/devices/02:00:00:00:00:38"),
         json!("020000000038"),
         json!(u32::from(held.address)),
+        json!(u32::from(held.address).to_string()),
     ] {
         assert_eq!(
             forwarded(&forward(target.clone()), held),
@@ -297,7 +330,10 @@ fn a_port_forward_naming_the_reservation_any_way_is_found_wherever_it_says_it() 
     for target in [
         json!("10.0.0.20"),
         json!("10.0.0.2080"),
+        json!("110.0.0.208"),
         json!("/2.2/networks/1001/devices/020000000001"),
+        json!("/2.2/networks/1001/reservations/2c8db13091a3"),
+        json!("02:00:00:00:00:3"),
         json!(25565),
     ] {
         assert_eq!(
@@ -306,6 +342,20 @@ fn a_port_forward_naming_the_reservation_any_way_is_found_wherever_it_says_it() 
             "a forward naming something else, {target}, was taken for the reservation's"
         );
     }
+    // eero names the device by its own id, which needn't be the MAC: the
+    // url it lists is what's searched for, not one made from the MAC.
+    let named_apart = Kept {
+        device: Some("/2.2/networks/1001/devices/d7a91c".into()),
+        ..held.clone()
+    };
+    assert_eq!(
+        forwarded(
+            &forward(json!("/2.2/networks/1001/devices/d7a91c")),
+            &named_apart
+        ),
+        Ok(true),
+        "a forward naming the device by the url eero lists for it was missed"
+    );
     assert_eq!(
         forwarded(&contract("forwards"), held),
         Ok(false),
@@ -424,17 +474,17 @@ fn a_reservations_outcome_is_what_eero_keeps_after_it() {
         eero.answers(&posted(ours, "10.0.0.77"), sent);
         reserve(&mut eero, NETWORK, mac(ours), address("10.0.0.77"))
     };
-    let no_data = Failure::Refused("eero answered 201 without data".into());
+    let refused = Failure::Refused("eero answered 409 to the reservations".into());
     let lost = Failure::Unreachable("couldn't reach eero: timed out".into());
     let signed_out = Failure::SignedOut("aged".into());
     assert_eq!(
-        walk(Err(no_data.clone()), Ok(with_new(ours, "10.0.0.77"))),
+        walk(Err(refused.clone()), Ok(with_new(ours, "10.0.0.77"))),
         Ok(Done::Made),
-        "a reservation eero keeps read as refused for its answer's shape"
+        "a reservation eero keeps read as refused for its answer"
     );
     assert_eq!(
-        walk(Err(no_data.clone()), Ok(contract("reservations"))),
-        Err(no_data),
+        walk(Err(refused.clone()), Ok(contract("reservations"))),
+        Err(refused),
         "a refusal eero keeps nothing of wasn't said as eero said it"
     );
     let unknown = |came: Result<Done, Failure>| {
@@ -446,6 +496,11 @@ fn a_reservations_outcome_is_what_eero_keeps_after_it() {
             Ok(json!({})),
             Ok(contract("reservations")),
             "eero answered, but whose list doesn't show it yet",
+        ),
+        (
+            Ok(Value::Null),
+            Ok(contract("reservations")),
+            "eero took with no data, but whose list doesn't show it yet",
         ),
         (
             Err(lost.clone()),
@@ -569,10 +624,15 @@ fn an_unreservation_deletes_the_devices_own_and_says_what_it_held() {
 fn an_unreservation_a_forward_reaches_or_eero_names_oddly_is_refused() {
     let mut forwarded = Eero::default();
     kept_then(&mut forwarded, Ok(contract("reservations")));
-    forwarded.answers(
-        &format!("GET {NETWORK}/forwards"),
-        Ok(json!([{"ip": "10.0.0.208", "port": 25565}])),
-    );
+    forwarded
+        .answers(
+            &format!("GET {NETWORK}/subnets_config"),
+            Ok(contract("subnets_config")),
+        )
+        .answers(
+            &format!("GET {NETWORK}/forwards"),
+            Ok(json!([{"ip": "10.0.0.208", "port": 25565}])),
+        );
     assert!(
         matches!(
             unreserve(&mut forwarded, NETWORK, mac("02:00:00:00:00:38")).done,
@@ -591,7 +651,20 @@ fn an_unreservation_a_forward_reaches_or_eero_names_oddly_is_refused() {
         ),
         "a reservation whose url isn't the network's wasn't refused for it"
     );
-    for eero in [forwarded, odd] {
+    // Below the range eero gives out, keeping it again would be refused,
+    // so the undo this would give couldn't be done.
+    let mut unkeepable = Eero::contract();
+    let low = json!([{"url": KEPT_URL, "mac": "02:00:00:00:00:38", "ip": "10.0.0.5"}]);
+    unkeepable.answers(&format!("GET {NETWORK}/reservations"), Ok(low));
+    assert!(
+        matches!(
+            unreserve(&mut unkeepable, NETWORK, mac("02:00:00:00:00:38")).done,
+            Err(Failure::Refused(why))
+                if why.contains("outside the range") && why.contains("eero app")
+        ),
+        "a reservation whose undo couldn't be done here was taken away"
+    );
+    for eero in [forwarded, odd, unkeepable] {
         assert_eq!(eero.changes(), Vec::<&str>::new(), "eero was sent a change");
     }
 }

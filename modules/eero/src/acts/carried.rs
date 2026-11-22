@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn an_act_whose_ask_cant_be_logged_is_never_done() {
-        let (folder, log) = log("unlogged");
+        let (folder, _) = log("unlogged");
         let nowhere = folder.join("no folder").join("changes.jsonl");
         let missing = io::Error::other("no state folder");
         for (log, why) in [
@@ -164,7 +164,15 @@ mod tests {
                 "an act was done with {why}: {carried:?}"
             );
         }
-        assert_eq!(results(&log), [], "a line was written somewhere unasked");
+        let left: Vec<_> = std::fs::read_dir(&folder)
+            .expect("the test's folder reads")
+            .map(|entry| entry.expect("an entry").file_name())
+            .collect();
+        assert_eq!(
+            left,
+            Vec::<std::ffi::OsString>::new(),
+            "an unlogged act wrote, or made a folder, somewhere unasked"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 

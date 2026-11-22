@@ -4,9 +4,10 @@
 use super::*;
 use std::sync::mpsc;
 
-/// A folder of the test's own.
+/// A folder of the test's own. Every test in the crate runs in one
+/// process, so the prefix keeps these apart from other files' folders.
 fn folder(name: &str) -> std::path::PathBuf {
-    let folder = std::env::temp_dir().join(format!("eero-{name}-{}", std::process::id()));
+    let folder = std::env::temp_dir().join(format!("eero-listeners-{name}-{}", std::process::id()));
     fs::create_dir_all(&folder).expect("the test's folder is made");
     folder
 }
@@ -346,10 +347,56 @@ fn an_act_eero_has_none_of_is_answered_at_once() {
         }
     };
     let logged: Value = serde_json::from_str(&line).expect("the line is JSON");
+    // SAFETY: getuid takes nothing and can't fail.
+    let uid = unsafe { libc::getuid() };
     assert_eq!(
-        (&logged["act"], &logged["result"], logged["uid"].is_u64()),
-        (&json!("reboot"), &json!("bad-act"), true),
+        (
+            &logged["act"],
+            &logged["result"],
+            &logged["uid"],
+            &logged["pid"]
+        ),
+        (
+            &json!("reboot"),
+            &json!("bad-act"),
+            &json!(uid),
+            &json!(std::process::id())
+        ),
         "a refused act wasn't logged with who asked"
+    );
+}
+
+#[test]
+fn an_act_asked_wrongly_is_told_so_and_a_listener_asking_no_act_in_a_loop_is_let_go() {
+    let (_listeners, woken, path) = listening("unasked");
+    let (mut stream, mut reader) = connected(&path);
+    assert_eq!(woken.recv(), Ok(Call::Joined), "joining wakes the daemon");
+
+    ask(
+        &mut stream,
+        &json!({"id": "act-1", "ask": "act", "act": "unreserve", "mac": "a phone"}),
+    );
+    assert_eq!(
+        read(&mut reader)["error"]["code"],
+        json!("bad-ask"),
+        "an act the daemon knows, asked wrongly, was said as one it doesn't know"
+    );
+    for n in 2..=8 {
+        ask(
+            &mut stream,
+            &json!({"id": format!("act-{n}"), "ask": "act", "act": "reboot"}),
+        );
+        assert_eq!(
+            read(&mut reader)["error"]["code"],
+            json!("bad-act"),
+            "ask {n} that was no act went unanswered"
+        );
+    }
+    let mut rest = String::new();
+    assert_eq!(
+        reader.read_line(&mut rest).map_err(|e| e.kind()),
+        Ok(0),
+        "a listener asking no act eight times was kept: {rest:?}"
     );
 }
 
