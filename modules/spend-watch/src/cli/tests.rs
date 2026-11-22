@@ -252,9 +252,9 @@ fn a_read_beside_a_running_daemon_reads() {
     assert_eq!(read.exit, Exit::Done, "{}", read.stderr);
 }
 
-// With no daemon, a read of a history of the ninth shape moves it itself,
-// under the lock, and then reads, rather than waiting on a daemon that
-// isn't there to move it.
+// With no daemon, a read of a history of the ninth shape moves it itself
+// and then reads, rather than waiting on a daemon that isn't there to
+// move it.
 #[test]
 fn a_read_with_no_daemon_moves_the_history_itself() {
     let dir = tempfile::tempdir().expect("a folder");

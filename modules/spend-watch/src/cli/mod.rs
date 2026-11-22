@@ -210,10 +210,10 @@ fn readable(context: &Context, config: &Config) -> Result<History, Failure> {
     };
     let to = crate::history::SCHEMA;
     let _lock = moving(config, shape, to)?;
-    // Said to a person only: under the JSON forms stderr carries the
-    // error as JSON, which words ahead of it would stop parsing. A wait
-    // stderr can't take leaves the move to go on unsaid.
-    let wait = matches!(context.shared.format, Format::Text)
+    // Said on stderr whatever the answer's form but the JSON ones, where
+    // stderr carries the error as JSON, which words ahead of it would stop
+    // parsing. A wait stderr can't take leaves the move to go on unsaid.
+    let wait = (!context.shared.format.is_json())
         .then(|| {
             context.wait(&format!(
                 "bringing the history from shape {shape} to {to}, a few minutes on a large one"
