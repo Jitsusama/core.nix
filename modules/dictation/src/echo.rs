@@ -3,8 +3,9 @@
 //! Joel's side is his microphone as it hears the room, before the call
 //! app's echo cancelling, so on the laptop's speakers it hears the others
 //! too. Where each word's time is known, their words his microphone heard
-//! just after they said them are cut from his line, and his own words in
-//! it stay. A line of his whose words repeat a line of theirs said at the
+//! just after they said them, and quieter than they said them, are cut
+//! from his line, and his own words in it stay: their microphones pick
+//! up his voice too, far quieter than their own, and that's his. A line of his whose words repeat a line of theirs said at the
 //! same time is their echo, and is left out whole, which also covers a
 //! line read back from a transcript, whose words' times are lost. On a
 //! headset there's none of either.
@@ -39,12 +40,16 @@ const WORDS: usize = 4;
 const LAG: usize = RATE;
 
 /// How long before one of their words its echo may be timed, in samples,
-/// since each side's word is timed by its own frame.
-const LEAD: usize = RATE / 2;
+/// since each side's word is timed by its own frame: on AMI's meetings
+/// with their side mixed into his, echo landed from 300 ms before their
+/// word to 400 ms after, and his own words said just before theirs
+/// were cut when this was half a second.
+const LEAD: usize = RATE * 3 / 10;
 
 /// How many of Joel's words in a row, each one of theirs heard just
-/// after it, are their echo.
-const RUN: usize = 1;
+/// after it, are their echo: a lone word of theirs, such as "Okay", is
+/// as likely his own.
+const RUN: usize = 2;
 
 /// How many of their words a word of their echo may follow the last by:
 /// either side may hear a word the other doesn't.
@@ -73,11 +78,34 @@ pub fn echoes(line: &Line, lines: &[Line]) -> bool {
     })
 }
 
+/// Each side's usual loudness over a call, the median of its words'
+/// levels, in dB, so a word's level is judged against its own side's.
+struct Usual {
+    mine: f32,
+    theirs: f32,
+}
+
+impl Usual {
+    /// Whether Joel's `heard` may be the echo of their `said` by how loud
+    /// each is: an echo is quieter in his microphone, against his own
+    /// voice there, than they said it, against theirs. Crosstalk is the
+    /// reverse, his voice far quieter in their microphone than in his.
+    fn may_echo(&self, heard: &Word, said: &Word) -> bool {
+        said.level - self.theirs >= heard.level - self.mine
+    }
+}
+
+/// The median of `levels`, or 0 dB with none.
+fn median(mut levels: Vec<f32>) -> f32 {
+    levels.sort_by(f32::total_cmp);
+    levels.get(levels.len() / 2).copied().unwrap_or(0.0)
+}
+
 /// For each of Joel's `mine`, the one of `theirs`, in the order they were
 /// said, it's the echo of, if it's one: a run of his words, each spelled
 /// as one of theirs, in their order, that his microphone heard within a
-/// moment of them saying it.
-pub fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
+/// moment of them saying it, and quieter, for each side's `usual`.
+fn echoes_of(mine: &[Word], theirs: &[Word], usual: &Usual) -> Vec<Option<usize>> {
     // Each of his words' runs: which of theirs it may echo, and how long
     // the run ending on it is.
     let mut runs: Vec<Vec<(usize, usize)>> = Vec::with_capacity(mine.len());
@@ -89,7 +117,11 @@ pub fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
             .checked_sub(1)
             .map_or(&[][..], |last| runs[last].as_slice());
         let heard = (from..to.max(from))
-            .filter(|&j| !spelling.is_empty() && spelled(&theirs[j].text) == spelling)
+            .filter(|&j| {
+                !spelling.is_empty()
+                    && spelled(&theirs[j].text) == spelling
+                    && usual.may_echo(word, &theirs[j])
+            })
             .map(|j| {
                 let longest = before
                     .iter()
@@ -162,13 +194,26 @@ pub fn cut_echoes<S: BuildHasher>(
         .cloned()
         .collect();
     theirs.sort_by_key(|word| word.at);
+    let usual = Usual {
+        mine: median(
+            lines
+                .iter()
+                .enumerate()
+                .filter(|(_, line)| line.side == Side::Mine)
+                .filter_map(|(index, _)| words.get(&index))
+                .flatten()
+                .map(|word| word.level)
+                .collect(),
+        ),
+        theirs: median(theirs.iter().map(|word| word.level).collect()),
+    };
     let mut cuts = Vec::new();
     let mut cut = lines.to_vec();
     for (index, line) in cut.iter_mut().enumerate() {
         let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
             continue;
         };
-        let echoes = echoes_of(mine, &theirs);
+        let echoes = echoes_of(mine, &theirs, &usual);
         if echoes.iter().all(Option::is_none) {
             continue;
         }
