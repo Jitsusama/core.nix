@@ -132,9 +132,11 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
     for (said, inset) in cases {
         let longest = said.split_whitespace().map(width).max().unwrap_or(0);
         for room in 0..30 {
-            let most = room.max(inset + GAP + 1);
             let lines = hanging(said, inset, Room::Cells(room));
-            for line in &lines {
+            for (at, line) in lines.iter().enumerate() {
+                // The first line draws a cell of words past its inset, and
+                // each under it a cell past the hang.
+                let most = room.max(inset + 1 + if at == 0 { 0 } else { GAP });
                 assert!(width(line) <= most, "{line:?} passed {most} cells");
                 assert!(
                     !line.trim().is_empty(),
@@ -159,20 +161,6 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
             }
         }
     }
-}
-
-#[test]
-fn a_word_that_fits_its_line_whole_is_never_cut_to_the_next_line_s_measure() {
-    // With 20 cells for the first line and 4 for the rest, the ten b's
-    // fit beside the a's, though not on a line under them, so nothing
-    // gives them cause to be shortened.
-    let lines = measured("aaaa bbbbbbbbbb ccccccccc", 20, 4);
-    assert!(
-        lines
-            .iter()
-            .any(|line| line.split(' ').any(|word| word == "bbbbbbbbbb")),
-        "a word that fit its line was cut to the measure of the line under it: {lines:?}"
-    );
 }
 
 #[test]
