@@ -1134,13 +1134,9 @@ pub(crate) mod tests {
             t + seldom,
         );
         let twenty = Duration::from_mins(20);
+        let almost = Duration::from_secs(20 * 60 - 1);
         assert!(
-            !f.should_ask(
-                &main_at("a"),
-                "",
-                t + seldom + twenty - Duration::from_secs(1),
-                seldom
-            ),
+            !f.should_ask(&main_at("a"), "", t + seldom + almost, seldom),
             "a refusal at heads the machine runs was asked again before twenty minutes"
         );
         assert!(

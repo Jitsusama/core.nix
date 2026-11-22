@@ -232,6 +232,21 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
 /// before the system's path holds it, and a follower that ended there
 /// waited 30 seconds to start again, long enough for the switch to stop
 /// it for good (switch 1036 on 18 November).
+/// Keeps what the machine `runs` in `file` for the next follower, when it
+/// changed since what was `kept`. Not keeping it costs the next follower
+/// only a minute's asks while the machine is loaded.
+fn keep_runs(file: Option<&Path>, runs: Option<&follow::Runs>, kept: &mut Option<follow::Runs>) {
+    if let Some(file) = file
+        && let Some(runs) = runs
+        && kept.as_ref() != Some(runs)
+    {
+        match follow::keep_runs(file, runs) {
+            Ok(()) => *kept = Some(runs.clone()),
+            Err(why) => eprintln!("update-to-main: couldn't keep what the machine runs: {why}"),
+        }
+    }
+}
+
 fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
     // What the machine runs carries over from the follower before, so a
@@ -327,19 +342,7 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                 }
                 // Kept after any look, since someone else's update changes
                 // what the machine runs too.
-                if let Some(file) = &runs_file
-                    && let Some(runs) = follower.runs()
-                    && kept.as_ref() != Some(runs)
-                {
-                    // Not keeping it costs the next follower only a
-                    // minute's asks while the machine is loaded.
-                    match follow::keep_runs(file, runs) {
-                        Ok(()) => kept = Some(runs.clone()),
-                        Err(why) => {
-                            eprintln!("update-to-main: couldn't keep what the machine runs: {why}");
-                        }
-                    }
-                }
+                keep_runs(runs_file.as_deref(), follower.runs(), &mut kept);
             }
             // Said once until it changes, since the host may be away a while.
             Err(why) if unread.as_ref() != Some(&why) => {
