@@ -26,9 +26,9 @@ fn words() -> Words {
 }
 
 /// The rows as they're made where no checkout's uncommitted files were
-/// counted.
+/// counted and zoxide saw no folder.
 fn rows(record: &Record, home: Option<&Path>, words: &Words) -> Vec<Value> {
-    super::rows(record, home, words, &BTreeMap::new())
+    super::rows(record, home, words, &BTreeMap::new(), &[])
 }
 
 fn tree(path: &str, present: bool) -> Tree {
@@ -220,7 +220,7 @@ fn a_checkout_with_files_not_committed_says_how_many_after_how_far_apart() {
         ahead: 1,
     }));
     let uncommitted = BTreeMap::from([("/home/j/src/core.nix".to_owned(), 2)]);
-    let rows = super::rows(&record(vec![repository]), None, &words(), &uncommitted);
+    let rows = super::rows(&record(vec![repository]), None, &words(), &uncommitted, &[]);
     assert_eq!(
         rows[0]["side"],
         json!([
@@ -238,7 +238,8 @@ fn a_checkout_with_files_not_committed_says_how_many_after_how_far_apart() {
 fn none_uncommitted_uncounted_bare_or_another_checkouts_says_nothing_and_many_say_100_plus() {
     let said_of = |repository: Repository, path: &str, count: u32| {
         let uncommitted = BTreeMap::from([(path.to_owned(), count)]);
-        super::rows(&record(vec![repository]), None, &words(), &uncommitted)[0]["side"][0].clone()
+        super::rows(&record(vec![repository]), None, &words(), &uncommitted, &[])[0]["side"][0]
+            .clone()
     };
     let said = |path: &str, count: u32| said_of(core(), path, count);
     let trees = json!({"said": "3 trees"});
@@ -664,6 +665,62 @@ fn a_file_is_a_row_named_by_its_name_that_opens_it() {
         "a file at the top of its repository said a folder"
     );
     assert_eq!(rows.len(), 2, "each file listed isn't a row");
+}
+
+/// A repository of `name` with one checkout at `path` and its one tree at
+/// `tree`, which git wrote in at `written`.
+fn named(name: &str, path: &str, tree: &str, written: u64) -> Repository {
+    let mut repository = core();
+    repository.key = format!("github:Jitsusama/{name}");
+    repository.name = name.to_owned();
+    repository.written_at = Some(written);
+    repository.checkouts = vec![checkout(path, false, vec![self::tree(tree, true)])];
+    repository
+}
+
+#[test]
+fn joels_own_last_visit_orders_them_and_the_rest_go_a_to_z_whatever_git_wrote() {
+    let record = record(vec![
+        named("delta", "/s/delta", "/t/delta", 900),
+        named("Alpha", "/s/alpha", "/t/alpha", 800),
+        named("beta", "/s/beta", "/t/beta", 100),
+        named("gamma", "/s/gamma", "/t/gamma", 200),
+    ]);
+    let visited = [
+        ("/s/beta-old".to_owned(), 900_000),
+        ("/t/gamma".to_owned(), 300_000),
+        ("/s/beta/src".to_owned(), 200_000),
+        ("/s/delta-two".to_owned(), 950_000),
+    ];
+    let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
+    let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
+    assert_eq!(
+        names,
+        ["gamma", "beta", "Alpha", "delta"],
+        "a visit in a tree or below a checkout is his act on it, a folder merely \
+         named alike is not, and git's writes order nothing"
+    );
+}
+
+#[test]
+fn a_visit_in_a_checkout_nested_in_another_counts_for_the_nested_one() {
+    let record = record(vec![
+        named("outer", "/w/git", "/w/trees/one", 1),
+        named("inner", "/w/git/vendor/inner", "/t/inner", 2),
+        named("aside", "/s/aside", "/t/aside", 3),
+    ]);
+    let visited = [
+        ("/w/git/vendor/inner/src".to_owned(), 500),
+        ("/s/aside/".to_owned(), 400),
+        ("/w/git/".to_owned(), 100),
+    ];
+    let rows = super::rows(&record, None, &words(), &BTreeMap::new(), &visited);
+    let names: Vec<&str> = rows.iter().filter_map(|row| row["name"].as_str()).collect();
+    assert_eq!(
+        names,
+        ["inner", "aside", "outer"],
+        "the visit below both is the nested one's alone, and a trailing slash still counts"
+    );
 }
 
 #[test]

@@ -176,6 +176,7 @@ fn fixture(folder: &Path) -> PathBuf {
     previewer(&folder.join("file-preview"));
     recorder(&folder.join("niri"));
     recorder(&folder.join("kitten"));
+    recorder(&folder.join("zoxide"));
     std::fs::write(folder.join("words.json"), WORDS).unwrap();
     file
 }
@@ -276,6 +277,7 @@ impl Running {
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
             .env("PROGRAMS_NIRI", folder.join("niri"))
             .env("PROGRAMS_KITTEN", folder.join("kitten"))
+            .env("PROGRAMS_ZOXIDE", folder.join("zoxide"))
             .stderr(Stdio::null());
         if let Some(before) = git {
             let path = folder.join("git");

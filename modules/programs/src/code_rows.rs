@@ -1,7 +1,11 @@
 //! The rows of Code, the launcher's place for every repository on the
 //! machine (docs/glossary.md's Code words), each listed once however many
 //! checkouts of it lie on the disk, as `repos` reads them
-//! (modules/repos). The one written to last comes first, said beside it
+//! (modules/repos). The one Joel was in last comes first, by zoxide's
+//! last visit to a folder of its checkouts or trees (visited.rs), since a
+//! list of things returned to moves by his own acts alone and git's
+//! writes are mostly agents' (RSCH-20261030-GB56HX); those he hasn't
+//! visited follow A to Z. Each is said beside it
 //! by how many changes are open on its remote, how far the checkout
 //! written to last is behind and ahead of the branch it follows (as repos'
 //! timer last counted), how many of its tracked files that checkout has
@@ -23,6 +27,7 @@
 //! by Return (switch.rs); its drawer names its
 //! key, its trunk and the checkout written to last, at its branch.
 
+use ready_rows::order::by_name;
 use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
@@ -176,22 +181,73 @@ impl Words {
     }
 }
 
-/// Every repository's row, in the record's order, the one written to
-/// last first; paths are said from `home` as `~`, and `uncommitted` says
-/// how many tracked files each checkout counted has changed and not
-/// committed, by its path.
+/// Every repository's row, the one Joel visited last first by `visited`
+/// (zoxide's folders, each with when he was last in it), then those he
+/// hasn't A to Z by name; paths are said from `home` as `~`, and
+/// `uncommitted` says how many tracked files each checkout counted has
+/// changed and not committed, by its path.
 #[must_use]
 pub fn rows(
     record: &Record,
     home: Option<&Path>,
     words: &Words,
     uncommitted: &BTreeMap<String, u32>,
+    visited: &[(String, u64)],
 ) -> Vec<Value> {
-    record
+    let last = last_visits(record, visited);
+    let mut ordered: Vec<(&Repository, Option<u64>)> = record
         .repositories
         .iter()
-        .map(|repository| row(repository, home, words, uncommitted))
+        .map(|repository| (repository, last.get(repository.key.as_str()).copied()))
+        .collect();
+    ordered.sort_by(|(one, one_at), (other, other_at)| {
+        other_at
+            .cmp(one_at)
+            .then_with(|| by_name(&one.name, &other.name))
+            .then_with(|| one.key.cmp(&other.key))
+    });
+    ordered
+        .into_iter()
+        .map(|(repository, _)| row(repository, home, words, uncommitted))
         .collect()
+}
+
+/// When Joel was last in each repository, by its key: each visited folder
+/// counts for the repository whose checkout or tree holds it most
+/// closely, so a checkout nested in another's folder keeps its own visits.
+fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'a str, u64> {
+    let places: Vec<(&str, &str)> = record
+        .repositories
+        .iter()
+        .flat_map(|repository| {
+            repository.checkouts.iter().flat_map(move |checkout| {
+                std::iter::once(checkout.path.as_str())
+                    .chain(checkout.trees.iter().map(|tree| tree.path.as_str()))
+                    .map(move |path| (path, repository.key.as_str()))
+            })
+        })
+        .collect();
+    let mut last: BTreeMap<&str, u64> = BTreeMap::new();
+    for (folder, at) in visited {
+        let holder = places
+            .iter()
+            .filter(|(path, _)| holds(path, folder))
+            .max_by_key(|(path, _)| path.len());
+        if let Some((_, key)) = holder {
+            let latest = last.entry(key).or_default();
+            *latest = (*latest).max(*at);
+        }
+    }
+    last
+}
+
+/// Whether `folder` is `path` or lies below it: `/s/beta-old` isn't in
+/// `/s/beta`, though its name begins the same.
+fn holds(path: &str, folder: &str) -> bool {
+    let path = path.trim_end_matches('/');
+    folder
+        .strip_prefix(path)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 /// The rows inside the repositories' rows, served beside them: for each

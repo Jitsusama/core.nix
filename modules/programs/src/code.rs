@@ -38,7 +38,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use programs::{code_rows, command, pull, repositories, switch, tend};
+use programs::{code_rows, command, pull, repositories, switch, tend, visited};
 use repos::model::Record;
 use repos::read::{Reading, read};
 use repos::{github, upstreams};
@@ -80,6 +80,9 @@ pub struct Code {
     roots: Vec<PathBuf>,
     home: Option<PathBuf>,
     machine: String,
+    /// zoxide's database, whose visits order the repositories by when
+    /// Joel was last in each (visited.rs).
+    visited: Option<PathBuf>,
     words: code_rows::Words,
     /// What Pull's answer says.
     pulled: pull::Words,
@@ -117,7 +120,8 @@ pub struct Code {
 impl Code {
     /// Code's settings from the environment: the folders `REPOS_ROOTS`
     /// names, colon-separated as PATH is, else ~/src, as repos itself reads
-    /// them.
+    /// them, and zoxide's database where `PROGRAMS_VISITED` names it, else
+    /// where zoxide keeps it by default.
     pub fn new(home: &str, vocabulary: &serde_json::Value) -> Code {
         let home = (!home.is_empty()).then(|| PathBuf::from(home));
         let mut roots: Vec<PathBuf> = std::env::var("REPOS_ROOTS")
@@ -129,10 +133,19 @@ impl Code {
         if roots.is_empty() {
             roots.extend(home.as_ref().map(|home| home.join("src")));
         }
+        let visited = std::env::var_os("PROGRAMS_VISITED")
+            .map(PathBuf::from)
+            .or_else(|| {
+                let data = std::env::var_os("XDG_DATA_HOME")
+                    .map(PathBuf::from)
+                    .or_else(|| home.as_ref().map(|home| home.join(".local/share")))?;
+                Some(data.join("zoxide/db.zo"))
+            });
         Code {
             roots,
             home,
             machine: terminal_kit::environment::machine(),
+            visited,
             words: code_rows::Words::read(vocabulary),
             pulled: pull::Words::read(vocabulary),
             switched: switch::Words::read(vocabulary),
@@ -166,12 +179,17 @@ impl Code {
         record
     }
 
-    /// Code's rows from `record`, with the uncommitted files last counted,
-    /// and the rows inside them.
+    /// Code's rows from `record`, with the uncommitted files last counted
+    /// and zoxide's visits as they stand, and the rows inside them.
     fn made(&self, record: &Record) -> Vec<Value> {
         let uncommitted = lock(&self.uncommitted).clone();
         let home = self.home.as_deref();
-        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted);
+        let visits = self
+            .visited
+            .as_deref()
+            .map(visited::visits_in)
+            .unwrap_or_default();
+        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, &visits);
         rows.extend(code_rows::inside(record, &self.words));
         rows
     }
@@ -406,7 +424,10 @@ pub fn edit(id: &Value, folder: &str) -> Value {
 }
 
 /// Has niri start kitty in `folder`, running `program` there if any, and
-/// answers that `what` was asked for.
+/// answers that `what` was asked for. Once kitty starts, zoxide hears of
+/// the folder where `PROGRAMS_ZOXIDE` names it, since Joel asked for it and
+/// a shell started in a folder tells zoxide nothing until its first `cd`,
+/// so Code's order and kitty's Recent move by this act of his too.
 fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Value {
     let niri = std::env::var("PROGRAMS_NIRI").unwrap_or_else(|_| "niri".to_owned());
     let argv: Vec<String> = [
@@ -423,9 +444,18 @@ fn kitty(id: &Value, folder: &str, program: &[&str], what: &'static str) -> Valu
     .chain(program)
     .map(|&word| word.to_owned())
     .collect();
+    let zoxide = std::env::var("PROGRAMS_ZOXIDE").ok();
+    let folder = folder.to_owned();
     std::thread::spawn(move || {
         if let Err(why) = command::run(&argv) {
             eprintln!("no {what} was started: {why}");
+            return;
+        }
+        if let Some(zoxide) = zoxide {
+            let add = [zoxide, "add".to_owned(), "--".to_owned(), folder];
+            if let Err(why) = command::run(&add) {
+                eprintln!("zoxide didn't hear of the {what}'s folder: {why}");
+            }
         }
     });
     serde_json::json!({"id": id, "asked": what})

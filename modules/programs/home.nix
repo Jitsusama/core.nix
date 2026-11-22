@@ -50,13 +50,19 @@ in
       # file-preview it keeps for drawers that preview a file
       # (src/preview.rs), and the niri and kitten that go to one of
       # kitty's tabs in Tabs and close it (src/tabs.rs). Code's rows are
-      # read under the folders repos looks under (src/code.rs, modules/repos).
+      # read under the folders repos looks under (src/code.rs, modules/repos),
+      # ordered by when Joel was last in each, by zoxide's database, which
+      # New Terminal Here and Edit Here tell of the folder they open.
       Environment = [
         "REPOS_ROOTS=${lib.concatStringsSep ":" (config.jitsusama.repos.roots or [ ])}"
         "PROGRAMS_GIT=${lib.getExe pkgs.git}"
         "PROGRAMS_PREVIEW=${lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })}"
         "PROGRAMS_NIRI=${lib.getExe (osConfig.programs.niri.package or pkgs.niri)}"
         "PROGRAMS_KITTEN=${lib.getExe' pkgs.kitty "kitten"}"
+      ]
+      ++ lib.optionals config.programs.zoxide.enable [
+        "PROGRAMS_ZOXIDE=${lib.getExe config.programs.zoxide.package}"
+        "PROGRAMS_VISITED=${config.xdg.dataHome}/zoxide/db.zo"
       ];
       Restart = "on-failure";
       RestartSec = 5;

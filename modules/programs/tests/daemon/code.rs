@@ -4,8 +4,10 @@
 //! changes a refresh kept, how far a counting kept its checkout behind,
 //! and how many files it hasn't committed, said beside their repository; a checkout's files served
 //! inside Open a File by Name while it's ahead, gone once it isn't, and
-//! found there by name or folder as they're typed; New Terminal Here
-//! and Edit Here started by a stand-in for niri as they're asked; and
+//! found there by name or folder as they're typed; the one Joel was in
+//! last, by zoxide's database, first; New Terminal Here and Edit Here
+//! started by a stand-in for niri as they're asked, zoxide told of the
+//! folder after; and
 //! Pull bringing a checkout forward by fast-forward alone, saying why
 //! where it won't. Forget Gone Trees and Gather Its Store, which tend a
 //! checkout as git's upkeep does, are tested beside it (tend.rs).
@@ -518,6 +520,55 @@ fn new_terminal_here_has_niri_start_kitty_in_the_checkout() {
         asked().unwrap(),
         "msg action spawn -- kitty --directory /src/alpha\n",
         "niri wasn't asked to start kitty in the checkout, so it outlives the daemon"
+    );
+    let told = || std::fs::read_to_string(running.path("zoxide.asked"));
+    until("zoxide wasn't told of the terminal's folder", || {
+        told().is_ok_and(|line| line.ends_with('\n'))
+    });
+    assert_eq!(
+        told().unwrap(),
+        "add -- /src/alpha\n",
+        "zoxide wasn't told Joel went into the checkout"
+    );
+}
+
+/// zoxide's database as it lays it out at version 3, each folder with
+/// when it was last visited, in seconds.
+fn zoxide_database(folders: &[(&Path, u64)]) -> Vec<u8> {
+    let mut bytes = 3_u32.to_le_bytes().to_vec();
+    bytes.extend((folders.len() as u64).to_le_bytes());
+    for (path, seconds) in folders {
+        let path = path.to_string_lossy();
+        bytes.extend((path.len() as u64).to_le_bytes());
+        bytes.extend(path.as_bytes());
+        bytes.extend(1.0_f64.to_le_bytes());
+        bytes.extend(seconds.to_le_bytes());
+    }
+    bytes
+}
+
+#[test]
+fn the_repository_joel_was_in_last_comes_first() {
+    let running = Running::new("code-visited");
+    cloned(&running, "alpha", "git@github.com:someone/alpha.git");
+    cloned(&running, "beta", "git@github.com:someone/beta.git");
+    let within = real(&running.path("src/beta")).join("docs");
+    std::fs::create_dir_all(running.path("near/zoxide")).unwrap();
+    std::fs::write(
+        running.path("near/zoxide/db.zo"),
+        zoxide_database(&[(&within, 1_700_000_000)]),
+    )
+    .unwrap();
+    let mut client = running.client();
+    let answer = client.ask(&json!({"id": 1, "ask": "watch", "kind": "row", "place": "code"}));
+    let order = |key: &str| {
+        row_of(&answer, key).unwrap_or_else(|| panic!("no {key}: {answer}"))["row"]["order"]
+            .as_u64()
+            .unwrap()
+    };
+    assert!(
+        order("row:code:github:someone/beta") < order("row:code:github:someone/alpha"),
+        "the repository Joel was in last didn't come first, A to Z did: {answer}"
     );
 }
 

@@ -1,6 +1,8 @@
 //! When zoxide last saw each folder, read from its own database as
 //! `visited:<database>` names it, for kitty's page in the launcher
-//! (modules/kitty/Kitty.qml): each folder still there, the one visited
+//! (modules/kitty/Kitty.qml), and for Code's order (code_rows.rs), since
+//! zoxide hears only the folders Joel's own shell goes into: each folder
+//! still there, the one visited
 //! last first, with when, in milliseconds. zoxide's `query` prints only a
 //! score, so its database is read here, as bincode lays it out: a
 //! version, read only at 3, zoxide's since 0.8, then how many folders,
@@ -26,9 +28,7 @@ pub fn record(key: &str) -> Option<Value> {
     let database = key
         .strip_prefix("visited:")
         .filter(|path| path.starts_with('/'))?;
-    let folders: Vec<Value> = fs::read(database)
-        .map(|bytes| visits(&bytes))
-        .unwrap_or_default()
+    let folders: Vec<Value> = visits_in(Path::new(database))
         .into_iter()
         .filter(|(path, _)| Path::new(path).is_dir())
         .map(|(path, at)| json!({"path": path, "at": at}))
@@ -36,6 +36,16 @@ pub fn record(key: &str) -> Option<Value> {
     Some(json!({
         "key": key, "kind": "visited", "database": database, "folders": folders,
     }))
+}
+
+/// Each folder in the database at `database` and when Joel was last in
+/// it, in milliseconds, the one visited last first; none where it can't
+/// be read.
+#[must_use]
+pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
+    fs::read(database)
+        .map(|bytes| visits(&bytes))
+        .unwrap_or_default()
 }
 
 /// A database's bytes, read from the front.
@@ -140,6 +150,25 @@ mod tests {
             "a database cut short didn't say what came before the cut"
         );
         assert!(visits(&[]).is_empty(), "no database said a folder");
+    }
+
+    #[test]
+    fn a_database_on_the_disk_is_read_and_one_missing_says_none() {
+        let folder = std::env::temp_dir().join(format!("visited-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let at = folder.join("db.zo");
+        fs::write(&at, database(3, &[("/s/a", 2)])).unwrap();
+        let read = visits_in(&at);
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            read,
+            [("/s/a".to_owned(), 2000)],
+            "the database on the disk wasn't read"
+        );
+        assert!(
+            visits_in(Path::new("/nowhere/db.zo")).is_empty(),
+            "a missing database said a folder"
+        );
     }
 
     #[test]
