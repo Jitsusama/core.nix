@@ -114,10 +114,9 @@ if [[ -f $gate && -r $gate ]] && text=$(< "$gate"); then
     if [[ $word == watch && -z $pattern ]]; then
       watching=1
     elif [[ ($word == allow || $word == refuse) && -n $pattern ]]; then
-      # Bash's matcher answers 2 for a pattern it can't read, and the
-      # condition's own status is the one wanted.
+      # Bash's matcher answers 2 for a pattern it can't read.
       status=0
-      # shellcheck disable=SC2319
+      # shellcheck disable=SC2319 # The condition's own status is the one wanted.
       [[ '' =~ $pattern ]] || status=$?
       [[ $status -ne 2 ]] || broken="its line $n isn't a pattern"
       rules+=("$pattern") verdicts+=("$word")
@@ -175,7 +174,10 @@ who() {
 verdict='' at=''
 for i in "${!places[@]}"; do
   for rule in "${own[@]}"; do
-    [[ ${places[i]} =~ $rule ]] && refuse "$(who "${pids[i]}" "${places[i]}")"
+    if [[ ${places[i]} =~ $rule ]]; then
+      why=$(who "${pids[i]}" "${places[i]}")
+      refuse "$why"
+    fi
   done
   for j in "${!rules[@]}"; do
     if [[ ${places[i]} =~ ${rules[j]} ]]; then
