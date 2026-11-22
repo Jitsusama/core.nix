@@ -489,6 +489,29 @@ mod tests {
     }
 
     #[test]
+    fn their_quieter_words_echoed_are_cut_however_little_joel_says() {
+        // His side mostly their echo, as TS3003a's is, so his usual level
+        // is the echo's: their quieter words, echoed with his microphone's
+        // hiss, are no quieter against it than they said them against theirs.
+        let theirs = [
+            at_level(timed("We could meet next week if that suits", 0), -20.0),
+            at_level(timed("Lunch at noon on Thursday then.", 5_000), -30.0),
+        ];
+        let own = "Sure, I'll put it in the calendar for us all.";
+        let mut mine = at_level(timed(own, 2_000), -40.0);
+        mine.extend(at_level(
+            timed("Lunch at noon on Thursday then.", 5_050),
+            -45.0,
+        ));
+        let echo = at_level(timed("We could meet next week if that suits", 50), -40.0);
+        assert_eq!(
+            cut_from(&theirs, &[echo, mine]),
+            [own],
+            "their echo, quieter in his microphone than they said it, wasn't cut"
+        );
+    }
+
+    #[test]
     fn one_word_of_joels_heard_just_after_theirs_is_his_own() {
         // A lone "Okay" is as likely his own as their echo.
         let theirs = timed("Okay so the next item", 2_000);
