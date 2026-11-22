@@ -15,7 +15,7 @@ import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { command, floorOf, forageRow, onMap, panelOf, stepsOffFloor } from "./draw.ts";
+import { command, floorOf, forageRow, keptAround, onMap, panelOf, stepsOffFloor } from "./draw.ts";
 import { escaped } from "./lineage.ts";
 import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
 
@@ -101,8 +101,8 @@ function sayWhen(): void {
 
 const current = (): Forage | undefined => forages.find((each) => each.cell === cursor);
 
-// The cell a long list's floor is drawn around. A live record or a find keeps
-// it, so the drawing holds still until a step leaves the floor.
+// The cell a long list's floor is drawn around, kept through live records
+// and finds so the drawing holds still until a step leaves it.
 let floorAround: string | null = null;
 
 function select(): void {
@@ -124,8 +124,8 @@ function select(): void {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
     marked.add(mark.dataset["cell"] ?? "");
   }
-  // A step off the floor draws it again around the cell stepped to.
-  if (stepsOffFloor(forages, cursor, marked)) {
+  // A step the floor leaves off draws it again around the cell stepped to.
+  if (stepsOffFloor(forages, cursor, marked, floorAround)) {
     floorAround = cursor;
     floor.innerHTML = floorOf(forages, cursor, machine());
   }
@@ -240,7 +240,7 @@ function draw(): void {
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
   if (forages.length > 0) {
-    floorAround ??= cursor;
+    floorAround = keptAround(forages, floorAround, cursor);
     floor.innerHTML = floorOf(forages, cursor, machine(), floorAround);
   }
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";

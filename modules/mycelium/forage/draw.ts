@@ -214,8 +214,12 @@ ${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
 
 /** How the cells of `forages` grew from each other, by their places in it. */
 interface Kin {
-  /** The cell at `start` and each it grew from, up to the floor's most, once round a ring. */
-  readonly line: (start: number) => readonly number[];
+  /**
+   * The cell at `start` and each it grew from, up to the floor's most, once
+   * round a ring, stopping at a cell `known` holds, as each cell there came
+   * with those it grew from.
+   */
+  readonly line: (start: number, known: ReadonlySet<number>) => readonly number[];
   /** The cells that grew from the cell at `parent`, in the list's order. */
   readonly children: (parent: number) => readonly number[];
 }
@@ -227,10 +231,10 @@ function kinOf(forages: readonly Forage[]): Kin {
     const by = grewFrom(each, here);
     return by === undefined ? undefined : index.get(by);
   });
-  const line = (start: number): readonly number[] => {
+  const line = (start: number, known: ReadonlySet<number>): readonly number[] => {
     const found: number[] = [];
     let at: number | undefined = start;
-    while (at !== undefined && !found.includes(at) && found.length < FLOOR.most) {
+    while (at !== undefined && !known.has(at) && !found.includes(at) && found.length < FLOOR.most) {
       found.push(at);
       at = from[at];
     }
@@ -253,14 +257,21 @@ function* outward(centre: number, length: number): Generator<number> {
   }
 }
 
+/** The places `drawn` tries in turn: `first`, then outward from `centre`. */
+function* starts(first: readonly number[], centre: number, length: number): Generator<number> {
+  yield* first;
+  yield* outward(centre, length);
+}
+
 /**
  * The cells the floor draws, in the list's order: every one when they fit.
  * Past that, it draws `around`, then the cells that grew from it, then the
  * cells nearest it, so the floor follows the cursor down a list longer
  * than it holds. Each comes with every cell it grew from, or not at all, so
- * no branch drawn hangs from a starter that isn't. With no `around` on the
- * list, that's the list's first, as the list puts each cell after its
- * starter.
+ * no branch drawn hangs from a starter that isn't; only a line deeper than
+ * the floor holds is cut at its top, as the nearest of it beats none. With
+ * no `around` on the list, that's the list's first, as the list puts each
+ * cell after its starter.
  */
 function drawn(forages: readonly Forage[], around: string | null): readonly Forage[] {
   if (forages.length <= FLOOR.most) {
@@ -270,8 +281,11 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   const found = forages.findIndex((each) => each.cell === around);
   const first = found < 0 ? [] : [found, ...children(found)];
   const chosen = new Set<number>();
-  for (const start of [...first, ...outward(Math.max(found, 0), forages.length)]) {
-    const wanted = line(start).filter((each) => !chosen.has(each));
+  for (const start of starts(first, Math.max(found, 0), forages.length)) {
+    if (chosen.has(start)) {
+      continue;
+    }
+    const wanted = line(start, chosen);
     if (chosen.size + wanted.length <= FLOOR.most) {
       for (const each of wanted) {
         chosen.add(each);
@@ -285,17 +299,39 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
 }
 
 /**
- * Whether a step to `cursor` draws the floor again, around it: only when it
- * isn't among `marked`, the cells the floor draws, and the floor draws
- * fewer than the list holds. A cell whose name reads back otherwise from
- * the page can't be marked, so without that it would redraw on each step.
+ * Whether a step to `cursor` draws the floor again, around it: when the
+ * floor, drawing fewer than the list holds and around another cell than
+ * `around`, leaves off the cursor or a cell that grew from it. `marked` are
+ * the cells it draws. A cell whose name reads back otherwise from the page
+ * can't be marked, so once the floor is drawn around it, it stays.
  */
 function stepsOffFloor(
   forages: readonly Forage[],
   cursor: string | null,
   marked: ReadonlySet<string>,
+  around: string | null,
 ): boolean {
-  return cursor !== null && !marked.has(cursor) && marked.size < forages.length;
+  if (cursor === null || cursor === around || marked.size >= forages.length) {
+    return false;
+  }
+  if (!marked.has(cursor)) {
+    return true;
+  }
+  const here = new Set(forages.map((each) => each.cell));
+  return forages.some((each) => !marked.has(each.cell) && grewFrom(each, here) === cursor);
+}
+
+/**
+ * The cell a redraw keeps the floor around: `kept` while the list still
+ * holds it, so a live record or a find leaves the floor still, else the
+ * cursor.
+ */
+function keptAround(
+  forages: readonly Forage[],
+  kept: string | null,
+  cursor: string | null,
+): string | null {
+  return kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
 }
 
 /** Where each cell drawn sits on the floor, by its place among those drawn and its depth. */
@@ -528,4 +564,4 @@ ${waitsOf(forage)}${documentsOf(forage)}
 ${goesOf(forage)}`;
 }
 
-export { command, floorOf, forageRow, onMap, panelOf, purposeOf, stepsOffFloor };
+export { command, floorOf, forageRow, keptAround, onMap, panelOf, purposeOf, stepsOffFloor };

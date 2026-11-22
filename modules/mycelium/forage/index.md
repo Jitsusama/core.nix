@@ -26,8 +26,9 @@ a terminal, `mycelium forage` gathers the realm's.
   stand on is named under the ground. It draws 48 cells, and the list
   holds every one. Past 48 it draws the cell you're on, the cells it
   started and those nearest it in the list, each with every cell it grew
-  from, so no branch is left hanging. It holds still until you step to a
-  cell it doesn't draw.
+  from, so no branch is left hanging. It holds still as records arrive,
+  and draws again when you step to a cell it leaves off, or to one whose
+  started cells it leaves off.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you
