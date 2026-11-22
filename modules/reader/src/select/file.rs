@@ -179,7 +179,7 @@ impl Layout {
             .iter()
             .filter(|(_, byte)| range.start <= *byte && *byte < range.end);
         let first = on_line.next()?.0;
-        let last = on_line.last().map_or(first, |(at, _)| *at);
+        let last = on_line.next_back().map_or(first, |(at, _)| *at);
         Some(self.page_text(first, last))
     }
 
