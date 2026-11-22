@@ -190,8 +190,10 @@ LOOKED_AT = [
     ("osprey", "Code wants a look"),
     ("Mycelium", "4 sessions say they run with their processes gone"),
     ("Network", "The attic's radio is busy 53% of the time"),
-    ("Network", "And 3 more worth a look"),
 ]
+# The network's side ends with how many more it holds, which the list counts
+# rather than listing as a look of its own.
+MORE_LOOKS = "And 3 more."
 # The rows' keys a steps through: whose each is, then how many the same came
 # before it, then its own words.
 KESTREL_LOOK = "look:machine:kestrel:0:booted 3 hours ago after a firmware error"
@@ -211,6 +213,9 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     whose = system_page.locator("#looks .whose").all_inner_texts()
     words = system_page.locator("#looks .words").all_inner_texts()
     assert list(zip(whose, words, strict=True)) == LOOKED_AT, "the looks weren't listed in turn"
+    expect(system_page.locator("#looks .more"), "the list didn't count a side's more").to_have_text(
+        MORE_LOOKS
+    )
     above = system_page.evaluate(
         "document.querySelector('#looking').getBoundingClientRect().bottom"
         " <= document.querySelector('#bridge').getBoundingClientRect().top"
