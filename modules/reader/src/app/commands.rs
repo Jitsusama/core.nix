@@ -42,8 +42,8 @@ impl App {
         self.go(going);
     }
 
-    /// gf over a selection on one line: goes by the words it held as a
-    /// file's name, as Vim's `v_gf` does, or says it can't find that one.
+    /// gf over a selection: goes by what it held on one line as a file's
+    /// name, as Vim's `v_gf` does, or says it can't find that one.
     pub(crate) fn follow_named(&mut self, name: String) {
         let name = links::Name::Written(name);
         match links::going(&name, &self.file, std::path::Path::is_file) {
@@ -65,8 +65,18 @@ impl App {
                 if keys_logged() {
                     eprintln!("file: here");
                 }
-                let text = std::fs::read_to_string(&self.file).unwrap_or_default();
-                self.say(&links::file_info(&self.file, &text));
+                // Counted from the page shown, as Vim counts its buffer,
+                // and from the disk only before its lines are read.
+                let shown = (self.layout.as_ref())
+                    .and_then(|layout| layout.of(self.painter.version))
+                    .map(|layout| layout.source().to_string());
+                match shown.map_or_else(|| std::fs::read_to_string(&self.file), Ok) {
+                    Ok(text) => self.say(&links::file_info(&self.file, &text)),
+                    Err(error) => {
+                        eprintln!("reader: can't read {}: {error}", self.file.display());
+                        self.say(&format!("E484: Can't open file {}", self.file.display()));
+                    }
+                }
             }
             Some(links::Going::Heading(anchor)) => self.follow(&format!("#{anchor}")),
             Some(links::Going::File(file, heading)) => {

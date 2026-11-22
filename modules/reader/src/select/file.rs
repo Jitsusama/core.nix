@@ -123,18 +123,30 @@ impl Layout {
         found
     }
 
-    /// The words a selection of characters on one line holds as the page
-    /// sets them, blanks round them left off: what Vim's `v_gf` takes as a
-    /// file's name. One of pieces, over lines or of blanks alone names
+    /// What Vim's `v_gf` takes as a file's name, as the page sets it, blanks
+    /// round it left off: the words a selection of characters holds, or
+    /// the cursor's whole line for one of pieces, as Vim's V gives its
+    /// line. A selection over lines, as Vim's, or of blanks alone names
     /// none.
     pub fn named(&self, selection: &Selection) -> Option<String> {
         let (from, to) = selection.ends();
-        if selection.kind != Kind::Chars || from.line != to.line {
+        if from.line != to.line {
             return None;
         }
-        let text = self.page_text(from, to);
+        let text = match selection.kind {
+            Kind::Chars => self.page_text(from, to),
+            Kind::Pieces => self.chars[from.line]
+                .iter()
+                .filter(|c| **c != BREAK)
+                .collect(),
+        };
         let name = text.trim();
         (!name.is_empty()).then(|| name.to_string())
+    }
+
+    /// The file's markdown the page was set from.
+    pub fn source(&self) -> &str {
+        &self.source
     }
 
     /// What a selection copies: the file's own markdown for what it covers.

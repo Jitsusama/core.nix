@@ -165,8 +165,8 @@ pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Optio
 /// `is_file` finds. The name is settled first and only then asked of the
 /// disk, so one naming no file here is said, as Vim's E447, rather than
 /// passed for the next; none at all is `Err(None)`, as Vim's E446. The
-/// page's own name written after it is no stop, as gf from a line skips
-/// it too, since it leads nowhere short of a link further on.
+/// page's own name written after it is passed for a name further on, as
+/// gf from a line skips it too, and taken only when there's none.
 pub fn file_here(
     pieces: &[Link],
     line: &crate::text::Line,
@@ -174,10 +174,13 @@ pub fn file_here(
     page: &Path,
     is_file: impl Fn(&Path) -> bool,
 ) -> Result<Going, Option<String>> {
-    let there = |path: &str| {
-        file_of(&Name::Written(path.into()), page).is_some_and(|f| is_file(&f) && !same(&f, page))
+    let there = |path: &str, own: bool| {
+        file_of(&Name::Written(path.into()), page)
+            .is_some_and(|f| is_file(&f) && (own || !same(&f, page)))
     };
-    let name = name_here(pieces, line, x_pt, there).ok_or(None)?;
+    let name = name_here(pieces, line, x_pt, |path| there(path, false))
+        .or_else(|| name_here(pieces, line, x_pt, |path| there(path, true)))
+        .ok_or(None)?;
     going(&name, page, &is_file).ok_or_else(|| Some(name.said().to_string()))
 }
 

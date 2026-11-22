@@ -394,7 +394,16 @@ fn a_selection_names_what_it_holds_on_one_line_as_vims_v_gf_takes_it() {
         None,
         "over two lines"
     );
-    assert_eq!(named(Kind::Pieces, at(1, 5), at(1, 14)), None, "pieces");
+    assert_eq!(
+        named(Kind::Pieces, at(1, 5), at(1, 14)).as_deref(),
+        Some("Some bold words and a"),
+        "V gives its line whole, as Vim's does"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(1, 5), at(2, 3)),
+        None,
+        "V over two lines"
+    );
 }
 
 #[test]

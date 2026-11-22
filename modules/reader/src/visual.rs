@@ -196,15 +196,15 @@ impl App {
                 return true;
             }
             // gf ends the selection, as Vim's leaves visual mode, and takes
-            // the words it holds on one line as the name, as Vim's v_gf
-            // does, spaces and all; one of pieces or over lines takes
-            // what's under or after the character its cursor leaves
-            // standing, rather than the line's first name.
+            // what it held on one line as the name, as Vim's v_gf does,
+            // spaces and all; over lines, or of blanks, it names none.
             (None, Act::FollowFile) => {
                 let named = layout.named(selection);
                 self.end_selection();
-                let Some(name) = named else { return false };
-                self.follow_named(name);
+                match named {
+                    Some(name) => self.follow_named(name),
+                    None => self.say("E446: No file name under cursor"),
+                }
                 return true;
             }
             // A mark made while selecting is the cursor's line, as his

@@ -153,6 +153,9 @@ fn gf_stays_on_the_pages_own_name_written_and_goes_to_its_top_linked() {
     // disk, where it's the file that's compared and not its spelling:
     // through its folder's parent, and by a link to it of another name.
     let dir = std::env::temp_dir().join(format!("reader-links-own-{}", std::process::id()));
+    // A run killed before its cleanup leaves the link behind, which a
+    // later one of the same pid couldn't make again.
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("a folder");
     let file = dir.join("page.md");
     std::fs::write(&file, "# Page\n").expect("the file");
@@ -433,6 +436,12 @@ fn the_pages_own_name_after_the_character_is_no_stop() {
         opened(&lines, &pieces, ("page.md", 2), &there),
         "stays",
         "under the character, it's where he is"
+    );
+    let (lines, pieces) = set("own-alone", "See page.md, and nothing more.\n");
+    assert_eq!(
+        opened(&lines, &pieces, ("See", 0), &there),
+        "stays",
+        "with no name past it, the page's own is the name after the character"
     );
 }
 
