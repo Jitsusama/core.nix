@@ -18,7 +18,7 @@ const LONGEST_NAME: usize = 64;
 
 /// The most characters of an update's why said, so a long error stays
 /// one clause of a machine's line.
-const WHY_AT_MOST: usize = 160;
+const WHY_AT_MOST: usize = 240;
 
 /// The ties of one machine, as the node says it (`said`), with its
 /// sessions from `mycelium health` (`Null` for a health read that lists
@@ -215,7 +215,7 @@ fn figures(said: &Value) -> Value {
         "charge": at("/power/charge"),
         "on_battery": at("/power/on_battery"),
         "updated_at": at("/updated/at"),
-        "update_step": at("/updated/step"),
+        "update_step": step(said.pointer("/updated/step")),
         "update_why": update_why(said.get("updated").unwrap_or(&Value::Null)),
     })
 }
@@ -227,42 +227,113 @@ fn figures(said: &Value) -> Value {
 /// one it boots. None for one that went ahead or is still under way, so a
 /// reason an earlier attempt left can't stand for this one.
 fn update_why(updated: &Value) -> Value {
-    let reason = || updated.get("why").and_then(Value::as_str);
+    let reason = updated.get("why").and_then(Value::as_str);
     let why = match updated.get("step").and_then(Value::as_str) {
-        Some("refused") => reason(),
-        Some("failed") => updated
-            .get("lines")
-            .and_then(Value::as_array)
-            .and_then(|lines| {
-                lines
-                    .iter()
-                    .filter_map(Value::as_str)
-                    .map(str::trim)
-                    .find_map(|line| line.strip_prefix("error:"))
-            })
-            .or_else(reason),
-        Some("done") => updated.get("boots").and_then(Value::as_str),
+        Some("refused") => reason.and_then(plain),
+        Some("failed") => failed_why(updated, reason),
+        Some("done") => updated
+            .get("boots")
+            .and_then(Value::as_str)
+            .and_then(|boots| plain(&uncommanded(boots))),
         _ => None,
     };
-    why.and_then(plain).map_or(Value::Null, Value::from)
+    why.map_or(Value::Null, Value::from)
 }
 
-/// `why` as one plain clause, or none when nothing is left of it: its first
-/// line, and the first of its own clauses, since the command joins a
-/// machine's clauses with "; "; control characters as spaces, since it
-/// reaches a terminal; no closing stop, which the page gives it once; and
-/// at most `WHY_AT_MOST` characters.
-fn plain(why: &str) -> Option<String> {
-    let first = why.lines().next().unwrap_or_default();
-    let clause = first.split("; ").next().unwrap_or_default();
-    let spaced: String = clause
-        .chars()
-        .map(|each| if each.is_control() { ' ' } else { each })
-        .take(WHY_AT_MOST)
-        .collect();
-    let said = spaced.trim().trim_end_matches('.').trim_end();
-    (!said.is_empty()).then(|| said.to_owned())
+/// Why an update failed: its first error with words in it, else its
+/// reason. When going back failed too, or there was nothing to go back to,
+/// that is said beside the error, since only then is the machine left off
+/// the commit it ran and waiting on a person.
+fn failed_why(updated: &Value, reason: Option<&str>) -> Option<String> {
+    let error = updated
+        .get("lines")
+        .and_then(Value::as_array)
+        .and_then(|lines| {
+            lines
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .find_map(|line| line.strip_prefix("error:").and_then(plain))
+        });
+    let stranded = reason.and_then(|reason| {
+        STRANDED
+            .iter()
+            .find_map(|left| reason.find(left).map(|at| &reason[at..]))
+    });
+    match (error, stranded) {
+        (Some(error), Some(left)) => plain(&format!("{error}; {left}")),
+        (Some(error), None) => Some(error),
+        (None, _) => reason.and_then(plain),
+    }
 }
+
+/// How update-to-main says a failed switch left the machine on no system
+/// it ran, which a reason carries after the failure itself.
+const STRANDED: [&str; 2] = ["going back failed too", "there was no system to go back to"];
+
+/// A boot check's failure without the command it ran, which is a store
+/// path that would spend the why before it reached what the check said.
+fn uncommanded(boots: &str) -> String {
+    let mut parts = boots.splitn(3, '`');
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(before), Some(_), Some(after)) => format!("{}{}", before, after.trim_start()),
+        _ => boots.to_owned(),
+    }
+}
+
+/// `why` as one plain line, or none when nothing is left of it: its first
+/// line, with its own clauses joined by commas, since the command joins a
+/// machine's clauses with "; "; control and format characters as spaces,
+/// since it reaches a terminal; no closing mark, which the page gives it
+/// once; and at most `WHY_AT_MOST` characters, cut at a word and marked so.
+fn plain(why: &str) -> Option<String> {
+    let first = why.lines().next().unwrap_or_default().replace("; ", ", ");
+    let spaced: String = first
+        .chars()
+        .map(|each| if unseen(each) { ' ' } else { each })
+        .collect();
+    let said = unended(&spaced);
+    if said.chars().count() <= WHY_AT_MOST {
+        return (!said.is_empty()).then(|| said.to_owned());
+    }
+    let cut: String = said.chars().take(WHY_AT_MOST - 1).collect();
+    let word = cut.rfind(' ').map_or(cut.as_str(), |at| &cut[..at]);
+    Some(format!("{}{CUT}", unended(word)))
+}
+
+/// What marks a why cut short.
+const CUT: char = '\u{2026}';
+
+/// `words` trimmed of space and of the marks a clause can end on.
+fn unended(words: &str) -> &str {
+    words.trim().trim_end_matches(['.', ';', ':', ',', ' '])
+}
+
+/// Whether a character would act on a terminal, or move or hide the words
+/// around it, rather than show.
+fn unseen(each: char) -> bool {
+    each.is_control()
+        || matches!(
+            each,
+            '\u{200B}'..='\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}'
+        )
+}
+
+/// The step a machine's last update reached, when it reads as one: a short
+/// word of lowercase letters, since it reaches a terminal as it is.
+fn step(said: Option<&Value>) -> Value {
+    said.and_then(Value::as_str)
+        .filter(|step| {
+            (1..=STEP_AT_MOST).contains(&step.len())
+                && step
+                    .chars()
+                    .all(|each| each.is_ascii_lowercase() || each == '-')
+        })
+        .map_or(Value::Null, Value::from)
+}
+
+/// The longest a step's name may be.
+const STEP_AT_MOST: usize = 32;
 
 #[cfg(test)]
 mod tests {
@@ -381,14 +452,25 @@ mod tests {
     #[test]
     fn an_update_carries_why_only_where_it_didnt_go_ahead() {
         let paused = "updates are paused for the follower, since uid 501 asked at \
-                      2026-11-21T20:00:00Z; a person's ask still updates, and \
+                      1763755200; a person's ask still updates, and \
                       `update-to-main resume` lets the follower's run, and no commit is held";
-        let first = "updates are paused for the follower, since uid 501 asked at \
-                     2026-11-21T20:00:00Z";
+        let joined = "updates are paused for the follower, since uid 501 asked at \
+                      1763755200, a person's ask still updates, and \
+                      `update-to-main resume` lets the follower's run, and no commit is held";
         assert_eq!(
             why_of(&json!({"step": "refused", "why": paused})),
-            json!(first),
-            "a reason's own clauses would read as the machine's next ones"
+            json!(joined),
+            "a reason's own clauses are kept, joined so they can't read as the machine's"
+        );
+        let full = "0123456789abcdef0123456789abcdef01234567";
+        let held = format!(
+            "0123456 is held, and main at 89abcde holds it; `update-to-main lift {full}` lets \
+             it through"
+        );
+        let lever = why_of(&json!({"step": "refused", "why": held}));
+        assert!(
+            lever.as_str().is_some_and(|why| why.contains(full)),
+            "a held commit's lever keeps the full id it needs: {lever}"
         );
         let failed = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
                             "lines": ["building '/nix/store/x.drv'",
@@ -399,22 +481,83 @@ mod tests {
             json!("Cannot build '/nix/store/x.drv'"),
             "a failure says its first error, not the step that failed, and stops once"
         );
-        let bare = json!({"step": "failed", "why": "switching failed (exit status: 2)",
-                          "lines": ["switching"]});
+        let bare = json!({"step": "failed", "lines": ["switching"],
+                          "why": "switching failed (exit status: 2); the machine went back to \
+                                  what it ran"});
         assert_eq!(
             why_of(&bare),
-            json!("switching failed (exit status: 2)"),
-            "a failure with no error says its reason"
+            json!("switching failed (exit status: 2), the machine went back to what it ran"),
+            "a failure with no error says its reason, and where it left the machine"
         );
-        let boots = json!({"step": "done", "boots": "the boot check failed (exit status: 1), \
-                           so the machine boots what it booted before: no loader; bad entry"});
+        let traced = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
+                            "lines": ["error:", "       \u{2026} while evaluating 'x'",
+                                      "       error: attribute 'x' missing"]});
+        assert_eq!(
+            why_of(&traced),
+            json!("attribute 'x' missing"),
+            "an error with nothing on its line gives way to the next that says something"
+        );
+        let nothing = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
+                             "lines": ["error:"]});
+        assert_eq!(
+            why_of(&nothing),
+            json!("building the system failed (exit status: 1)"),
+            "a failure whose errors say nothing says its reason"
+        );
+        let stranded = json!({"step": "failed",
+                              "why": "switching failed (exit status: 4); going back failed too: \
+                                      switching back failed (exit status: 4)",
+                              "lines": ["error: unit nix-daemon.service failed",
+                                        "error: unit nix-daemon.service failed again"]});
+        assert_eq!(
+            why_of(&stranded),
+            json!(
+                "unit nix-daemon.service failed, going back failed too: switching back failed \
+                 (exit status: 4)"
+            ),
+            "a machine left off what it ran says so beside its error"
+        );
+        let gone = json!({"step": "failed", "lines": ["error: the switch was cut off"],
+                          "why": "switching failed (exit status: 4); there was no system to go \
+                                  back to"});
+        assert_eq!(
+            why_of(&gone),
+            json!("the switch was cut off, there was no system to go back to"),
+            "a machine with nothing to go back to says so beside its error"
+        );
+        let old = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
+                         "lines": ["error: builder for '/nix/store/x.drv' failed with exit \
+                                    code 1;"]});
+        assert_eq!(
+            why_of(&old),
+            json!("builder for '/nix/store/x.drv' failed with exit code 1"),
+            "an error's own closing mark is dropped, so the page's isn't doubled"
+        );
+    }
+
+    #[test]
+    fn a_boot_check_says_its_cause_and_an_update_with_nothing_to_say_carries_none() {
+        let boots = json!({"step": "done", "boots": "the boot check \
+                           `/nix/store/0123456789abcdefghijklmnopqrstuv-check/bin/check --now` \
+                           failed (exit status: 1), so the machine boots what it booted before: \
+                           no loader; bad entry"});
         assert_eq!(
             why_of(&boots),
             json!(
                 "the boot check failed (exit status: 1), so the machine boots what it booted \
-                 before: no loader"
+                 before: no loader, bad entry"
             ),
-            "a done update that boots its old system says why"
+            "a done update that boots its old system says why, without the check's command"
+        );
+        let quiet = json!({"step": "done", "boots": "the boot check `check` failed (exit \
+                           status: 1), so the machine boots what it booted before: "});
+        assert_eq!(
+            why_of(&quiet),
+            json!(
+                "the boot check failed (exit status: 1), so the machine boots what it booted \
+                 before"
+            ),
+            "a check that printed nothing ends its why without a colon"
         );
         for (updated, what) in [
             (json!({"step": "done"}), "an update that went ahead"),
@@ -440,20 +583,65 @@ mod tests {
     }
 
     #[test]
-    fn an_update_why_is_one_plain_line_of_bounded_length() {
-        let why = "busy, saying \u{1b}]8;;x\u{7}ok\rdone\nmore";
-        let said = why_of(&json!({"step": "refused", "why": why}));
-        let said = said.as_str().expect("a reason with words carries them");
-        assert!(
-            !said.chars().any(char::is_control),
-            "no control character reaches a terminal"
-        );
-        assert!(!said.contains("more"), "only its first line is said");
-        let long = json!({"step": "refused", "why": "x".repeat(WHY_AT_MOST * 2)});
+    fn an_update_step_is_carried_only_when_it_reads_as_one() {
+        let step_of = |step: Value| {
+            let mut machine = laptop();
+            machine["updated"] = json!({"step": step});
+            super::ties(&machine, None, None, None)["figures"]["update_step"].clone()
+        };
         assert_eq!(
-            why_of(&long).as_str().map(|why| why.chars().count()),
-            Some(WHY_AT_MOST),
-            "a long reason is cut to its bound"
+            step_of(json!("refused")),
+            json!("refused"),
+            "a step is carried"
+        );
+        for (step, what) in [
+            (
+                json!("\u{1b}[2Jdone"),
+                "a step that would act on a terminal",
+            ),
+            (json!("Done"), "a step not in update-to-main's form"),
+            (
+                json!("x".repeat(STEP_AT_MOST + 1)),
+                "a step too long to be one",
+            ),
+            (json!(4), "a step that isn't words"),
+        ] {
+            assert_eq!(step_of(step), Value::Null, "{what} is not carried");
+        }
+    }
+
+    #[test]
+    fn an_update_why_is_one_plain_line_of_bounded_length() {
+        let why = "busy, saying \u{1b}]8;;x\u{7}ok\rdone \u{202e}evil\u{2069}\nmore";
+        assert_eq!(
+            why_of(&json!({"step": "refused", "why": why})),
+            json!("busy, saying  ]8;;x ok done  evil"),
+            "its first line is said, with what would act on a terminal or turn the words \
+             around as spaces"
+        );
+        let path = "/run/update-to-main-hold/given";
+        let units = ["a-rather-long-unit-name.service"; 10].join(", ");
+        let hold = format!(
+            "switching would change {units}, which waits for a hold: once the machine's work is \
+             held, make {path} and ask again"
+        );
+        let cut = why_of(&json!({"step": "refused", "why": hold}));
+        let cut = cut.as_str().expect("a long reason still says something");
+        assert!(
+            cut.chars().count() <= WHY_AT_MOST,
+            "a long reason is cut to its bound: {cut}"
+        );
+        assert!(
+            cut.ends_with("service\u{2026}"),
+            "a cut is made at a word and marked: {cut}"
+        );
+        let short = why_of(&json!({"step": "refused", "why": hold.replace(&units, "x.service")}));
+        assert!(
+            short.as_str().is_some_and(|why| why.ends_with(
+                "make /run/update-to-main-hold/given \
+                                                             and ask again"
+            )),
+            "a hold's lever under the bound is said whole: {short}"
         );
     }
 

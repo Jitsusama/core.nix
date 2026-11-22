@@ -281,7 +281,13 @@ fn updated(figures: &Value, now: i64) -> Option<String> {
     let step = figures.get("update_step").and_then(Value::as_str);
     let ended = ended(step, ago)?;
     Some(
-        match (step, figures.get("update_why").and_then(Value::as_str)) {
+        match (
+            step,
+            figures
+                .get("update_why")
+                .and_then(Value::as_str)
+                .filter(|why| !why.is_empty()),
+        ) {
             (_, None) => ended,
             (Some("done"), Some(why)) => format!("{ended}, but {why}"),
             (_, Some(why)) => format!("{ended}: {why}"),
@@ -609,6 +615,21 @@ mod tests {
             itself(&boots, now).aside,
             "updated 5 m ago, but the boot check failed",
             "a done update that didn't all go ahead says why"
+        );
+        let failed = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                        "update_step": "failed",
+                                        "update_why": "attribute 'x' missing"}});
+        assert_eq!(
+            itself(&failed, now).aside,
+            "its update 5 m ago says failed: attribute 'x' missing",
+            "a failed update says its error"
+        );
+        let empty = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                       "update_step": "refused", "update_why": ""}});
+        assert_eq!(
+            itself(&empty, now).aside,
+            "its update 5 m ago says refused",
+            "an empty why is none"
         );
         let unsaid = json!({"figures": {"disk_free": 2_000_000_000_000_u64, "charge": 40}});
         assert_eq!(

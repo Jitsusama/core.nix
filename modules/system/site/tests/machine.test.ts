@@ -318,6 +318,16 @@ it("itself says its disk, then its processor, memory, power and update", () => {
     "an empty why is none",
   );
   assert.equal(
+    asideOf({ update_step: "failed", update_why: "attribute 'x' missing" }),
+    "Its update at 02:40 says failed: attribute 'x' missing.",
+    "a failed update says its error",
+  );
+  assert.equal(
+    asideOf({ update_step: "refused", update_why: "make /run/given and\u2026" }),
+    "Its update at 02:40 says refused: make /run/given and\u2026",
+    "a why cut short keeps its mark and gains no stop",
+  );
+  assert.equal(
     asideOf({ update_step: "refused", update_why: "is the modem on?" }),
     "Its update at 02:40 says refused: is the modem on?",
     "a why ending in its own mark ends once",

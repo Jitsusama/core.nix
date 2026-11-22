@@ -18,7 +18,7 @@ const FAIR_BARS = 3;
 const FULL = 100;
 
 /** How a sentence ends. */
-const ENDED = /[.?!]$/u;
+const ENDED = /[.?!\u2026]$/u;
 
 /** How each system a node names is said. */
 const SYSTEMS: { readonly [system: string]: string } = {
