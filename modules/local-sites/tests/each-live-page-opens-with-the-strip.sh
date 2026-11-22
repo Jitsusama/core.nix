@@ -7,10 +7,10 @@
 # that the page reads the theme's web kit from the one copy the sites share,
 # with none of its own, and a page still reading its own kit/ fails too.
 # usage: each-live-page-opens-with-the-strip.sh <built site> <site.sh> <tsc>
-#   <node> <kit> <site source> <name>
+#   <node> <esbuild> <kit> <site source> <name>
 set -euo pipefail
 
-built=$1 build=$2 tsc=$3 node=$4 kit=$5 source=$6 name=$7
+built=$1 build=$2 tsc=$3 node=$4 esbuild=$5 kit=$6 source=$7 name=$8
 work=$(mktemp -d)
 trap 'rm -rf "${work}"' EXIT
 
@@ -45,7 +45,7 @@ grep -qF "${shared}" "${page}" || {
 }
 
 # What every build below is handed but the site.
-build_with=("${build}" "${tsc}" "${node}" "${kit}")
+build_with=("${build}" "${tsc}" "${node}" "${esbuild}" "${kit}")
 looks=("${name}" "${work}/out" black white black white)
 
 # A copy of the site's source, at `$1`, for a case to change.

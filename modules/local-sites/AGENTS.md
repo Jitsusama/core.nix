@@ -47,10 +47,14 @@ What holds it together:
 - **A file is answered by its tag.** The server sends an ETag with every
   file and answers a browser that already holds it with a 304, so a
   second visit sends no body again.
-- **A live page with a reads-live test holds a budget**: today the
-  system page, the map, murmurs and Code. The network and forage pages
-  have no reads-live test yet, so neither their live reading nor their
-  cost is proven. The test runs in headless Chromium through the real
+- **A browser is sent no comments.** The kit's tsconfig drops them from
+  every site's TypeScript; [`site.sh`][sitesh] sends a script written by
+  hand through the same compiler and each sheet through esbuild,
+  unminified, so rules and declarations keep their order; the theme's
+  `web.nix` does the same for `base.css`. The comments stay in the tree.
+- **A live page with a reads-live test holds a budget**: today all six,
+  the system page, the map, murmurs, Code, the network and forage. The
+  test runs in headless Chromium through the real
   server beside a stand-in daemon. It holds a first visit to a number of
   files, kilobytes and elements, and a second to every file answered
   unchanged. A change worth more raises the budget in the same change.

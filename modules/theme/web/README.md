@@ -3,8 +3,9 @@
 What the theme module gives a website, on every machine:
 
 - `web.nix` writes the kit a site copies whole, to `~/.local/share/jitsusama/web/`:
-  `theme.css`, generated from the theme; `base.css`, beside it, written by hand;
-  and the two faces, cut small by `fonts.py`.
+  `theme.css`, generated from the theme; `base.css`, beside it, written by hand
+  and sent without its comments, which stay here; and the two faces, cut small
+  by `fonts.py`.
 - `skill/`: the web-design skill, installed for every agent beside the
   aesthetic skill. `SKILL.md` is short: how to think about a site and the
   process for designing one, drawn from the four sites Joel is proud of,

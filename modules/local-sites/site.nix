@@ -17,9 +17,11 @@
 let
   tsc = lib.getExe' pkgs.typescript "tsc";
   node = lib.getExe pkgs.nodejs;
+  # What writes a sheet again without its comments (site.sh says why).
+  esbuild = lib.getExe pkgs.esbuild;
 
   # The kit, typechecked and tested, as the browser's modules and the
-  # switch's styles.
+  # switch's styles, without their comments as a site's are.
   kit = pkgs.runCommandLocal "local-sites-kit" { } ''
     cp -r ${./kit} kit
     chmod -R u+w kit
@@ -27,7 +29,8 @@ let
     ${tsc} -p tsconfig.json
     ${node} --test --test-reporter=spec tests/*.test.ts
     ${tsc} -p tsconfig.json --noEmit false --outDir $out/kit
-    cp switch.css $out/kit/
+    ${esbuild} --log-level=warning switch.css > $out/kit/switch.css 2> said
+    if [ -s said ]; then cat said >&2; exit 1; fi
   '';
 in
 {
@@ -74,6 +77,7 @@ in
         lib.escapeShellArgs [
           tsc
           node
+          esbuild
           "${./kit}"
           "${src}"
           name

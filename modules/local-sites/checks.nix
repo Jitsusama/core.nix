@@ -88,6 +88,7 @@ in
             ./site.sh
             (lib.getExe' pkgs.typescript "tsc")
             (lib.getExe pkgs.nodejs)
+            (lib.getExe pkgs.esbuild)
             "${./kit}"
             "${../system/site}"
             "system"

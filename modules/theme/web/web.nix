@@ -372,7 +372,13 @@ pkgs.runCommandLocal "web-kit"
   ''
     mkdir -p $out/fonts
     cp $cssPath $out/theme.css
-    cp ${./base.css} $out/base.css
+    # base.css reaches a browser without its comments, written again by
+    # esbuild unminified, so its rules and declarations keep their order
+    # (modules/local-sites/site.sh does the same for each site's sheets).
+    # theme.css keeps its few, since the sites' home reads its grounds out
+    # of it as it is written.
+    ${lib.getExe pkgs.esbuild} --log-level=warning ${./base.css} > $out/base.css 2> said
+    if [ -s said ]; then cat said >&2; exit 1; fi
     ${lib.concatStrings (
       lib.mapAttrsToList (file: font: ''
         ${python}/bin/python3 ${./fonts.py} ${lib.escapeShellArg font.source} $out/fonts/${file} \

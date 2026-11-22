@@ -8,12 +8,12 @@
 # theme-color and its favicon, the two places a site can't name a role. Each
 # page gets the strip every one of Joel's sites opens with, written here
 # rather than carried by each page, so no app's copy says more than its kind.
-# usage: site.sh <tsc> <node> <kit> <site> <name> <out>
+# usage: site.sh <tsc> <node> <esbuild> <kit> <site> <name> <out>
 #   <dark ground> <light ground> <dark tint> <light tint>
 set -euo pipefail
 
-tsc=$1 node=$2 kit=$3 site=$4 name=$5 out=$6
-dark_ground=$7 light_ground=$8 dark_tint=$9 light_tint=${10}
+tsc=$1 node=$2 esbuild=$3 kit=$4 site=$5 name=$6 out=$7
+dark_ground=$8 light_ground=$9 dark_tint=${10} light_tint=${11}
 
 # The sources as they sit in the tree, so the site's imports of the kit
 # resolve here as they do there.
@@ -32,9 +32,9 @@ fi
 
 mkdir -p "${out}"
 cp "${work}/emitted/${name}/site/"*.js "${out}/"
-# The files the browser reads as they are: the page, its styles, its icon,
-# any script written by hand rather than in TypeScript (laid over below
-# without its comments), and its Markdown and plain-text twins. A README.md
+# The files the browser reads as they are: the page, its styles and any
+# script written by hand rather than in TypeScript (both laid over below
+# without their comments), its icon, and its Markdown and plain-text twins. A README.md
 # is the folder's note for whoever reads the tree, not a page, so it stays
 # behind.
 find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.svg' \
@@ -66,6 +66,20 @@ EOF
   "${tsc}" -p "${work}/plain.json"
   cp "${work}/plain/"*.js "${out}/"
 fi
+# The styles go through a CSS compiler for the same reason. esbuild,
+# unminified, writes each sheet again with its rules and declarations in
+# their order, where a minifier reorders and merges them; what else it
+# changes reads the same, as quotes it drops round a selector's value. A
+# warning fails the build rather than scrolling by unread.
+for sheet in "${out}"/*.css; do
+  [[ -f ${sheet} ]] || continue
+  "${esbuild}" --log-level=warning "${sheet}" > "${work}/sheet.css" 2> "${work}/said"
+  if [[ -s "${work}/said" ]]; then
+    cat "${work}/said" >&2
+    exit 1
+  fi
+  mv "${work}/sheet.css" "${sheet}"
+done
 for page in "${out}"/*.html "${out}"/*.svg; do
   [[ -f ${page} ]] || continue
   sed -i -e "s|@dark-ground@|${dark_ground}|g" -e "s|@light-ground@|${light_ground}|g" \
