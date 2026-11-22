@@ -66,6 +66,13 @@ const STREAM_GAP: Duration = Duration::from_millis(1500);
 /// How long it waits between the halves of `/long`, past a relay's idle
 /// time of a second and the grace it gives before leaving.
 const LONG_GAP: Duration = Duration::from_secs(3);
+/// How long it waits between the halves of `/longer`, past the five
+/// seconds a stopped relay gives those it sends direct once its answers
+/// have ended, so a relay waiting only that long is seen cutting one.
+const LONGER_GAP: Duration = Duration::from_secs(7);
+/// How long after its stop the stopped relay is asked again, past those
+/// five seconds and inside `LONGER_GAP`.
+const ASKED_AGAIN_AFTER: Duration = Duration::from_secs(6);
 /// How long the origin holds each request the sharing test sends.
 const HELD: Duration = Duration::from_millis(300);
 /// How long the origin holds `/reset-once-held` the first time before it
@@ -432,7 +439,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         return Err(h2::Error::from(reason));
     }
     let answer = match path.as_str() {
-        "/stream" | "/long" | "/sized" | "/broken" | "/cut" | "/cut-late" => in_halves(&path, gone),
+        "/stream" | "/long" | "/longer" | "/sized" | "/broken" | "/cut" | "/cut-late" => {
+            in_halves(&path, gone)
+        }
         "/small-frames" => in_small_frames(sent),
         "/held" => {
             let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
@@ -504,10 +513,10 @@ fn in_halves(path: &str, gone: Arc<Notify>) -> hyper::http::Result<Response<Answ
                 .body(boxed(body))
         }
         _ => {
-            let gap = if path == "/long" {
-                LONG_GAP
-            } else {
-                STREAM_GAP
+            let gap = match path {
+                "/long" => LONG_GAP,
+                "/longer" => LONGER_GAP,
+                _ => STREAM_GAP,
             };
             let (mut sender, body) = Channel::<Bytes, Infallible>::new(2);
             tokio::spawn(async move {
@@ -3072,7 +3081,7 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
         .expect("an HTTP/1.1 connection");
     tokio::spawn(connection);
     let response = sender
-        .send_request(request(&host, "/long", b""))
+        .send_request(request(&host, "/longer", b""))
         .await
         .expect("an answer");
     let mut body = response.into_body();
@@ -3083,8 +3092,9 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
         }
     };
 
-    // Stopped between the answer's halves, which come LONG_GAP apart.
+    // Stopped between the answer's halves, which come LONGER_GAP apart.
     relay.stop();
+    let stopped = Instant::now();
     let closed = tokio::time::timeout(Duration::from_secs(2), kept).await;
     assert!(
         relay.left().is_none(),
@@ -3098,6 +3108,9 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
     );
     drop(kept_sender);
     let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
+    // Still streaming its answer, it sends one asked later direct too.
+    tokio::time::sleep_until((stopped + ASKED_AGAIN_AFTER).into()).await;
+    let later = ask(&relay.socket, request(&host, "/echo", b"")).await;
     let rest = body.collect().await.expect("the rest").to_bytes();
 
     assert_eq!(
@@ -3115,6 +3128,11 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
         (StatusCode::MISDIRECTED_REQUEST, LEAVING_WORDS),
         "a request taken after the relay was stopped wasn't sent direct in the words pi goes \
          direct on"
+    );
+    assert_eq!(
+        (later.status, later.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, LEAVING_WORDS),
+        "a request taken while the stopped relay's answer still streamed wasn't sent direct"
     );
     assert_eq!(
         origin.handed.lock().expect("the record").len(),
