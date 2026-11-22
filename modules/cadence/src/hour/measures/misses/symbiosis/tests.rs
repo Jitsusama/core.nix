@@ -765,7 +765,7 @@ fn a_finding_held_by_a_main_unread_or_a_change_unreadable_is_kept_apart() {
     let measure = findings.measured(&repos, &judged, NOW);
     let held = |measure: &Measure| measure.behind.iter().filter(|l| held_unseen(l)).count();
     assert!(
-        measure.now == 2.0
+        (measure.now - 2.0).abs() < 1e-9
             && held(&measure) == 4
             && measure
                 .says
@@ -790,7 +790,7 @@ fn a_finding_held_by_a_main_unread_or_a_change_unreadable_is_kept_apart() {
     };
     let measure = findings.measured(&repos, &read, NOW);
     assert!(
-        measure.now == 3.0 && held(&measure) == 2,
+        (measure.now - 3.0).abs() < 1e-9 && held(&measure) == 2,
         "a finding closed on the half of its fix cadence can read, or a note naming \
          nothing held one whose named fix hasn't merged: {} {:?}",
         measure.says,
@@ -829,7 +829,7 @@ fn a_findings_own_words_never_read_as_the_hours_blindness() {
     };
     let measure = findings.measured(&Checkouts::new(), &judged, NOW);
     assert!(
-        measure.now == 1.0
+        (measure.now - 1.0).abs() < 1e-9
             && measure.behind.len() == 1
             && !held_unseen(&measure.behind[0])
             && measure.behind[0].ends_with(" · A2VLJN"),
@@ -856,7 +856,7 @@ fn a_look_counts_a_finding_naming_no_owner_as_the_orchestrators() {
     };
     let measure = findings.measured(&Checkouts::new(), &judged, NOW);
     assert!(
-        measure.now == 1.0
+        (measure.now - 1.0).abs() < 1e-9
             && measure.behind.len() == 1
             && measure.behind[0].ends_with(" · the orchestrator"),
         "a look read a finding naming no owner as closed: {} {:?}",
