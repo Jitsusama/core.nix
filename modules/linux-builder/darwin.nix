@@ -68,14 +68,6 @@ let
     octet: lib.elemAt octetMasks (lib.max 0 (lib.min 8 (networkPrefix - 8 * octet)))
   ) (lib.range 0 3);
   networkMask = lib.concatMapStringsSep "." toString maskOctets;
-  # vmnet takes the network's first address, the Mac's own on it, where its
-  # call names a subnet: given the network's own address, macOS's Internet
-  # Sharing logged "can't have the gateway at the subnet address" and the
-  # guest's network detached at boot (22 November). With no host bit set
-  # and a prefix of at most /30, the next address is always in the network.
-  networkGateway = lib.concatMapStringsSep "." toString (
-    lib.take 3 addressOctets ++ [ (lib.last addressOctets + 1) ]
-  );
   # vmnet refuses an address past 255 or with bits set past its prefix only
   # once the VM starts, where launchd restarts it without end, so the Mac's
   # configuration refuses them first. It must be private too: a public or
@@ -91,6 +83,17 @@ let
     && lib.all (
       octet: lib.bitAnd (lib.elemAt addressOctets octet) (255 - lib.elemAt maskOctets octet) == 0
     ) (lib.range 0 3);
+  # What vmnet is handed: the network's first address, as the Mac's own on
+  # it. Apple's documentation names the call's address the subnet's and
+  # keeps the second for the host, but handed the network's own address,
+  # macOS's Internet Sharing logged "can't have the gateway at the subnet
+  # address" and the guest's network detached at boot (22 November). vzvm's
+  # log calls this address the subnet; putting the network's own back is
+  # what broke it. Holding, with no host bit set and a prefix of at most
+  # /30 by the option's type, the network's next address is always in it.
+  networkGateway = lib.concatMapStringsSep "." toString (
+    lib.take 3 addressOctets ++ [ (lib.last addressOctets + 1) ]
+  );
 
   # Sizing it changes only the Mac's side of it, which the Mac builds in
   # seconds; the guest's system still comes from the cache. A key from
@@ -159,7 +162,7 @@ let
           # 192.168.7.0/24 on 21 November, inside a home network's
           # 192.168.4.0/22. mDNSResponder heard the Mac's name at a second
           # address, renamed it twice and spun a core. So the network is set,
-          # by its first address, as vmnet takes it.
+          # by its first address, as the Mac's log says vmnet takes it.
           ipv4Subnet = networkGateway;
           ipv4Mask = networkMask;
         };

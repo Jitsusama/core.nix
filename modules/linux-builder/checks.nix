@@ -144,7 +144,10 @@ in
   # renamed the Mac twice and spun a core. The prefix becomes vmnet's mask
   # octet by octet, so a /20 is tried as well as the default /24, and vmnet
   # is given the network's first address, the Mac's, since given the
-  # network's own it gave the guest no network on 22 November. Another
+  # network's own it gave the guest no network on 22 November; a /30 ending
+  # in 252, the widest last octet a network can have, proves it's the next
+  # address and not .1 written in. It pins what vmnet is handed, not what
+  # vmnet makes of it, which only a Mac booting the guest shows. Another
   # network changes the daemon's command, so a switch loads the VM again,
   # even one booted out by hand. A network that isn't private, has an octet
   # past 255 or a host bit set is refused by the Mac's configuration, rather
@@ -159,6 +162,10 @@ in
         network = "172.31.240.0/20";
       };
       narrow = guestOf narrowly;
+      tightest = guestOf {
+        authorizedKeys = [ another ];
+        network = "172.31.250.252/30";
+      };
       started = settings: (macOf settings).launchd.daemons.linux-builder-vz.script;
       # Whether the Mac's configuration refuses a network.
       refusedBy =
@@ -178,7 +185,7 @@ in
       read = key: lib.hasInfix "forKey: .${key})" patch && written ? ${key};
     in
     holds "linux-builder-keeps-its-network-where-it-is-set"
-      "A changed guest's network isn't the one set, by default 192.168.239.0/24, vmnet isn't given its first address, a /20 isn't given vmnet as 255.255.240.0, a public network, an octet past 255 or a host bit set isn't refused, the patch never gives vmnet the subnet, a network set on an unchanged guest isn't warned of or is refused, the patch doesn't read the keys written, its vzvm isn't the one patched, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
+      "A changed guest's network isn't the one set, by default 192.168.239.0/24, vmnet isn't given its first address, or a /30's isn't the one after its own, a /20 isn't given vmnet as 255.255.240.0, a public network, an octet past 255 or a host bit set isn't refused, the patch never gives vmnet the subnet, a network set on an unchanged guest isn't warned of or is refused, the patch doesn't read the keys written, its vzvm isn't the one patched, another network leaves the daemon's command as it was, or a guest given nothing changed its network."
       (
         opened.virtualisation.vz.extraConfig.ipv4Subnet or null == "192.168.239.1"
         && opened.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.255.0"
@@ -203,6 +210,8 @@ in
         && read "ipv4Mask"
         && narrow.virtualisation.vz.extraConfig.ipv4Subnet or null == "172.31.240.1"
         && narrow.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.240.0"
+        && tightest.virtualisation.vz.extraConfig.ipv4Subnet or null == "172.31.250.253"
+        && tightest.virtualisation.vz.extraConfig.ipv4Mask or null == "255.255.255.252"
         && lib.elem "vzvm-own-subnet.patch" (
           map (patch: baseNameOf (toString patch)) (opened.virtualisation.vz.package.patches or [ ])
         )
