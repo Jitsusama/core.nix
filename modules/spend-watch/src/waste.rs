@@ -596,7 +596,7 @@ mod tests {
     /// hour. That the whole hours are then read kept, the test above shows
     /// by tampering with one.
     #[test]
-    fn a_span_reads_its_whole_hours_kept() {
+    fn a_span_splits_into_whole_hours_and_ragged_edges() {
         let hour = crate::time::HOUR;
         let first = hour_of(BASE) + 1;
         let whole = hour_start(first);
