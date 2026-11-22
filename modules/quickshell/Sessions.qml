@@ -2283,8 +2283,8 @@ Singleton {
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
-        const output = found.output ?? Places.whereKept(at, going.kept, there)
-            ?? Niri.workspace()?.output ?? null;
+        const inUse = Niri.workspace()?.output ?? null;
+        const output = found.output ?? Places.whereKept(at, going.kept, there, [], inUse) ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
         const column = window.layout.pos_in_scrolling_layout[0];
@@ -2297,7 +2297,7 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.whereKept(at, going.kept, there) === undefined)
+        if (into !== null && Places.whereKept(at, going.kept, there, [], inUse) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
                 output: at.output, others: Places.othersGone(at, going.kept, there) }, into);
         going.back.push({ id: window.id, at });

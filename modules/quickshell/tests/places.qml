@@ -270,19 +270,44 @@ QtObject {
         const onlyThePanel = [{ id: 21, output: "eDP-1" }];
         expect("a screen niri lists a workspace on but wasn't heard yet is there, undescribed",
             Places.connected({ "DP-4": monitor }, onlyThePanel), { "eDP-1": "" });
-        expect("a place on a screen not heard yet stays on its connector, a gone one's after",
+        // Only the screen in use is taken for its own connector's while
+        // it isn't heard: it holds a gone screen's places anyway, so no
+        // place lands on a screen it wouldn't have. Another not heard may
+        // be another screen now, so a place kept on it is gone and noted.
+        expect("a place on the screen in use not heard yet stays, a gone one's after",
             Places.placed(docked, Places.connected({ "DP-4": monitor }, onlyThePanel), "eDP-1")
-                .map(at => [at.output, at.workspace, at.away?.screen ?? null]),
-            [["eDP-1", 3, monitor], ["eDP-1", 5, monitor], ["eDP-1", 2, null], ["eDP-1", 1, null]]);
-        expect("a window put back before any screen is heard stays on its listed connector",
-            Places.whereKept(docked[2], [], Places.connected({}, onlyThePanel)), "eDP-1");
-        // A twin not heard yet stays, and is another screen to the one
-        // gone, so that one doesn't take it for home once it's heard.
-        expect("a twin not heard yet is another screen to its twin gone",
-            Places.placed(twins, Places.connected({ "eDP-1": panel },
-                onlyThePanel.concat([{ id: 22, output: "Virtual-1" }])), "eDP-1", [twins, twins])
-                .map(at => [at.output, at.away?.others ?? null]),
-            [["Virtual-1", null], ["eDP-1", { "eDP-1": panel, "Virtual-1": "" }]]);
+                .map(at => [at.output, at.workspace, at.away?.others ?? null]),
+            [["eDP-1", 3, {}], ["eDP-1", 5, {}], ["eDP-1", 2, null], ["eDP-1", 1, null]]);
+        const panelAndFour = onlyThePanel.concat([{ id: 22, output: "DP-4" }]);
+        expect("a place on a screen not heard yet, not in use, is gone",
+            Places.placed([docked[0]], Places.connected({}, panelAndFour), "eDP-1")
+                .map(at => [at.output, at.away?.screen ?? null]), [["eDP-1", monitor]]);
+        expect("a window put back before any screen is heard stays on the screen in use",
+            Places.whereKept(docked[2], [], Places.connected({}, onlyThePanel), [], "eDP-1"), "eDP-1");
+        expect("a window put back on a screen not heard, not in use, is gone",
+            Places.whereKept(docked[0], [], Places.connected({}, panelAndFour), [], "eDP-1"), undefined);
+        // A screen not heard as a place is found gone may be its own,
+        // renumbered, so it isn't noted as another screen: noted so, the
+        // monitor back on DP-5 after a boot never took its workspace home.
+        const renumberedSoon = Places.placed([docked[0]],
+            Places.connected({}, onlyThePanel.concat([{ id: 22, output: "DP-5" }])), "eDP-1")[0].away ?? null;
+        expect("a screen not heard as one is found gone isn't another screen to it",
+            renumberedSoon?.others ?? null, {});
+        expect("a screen renumbered, not heard as it was found gone, takes it home once heard",
+            Places.homeward({ [monitor]: [Object.assign({ id: 21 }, renumberedSoon)] },
+                { "eDP-1": panel, "DP-5": monitor }, onlyThePanel.concat([{ id: 22, output: "DP-5" }])),
+            { moves: [{ output: "DP-5", id: 21 }], waiting: {} });
+        // A twin in use not heard yet keeps its place, and is another
+        // screen to its twin gone, which doesn't take it once it's heard.
+        const onTheFirst = [{ id: 21, output: "Virtual-1" }];
+        const twinsSoon = Places.placed(twins, Places.connected({ "eDP-1": panel }, onTheFirst),
+            "Virtual-1", [twins, twins]);
+        expect("a twin in use not heard yet keeps its place, another screen to its twin gone",
+            twinsSoon.map(at => [at.output, at.workspace, at.away?.others ?? null]),
+            [["Virtual-1", 1, null], ["Virtual-1", 2, { "Virtual-1": twin }]]);
+        const twinWaits = { [twin]: [Object.assign({ id: 21 }, twinsSoon[1].away ?? null)] };
+        expect("a twin gone doesn't take its twin once that's heard",
+            Places.homeward(twinWaits, { "Virtual-1": twin }, onTheFirst), { moves: [], waiting: twinWaits });
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",
