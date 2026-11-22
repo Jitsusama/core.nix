@@ -714,6 +714,27 @@ def logged_since(shell: Shell, mark: int) -> str:
     return written[: written.rfind(b"\n") + 1].decode(errors="replace")
 
 
+def notices_daemon() -> int:
+    """Give the notices daemon's process, started by modules/quickshell/tests/notices-beside.sh."""
+    for named in Path("/proc").glob("[0-9]*/comm"):
+        with contextlib.suppress(OSError):
+            if named.read_text().strip() == "notices":
+                return int(named.parent.name)
+    failed = "no notices daemon runs beside the shell"
+    raise AssertionError(failed)
+
+
+@contextlib.contextmanager
+def notices_stopped() -> Iterator[None]:
+    """Hold the notices daemon stopped while what's done inside it runs, so it answers late."""
+    daemon = notices_daemon()
+    os.kill(daemon, signal.SIGSTOP)
+    try:
+        yield
+    finally:
+        os.kill(daemon, signal.SIGCONT)
+
+
 def niri_pid(socket: str) -> int:
     """Give the pid of the niri listening at `socket`, which niri names niri.<display>.<pid>.sock.
 

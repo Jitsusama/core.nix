@@ -4651,7 +4651,8 @@
   the-launcher-says-a-slow-keys-kind-on-niri = ''
     on niri with reports off, a slow key's journal line says an arrow whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and how many letters its row's name
-    has, never the name
+    has, never the name; and a key listed without the notices' answer, and their answer late, say
+    what was typed by how many letters
   '';
   the-launcher-says-asks-from-outside-by-kind-on-niri = ''
     on niri with reports off, a link to a session, a network, a machine or a repository, a catalogue

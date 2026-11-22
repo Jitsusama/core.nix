@@ -5,7 +5,8 @@ shell's reports off. A key slower to its frame than launcher/Trials.js's FELT_MS
 journal by what it was (Presented.timedShown): words typed by how many letters, a step by its
 arrow and the letters of the row it named, and a key the launcher names itself, an arrow, whole,
 since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
-no case in Qt's engine reaches, so these press each kind and read its line.
+no case in Qt's engine reaches, so these press each kind and read its line. A key listed
+without a daemon's answer, and the answer that comes late, count its letters the same way.
 """
 
 from __future__ import annotations
@@ -34,6 +35,11 @@ ARROWS = {'"\u2193"', '"\u2191"'}
 STEP = re.compile(r"[\u2192\u2190] \d+ letters?")
 # How a step in and a step out begin.
 STEPS = {"\u2192 ", "\u2190 "}
+# What a key listed without an answer, and the answer late, say of the key's words.
+LISTED = re.compile(r"launcher: (.+?) listed without ")
+LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
+# Words typed with nothing else named by them, so no line says them but by the letters.
+UNNAMED = "zygodactyl"
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -122,3 +128,35 @@ def test_a_word_and_a_space_says_the_step_it_took(shell: Shell) -> None:
     assert steps, f"the step a space took wasn't said: {said}"
     assert all(STEP.fullmatch(key) for key in steps), f"the step said more than letters: {said}"
     assert not any("etwork" in key for key in said), f"a key said the row's name: {said}"
+
+
+def logged_until(shell: Shell, mark: int, wanted: re.Pattern[str]) -> list[str]:
+    """Give what each line since the mark matching `wanted` says, waiting until one does."""
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while time.monotonic() < deadline:
+        logged = launcher_on_niri.logged_since(shell, mark)
+        said = [found.group(1) for found in wanted.finditer(logged)]
+        if said:
+            return said
+        time.sleep(launcher_on_niri.POLL)
+    failed = f"no line said {wanted.pattern}:\n{shell.tail()}"
+    raise AssertionError(failed)
+
+
+def test_a_key_listed_without_an_answer_and_the_late_answer_count_its_letters(
+    shell: Shell,
+) -> None:
+    """A key listed without the notices' answer, and their answer late, count what was typed.
+
+    Said as typed, either would write the words, which may be a name or a password's.
+    """
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    mark = shell.mark()
+    with launcher_on_niri.notices_stopped():
+        shell.type_in(UNNAMED)
+        listed = logged_until(shell, mark, LISTED)
+    late = logged_until(shell, mark, LATE)
+    shell.close_launcher()
+    keys = listed + late
+    assert all(re.fullmatch(r"\d+ letters?", key) for key in keys), f"words were said: {keys}"
