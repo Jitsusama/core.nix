@@ -354,8 +354,12 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
         .collect())
 }
 
-/// How long deleting one batch may take.
-const DELETE_TIMEOUT: Duration = Duration::from_mins(10);
+/// How long deleting one batch may take. Nix ends every delete reading
+/// each entry of the store's links folder, whatever it deleted: on 21
+/// November a machine's deletes took five to eight minutes apiece, a few
+/// bytes or gigabytes, near a ten-minute limit, and that machine is often
+/// busier.
+const DELETE_TIMEOUT: Duration = Duration::from_mins(30);
 /// How many paths may come alive since the batch was made before it's
 /// taken as too stale to go on with. Each refusal costs Nix a whole look
 /// for roots and deletes nothing, so a batch that keeps meeting them is
@@ -379,6 +383,52 @@ fn refused<'a>(said: &str, left: &[&'a String]) -> Option<&'a String> {
                 Some('/' | '"' | '\'')
             )
         })
+    })
+}
+
+/// The byte of a SQLite database's shared memory a writer locks while it
+/// writes, in write-ahead mode as Nix keeps its database: the first of the
+/// locks that follow the index's header (`WALINDEX_LOCK_OFFSET` and
+/// `WAL_WRITE_LOCK` in SQLite's wal.c).
+const WRITE_LOCK_BYTE: u64 = 120;
+
+/// Whether a process holds Nix's database in `database` for writing, by
+/// the record locks `locks` lists, as `/proc/locks` does. A delete would
+/// wait on it, and a build or an evaluation then waits on the delete,
+/// reading "database is busy": on 21 November, of 41 moments a sampler
+/// saw a writer, evaluations held it in most. Where the locks can't be
+/// read, as on a Mac, none is known to write. Lines name a device by
+/// numbers stat doesn't give on Btrfs, so the inode alone names the file.
+pub fn database_written(locks: &Path, database: &Path) -> bool {
+    let Ok(meta) = database.join("db.sqlite-shm").metadata() else {
+        return false;
+    };
+    let inode = std::os::unix::fs::MetadataExt::ino(&meta).to_string();
+    let Ok(text) = std::fs::read_to_string(locks) else {
+        return false;
+    };
+    // Each line: id, an arrow for a waiter, kind, mode, access, pid, then
+    // major:minor:inode and the first and last byte, or EOF.
+    text.lines().any(|line| {
+        let words: Vec<&str> = line.split_whitespace().skip(1).collect();
+        let [kind, _, access, _, file, start, end, ..] = words.as_slice() else {
+            return false;
+        };
+        let reaches = |start: &str, end: &str| {
+            let start = start.parse::<u64>().ok();
+            let end = if end == "EOF" {
+                Some(u64::MAX)
+            } else {
+                end.parse().ok()
+            };
+            start
+                .zip(end)
+                .is_some_and(|(start, end)| (start..=end).contains(&WRITE_LOCK_BYTE))
+        };
+        *kind != "->"
+            && *access == "WRITE"
+            && file.rsplit(':').next() == Some(inode.as_str())
+            && reaches(start, end)
     })
 }
 
@@ -422,9 +472,15 @@ pub fn delete(
         // Offline, as the listing is: Nix asks every substituter about a
         // path it never registered before deleting it, and the system unit
         // has no network, so a batch holding one waits on each, retried.
-        argv.extend(["store", "delete", "--offline"].map(OsStr::new));
-        argv.extend(left.iter().map(|path| OsStr::new(path.as_str())));
-        let (ok, said) = output(&argv, DELETE_TIMEOUT, idle)?;
+        // The paths go on its standard input, which no command line's
+        // length limits, so a batch closes only at its size.
+        argv.extend(["store", "delete", "--offline", "--stdin"].map(OsStr::new));
+        let mut input = Vec::new();
+        for path in &left {
+            input.extend_from_slice(path.as_bytes());
+            input.push(b'\n');
+        }
+        let (ok, said) = output(&argv, DELETE_TIMEOUT, idle, &input)?;
         if ok {
             return Ok(forbidden);
         }
@@ -447,7 +503,7 @@ pub fn delete(
 
 /// What a command printed, or why it failed, in its own last words.
 pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<String, String> {
-    match output(argv, timeout, idle)? {
+    match output(argv, timeout, idle, &[])? {
         (true, stdout) => Ok(stdout),
         (false, stderr) => Err(failed(argv, &stderr)),
     }
@@ -455,7 +511,12 @@ pub(crate) fn ran(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<Stri
 
 /// Whether a command succeeded, with what it printed if so and what it
 /// said on its error stream if not.
-fn output(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<(bool, String), String> {
+fn output(
+    argv: &[&OsStr],
+    timeout: Duration,
+    idle: bool,
+    input: &[u8],
+) -> Result<(bool, String), String> {
     let name = name(argv);
     let job = Job {
         argv: argv.iter().map(|&arg| arg.to_owned()).collect(),
@@ -465,7 +526,7 @@ fn output(argv: &[&OsStr], timeout: Duration, idle: bool) -> Result<(bool, Strin
         limit: OUTPUT_LIMIT,
         idle,
     };
-    match commands::run(&job).map_err(|error| format!("starting {name}: {error}"))? {
+    match commands::fed(&job, input).map_err(|error| format!("starting {name}: {error}"))? {
         Ran::TimedOut => Err(format!("{name} ran past {timeout:?}")),
         Ran::Stopped => Err(format!("{name} was stopped with the guard")),
         Ran::Finished(output) if output.truncated => Err(format!("{name} said more than it may")),

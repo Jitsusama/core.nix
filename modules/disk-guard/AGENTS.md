@@ -327,7 +327,19 @@ or launchd, and [`home.nix`][2] the account's.
   old date. Once a batch is refused anyway, the store is listed again and
   none of the old listing's batches goes to Nix meanwhile, not even the
   rest of that pass's, since builds root again what a listing called
-  dead, within minutes of it. It expires
+  dead, within minutes of it. Every delete ends with Nix reading each
+  entry of its links folder, five to eight minutes a call on a busy
+  machine whatever it deleted, so a batch closes only at its size, its
+  paths going on Nix's standard input rather than its command line.
+  Short of nearly full a pass makes one delete, and the next waits four
+  times as long as it took, so deleting takes at most a fifth of the
+  store's time, a rest a restart forgets at the cost of one delete;
+  nearly full and past, batches go back to back. No delete
+  begins while another process holds Nix's database for writing, as a
+  write lock on byte 120 of `db.sqlite-shm` in `nix.database` shows in
+  `/proc/locks`, since that writer, a build or an evaluation, would then
+  wait on the delete and read "database is busy"; the batch is kept and
+  the garbage's own rest spaces the next try. It expires
   generations, never the current, running or booted one, the
   newest five, or one with a boot entry. It links the store's identical
   files weekly in a scope of its own at idle priority, only while nothing

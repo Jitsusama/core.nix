@@ -506,6 +506,10 @@ pub struct Nix {
     /// to each build's result: one going is garbage made, listed at once.
     #[serde(default = "Nix::roots")]
     pub roots: PathBuf,
+    /// Where Nix keeps its database, whose write lock a delete waits for
+    /// rather than holding a build or an evaluation behind it.
+    #[serde(default = "Nix::database")]
+    pub database: PathBuf,
     /// The directory of profiles whose generations expire: the machine's
     /// for the system daemon unless told, and an account's only if told.
     #[serde(default)]
@@ -538,6 +542,9 @@ impl Nix {
     fn roots() -> PathBuf {
         PathBuf::from("/nix/var/nix/gcroots")
     }
+    fn database() -> PathBuf {
+        PathBuf::from("/nix/var/nix/db")
+    }
 }
 
 impl Default for Nix {
@@ -547,6 +554,7 @@ impl Default for Nix {
             store: Nix::store(),
             temp_roots: Nix::temp_roots(),
             roots: Nix::roots(),
+            database: Nix::database(),
             profiles: None,
             generations: Generations::default(),
             runtime_roots: Nix::runtime_roots(),

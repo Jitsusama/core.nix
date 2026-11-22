@@ -12,7 +12,7 @@ use crate::discover;
 use crate::finished::{self, Answers, Predicate};
 use crate::garbage::{self, BATCH_BYTES, Batch, GC_TIMEOUT, Listed, Listing};
 use crate::generations::{self, Boot};
-use crate::host::{Elsewhere, FRESH, Filesystem, Reclaim, Scan};
+use crate::host::{Deletes, Elsewhere, FRESH, Filesystem, Reclaim, Scan};
 use crate::journal::{self, Journal, Journaled, Line};
 use crate::moments::{Power, Pressure};
 use crate::opens::Seen;
@@ -233,6 +233,14 @@ const HELD_ENDED_GAP: f64 = 120.0;
 /// brings takes the garbage too.
 const COLLECT_FIRST_REST: f64 = 120.0;
 const COLLECT_LONGEST_REST: f64 = 1800.0;
+/// How many times its own length the guard rests after a pass's delete
+/// before another short of nearly full, so deleting takes at most a fifth
+/// of the store's time. Nix ends every delete reading each entry of its
+/// links folder, whatever it deleted: on 21 November a machine's guard
+/// made 97 deletes, one pass's three finishing five to eight minutes
+/// apart, and one freeing 408 bytes nine minutes after the one before.
+/// Past nearly full the batches go back to back, room coming first.
+const DELETE_REST: f64 = 4.0;
 /// How many times its own length a listing rests after it ends before a
 /// relist brings another on a healthy disk, so listing takes at most a
 /// tenth of the guard's time, kept with the listing so a restart rests
@@ -288,14 +296,13 @@ impl Holding {
         Holding { processes, roots }
     }
 }
-/// The most paths deleted in one go. Each delete costs Nix a whole look
-/// for roots, most of a second on a busy machine, which batches of 300 paid
-/// almost twice a second, most of a core, while a backlog drained. Nix
-/// deletes nothing of a batch it refuses, so a smaller one saves nothing
-/// then, and paths something holds are left out before it's made. Its
-/// arguments, at most about 500 kB however long the names, stay under the
-/// megabyte a Mac's command line carries.
-const MOST_PER_BATCH: usize = 2000;
+/// The most paths deleted in one go: no count, a batch closing only at its
+/// size. Each delete costs Nix a whole look for roots and a read of every
+/// entry in its links folder, five to eight minutes apiece on 21 November
+/// whatever it deleted, so batches of 2,000 small paths paid it again and
+/// again while a backlog drained. The paths go on Nix's standard input,
+/// which no command line's length limits.
+const MOST_PER_BATCH: usize = usize::MAX;
 /// How long a user daemon waits for the system daemon to hear its
 /// heartbeat.
 const HEARTBEAT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
@@ -445,6 +452,9 @@ pub struct Guard {
     collect_rest: Option<(f64, f64)>,
     /// The paths such a pass left, which bring no pass while it rests.
     left_by_collect: BTreeSet<String>,
+    /// Until when, in wall seconds, Nix's deletes rest after the last,
+    /// short of nearly full.
+    deletes_rest: Option<f64>,
     /// A run linking the store's identical files: when it began, what
     /// stops it, and where it tells how it ended.
     dedupe_out: Option<DedupeOut>,
@@ -805,6 +815,7 @@ impl Guard {
             held_ended: false,
             collect: false,
             collect_rest: None,
+            deletes_rest: None,
             left_by_collect: BTreeSet::new(),
             dedupe_out: None,
             dedupe_failed: None,
@@ -1794,6 +1805,11 @@ impl Guard {
         let Some(watched) = self.watched.get(&device) else {
             return;
         };
+        if watched.band < Band::NearlyFull && self.deletes_resting(now) {
+            // Looked at again once the rest is over.
+            self.collect = true;
+            return;
+        }
         // On a filling disk a user daemon speaking for the disk orders what
         // goes, its own caches against the store's garbage; healthy, the
         // garbage is the store's alone.
@@ -1833,6 +1849,23 @@ impl Guard {
                 .flat_map(|batch| batch.paths)
                 .collect()
         })
+    }
+
+    /// Whether Nix's deletes still rest after the last at `now`.
+    fn deletes_resting(&self, now: f64) -> bool {
+        self.deletes_rest.is_some_and(|until| now < until)
+    }
+
+    /// Rests Nix's deletes [`DELETE_REST`] times as long as a pass's took,
+    /// from when it ended, and has the garbage looked at again then, as a
+    /// pass short of nearly full leaves its other batches; or once a pass
+    /// put one off for another writer, as the garbage's own rest allows.
+    fn rest_deletes(&mut self, tick: &Tick, deletes: Deletes) {
+        if let Some(took) = deletes.took {
+            let ended = tick.wall + self.stepped.elapsed().as_secs_f64();
+            self.deletes_rest = Some(ended + DELETE_REST * took);
+        }
+        self.collect |= deletes.took.is_some() || deletes.put_off;
     }
 
     /// Rests the garbage's own passes once one left every path it was
@@ -2118,6 +2151,7 @@ impl Guard {
                     root: store.clone(),
                     nix: self.config.nix.bin.clone(),
                     roots: self.config.nix.temp_roots.clone(),
+                    database: self.config.nix.database.clone(),
                     paths: batch.paths,
                     links: links.clone(),
                 },
@@ -2657,6 +2691,7 @@ impl Guard {
         let images = self.images(device, here);
         let reclaimer = Reclaim::new(here, scan)
             .during(band)
+            .resting_deletes(self.deletes_resting(tick.wall + since.elapsed().as_secs_f64()))
             .paced(Rc::clone(&pacer))
             .giving_way(self.elsewhere(device));
         let mut reclaim = Journaled {
@@ -2690,6 +2725,8 @@ impl Guard {
             &mut self.memory.learned,
         );
         self.refused.extend(reclaim.inner.take_refused());
+        let deletes = reclaim.inner.deletes();
+        self.rest_deletes(tick, deletes);
         if goal == Goal::Reach {
             let seconds = started.elapsed().as_secs_f64();
             self.memory.pass_seconds = Some(match self.memory.pass_seconds {

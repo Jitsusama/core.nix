@@ -138,13 +138,14 @@ fn what_isnt_a_store_path_in_the_store_is_not_described() {
 /// any path it's given is marked alive, deleting none, as Determinate Nix
 /// 3.21 does, and otherwise deletes them all; it notes each time it's run.
 /// Like Nix it looks at the paths in order of their names, which in the
-/// store is their hashes', and names the first it finds alive.
+/// store is their hashes', and names the first it finds alive. The paths
+/// come on its standard input, one a line, and nowhere else.
 fn deleting_nix(dir: &Path) -> std::path::PathBuf {
     script(
         &dir.join("nix"),
         &format!(
             "[ \"$1 $2\" = '--extra-experimental-features nix-command' ] || exit 9\nshift 2\n\
-             [ \"$1 $2 $3\" = 'store delete --offline' ] || exit 9\nshift 3\n\
+             [ \"$*\" = 'store delete --offline --stdin' ] || exit 9\nset -- $(cat)\n\
              echo \"$*\" >> {}\n\
              for p in $(printf '%s\\n' \"$@\" | sort); do\n\
                [ -e \"$p\" ] || {{ echo \"error: path '$p' is not valid\" >&2; exit 1; }}\n\

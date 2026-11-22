@@ -151,6 +151,10 @@ impl Store {
                        \"$sep\" \"$p\" \"$s\" \"$t\"; sep=,\n\
                    done; printf '}}' ;;\n\
                  'store delete') shift 2\n\
+                   given=''; for a in \"$@\"; do\n\
+                     if [ \"$a\" = --stdin ]; then given=\"$given $(cat)\"; else given=\"$given $a\"; fi\n\
+                   done; set -- $given\n\
+                   [ -e {slow_delete} ] && sleep 2\n\
                    if [ \"$1\" = --offline ]; then shift; else\n\
                      for p in \"$@\"; do [ -e \"$p/meta\" ] && continue\n\
                        echo \"refused $*\" >> {log}\n\
@@ -173,6 +177,7 @@ impl Store {
                  esac\n",
                 log = log.display(),
                 min_free = root.join("min-free").display(),
+                slow_delete = root.join("delete-slow").display(),
             ),
         );
         script(
@@ -258,6 +263,7 @@ impl Store {
                             "critically_full": "0%", "target": "{filling}" }},
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
                           "temp_roots": "{0}/temproots", "roots": "{0}/gcroots",
+                          "database": "{0}/db",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
                  {garbage}
                  "dedupe": {{ "systemd_run": "{0}/bin/systemd-run", "hours": {hours} }},
@@ -591,7 +597,10 @@ fn a_batch_that_meets_garbage_come_alive_has_the_store_listed_again() {
     let free = store.dead("zzz-free", 10.0 * DAY, 4096);
     fs::write(store.root.join("listing-stale"), "").unwrap();
     let mut guard = store.guard(store.config("0%", "0%"));
-    store.step_until(&mut guard, |_| !free.exists());
+    store.step_until(&mut guard, |store| lists(store) == 2);
+    // An hour on, past the rest a delete earns, which the batch refused
+    // a path at a time earned too, as its looks for roots cost as much.
+    step_later_until(&store, &mut guard, 3600.0, &CALM, |_, _| !free.exists());
     assert_eq!(lists(&store), 2, "{:?}", store.log());
     assert!(alive.iter().all(|path| path.exists()), "a root holds them");
 }
@@ -1490,6 +1499,94 @@ fn garbage_a_root_left_goes_while_a_collect_that_freed_nothing_rests() {
     });
     unroot(&store, &kept);
     step_later_until(&store, &mut guard, 60.0, &BUSY, |_, _| !kept.exists());
+}
+
+#[test]
+fn small_paths_past_two_thousand_go_in_one_delete() {
+    // Every delete ends with Nix reading each entry of its links folder,
+    // five to eight minutes a call on 21 November whatever it deleted, so
+    // a batch closes only at its size, its paths going on Nix's stdin.
+    let store = Store::new();
+    let dead: Vec<PathBuf> = (0..2001)
+        .map(|n| store.dead(&format!("{n:04}-small.drv"), 10.0 * DAY, 4096))
+        .collect();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| dead.iter().all(|path| !path.exists()));
+    let deletes = deletes(&store);
+    assert_eq!(deletes, 1, "2,001 small paths took {deletes} deletes");
+}
+
+#[test]
+fn short_of_nearly_full_a_pass_deletes_once_then_rests_four_times_as_long() {
+    // On 21 November one pass of 1,532 s ran three deletes back to back,
+    // finishing five to eight minutes apart, each walking Nix's links.
+    let store = Store::new();
+    let older = store.dead("aaa-older", 10.0 * DAY, 8 << 30);
+    let newer = store.dead("bbb-newer", 9.0 * DAY, 8 << 30);
+    fs::write(store.root.join("delete-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !older.exists());
+    assert!(
+        newer.exists(),
+        "a pass made a second delete: {:?}",
+        store.log()
+    );
+    // The delete took two seconds, so the next waits eight from its end.
+    step_later(&mut guard, 1.0, &CALM);
+    assert_eq!(
+        deletes(&store),
+        1,
+        "deleted again within its rest: {:?}",
+        store.log()
+    );
+    step_later_until(&store, &mut guard, 120.0, &CALM, |_, _| !newer.exists());
+}
+
+#[test]
+fn garbage_waits_while_another_process_writes_nix_s_database() {
+    // A delete holds the database's write lock for seconds at a time, and
+    // an evaluation waiting on it reads "database is busy"; SQLite's write
+    // lock is byte 120 of the shared-memory file beside the database.
+    let store = Store::new();
+    let dead = store.dead("aaa-dead", 10.0 * DAY, 4096);
+    let database = store.root.join("db");
+    fs::create_dir_all(&database).unwrap();
+    let shm = database.join("db.sqlite-shm");
+    fs::write(&shm, vec![0; 4096]).unwrap();
+    let writing = write_locked(&shm, 120);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    assert!(dead.exists(), "deleted while Nix's database was written");
+    assert_eq!(deletes(&store), 0, "{:?}", store.log());
+    drop(writing);
+    step_later_until(&store, &mut guard, 3600.0, &CALM, |_, _| !dead.exists());
+}
+
+/// The byte at `offset` of `path` locked for writing by a POSIX record
+/// lock, as SQLite locks its shared memory, held until the file drops.
+fn write_locked(path: &Path, offset: i64) -> fs::File {
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .unwrap();
+    // SAFETY: a zeroed flock is a valid one, filled in before use.
+    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
+    lock.l_type = libc::c_short::try_from(libc::F_WRLCK).unwrap();
+    lock.l_whence = libc::c_short::try_from(libc::SEEK_SET).unwrap();
+    lock.l_start = offset;
+    lock.l_len = 1;
+    let fd = std::os::fd::AsRawFd::as_raw_fd(&file);
+    // SAFETY: the descriptor is open for writing and the lock is filled in.
+    let taken = unsafe { libc::fcntl(fd, libc::F_SETLK, &raw const lock) };
+    assert_eq!(
+        taken,
+        0,
+        "couldn't lock byte {offset} of {}",
+        path.display()
+    );
+    file
 }
 
 /// How many deletes Nix was asked for.

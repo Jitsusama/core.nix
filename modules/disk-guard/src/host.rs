@@ -344,6 +344,7 @@ pub struct Reclaim<'a> {
     stale: bool,
     /// The store's paths the system refused to let a delete change.
     refused: Vec<String>,
+    deletes: Deletes,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
     /// The other filesystems the guard watches, which this pass gives way
@@ -351,6 +352,22 @@ pub struct Reclaim<'a> {
     elsewhere: Vec<Elsewhere>,
     /// When `elsewhere` was last measured.
     looked: Cell<Option<Instant>>,
+}
+
+/// What a pass's deletes of Nix's garbage came to. Nix ends each delete
+/// it runs by reading every entry of its links folder, minutes whatever it
+/// deleted, so short of nearly full a pass makes one and the guard rests
+/// after it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Deletes {
+    /// How long this pass's deletes took, in seconds, if it made any.
+    pub took: Option<f64>,
+    /// Whether one was put off for another process writing Nix's
+    /// database, so the garbage is looked at again.
+    pub put_off: bool,
+    /// Whether the guard's rest after the last delete still ran as the
+    /// pass began, so it makes none short of nearly full.
+    resting: bool,
 }
 
 /// Another filesystem the guard watches, as it was when a pass began.
@@ -383,6 +400,7 @@ impl<'a> Reclaim<'a> {
             gentle: false,
             stale: false,
             refused: Vec::new(),
+            deletes: Deletes::default(),
             band: Band::Healthy,
             pacer: None,
             elsewhere: Vec::new(),
@@ -436,6 +454,13 @@ impl<'a> Reclaim<'a> {
         self
     }
 
+    /// For a pass begun while the guard rests after its last delete.
+    #[must_use]
+    pub fn resting_deletes(mut self, resting: bool) -> Self {
+        self.deletes.resting = resting;
+        self
+    }
+
     /// For a pass that can wait: the commands it runs do so at idle
     /// priority, so a collection never slows the work it makes room for.
     #[must_use]
@@ -447,16 +472,27 @@ impl<'a> Reclaim<'a> {
     /// Deletes a batch of Nix's garbage, unless one this pass was refused
     /// for garbage come alive, which its listing's others would meet too.
     /// A path holding a file a running program has by its hard link alone
-    /// is left for a later pass, as Nix can't tell it's held.
+    /// is left for a later pass, as Nix can't tell it's held. Short of
+    /// nearly full a pass deletes once, and none while the guard rests
+    /// after the last; and none while another process writes Nix's
+    /// database, which would wait on it and keep that writer waiting.
     fn collect(
         &mut self,
         nix: PathBuf,
         roots: PathBuf,
+        database: &Path,
         paths: Vec<String>,
         links: &BTreeSet<crate::held::File>,
     ) -> Outcome {
         if self.stale {
             return Outcome::Kept("its listing was found stale this pass".to_owned());
+        }
+        if self.band < Band::NearlyFull && (self.deletes.resting || self.deletes.took.is_some()) {
+            return Outcome::Kept("Nix's deletes rest, each reading all its links".to_owned());
+        }
+        if garbage::database_written(&self.scan.locks, database) {
+            self.deletes.put_off = true;
+            return Outcome::Kept("another process is writing Nix's database".to_owned());
         }
         let free: Vec<String> = paths
             .into_iter()
@@ -467,7 +503,10 @@ impl<'a> Reclaim<'a> {
         }
         let gentle = self.gentle;
         let tried = free.len();
-        let outcome = match self.waiting(move || garbage::delete(&nix, &roots, &free, gentle)) {
+        let began = Instant::now();
+        let deleting = self.waiting(move || garbage::delete(&nix, &roots, &free, gentle));
+        *self.deletes.took.get_or_insert(0.0) += began.elapsed().as_secs_f64();
+        let outcome = match deleting {
             Ok(Ok(refused)) => {
                 let all = refused.len() == tried;
                 self.refused.extend(refused);
@@ -487,6 +526,11 @@ impl<'a> Reclaim<'a> {
     /// later pass need try.
     pub fn take_refused(&mut self) -> Vec<String> {
         std::mem::take(&mut self.refused)
+    }
+
+    /// What this pass's deletes came to.
+    pub fn deletes(&self) -> Deletes {
+        self.deletes
     }
 
     /// What went wrong after a reclaim that freed its space anyway.
@@ -621,13 +665,14 @@ impl Reclaimer for Reclaim<'_> {
             Action::Collect {
                 nix,
                 roots,
+                database,
                 paths,
                 links,
                 ..
             } => {
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
-                let links = links.clone();
-                self.collect(nix, roots, paths, &links)
+                let (database, links) = (database.clone(), links.clone());
+                self.collect(nix, roots, &database, paths, &links)
             }
             Action::Trim { .. } => reclaim::trimmed(&root, root_path, candidate),
             Action::Workspace { .. } => {

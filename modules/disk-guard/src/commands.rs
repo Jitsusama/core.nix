@@ -121,14 +121,20 @@ fn answer_stops() {
 /// Runs `job` as `run` does, until `stop` is set: then its group is asked
 /// to end, and killed if it hasn't within `grace`.
 pub fn stoppable(job: &Job, stop: &AtomicBool, grace: Duration) -> io::Result<Ran> {
-    running(job, Some((stop, grace)))
+    running(job, Some((stop, grace)), &[])
 }
 
 pub fn run(job: &Job) -> io::Result<Ran> {
-    running(job, None)
+    running(job, None, &[])
 }
 
-fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> {
+/// Runs `job` as `run` does, with `input` on its standard input, for what
+/// is too long for a command line.
+pub fn fed(job: &Job, input: &[u8]) -> io::Result<Ran> {
+    running(job, None, input)
+}
+
+fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>, input: &[u8]) -> io::Result<Ran> {
     let Some((program, args)) = job.argv.split_first() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no program"));
     };
@@ -139,7 +145,11 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> 
     command
         .args(args)
         .envs(job.env.iter().map(|(name, value)| (name, value)))
-        .stdin(Stdio::null())
+        .stdin(if input.is_empty() {
+            Stdio::null()
+        } else {
+            Stdio::piped()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .process_group(0);
@@ -159,6 +169,16 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>) -> io::Result<Ran> 
         });
     }
     let mut child = command.spawn()?;
+    if let Some(mut stdin) = child.stdin.take() {
+        // Written apart, so a command that answers before it has read it
+        // all still has its answers read; one that exits without reading
+        // it all says why in what it prints and its status, so a write
+        // it broke off has nothing more to say.
+        let input = input.to_vec();
+        std::thread::spawn(move || {
+            let _ = io::Write::write_all(&mut stdin, &input);
+        });
+    }
     let deadline = Instant::now() + job.timeout;
     let mut streams = [
         Stream::new(
