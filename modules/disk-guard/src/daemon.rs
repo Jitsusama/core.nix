@@ -2151,7 +2151,9 @@ impl Guard {
                     root: store.clone(),
                     nix: self.config.nix.bin.clone(),
                     roots: self.config.nix.temp_roots.clone(),
-                    database: self.config.nix.database.clone(),
+                    // Nix keeps its database beside its temp roots, in the
+                    // state folder it was built with.
+                    database: self.config.nix.temp_roots.with_file_name("db"),
                     paths: batch.paths,
                     links: links.clone(),
                 },

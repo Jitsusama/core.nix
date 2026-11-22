@@ -336,8 +336,8 @@ or launchd, and [`home.nix`][2] the account's.
   store's time, a rest a restart forgets at the cost of one delete;
   nearly full and past, batches go back to back. No delete
   begins while another process holds Nix's database for writing, as a
-  write lock on byte 120 of `db.sqlite-shm` in `nix.database` shows in
-  `/proc/locks`, since that writer, a build or an evaluation, would then
+  write lock on byte 120 of `db/db.sqlite-shm` beside the temp roots
+  shows in `/proc/locks`, since that writer, a build or an evaluation, would then
   wait on the delete and read "database is busy"; the batch is kept and
   the garbage's own rest spaces the next try. It expires
   generations, never the current, running or booted one, the

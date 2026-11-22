@@ -263,7 +263,6 @@ impl Store {
                             "critically_full": "0%", "target": "{filling}" }},
                  "nix": {{ "bin": "{0}/bin/nix", "store": "{0}/store",
                           "temp_roots": "{0}/temproots", "roots": "{0}/gcroots",
-                          "database": "{0}/db",
                           "profiles": "{0}/profiles", "generations": {{ "keep": 2 }} }},
                  {garbage}
                  "dedupe": {{ "systemd_run": "{0}/bin/systemd-run", "hours": {hours} }},
