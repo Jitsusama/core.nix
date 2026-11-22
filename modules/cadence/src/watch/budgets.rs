@@ -427,10 +427,6 @@ mod tests {
             // A window split across two hours by the old rounding.
             "budget:proxy:split:80:2026-11-21T16:00:00Z",
             "budget:proxy:split:90:2026-11-21T17:00:00Z",
-            "budget:proxy:rim:90:2026-11-21T16:00:00Z",
-            "budget:proxy:late:80:2026-11-21T17:00:00Z",
-            "budget:proxy:torn:80:2026-11-21T16:00:00Z",
-            "budget:proxy:torn:90:2026-11-21T17:00:00Z",
         ];
         let moves = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
             pairs
@@ -473,36 +469,7 @@ mod tests {
             ),
             ("budget:proxy:edge:80:2026-11-21T10:05:31Z", none.clone()),
             // A window remembered by its hour stays told within half an
-            // hour and one drift of it, either side.
-            (
-                "budget:proxy:rim:90:2026-11-21T16:30:01Z",
-                moves(&[(
-                    "budget:proxy:rim:90:2026-11-21T16:00:00Z",
-                    "budget:proxy:rim:90:2026-11-21T16:30:01Z",
-                )]),
-            ),
-            (
-                "budget:proxy:late:80:2026-11-21T16:29:59Z",
-                moves(&[(
-                    "budget:proxy:late:80:2026-11-21T17:00:00Z",
-                    "budget:proxy:late:80:2026-11-21T16:29:59Z",
-                )]),
-            ),
-            // A window split across two hours moves whole from a read a
-            // second past the half hour.
-            (
-                "budget:proxy:torn:90:2026-11-21T16:30:01Z",
-                moves(&[
-                    (
-                        "budget:proxy:torn:80:2026-11-21T16:00:00Z",
-                        "budget:proxy:torn:80:2026-11-21T16:30:01Z",
-                    ),
-                    (
-                        "budget:proxy:torn:90:2026-11-21T17:00:00Z",
-                        "budget:proxy:torn:90:2026-11-21T16:30:01Z",
-                    ),
-                ]),
-            ),
+            // hour and one drift of it.
             (
                 "budget:proxy:hour:90:2026-11-21T16:30:01Z",
                 moves(&[(
@@ -543,6 +510,55 @@ mod tests {
             ["budget:proxy:day:90:not a time"],
             "a reset that isn't a time lost its window"
         );
+    }
+
+    #[test]
+    fn a_window_remembered_by_its_hour_moves_from_a_read_a_drift_past_the_half_hour() {
+        let told = [
+            "budget:proxy:rim:90:2026-11-21T16:00:00Z",
+            "budget:proxy:late:80:2026-11-21T17:00:00Z",
+            // A window split across two hours by the old rounding.
+            "budget:proxy:torn:80:2026-11-21T16:00:00Z",
+            "budget:proxy:torn:90:2026-11-21T17:00:00Z",
+        ];
+        let pair = |was: &str, now: &str| (was.to_owned(), now.to_owned());
+        for (key, moved_as) in [
+            (
+                "budget:proxy:rim:90:2026-11-21T16:30:01Z",
+                vec![pair(
+                    "budget:proxy:rim:90:2026-11-21T16:00:00Z",
+                    "budget:proxy:rim:90:2026-11-21T16:30:01Z",
+                )],
+            ),
+            (
+                "budget:proxy:late:80:2026-11-21T16:29:59Z",
+                vec![pair(
+                    "budget:proxy:late:80:2026-11-21T17:00:00Z",
+                    "budget:proxy:late:80:2026-11-21T16:29:59Z",
+                )],
+            ),
+            // Split, it moves whole from a read a second past the half hour.
+            (
+                "budget:proxy:torn:90:2026-11-21T16:30:01Z",
+                vec![
+                    pair(
+                        "budget:proxy:torn:80:2026-11-21T16:00:00Z",
+                        "budget:proxy:torn:80:2026-11-21T16:30:01Z",
+                    ),
+                    pair(
+                        "budget:proxy:torn:90:2026-11-21T17:00:00Z",
+                        "budget:proxy:torn:90:2026-11-21T16:30:01Z",
+                    ),
+                ],
+            ),
+        ] {
+            assert_eq!(
+                moved(key, told),
+                moved_as,
+                "{key} wasn't matched to the window its hour remembers, so it would be told \
+                 again at the upgrade"
+            );
+        }
     }
 
     #[test]
