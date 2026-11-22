@@ -59,7 +59,10 @@ fi
 # whose driver never stopped passes untested, and one with a window not
 # shown draws nothing patched or not. Qt's line starting its timer with
 # all three windows shown, inside a start, shows that start reached the
-# branch with all three shown. So each of the case's starts, from its
+# branch with all three shown, but only where it's the loop's next line
+# on the GUI thread after its own "- animationStarted()": the loop starts
+# its timer as a window is exposed too, and a start's timer line from
+# that would say nothing of the branch. So each of the case's starts, from its
 # own line to the next start's or the count's, is asked for that line,
 # and at least half of the starts the case counted must have one. Not
 # every start: on a loaded builder Qt logged it 8 times over a whole run
@@ -73,23 +76,31 @@ if ! grep -q 'threaded render loop' "$said"; then
 fi
 # Prints the starts the case logged, the starts it counted, those with
 # Qt's line, and those without it, each with the windows Qt found shown
-# as it started its timer there, or "none" where it didn't start it.
+# as it started its timer there, marked -other where that wasn't straight
+# after animationStarted(), or "none" where it didn't start it.
 counts=$(awk '
-  /The case starts its squares moving, start / { inside = 1; starts++; next }
+  /The case starts its squares moving, start / { inside = 1; started = 0; starts++; next }
   /Over [0-9]+ starts the still window drew/ {
     inside = 0
     counted = $0
     sub(/.*Over /, "", counted)
     sub(/ .*/, "", counted)
   }
+  # The timer line is judged only straight after animationStarted()
+  # says itself. Any other line from the loop on the GUI thread ends
+  # that; those from the render thread, marked (RT), come between.
+  inside && /- animationStarted\(\)/ { started = 1; next }
+  started && /qt\.scenegraph\.renderloop/ && !/\(RT\)/ &&
+    !/Starting system \(not vsync-based\) animation timer/ { started = 0 }
   inside && /Starting system \(not vsync-based\) animation timer \(exposedWindows=/ {
     shown = $0
     sub(/.*exposedWindows=/, "", shown)
     sub(/ .*/, "", shown)
-    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown
-    if (shown == 3) {
+    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown (started ? "" : "-other")
+    if (started && shown == 3) {
       timed[starts] = 1
     }
+    started = 0
   }
   END {
     n = 0
@@ -116,7 +127,8 @@ fi
 echo "Qt started its animation timer with all three windows shown in $timed of $starts starts."
 if [ $((timed * 2)) -lt "$starts" ]; then
   echo "That's fewer than half: 'Starting system (not vsync-based) animation timer" \
-    "(exposedWindows=3 ...)' never came in starts $missing, the windows Qt found" \
-    "shown there in brackets." >&2
+    "(exposedWindows=3 ...)' never came straight after '- animationStarted()' in" \
+    "starts $missing, the windows Qt found shown at that start's timer lines in" \
+    "brackets, -other where one came from elsewhere." >&2
   exit 1
 fi
