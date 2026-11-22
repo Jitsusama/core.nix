@@ -64,9 +64,9 @@ pub struct Heard {
     /// second's limit and delay are to be judged as.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trial: Option<Tuning>,
-    /// The ceiling the upload is held under, a trial's or its network's,
-    /// in kbit/s, while one holds it: the rate a trace sets apart as the
-    /// ceiling's, not the controller's.
+    /// The ceiling the upload is held under, a trial's, its network's or
+    /// its house's, in kbit/s, while one holds it: the rate a trace sets
+    /// apart as the ceiling's, not the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<f64>,
     /// What each of the VPN's tins sent up over the last second, in
@@ -141,6 +141,10 @@ pub struct Follow {
     anchors: Anchors,
     /// Each network's ceiling, which a stay on it is held under.
     ceilings: Ceilings,
+    /// What each network's house leaves this machine now, which a stay on
+    /// it is held under as under a trial's ceiling: it says nothing of the
+    /// line, only of what another machine on it sends (src/house.rs).
+    houses: Ceilings,
 }
 
 impl Follow {
@@ -160,6 +164,7 @@ impl Follow {
             trial: None,
             anchors: Anchors::new(),
             ceilings: Ceilings::new(),
+            houses: Ceilings::new(),
         }
     }
 
@@ -171,17 +176,27 @@ impl Follow {
         self.controller.up.tune(self.tuning());
     }
 
-    /// How the stay's upload is tuned: by the trial, under the lower of its
-    /// ceiling and the network's, so a trial may try under a network's
-    /// ceiling but never past it.
+    /// Holds each network's upload under what its house leaves, from now.
+    pub fn house(&mut self, houses: Ceilings) {
+        self.houses = houses;
+        self.controller.up.tune(self.tuning());
+    }
+
+    /// How the stay's upload is tuned: by the trial, under the lowest of
+    /// its ceiling, the network's and the house's, so a trial may try
+    /// under a network's ceiling but never past it. The controller holds
+    /// its own rate under the house's as under a trial's, so it never
+    /// judges the line by a rate the house held, and climbs back gently
+    /// once the house lets go.
     fn tuning(&self) -> Tuning {
         let tuning = self.trial.unwrap_or_default();
-        let network = self.ceilings.get(&self.network).copied();
+        let lowest = [
+            tuning.most_kbit,
+            self.ceilings.get(&self.network).copied(),
+            self.houses.get(&self.network).copied(),
+        ];
         Tuning {
-            most_kbit: match (tuning.most_kbit, network) {
-                (Some(trial), Some(network)) => Some(trial.min(network)),
-                (trial, network) => trial.or(network),
-            },
+            most_kbit: lowest.into_iter().flatten().reduce(f64::min),
             ..tuning
         }
     }
@@ -401,6 +416,11 @@ impl Live {
     /// Holds each network's upload under its ceiling, the stay's from now.
     pub fn ceil(&mut self, ceilings: Ceilings) {
         self.follow.ceil(ceilings);
+    }
+
+    /// Holds each network's upload under what its house leaves, from now.
+    pub fn house(&mut self, houses: Ceilings) {
+        self.follow.house(houses);
     }
 
     /// The link the controller holds, and what it last heard of it.
@@ -647,6 +667,28 @@ mod tests {
             Tuning::default(),
             "nor any after"
         );
+    }
+
+    // What the house leaves holds the controller's own rate on that network
+    // alone, under its ceiling, and is heard as the ceiling, so a trace sets
+    // those seconds apart; once the house lets go, the network's holds.
+    #[test]
+    fn the_house_s_hold_reaches_the_controller_as_a_ceiling() {
+        let mut follow = waiting();
+        follow.ceil(Ceilings::from([("home".to_string(), 9_500.0)]));
+        for line in &flow_queued(NOV3) {
+            follow.take(&parse(line).expect("a sample"));
+        }
+        follow.house(Ceilings::from([("home".to_string(), 5_000.0)]));
+        assert_eq!(follow.controller.up.limit(), Some(5_000), "the house's");
+        let ceiling = |follow: &Follow| follow.heard().and_then(|(_, heard)| heard.ceiling);
+        assert_eq!(ceiling(&follow), Some(5_000.0), "heard as the ceiling");
+        follow.house(Ceilings::from([("home".to_string(), 12_000.0)]));
+        assert_eq!(ceiling(&follow), Some(9_500.0), "the lower, home's");
+        follow.house(Ceilings::from([("hotel".to_string(), 5_000.0)]));
+        assert_eq!(ceiling(&follow), Some(9_500.0), "another network's house");
+        follow.house(Ceilings::new());
+        assert_eq!(ceiling(&follow), Some(9_500.0), "a house let go");
     }
 
     // A network's ceiling holds its upload from a stay's first line, with

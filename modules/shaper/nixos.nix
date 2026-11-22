@@ -92,7 +92,12 @@ let
   networksFile = pkgs.writeText "shaper-networks.json" (builtins.toJSON networks);
   # The port src/house.rs hears another machine's reports on.
   housePort = 47110;
-  houses = lib.filter (house: house != null) (map (network: network.house) (lib.attrValues networks));
+  houses = lib.filter (house: house != null) (lib.catAttrs "house" (lib.attrValues networks));
+  # An address as the firewall and src/networks.rs read it alike: four
+  # octets, or IPv6's groups, never an IPv4 one written as IPv6, which no
+  # IPv4 report would match.
+  octet = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
+  address = "${octet}([.]${octet}){3}|[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}";
 in
 {
   imports = [
@@ -167,11 +172,15 @@ in
                 '';
               };
               options.from = lib.mkOption {
-                type = lib.types.strMatching "[0-9a-fA-F:.]+";
+                type = lib.types.strMatching address;
                 example = "192.0.2.7";
                 description = ''
                   The address the other machine reports from, the only one
-                  heard, so a report from anywhere else holds nothing.
+                  heard, so a report from anywhere else holds nothing. The
+                  address alone says a report is the other machine's, so a
+                  device on the same line could forge one: at worst it holds
+                  this machine's upload at 4 Mb/s, as a trial may, or lets
+                  it go.
                 '';
               };
             }
@@ -181,8 +190,8 @@ in
             Another machine on this network's line, which says each second
             what it sends up, to UDP port ${toString housePort}. While it
             has said so in the last 3 s, this machine's upload is held under
-            `most` less what it sent, never under the shaper's floor of 1
-            Mb/s; with no word lately, the house holds nothing. Its uploads
+            `most` less what it sent, never under 4 Mb/s, where a call
+            still fits; with no word lately, the house holds nothing. Its uploads
             fill the router's queue this machine's VPN waits in, which this
             machine never sees otherwise.
           '';
@@ -246,15 +255,17 @@ in
     sed -i '/cgroupv2 level [0-9]* @/d' ruleset.conf
   '';
 
-  # The shaper makes the IFBs it needs, one per link; the module's own two
-  # would only sit there.
-  # Only the house's other machine reaches the port its reports go to.
+  # Only the house's other machine reaches the port its reports go to. The
+  # rule holds on every network, but a report holds only the links of the
+  # network that names the house.
   config.networking.firewall.extraInputRules = lib.concatMapStrings (house: ''
     ${
       if lib.hasInfix ":" house.from then "ip6" else "ip"
     } saddr ${house.from} udp dport ${toString housePort} accept
   '') houses;
 
+  # The shaper makes the IFBs it needs, one per link; the module's own two
+  # would only sit there.
   config.boot.extraModprobeConfig = "options ifb numifbs=0";
 
   # udev gives every new link systemd's default .link, whose name, address

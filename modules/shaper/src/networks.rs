@@ -43,8 +43,10 @@ struct Network {
     up: f64,
     #[serde(default)]
     most: Option<f64>,
+    /// Read as any value, then as a house, so one of the wrong shape
+    /// loses only itself, not the whole file's parse.
     #[serde(default)]
-    house: Option<Written>,
+    house: Option<serde_json::Value>,
 }
 
 /// The networks written at `path`, by router in lower case, or none where
@@ -89,7 +91,7 @@ pub fn houses(path: &Path) -> Houses {
     networks(path)
         .into_iter()
         .filter_map(|(router, network)| {
-            let house = network.house?;
+            let house: Written = serde_json::from_value(network.house?).ok()?;
             let from = house.from.parse().ok()?;
             (house.most.is_finite() && house.most >= crate::oneway::MOST_KBIT_LEAST).then(|| {
                 let most = crate::rate::whole(house.most);
@@ -179,6 +181,19 @@ mod tests {
         .expect("the least ceiling");
         assert_eq!(ceilings(&file).len(), 1, "the least nixos.nix takes");
         assert!(houses(&file).is_empty(), "a network with no house");
+        fs::write(&file, "not json").expect("a broken file");
+        assert!(anchors(&file).is_empty(), "a broken file anchors nothing");
+        assert!(ceilings(&file).is_empty(), "nor sets a ceiling");
+        assert!(houses(&file).is_empty(), "nor a house");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn each_network_s_house_is_read_by_its_router_and_one_written_wrongly_loses_only_itself() {
+        let folder = std::env::temp_dir().join(format!("shaper-houses-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let file = folder.join("networks.json");
         fs::write(
             &file,
             concat!(
@@ -215,6 +230,7 @@ mod tests {
             ),
         )
         .expect("two houses written wrongly beside one written well");
+        let well = houses(&file);
         assert_eq!(
             houses(&file),
             Houses::from([(
@@ -227,10 +243,24 @@ mod tests {
             "one with no address, or a ceiling in Mb/s, is left out alone"
         );
         assert_eq!(anchors(&file).len(), 3, "which loses no anchor");
-        fs::write(&file, "not json").expect("a broken file");
-        assert!(anchors(&file).is_empty(), "a broken file anchors nothing");
-        assert!(ceilings(&file).is_empty(), "nor sets a ceiling");
-        assert!(houses(&file).is_empty(), "nor a house");
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5e:00:53:01": {"up": 12000, "most": 9500, "#,
+                r#""house": {"most": "7000", "from": "192.0.2.7"}}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "house": {"most": 7000}}, "#,
+                r#""00:00:5e:00:53:03": {"up": 9000, "#,
+                r#""house": {"most": 8000, "from": "2001:db8::7"}}}"#,
+            ),
+        )
+        .expect("houses of the wrong shape");
+        assert_eq!(
+            houses(&file),
+            well,
+            "a most in quotes, or no address, is left out alone"
+        );
+        assert_eq!(anchors(&file).len(), 3, "which loses no anchor");
+        assert_eq!(ceilings(&file).len(), 1, "nor a ceiling");
         let _ = fs::remove_dir_all(&folder);
     }
 }

@@ -1486,6 +1486,14 @@ fn step_links(
     for s in shaped.values_mut() {
         s.read_upload();
     }
+    // The controller holds its own rate under what the house leaves, as
+    // under a trial's ceiling, besides the link being held there below.
+    live.house(
+        house
+            .iter()
+            .map(|(network, &(_, most))| (network.clone(), rate::float(most)))
+            .collect(),
+    );
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
     // One moment for all three, after the poll reads what's new, so the
@@ -1592,16 +1600,20 @@ fn house_traced(line: &mut trace::Line, shaped: &BTreeMap<String, Shaped>, house
 }
 
 /// What each network's house holds its links to at `now`: none where the
-/// other machine hasn't said lately what it sends, or none is heard.
+/// other machine hasn't said lately what it sends, or none is heard, and
+/// never under the least a trial may set, where a call still fits. The
+/// address alone says a report is the other machine's, so this bounds what
+/// one forged on the line can do to what a trial may.
 fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant) -> HouseHolds {
     let Some(ear) = ear else {
         return HouseHolds::new();
     };
+    let least = rate::whole(oneway::MOST_KBIT_LEAST);
     houses
         .iter()
         .filter_map(|(network, h)| {
             let sent = ear.sent(h.from, now);
-            let most = house::held(h.most, sent, FLOOR.up)?;
+            let most = house::held(h.most, sent, least)?;
             Some((network.clone(), (rate::whole(sent?.0), most)))
         })
         .collect()
@@ -1610,15 +1622,19 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
 /// The journal's line as the house's ceiling starts holding, `house`, or
 /// stops, with no report fresh.
 fn house_said(house: &HouseHolds) -> String {
-    house.iter().next().map_or_else(
-        || "the house's other machine went quiet, so its ceiling holds nothing".to_string(),
-        |(network, (sent, most))| {
+    if house.is_empty() {
+        return "the house's other machine went quiet, so its ceiling holds nothing".to_string();
+    }
+    house
+        .iter()
+        .map(|(network, (sent, most))| {
             format!(
                 "the house's ceiling holds {network}'s upload under {most} kbit/s, the other \
                  machine sending {sent}"
             )
-        },
-    )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// The lower of two ceilings, either of which may be unset.
@@ -2510,14 +2526,10 @@ mod tests {
             house_holds(&houses, Some(&ear), at).is_empty(),
             "nothing said"
         );
-        let other: std::net::IpAddr = "192.0.2.8".parse().expect("an address");
-        for (address, report) in [(mac, (0, 0)), (other, (0, 0)), (other, (900_000, 1_000))] {
-            let (bytes, ms) = report;
-            ear.hear(address, house::Report { bytes, ms }, at);
-        }
+        ear.hear(mac, house::Report { bytes: 0, ms: 0 }, at);
         assert!(
             house_holds(&houses, Some(&ear), at).is_empty(),
-            "another address's reports hold nothing"
+            "one report says no rate"
         );
         ear.hear(
             mac,
@@ -2533,7 +2545,21 @@ mod tests {
             Some(&(2_500, 4_500)),
             "the Mac sending 2.5 Mb/s leaves 4.5 of 7"
         );
-        assert!(house_said(&held).contains("under 4500 kbit/s"), "{held:?}");
+        let said = house_said(&held);
+        assert!(said.contains("under 4500 kbit/s"), "{said}");
+        ear.hear(
+            mac,
+            house::Report {
+                bytes: 1_312_500,
+                ms: 2_000,
+            },
+            at,
+        );
+        assert_eq!(
+            house_holds(&houses, Some(&ear), at).get("00:00:5e:00:53:01"),
+            Some(&(8_000, 4_000)),
+            "the Mac sending past the ceiling holds this one at the least, where a call fits"
+        );
         let later = at + house::FRESH + Duration::from_secs(1);
         let quiet = house_holds(&houses, Some(&ear), later);
         assert!(quiet.is_empty(), "a report past its time holds nothing");
