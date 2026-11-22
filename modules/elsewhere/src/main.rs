@@ -414,8 +414,23 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |since| since.as_nanos())
     );
+    let scratches = far::scratches();
+    let handover = scratches.join(&quest).join(far::HANDOVER);
+    let cleared = far::spent::clear(&scratches, &handover, &here(), std::time::SystemTime::now());
+    let gone = cleared.gone;
+    if gone > 0 {
+        let folders = if gone == 1 { "folder" } else { "folders" };
+        eprintln!("cleared {gone} spent job {folders} from {quest}'s handover");
+    }
+    for (name, error) in &cleared.kept {
+        let name = name.escape_debug();
+        eprintln!("couldn't clear {name} from {quest}'s handover: {error}");
+    }
+    if cleared.linked {
+        eprintln!("cleared nothing from {quest}'s handover, as it's reached through a link");
+    }
     let job = Job {
-        handover: far::scratches().join(&quest).join(far::HANDOVER).join(&id),
+        handover: handover.join(&id),
         quest,
         id,
         root,
@@ -454,17 +469,25 @@ fn send(
 ) -> Result<Sent, Failure> {
     let (quest, id) = (job.quest.as_str(), job.id.as_str());
     let paths = job.files.iter().map(|(path, _)| path.as_str());
-    far::left(&job.root, paths, &job.handover).map_err(|error| {
-        Failure::new(
-            Exit::Failed,
-            "couldn't leave the job in the quest's handover",
-        )
-        .because(error.to_string())
-    })?;
+    // Held until the job ends here, so no other run takes it for spent.
+    let _held = far::spent::owned(&job.handover, &here())
+        .and_then(|held| far::left(&job.root, paths, &job.handover).map(|()| held))
+        .map_err(|error| {
+            Failure::new(
+                Exit::Failed,
+                "couldn't leave the job in the quest's handover",
+            )
+            .because(error.to_string())
+        })?;
     // Shared to the machine and waited for where both ends' mycelium can;
     // otherwise shared, and the far line waits for the files to cross.
-    let shared = mycelium(settings, &["share", quest, "--to", machine, "--wait"])
-        || mycelium(settings, &["share", quest]);
+    let within = crosses_within(job.files.len()).to_string();
+    let shared = mycelium(
+        settings,
+        &[
+            "share", quest, "--to", machine, "--wait", "--within", &within,
+        ],
+    ) || mycelium(settings, &["share", quest]);
     if !shared {
         return Ok(Sent::Stayed(
             Exit::Unavailable,
@@ -544,6 +567,13 @@ fn send(
     )
 }
 
+/// How many seconds to wait for a job's `files` to cross: a minute, and a
+/// second for each 16 of them, half the 32 a second a share was seen to
+/// carry on 21 November, and never less than mycelium's own 120.
+fn crosses_within(files: usize) -> u64 {
+    u64::try_from(files / 16).map_or(u64::MAX, |more| (60 + more).max(120))
+}
+
 /// Whether mycelium, asked `words`, says yes.
 fn mycelium(settings: &Settings, words: &[&str]) -> bool {
     let mut ask = Command::new(&settings.mycelium);
@@ -566,5 +596,17 @@ fn ended(status: std::process::ExitStatus) -> u8 {
                 .and_then(|signal| u8::try_from(signal).ok())
                 .unwrap_or(0),
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::crosses_within;
+
+    #[test]
+    fn the_wait_for_files_to_cross_grows_with_them() {
+        assert_eq!(crosses_within(10), 120, "never less than mycelium's own");
+        assert_eq!(crosses_within(3_876), 302, "a test suite's tree");
+        assert_eq!(crosses_within(10_000), 685, "the most a share carries");
     }
 }
