@@ -1442,7 +1442,43 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         &mut ranks.unfitted,
     );
     give_ranks(ranked, &mut ranks.hosts);
+    // Once on the first look, for what units gone before the sorter started left, and again
+    // whenever one it ranked has gone.
+    if !ranks.hosts.swept || ranks.hosts.leaving(&seen) {
+        ranks.hosts.swept = true;
+        let conversations = windows
+            .conversations
+            .map(|(conversations, _)| conversations);
+        take_back_left_settings(prefix, conversations);
+    }
     ranks.hosts.keep_only(&seen);
+}
+
+/// Takes back the settings the sorter gave units under `prefix` or
+/// `conversations` that no longer run, which systemd keeps after a unit
+/// stops ([`own::left_behind`]), saying each unit once. A unit
+/// `systemctl` can't say is stopped counts as running, so it keeps them.
+fn take_back_left_settings(prefix: &str, conversations: Option<&str>) {
+    let Some(uid) = kitty::me() else {
+        return;
+    };
+    let control = PathBuf::from(format!("/run/user/{uid}/systemd/user.control"));
+    let prefixes: Vec<&str> = std::iter::once(prefix).chain(conversations).collect();
+    let runs = |unit: &str| {
+        Command::new("systemctl")
+            .args(["--user", "is-active", unit])
+            .output()
+            .map_or(true, |output| {
+                let state = String::from_utf8_lossy(&output.stdout);
+                !matches!(state.trim(), "inactive" | "failed")
+            })
+    };
+    for unit in own::left_behind(&control, &prefixes, runs) {
+        match own::forget(&control, &unit) {
+            Ok(taken) => eprintln!("Took back the {taken} settings {unit} left when it stopped."),
+            Err(error) => eprintln!("Couldn't take back the settings {unit} left: {error}."),
+        }
+    }
 }
 
 /// Gives each of the `ranked` units the rank it was fitted to, when it

@@ -48,6 +48,9 @@
 //! Its adjustment for the kernel's OOM killer is left at the account's.
 //! Ending a host ends every conversation it holds, which
 //! [`keep::GIVES_WAY`] would make the first a shortage takes.
+//!
+//! Long because its cases, more than half of it, share the helpers that
+//! build a unit's own settings and signs, and split apart would repeat them.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -288,6 +291,9 @@ pub struct Hosts {
     failing: HashSet<String>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
+    /// Whether the settings units that no longer run left behind have
+    /// been taken back since the sorter started (`crate::own::forget`).
+    pub swept: bool,
     /// The units said to hold no one host, ranked by all their roots, so
     /// each is said once.
     pub unclear: HashSet<String>,
@@ -357,6 +363,12 @@ impl Hosts {
     }
 
     /// Forgets the units no longer among `units`, whose hosts stopped.
+    /// Whether a unit ranked before isn't among `units` now, so it has
+    /// stopped and its settings can be taken back.
+    pub fn leaving(&self, units: &[String]) -> bool {
+        self.set.keys().any(|unit| !units.contains(unit))
+    }
+
     pub fn keep_only(&mut self, units: &[String]) {
         // A template's settings serve every instance of it, so they stay while one runs.
         let templates: HashSet<String> = units.iter().filter_map(|unit| template(unit)).collect();
@@ -792,6 +804,29 @@ mod tests {
         assert!(
             hosts.changed("u", &rank),
             "a stopped host's unit is forgotten"
+        );
+    }
+
+    #[test]
+    fn a_unit_ranked_before_and_gone_now_is_leaving() {
+        let mut hosts = Hosts::default();
+        let rank = wanted(&attended(), Signs::default(), 10);
+        hosts.done("a", rank.clone(), 0);
+        hosts.done("b", rank, 0);
+        let both = ["a".to_owned(), "b".to_owned()];
+        assert!(!hosts.leaving(&both), "no unit leaves while both run");
+        assert!(
+            !hosts.leaving(&["a".to_owned(), "b".to_owned(), "c".to_owned()]),
+            "a unit starting isn't one leaving"
+        );
+        assert!(
+            hosts.leaving(&["a".to_owned()]),
+            "a unit ranked before and gone now is leaving"
+        );
+        hosts.keep_only(&["a".to_owned()]);
+        assert!(
+            !hosts.leaving(&["a".to_owned()]),
+            "once forgotten, it isn't leaving again"
         );
     }
 

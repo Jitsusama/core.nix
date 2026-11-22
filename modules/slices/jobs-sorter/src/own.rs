@@ -2,10 +2,71 @@
 //! runtime ones this sorter sets, so a give-back puts the unit's own back
 //! rather than systemd's defaults. How a unit is ranked beside them is
 //! `src/hosts.rs`'s to say; this changes only as systemd's files do.
+//!
+//! Those runtime settings are files, and systemd keeps them after the unit
+//! stops: on 22 November 40 of the 124 folders pi's conversation units had
+//! there were for units long gone. So once a unit no longer runs, the
+//! sorter takes its own files of them back ([`left_behind`], [`forget`]).
+
+use std::fs;
+use std::path::Path;
 
 /// The folder runtime properties set through systemd's manager land in,
 /// which a unit's own settings leave out.
 const RUNTIME_CONTROL: &str = "/systemd/user.control/";
+
+/// The properties the sorter sets on a host's or a conversation's unit
+/// (`crate::hosts::rank_call`), each kept by systemd as `50-<name>.conf`
+/// in the unit's folder under the runtime control folder.
+const SET: [&str; 5] = [
+    "CPUWeight",
+    "MemoryLow",
+    "MemoryZSwapWriteback",
+    "ManagedOOMPreference",
+    "MemoryMin",
+];
+
+/// The units whose folders in `control`, the runtime control folder,
+/// start with one of `prefixes` and hold a setting the sorter sets, though
+/// `runs` says the unit no longer runs.
+pub fn left_behind(control: &Path, prefixes: &[&str], runs: impl Fn(&str) -> bool) -> Vec<String> {
+    let mut units: Vec<String> = fs::read_dir(control)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let unit = name.strip_suffix(".d")?.to_owned();
+            let ours = prefixes.iter().any(|prefix| unit.starts_with(prefix))
+                && unit.ends_with(".service")
+                && SET
+                    .iter()
+                    .any(|set| entry.path().join(format!("50-{set}.conf")).exists());
+            ours.then_some(unit)
+        })
+        .filter(|unit| !runs(unit))
+        .collect();
+    units.sort();
+    units
+}
+
+/// Takes the settings the sorter sets off `unit` in `control`, and its
+/// folder once nothing is left in it, saying how many it took. Another's
+/// settings stay, and the folder with them.
+pub fn forget(control: &Path, unit: &str) -> std::io::Result<usize> {
+    let folder = control.join(format!("{unit}.d"));
+    let mut taken = 0;
+    for set in SET {
+        match fs::remove_file(folder.join(format!("50-{set}.conf"))) {
+            Ok(()) => taken += 1,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
+    }
+    // Another's setting keeps the folder, which then can't be removed, and that's as it should be.
+    let _ = fs::remove_dir(&folder);
+    Ok(taken)
+}
 
 /// A unit's own settings, as far as ranking it goes.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -183,6 +244,63 @@ MemoryLow=10%
             "a percentage is of memory"
         );
         assert_eq!(size("lots", 0), None, "words aren't a size");
+    }
+
+    #[test]
+    fn a_gone_units_settings_are_taken_back_and_anothers_left() {
+        let control = std::env::temp_dir().join(format!("own-control-{}", std::process::id()));
+        let folder = |unit: &str, files: &[&str]| {
+            let dir = control.join(format!("{unit}.d"));
+            fs::create_dir_all(&dir).unwrap();
+            for file in files {
+                fs::write(dir.join(file), "[Service]\n").unwrap();
+            }
+        };
+        let ours = SET.map(|name| format!("50-{name}.conf"));
+        let ours: Vec<&str> = ours.iter().map(String::as_str).collect();
+        folder("pi-conversation-w@gone.service", &ours);
+        folder("pi-conversation-w@runs.service", &ours);
+        folder(
+            "pi-conversation-w@shared.service",
+            &[ours[1], "50-TasksMax.conf"],
+        );
+        folder("pi-conversation-w@other.service", &["50-TasksMax.conf"]);
+        folder("kitty-1-2.scope", &ours);
+        let runs = |unit: &str| unit == "pi-conversation-w@runs.service";
+        assert_eq!(
+            left_behind(&control, &["pi-conversation-", "pi-host-"], runs),
+            [
+                "pi-conversation-w@gone.service",
+                "pi-conversation-w@shared.service"
+            ],
+            "only units of the prefixes that no longer run and hold the sorter's settings"
+        );
+        assert_eq!(
+            forget(&control, "pi-conversation-w@gone.service").unwrap(),
+            5,
+            "every one of the sorter's settings is taken"
+        );
+        assert!(
+            !control.join("pi-conversation-w@gone.service.d").exists(),
+            "and the folder, left empty, goes too"
+        );
+        assert_eq!(
+            forget(&control, "pi-conversation-w@shared.service").unwrap(),
+            1,
+            "only the sorter's own setting is taken"
+        );
+        assert!(
+            control
+                .join("pi-conversation-w@shared.service.d/50-TasksMax.conf")
+                .exists(),
+            "another's setting stays, and its folder with it"
+        );
+        assert_eq!(
+            forget(&control, "pi-conversation-w@never.service").unwrap(),
+            0,
+            "a unit with no folder has nothing to take"
+        );
+        fs::remove_dir_all(&control).unwrap();
     }
 
     #[test]
