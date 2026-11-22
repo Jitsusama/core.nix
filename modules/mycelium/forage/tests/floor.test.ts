@@ -265,6 +265,9 @@ it("draws the floor around the cursor once a list that fit grows past it", () =>
   // Forty-eight cells still fit, so a floor over them keeps no cell either.
   shown = floorStepped(floorAfter(LONG.slice(0, 48), UNDRAWN, "C00"), "C40");
   assert.equal(floorAfter(LONG.slice(0, 49), shown, "C40").around, "C40");
+  // Forty-nine don't, so a floor over them keeps its cell.
+  const kept = floorFor(LONG.slice(0, 49), "C00");
+  assert.equal(floorAfter(LONG.slice(0, 49), kept, "C20").around, "C00");
   // Records end twelve cells of a floor kept around C55, then bring them back.
   const shrunk = floorAfter(
     LONG.filter((_, at) => at < 36 || at >= 48),

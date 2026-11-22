@@ -19,7 +19,8 @@ server goes and keep what it drew, keep to its budget, and pass the
 web-design skill's page checks at a phone's width and a desk's in both looks.
 Beside a node holding more cells than the floor draws, its floor must follow the
 cursor to a booked start past the floor's 48th, drawn solid, and hold still as
-the cursor steps on it and a record arrives, until a step leaves it.
+the cursor steps on it, a find narrows the list and a record arrives, until a
+step leaves it.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -304,6 +305,15 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     assert on_the_floor(long_page) == drawn, "a step the floor holds moved it"
     kept = long_page.evaluate("document.querySelector('#floor svg')?.dataset.kept ?? ''")
     assert kept == "yes", "a step the floor holds drew it again"
+    # A find leaving only the cell the cursor is on narrows the list, not the floor.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill(held)
+    expect(cell(long_page, TOPS[0]), "the find left a cell it doesn't match").to_have_count(0)
+    ringed_on_the_floor(long_page, held, "a find moved the ring")
+    assert on_the_floor(long_page) == drawn, "a find moved the floor"
+    long_page.locator("#find").press("Escape")
+    expect(cell(long_page, TOPS[0]), "ending the find didn't bring the list back").to_have_count(1)
+    assert on_the_floor(long_page) == drawn, "ending a find moved the floor"
     # A record hollows a cell the floor draws: it's drawn hollow, and the floor holds still.
     # The floor a step off draws holds that cell too, so it shows which list the step drew.
     recorded = TOPS[30]
