@@ -20,7 +20,9 @@ web-design skill's page checks at a phone's width and a desk's in both looks.
 Beside a node holding more cells than the floor draws, its floor must follow the
 cursor to a booked start past the floor's 48th, drawn solid, and hold still as
 the cursor steps on it, a find narrows the list and a record arrives, until a
-step leaves it.
+step leaves it. A find matching nothing keeps the cursor and the floor, a link
+naming its cell in another form ends that find, and that cell ending meanwhile
+leaves a floor drawn around another cell where it was.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -352,6 +354,7 @@ def test_a_find_matching_nothing_keeps_the_cursor_until_a_link_or_its_cell_endin
     long_page.keyboard.press("/")
     long_page.locator("#find").fill("ZZZZZZ")
     expect(cell(long_page, held), "the find left the held cell").to_have_count(0)
+    ringed_on_the_floor(long_page, held, "a find matching nothing dropped the cursor")
     long_page.evaluate(f"location.hash = '#cell={held}%40kestrel'")
     selected(long_page, held, "a link to the held cell didn't bring its row back")
     # The held cell ending during the find leaves the floor drawn around the shoot.

@@ -265,7 +265,10 @@ it("keeps the floor for a cursor it holds or none, and moves it for one off it",
     gone.slice(0, 48).map((each) => each.cell),
   );
   // With no cursor, its cell coming back doesn't pull the floor back to it.
-  assert.equal(floorAfter(LONG, back, null).around, null);
+  assert.deepEqual(
+    floorAfter(LONG, back, null).drawn.map((each) => each.cell),
+    LONG.slice(0, 48).map((each) => each.cell),
+  );
 });
 
 it("keeps the floor still as the page steps and records arrive, until a step leaves it", () => {

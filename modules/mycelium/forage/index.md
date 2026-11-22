@@ -26,7 +26,7 @@ a terminal, `mycelium forage` gathers the realm's.
   stand on is named under the ground. It draws up to 48 cells, and the
   list holds every one. Past 48 it's drawn around a cell, the one you're
   on until you step to another it draws: that cell, as many of the cells
-  that grew from it as fit (those the node's book holds first) and those
+  that grew straight from it as fit (those the node's book holds first) and those
   nearest it in the list, each with every cell it grew from, so no
   branch is left hanging. Only that cell's own line, when deeper than
   48, is cut at its top; another line longer than the room left is left

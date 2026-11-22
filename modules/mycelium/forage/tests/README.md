@@ -28,7 +28,7 @@ run by Node's own test runner when the local sites build the page.
   the book doesn't hold said "as claimed" in the panel at either end.
 - `floor.test.ts` tries which cells the floor draws of a list longer
   than it holds: the first 48 with no cursor, and otherwise the cell it's
-  drawn around, the cells that grew from that one and those nearest it,
+  drawn around, the cells that grew straight from that one and those nearest it,
   each with every cell it grew from, once round a ring, so a booked start
   far down the list still draws solid, and a line deeper than the floor
   cut at its top, but stopped at a cell already drawn; the cells the
@@ -37,8 +37,10 @@ run by Node's own test runner when the local sites build the page.
   leaves off, no cursor at all not among them; that a live
   redraw keeps the floor around the same cell while it holds the cursor,
   through a page's steps and records in turn, though a cell added near it
-  shifts those beside it; and that a floor stepped off is drawn again
-  over the list it was worked out for.
+  shifts those beside it; that a floor stepped off is drawn again
+  over the list it was worked out for; and that with no cursor a floor
+  whose own cell ends goes back to the first 48, and stays there when
+  that cell comes back.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.

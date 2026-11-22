@@ -243,9 +243,10 @@ function openCell(cell: string): void {
 function draw(): void {
   const rows = shown();
   // A find that matches nothing keeps the cursor while its cell lasts, so
-  // ending the find finds it again; a cell that ends takes the cursor with it.
+  // ending the find finds it again; a cell that ends takes the cursor with it,
+  // and so does a view of cells without purpose that a record empties.
   if (!rows.some((each) => each.cell === cursor)) {
-    cursor = rows[0]?.cell ?? (current() === undefined ? null : cursor);
+    cursor = rows[0]?.cell ?? (sought === "" || current() === undefined ? null : cursor);
   }
   list.innerHTML =
     rows.length === 0 && forages.length > 0
