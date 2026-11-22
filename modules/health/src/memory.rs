@@ -11,8 +11,14 @@ use std::process::Command;
 use serde::{Deserialize, Serialize};
 
 /// The programs watched, by the last part of the path each was started by,
-/// since the shell's own name in `/proc` is its wrapper's, cut short.
-pub const WATCHED: [&str; 2] = ["pi", "quickshell"];
+/// since the shell's own name in `/proc` is its wrapper's, cut short; and
+/// the pi host and each conversation's own process, which are started by
+/// the host's node, so they are known by the program it runs (`HOST`).
+pub const WATCHED: [&str; 4] = ["pi", "quickshell", "pi-host", "pi-conversation"];
+
+/// The harness's program a pi host's node runs, for the host and, with
+/// `--child` after it, for each conversation's own process.
+const HOST: &str = "pi-host.ts";
 
 /// The ages copies are grouped by, in seconds: under an hour, under six
 /// hours, under a day, and older.
@@ -118,13 +124,24 @@ pub fn seconds_of(ran: &str) -> Option<u64> {
     Some(seconds)
 }
 
-/// The last part of the path a process was started by.
+/// The last part of the path a process was started by; or, for a node
+/// running the pi host's program, the host or a conversation's process.
 fn started_by(process: &Path) -> Option<String> {
     let started = fs::read(process.join("cmdline")).ok()?;
-    let first = started.split(|&byte| byte == 0).next()?;
-    let path = String::from_utf8_lossy(first);
-    let name = path.rsplit('/').next()?;
-    (!name.is_empty()).then(|| name.to_owned())
+    let mut words = started
+        .split(|&byte| byte == 0)
+        .map(String::from_utf8_lossy);
+    let first = words.next()?;
+    let last_part = |word: &str| word.rsplit('/').next().unwrap_or(word).to_owned();
+    let name = last_part(&first);
+    if name == "node" {
+        let mut after = words.skip_while(|word| last_part(word) != HOST);
+        if after.next().is_some() {
+            let child = after.any(|word| word == "--child");
+            return Some(if child { "pi-conversation" } else { "pi-host" }.to_owned());
+        }
+    }
+    (!name.is_empty()).then_some(name)
 }
 
 /// What a process holds, from its status, and its age, from when its stat
@@ -173,6 +190,20 @@ pub struct Memory {
     pub most_at: i64,
     /// The copies by age, as `AGES` groups them, youngest first.
     pub by_age: Vec<Aged>,
+    /// What the middle copy held, in memory and swap, in KiB, by nearest
+    /// rank: a typical copy, which the sum of them all hides once there
+    /// are a hundred.
+    pub median_kib: u64,
+    /// What the copy only one in twenty held more than held, the same way:
+    /// a heavy copy.
+    pub p95_kib: u64,
+    /// The day's looks that saw a copy running.
+    pub looks: u64,
+    /// The sum of those looks' middle copies, so the day's typical copy
+    /// is their mean.
+    pub median_sum_kib: u64,
+    /// The sum of those looks' heavy copies, the same way.
+    pub p95_sum_kib: u64,
 }
 
 /// The copies of an age, and what they held in memory and swap, in KiB.
@@ -197,6 +228,15 @@ impl Memory {
             self.most_kib = together;
             self.most_at = at;
         }
+        let mut each: Vec<u64> = copies.iter().map(Held::total).collect();
+        each.sort_unstable();
+        self.median_kib = ranked(&each, 50);
+        self.p95_kib = ranked(&each, 95);
+        if !each.is_empty() {
+            self.looks += 1;
+            self.median_sum_kib += self.median_kib;
+            self.p95_sum_kib += self.p95_kib;
+        }
         self.by_age = vec![Aged::default(); AGES.len() + 1];
         for held in copies {
             let group = AGES.iter().take_while(|&&under| held.age >= under).count();
@@ -204,6 +244,13 @@ impl Memory {
             self.by_age[group].kib += held.total();
         }
     }
+}
+
+/// The value at `percent` of `sorted`, by nearest rank: the smallest that
+/// at least that share of them are no larger than; none when empty.
+fn ranked(sorted: &[u64], percent: usize) -> u64 {
+    let rank = (sorted.len() * percent).div_ceil(100).max(1);
+    sorted.get(rank - 1).copied().unwrap_or(0)
 }
 
 /// An amount of memory in KiB, in plain words: MiB under a GiB, else GiB
@@ -292,6 +339,55 @@ mod tests {
     }
 
     #[test]
+    fn a_hosts_conversations_and_the_host_are_found_by_the_program_they_run() {
+        let proc = tempfile::tempdir().expect("a stand-in /proc");
+        fs::write(proc.path().join("uptime"), "7200.55 14000.10\n").expect("uptime");
+        let node = "/nix/store/y-pi-host-runtime-1.5.0/libexec/pi-host/node";
+        let flags = "--disable-sigusr1\0--max-old-space-size=4096";
+        process(
+            proc.path(),
+            20,
+            &format!("{node}\0{flags}\0scripts/pi-host.ts\0--child\0"),
+            Some(300_000),
+            0,
+        );
+        process(
+            proc.path(),
+            21,
+            &format!("{node}\0{flags}\0/srv/harness/scripts/pi-host.ts\0--child\0"),
+            Some(200_000),
+            0,
+        );
+        process(
+            proc.path(),
+            22,
+            &format!("{node}\0{flags}\0scripts/pi-host.ts\0realm\0"),
+            Some(900_000),
+            0,
+        );
+        process(
+            proc.path(),
+            23,
+            &format!("{node}\0server.js\0"),
+            Some(50),
+            0,
+        );
+        let seen = look(proc.path());
+        let kib = |name: &str| -> Vec<u64> { seen[name].iter().map(|held| held.kib).collect() };
+        assert_eq!(
+            kib("pi-conversation"),
+            vec![300_000, 200_000],
+            "each conversation's own process, by the host's program and --child"
+        );
+        assert_eq!(
+            kib("pi-host"),
+            vec![900_000],
+            "the host, by its program alone"
+        );
+        assert_eq!(seen.len(), 2, "another node program isn't pi: {seen:?}");
+    }
+
+    #[test]
     fn the_watched_programs_are_found_in_what_ps_says() {
         let said = concat!(
             "  1000 01:00:00 /nix/store/x-pi/bin/pi\n",
@@ -346,6 +442,35 @@ mod tests {
         assert_eq!(
             memory.most_at, 1,
             "held as much, not more, so kept as first"
+        );
+    }
+
+    #[test]
+    fn a_typical_copy_and_a_heavy_one_are_kept_each_look_and_over_the_day() {
+        let copy = |kib| Held {
+            kib,
+            swap_kib: 0,
+            age: 60,
+        };
+        let mut memory = Memory::default();
+        let twenty: Vec<Held> = (1..=20).map(|n| copy(n * 10)).collect();
+        memory.saw(1, &twenty);
+        assert_eq!(
+            (memory.median_kib, memory.p95_kib),
+            (100, 190),
+            "the tenth of twenty, and the nineteenth, by nearest rank"
+        );
+        memory.saw(2, &[copy(40)]);
+        memory.saw(3, &[]);
+        assert_eq!(
+            (memory.median_kib, memory.p95_kib),
+            (0, 0),
+            "none running now"
+        );
+        assert_eq!(
+            (memory.looks, memory.median_sum_kib, memory.p95_sum_kib),
+            (2, 140, 230),
+            "a look with no copy running says nothing of a copy's size"
         );
     }
 
