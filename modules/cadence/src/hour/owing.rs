@@ -14,7 +14,7 @@ use crate::owe::{self, Owed};
 
 use super::lines::figure;
 use super::measures::{
-    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_unseen, rounds,
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_for_good, held_unseen, rounds,
 };
 
 /// One drag as the ledger files it: its key, owner, words, and what its
@@ -69,7 +69,8 @@ fn findings_filed(m: &Measure) -> Vec<Filed> {
             // cadence's.
             let closes = format!(
                 "It closes by itself once the changes a landing note answering {short} names \
-                 run here, the note opening as \"Landed core #6000.\" does; a note naming no \
+                 run here, the note opening as \"Landed core #6000.\" does, naming each \
+                 change with its repository, as \"core #6000 and core #6001\"; a note naming no \
                  change, or answering this ask, closes nothing, nor does one whose first line \
                  says still, but, though, although, however, yet, broken, fails, failing or \
                  failed, so say what it fixed on the lines after."
@@ -263,7 +264,10 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .any(|by| by.contains(HELD) == held);
     }
     // A finding's drag carries its owner and its short id, and is back in
-    // once the findings measure, read, holds no line of it, held or not.
+    // once the findings measure, read, holds no line of it but one held for
+    // good, by a fix cadence can't see run: its owner has done what they
+    // can, so it never goes late beside their name. A main unread for an
+    // hour keeps it open, so it isn't closed and filed again.
     let finding = key
         .strip_prefix(FINDINGS)
         .and_then(|rest| rest.strip_prefix(':'))
@@ -275,10 +279,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .find(|m| m.key == FINDINGS)
             .is_some_and(|m| {
                 m.target.is_some()
-                    && !m
-                        .behind
-                        .iter()
-                        .any(|line| line.starts_with(&opens) && line.ends_with(&ends))
+                    && !m.behind.iter().any(|line| {
+                        line.starts_with(&opens) && line.ends_with(&ends) && !held_for_good(line)
+                    })
             });
     }
     measures
@@ -624,17 +627,19 @@ mod tests {
             ["hour:symbiosis-findings:A2VLJN:cd34"],
             "a fixed finding's drag stayed open, or another's closed with it"
         );
-        // Held only by the hour's blindness, it stays on the card and its
+        // Held by a main unread for an hour, it stays on the card and its
         // drag open, put to nobody; so does an hour the mesh went unread.
-        found.behind = vec![format!(
-            "cd34 from CIJMZQ: the hosts{HELD}core #6000{UNRUN}cadence can't see what runs \
-             here · A2VLJN"
-        )];
+        found.behind = vec![
+            "cd34 from CIJMZQ: the hosts, though cadence couldn't read core's main to see its \
+             check · A2VLJN"
+                .to_owned(),
+        ];
         found.now = 0.0;
         assert!(
             filed(&found).is_empty()
-                && file(&mut ledger, &[found.clone()], "2026-11-21", 11_800).is_empty(),
-            "a finding held by the hour's blindness was put to its owner"
+                && file(&mut ledger, &[found.clone()], "2026-11-21", 11_800).is_empty()
+                && ledger.iter().filter(|e| e.open).count() == 1,
+            "a finding held by a main unread was put to its owner, or its drag closed"
         );
         found.behind.clear();
         found.target = None;
@@ -643,11 +648,17 @@ mod tests {
             ledger.iter().filter(|e| e.open).count() == 1,
             "a drag closed while the hour couldn't look"
         );
+        // Held for good, by a fix cadence can't see run, its owner has done
+        // what they can, so its drag closes rather than going late.
         found.target = Some(0.0);
-        file(&mut ledger, &[found], "2026-11-21", 19_000);
+        found.behind = vec![format!(
+            "cd34 from CIJMZQ: the hosts{HELD}core #6000{UNRUN}cadence can't see what runs \
+             here · A2VLJN"
+        )];
         assert!(
-            ledger.iter().all(|e| !e.open),
-            "a drag stayed open once its finding was gone"
+            file(&mut ledger, &[found], "2026-11-21", 19_000).is_empty()
+                && ledger.iter().all(|e| !e.open),
+            "a finding held for good was put to its owner, or its drag stayed open to go late"
         );
     }
 

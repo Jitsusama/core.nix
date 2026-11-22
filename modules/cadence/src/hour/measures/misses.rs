@@ -22,7 +22,7 @@ mod symbiosis;
 
 pub use held::{BLIND, HELD, held};
 pub use running::{UNRUN, UNSEEN, hosts_started};
-pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_unseen};
+pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two

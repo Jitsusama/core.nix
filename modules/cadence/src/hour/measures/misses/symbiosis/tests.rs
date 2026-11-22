@@ -968,6 +968,45 @@ fn a_regression_beneath_a_finding_held_as_the_hours_blindness_counts() {
 }
 
 #[test]
+fn a_follow_up_beneath_a_fix_whose_main_goes_unread_an_hour_stays_folded() {
+    let root = finding(3 * DAY, "IKQ63G", "IKQ63G finding for OSPHT4: y");
+    let posted = [
+        root.clone(),
+        answer(3 * DAY - 60, "OSPHT4", "Landed core #6000.", &root),
+        answering(
+            finding(2 * DAY, "CIJMZQ", "CIJMZQ finding for OSPHT4: still"),
+            &root,
+        ),
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    let findings = Findings {
+        text: as_misses(&found),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    let judged = Judged {
+        merged: &BTreeSet::new(),
+        unread: &BTreeSet::from(["core".to_owned()]),
+        unrun: &BTreeMap::new(),
+        here: "here",
+    };
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let measure = findings.measured(&repos, &judged, NOW);
+    // Its fix may still be merging, so its owner isn't asked of it.
+    assert!(
+        measure.now.abs() < 1e-9
+            && !measure
+                .behind
+                .iter()
+                .any(|line| line.contains("still · OSPHT4")),
+        "a follow-up counted on its own while its fix's main went unread: {} {:?}",
+        measure.says,
+        measure.behind
+    );
+}
+
+#[test]
 fn a_fix_is_walked_for_from_its_earliest_note_however_late_one_came() {
     let first = finding(2 * DAY, "IKQ63G", "IKQ63G finding for A2VLJN: x");
     let sent_sooner = jiff::Timestamp::from_second(NOW - 3 * DAY).expect("a time");

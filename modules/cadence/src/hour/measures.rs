@@ -36,8 +36,8 @@ pub use card::{card_if_fresh, card_median, merge_to_on};
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
 pub use misses::{
-    BLIND, FINDINGS, HELD, UNREAD, UNRUN, UNSEEN, checked_beside, findings, held, held_unseen,
-    hosts_started, ledger, said,
+    BLIND, FINDINGS, HELD, UNREAD, UNRUN, UNSEEN, checked_beside, findings, held, held_for_good,
+    held_unseen, hosts_started, ledger, said,
 };
 pub use pains::{keeper, pains};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
