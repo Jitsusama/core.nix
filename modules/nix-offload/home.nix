@@ -129,13 +129,13 @@ let
       }
     );
   # How many VM lenders past the second there may be, one for each folder
-  # nixos.nix makes, /run/nix-offload-vm-3 to -30, and `there` looks in
-  # (main.rs's vm_extra_dirs), the three counting alike: on 9 November
+  # nixos.nix makes, /run/nix-offload-vm-3 to the last lane, and `there`
+  # looks in, all three reading offload/src/last-vm-lane: on 9 November
   # eight were full for twenty minutes, and VM runs waited a median of 7
   # minutes for them, and at 06:12 on 22 November 55 of sixteen builders'
   # 64 VM tests ran while six runs waited. One lent past those busy costs
   # nothing, since it's lent only while they're full and goes once idle.
-  extraVmLenders = 28;
+  extraVmLenders = lib.toInt (lib.fileContents ./offload/src/last-vm-lane) - 2;
   # The lender of the VM builder numbered `number`, from 3, while
   # vmTests.extra has one for it.
   extraVm =

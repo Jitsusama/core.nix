@@ -123,7 +123,8 @@
 //! `nix-offload/vm-builds` says it runs at once, else 4 (as both VM
 //! lenders' helpers are told in `OFFLOAD_MAX_JOBS`), counting those runs
 //! still going have sent it, each saying so in its folder's `sending`.
-//! Lenders in /run/nix-offload-vm-3 to -30 lend more, each taking what's
+//! Lenders in /run/nix-offload-vm-3 to the last lane, which `last-vm-lane`
+//! names for nixos.nix and home.nix too, lend more, each taking what's
 //! past the room of those before it. Past every builder's room, a run's
 //! VM tests wait for room, in the order runs came, since Nix bounds each
 //! run's build alone. A run's parts go at once, each to its own builder,
@@ -1060,18 +1061,27 @@ fn vm_dirs(vm_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The number of the last VM lender's folder, which nixos.nix makes and
+/// home.nix lends to as well, all three reading this one file so they
+/// can't drift apart.
+const LAST_VM_LANE: &str = include_str!("last-vm-lane");
+
 /// The folders of the VM lenders past the second, /run/nix-offload-vm-3
-/// to -30, as many as home.nix's vmTests.extra may lend from;
-/// `NIX_OFFLOAD_VM_EXTRA_DIRS` names others, a path list.
+/// to the one `last-vm-lane` names, as many as home.nix's vmTests.extra
+/// may lend from; `NIX_OFFLOAD_VM_EXTRA_DIRS` names others, a path list.
 fn vm_extra_dirs() -> Vec<PathBuf> {
-    env::var_os("NIX_OFFLOAD_VM_EXTRA_DIRS").map_or_else(
-        || {
-            (3..=30)
-                .map(|number| PathBuf::from(format!("{VM_DIR}-{number}")))
-                .collect()
-        },
-        |dirs| env::split_paths(&dirs).collect(),
-    )
+    env::var_os("NIX_OFFLOAD_VM_EXTRA_DIRS")
+        .map_or_else(own_vm_extra_dirs, |dirs| env::split_paths(&dirs).collect())
+}
+
+/// The machine's own VM lender folders past the second, from 3 to the
+/// last lane. A number that doesn't parse gives none, which the test of
+/// these folders fails on, rather than a machine finding out.
+fn own_vm_extra_dirs() -> Vec<PathBuf> {
+    let last: u32 = LAST_VM_LANE.trim().parse().unwrap_or(2);
+    (3..=last)
+        .map(|number| PathBuf::from(format!("{VM_DIR}-{number}")))
+        .collect()
 }
 
 /// The VM tests `vm` split between the VM builders of `vm_dirs`, a part
@@ -4249,6 +4259,28 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[test]
+    fn the_own_vm_lanes_run_from_3_to_the_last_one_the_file_names() {
+        let last: u32 = LAST_VM_LANE
+            .trim()
+            .parse()
+            .expect("last-vm-lane isn't a number");
+        let dirs = own_vm_extra_dirs();
+        assert_eq!(
+            dirs.len(),
+            usize::try_from(last - 2).unwrap(),
+            "a lane went missing"
+        );
+        assert_eq!(dirs.first(), Some(&PathBuf::from(format!("{VM_DIR}-3"))));
+        assert_eq!(
+            dirs.last(),
+            Some(&PathBuf::from(format!("{VM_DIR}-{last}")))
+        );
+        // As 22 November's 28 lanes past the second need, and the folders
+        // and lenders nixos.nix and home.nix make from the same file.
+        assert!(last >= 30, "fewer lanes than the machine lends: {last}");
     }
 
     #[test]
