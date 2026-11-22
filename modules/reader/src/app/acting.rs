@@ -302,22 +302,35 @@ impl App {
         }
     }
 
-    /// Ctrl+]: the first link from the cursor's line down, in view.
+    /// Ctrl+]: with the cursor on a character, the link under it or after
+    /// it on its line, and none behind it, as Vim's takes the word there;
+    /// with the cursor on a whole line, the first link from it down, in
+    /// view.
     fn follow_link_here(&mut self) {
-        let from = self.cursor_pt();
-        let (_, foot) = self.view_pt();
-        let link = links::links(&self.painter.page().frame)
-            .into_iter()
-            .filter(|link| link.baseline_pt > from && link.top_pt < foot)
-            .min_by(|a, b| {
-                a.baseline_pt
-                    .round()
-                    .total_cmp(&b.baseline_pt.round())
-                    .then(a.left_pt.total_cmp(&b.left_pt))
-            });
+        if self.character_waits() {
+            return self.say(super::STILL_READING);
+        }
+        let page = self.painter.page();
+        let frame = &page.frame;
+        let (link, missing) = if let Some((line, x_pt)) = self.character_on() {
+            let link = links::link_here(&links::pieces(frame), line, x_pt).cloned();
+            (link, "No link under or after the cursor")
+        } else {
+            let (from, (_, foot)) = (self.cursor_pt(), self.view_pt());
+            let link = links::links(frame)
+                .into_iter()
+                .filter(|link| link.baseline_pt > from && link.top_pt < foot)
+                .min_by(|a, b| {
+                    a.baseline_pt
+                        .round()
+                        .total_cmp(&b.baseline_pt.round())
+                        .then(a.left_pt.total_cmp(&b.left_pt))
+                });
+            (link, "No link from the line here")
+        };
         match link {
-            Some(link) => self.follow(&link),
-            None => self.say("No link from the line here"),
+            Some(link) => self.follow(&link.href),
+            None => self.say(missing),
         }
     }
 

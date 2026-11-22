@@ -362,15 +362,35 @@ pub fn neighbour(files: &[PathBuf], current: &Path, times: u32, on: bool) -> Opt
 }
 
 /// The paths a line writes, as gf reads a file's name under the cursor:
-/// each run of the characters a path holds, its closing marks left off.
-pub fn written_paths(line: &Line) -> Vec<String> {
+/// each run of the characters a path holds, its closing marks left off,
+/// with where it starts and ends across the page, for the one under the
+/// cursor's character.
+pub fn written_paths(line: &Line) -> Vec<(String, f64, f64)> {
     let path_char = |c: char| wordy(c) || "/.-~+".contains(c);
-    line.text
-        .split(|c: char| !path_char(c))
-        .map(|word| word.trim_end_matches(['.', ',']))
-        .filter(|word| word.contains('.') || word.contains('/'))
-        .map(str::to_string)
-        .collect()
+    let chars: Vec<char> = line.text.chars().collect();
+    let mut found = Vec::new();
+    let mut ch = 0;
+    while ch < chars.len() {
+        if !path_char(chars[ch]) {
+            ch += 1;
+            continue;
+        }
+        let from = ch;
+        while ch < chars.len() && path_char(chars[ch]) {
+            ch += 1;
+        }
+        let mut to = ch;
+        while to > from && chars[to - 1] == '.' {
+            to -= 1;
+        }
+        let path: String = chars[from..to].iter().collect();
+        if path.contains('.') || path.contains('/') {
+            let left = line.spans.get(from).map_or(line.x_pt, |span| span.0);
+            let right = line.spans.get(to - 1).map_or(left, |span| span.1);
+            found.push((path, left, right));
+        }
+    }
+    found
 }
 
 #[cfg(test)]
@@ -621,7 +641,27 @@ mod tests {
 
     #[test]
     fn a_written_path_is_read_as_gf_reads_one() {
-        let said = written_paths(&line(0.0, "See docs/design.md, or `notes.md`."));
-        assert_eq!(said, ["docs/design.md", "notes.md"]);
+        let mut written = line(0.0, "See docs/design.md, or `notes.md`, then a.md.");
+        // Each character five points across, so where each path stands
+        // can be read.
+        let mut x = 0.0;
+        written.spans = written
+            .text
+            .chars()
+            .map(|_| {
+                x += 5.0;
+                (x - 5.0, x)
+            })
+            .collect();
+        let said = written_paths(&written);
+        assert_eq!(
+            said,
+            [
+                ("docs/design.md".to_string(), 20.0, 90.0),
+                ("notes.md".to_string(), 120.0, 160.0),
+                ("a.md".to_string(), 200.0, 220.0)
+            ],
+            "a sentence's full stop is no part of its path"
+        );
     }
 }

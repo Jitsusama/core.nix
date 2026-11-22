@@ -55,7 +55,7 @@ pub fn named(act: Act) -> Option<(&'static str, &'static str)> {
         Act::Outline => ("Jumping", "Go to a heading from a list of them"),
         Act::Bracket => ("Jumping", "To a bracket's other end, or a count's percent"),
         Act::FollowLink => ("Links and Files", "Follow the link here"),
-        Act::FollowFile => ("Links and Files", "Open the file a link here names"),
+        Act::FollowFile => ("Links and Files", "Go to the file or heading named here"),
         Act::FileOn => ("Links and Files", "On to the next markdown file here"),
         Act::FileBack => ("Links and Files", "Back to the markdown file before"),
         Act::SameWordOn => ("Searching", "Search down for the word here"),
