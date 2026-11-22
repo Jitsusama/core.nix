@@ -13150,7 +13150,7 @@ Scope {
     // The shell thread's clocks now: what it has run and waited for a CPU,
     // a few microseconds to read (key-times/keytimes.cpp).
     function threadNow() {
-        return { ran: KeyTimes.ran(), waited: KeyTimes.waited() };
+        return { ran: KeyTimes.ran(), waited: KeyTimes.waited(), faulted: KeyTimes.faulted() };
     }
     function feltTicked() {
         const now = KeyTimes.now();

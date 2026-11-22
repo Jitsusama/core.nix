@@ -105,6 +105,17 @@ bool threadTimed(const KeyTimes &times) {
     return ran && waited;
 }
 
+// The thread's major faults read, and never fewer later: the launcher
+// takes a count that went back, or one it couldn't read, as none said.
+bool faultsCounted(const KeyTimes &times) {
+    const double before = times.faulted();
+    const double after = before + spun(times, &KeyTimes::faulted);
+    const bool holds = before >= 0 && after >= before;
+    if (!holds)
+        std::fprintf(stderr, "FAIL a thread's faults are read: %.0f, then %.0f\n", before, after);
+    return holds;
+}
+
 // The launcher's bound on a key's hold for its answers (Launcher.qml's
 // answersWaitedFor). There's no
 // render loop here to hold QML's own Timer back, so this holds the type to
@@ -267,5 +278,6 @@ int main(int argc, char **argv) {
     // Before the thread's clocks, which hold it to one CPU.
     const bool walled = wallTimed();
     const bool timed = threadTimed(times);
-    return fromPress && fromRepeat && timed && walled ? 0 : 1;
+    const bool faults = faultsCounted(times);
+    return fromPress && fromRepeat && timed && walled && faults ? 0 : 1;
 }

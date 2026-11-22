@@ -37,6 +37,13 @@ public:
     Q_INVOKABLE double ran() const;
     Q_INVOKABLE double waited() const;
 
+    // How many pages the calling thread has had to wait to have read back
+    // in since it began, its major faults, or -1 where they can't be read,
+    // so a stall it slept through says whether it slept on its own memory:
+    // Joel's "s" slept 448 ms of 566 searching, in synchronous work that
+    // never waits on the event loop, with memory short (2026-11-21).
+    Q_INVOKABLE double faulted() const;
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 
