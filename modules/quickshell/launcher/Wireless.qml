@@ -1,5 +1,5 @@
 // Wi-Fi, a collection: the networks in the air, the one connected first,
-// then those saved, then the rest by signal, each glyph saying how strong
+// then those saved, then the rest, each by name, each glyph saying how strong
 // it is and whether it's locked, the footer how it's connected. Return
 // disconnects the one connected or connects another, and the launcher stays,
 // the foot saying how far it has got, until the network takes the card or
