@@ -1527,11 +1527,12 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
         opened.close()
 
 
-def test_a_cell_whose_record_names_its_starter_grows_a_branch_across_machines(
+def test_a_cell_whose_own_record_names_its_starter_grows_a_branch_with_no_forage(
     browser: Browser, mycelium_served: Served, mycelium_node: StandIn
 ) -> None:
-    # HERON1 runs on osprey and SKIFF1 on kestrel, and this node serves no
-    # forages, so only the cell's record can say who started it.
+    # This node serves no forages, so only the cell's record can say who
+    # started it, as it does for a cell on another machine, where no forage
+    # reaches: HERON1 runs on osprey and SKIFF1 on kestrel.
     root, _ = mycelium_served
     opened = Opened(browser, f"{root}mycelium/#net={GROWN}", SIZES[-1], "light")
     try:
@@ -1558,10 +1559,19 @@ def test_a_cell_whose_record_names_its_starter_grows_a_branch_across_machines(
         )
         found = page.evaluate((HERE / "site-checks.js").read_text())
         assert found == [], f"site-checks.js on a branch grown across machines found {found}"
-        # Once the record stops naming its starter, the branch goes.
+        # The cell's drawer says who started it from the record alone.
+        page.evaluate(f"location.hash = '#cell={GROWN_CELL}'")
+        expect(body, "the cell's drawer never said who its record named").to_contain_text(
+            f"by {GROWN_BY_TITLE}", timeout=PACE_MS
+        )
+        # Once the record stops naming its starter, the branch goes, and so
+        # does the cell's word of who started it.
         mycelium_node.tell("cell", changed=[{**said, "started_by": None, "started_by_from": None}])
         expect(hub, "the branch outlived the word that grew it").not_to_have_attribute(
             "data-branch-of", re.compile("."), timeout=PACE_MS
+        )
+        expect(body, "the cell's drawer kept a starter its record dropped").not_to_contain_text(
+            f"by {GROWN_BY_TITLE}"
         )
     finally:
         opened.close()

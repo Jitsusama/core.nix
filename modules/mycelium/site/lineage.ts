@@ -34,12 +34,14 @@ const collate = new Intl.Collator("en-CA").compare;
 /**
  * Who started each cell: its own record's word first, which reaches every
  * machine, then its forage's for a cell whose record says nothing, as an
- * older node's does. None at all when no cell's record names a starter and
- * the node serves no forages, so a node too old for either reads as one
- * that says nothing of who started whom. A cell said to have started
- * itself names nobody.
+ * older node's does. The two never disagree on a node that says both,
+ * since it makes them from the same book and presence and leaves the
+ * record's out where nothing names a starter, so the forage only fills in
+ * for a node too old to say it on the record. A cell said to have started
+ * itself names nobody, and a node that says neither reads as one where
+ * nobody started anybody, which grows no branch either way.
  */
-function startedOf(cells: Held, forages: Held | undefined): Started[] | null {
+function startedOf(cells: Held, forages: Held | undefined): Started[] {
   const by = new Map<string, string>();
   const say = (cell: string | undefined, starter: string | undefined): void => {
     if (cell && starter && starter !== cell && !by.has(cell)) {
@@ -48,9 +50,6 @@ function startedOf(cells: Held, forages: Held | undefined): Started[] | null {
   };
   for (const record of cells.all()) {
     say(text(record, "name"), text(record, "started_by"));
-  }
-  if (forages === undefined && by.size === 0) {
-    return null;
   }
   for (const record of forages?.all() ?? []) {
     say(text(record, "cell"), text(object(record, "lineage") ?? {}, "started_by"));
@@ -84,10 +83,10 @@ function foragedOf(held: Held | undefined): string[] | null {
 function grownOf(
   networks: readonly Network[],
   hubOf: ReadonlyMap<string, string>,
-  started: readonly Started[] | null,
+  started: readonly Started[],
 ): Map<string, Grown> {
   const named = new Map(networks.map((network) => [network.key, network]));
-  const startedBy = new Map((started ?? []).map((start) => [start.cell, start.by]));
+  const startedBy = new Map(started.map((start) => [start.cell, start.by]));
   const grown = new Map<string, Grown>();
   const within = (key: string): string | null =>
     named.get(key)?.within ?? grown.get(key)?.from ?? null;

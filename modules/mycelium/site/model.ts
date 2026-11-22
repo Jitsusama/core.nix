@@ -67,9 +67,8 @@ const TIE_SEPARATOR = "~";
  * the balance service's latest reading, which a node serves only where the
  * service runs, so a map without it draws as before; the builders are
  * watched the same way, so a node too old to serve them draws none. What waits on the
- * mesh, and who started each cell, is there only once its watch has
- * answered, since a node too old to serve it would otherwise read as one
- * with nothing waiting, or no cell started by another.
+ * mesh is there only once its watch has answered, since a node too old to
+ * serve it would otherwise read as one with nothing waiting.
  */
 interface Heard {
   readonly network: Held;
@@ -146,7 +145,7 @@ interface Now {
   readonly waits: readonly Wait[] | null;
   readonly ties: readonly Tie[] | null;
   readonly fed: readonly Fed[] | null;
-  readonly started: readonly Started[] | null;
+  readonly started: readonly Started[];
   /** Every cell the forage page lists, by its address. */
   readonly foraged: readonly string[] | null;
 }

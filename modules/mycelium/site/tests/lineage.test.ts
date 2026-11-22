@@ -1,9 +1,8 @@
 // Each cell's record says who started it, on every machine, and each cell
 // of this machine that works on a quest has a forage (the node's `forage`
 // kind), whose lineage says so too: these prove what the map keeps of
-// that, that the record's word comes first, that a node too old to say
-// either reads as one that says nothing of who started whom, and which
-// network grows out of which from it.
+// that, that the record's word comes first, that a node saying neither
+// names nobody, and which network grows out of which from it.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
@@ -47,8 +46,8 @@ function told(these: readonly object[] | undefined, cells: readonly object[] = [
   return { ...heard, forage: forages };
 }
 
-it("a node that serves no forage says nothing of who started whom, not that nobody did", () => {
-  assert.equal(nowOf(told(undefined), AT).started, null);
+it("a node whose records name no starter and that serves no forage names nobody", () => {
+  assert.deepEqual(nowOf(told(undefined), AT).started, []);
   assert.deepEqual(nowOf(told([]), AT).started, []);
 });
 
@@ -66,19 +65,21 @@ it("a cell's own record is believed before its forage, which fills in where it i
     forage("HERON1", { started_by: "GULL01" }),
     forage("TERN03", { started_by: "TERN01" }),
   ];
-  assert.deepEqual(nowOf(told(these, cells), AT).started, [
-    { cell: "HERON1", by: "SKIFF1" },
-    { cell: "TERN03", by: "TERN01" },
-  ]);
+  const byCell = new Map(nowOf(told(these, cells), AT).started.map((s) => [s.cell, s.by]));
+  assert.deepEqual(
+    Object.fromEntries(byCell),
+    { HERON1: "SKIFF1", TERN03: "TERN01" },
+    "the record should name HERON1's starter over its forage, and TERN03's forage fill in",
+  );
 });
 
-it("a record naming itself, a blank or nobody, with no forage served, says nothing of whom", () => {
+it("a record naming itself, a blank or nobody, with no forage served, names nobody", () => {
   const cells = [
     record("SELF01", "kestrel", { started_by: "SELF01" }),
     record("BLANK1", "kestrel", { started_by: "" }),
     record("ALONE1", "osprey"),
   ];
-  assert.equal(nowOf(told(undefined, cells), AT).started, null);
+  assert.deepEqual(nowOf(told(undefined, cells), AT).started, []);
 });
 
 it("a cell's starter is kept as the two addresses, never the rest of its forage", () => {
@@ -125,7 +126,7 @@ function network(
 }
 
 /** What grows out of what among `networks`, each cell drawn in the network that lists it. */
-function grown(networks: readonly Network[], started: readonly Started[] | null) {
+function grown(networks: readonly Network[], started: readonly Started[]) {
   const hubOf = new Map(networks.flatMap((each) => each.cells.map((cell) => [cell, each.key])));
   return Object.fromEntries(grownOf(networks, hubOf, started));
 }
@@ -142,8 +143,8 @@ it("a network whose cell another network's cell started grows out of that networ
   });
 });
 
-it("nothing grows where the node serves no forages", () => {
-  assert.deepEqual(grown([network("skiff", ["SKIFF1"]), network("heron", ["HERON1"])], null), {});
+it("nothing grows where nobody is said to have started anybody", () => {
+  assert.deepEqual(grown([network("skiff", ["SKIFF1"]), network("heron", ["HERON1"])], []), {});
 });
 
 it("where the node sets a network stands, whoever started its cells", () => {
