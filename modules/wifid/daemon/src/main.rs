@@ -2785,7 +2785,12 @@ impl Wifid<'_> {
 
     /// Holds a card whose move never left the point it's on to that point
     /// again, and ends the move there: sent back, it would only rejoin the
-    /// point it's on. Says whether it was held.
+    /// point it's on. Says whether it was held. A move still queued behind
+    /// a look past `LOOK_ENDS` runs once it ends, unfollowed with the
+    /// card's networks on, as every move ran before ways back: holding the
+    /// network to its point doesn't stop it, as wpa_supplicant 2.12 checks
+    /// only that the point and network are still there (sme.c,
+    /// `sme_auth_start_cb`). A look over every channel takes 5 to 6 s.
     async fn stays(
         &self,
         card: &str,
@@ -3405,6 +3410,12 @@ mod tests {
         assert!(
             says_a_stranger_looked("scanning", false),
             "said as it starts the count of a card at rest"
+        );
+        // A count runs only while the stored step is "scanning", so this
+        // row guards the step's half should the two ever drift apart.
+        assert!(
+            says_a_stranger_looked("disconnected", true),
+            "said as it changes the card's step, whatever is counted"
         );
     }
 

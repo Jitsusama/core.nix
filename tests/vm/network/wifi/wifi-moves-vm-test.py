@@ -476,7 +476,6 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     # has begun by then; main.rs's decisions want unit cases for the rest.
     looked = [line for line in said if "looks again, having taken another network" in line]
     assert not looked, f"looked again off the Inn: {looked}"
-    rejoined_unpicked(machine)
 
 
 def test_joining_a_network_of_another_name_forgets_the_neighbours_of_the_last(
@@ -487,6 +486,9 @@ def test_joining_a_network_of_another_name_forgets_the_neighbours_of_the_last(
     A neighbour kept from Lantern could carry the Inn's traffic to a router that isn't there,
     were the two to give their routers one address, as many networks do.
     """
+    # Set up here rather than by the subtest before, so one that fails there, leaving the card
+    # on the Inn, doesn't fail this one too.
+    rejoined_unpicked(machine)
     knows_a_neighbour(machine)
     status, _, said = wifid.joining({"name": "Roadside Inn"})
     assert status == 0, said

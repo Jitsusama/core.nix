@@ -51,9 +51,11 @@ const LEAVING: [&str; 3] = ["authenticating", "associating", "associated"];
 /// somewhere (2026-11-16), and a good one about 100 ms.
 const FOLLOWED: Duration = Duration::from_secs(30);
 
-/// How long a move has to reach its point before its card is sent back to
-/// the one it left. Good moves reached theirs 113 and 166 ms after the ask
-/// (19 Nov 2026), and the slowest of 15 Nov went silent for 401 ms.
+/// How long a move's card has to leave the point it's on, from the ask or
+/// the end of a look it waited on, before the move is taken as unstarted
+/// and the card kept where it is. Good moves had reached their points 113
+/// and 166 ms after the ask (19 Nov 2026), so had left them sooner, and
+/// the slowest of 15 Nov went silent for 401 ms.
 pub const BACK_AFTER: Duration = Duration::from_secs(1);
 
 /// How long a way back has to reach the point it left before its card may
@@ -255,11 +257,14 @@ impl Arrivals {
     }
 
     /// Takes in that the card's look ended, so a move that waited on it
-    /// has its time from now to leave its point.
+    /// has its time from now to leave its point. A look ending once the
+    /// card has left isn't the one it waited on, whose end went unheard,
+    /// so the move keeps its time from leaving.
     pub fn looked(&mut self, card: &str, now: Instant) {
         if let Some(moving) = self.moves.get_mut(card)
             && moving.looking
             && moving.looked.is_none()
+            && moving.left.is_none()
         {
             moving.looked = Some(now);
         }
@@ -1054,6 +1059,12 @@ mod tests {
             unheard,
             Some(left + BACK_FOR),
             "from leaving, the look's end unheard"
+        );
+        arrivals.looked("wlan0", left + ms(1500));
+        assert_eq!(
+            arrivals.due(),
+            Some(left + BACK_FOR),
+            "still from leaving, as a look ending after it isn't the one it waited on"
         );
     }
 
