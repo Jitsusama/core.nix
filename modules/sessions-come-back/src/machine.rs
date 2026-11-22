@@ -16,12 +16,20 @@ use std::thread;
 use std::time::{Duration, Instant};
 use terminal_kit::{Exit, Failure};
 
-/// Why a command gave no answer: it failed, saying why, or said nothing
-/// in time and was stopped.
+/// Why a command gave no answer: it failed, saying why; it was still
+/// running at its limit; it was still running at its limit, much of
+/// which went on starting it; or it ended, but what it printed didn't
+/// come through by its limit, nor `READ_AFTER_END` after it ended, as
+/// when it leaves a process holding its output, or when the reader
+/// itself is starved. Each was stopped, and the stalls are told apart
+/// since only the first is the command's own slowness: a start held up
+/// is the machine's, or this agent's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Unheard {
     Failed(String),
     Late(Duration),
+    LateToStart { limit: Duration, starting: Duration },
+    Unread(Duration),
 }
 
 impl fmt::Display for Unheard {
@@ -29,6 +37,26 @@ impl fmt::Display for Unheard {
         match self {
             Self::Failed(why) => f.write_str(why),
             Self::Late(limit) => write!(f, "no answer within {} s", limit.as_secs()),
+            // A start can take longer than the whole limit, when the read
+            // is stopped at its first look.
+            Self::LateToStart { limit, starting } if starting >= limit => write!(
+                f,
+                "no answer, since starting it took {:.1} s, past its {} s limit",
+                starting.as_secs_f64(),
+                limit.as_secs()
+            ),
+            Self::LateToStart { limit, starting } => write!(
+                f,
+                "no answer within {} s, {:.1} s of which went on starting it",
+                limit.as_secs(),
+                starting.as_secs_f64()
+            ),
+            Self::Unread(limit) => write!(
+                f,
+                "it ended, but what it printed wasn't read within {} s, nor {} s after it ended",
+                limit.as_secs(),
+                READ_AFTER_END.as_secs()
+            ),
         }
     }
 }
@@ -49,16 +77,57 @@ pub(super) fn era_of(uuid: &str, who: &str, user: &str) -> Result<String, String
     Ok(format!("{uuid} {login}"))
 }
 
-/// Which boot and login this is: a Mac's, or Linux's boot id.
-pub(super) fn era() -> Result<String, Failure> {
-    let unread = |why: String| {
-        Failure::new(Exit::Unavailable, "it couldn't read which boot this is").because(why)
-    };
+/// Which boot and login this is: a Mac's, or Linux's boot id. A Mac's
+/// read slow to answer is told to `slow`.
+pub(super) fn era(slow: &dyn Fn(&str)) -> Result<String, Failure> {
     if let Ok(id) = fs::read_to_string("/proc/sys/kernel/random/boot_id") {
         return Ok(id.trim().into());
     }
-    let ran =
-        |command: &mut Command| within(command, LOOK_WITHIN).map_err(|e| unread(e.to_string()));
+    mac_era(&|command| within(command, LOOK_WITHIN), slow)
+}
+
+/// How long a Mac's boot read may take to answer before it's told, though
+/// it answered: each answers in milliseconds by hand, so one that took
+/// this long was held up, and when that happens says whether the
+/// stalls line up with the Mac's busy spells.
+pub(super) const SLOW_READ: Duration = Duration::from_secs(1);
+
+/// A Mac's boot and login, from what `look` reads of each program. A read
+/// that fails names its program, since a Mac's three each answer at once
+/// by hand, and only the name says which one a busy Mac held up. One that
+/// answered but took `SLOW_READ` or longer is told to `slow`, with how
+/// long it took; one that failed after as long says so in its failure,
+/// since a stall that ends in failure is told apart from a read refused
+/// at once only by its time. A stall stopped at its limit says its time
+/// already.
+pub(super) fn mac_era(
+    look: &dyn Fn(&mut Command) -> Result<String, Unheard>,
+    slow: &dyn Fn(&str),
+) -> Result<String, Failure> {
+    let unread = |why: String| {
+        Failure::new(Exit::Unavailable, "it couldn't read which boot this is").because(why)
+    };
+    let ran = |command: &mut Command| {
+        let program = command.get_program().display().to_string();
+        let asked = Instant::now();
+        let answer = look(command).map_err(|e| {
+            let took = asked.elapsed();
+            unread(match e {
+                Unheard::Failed(_) if took >= SLOW_READ => {
+                    format!("{program}: {e}, after {:.1} s", took.as_secs_f64())
+                }
+                _ => format!("{program}: {e}"),
+            })
+        })?;
+        let took = asked.elapsed();
+        if took >= SLOW_READ {
+            slow(&format!(
+                "{program} answered the boot read, but took {:.1} s",
+                took.as_secs_f64()
+            ));
+        }
+        Ok(answer)
+    };
     let uuid = ran(Command::new("/usr/sbin/sysctl").args(["-n", "kern.bootsessionuuid"]))?;
     let who = ran(Command::new("/usr/bin/who").env("TZ", "UTC0"))?;
     let user = ran(Command::new("/usr/bin/id").arg("-un"))?;
@@ -103,6 +172,30 @@ const KILL: &str = if cfg!(target_os = "macos") {
     "kill"
 };
 
+/// How long what a command printed has to come through once it ended,
+/// whatever its limit has left, so one that ends just at its limit is
+/// read rather than told as unread: only output held back, or a reader
+/// starved, keeps it longer.
+pub(super) const READ_AFTER_END: Duration = Duration::from_secs(2);
+
+/// When what a command printed has to have been read by, once it ended.
+pub(super) fn read_by(deadline: Instant, ended: Instant) -> Instant {
+    deadline.max(ended + READ_AFTER_END)
+}
+
+/// Why a command still running at its `limit` was stopped: plain late,
+/// unless starting it took `READ_AFTER_END` or more of the limit, which a
+/// program that answers at once never does, when that's said too.
+/// `starting` is only how long spawning it took, so a program slow to load
+/// once it runs, as with a cold dynamic loader, still reads as plain late.
+pub(super) fn late(limit: Duration, starting: Duration) -> Unheard {
+    if starting >= READ_AFTER_END {
+        Unheard::LateToStart { limit, starting }
+    } else {
+        Unheard::Late(limit)
+    }
+}
+
 /// Reads a pipe whole on a thread of its own, and sends what it read.
 fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<String> {
     let (send, heard) = mpsc::channel();
@@ -120,7 +213,8 @@ fn drain(pipe: Option<impl Read + Send + 'static>) -> mpsc::Receiver<String> {
 /// answer in time, and was stopped with everything it started, so a node
 /// that hangs, or leaves a process holding its output, holds up no run.
 pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, Unheard> {
-    let deadline = Instant::now() + limit;
+    let asked = Instant::now();
+    let deadline = asked + limit;
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -128,9 +222,10 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
         .process_group(0)
         .spawn()
         .map_err(|e| Unheard::Failed(e.to_string()))?;
+    let starting = asked.elapsed();
     let out = drain(child.stdout.take());
     let err = drain(child.stderr.take());
-    let stop = |child: &mut std::process::Child| {
+    let stop = |child: &mut std::process::Child, why: Unheard| {
         let _ = Command::new(KILL)
             .args(["-KILL", "--", &format!("-{}", child.id())])
             .stdout(Stdio::null())
@@ -138,7 +233,7 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
             .status();
         let _ = child.kill();
         let _ = child.wait();
-        Unheard::Late(limit)
+        why
     };
     let status = loop {
         if let Some(status) = child
@@ -148,13 +243,14 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
             break status;
         }
         if Instant::now() >= deadline {
-            return Err(stop(&mut child));
+            return Err(stop(&mut child, late(limit, starting)));
         }
         thread::sleep(Duration::from_millis(50));
     };
-    let left = || deadline.saturating_duration_since(Instant::now());
+    let read_by = read_by(deadline, Instant::now());
+    let left = || read_by.saturating_duration_since(Instant::now());
     let (Ok(out), Ok(err)) = (out.recv_timeout(left()), err.recv_timeout(left())) else {
-        return Err(stop(&mut child));
+        return Err(stop(&mut child, Unheard::Unread(limit)));
     };
     if status.success() {
         Ok(out)
@@ -163,6 +259,12 @@ pub(super) fn within(command: &mut Command, limit: Duration) -> Result<String, U
             .into_iter()
             .filter(|said| !said.is_empty())
             .collect();
-        Err(Unheard::Failed(said.join("; ")))
+        // One that said nothing is told by how it ended, an exit code or
+        // the signal that stopped it, rather than by nothing at all.
+        Err(Unheard::Failed(if said.is_empty() {
+            status.to_string()
+        } else {
+            said.join("; ")
+        }))
     }
 }
