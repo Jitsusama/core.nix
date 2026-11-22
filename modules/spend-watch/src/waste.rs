@@ -476,7 +476,7 @@ mod tests {
                 models, expected,
                 "the span from {from} to {to} cut models otherwise"
             );
-            let mut sessions = work(&history, from, to).expect("the work reads");
+            let mut sessions = super::work(&history, from, to).expect("the work reads");
             sessions.sort_by(|one, other| one.session.cmp(&other.session));
             let mut agents: Vec<Work> = Vec::new();
             for name in (0..5).map(|i| format!("s{i}")) {
