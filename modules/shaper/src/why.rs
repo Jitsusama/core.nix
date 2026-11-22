@@ -27,8 +27,14 @@ pub enum Why {
     /// cuts didn't drain it, so it goes unheeded.
     Far { delay_ms: f64 },
     /// The VPN waited this long, in ms, inside its own tunnel, under a
-    /// line with room, so its own queue is held to `share` of its lane.
-    Tunnel { delay_ms: f64, share: f64 },
+    /// line with room, so its own queue is held to `share` of its lane;
+    /// `agents` is the share agents straight are still held to, climbing
+    /// back from an earlier hold, while they wait, since it caps them too.
+    Tunnel {
+        delay_ms: f64,
+        share: f64,
+        agents: Option<f64>,
+    },
     /// The VPN waited this long, in ms, past our queues while agents sent
     /// straight on the connection, so their lane is held to `share` of
     /// what it's split.
@@ -90,10 +96,19 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             "Upload {rate}: the VPN reads {delay_ms:.0} ms past the line, which no cut here \
              reaches, so none is made."
         ),
-        Why::Tunnel { delay_ms, share } => format!(
+        Why::Tunnel {
+            delay_ms,
+            share,
+            agents,
+        } => format!(
             "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
-             is held to {:.0}% of its lane; {held}.",
-            share * 100.0
+             is held to {:.0}% of its lane{}; {held}.",
+            share * 100.0,
+            agents.map_or_else(String::new, |agents| format!(
+                ", and agents' lane, still climbing back, to {:.0}% of its share, or its floor \
+                 if more",
+                agents * 100.0
+            ))
         ),
         // The lanes never hold agents under their floor, which the
         // controller doesn't know, so the share is said as at most.
@@ -246,7 +261,8 @@ mod tests {
             say(
                 Why::Tunnel {
                     delay_ms: 118.6,
-                    share: 0.723
+                    share: 0.723,
+                    agents: None,
                 },
                 Some(10_800),
                 Some(12_000.0),
@@ -254,6 +270,21 @@ mod tests {
             ),
             "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
              held to 72% of its lane; held so for 8 s."
+        );
+        assert_eq!(
+            say(
+                Why::Tunnel {
+                    delay_ms: 118.6,
+                    share: 0.723,
+                    agents: Some(0.814),
+                },
+                Some(10_800),
+                Some(12_000.0),
+                8.0
+            ),
+            "Upload 10.8 Mb/s: the VPN waited 119 ms inside its tunnel, so its own queue is \
+             held to 72% of its lane, and agents' lane, still climbing back, to 81% of its \
+             share, or its floor if more; held so for 8 s."
         );
     }
 
