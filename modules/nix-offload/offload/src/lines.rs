@@ -516,8 +516,8 @@ pub struct HostKeys {
     asked: HashMap<(String, String), Asked>,
     config: PathBuf,
     said: HashMap<String, String>,
-    /// Whether the project's metadata holds, and when that was asked.
-    project: Option<(Instant, Result<(), String>)>,
+    /// The project as the cloud last described it, and when that was asked.
+    project: Option<(Instant, Value)>,
 }
 
 impl HostKeys {
@@ -714,7 +714,7 @@ impl HostKeys {
         let described = self.describe(settings, "instances", name, zone, token)?;
         let started = vet::vetted(&described, pinned)?;
         let marks = vet::marks(&described).ok_or("says nothing of its fingerprints".to_owned())?;
-        self.project_holds(settings, token)?;
+        self.project_holds(settings, token, &described)?;
         match first {
             Some((first, _, _)) if first != started => Err(Unvouched::Refused(format!(
                 "started again at {started}, after root first trusted it at {first}"
@@ -743,21 +743,38 @@ impl HostKeys {
         }
     }
 
-    /// Whether the project's metadata holds, as [`vet::project_holds`]
-    /// says, asked again every [`ASK_AGAIN`] while the cloud answers.
-    fn project_holds(&mut self, settings: &Settings, token: &Path) -> Result<(), Unvouched> {
-        if let Some((at, holds)) = &self.project
-            && at.elapsed() < ASK_AGAIN
-        {
-            return holds.clone().map_err(Unvouched::Refused);
-        }
-        let words = ["compute", "project-info", "describe", "--format=json"];
-        let said = self.gcloud(settings, &words, token)?;
-        let described: Value = serde_json::from_str(&said)
-            .map_err(|_| Unvouched::Unanswered("its project's answer wasn't JSON".to_owned()))?;
-        let holds = vet::project_holds(&described);
-        self.project = Some((Instant::now(), holds.clone()));
-        holds.map_err(Unvouched::Refused)
+    /// Whether the project's metadata holds for the instance `instance`,
+    /// as [`vet::project_holds`] says, the project asked again every
+    /// [`ASK_AGAIN`] while the cloud answers. A key it lets through that
+    /// root doesn't know is journalled once, so it can be looked into.
+    fn project_holds(
+        &mut self,
+        settings: &Settings,
+        token: &Path,
+        instance: &Value,
+    ) -> Result<(), Unvouched> {
+        let described = match &self.project {
+            Some((at, described)) if at.elapsed() < ASK_AGAIN => described.clone(),
+            _ => {
+                let words = ["compute", "project-info", "describe", "--format=json"];
+                let said = self.gcloud(settings, &words, token)?;
+                let described: Value = serde_json::from_str(&said).map_err(|_| {
+                    Unvouched::Unanswered("its project's answer wasn't JSON".to_owned())
+                })?;
+                self.project = Some((Instant::now(), described.clone()));
+                described
+            }
+        };
+        let unknown = vet::project_holds(&described, instance).map_err(Unvouched::Refused)?;
+        let noted = (!unknown.is_empty()).then(|| {
+            format!(
+                "the project sets the metadata {}, which root doesn't know; it is no boot \
+                 script or ssh key, so builders are lent still",
+                unknown.join(", ")
+            )
+        });
+        self.say("the project", noted);
+        Ok(())
     }
 
     /// A copy of the token in `token`, which the lender's account writes,
@@ -1602,6 +1619,27 @@ mod tests {
             lent_to_root(&dir),
             "",
             "a project's startup script was let run"
+        );
+    }
+
+    #[test]
+    fn a_project_key_root_doesnt_know_leaves_a_trusted_builder_lent() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        let project = json!({"commonInstanceMetadata": {"items": [
+            {"key": "ssh-keys", "value": "someone:ssh-ed25519 AAAA"},
+            {"key": "gke-a-cluster-0e6a923f-secondary-ranges", "value": "pods:default"},
+        ]}});
+        fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "a cloud product's own project key took a trusted builder away"
         );
     }
 

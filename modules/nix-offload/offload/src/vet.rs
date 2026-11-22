@@ -20,7 +20,11 @@
 //! then on its fingerprints must stay as they were, since any change
 //! moves them, even one undone between two looks. The project's own
 //! metadata, which every instance takes where it sets nothing itself, may
-//! hold only what each builder's own overrides.
+//! hold no script the guest agent would run at boot and no ssh keys it
+//! would make accounts of, unless the builder sets its own. Any other
+//! project key is let through and said, since a cloud product such as
+//! GKE writes keys of its own there that no guest agent reads, and
+//! refusing on one stopped every builder on 22 November.
 
 use serde_json::Value;
 
@@ -36,9 +40,24 @@ const METADATA: [&str; 7] = [
     "startup-script",
 ];
 
-/// The project's metadata a lent builder may sit under: each overridden
-/// by the instance's own `block-project-ssh-keys` and `enable-oslogin`.
+/// The project's metadata a lent builder sits under unremarked: each
+/// overridden by the instance's own `block-project-ssh-keys` and
+/// `enable-oslogin`.
 const PROJECT_METADATA: [&str; 2] = ["enable-oslogin", "ssh-keys"];
+
+/// The project's scripts the guest agent runs on an instance that doesn't
+/// set its own of the same name, which would hand every builder to
+/// whoever wrote one.
+const PROJECT_SCRIPTS: [&str; 4] = [
+    "shutdown-script",
+    "shutdown-script-url",
+    "startup-script",
+    "startup-script-url",
+];
+
+/// The project's ssh keys, under both names the guest agent reads, which
+/// it makes sudoers of on an instance not blocking them.
+const PROJECT_SSH_KEYS: [&str; 2] = ["ssh-keys", "sshKeys"];
 
 /// The call that makes an instance, as the audit log names it.
 const MAKING: &str = ".compute.instances.insert";
@@ -168,22 +187,48 @@ pub fn marks(described: &Value) -> Option<String> {
     Some(format!("{instance} {metadata}"))
 }
 
-/// Whether the project `described` sets no metadata a builder would take
-/// but what its own overrides; why not otherwise.
-pub fn project_holds(described: &Value) -> Result<(), String> {
-    let items = described["commonInstanceMetadata"]["items"]
+/// Whether the project `described` sets no script or ssh keys the
+/// instance `instance` would take, with the project's keys it lets
+/// through that root doesn't know; why not otherwise.
+pub fn project_holds(described: &Value, instance: &Value) -> Result<Vec<String>, String> {
+    let keys = |items: &Value| -> Vec<String> {
+        items
+            .as_array()
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .filter_map(|item| item["key"].as_str().map(str::to_owned))
+            .collect()
+    };
+    let own = keys(&instance["metadata"]["items"]);
+    let blocks = instance["metadata"]["items"]
         .as_array()
-        .map_or(&[][..], Vec::as_slice);
-    match items
+        .map_or(&[][..], Vec::as_slice)
         .iter()
-        .filter_map(|item| item["key"].as_str())
-        .find(|key| !PROJECT_METADATA.contains(key))
-    {
-        Some(other) => Err(format!(
-            "sits in a project setting the metadata {other}, which every builder would take"
-        )),
-        None => Ok(()),
+        .any(|item| {
+            item["key"] == "block-project-ssh-keys"
+                && item["value"]
+                    .as_str()
+                    .is_some_and(|said| said.eq_ignore_ascii_case("true"))
+        });
+    let mut unknown = Vec::new();
+    for key in keys(&described["commonInstanceMetadata"]["items"]) {
+        let script = PROJECT_SCRIPTS.contains(&key.as_str());
+        if script && !own.contains(&key) {
+            return Err(format!(
+                "sits in a project setting the metadata {key}, which every builder would run"
+            ));
+        }
+        if PROJECT_SSH_KEYS.contains(&key.as_str()) && !blocks {
+            return Err(format!(
+                "sits in a project setting the metadata {key}, whose keys every builder \
+                 would take"
+            ));
+        }
+        if !script && !PROJECT_METADATA.contains(&key.as_str()) {
+            unknown.push(key);
+        }
     }
+    Ok(unknown)
 }
 
 /// Whether the audit log's `entries` for an instance and its boot disk
@@ -379,28 +424,67 @@ mod tests {
     }
 
     #[test]
-    fn a_project_may_set_only_what_each_builder_overrides() {
-        let project = |keys: &[&str]| {
-            let items: Vec<Value> = keys
+    fn a_project_may_set_no_boot_script_or_ssh_key_a_builder_would_take() {
+        let items = |pairs: &[(&str, &str)]| -> Vec<Value> {
+            pairs
                 .iter()
-                .map(|key| json!({"key": key, "value": "x"}))
-                .collect();
-            json!({"commonInstanceMetadata": {"items": items}})
+                .map(|(key, value)| json!({"key": key, "value": value}))
+                .collect()
         };
+        let project = |keys: &[&str]| {
+            let pairs: Vec<(&str, &str)> = keys.iter().map(|key| (*key, "x")).collect();
+            json!({"commonInstanceMetadata": {"items": items(&pairs)}})
+        };
+        let builder = json!({"metadata": {"items": items(&[
+            ("block-project-ssh-keys", "TRUE"),
+            ("startup-script", "#!/bin/bash\n"),
+        ])}});
+        let open = json!({"metadata": {"items": items(&[("startup-script", "#!/bin/bash\n")])}});
         assert_eq!(
-            project_holds(&project(&["enable-oslogin", "ssh-keys"])),
-            Ok(())
+            project_holds(&project(&["enable-oslogin", "ssh-keys"]), &builder),
+            Ok(vec![]),
+            "what every builder overrides was remarked on"
         );
         assert_eq!(
-            project_holds(&json!({})),
-            Ok(()),
-            "a project setting nothing"
+            project_holds(&json!({}), &builder),
+            Ok(vec![]),
+            "a project setting nothing was refused"
         );
-        for other in ["startup-script-url", "enable-osconfig"] {
-            let refused = project_holds(&project(&["ssh-keys", other]));
+        assert_eq!(
+            project_holds(&project(&["startup-script"]), &builder),
+            Ok(vec![]),
+            "a script the builder sets its own of was refused"
+        );
+        let gke = "gke-a-cluster-0e6a923f-secondary-ranges";
+        assert_eq!(
+            project_holds(&project(&["ssh-keys", gke, "enable-osconfig"]), &builder),
+            Ok(vec![gke.to_owned(), "enable-osconfig".to_owned()]),
+            "a key root doesn't know wasn't let through and named"
+        );
+        for script in PROJECT_SCRIPTS
+            .iter()
+            .filter(|key| **key != "startup-script")
+        {
+            let refused = project_holds(&project(&["ssh-keys", script]), &builder);
             assert!(
-                refused.is_err_and(|why| why.contains(other)),
-                "a project setting {other} was taken"
+                refused.is_err_and(|why| why.contains(script)),
+                "a project's {script} was let run"
+            );
+        }
+        for keys in PROJECT_SSH_KEYS {
+            let refused = project_holds(&project(&[keys]), &open);
+            assert!(
+                refused.is_err_and(|why| why.contains(keys)),
+                "a project's {keys} reached a builder not blocking them"
+            );
+            assert_eq!(
+                project_holds(&project(&[keys]), &builder),
+                Ok(if keys == "ssh-keys" {
+                    vec![]
+                } else {
+                    vec![keys.to_owned()]
+                }),
+                "a project's {keys} was refused though the builder blocks them"
             );
         }
     }
