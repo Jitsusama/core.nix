@@ -12,11 +12,15 @@
 //! Everything that may stop a switch stays the daemon's to judge: a call,
 //! a hold, a low battery, a daemon whose restart needs a hold, and asks
 //! that come while an update runs join it. The asker only chooses when to
-//! ask: again soon after a refusal for being busy, not again at heads that
-//! failed until they move or a while has passed, sooner when what failed
-//! was a builder going away mid-build, and not at all after a
-//! refusal for a held daemon until the machine's last ending changes,
-//! since only a person's ask, with a hold sent, gets that one through.
+//! ask: again soon after a refusal for being busy, unless the machine runs
+//! the heads already, not again at heads that failed until they move or a
+//! while has passed, sooner when what failed was a builder going away
+//! mid-build, and not at all after a refusal for a held daemon until the
+//! machine's last ending changes, since only a person's ask, with a hold
+//! sent, gets that one through.
+//!
+//! Long because half of it is the tests of when to ask, each a timeline
+//! of asks and endings that reads only beside the `Follower` it drives.
 
 use crate::config::{Config, Hosted};
 use crate::follows::Followed;
