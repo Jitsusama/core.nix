@@ -123,11 +123,16 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
 /// This minute's ask of each TV eero's record lists, through `read`,
 /// which asks the box at an address, remembering each TV in `tvs`. Only
 /// a record net read, listing devices, says which TVs have left, so a
-/// minute net couldn't read eero's record asks none and forgets none, and
-/// a TV keeps its name. A record listing no devices was written before
-/// eero's device list was first read, not by a home with nothing on it,
-/// so it is taken the same way. Through an outage of eero's cloud, its
-/// daemon keeps the last list it read, so the TVs on it are still asked.
+/// minute net couldn't read eero's record (the daemon's `Err`: the file
+/// is missing, can't be opened or doesn't parse) asks none and forgets
+/// none, and a TV keeps its name. A record whose devices are missing,
+/// null, empty or not a list was written before eero's device list was
+/// first read, not by a home with nothing on it, so it is taken the same
+/// way. A TV is forgotten only once eero knows it neither on nor off:
+/// one eero lists as off, or lists this minute without the address,
+/// maker or kind it's asked by, keeps its name for the minute it's back.
+/// Through an outage of eero's cloud, its daemon keeps the last list it
+/// read, so the TVs on it are still asked.
 pub fn ask<E>(
     tvs: &mut Heard,
     eero: &Result<Value, E>,
@@ -143,9 +148,8 @@ pub fn ask<E>(
     if !lists_devices {
         return Vec::new();
     }
-    let listed = listed(eero);
-    forget_unlisted(tvs, &listed);
-    listed
+    forget_unknown(tvs, eero);
+    listed(eero)
         .into_iter()
         .map(|(mac, address)| {
             let reply = read(&address);
@@ -169,10 +173,16 @@ fn remember(heard: &mut Heard, mac: String, reply: Reply) -> Asked {
     }
 }
 
-/// Forgets each TV eero no longer lists, so the memory holds only the TVs
-/// on the network now, however many boxes have answered as one.
-fn forget_unlisted(heard: &mut Heard, listed: &[(String, String)]) {
-    heard.retain(|mac, _| listed.iter().any(|(listed, _)| listed == mac));
+/// Forgets each TV eero knows neither on nor off, so the memory holds
+/// only TVs eero still knows, however many boxes have answered as one.
+fn forget_unknown(heard: &mut Heard, eero: &Value) {
+    let known: Vec<&str> = ["devices", "devices_off"]
+        .into_iter()
+        .filter_map(|list| eero.get(list).and_then(Value::as_array))
+        .flatten()
+        .filter_map(|device| device.get("mac").and_then(Value::as_str))
+        .collect();
+    heard.retain(|mac, _| known.contains(&mac.as_str()));
 }
 
 /// Each TV as it answered, or as it last answered while it's silent, and
@@ -313,7 +323,12 @@ pub mod tests {
 
     /// The contract's TV, asked once, as the daemon's first minute asks it.
     pub fn asked() -> Asked {
-        remember(&mut Heard::new(), MAC.into(), Reply::Page(answer()))
+        answered(answer())
+    }
+
+    /// The TV, asked once, giving `answer`.
+    pub fn answered(answer: Answer) -> Asked {
+        remember(&mut Heard::new(), MAC.into(), Reply::Page(answer))
     }
 
     /// The TV as eero lists it: by the name it gives when it takes an
@@ -547,8 +562,17 @@ pub mod tests {
         other
     }
 
+    /// A box eero lists that isn't a Samsung, so it's never asked.
+    fn phone() -> Value {
+        let mut phone = listing();
+        phone["mac"] = json!("02:00:00:00:00:94");
+        phone["address"] = json!("10.0.0.94");
+        phone["make"] = json!("Apple");
+        phone
+    }
+
     #[test]
-    fn a_tv_eero_no_longer_lists_is_forgotten() {
+    fn a_tv_eero_no_longer_knows_is_forgotten() {
         let mut tvs = Heard::new();
         let both = Ok::<Value, String>(json!({"devices": [listing(), other()]}));
         ask(&mut tvs, &both, |_| Reply::Page(answer()));
@@ -556,6 +580,45 @@ pub mod tests {
         ask(&mut tvs, &one, |_| silent());
         let kept = tvs.keys().collect::<Vec<_>>();
         assert_eq!(kept, [OTHER], "a TV that left is still remembered");
+        let none = Ok::<Value, String>(json!({"devices": [phone()]}));
+        let asked = ask(&mut tvs, &none, |_| silent());
+        assert!(
+            asked.is_empty() && tvs.is_empty(),
+            "a record listing no TV kept the last TV or asked one: {:?}",
+            tvs.keys().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn a_tv_eero_still_knows_keeps_its_name_while_it_cant_be_asked() {
+        let mut addressless = listing();
+        addressless["address"] = Value::Null;
+        let mut unplaced = listing();
+        unplaced["make"] = Value::Null;
+        let off = json!({"mac": MAC, "name": "samsung", "make": "Samsung"});
+        for (case, eero) in [
+            ("listed with no address", json!({"devices": [addressless]})),
+            ("listed with no maker", json!({"devices": [unplaced]})),
+            (
+                "listed as off",
+                json!({"devices": [phone()], "devices_off": [off]}),
+            ),
+        ] {
+            let mut tvs = Heard::new();
+            let on = Ok::<Value, String>(json!({"devices": [listing()]}));
+            ask(&mut tvs, &on, |_| Reply::Page(answer()));
+            let asked = ask(&mut tvs, &Ok::<Value, String>(eero), |_| silent());
+            assert!(asked.is_empty(), "a TV {case} was asked");
+            let (_, found) = read(ask(&mut tvs, &on, |_| silent()), NOW);
+            assert_eq!(
+                found
+                    .iter()
+                    .map(|tv| tv.name.as_deref())
+                    .collect::<Vec<_>>(),
+                [Some("Living Room")],
+                "a TV {case} for a minute lost its name"
+            );
+        }
     }
 
     #[test]
@@ -582,7 +645,7 @@ pub mod tests {
     }
 
     #[test]
-    fn a_tv_keeps_its_name_through_a_minute_eero_didnt_answer() {
+    fn a_tv_keeps_its_name_through_a_minute_net_couldnt_read_eero() {
         let mut heard = Heard::new();
         let eero = Ok::<Value, String>(json!({"devices": [listing()]}));
         let mut addresses = Vec::new();

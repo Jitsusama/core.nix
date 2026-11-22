@@ -181,8 +181,11 @@ what net says of the day.
   too; a daemon starting while every TV sleeps names no TV source until
   one answers. Only an answer that isn't a
   TV's (another page, an error status, a redirect or a page past 64 KB),
-  while no TV answers as one, makes it unreachable. A TV switched off leaves eero's list, so
-  it isn't asked, and is forgotten. The answer stays as
+  while no TV answers as one, makes it unreachable. A TV switched off
+  leaves eero's list of devices on, so it isn't asked; it's forgotten
+  only once eero knows it neither on nor off. A minute net can't read
+  eero's record (it's missing, can't be opened or doesn't parse), or
+  one listing no devices, asks no TV and forgets none. The answer stays as
   `detail.samsung`, but for its ids and the addresses eero gives. Sending
   it a key waits on Joel pressing Allow on the TV, so none is sent.
 
