@@ -190,7 +190,10 @@ fn executable(path: &Path, script: &str) {
 /// adds what `NIX_SSHOPTS` said to `nix-sshopts`, and while the
 /// `loses-copy` file is there, the first loses its builder, saying what
 /// the file holds or, where it's empty, what ssh says as its keepalives
-/// give up, and takes the file away.
+/// give up, and takes the file away. Its ssh is one whose pinned host-key
+/// file went, with no tty: it writes to `nix-asked` where it would ask
+/// through `SSH_ASKPASS`, unless `BatchMode=yes` or
+/// `SSH_ASKPASS_REQUIRE=never` says not to.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
@@ -199,6 +202,11 @@ echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
 case "$*" in
   "copy "*"--to "*)
     echo "${NIX_SSHOPTS:-}" >> "$here/nix-sshopts"
+    case "${NIX_SSHOPTS:-}" in *BatchMode=yes*) batch=1 ;; *) batch= ;; esac
+    if [ -z "$batch" ] && [ -n "${SSH_ASKPASS:-}" ] &&
+      [ "${SSH_ASKPASS_REQUIRE:-}" != never ]; then
+      echo "asked through $SSH_ASKPASS" >> "$here/nix-asked"
+    fi
     if [ -f "$here/loses-copy" ]; then
       said=$(cat "$here/loses-copy")
       rm -f "$here/loses-copy"
@@ -1811,8 +1819,40 @@ fn a_run_that_gives_its_copy_longer_is_heard_ahead_of_the_cut() {
     let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
     assert_eq!(
         sshopts.trim_end(),
-        "-o ServerAliveCountMax=40 -o ServerAliveInterval=5 -o ServerAliveCountMax=3",
+        "-o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveCountMax=40 \
+         -o ServerAliveInterval=5 -o ServerAliveCountMax=3",
         "the run's own options didn't reach its copy first"
+    );
+}
+
+#[test]
+fn a_copy_up_never_asks_through_askpass_once_its_host_key_file_is_gone() {
+    // At 22:37 on 21 November something emptied /tmp under the copies
+    // up, taking the host-key file each one's Nix had written there, and
+    // each copy's ssh, with no tty, asked Joel through his askpass
+    // whether to trust the builder: about 22 dialogs in six minutes.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .env("NIX_OFFLOAD_VM_DIR", "/nonexistent/nix-offload-vm")
+        .env("SSH_ASKPASS", folder.path().join("askpass"))
+        .env("SSH_ASKPASS_REQUIRE", "force")
+        .env("DISPLAY", ":0")
+        .env_remove("NIX_SSHOPTS")
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let asked = fs::read_to_string(folder.path().join("nix-asked")).unwrap_or_default();
+    assert_eq!(asked, "", "a copy up's ssh could ask Joel");
+    let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
+    assert!(
+        sshopts.starts_with("-o BatchMode=yes -o StrictHostKeyChecking=yes "),
+        "a copy up's ssh may ask, or trust a key it wasn't given: {sshopts}"
     );
 }
 
