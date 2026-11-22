@@ -1379,9 +1379,18 @@ impl Kept {
 /// The lender's folder a build goes to: `more`, the second's, while the
 /// first's builder is full or doesn't answer, as `there::to_second`
 /// decides, else `first`. A build waits for the first while none stands,
-/// as it always has.
+/// as it always has, but not while one stands that root doesn't vouch
+/// for yet and the second's does: it would wait on root with the second
+/// idle.
 fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
     let Some(stands) = standing(first) else {
+        if there::unvouched(first) && standing(more).is_some() {
+            eprintln!(
+                "nix-offload: root doesn't vouch for the lent builder yet, and the second's it \
+                 does, so this goes to the second"
+            );
+            return more.to_owned();
+        }
         return first.to_owned();
     };
     let busy = |store: String| there::pressure(&store, scratch, "ssh");

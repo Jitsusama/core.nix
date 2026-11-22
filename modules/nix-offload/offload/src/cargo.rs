@@ -235,10 +235,13 @@ pub fn cargo(arguments: &[String], lenders: [&Path; 2]) -> Result<(), Failure> {
     let here = env::var_os("NIX_OFFLOAD_CARGO").is_some_and(|value| value == "here");
     let way = if here { Way::As } else { way(words) };
     let way = match way {
+        // A builder that stands counts though root doesn't vouch for it
+        // yet, since `there --run` waits for root as it does for any run,
+        // where running the whole tree here would take the machine.
         Way::There => going(
             lenders
                 .iter()
-                .any(|lender| crate::standing(lender).is_some()),
+                .any(|lender| crate::there::builder_stands(lender)),
             committed(),
         ),
         other => other,

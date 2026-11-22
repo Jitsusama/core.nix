@@ -3226,9 +3226,12 @@ fn names(text: &str, lender: &str, host_key: &str) -> bool {
 
 /// Root's file of the builders it vouches for, or the one
 /// `NIX_OFFLOAD_VOUCHED` names for a test; set empty, it's ignored and
-/// root's file is read, so naming nothing can't turn the check off. The
-/// crate's own tests never read the machine's file, which names none of
-/// their builders.
+/// root's file is read. Naming a file that isn't there vouches for every
+/// builder, as a machine without nix-offload-lines does: this check keeps
+/// runs off builders root won't trust, and root's daemon trust and the
+/// fence's agent are what refuse them, which no variable of the caller's
+/// changes. The crate's own tests never read the machine's file, which
+/// names none of their builders.
 fn vouching() -> PathBuf {
     match std::env::var_os("NIX_OFFLOAD_VOUCHED") {
         Some(file) if !file.is_empty() => PathBuf::from(file),
@@ -3269,8 +3272,10 @@ pub fn vouched_store(dir: &Path) -> Option<String> {
 
 /// [`vouched_store`], as root's `file` says.
 fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
-    // Each folder is said once a run, however often it's looked at.
-    static SAID: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
+    // Each builder is said once a process, however often it's looked at,
+    // so a lender that reads it every tick says each new one again.
+    static SAID: std::sync::Mutex<BTreeSet<(PathBuf, String)>> =
+        std::sync::Mutex::new(BTreeSet::new());
     let store = fs::read_to_string(dir.join("store"))
         .ok()
         .filter(|store| !store.trim().is_empty())?;
@@ -3279,7 +3284,7 @@ fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
     }
     if SAID
         .lock()
-        .is_ok_and(|mut said| said.insert(dir.to_path_buf()))
+        .is_ok_and(|mut said| said.insert((dir.to_path_buf(), store.clone())))
     {
         eprintln!(
             "nix-offload: root doesn't vouch for the builder in {} as {} says, so nothing goes \
@@ -3292,7 +3297,7 @@ fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
 }
 
 /// Whether `dir`'s lender names a builder that stands, vouched for or not.
-fn builder_stands(dir: &Path) -> bool {
+pub fn builder_stands(dir: &Path) -> bool {
     fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty())
 }
 
@@ -4125,13 +4130,19 @@ pub fn admitted<'a>(
     let mut place: Option<Claim> = None;
     loop {
         // A builder root doesn't vouch for takes no room while another it
-        // does has some, so a run isn't held there waiting on root while
-        // that one stands idle; with none, the run claims room here and
+        // does stands, so a run isn't held there waiting on root while
+        // that one stands idle or frees room: it waits for whichever
+        // comes first. With none vouched, the run claims room here and
         // waits on root as a run sent here would.
-        if unvouched(dir)
-            && let Some((other, claimed)) = others
+        let vouched_others: Vec<&Path> = others
+            .iter()
+            .copied()
+            .filter(|other| vouched_store(other).is_some())
+            .collect();
+        let held_for_root = unvouched(dir) && !vouched_others.is_empty();
+        if held_for_root
+            && let Some((other, claimed)) = vouched_others
                 .iter()
-                .filter(|other| vouched_store(other).is_some())
                 .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
         {
             eprintln!(
@@ -4150,7 +4161,7 @@ pub fn admitted<'a>(
         }
         let busy = claimed(dir);
         let before = ahead(dir, place.as_ref(), rank, busy, room);
-        if before == 0 && (busy == 0 || busy + wants <= room) {
+        if !held_for_root && before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
             let claimed = claim(dir, wants);
@@ -4177,6 +4188,13 @@ pub fn admitted<'a>(
             );
             drop(place);
             return (other, Some(claimed));
+        }
+        if !said && held_for_root {
+            eprintln!(
+                "nix-offload: root doesn't vouch for this VM builder yet, and the others it \
+                 does are full, so this waits for whichever comes first"
+            );
+            said = true;
         }
         if !said {
             let queue = match before {

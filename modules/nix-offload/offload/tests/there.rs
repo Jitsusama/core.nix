@@ -499,6 +499,9 @@ fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
             )
             .env("NIX_OFFLOAD_DIR", folder.path().join("none"))
             .env("NIX_OFFLOAD_MORE_DIR", &more)
+            // No file of root's, as `there_command` gives, so the
+            // machine's own list never decides this.
+            .env("NIX_OFFLOAD_VOUCHED", folder.path().join("no-lent"))
             .envs(no_vm_builders(folder.path()))
             .env("XDG_RUNTIME_DIR", folder.path())
             .output()
@@ -6076,7 +6079,62 @@ fn a_vm_run_leaves_a_builder_root_doesnt_vouch_for_for_one_it_does() {
         "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
     )
     .unwrap();
+    // The second warming too, so the run's split leaves every test on
+    // the first and only the move away from it reaches the second.
+    fs::write(
+        rig.more.join("warming"),
+        format!("{} vm-2\n", std::process::id()),
+    )
+    .unwrap();
     let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        3,
+        "{built:?} {said}"
+    );
+    assert!(
+        said.contains("root doesn't vouch for this VM builder yet, and another it does has room"),
+        "{said}"
+    );
+}
+
+// A run held off a builder root doesn't vouch for waits for whichever
+// comes first, root's word or another's room, rather than claiming room
+// there and giving up unsent after four minutes.
+#[test]
+fn a_vm_run_waits_for_a_vouched_builders_room_rather_than_an_unvouched_ones() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    fs::write(
+        rig.more.join("warming"),
+        format!("{} vm-2\n", std::process::id()),
+    )
+    .unwrap();
+    fs::create_dir_all(rig.more.join("sending")).unwrap();
+    let full = rig.more.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&full, "6\n").unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let began = std::time::Instant::now();
+    while !rig
+        .said()
+        .contains("so this waits for whichever comes first")
+    {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never waited: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    fs::remove_file(full).unwrap();
     let (built, said) = rig.finish(running);
     assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?} {said}");
     assert_eq!(
