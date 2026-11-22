@@ -7725,7 +7725,10 @@ mod tests {
         let aaaa = "c3NoLWVkMjU1MTkgQUFBQQ==";
         let bbbb = "c3NoLWVkMjU1MTkgQkJCQg==";
 
-        assert!(vouched_in(&file, &store("nix-offload-vm", aaaa)));
+        assert!(
+            vouched_in(&file, &store("nix-offload-vm", aaaa)),
+            "a builder lent names with the same key is vouched for"
+        );
         assert!(
             vouched_in(&file, &store("hook@nix-offload-vm", aaaa)),
             "the account isn't the lender's name"
