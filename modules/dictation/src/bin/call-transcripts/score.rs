@@ -77,13 +77,17 @@ struct Scored {
     unfiltered: Errors,
 }
 
+/// A take heard as a line, with its words timed from the start of its
+/// sound.
+pub type HeardLine = (Line, Vec<Word>);
+
 /// A take of `side`'s heard as a line, with its words timed from the
 /// start of its sound, none when it holds no words, and how long it took.
 pub fn hear_take(
     speech: &mut Parakeet,
     side: Side,
     take: &Take,
-) -> Result<(Option<(Line, Vec<Word>)>, Timings), String> {
+) -> Result<(Option<HeardLine>, Timings), String> {
     let (heard, took) = speech.transcribe_words(&take.samples)?;
     let joined: Vec<&str> = heard.iter().map(|word| word.text.as_str()).collect();
     let written = said::spoken(&joined.join(" ")).map(|text| {
