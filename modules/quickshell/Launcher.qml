@@ -11073,7 +11073,7 @@ Scope {
         const lap = name => {
             const now = KeyTimes.now();
             parts[name] = (parts[name] ?? 0) + now - lapped;
-            feltSpan(Pacing.lapName(name), lapped);
+            feltSpan(Pacing.lapName(name), lapped, now);
             lapped = now;
         };
         // Opened from what it kept, it was shown already, holding the keys
@@ -13171,10 +13171,12 @@ Scope {
     // The collector's count when the opening began, so its line says what
     // collecting took of it.
     property real feltCollectedFrom: 0
-    function feltSpan(name, from) {
+    // It ends now, or at `to` where its caller has read the clock already,
+    // so a lap's span ends where the next begins rather than overlapping it.
+    function feltSpan(name, from, to) {
         if (!spansHeard)
             return;
-        const span = { name, from, to: KeyTimes.now() };
+        const span = { name, from, to: to ?? KeyTimes.now() };
         if (feltTicking.running)
             feltSpans.push(span);
         if (answersAwaited !== null)

@@ -399,7 +399,8 @@ function openingParts(parts) {
 // named work didn't say (H6EDLC, 2026-11-14); and `thread`, the shell
 // thread's `{ ran, waited, faulted }` (KeyTimes.ran, waited and faulted),
 // so `stallThread` is how much of the stall it ran and waited for a CPU,
-// the rest it slept, and its major page faults. `asked`, where
+// the rest it slept, and its major page faults, or null where its clocks
+// couldn't be read at either end (Thread.spent). `asked`, where
 // the heap stood at the opening's ask (Heap.standing), is read only as it
 // begins and kept, so a second ask before its line is said can't lend it
 // its own.
@@ -422,10 +423,7 @@ function feltTicked(felt, now, pace, clocks = {}) {
         stallAt: longer ? felt.last : felt.stallAt,
         usable: now - calm >= pace.calmFor ? calm : -1, asked: felt.asked, collected,
         stallCollected: longer ? collected - felt.collected : felt.stallCollected, thread,
-        stallThread: longer
-            ? { ran: thread.ran - felt.thread.ran, waited: thread.waited - felt.thread.waited,
-                faulted: Thread.faults(felt.thread, thread) }
-            : felt.stallThread };
+        stallThread: longer ? Thread.spent(felt.thread, thread) : felt.stallThread };
 }
 
 // Each frame's own work while an opening is felt, as spans for

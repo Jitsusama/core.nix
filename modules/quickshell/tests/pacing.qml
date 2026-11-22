@@ -313,6 +313,15 @@ QtObject {
             Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
         check(failures, "nor one whose count went back", fellStall.stallThread.faulted,
             undefined);
+        // KeyTimes.waited gives 0 for a failed read, so a stall taken from
+        // one would be the thread's whole life's wait.
+        const unwaitedStall = [[16, { ran: 5, waited: 0 }], [132, { ran: 20, waited: 40 }]]
+            .reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace, { thread }),
+                Pacing.feltBegun(0, { thread: { ran: 0, waited: 0 } }));
+        check(failures, "a stall whose wait wasn't read takes no clocks",
+            unwaitedStall.stallThread, null);
+        check(failures, "and says nothing of its thread",
+            Thread.said(unwaitedStall.stall, unwaitedStall.stallThread, "the stall"), "");
         keyThreaded(failures);
     }
 
