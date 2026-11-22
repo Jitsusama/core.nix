@@ -139,20 +139,12 @@ function placed(places, screens, inUse, moments) {
     });
 }
 
-// Of `screens` (screensOf), those niri lists a workspace on, as it does on
-// each screen it has connected, an empty one where none other is. The
-// screens are asked for apart from the workspaces, and under load, or once
-// niri's patience runs out on the last known, an answer from before a screen
-// went still lists it: taken for there, a workspace or a window was sent to
-// a connector niri no longer had and its note dropped (vm-screens-keep-places,
-// 21 and 22 Nov).
+// Of `screens` (screensOf), those niri lists a workspace on, as it does on each connected one:
+// screens heard apart from workspaces can predate one going (vm-screens-keep-places, 22 Nov).
 function connected(screens, workspaces) {
     const listed = new Set((workspaces ?? []).map(each => each.output));
-    const there = {};
-    for (const name of Object.keys(screens ?? {}).filter(name => listed.has(name))) {
-        there[name] = screens[name];
-    }
-    return there;
+    return Object.keys(screens ?? {}).filter(name => listed.has(name))
+        .reduce((there, name) => Object.assign(there, { [name]: screens[name] }), {});
 }
 
 // The moves that take workspaces given in place of a gone screen to it once
@@ -166,8 +158,7 @@ function connected(screens, workspaces) {
 // screen already is marked (`there`) and left. A twin, a sibling that was
 // another screen as one left or the other way, never takes the other's
 // connector or one given it, and `waiting` is `away` with those still
-// waiting, each knowing those as another screen's for later calls. Of
-// `screens`, only those connected now are there (connected).
+// waiting, each knowing those as another screen's for later calls.
 function homeward(away, screens, workspaces) {
     const moves = [];
     const waiting = {};
