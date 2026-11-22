@@ -41,7 +41,11 @@ impl App {
         };
         match going {
             None => self.say("E446: No file name under cursor"),
-            Some(links::Going::Here) => {}
+            Some(links::Going::Here) => {
+                if keys_logged() {
+                    eprintln!("file: here");
+                }
+            }
             Some(links::Going::Heading(anchor)) => self.follow(&format!("#{anchor}")),
             Some(links::Going::File(file, heading)) => {
                 if keys_logged() {

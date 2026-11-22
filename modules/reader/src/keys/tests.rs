@@ -574,6 +574,16 @@ fn files_links_the_outline_and_the_command_line_have_their_keys() {
         machine.press(Ctrl(']'), false),
         Some((Act::FollowLink, None))
     );
+    // gf is taken while selecting too, as Vim's v_gf; Ctrl+] isn't yet.
+    assert_eq!(
+        typed_in(&mut machine, "gf", true),
+        [(Act::FollowFile, None)]
+    );
+    assert_eq!(
+        machine.press(Ctrl(']'), true),
+        None,
+        "Ctrl+] waits for a list's meaning while selecting"
+    );
     // ] waits for its second key, as g does, and a wrong one drops it.
     assert_eq!(typed(&mut machine, "]x"), []);
     assert!(

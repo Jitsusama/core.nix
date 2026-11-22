@@ -146,11 +146,27 @@ fn gf_on_the_pages_own_name_stays_where_it_is() {
     let there = in_notes(&["page.md", "other.md"]);
     let gone = |name: Name| going(&name, page, &there).map_or_else(|| "none".into(), |g| read(&g));
     assert_eq!(gone(Name::Written("page.md".into())), "stays", "written");
-    assert_eq!(gone(Name::Link("page.md".into())), "stays", "linked");
+    // A link to the page goes to its top, as Ctrl+] goes, a bare # too.
+    assert_eq!(gone(Name::Link("page.md".into())), "# here", "linked");
+    assert_eq!(gone(Name::Link("#".into())), "# here", "linked bare");
+    // The page's name written another way is still the page, on a real
+    // disk, where it's the file that's compared and not its spelling.
+    let dir = std::env::temp_dir().join(format!("reader-links-own-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, "# Page\n").expect("the file");
+    let folder = dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a name");
+    let on_disk = |written: &str| going(&Name::Written(written.into()), &file, Path::is_file);
+    let spelt = ["./page.md".to_string(), format!("../{folder}/page.md")];
+    let read_back: Vec<_> = spelt.iter().map(|written| on_disk(written)).collect();
+    std::fs::remove_dir_all(&dir).expect("cleaned");
     assert_eq!(
-        gone(Name::Link("page.md#part".into())),
-        "#part here",
-        "linked at a heading, the heading here"
+        read_back,
+        [Some(Going::Here), Some(Going::Here)],
+        "{spelt:?}"
     );
     assert_eq!(
         gone(Name::Written("other.md".into())),
@@ -330,7 +346,7 @@ fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
 fn gf_from_a_whole_line_takes_the_first_other_file_down_at_its_heading() {
     let (lines, linked) = set_reading(
         "whole-line",
-        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md and [the spec](spec.md).\n",
+        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md and [the spec](spec.md).\n\nThis is page.md, then later.md.\n",
         links,
     );
     let page = Path::new("/notes/page.md");
@@ -370,7 +386,12 @@ fn gf_from_a_whole_line_takes_the_first_other_file_down_at_its_heading() {
     assert_eq!(
         down((second, f64::INFINITY), &all),
         "nothing",
-        "nor above the cursor"
+        "nor above the cursor, nor the page's own name written"
+    );
+    assert_eq!(
+        down((second, f64::INFINITY), &["page.md", "later.md"]),
+        "/notes/later.md",
+        "past the page's own name written, to the file after it"
     );
 }
 

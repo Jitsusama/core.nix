@@ -195,10 +195,10 @@ impl App {
                 self.end_selection();
                 return true;
             }
-            // gf and Ctrl+] end the selection, as Vim's leave visual mode,
-            // and take what's under or after the character its cursor
-            // leaves standing, rather than the line's first name.
-            (None, Act::FollowFile | Act::FollowLink) => {
+            // gf ends the selection, as Vim's leaves visual mode, and takes
+            // what's under or after the character its cursor leaves
+            // standing, rather than the line's first name.
+            (None, Act::FollowFile) => {
                 self.end_selection();
                 return false;
             }

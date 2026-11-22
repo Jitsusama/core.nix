@@ -129,9 +129,9 @@ pub fn name_here(
 
 /// Where gf goes for the name it took: a heading on the page shown, which
 /// the page's own words say is there or not, or a file `is_file` found, at
-/// the heading its link names, if any, as Ctrl+] goes; or the page shown
-/// itself, named with no heading, where gf stays, as Vim's does on the
-/// file it's editing.
+/// the heading its link names, if any, as Ctrl+] goes, a link to the page
+/// itself with none going to its top; or the page shown itself, its name
+/// written, where gf stays, as Vim's does on the file it's editing.
 #[derive(Debug, PartialEq)]
 pub enum Going {
     Heading(String),
@@ -144,7 +144,6 @@ pub enum Going {
 pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Option<Going> {
     let (file, heading) = match name {
         Name::Link(href) => match target(href, page) {
-            Target::Here(anchor) if anchor.is_empty() => return Some(Going::Here),
             Target::Here(anchor) => return Some(Going::Heading(anchor)),
             Target::Page(file, heading) => (Some(file), heading),
             Target::Elsewhere(_) => (file_of(name, page), None),
@@ -152,10 +151,11 @@ pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Optio
         Name::Written(_) => (file_of(name, page), None),
     };
     let file = file.filter(|file| is_file(file))?;
-    // The page shown, named again, is where he is: reopening it would
-    // jump to where it was last left.
+    // Only a written name gets here naming the page shown, since a link
+    // to it is a heading here. It's where he is: reopening it would jump
+    // to where it was last left.
     if same(&file, page) {
-        return Some(heading.map_or(Going::Here, Going::Heading));
+        return Some(Going::Here);
     }
     Some(Going::File(file, heading))
 }
@@ -203,7 +203,8 @@ pub fn going_down(
             continue;
         }
         for (path, ..) in crate::moves::written_paths(line) {
-            if let Some(going) = going(&Name::Written(path), page, &is_file) {
+            // The page's own name, written, is no other file.
+            if let Some(going @ Going::File(..)) = going(&Name::Written(path), page, &is_file) {
                 named.push((line.baseline_pt.round(), f64::INFINITY, going));
             }
         }
