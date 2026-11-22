@@ -800,9 +800,14 @@ Scope {
         if (open && !waking)
             Qt.callLater(freshen);
     }
-    // A join is felt as `felt`: the open handler names its own as its lap
+    // Takes nothing, as it's queued bare (afterFrame hands its frame's
+    // times to what it calls).
+    function freshen() {
+        freshenAs("joining");
+    }
+    // A join felt as `felt`: the open handler names its own as its lap
     // (Pacing.lapName), so it isn't added up with a slice's "joining".
-    function freshen(felt = "joining") {
+    function freshenAs(felt) {
         if (!choicesStale)
             return;
         const began = KeyTimes.now();
@@ -11130,7 +11135,7 @@ Scope {
             fillFoundJoined = 0;
             fillFoundAfter = null;
             if (!fillFinding)
-                freshen(Pacing.lapName("joining"));
+                freshenAs(Pacing.lapName("joining"));
             lap("joining");
             trials.opened(KeyTimes.now());
             lap("trials");

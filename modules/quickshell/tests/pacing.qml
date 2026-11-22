@@ -390,11 +390,13 @@ QtObject {
             Pacing.stallSpent(nested, 0, 100), "filling 50, the drawer 10, 40 unnamed");
         check(failures, "one all named says nothing unnamed",
             Pacing.stallSpent(nested, 10, 70), "filling 50, the drawer 10");
-        // The open handler's laps beside the slices after its frame, which
-        // say "waking" and "joining" for their own work (2026-11-21), in
-        // the order the launcher pushes them: the handler's join, felt by
-        // freshen inside its lap, then the lap, and "opening", begun
-        // before the handler, once `open` has turned.
+        // Some of the open handler's laps beside the slices after its frame,
+        // which say "waking" and "joining" for their own work (2026-11-21),
+        // in the order the launcher pushes them: the handler's join, felt
+        // inside its lap, then the lap, and "opening", begun before the
+        // handler, once `open` has turned. A span inside a lap of its name
+        // adds into the lap; that the launcher gives its join that name
+        // (freshenAs) is no case's.
         const laps = [{ name: Pacing.lapName("beginning"), from: 1, to: 5 },
             { name: Pacing.lapName("waking"), from: 5, to: 25 },
             { name: Pacing.lapName("joining"), from: 26, to: 30 },
