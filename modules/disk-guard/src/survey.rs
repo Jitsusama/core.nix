@@ -65,6 +65,9 @@ pub enum Action {
         /// Where Nix's clients keep their temporary roots, read again just
         /// before each delete.
         roots: PathBuf,
+        /// Where Nix keeps its database, whose write lock another process
+        /// holding puts a delete off.
+        database: PathBuf,
         paths: Vec<String>,
         /// The files running programs hold known only by Nix's hard link
         /// to them, so a path holding one is left out of the delete.

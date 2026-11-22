@@ -7,6 +7,8 @@ Many entries because each file holds the scenarios of the source module of
 the same name, so a change to `src/caches.rs` is proven in `caches.rs` here.
 The few with no module of their name cover what several do together
 (`collecting.rs`, `entries.rs`, `procs.rs`, `variants.rs`) or hold what
-the others share (`sandbox.rs`).
+the others share (`sandbox.rs`). A module's file that would pass 800 lines
+splits off a part named for what it holds, as `garbage_delete.rs` holds
+`garbage`'s deletes and `pass_lines.rs` what a pass says.
 
 [1]: main.rs

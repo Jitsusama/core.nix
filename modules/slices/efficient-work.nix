@@ -11,14 +11,17 @@
 # away too.
 #
 # Only what agents start is held: pi's commands, which land in
-# jobs.service and are sorted into jobs-work.slice, and the Nix daemon's
-# builds. Joel's own terminal work in jobs-awaited.slice is what he waits
-# on, and timed work's results would change with its cores, so both stay
-# free, as background.slice does, since the daemons his launcher and tools
-# ask run there. What either asks the Nix daemon to build here is held
-# with the builds, though, a VM test built here among them, since the
-# daemon's slice can't tell whose build it is; most go to the builders. The call brake's quota is processor time, so it still
-# holds a quarter of the processors' worth, within these cores.
+# jobs.service and are sorted into jobs-work.slice, the units they and the
+# hosts' spawners start with systemd-run, which go in jobs-work.slice too
+# (systemd-run.sh), and the Nix daemon's builds. Joel's own terminal work
+# in jobs-awaited.slice is what he waits on, and timed work's results
+# would change with its cores, so both stay free, as background.slice
+# does, since the daemons his launcher and tools ask run there, and so do
+# his own services in jobs.slice. What either asks the Nix daemon to build
+# here is held with the builds, though, a VM test built here among them,
+# since the daemon's slice can't tell whose build it is; most go to the
+# builders. The call brake's quota is processor time, so it still holds a
+# quarter of the processors' worth, within these cores.
 { config, lib, ... }:
 let
   efficient = config.jitsusama.slices.efficientCores;

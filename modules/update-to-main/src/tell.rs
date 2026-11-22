@@ -64,20 +64,20 @@ mod tests {
         let mut f = Follower::default();
         let t = Instant::now();
         let broke = failed("it didn't evaluate", "error: undefined variable");
-        f.asked(at("a"), &broke, "", t);
+        f.asked(at("a"), &broke, "", None, t);
         assert_eq!(
             f.to_tell(),
             Some("it didn't evaluate".to_owned()),
             "a failure went untold"
         );
         assert_eq!(f.to_tell(), None, "what was told was told again");
-        f.asked(at("a"), &broke, "", t + FAILED_AGAIN);
+        f.asked(at("a"), &broke, "", None, t + FAILED_AGAIN);
         assert_eq!(
             f.to_tell(),
             None,
             "the same heads failing again were told again"
         );
-        f.asked(at("b"), &broke, "", t + FAILED_AGAIN);
+        f.asked(at("b"), &broke, "", None, t + FAILED_AGAIN);
         assert!(f.to_tell().is_some(), "new heads failing went untold");
     }
 
@@ -86,15 +86,15 @@ mod tests {
         let mut f = Follower::default();
         let t = Instant::now();
         let broke = failed("it didn't evaluate", "error: undefined variable");
-        f.asked(at("a"), &broke, "", t);
+        f.asked(at("a"), &broke, "", None, t);
         f.to_tell();
         let through = Line::Unchanged {
             commit: "c".to_owned(),
             followed: Followed::new(),
         };
-        f.asked(at("a"), &through, "", t + FAILED_AGAIN);
+        f.asked(at("a"), &through, "", None, t + FAILED_AGAIN);
         assert_eq!(f.to_tell(), None, "an update that went through was told");
-        f.asked(at("a"), &broke, "", t + FAILED_AGAIN * 2);
+        f.asked(at("a"), &broke, "", None, t + FAILED_AGAIN * 2);
         assert!(
             f.to_tell().is_some(),
             "a failure after one that went through went untold"
@@ -110,11 +110,11 @@ mod tests {
             "error: Nix daemon disconnected unexpectedly (maybe it crashed?)",
         );
         for _ in 0..DROPPED_TRIES {
-            f.asked(at("a"), &lost, "", t);
+            f.asked(at("a"), &lost, "", None, t);
             assert_eq!(f.to_tell(), None, "a build asked for again soon was told");
             t += DROPPED_AGAIN;
         }
-        f.asked(at("a"), &lost, "", t);
+        f.asked(at("a"), &lost, "", None, t);
         assert!(
             f.to_tell().is_some(),
             "builders lost past its tries went untold"
@@ -125,14 +125,14 @@ mod tests {
     fn a_busy_machine_is_never_told_and_one_waiting_for_a_person_is() {
         let mut f = Follower::default();
         let t = Instant::now();
-        f.asked(at("a"), &refused("a call is on"), "", t);
+        f.asked(at("a"), &refused("a call is on"), "", None, t);
         assert_eq!(
             f.to_tell(),
             None,
             "a refusal that passes by itself was told"
         );
         let why = format!("{NEEDS_HOLD} nix-daemon.service, which waits for a hold");
-        f.asked(at("a"), &refused(&why), "refused", t);
+        f.asked(at("a"), &refused(&why), "refused", None, t);
         assert_eq!(f.to_tell(), Some(why), "a wait for a person went untold");
     }
 }

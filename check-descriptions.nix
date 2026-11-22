@@ -379,8 +379,10 @@
     end as it comes, so a switch of more than 64 jobs doesn't hang waiting for a reply
   '';
   an-agents-run-stays-in-its-slice = ''
-    systemd-run puts an agent's --user unit in the agent's own slice, and leaves Joel's own calls,
-    a call naming a slice and a call to the system manager as they were
+    systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
+    the call comes from jobs.service or a pi-spawner scope, or below one, and leaves Joel's own
+    calls, his services in jobs.slice, a path naming jobs.slice only inside another's scope, a
+    call naming a slice and a call to the system manager as they were
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
@@ -5578,7 +5580,7 @@
     weight, a tracking or an axis of their own in the Typst they set
   '';
   update-to-main-asks-what-nix-offload-answers = ''
-    the question a Mac asks before it updates, whether it's over its room, is one the nix-offload
+    the question a Mac asks before it updates, whether it's over its load, is one the nix-offload
     it names answers as a question does, with 0, 1 or 69, not words it refuses as asked wrongly
   '';
   update-to-main-outlives-its-switch = ''
@@ -5589,7 +5591,7 @@
   update-to-main-follows-on-a-mac = ''
     a Mac's follower is its primary user's launchd agent, started again whenever follow ends and
     naming no store path; a Mac refuses an update during a call, refuses the follower's ask alone
-    while nix-offload says it's over its room, for two hours at most, and the follower's switch
+    while nix-offload says it's over its load, for two hours at most, and the follower's switch
     waits while someone is at the Mac, for 45 minutes at most
   '';
   update-to-main-opens-enough-files-on-a-mac = ''
@@ -5705,10 +5707,11 @@
     app.slice holds a hard and a soft 13% of memory and session.slice a hard and a soft 4.5 GiB,
     agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 31%,
     and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
-    itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in jobs; a
-    scope it starts through systemd's own systemd-run goes back to the scope of the work that
-    started it, and one with a memory ceiling stays; each command written into jobs.service gets
-    a scope of its own in jobs-work.slice, at weight 100, with its own swap, and the holder stays;
+    itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in
+    jobs-work.slice; a scope it starts through systemd's own systemd-run goes back to the scope of
+    the work that started it, and one with a memory ceiling stays; each command written into
+    jobs.service gets a scope of its own in jobs-work.slice, at weight 100, with its own swap, and
+    the holder stays;
     one naming a quest pi's sessions weigh goes in that quest's slice under jobs-work.slice at its
     weight for CPU and disk, which follows the file as it changes, and one naming none or an
     unlisted quest stays; two quests' work on one CPU shares it four to one by weight, and one

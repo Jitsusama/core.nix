@@ -5,6 +5,7 @@ use disk_guard::band::Band;
 use disk_guard::clock::Tick;
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Hearing, Places, Senses};
+use disk_guard::garbage::BATCH_BYTES;
 use disk_guard::moments::{Power, Pressure};
 use disk_guard::socket::Responder;
 use std::collections::HashMap;
@@ -151,6 +152,10 @@ impl Store {
                        \"$sep\" \"$p\" \"$s\" \"$t\"; sep=,\n\
                    done; printf '}}' ;;\n\
                  'store delete') shift 2\n\
+                   given=''; for a in \"$@\"; do\n\
+                     if [ \"$a\" = --stdin ]; then given=\"$given $(cat)\"; else given=\"$given $a\"; fi\n\
+                   done; set -- $given\n\
+                   [ -e {slow_delete} ] && sleep 2\n\
                    if [ \"$1\" = --offline ]; then shift; else\n\
                      for p in \"$@\"; do [ -e \"$p/meta\" ] && continue\n\
                        echo \"refused $*\" >> {log}\n\
@@ -173,6 +178,7 @@ impl Store {
                  esac\n",
                 log = log.display(),
                 min_free = root.join("min-free").display(),
+                slow_delete = root.join("delete-slow").display(),
             ),
         );
         script(
@@ -559,10 +565,12 @@ fn what_nix_never_registered_goes_with_the_dead_in_a_delete_that_asks_no_substit
 
 #[test]
 fn many_small_paths_go_in_one_delete() {
-    // Each delete costs Nix a whole look for roots, which a store of tens of
-    // thousands takes most of a second over, whatever the batch holds.
+    // Each delete costs Nix a whole look for roots and a read of every
+    // entry in its links folder, five to eight minutes a call on 21
+    // November whatever it deleted, so a batch closes only at its size,
+    // past the 2,000 paths it once closed at.
     let store = Store::new();
-    let dead: Vec<PathBuf> = (0..1000)
+    let dead: Vec<PathBuf> = (0..2001)
         .map(|n| store.dead(&format!("{n:04}-small.drv"), 10.0 * DAY, 4096))
         .collect();
     let mut guard = store.guard(store.config("0%", "0%"));
@@ -572,7 +580,7 @@ fn many_small_paths_go_in_one_delete() {
         .into_iter()
         .filter(|line| line.starts_with("delete"))
         .count();
-    assert_eq!(deletes, 1, "a thousand small paths took {deletes} deletes");
+    assert_eq!(deletes, 1, "2,001 small paths took {deletes} deletes");
 }
 
 #[test]
@@ -591,7 +599,10 @@ fn a_batch_that_meets_garbage_come_alive_has_the_store_listed_again() {
     let free = store.dead("zzz-free", 10.0 * DAY, 4096);
     fs::write(store.root.join("listing-stale"), "").unwrap();
     let mut guard = store.guard(store.config("0%", "0%"));
-    store.step_until(&mut guard, |_| !free.exists());
+    store.step_until(&mut guard, |store| lists(store) == 2);
+    // An hour on, past the rest a delete earns, which the batch refused
+    // a path at a time earned too, as its looks for roots cost as much.
+    step_later_until(&store, &mut guard, 3600.0, &CALM, |_, _| !free.exists());
     assert_eq!(lists(&store), 2, "{:?}", store.log());
     assert!(alive.iter().all(|path| path.exists()), "a root holds them");
 }
@@ -1490,6 +1501,174 @@ fn garbage_a_root_left_goes_while_a_collect_that_freed_nothing_rests() {
     });
     unroot(&store, &kept);
     step_later_until(&store, &mut guard, 60.0, &BUSY, |_, _| !kept.exists());
+}
+
+#[test]
+fn short_of_nearly_full_a_pass_deletes_once_then_rests_four_times_as_long() {
+    // On 21 November one pass of 1,532 s ran three deletes back to back,
+    // finishing five to eight minutes apart, each walking Nix's links.
+    let store = Store::new();
+    let older = store.dead("aaa-older", 10.0 * DAY, 8 << 30);
+    let newer = store.dead("bbb-newer", 9.0 * DAY, 8 << 30);
+    fs::write(store.root.join("delete-slow"), "").unwrap();
+    let mut guard = store.guard(store.config("0%", "0%"));
+    store.step_until(&mut guard, |_| !older.exists());
+    assert!(
+        newer.exists(),
+        "a pass made a second delete: {:?}",
+        store.log()
+    );
+    assert!(
+        kept_for(&store)
+            .iter()
+            .any(|why| why.starts_with("Nix's deletes rest")),
+        "the newer wasn't kept for the rest"
+    );
+    // The delete took at least two seconds, so the next waits eight from
+    // its end, and no more than four times the whole pass's length.
+    step_later(&mut guard, 6.0, &CALM);
+    assert_eq!(
+        deletes(&store),
+        1,
+        "deleted again within its rest: {:?}",
+        store.log()
+    );
+    let pass = store
+        .passes()
+        .iter()
+        .filter_map(|pass| pass["seconds"].as_f64())
+        .fold(0.0, f64::max);
+    step_later_until(&store, &mut guard, 4.0 * pass + 3.0, &CALM, |_, _| {
+        !newer.exists()
+    });
+}
+
+#[test]
+fn nearly_full_a_pass_deletes_back_to_back_while_another_process_writes() {
+    // Room comes first: a build waiting a few seconds on the database
+    // costs less than the disk filling under it. A user daemon asks for
+    // the garbage as its disk reads nearly full, as a guard of its own
+    // nearly full runs Nix's collection for want of a listing.
+    let store = Store::new();
+    let older = store.dead("aaa-older", 10.0 * DAY, BATCH_BYTES);
+    let newer = store.dead("bbb-newer", 9.0 * DAY, BATCH_BYTES);
+    let shared = written_database(&store);
+    let _writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
+    let mut guard = store.guard(store.config("100%", "100%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    assert!(older.exists() && newer.exists(), "{:?}", store.log());
+    let (_ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::NearlyFull,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        !older.exists() && !newer.exists(),
+        "a pass nearly full rested or waited between its deletes: {:?}",
+        store.log()
+    );
+    assert_eq!(deletes(&store), 2, "{:?}", store.log());
+    assert_eq!(kept_for(&store), Vec::<String>::new(), "kept some");
+}
+
+#[test]
+fn an_ask_naming_a_fuller_band_than_the_disk_reads_still_waits_for_writers() {
+    // Any account may ask the system daemon, naming any band, so the disk's
+    // own band says whether deletes wait. A pass reaching for room that
+    // keeps garbage for a writer ends there rather than taking what costs
+    // more to lose.
+    let store = Store::new();
+    let older = store.dead("aaa-older", 10.0 * DAY, BATCH_BYTES);
+    let newer = store.dead("bbb-newer", 9.0 * DAY, BATCH_BYTES);
+    let shared = written_database(&store);
+    let _writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    let (_ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::NearlyFull,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        older.exists() && newer.exists(),
+        "deleted under a writer for an ask's word: {:?}",
+        store.log()
+    );
+    assert_eq!(deletes(&store), 0, "{:?}", store.log());
+    assert!(
+        kept_for(&store)
+            .iter()
+            .any(|why| why == "another process is writing Nix's database"),
+        "kept for another reason: {:?}",
+        kept_for(&store)
+    );
+    let passes = store.passes();
+    assert_eq!(
+        passes.last().map(|pass| pass["end"].clone()),
+        Some(serde_json::json!("waiting")),
+        "{passes:?}"
+    );
+}
+
+#[test]
+fn garbage_waits_while_another_process_writes_nix_s_database() {
+    // A delete holds the database's write lock for seconds at a time, and
+    // an evaluation waiting on it reads "database is busy"; SQLite's write
+    // lock is byte 120 of the shared-memory file beside the database.
+    let store = Store::new();
+    let dead = store.dead("aaa-dead", 10.0 * DAY, 4096);
+    let shared = written_database(&store);
+    let writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
+    let mut guard = store.guard(store.config("0%", "0%"));
+    listed_later(&store, &mut guard, 0.0, &CALM);
+    step_later(&mut guard, 1.0, &CALM);
+    assert!(dead.exists(), "deleted while Nix's database was written");
+    assert_eq!(deletes(&store), 0, "{:?}", store.log());
+    assert!(
+        kept_for(&store)
+            .iter()
+            .any(|why| why == "another process is writing Nix's database"),
+        "kept for another reason: {:?}",
+        kept_for(&store)
+    );
+    drop(writing);
+    // Looked at again by the put-off itself, once the garbage's own first
+    // rest of two minutes is over, rather than by a later listing.
+    step_later_until(&store, &mut guard, 130.0, &CALM, |_, _| !dead.exists());
+}
+
+/// The shared memory of Nix's database, beside its temporary roots.
+fn written_database(store: &Store) -> PathBuf {
+    let database = store.root.join("db");
+    fs::create_dir_all(&database).unwrap();
+    let shared = database.join("db.sqlite-shm");
+    fs::write(&shared, vec![0; 4096]).unwrap();
+    shared
+}
+
+/// Why the guard's journal says it kept the garbage it kept.
+fn kept_for(store: &Store) -> Vec<String> {
+    let journal = fs::read_to_string(store.root.join("state/journal.jsonl")).unwrap_or_default();
+    journal
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|line| line["kind"] == "garbage" && line["outcome"] == "kept")
+        .filter_map(|line| line["reason"].as_str().map(str::to_owned))
+        .collect()
 }
 
 /// How many deletes Nix was asked for.

@@ -439,7 +439,7 @@ fn a_pass_left_short_says_what_to_do_and_who_is_filling_the_disk() {
 }
 
 #[test]
-fn a_pass_that_stalled_or_failed_says_so_plainly() {
+fn a_pass_that_stalled_waited_or_failed_says_so_plainly() {
     let before = status(&[("/", Band::NearlyFull, 60)], None);
     let stalled = status(
         &[("/", Band::NearlyFull, 60)],
@@ -449,6 +449,16 @@ fn a_pass_that_stalled_or_failed_says_so_plainly() {
         shown(change(&before, &stalled)).body,
         "Nothing cleared, and only 60.0 GiB is free. Deleting stopped freeing space, so the \
          guard waits a little before trying again; nothing is needed from you yet."
+    );
+    let waiting = status(
+        &[("/", Band::NearlyFull, 60)],
+        Some(pass(1.0, Band::NearlyFull, "waiting", 0)),
+    );
+    assert_eq!(
+        shown(change(&before, &waiting)).body,
+        "Nothing cleared, and only 60.0 GiB is free. Nix's store holds more to delete, which \
+         the guard takes once Nix's database is free and its last delete has rested; nothing \
+         is needed from you yet."
     );
     let failed = status(
         &[("/", Band::NearlyFull, 60)],

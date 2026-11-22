@@ -109,6 +109,19 @@ ShellRoot {
         }]
     }
 
+    // Time, as Now's plate reads it: the reading Timekeeping keeps, as
+    // Clocks.qml gives it. It's among the launcher's sources only for the
+    // plate's kept-reading cases, so no other case reads a clock.
+    QtObject {
+        id: clocks
+
+        readonly property var settings: ({ name: "time" })
+        readonly property var kept: Timekeeping.reading
+        function millis(ms, signed) {
+            return `${ms} ms`;
+        }
+    }
+
     // Quests, as Now's What Moved reads it: each workstream that moved, as
     // its rows, what showing them shows, and what each ask to count them
     // looked at gave back.
@@ -909,7 +922,110 @@ ShellRoot {
                     leftAt: undefined, withdrawn: undefined }));
             expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
         }) && tried(root.movedCases))
+            root.keptReadings();
+    }
+
+    // The reader's answer, as timekeeping says it.
+    readonly property string keptSaid: JSON.stringify({ synchronised: true })
+    function answerTime() {
+        Timekeeping.heard(`{"parameters":${keptSaid}}`);
+    }
+
+    // The kept reading's minute, shortened, run out on `letGo` itself: a
+    // reader gone quiet while watched has its reading let go; a refusal
+    // said while watched isn't the timer's to clear; a wall clock stepped
+    // back lets a reading go at once; and unwatched, a reading is kept only
+    // for what's left of its time. Each is read first, so a reading never
+    // there can't pass for one let go. No socket is made,
+    // so the sandbox's want of a reader can't answer in its place: it's
+    // unwatched first, past the second a failed socket waits to try again,
+    // so none left from the cases above is made anew mid-stage.
+    function keptReadings() {
+        Timekeeping.watching = 0;
+        keptStage.step = -1;
+        keptStage.at = Date.now();
+        waiting = "kept readings";
+    }
+    Timer {
+        id: keptStage
+
+        property int step: 0
+        property real at: 0
+
+        running: root.waiting === "kept readings"
+        interval: 20
+        repeat: true
+        onTriggered: root.keptReadingsHeld()
+    }
+    function keptReadingsHeld() {
+        const since = Date.now() - keptStage.at;
+        const read = JSON.stringify(Timekeeping.reading);
+        if (keptStage.step === -1) {
+            if (since < 1500)
+                return;
+            Timekeeping.trying = false;
+            Timekeeping.keptFor = 100;
+            Timekeeping.watching = 1;
+            answerTime();
+            if (!tried(() => expect("answered, the reader's reading is read",
+                Timekeeping.reading !== null, "null")))
+                return;
+            keptStage.step = 0;
+            keptStage.at = Date.now();
+        } else if (keptStage.step === 0) {
+            if (Timekeeping.reading !== null && since < 5000)
+                return;
+            if (!tried(() => expect("watched, a reader gone quiet has its reading let go",
+                Timekeeping.reading === null, read)))
+                return;
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            answerTime();
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            Timekeeping.unanswered();
+            keptStage.step = 1;
+            keptStage.at = Date.now();
+        } else if (keptStage.step === 1) {
+            if ((since < 3 * Timekeeping.keptFor || Timekeeping.lettingGo()) && since < 5000)
+                return;
+            if (!tried(() => expect("a refusal said while watched isn't the timer's to clear",
+                Timekeeping.refused && Timekeeping.reading === null,
+                `${Timekeeping.refused} ${read}`)))
+                return;
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            answerTime();
+            if (!tried(() => expect("answered again, it's read again",
+                Timekeeping.reading !== null, "null")))
+                return;
+            Timekeeping.heardAt = Date.now() + 1e9;
+            Timekeeping.watching = 0;
+            if (!tried(() => expect("a reading heard later than a wall clock stepped back goes",
+                Timekeeping.reading === null, JSON.stringify(Timekeeping.reading))))
+                return;
+            // Its timer set long, so only a re-arm to what's left lets it go.
+            Timekeeping.keptFor = 2000;
+            Timekeeping.watching = 1;
+            answerTime();
+            if (!tried(() => expect("answered once more, it's read",
+                Timekeeping.reading !== null, "null")))
+                return;
+            Timekeeping.heardAt = Date.now() - 1950;
+            Timekeeping.watching = 0;
+            keptStage.step = 2;
+            keptStage.at = Date.now();
+        } else {
+            if (Timekeeping.reading !== null && since < 1500)
+                return;
+            if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
+                Timekeeping.reading === null, read)))
+                return;
+            waiting = "";
+            Timekeeping.keptFor = 60000;
+            Timekeeping.trying = true;
             Qt.exit(0);
+        }
     }
 
     // What Moved: no row while nothing moved; a workstream that moved is
@@ -1129,9 +1245,10 @@ ShellRoot {
         WaitingOnYou.now = [];
         WaitingOnYou.foremost = null;
         // The plate's clock says only what timekeeping said: chrony is asked only while home
-        // shows, so a plate read shut, or the moment after opening, has no reading yet, and
-        // said nothing keeps the time while chrony kept it (P9R1KI, 2026-11-15). It's left out
-        // until the reader answers, and said once the reader refused.
+        // shows, so a plate read shut, or the moment after opening, has no reading but one
+        // kept from a minute before, and said nothing keeps the time while chrony kept it
+        // (P9R1KI, 2026-11-15). It's left out until the reader answers, and said once the
+        // reader refused.
         const clockSays = () => Array.from(now.placePlate().groups)
             .reduce((all, group) => all.concat(Array.from(group)), [])
             .filter(fact => fact.label === Words.name("on:plate:clock")).map(fact => fact.value);
@@ -1143,6 +1260,55 @@ ShellRoot {
         expect("refused, the plate's clock says nothing keeps the time",
             JSON.stringify(refusedSays) === JSON.stringify(["nothing keeps the time"]),
             JSON.stringify(refusedSays));
+        // A step out of home stops chrony being asked, and the reading it
+        // left is kept a while rather than dropped there: dropped, the
+        // plate of the row left behind was made again inside the step
+        // (the keys lab, 2026-11-22). A refusal isn't kept, so a step
+        // back asks afresh. Past its time by the wall clock, as after a
+        // suspend, a kept reading is let go. The reader's answers go
+        // through heard(), which says when the reading was heard; no
+        // socket is made, so the sandbox's want of a reader can't answer
+        // in its place, and Time stands in so the plate reads the reading.
+        const kept = () => JSON.stringify(Timekeeping.reading) === root.keptSaid;
+        const sources = theLauncher.sources;
+        theLauncher.sources = sources.concat([clocks]);
+        Timekeeping.trying = false;
+        Timekeeping.watching += 1;
+        root.answerTime();
+        const keptSays = JSON.stringify(["synchronised"]);
+        expect("answered, the plate's clock says how it's kept",
+            JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
+        Timekeeping.watching -= 1;
+        expect("unwatched, the reading is kept", kept(), JSON.stringify(Timekeeping.reading));
+        expect("unwatched, the plate still says the kept reading",
+            JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
+        Timekeeping.watching += 1;
+        expect("watched again within its time, the reading is still the one kept", kept(),
+            JSON.stringify(Timekeeping.reading));
+        expect("watched again within its time, the plate says the kept reading",
+            JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
+        Timekeeping.unanswered();
+        Timekeeping.watching -= 1;
+        Timekeeping.watching += 1;
+        expect("a refusal isn't kept past a step out, so a step back doesn't say it",
+            !Timekeeping.refused && clockSays().length === 0, JSON.stringify(clockSays()));
+        root.answerTime();
+        Timekeeping.heardAt = Date.now() - Timekeeping.keptFor;
+        Timekeeping.watching -= 1;
+        expect("unwatched past its time, the reading is let go",
+            Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
+        expect("let go, the plate's clock says nothing of how it's kept",
+            clockSays().length === 0, JSON.stringify(clockSays()));
+        Timekeeping.watching += 1;
+        root.answerTime();
+        Timekeeping.watching -= 1;
+        Timekeeping.heardAt = Date.now() - Timekeeping.keptFor;
+        Timekeeping.watching += 1;
+        expect("watched again past its time, as after a suspend, it's let go",
+            Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
+        Timekeeping.watching -= 1;
+        Timekeeping.trying = true;
+        theLauncher.sources = sources;
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
