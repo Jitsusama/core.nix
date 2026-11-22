@@ -13,27 +13,19 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use model_relay::{
-    CONNECT_WITHIN, Clocks, IDLE_EXIT, Origin, Relay, Roots, STANDS_DOWN_FOR,
-    STANDS_DOWN_FOR_AT_MOST, TRIES_ITS_PATH_EVERY,
-};
+use model_relay::{CONNECT_WITHIN, Clocks, IDLE_EXIT, Origin, Relay, Roots};
 use terminal_kit::{Exit, Failure, Help, flags};
 use tokio::signal::unix::SignalKind;
 
 /// The named flags it reads, every one taking a value.
-const FLAGS: [&str; 8] = [
+const FLAGS: [&str; 6] = [
     "--origin",
     "--socket",
     "--connections",
     "--roots",
     "--connect-within",
     "--idle-exit",
-    "--stand-down-for",
-    "--try-path-every",
 ];
-
-/// The longest it may be told to wait between trials of its path.
-const TRIES_ITS_PATH_EVERY_AT_MOST: Duration = Duration::from_hours(1);
 
 /// How many connections it keeps to the origin unless told.
 const CONNECTIONS: usize = 4;
@@ -74,17 +66,6 @@ fn help() -> Help {
     .option(
         "--idle-exit SECONDS",
         "leave once asked nothing this long, 120 if not told, never at 0",
-    )
-    .option(
-        "--stand-down-for SECONDS",
-        "how long its first stand-down sends pi direct at most, 600 if not told, a day at \
-         most; one within six times as long after the last doubles, to six times as long",
-    )
-    .option(
-        "--try-path-every SECONDS",
-        "how often it tries its path while it stands down, taking requests again once the \
-         path answers; the first trial waits twice as long, times as many as the stand-down \
-         has doubled; 30 if not told, an hour at most",
     )
     .exit(
         Exit::Failed,
@@ -233,35 +214,9 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         ));
     }
     let idle_exit = seconds(given[5].as_deref(), "--idle-exit", IDLE_EXIT)?;
-    let stands_down_for = seconds(given[6].as_deref(), "--stand-down-for", STANDS_DOWN_FOR)?;
-    if stands_down_for.is_zero() || stands_down_for > STANDS_DOWN_FOR_AT_MOST {
-        return Err(Failure::new(
-            Exit::Usage,
-            format!(
-                "--stand-down-for takes 1 to {} seconds",
-                STANDS_DOWN_FOR_AT_MOST.as_secs()
-            ),
-        ));
-    }
-    let tries_its_path_every = seconds(
-        given[7].as_deref(),
-        "--try-path-every",
-        TRIES_ITS_PATH_EVERY,
-    )?;
-    if tries_its_path_every.is_zero() || tries_its_path_every > TRIES_ITS_PATH_EVERY_AT_MOST {
-        return Err(Failure::new(
-            Exit::Usage,
-            format!(
-                "--try-path-every takes 1 to {} seconds",
-                TRIES_ITS_PATH_EVERY_AT_MOST.as_secs()
-            ),
-        ));
-    }
     let clocks = Clocks {
         connect_within,
         idle_exit: (!idle_exit.is_zero()).then_some(idle_exit),
-        stands_down_for,
-        tries_its_path_every,
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;

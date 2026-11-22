@@ -2041,26 +2041,17 @@
     with its own 421 when reset or left out again or lost, when its connection was kept with none
     other open or when none would open, but says a 502 when a
     reset, first or again, said to calm down, retiring its connection, sends on no body too large
-    or left unfinished, stands down past its share failed with the 421 that sends pi direct,
-    staying through its idle time, trying its path as it stands down, kept down by a trial failing
-    partway or answered with a 5xx, taking requests again once the path answers three in a row,
-    then trying it no more, or after, on connections opened afresh, over one opened while it stood
-    down, standing down doubled soon after, waiting twice as long for its first trial, even one
-    begun while a trial was awaited, for answers broken off midway as their connection falls or
-    requests sent again once it takes requests again, though never for requests no connection
-    would take,
-    resets saying to calm down, answers pi gives up on or answers sent before it took requests
-    again, says another origin's 421 and the stand-down's once the body is read, even a body too
-    large, counts a body pi left as its cancel, never a 421, tells a body past its deadline as
-    late, passes a TE of trailers as h2 sends it, says its counts as it leaves, its trials apart
-    from its connections, answers
-    broken off among them, counts on each connection the requests pi gave up on and no
+    or left unfinished, says another origin's 421 once the body is read, even a body too large,
+    counts a body pi left as its cancel, never a 421, tells a body past its deadline as late,
+    passes a TE of trailers as h2 sends it, says its counts as it leaves, answers broken off among
+    them, those the origin broke off itself too, counts on each connection the requests pi gave up on and no
     answer read whole or broken off, tells one a fallen
     connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
     502 or a 504 without queueing, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a
     421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves
     once idle even while refusing other hosts, held open by a kept connection or knocked on as it
-    goes, keeps its socket to its account, from a second relay and off a file or a link that isn't
+    goes, finishes each answer it streams when stopped, sending what comes meanwhile direct with
+    the 421 of one leaving, keeps its socket to its account, from a second relay and off a file or a link that isn't
     a socket, and logs nothing of a header or a body, a failure included; and its own cases hold a
     ping from behind an upload, with little held unsent in its sockets and short frames, retire a
     connection by its number alone, sparing one opened since, and at most once a minute for a

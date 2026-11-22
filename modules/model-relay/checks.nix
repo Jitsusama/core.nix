@@ -25,21 +25,10 @@ onLinux {
   # reset or left out again, or lost, when its connection was kept with no
   # other open or when none would open, but said as a 502 when a reset,
   # first or again, said to calm down, with its connection retired, a body too large or left
-  # unfinished going nowhere, a relay failing past its share standing down
-  # with the 421 that sends pi direct, staying through its idle time,
-  # trying its path while it stands down, a trial failing partway or
-  # answered with a 5xx keeping it down, taking requests again once
-  # the path answers, then trying it no more, or after, over a connection opened while it stood
-  # down, standing down doubled soon after and waiting twice as long for its
-  # first trial, even one begun while a trial was awaited, for answers
-  # broken off as their connection falls or requests
-  # sent again once it takes requests again, though never for requests no
-  # connection would take, the origin's own verdicts, answers pi gives up
-  # on or answers sent before it took requests again, another origin's
-  # 421 and the stand-down's said once the body is read, even a body too
-  # large, a body pi left counted as its cancel, never a 421, one past its
-  # deadline told as late, the counts said as it leaves, its trials apart from its
-  # connections, answers broken off among them,
+  # unfinished going nowhere, another origin's 421 said once the body is
+  # read, even a body too large, a body pi left counted as its cancel, never
+  # a 421, one past its deadline told as late, the counts said as it leaves,
+  # answers broken off among them, those the origin broke off itself too,
   # the requests pi gave up on counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a
@@ -48,7 +37,8 @@ onLinux {
   # back, an origin it can't trust sending pi direct, a request answered
   # beside an answer longer than the idle time, the relay leaving once idle
   # even while refusing other hosts, held open by a kept connection or
-  # knocked on as it goes, a socket the account's alone, never taken from a
+  # knocked on as it goes, a relay stopped finishing each answer it streams
+  # and sending what comes meanwhile direct, a socket the account's alone, never taken from a
   # relay answering it nor from a file or a link that isn't a socket, and
   # nothing of a header or body logged, a failure included.
   model-relay-carries-requests-whole = pkgs.callPackage ./package.nix { };
