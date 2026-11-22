@@ -47,6 +47,40 @@ pub struct Held {
     pub unmoved: u32,
 }
 
+/// The card's line naming the drag, due at `due`, and whom it goes to. The
+/// queues never lead, so one past isn't the drag, but the line mustn't say
+/// everything is in while one is out.
+fn drag_line(measures: &[Measure], due: &str) -> String {
+    let Some(m) = drag(measures) else {
+        return if super::measures::queues::worst(measures).is_some() {
+            "Drag: none, every judged measure but the queues is in; the worst queue's owner \
+             is asked apart."
+                .to_owned()
+        } else {
+            "Drag: none, every judged measure is in.".to_owned()
+        };
+    };
+    let to = if m.class == Class::Miss {
+        "each miss's owner"
+    } else if m.key == FINDINGS {
+        "each finding's owner"
+    } else if !by_owner(m).is_empty() {
+        if m.class == Class::Cells {
+            "each cell's owner"
+        } else {
+            "each file's owner"
+        }
+    } else {
+        owner_or_none(&m.owner)
+    };
+    format!(
+        "Drag: {}, {} against at most {}, to {to} by {due}.",
+        m.says,
+        figure(m.now),
+        figure(m.target.unwrap_or_default()),
+    )
+}
+
 /// The hour's card, at `at` and with the drag due at `due`, and what the
 /// next hour is to remember. `said` is each miss in Joel's own words and
 /// when, by its text, for telling him one is fixed.
@@ -80,43 +114,7 @@ pub fn compose(
         }
     }
     let (followed, unmoved) = follow(kept.drag.as_ref(), measures);
-    let chosen = drag(measures);
-    match chosen {
-        Some(m) => {
-            let _ = writeln!(
-                card,
-                "Drag: {}, {} against at most {}, to {} by {due}.",
-                m.says,
-                figure(m.now),
-                figure(m.target.unwrap_or_default()),
-                if m.class == Class::Miss {
-                    "each miss's owner"
-                } else if m.key == FINDINGS {
-                    "each finding's owner"
-                } else if !by_owner(m).is_empty() {
-                    if m.class == Class::Cells {
-                        "each cell's owner"
-                    } else {
-                        "each file's owner"
-                    }
-                } else {
-                    owner_or_none(&m.owner)
-                }
-            );
-        }
-        // The queues never lead, so one past isn't the drag, but the card
-        // mustn't say everything is in while one is out.
-        None if super::measures::queues::worst(measures).is_some() => {
-            let _ = writeln!(
-                card,
-                "Drag: none, every judged measure but the queues is in; the worst queue's \
-                 owner is asked apart."
-            );
-        }
-        None => {
-            let _ = writeln!(card, "Drag: none, every judged measure is in.");
-        }
-    }
+    let _ = writeln!(card, "{}", drag_line(measures, due));
     if let Some(followed) = followed {
         let _ = writeln!(card, "{followed}");
     }
@@ -151,7 +149,7 @@ pub fn compose(
         (carried, told)
     };
     let next = Kept {
-        drag: chosen.map(|m| Held {
+        drag: drag(measures).map(|m| Held {
             key: m.key.clone(),
             says: m.says.clone(),
             // Each miss has its own owner, the oldest's no more than the rest.

@@ -308,6 +308,32 @@ fn a_partial_landing_keeps_the_landed_drops_the_refused_and_seats_the_rest() {
 }
 
 #[test]
+fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
+    let root = root("boarded");
+    for (head, at) in [("a1", 10), ("b2", 20)] {
+        board(&root, &rider(head, at)).unwrap();
+    }
+    // A rider whose file went keeps its slot, as none.
+    let merged: Vec<String> = ["b2", "gone", "a1"].map(str::to_owned).into();
+    after_landing(
+        &root,
+        Landing::Landed("m1".to_owned()),
+        &merged,
+        0,
+        &mut Splitting::default(),
+    );
+    let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap();
+    let line: Value = serde_json::from_str(kept.trim()).unwrap();
+    assert_eq!(
+        line["boarded"],
+        json!([20, null, 10]),
+        "the boarding times weren't kept in the heads' order: {line}"
+    );
+    assert!(riders(&root).is_empty(), "the landed riders stayed aboard");
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn a_first_rider_github_refuses_falls_alone() {
     let root = root("turned");
     for (head, at) in [("a1", 10), ("b2", 20)] {

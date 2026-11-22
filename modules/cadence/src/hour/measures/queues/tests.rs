@@ -123,13 +123,16 @@ fn only_a_vm_runs_send_counts_against_the_vm_runs_target() {
 #[test]
 fn a_riders_wait_counts_from_boarding_and_one_still_aboard_counts_so_far() {
     let landed = [
-        // Two riders landed in one run: one boarded 35 minutes before.
-        format!(
-            r#"{{"at":{},"heads":["a","b"],"boarded":[{},{}],"landed":"c","seconds":420}}"#,
-            NOW - 3600,
-            NOW - 3600 - 2100,
-            NOW - 3600 - 600
-        ),
+        // Three riders landed in one run: one boarded 35 minutes before,
+        // and one whose file had gone, so merge-net kept no time for it.
+        serde_json::json!({
+            "at": NOW - 3600,
+            "heads": ["a", "b", "h"],
+            "boarded": [NOW - 3600 - 2100, NOW - 3600 - 600, null],
+            "landed": "c",
+            "seconds": 420,
+        })
+        .to_string(),
         // Before landings said when their riders boarded: flow, no wait.
         format!(
             r#"{{"at":{},"heads":["d"],"landed":"e","seconds":127}}"#,
@@ -149,7 +152,7 @@ fn a_riders_wait_counts_from_boarding_and_one_still_aboard_counts_so_far() {
         "a run's length was read as its riders' wait, or one aboard didn't count"
     );
     assert_eq!(
-        read.flow, "3 landed in a day, 1 aboard",
+        read.flow, "4 landed in a day, 1 aboard",
         "riders, not trains"
     );
 }

@@ -50,8 +50,8 @@
 //! off. What landed is kept a line each in `train/landed.jsonl`, so a day's
 //! rides can be counted against the runs again they saved.
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Duration;
@@ -65,6 +65,7 @@ pub use right_of_way::gives_way;
 mod gated;
 mod hub;
 mod installed;
+mod landed;
 mod landing;
 mod pulls;
 mod splitting;
@@ -72,6 +73,7 @@ use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
+use landed::{boarded_at, keep_landed};
 use landing::{Landing, land};
 use pulls::aboard;
 pub use pulls::drafted;
@@ -549,10 +551,12 @@ fn after_landing(
     match landing {
         Landing::Landed(landed) => {
             splitting.landed(merged.len());
+            // Read before alighting, which takes each rider's file.
+            let boarded = boarded_at(root, merged);
             for head in merged {
                 alight(root, head);
             }
-            keep_landed(root, &landed, merged, crate::state::now() - began);
+            keep_landed(root, &landed, merged, &boarded, crate::state::now() - began);
             println!("merge-net: the train landed {} on main", short(&landed));
             let left = !riders(root).is_empty();
             way(root, &Ended::Landed { left });
@@ -569,10 +573,11 @@ fn after_landing(
             // The refused rider leaves the front with those landed, so a
             // search for a red candidate looks past it too.
             splitting.landed(kept.len() + 1);
+            let boarded = boarded_at(root, &kept);
             for head in &kept {
                 alight(root, head);
             }
-            keep_landed(root, &landed, &kept, crate::state::now() - began);
+            keep_landed(root, &landed, &kept, &boarded, crate::state::now() - began);
             let (before, stay) = match kept.len() {
                 1 => ("the rider before it".to_owned(), "stays"),
                 riders => (format!("the {riders} riders before it"), "stay"),
@@ -729,25 +734,6 @@ fn gate(checkout: &Path, log: &Path) -> Gated {
         .stderr(errors)
         .status();
     ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
-}
-
-/// Keep what landed at `landed`, the heads it carried and how long since
-/// its run began, a line in `train/landed.jsonl`.
-fn keep_landed(root: &Path, landed: &str, heads: &[String], seconds: u64) {
-    let line = json!({
-        "at": crate::state::now(),
-        "landed": landed,
-        "heads": heads,
-        "seconds": seconds,
-    });
-    let kept = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder(root).join("landed.jsonl"))
-        .and_then(|mut file| file.write_all(format!("{line}\n").as_bytes()));
-    if let Err(error) = kept {
-        eprintln!("merge-net: the train's landing at {landed} wasn't kept: {error}");
-    }
 }
 
 /// `owner/name` of the repository at `url`.

@@ -517,7 +517,10 @@ mod tests {
             180.0,
             Some(60.0),
         );
-        assert!(drag(&[queue.clone()]).is_none(), "a queue led the drag");
+        assert!(
+            drag(std::slice::from_ref(&queue)).is_none(),
+            "a queue led the drag"
+        );
         let pains = measure("pains", Class::Pains, 2.0, Some(0.0));
         assert_eq!(
             drag(&[queue.clone(), pains]).map(|m| m.key.as_str()),
@@ -525,7 +528,12 @@ mod tests {
             "a queue led ahead of Joel's pains"
         );
         let mut ledger = Vec::new();
-        let told = file(&mut ledger, &[queue.clone()], "2026-11-21", 1000);
+        let told = file(
+            &mut ledger,
+            std::slice::from_ref(&queue),
+            "2026-11-21",
+            1000,
+        );
         assert_eq!(told.len(), 1, "only the queue's ask: {told:?}");
         assert_eq!(ledger[0].due, 1000 + QUEUE_DUE, "due a week on");
         let unread = Measure {
