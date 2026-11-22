@@ -339,6 +339,21 @@ pub fn mark_at(
     pt_of(starts, block, into_pt, block_pt)
 }
 
+/// The marks kept from the last time to write back as they were read:
+/// those still waiting on the first screen's page, whose letter no mark
+/// set since has taken, so closing before the whole page arrives loses
+/// none. On the whole page a mark left waiting has lost its block, as a
+/// file cut shorter loses it, so it goes.
+pub fn still_waiting(kept: &[Mark], whole: bool, set: impl Fn(char) -> bool) -> Vec<Mark> {
+    if whole {
+        return Vec::new();
+    }
+    kept.iter()
+        .filter(|mark| !set(mark.letter))
+        .cloned()
+        .collect()
+}
+
 /// The least height a kept block is believed to have stood: a line of the
 /// smallest type is taller, so one kept less is a file gone wrong, whose
 /// share would throw the place far down the page.

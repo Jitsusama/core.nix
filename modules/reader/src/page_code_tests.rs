@@ -28,33 +28,54 @@ fn held(code: &str, window_pt: f64) -> String {
         .join(" ")
 }
 
-/// The stretches an unboxed piece of `code` can't break inside, as the
-/// page reads them, joined by `|`.
-fn stretches(code: &str) -> String {
+/// The lines the page's template sets `body` as, given `s`, the code,
+/// in a window `window_pt` wide.
+fn probed(body: &str, code: &str, window_pt: f64) -> Vec<String> {
     let theme = crate::theme::Theme::read("{}");
     let mut world = super::super::new_world();
     let (ink, look) = super::super::look(&theme, &world);
     let program = format!(
-        "{}#context text(size: 2pt, {}.matches(unbroken).map(m => m.text).filter(t => t != \"\").join(\"|\"))",
-        super::super::at_width(&ink, &look, Width::for_window(2560.0)),
+        "{}#let s = {}\n#context {body}",
+        super::super::at_width(&ink, &look, Width::for_window(window_pt)),
         crate::walk::literal(code)
     );
     let page = super::super::set_page(&mut world, &program).expect("the page sets");
     crate::text::lines(crate::text::runs(&page.frame))
         .iter()
-        .map(|line| line.text.trim_end().to_owned())
-        .collect::<Vec<_>>()
-        .join(" ")
+        .map(|line| line.text.trim().to_owned())
+        .collect()
 }
 
 #[test]
-fn an_unboxed_piece_breaks_after_a_hyphen_but_not_one_opening_a_word_or_before_a_figure() {
+fn an_unboxed_piece_is_counted_in_the_stretches_typst_breaks_it_into() {
+    let code = "x--y a-1-b --release f(a-) x-.y";
+    // Its stretches as least-code reads them, and the lines Typst sets it
+    // in when every break it may make is taken.
+    let read = probed(
+        r#"text(size: 2pt, s.matches(unbroken).map(m => m.text).filter(t => t != "").join("|"))"#,
+        code,
+        2560.0,
+    )
+    .join(" ");
+    let broken = probed("box(width: 0.1pt, raw(s))", code, 2560.0).join("|");
     assert_eq!(
-        stretches("x--y a-1-b --release"),
-        "x--|y|a-1-|b|--release",
-        "after a word's hyphens, but a figure holds to the hyphen before it, \
-         and a flag to its opening hyphens"
+        read, broken,
+        "least-code's stretches are where Typst breaks: after a word's hyphens, \
+         but not after a flag's opening ones, nor before a figure or a closing mark"
     );
+    assert_eq!(read.matches('|').count(), 6, "it breaks at all: {read}");
+}
+
+#[test]
+fn an_unboxed_pieces_first_stretch_counts_with_the_short_word_held_to_it() {
+    // In a narrow window the name is unboxed, and "run" is held to it, so
+    // the column needs "run a-" on one line, wider than any stretch alone.
+    let joined = probed(
+        r#"text(size: 2pt, if calc.abs(measure(least-code(s)).width - measure(raw("run a-")).width) < 0.01pt { "joined" } else { "apart" })"#,
+        &format!("run {}", ["a-name"; 30].join("-")),
+        360.0,
+    );
+    assert_eq!(joined, ["joined"]);
 }
 
 #[test]

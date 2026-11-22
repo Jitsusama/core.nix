@@ -23,13 +23,16 @@ pub fn top_of(line: &Line) -> f64 {
     line.baseline_pt - line.size_pt
 }
 
-/// The top of the line in `lines` nearest `pt`, as a mark moved between
-/// lines is put back on one.
-pub fn nearest_top(lines: &[Line], pt: f64) -> Option<f64> {
-    lines
-        .iter()
-        .map(top_of)
-        .min_by(|a, b| (a - pt).abs().total_cmp(&(b - pt).abs()))
+/// The top of the line `pt` falls on, the lowest standing at or above it,
+/// as a mark moved between lines is put back on one: never the line
+/// below, which past a block's last line is the next block's. A point a
+/// little over the first line, as rounding leaves one, takes that line.
+pub fn line_top_at(lines: &[Line], pt: f64) -> Option<f64> {
+    let tops = || lines.iter().map(top_of);
+    tops()
+        .filter(|top| *top <= pt + 0.5)
+        .max_by(f64::total_cmp)
+        .or_else(|| tops().min_by(f64::total_cmp))
 }
 
 /// Where a line's foot is, its descenders' room in, as a match's is.
@@ -388,22 +391,24 @@ mod tests {
     use crate::text::test_line as line;
 
     #[test]
-    fn a_point_between_lines_goes_to_the_nearest_lines_top() {
+    fn a_point_between_lines_goes_to_the_top_of_the_line_it_falls_on() {
         let lines = [line(20.0, "one"), line(40.0, "two"), line(60.0, "three")];
         let tops: Vec<f64> = lines.iter().map(top_of).collect();
-        let near = |pt: f64| nearest_top(&lines, pt);
-        assert_eq!(near(tops[1]), Some(tops[1]), "on a line's top, it stays");
+        let at = |pt: f64| line_top_at(&lines, pt);
+        assert_eq!(at(tops[1]), Some(tops[1]), "on a line's top, it stays");
+        assert_eq!(at(tops[1] + 3.0), Some(tops[1]), "a little below, back up");
         assert_eq!(
-            near(tops[1] + 3.0),
+            at(tops[2] - 3.0),
             Some(tops[1]),
-            "a little below, back up"
+            "nearer the next line, still the one it falls on, never the next block's"
         );
         assert_eq!(
-            near(tops[2] - 3.0),
-            Some(tops[2]),
-            "a little above the next, on"
+            at(tops[0] - 0.3),
+            Some(tops[0]),
+            "rounded over the first, on it"
         );
-        assert_eq!(nearest_top(&[], 5.0), None, "no lines, no top");
+        assert_eq!(at(0.0), Some(tops[0]), "over every line, the first");
+        assert_eq!(line_top_at(&[], 5.0), None, "no lines, no top");
     }
 
     /// The eyebrow's label, the words and a section's heading, at the

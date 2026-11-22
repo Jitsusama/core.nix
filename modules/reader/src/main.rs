@@ -356,16 +356,12 @@ struct Feedback(u64);
 
 /// What a place kept says of its marks, as the page takes them back.
 fn kept_marks(place: &place::Place) -> Vec<KeptMark> {
-    place
-        .marks
-        .iter()
-        .map(|mark| (mark.letter, mark.block, mark.into_pt, mark.block_pt))
-        .collect()
+    place.marks.clone()
 }
 
-/// A mark kept from the last time: its letter, its block, how far into it
-/// and how tall the block was then.
-type KeptMark = (char, usize, f64, Option<f64>);
+/// A mark kept from the last time, as it was read, so one still waiting
+/// when the reader closes is written back with all it said.
+type KeptMark = place::Mark;
 
 /// Where the view opens: the mark asked for, or where the file was left.
 /// A letter with no mark kept says so, as Vim does, and opens where the

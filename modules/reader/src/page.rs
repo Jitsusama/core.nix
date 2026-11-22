@@ -253,9 +253,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 }
 // What an unboxed piece can't break inside: a run up to a space, or up
 // to and taking a hyphen, after which a line may break, but for one
-// opening a word, as in --release, or before a figure, as in -1, which
-// Unicode's line breaking holds to what follows.
-#let unbroken = regex("-*[^ -]*(?:-+[0-9][^ -]*)*-*")
+// opening a word, as in --release, or before a figure or closing
+// punctuation, as in -1 or a-), which Unicode's line breaking holds to
+// what follows.
+#let unbroken = regex("-*[^ -]*(?:-+[0-9)\\]}.,;:!?'\"][^ -]*)*-*")
 // The least room a table's column needs for a span: its widest run of
 // pieces held together, since only between those can it break. A piece
 // too wide to box is unboxed, so it breaks where its words or a hyphen
@@ -819,7 +820,8 @@ impl Rest {
 /// Sets the file's first blocks, up to about two screens of source, as a
 /// page of their own; the rest comes back to set, unless that was all.
 /// Given a block to open at, it sets as far as that block and about two
-/// screens past it, and the block after it unless that is longer still. The rest is set at the same `width`.
+/// screens past it, and the block after it unless that is longer still.
+/// The rest is set at the same `width`.
 pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First, String> {
     let start = Instant::now();
     let mut parts = Vec::new();

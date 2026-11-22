@@ -1,7 +1,32 @@
 use super::{
     Block, Mark, Opens, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in,
-    mark, mark_at, moved, opening, pt_of, read_in, through, window_in, write_in,
+    mark, mark_at, moved, opening, pt_of, read_in, still_waiting, through, window_in, write_in,
 };
+
+#[test]
+fn marks_still_waiting_are_written_back_whole_only_from_the_first_screen() {
+    let kept = |letter| Mark {
+        letter,
+        block: 9,
+        into_pt: 20.0,
+        block_pt: Some(80.0),
+        said: Said {
+            heading: Some("Far".into()),
+            through: Some(0.9),
+        },
+    };
+    let waiting = [kept('a'), kept('b')];
+    assert_eq!(
+        still_waiting(&waiting, false, |letter| letter == 'b'),
+        vec![kept('a')],
+        "on the first screen, as read, all it said kept, unless set again since"
+    );
+    assert_eq!(
+        still_waiting(&waiting, true, |_| false),
+        vec![],
+        "on the whole page, a mark still waiting has lost its block, and goes"
+    );
+}
 
 #[test]
 fn a_mark_kept_with_its_blocks_height_waits_on_the_first_screen_for_the_block_after() {

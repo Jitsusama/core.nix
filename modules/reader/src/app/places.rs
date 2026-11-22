@@ -292,19 +292,18 @@ impl App {
         let starts = place::starts(&self.painter.page().frame);
         let whole = self.whole;
         let marks = &mut self.marks;
-        self.kept_marks
-            .retain(|(letter, block, into_pt, block_pt)| {
-                match place::mark_at(&starts, whole, *block, *into_pt, *block_pt) {
-                    Some(pt) => {
-                        marks.entry(*letter).or_insert(pt);
-                        false
-                    }
-                    None => true,
+        self.kept_marks.retain(|kept| {
+            match place::mark_at(&starts, whole, kept.block, kept.into_pt, kept.block_pt) {
+                Some(pt) => {
+                    marks.entry(kept.letter).or_insert(pt);
+                    false
                 }
-            });
+                None => true,
+            }
+        });
     }
 
-    /// Puts each mark on the line nearest it once the page's lines are
+    /// Puts each mark on the line it falls on once the page's lines are
     /// read: one moved through its block as the page was set at another
     /// width, or kept from the last time, lands as far through it, between
     /// lines, and going to it would take the line below, which may be the
@@ -314,7 +313,7 @@ impl App {
             return;
         };
         for pt in self.marks.values_mut() {
-            if let Some(top) = moves::nearest_top(lines, *pt) {
+            if let Some(top) = moves::line_top_at(lines, *pt) {
                 *pt = top;
             }
         }
@@ -362,23 +361,11 @@ impl App {
             .iter()
             .map(|(letter, pt)| place::mark(&blocks, *letter, line(*pt), height))
             .collect();
-        // Marks still waiting for the whole page are kept as they were
-        // read, so closing on the first screen loses none.
-        marks.extend(
-            self.kept_marks
-                .iter()
-                .filter(|(letter, ..)| !self.marks.contains_key(letter))
-                .map(|&(letter, block, into_pt, block_pt)| place::Mark {
-                    letter,
-                    block,
-                    into_pt,
-                    block_pt,
-                    said: place::Said {
-                        heading: place::heading_of(&blocks, block),
-                        through: None,
-                    },
-                }),
-        );
+        marks.extend(place::still_waiting(
+            &self.kept_marks,
+            self.whole,
+            |letter| self.marks.contains_key(&letter),
+        ));
         marks.sort_by_key(|mark| mark.letter);
         let at_end = self.at_end();
         if let Err(error) = place::write(
