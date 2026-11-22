@@ -325,8 +325,10 @@ ShellRoot {
     // wait for it, since Qt runs those queued while it runs them in one
     // pass, so this waits in time: until a tell has stood 250 ms, long
     // enough for a second to be counted, which heldHears refuses, or 5 s
-    // with none. The clock can turn a minute meanwhile, which this waits
-    // past and heldHears tells apart.
+    // with none. A turn of the clock told after the case's change carries
+    // it, since Now reads For You's rows as it tells its own, so the wait
+    // ends on a turn as on For You's ask, and heldHears sets a turn aside
+    // as such.
     Timer {
         id: tellWaited
 
@@ -337,8 +339,7 @@ ShellRoot {
         repeat: true
         onTriggered: {
             const at = Date.now();
-            if (tellWaited.toldAt === 0
-                && root.nowSaid.some(said => said.why !== "" && !said.retimed))
+            if (tellWaited.toldAt === 0 && root.nowSaid.some(said => said.why !== ""))
                 tellWaited.toldAt = at;
             const told = tellWaited.toldAt > 0;
             if ((told && at - tellWaited.toldAt < 250)
@@ -1054,13 +1055,17 @@ ShellRoot {
     // changedWhy).
     property string nowMoved: ""
     // What it said moved each time, in order, since the case set it going
-    // cleared them: whether Now had placed its time again by then, since
-    // heldHears' change, and whether tellWaited was waiting for it.
+    // cleared them, whether Now had placed its time again by then, since
+    // heldHears' change, and whether the row held read otherwise.
     property var nowSaid: []
     // The time Now had placed as heldHears' change was made, so a turn of
     // the real clock, which places it again, is told from a second change
     // of For You's however late it's heard.
     property var heldTimeRow: null
+    // What the row held and what it holds read as heldHears' change was
+    // made (Provider.qml's lastHeldRow), so a turn is seen to move what's
+    // held or not.
+    property string heldRowWas: ""
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
     // How many times what For You lists from moved (Now.qml's forYouHeard).
@@ -1076,7 +1081,7 @@ ShellRoot {
         function onChanged() {
             root.nowChanged += 1;
             root.nowSaid.push({ why: now.changedWhy, retimed: now.timeRow !== root.heldTimeRow,
-                waited: tellWaited.running });
+                heldMoved: now.lastHeldRow !== root.heldRowWas });
             root.nowMoved = now.changedWhy;
             root.nowUnseen = now.changedUnseen;
         }
@@ -1552,7 +1557,8 @@ ShellRoot {
             why: "Each read re-listed an empty folder.", state: "waiting", address: "leftq",
             asker: "The trunk disk incident", ask: "Merge it now, or hold it for review?",
             ifNothing: "It waits, unmerged, and the rescans go on.",
-            choices: [{ value: "merge", label: "Queue It" }, { value: "hold", label: "Hold It" }] });
+            choices: [{ value: "merge", label: "Queue It" },
+                { value: "hold", label: "Hold It" }] });
         const expiring = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
         const expiringText = JSON.stringify({ v: 1, id: "e", kind: "page", at: root.lookedAt,
             target: "https://example.com", title: "Read E", why: "Because.", state: "waiting",
@@ -2647,6 +2653,7 @@ ShellRoot {
         root.nowChanged = 0;
         root.nowSaid = [];
         root.heldTimeRow = now.timeRow;
+        root.heldRowWas = now.lastHeldRow;
         WaitingOnYou.now = [toDo("Sign In Again")];
         expect("a to-do said otherwise, its count the same, keeps For You's own row",
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
@@ -2692,21 +2699,25 @@ ShellRoot {
         // answering late is no second telling of For You: counting
         // every change read 2 on loaded builders (train run 23a23e5d and
         // three more, 16 and 17 November), as it does with the notices'
-        // rows changed just after the case. A minute turning while the
-        // cases held the thread places the time again, and told in one with
-        // For You's change, Now tells both as its own rows. While the case waits for the tell the clock can also
-        // turn beside it, a tell of its own as Now's own rows with the time
-        // placed again, which is set aside once. A turn told alone stands
-        // for For You's only when told before the wait began, as the turn
-        // and the ask told in one; told during the wait, it's a turn that
-        // found For You saying nothing.
+        // rows changed just after the case. A turn of the clock places the
+        // time again, a tell as Now's own rows, which is set aside once.
+        // Now compares what's held as it tells its own rows, reading For
+        // You's rows then, so a turn told before For You's ask carries For
+        // You's change and leaves the ask nothing to say (Provider.qml's
+        // changedTo): a turn told alone stands for For You's tell when the
+        // row held read otherwise as it was told. That shows what's held
+        // moved, by the change or by the minute, since some of For You's
+        // rows read by the clock, though not that For You asked. A For You
+        // that never asks, or a change that never reached what's held, is
+        // caught on every run the clock doesn't turn in; on one it does,
+        // the turn draws what's held anew, as Joel would see.
         const moved = root.nowSaid;
         const told = moved.filter(said => said.why !== "");
         const turnedAt = told.findIndex(said => said.why === "its own rows" && said.retimed);
         const turned = turnedAt >= 0;
         const others = told.filter((said, at) => at !== turnedAt);
         const heard = (others.length === 1 && others[0].why === "the rows it holds")
-            || (turned && others.length === 0 && !told[turnedAt].waited);
+            || (turned && others.length === 0 && told[turnedAt].heldMoved);
         expect("and For You held hears it once the change is done", heard,
             `${JSON.stringify(moved)} after ${root.tellWaitedFor} ms`);
         // Said last with nothing held, Now stepped into For You since

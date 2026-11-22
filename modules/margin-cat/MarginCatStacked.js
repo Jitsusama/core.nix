@@ -130,8 +130,9 @@ function moves(from, to, at) {
 
 // The quickest way down or up from `from` to `to`, each foot it can drop
 // off, or head it can leap up off, and each catch across the gap tried:
-// null where there's none, or where its seat's on a floating window,
-// which MarginCatPaths.js's walk gets onto. The workspace it leaves is
+// null where there's none, where its seat's on a floating window, or
+// where it starts under the screen, which MarginCatPaths.js's walk gets
+// onto, or brings it up from. The workspace it leaves is
 // `at.lift` above the one it goes to, or under it, so a seat at the same
 // spot on the screen as `from` is still a way across the gap.
 function crosses(from, to, at) {
@@ -145,6 +146,11 @@ function crosses(from, to, at) {
     // stay on the glass as its ground slides away, so it keeps off them.
     const old = Object.assign({}, at, { cols: was, hurried: true, marks: null, floats: [] });
     const start = Falls.settle(Ways.begun(old, from), was, old);
+    // Out of sight under the screen it has no ground to leave and no place
+    // to leap from, so it comes up as MarginCatPaths.js's walk brings it.
+    if (start.kind === "below") {
+        return null;
+    }
     const feet = start.kind === "floor" ? (up ? [] : [{ stops: [start], ms: 0 }])
         : start.kind === "ledge" || start.kind === "side" ? Routes.feet(start, was, old, up)
         : [];
