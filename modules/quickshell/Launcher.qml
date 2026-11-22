@@ -3082,7 +3082,8 @@ Scope {
     }
 
     // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
-    // on a row held still, or "" for one doubled), and when it was pressed, heard and done, in
+    // on a row held still, "waited" when it was taken for one meant for a step that left by
+    // itself (guessed), or "" for one doubled), and when it was pressed, heard and done, in
     // milliseconds of the monotonic clock, so a test sees that a name and
     // one Return opens with no wait between.
     property var returned: ({})
@@ -5923,7 +5924,7 @@ Scope {
         // changing beside one is left to the pacing, as Slack's answers
         // arriving while Joel types are.
         function onKeysTakenChanged() {
-            root.guessed = Held.passedOver(root.guessed, prompt.keyTaken);
+            root.guessed = Held.passedOver(root.guessed, prompt.keyAlone);
             if (prompt.typingNow && prompt.keyTaken.length === 1)
                 return;
             const heard = KeyTimes.now();
@@ -6455,8 +6456,8 @@ Scope {
         // Guessed until the landing is known to be on its row, so a leave
         // that throws partway, its rows unsearched and the selection where
         // it stood, holds Return until another key (Held.whileLeaving).
-        const pending = guessed;
-        guessed = Held.whileLeaving(prompt.keysTaken, open);
+        const standing = guessed;
+        guessed = Held.whileLeaving(prompt.keysTaken, Date.now(), open);
         try {
             held = steps;
             back(false, held.length - leaving.keep);
@@ -6474,13 +6475,14 @@ Scope {
             // Its row may be gone from what's shown, as an ask a share
             // hides, so the selection stands on another row (leftAt), one
             // Joel never chose: a Return pressed next, meant for the step
-            // that left, waits rather than run it.
-            const onRow = current >= 0 ? matches[current] ?? null : null;
-            guessed = Held.landedAfter(pending, from, onRow ? steadyId(onRow) : "",
-                { keys: prompt.keysTaken, open, depth: held.length });
+            // that left, waits rather than run it. The selection is read
+            // as here() records a step's, so a leave back onto the
+            // headline stepped in from is a landing on its row.
+            guessed = Held.landedAfter(standing, from, selected ? steadyId(selected) : "",
+                { keys: prompt.keysTaken, at: Date.now(), open, depth: held.length });
         } else {
-            guessed = Held.landedAfter(pending, from, null,
-                { keys: prompt.keysTaken, open, depth: held.length });
+            guessed = Held.landedAfter(standing, from, null,
+                { keys: prompt.keysTaken, at: Date.now(), open, depth: held.length });
         }
         return "left";
     }
@@ -10025,6 +10027,9 @@ Scope {
             // ending row's line, so a test waits it out before running it.
             linedFresh: Date.now() - root.linedAt < Options.keyTiming.wait,
             returned: root.returned,
+            // The landing a step that left by itself guessed, so a test can
+            // tell a Return held under it ("waited") from one lost.
+            guessed: root.guessed,
             // What the foot says for a key in place of the keys, as q's words
             // or "not here", in the foot's order, until the next key.
             saying: root.sayingNow ? root.saying.slice(1).concat([root.saying[0]])
@@ -10537,6 +10542,9 @@ Scope {
     // Joel's file chooser said no opening line, its keys 100 ms each
     // (2026-11-13, 03:45).
     function into(name) {
+        // Put in a place from outside, as a chord does while the launcher
+        // is open, it's no landing a leave guessed (walkTo).
+        guessed = Held.unguessed();
         // A chord as home's fill is still to be found steps in over the
         // choices joined, as a key would (fillFound).
         fillFound("chord");

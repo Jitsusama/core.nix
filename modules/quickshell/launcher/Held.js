@@ -171,13 +171,20 @@ function guessedAt(from, landed, keys) {
     return key !== "" && key === landed ? -1 : keys;
 }
 
+// How long after a guessed landing a Return is still taken for one meant
+// for the step that left: past it, Joel has had time to read the row the
+// selection stands on, as the launcher gives a notice's foot to be read
+// (Sprouting.js), so his Return is on the row he read.
+const SEEN_MS = 10_000;
+
 // A landing a step that left by itself had to guess: the keys the field
-// had taken then (`keys`, or -1 for none guessed), when a Return was
-// last held under it (`at`, or 0), how deep the launcher stood once it
-// landed (`depth`, or -1 for any), and whether the leave threw partway
-// (`broken`), its selection half made.
+// had taken then (`keys`, or -1 for none guessed), when it was guessed
+// (`since`, in ms), when a Return was last held under it (`at`, or 0),
+// how deep the launcher stood once it landed (`depth`, or -1 for any),
+// and whether the leave threw partway (`broken`), its selection half
+// made.
 function unguessed() {
-    return { keys: -1, at: 0, depth: -1, broken: false };
+    return { keys: -1, since: 0, at: 0, depth: -1, broken: false };
 }
 
 // A guess made before the field's key `keys` and not yet answered by a
@@ -187,34 +194,37 @@ function pending(guess, keys) {
     return guess.keys >= 0 && guess.keys === keys && guess.at === 0;
 }
 
-// The guess that stands while a leave runs, at the field's key `keys`,
-// in a launcher `open` or not: broken until the leave says where it
-// landed, so one that throws partway holds the next Return too.
-function whileLeaving(keys, open) {
-    return open ? { keys, at: 0, depth: -1, broken: true } : unguessed();
+// The guess that stands while a leave runs, at the field's key `keys`
+// and the time `since`, in a launcher `open` or not: broken until the
+// leave says where it landed, so one that throws partway holds the next
+// Return too.
+function whileLeaving(keys, since, open) {
+    return open ? { keys, since, at: 0, depth: -1, broken: true } : unguessed();
 }
 
 // The guess once a leave is done, from `before`, the guess as it stood
 // before the leave; `from`, the step's record of the row Joel stepped in
 // from; `landed`, the key of the row selected once it landed ("" for
-// none, null where nothing was left); and `now`, the field's `keys`,
-// whether the launcher is `open`, and its `depth`. A landing by its key
-// keeps only a guess still pending from an earlier leave.
+// none, null where nothing was left); and `now`, the field's `keys`, the
+// time `at`, whether the launcher is `open`, and its `depth`. A landing
+// by its key keeps only a guess still pending from an earlier leave, from
+// when that was guessed, and since this leave closed whole, unbroken.
 function landedAfter(before, from, landed, now) {
     const kept = pending(before, now.keys);
     if (!now.open) {
         return unguessed();
     }
     if (landed !== null && guessedAt(from, landed, now.keys) >= 0) {
-        return { keys: now.keys, at: 0, depth: now.depth, broken: false };
+        return { keys: now.keys, since: now.at, at: 0, depth: now.depth, broken: false };
     }
     return kept ? Object.assign({}, before, { depth: now.depth, broken: false }) : unguessed();
 }
 
-// A key with no name, as Shift or Ctrl pressed alone, chose nothing, so
-// the Return after it is still the first key after the leave.
-function passedOver(guess, name) {
-    return name === "" && guess.keys >= 0
+// A modifier pressed `alone`, as Shift or Ctrl, chose nothing, so the
+// Return after it is still the first key after the leave. A key with no
+// name isn't one, as é or Delete typed into the find moves the rows.
+function passedOver(guess, alone) {
+    return alone && guess.keys >= 0
         ? Object.assign({}, guess, { keys: guess.keys + 1 }) : guess;
 }
 
@@ -222,17 +232,19 @@ function passedOver(guess, name) {
 // guessed after it. `now` is the field's keys, this Return counted, as
 // it counts a key before it acts; the time in ms; the launcher's depth;
 // and whether words are asked for. Only the first key after the leave
-// holds, at the depth it landed, so a second Return meant for the step
-// that left, as an ask's Release It, never acts on the row the selection
-// stands on instead; and the Return straight after a held one, within
-// `wait` ms, holds once more, as that Return doubled, a key bounced or
-// pressed twice for one. After a leave that threw, every Return holds
-// until another key. Any other key first, as a move or a word typed,
+// holds, within SEEN_MS of it and at the depth it landed, so a second
+// Return meant for the step that left, as an ask's Release It, never acts
+// on the row the selection stands on instead; and the Return straight
+// after a held one, within `wait` ms, holds once more, as that Return
+// doubled, a key bounced or pressed twice for one. After a leave that
+// threw, every Return holds until another key, however late, since the
+// selection is half made. Any other key first, as a move or a word typed,
 // lets the next Return act, and words asked for are given, ending it.
 function returnUnder(guess, now, wait) {
+    const soon = guess.at === 0 ? now.at - guess.since < SEEN_MS : now.at - guess.at < wait;
     const holds = !now.asking && guess.keys >= 0 && now.keys === guess.keys + 1
         && (guess.depth < 0 || now.depth === guess.depth)
-        && (guess.at === 0 || guess.broken || now.at - guess.at < wait);
+        && (guess.broken || soon);
     return {
         holds,
         next: holds && (guess.at === 0 || guess.broken)
