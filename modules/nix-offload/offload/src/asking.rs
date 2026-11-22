@@ -7,8 +7,17 @@
 //! whether to trust the builder: about 22 dialogs in six minutes. Told
 //! never to ask and to trust only a key it was given, ssh refuses the
 //! builder instead, which the run reads as a lost one and sends again.
+//!
+//! Where it stops: this governs ssh's own questions, about host keys and
+//! passphrases. An ssh agent asks through its own environment, so one
+//! that wants a PIN still can; a builder's own key keeps the agent out
+//! where one is lent ([`crate::there::reach`]). Strict checking reaches
+//! every Nix copy, nearby machines' too, whose stores pin no key, so a
+//! nearby machine is reached only while its key is in known_hosts under
+//! the name it's given.
 
 use std::env;
+use std::ffi::OsString;
 
 /// What every ssh under Nix is told ahead of anything else: never ask,
 /// and connect only to a host whose key it already holds.
@@ -27,11 +36,26 @@ pub fn sshopts(given: Option<&str>) -> String {
 }
 
 /// Sets this process's environment so that nothing it starts asks anyone:
-/// no askpass for any ssh, and [`sshopts`] for every ssh under Nix. Called
-/// first in `main`, before any thread starts.
-pub fn never_ask() {
-    let sshopts = sshopts(env::var("NIX_SSHOPTS").ok().as_deref());
-    // SAFETY: `main` calls this before it starts any thread, so nothing
+/// no askpass for any ssh, and [`sshopts`] for every ssh under Nix. One
+/// given that isn't text keeps its bytes after [`NEVER_ASKS`].
+///
+/// # Safety
+///
+/// It changes the environment, so it must be called before any thread
+/// starts, as `main` calls it first.
+pub unsafe fn never_ask() {
+    let sshopts = match env::var_os("NIX_SSHOPTS") {
+        Some(given) => match given.to_str() {
+            Some(text) => OsString::from(sshopts(Some(text))),
+            None => {
+                let mut joined = OsString::from(format!("{NEVER_ASKS} "));
+                joined.push(given);
+                joined
+            }
+        },
+        None => OsString::from(NEVER_ASKS),
+    };
+    // SAFETY: the caller calls this before any thread starts, so nothing
     // reads the environment while it changes.
     unsafe {
         env::remove_var("SSH_ASKPASS");

@@ -190,23 +190,21 @@ fn executable(path: &Path, script: &str) {
 /// adds what `NIX_SSHOPTS` said to `nix-sshopts`, and while the
 /// `loses-copy` file is there, the first loses its builder, saying what
 /// the file holds or, where it's empty, what ssh says as its keepalives
-/// give up, and takes the file away. Its ssh is one whose pinned host-key
-/// file went, with no tty: it writes to `nix-asked` where it would ask
-/// through `SSH_ASKPASS`, unless `BatchMode=yes` or
-/// `SSH_ASKPASS_REQUIRE=never` says not to.
+/// give up, and takes the file away. Every copy, up or back, adds the
+/// `SSH_ASKPASS` it was given (`unset` for none) and its
+/// `SSH_ASKPASS_REQUIRE` to `nix-askpass`, which an ssh with no tty asks
+/// through.
 const NIX: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 echo "$@" > "$here/nix-was-given"
 echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
 case "$*" in
+  "copy "*) echo "${SSH_ASKPASS-unset} ${SSH_ASKPASS_REQUIRE-}" >> "$here/nix-askpass" ;;
+esac
+case "$*" in
   "copy "*"--to "*)
     echo "${NIX_SSHOPTS:-}" >> "$here/nix-sshopts"
-    case "${NIX_SSHOPTS:-}" in *BatchMode=yes*) batch=1 ;; *) batch= ;; esac
-    if [ -z "$batch" ] && [ -n "${SSH_ASKPASS:-}" ] &&
-      [ "${SSH_ASKPASS_REQUIRE:-}" != never ]; then
-      echo "asked through $SSH_ASKPASS" >> "$here/nix-asked"
-    fi
     if [ -f "$here/loses-copy" ]; then
       said=$(cat "$here/loses-copy")
       rm -f "$here/loses-copy"
@@ -1765,7 +1763,7 @@ fn a_copy_up_refused_the_key_its_line_pins_is_sent_again() {
     assert_eq!(sshopts.len(), 2, "copied again: {sshopts:?}");
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
-        said.contains("ssh refused the host key nix-offload showed"),
+        said.contains("ssh couldn't verify the host key nix-offload showed"),
         "the run didn't say the key was refused: {said}"
     );
     assert!(
@@ -1795,6 +1793,12 @@ fn copied_after_a_loss(said: &str) -> (std::process::Output, Vec<String>) {
         "the run wasn't asked to build what it was named"
     );
     let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
+    assert!(
+        sshopts
+            .lines()
+            .all(|line| line.starts_with("-o BatchMode=yes -o StrictHostKeyChecking=yes ")),
+        "a copy sent again may ask: {sshopts}"
+    );
     (ran, sshopts.lines().map(str::to_owned).collect())
 }
 
@@ -1821,12 +1825,12 @@ fn a_run_that_gives_its_copy_longer_is_heard_ahead_of_the_cut() {
         sshopts.trim_end(),
         "-o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveCountMax=40 \
          -o ServerAliveInterval=5 -o ServerAliveCountMax=3",
-        "the run's own options didn't reach its copy first"
+        "never asking, then the run's own options, didn't come ahead of the copy's keepalive"
     );
 }
 
 #[test]
-fn a_copy_up_never_asks_through_askpass_once_its_host_key_file_is_gone() {
+fn a_copys_ssh_is_told_never_to_ask_and_given_no_askpass() {
     // At 22:37 on 21 November something emptied /tmp under the copies
     // up, taking the host-key file each one's Nix had written there, and
     // each copy's ssh, with no tty, asked Joel through his askpass
@@ -1847,11 +1851,20 @@ fn a_copy_up_never_asks_through_askpass_once_its_host_key_file_is_gone() {
         .output()
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    let asked = fs::read_to_string(folder.path().join("nix-asked")).unwrap_or_default();
-    assert_eq!(asked, "", "a copy up's ssh could ask Joel");
+    // Each guard is checked on its own: BatchMode for the ssh Nix
+    // starts, and no askpass for any ssh that never reads NIX_SSHOPTS,
+    // which falls back to its own askpass while one is unset unless
+    // SSH_ASKPASS_REQUIRE says never.
+    let askpass = fs::read_to_string(folder.path().join("nix-askpass")).unwrap();
+    assert!(
+        !askpass.is_empty() && askpass.lines().all(|line| line == "unset never"),
+        "a copy's ssh could ask Joel through an askpass: {askpass}"
+    );
     let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();
     assert!(
-        sshopts.starts_with("-o BatchMode=yes -o StrictHostKeyChecking=yes "),
+        sshopts
+            .lines()
+            .all(|line| line.starts_with("-o BatchMode=yes -o StrictHostKeyChecking=yes ")),
         "a copy up's ssh may ask, or trust a key it wasn't given: {sshopts}"
     );
 }

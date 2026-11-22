@@ -655,7 +655,8 @@ pub fn run(
             asked,
             nix,
             &format!(
-                "ssh refused the host key {} showed, against the one its lender's line pins",
+                "ssh couldn't verify the host key {} showed against the one its lender's \
+                 line pins",
                 lent.host
             ),
         ),
@@ -678,9 +679,10 @@ fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u32>
     let from = if fresh { "now" } else { "its last loss" };
     if refused {
         eprintln!(
-            "nix-offload: ssh refused the host key {} showed, as when its lender hands its \
-             name to another builder, so this reads the lender's line again and sends it \
-             to the builder that line pins, for up to {minutes} minutes from {from}",
+            "nix-offload: ssh couldn't verify the host key {} showed, as when its lender \
+             hands its name to another builder or the copy's pinned key file is gone, so \
+             this reads the lender's line again and sends it to the builder that line \
+             pins, for up to {minutes} minutes from {from}",
             lent.host
         );
     } else {
@@ -977,7 +979,7 @@ impl Uncopied {
         let Heard { lost, cut, refused } = copying.heard();
         if refused {
             Self {
-                why: format!("{why}, since ssh refused the host key it showed"),
+                why: format!("{why}, since ssh couldn't verify the host key it showed"),
                 lost: true,
                 cut,
                 refused,
@@ -5261,7 +5263,7 @@ mod tests {
         assert!(
             uncopied
                 .why
-                .ends_with("since ssh refused the host key it showed"),
+                .ends_with("since ssh couldn't verify the host key it showed"),
             "it doesn't say why: {}",
             uncopied.why
         );
