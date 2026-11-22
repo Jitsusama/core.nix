@@ -1819,6 +1819,12 @@
     a changed Linux builder guest's network serves it no DNS from the Mac, through a vzvm patched
     to leave the NAT's DNS proxy out, and the guest asks resolvers of its own
   '';
+  linux-builder-keeps-its-network-where-it-is-set = ''
+    a changed Linux builder guest's network is the one its option sets, 192.168.239.0/24 unless
+    given another, through a vzvm patched to hand it to vmnet, a network that isn't private, has an
+    octet past 255 or a host bit set is refused at build, one set on an unchanged guest is warned
+    of, and a guest given nothing keeps its own
+  '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
     in place of timesyncd, and one given nothing keeps the cached guest's clock
