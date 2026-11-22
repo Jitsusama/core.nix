@@ -1932,7 +1932,11 @@ in
     # gives systemd this one, before it restarts the units the switch
     # changed, so they start on it too. Without the account's systemd, as
     # before the first login, the login takes it from the variables above.
-    # What niri itself starts keeps the login's until the next one.
+    # What already runs keeps the askpass it started with until it
+    # restarts: what niri started, its windows and what they start, until
+    # the next login, and units the switch doesn't restart until they do.
+    # Agents' commands are given no askpass by the harness that runs them,
+    # so it's Joel's own programs that keep the old one.
     home.activation.askpassFollowsTheSwitch =
       lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ]
         ''

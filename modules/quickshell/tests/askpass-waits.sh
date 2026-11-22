@@ -344,6 +344,22 @@ for broken in 'refuse (' 'deny /agents\.slice/' 'allow /x' 'watch /x'; do
 done
 rm gate
 
+# The askpass's own chain loop, read from the kernel's /proc, reaches
+# init. The folder above can't show that, since every process opening its
+# proc/self finds the same file there: read with sed, as before round 4,
+# the chain took sed's parent, a subshell gone by the next step, and every
+# real ask was refused.
+sed -n '/^places=() pids=()$/,/^done$/p' askpass > chain
+check "the askpass's chain loop is found" test -s chain
+# shellcheck disable=SC2034 # The loop reads proc.
+kernels=$(
+  proc=/proc whole=0 lost=unset
+  # shellcheck source=/dev/null
+  . ./chain
+  echo "$whole:$lost"
+) || true
+check "the kernel's chain is read to init (it said '$kernels')" test "$kernels" = 1:
+
 # With no gate it asks for no one, Joel's own terminal included.
 sed 's|^\(SSH_ASKPASS_GATE\(_BUILT\)\{0,1\}\)=.*|\1=/nowhere|' askpass > ungated
 chmod +x ungated
