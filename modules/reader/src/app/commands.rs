@@ -43,7 +43,7 @@ impl App {
     }
 
     /// gf over a selection on one line: goes by the words it held as a
-    /// file's name, as Vim's v_gf does, or says it can't find that one.
+    /// file's name, as Vim's `v_gf` does, or says it can't find that one.
     pub(crate) fn follow_named(&mut self, name: String) {
         let name = links::Name::Written(name);
         match links::going(&name, &self.file, std::path::Path::is_file) {

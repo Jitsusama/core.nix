@@ -124,7 +124,7 @@ impl Layout {
     }
 
     /// The words a selection of characters on one line holds as the page
-    /// sets them, blanks round them left off: what Vim's v_gf takes as a
+    /// sets them, blanks round them left off: what Vim's `v_gf` takes as a
     /// file's name. One of pieces, over lines or of blanks alone names
     /// none.
     pub fn named(&self, selection: &Selection) -> Option<String> {
