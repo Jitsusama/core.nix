@@ -134,15 +134,18 @@ fn line_by(reading: &mut BufReader<UnixStream>, deadline: Instant) -> Result<Str
 /// so the daemon is as good as absent.
 fn unanswered(socket: &Path, hung_up: bool, sent: &std::io::Result<()>) -> Undone {
     match sent {
-        Ok(()) => Undone::Unknown(format!(
-            "{}; it may have been done or still be under way, and its last line in the change \
-             log says which once it ends",
-            if hung_up {
-                "the daemon went before it answered"
-            } else {
-                "the daemon didn't answer in time"
-            }
-        )),
+        // A daemon that hangs up on a waiting ask has stopped, as on a
+        // crash or a restart, so the act may never log its end.
+        Ok(()) if hung_up => Undone::Unknown(
+            "the daemon went before it answered; it may have stopped partway, so the change \
+             log may hold only the ask"
+                .into(),
+        ),
+        Ok(()) => Undone::Unknown(
+            "the daemon didn't answer in time; it may have been done or still be under way, \
+             and its last line in the change log says which once it ends"
+                .into(),
+        ),
         Err(error) => Undone::Absent(format!("{}: {error}", socket.display())),
     }
 }
@@ -375,6 +378,14 @@ mod tests {
                 "an ask sent and unanswered was said as never read"
             );
         }
+        // A daemon that hung up stopped, so it never logs the act's end.
+        assert!(
+            matches!(
+                unanswered(socket, true, &Ok(())),
+                Undone::Unknown(why) if why.contains("may hold only the ask")
+            ),
+            "a daemon that hung up was said to log the act's end"
+        );
     }
 
     #[test]

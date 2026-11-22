@@ -88,7 +88,10 @@ pub fn file() -> io::Result<PathBuf> {
 }
 
 /// Held while a line is added, since the daemon's loop and its
-/// listeners' threads both log, and a line must land whole.
+/// listeners' threads both log: a line must land whole, and one that
+/// fails is cut back to the length read before it, which would cut off
+/// another's line landing between. The kernel keeps a short appended
+/// line whole on its own, so the cut is what this guards.
 static WRITING: Mutex<()> = Mutex::new(());
 
 /// Adds `line` to the log at `path`, which is the account's alone. It

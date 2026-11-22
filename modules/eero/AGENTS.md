@@ -182,11 +182,11 @@ it rather than by eero's answer, whose shape for a change was taken
 from an open-source client rather than seen. Only eero's own refusal of
 a change it then doesn't keep is said refused: a send that timed out may
 still land, and eero's list may lag its answer, so a change that
-doesn't show yet is unknown. The CLI then exits 75 and says to ask
-again only once `eero internet`, which lists every reservation, a
-device off now included, or the change log says it wasn't taken,
-since an ask again would find its own change and call it one already
-there; it never says it was done or refused. Where the
+doesn't show yet is unknown. The CLI then exits 75, never saying it
+was done or refused, and says that if eero took it, asking again says
+nothing changed, since the change an ask again finds is its own; it
+points at `eero internet`, which lists every reservation, a device off
+now included. Where the
 daemon says it's unknown, an unreservation's answer says the address it
 kept, which keeping again undoes it; where the CLI stops waiting
 first, the act's last line in the change log holds it once the act
@@ -199,9 +199,11 @@ at once can take longer, and the act is then said unknown and let go,
 logged `gone`, unless the daemon had begun it. The daemon reads its
 reservations again as it answers, so reading them once that read ends,
 a few seconds on, shows an unknown outcome unless eero's list still
-lags, when the next read, fifteen minutes on, does; where the CLI
-stopped waiting, the act may still be under way, and its last line in
-the change log says what it came to once it ends.
+lags, when the next read, fifteen minutes on, does; until that read
+ends it shows the list from before the act. Where the CLI stopped
+waiting, the act may still be under way, and its last line in the
+change log says what it came to once it ends; where the daemon hung
+up, it stopped, and the log may hold only the ask.
 
 Each act the daemon is asked is logged as asked before it's done and
 with its result after, as JSON lines in

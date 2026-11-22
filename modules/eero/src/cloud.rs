@@ -413,7 +413,9 @@ mod tests {
             Method::Post,
             "/2.2/login/verify",
             200,
-            &json!({"meta": {"code": 200, "error": "error.verification.invalid"}}),
+            // No error in it, so only the login path's own rule refuses
+            // it; a change answered so would be taken.
+            &json!({"meta": {"code": 200}}),
         );
         assert!(
             matches!(verified, Err(Refused::Failed(Failure::Refused(_)))),

@@ -581,7 +581,21 @@ fn act(daemon: &mut Daemon, listeners: &Listeners, asked: &Asked) {
     let log = log.as_deref();
     match carried(log, listeners.waits(asked), asked, |act| daemon.act(act)) {
         Carried::Gone => {}
-        Carried::Unlogged(error) => listeners.answer_unlogged(asked, &error),
+        Carried::Unlogged(error) => {
+            // The change log is down, so the journal is the only record
+            // of who asked, as the CLI's pointer to it promises.
+            let peer = asked.peer.as_ref();
+            let why = terminal_kit::layout::one_line(&error.to_string()).into_owned();
+            eprintln!(
+                "eero: {:?} wasn't done, since its ask couldn't be logged \
+                 (pid {:?}, uid {:?}, unit {:?}): {why}",
+                asked.act,
+                peer.and_then(|peer| peer.pid),
+                peer.map(|peer| peer.uid),
+                peer.and_then(|peer| peer.unit.as_deref()),
+            );
+            listeners.answer_unlogged(asked, &error);
+        }
         Carried::Came(came) => listeners.answer_act(asked, &came),
     }
 }
