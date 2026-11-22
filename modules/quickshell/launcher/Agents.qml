@@ -406,7 +406,8 @@ Provider {
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
     // and budgets), as each was last made while anything could read it
-    // (readable): at home, in Agents or Now, or its catalogue walked. Shut,
+    // (readable): at home, in Agents, or its catalogue walked, and Sessions
+    // to Reopen in Now too (reopenRead). Shut,
     // or opened into another place, nothing does, so
     // each gives what it last made and reads nothing else, and a change
     // nobody sees makes none of them. Joel's shut launcher made 312
@@ -415,8 +416,9 @@ Provider {
     // an opening or a step out of Now makes one again only if that changed
     // while nothing read it: each - out of Now made 4 to 6 of them anew as
     // home was held, 47 to 72 ms of Joel's (2026-11-21, 13:13). Budgets
-    // and Spec are made of a row their source makes afresh as it's asked,
-    // so they're made again each time. For You's (forYou)
+    // and Spec are made of rows other sources hold, found through calls
+    // that name nothing a list of parts could hold, so they're made again
+    // each time. For You's (forYou)
     // are made shut too, since the tray counts what waits there, but only
     // as a landing comes, goes or changes. A keeper (Provider.qml's), so
     // keeping one notifies nothing.
