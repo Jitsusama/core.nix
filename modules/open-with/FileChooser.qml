@@ -119,6 +119,15 @@ Provider {
     property string previewNext: ""
     property var toCount: []
     property var outstanding: null
+    // How long counts heard while more are still to come are held before
+    // they're said, in ms. Each folder read is counted in one answer, and
+    // each change makes every row afresh, so opening a folder four deep
+    // remade its rows once for each folder's counts on the way; now the
+    // counts of the folders read together are said once they're all
+    // heard, or this long after the first where it takes longer.
+    property int countsHeldFor: 200
+    // Whether counts heard are held, waiting on more; read by its checks.
+    readonly property bool holdingCounts: countsHeld.running
     // The folders stepped into, read beside those on the way to the start.
     property var stepped: []
     // A ]b or [b waiting on the folder holding the one it was pressed in to
@@ -452,11 +461,27 @@ Provider {
             said = false;
         if (was.verb === "show") {
             previews = Object.assign({}, previews, { [was.path]: said });
-        } else if (said) {
-            counts = Object.assign({}, counts, said);
-            changed();
+        } else if (said || countsHeld.running) {
+            // A last answer that says nothing still says what was held.
+            if (said)
+                counts = Object.assign({}, counts, said);
+            if (toCount.length === 0) {
+                countsHeld.stop();
+                changed();
+            } else if (!countsHeld.running) {
+                countsHeld.start();
+            }
         }
         Qt.callLater(provider.askNext);
+    }
+
+    // Says the counts heard so far, once a batch has been held long
+    // enough.
+    Timer {
+        id: countsHeld
+
+        interval: provider.countsHeldFor
+        onTriggered: provider.changed()
     }
 
     // One file-preview for an ask, started as the first thing is wanted of
@@ -1471,6 +1496,7 @@ Provider {
         askedAt = {};
         toCount = [];
         outstanding = null;
+        countsHeld.stop();
         previewer.running = false;
     }
 
