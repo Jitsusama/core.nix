@@ -28,6 +28,35 @@ fn held(code: &str, window_pt: f64) -> String {
         .join(" ")
 }
 
+/// The stretches an unboxed piece of `code` can't break inside, as the
+/// page reads them, joined by `|`.
+fn stretches(code: &str) -> String {
+    let theme = crate::theme::Theme::read("{}");
+    let mut world = super::super::new_world();
+    let (ink, look) = super::super::look(&theme, &world);
+    let program = format!(
+        "{}#context text(size: 2pt, {}.matches(unbroken).map(m => m.text).filter(t => t != \"\").join(\"|\"))",
+        super::super::at_width(&ink, &look, Width::for_window(2560.0)),
+        crate::walk::literal(code)
+    );
+    let page = super::super::set_page(&mut world, &program).expect("the page sets");
+    crate::text::lines(crate::text::runs(&page.frame))
+        .iter()
+        .map(|line| line.text.trim_end().to_owned())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[test]
+fn an_unboxed_piece_breaks_after_a_hyphen_but_not_one_opening_a_word_or_before_a_figure() {
+    assert_eq!(
+        stretches("x--y a-1-b --release"),
+        "x--|y|a-1-|b|--release",
+        "after a word's hyphens, but a figure holds to the hyphen before it, \
+         and a flag to its opening hyphens"
+    );
+}
+
 #[test]
 fn short_pieces_hold_in_pairs_a_paths_opening_to_its_path_and_the_last_to_those_before() {
     assert_eq!(
@@ -329,13 +358,23 @@ fn code_in_a_narrow_column_keeps_to_it() {
     .into_iter()
     .enumerate()
     {
-        code_in_a_narrow_column_keeps_to_it_when(&format!("cell-{i}"), code);
+        code_in_a_narrow_column_keeps_to_it_when(&format!("cell-{i}"), code, 2560.0);
     }
+    // In a narrow window a long name is unboxed, so its column counts its
+    // widest stretch between hyphens, the short word held to its first.
+    let long = format!("run {}", ["a-name"; 30].join("-"));
+    assert!(
+        held(&long, 360.0).ends_with('!'),
+        "the name is unboxed in a narrow window: {}",
+        held(&long, 360.0)
+    );
+    code_in_a_narrow_column_keeps_to_it_when("cell-3", &long, 360.0);
 }
 
-/// Sets `code` in a column squeezed by a long cell beside it, in a
-/// folder of its own named `name`, and checks it never reaches the next.
-fn code_in_a_narrow_column_keeps_to_it_when(name: &str, code: &str) {
+/// Sets `code` in a column squeezed by a long cell beside it, in a window
+/// `window_pt` wide and a folder of its own named `name`, and checks it
+/// never reaches the next.
+fn code_in_a_narrow_column_keeps_to_it_when(name: &str, code: &str, window_pt: f64) {
     let markdown = format!(
         "{OPENING}| Alpha | Command | Wraps |\n|---|---|---|\n| one | `{code}` | a cell long enough that it wraps onto a second line in its column, however narrow the face its words are set in, and longer still so it squeezes the others |\n"
     );
@@ -345,7 +384,7 @@ fn code_in_a_narrow_column_keeps_to_it_when(name: &str, code: &str) {
         let file = dir.join("page.md");
         std::fs::write(&file, &markdown).expect("the file");
         let mut setter = Setter::new(file.to_str().expect("a path"));
-        setter.fit(Width::for_window(2560.0));
+        setter.fit(Width::for_window(window_pt));
         let (page, _) = setter.set().expect("set");
         std::fs::remove_dir_all(&dir).expect("cleaned");
         page

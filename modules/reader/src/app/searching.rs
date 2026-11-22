@@ -64,6 +64,7 @@ impl App {
             }
         }
         self.words = Some(lines);
+        self.marks_on_lines();
         self.refind();
         if !self.frame_pending {
             self.draw();

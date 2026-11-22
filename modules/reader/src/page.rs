@@ -252,8 +252,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   text(top-edge: line-top(), code-pieces(s).map(set-piece).join())
 }
 // What an unboxed piece can't break inside: a run up to a space, or up
-// to and taking a hyphen, after which a line may break.
-#let unbroken = regex("[^ -]*-+|[^ -]+")
+// to and taking a hyphen, after which a line may break, but for one
+// opening a word, as in --release, or before a figure, as in -1, which
+// Unicode's line breaking holds to what follows.
+#let unbroken = regex("-*[^ -]*(?:-+[0-9][^ -]*)*-*")
 // The least room a table's column needs for a span: its widest run of
 // pieces held together, since only between those can it break. A piece
 // too wide to box is unboxed, so it breaks where its words or a hyphen
@@ -268,7 +270,13 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       let width = measure(raw(p.piece)).width
       run = if p.held { run + by + width } else { width }
     } else {
-      run = calc.max(0pt, ..p.piece.matches(unbroken).map(m => measure(raw(m.text)).width))
+      // Its first stretch joins what's held to it, and its last goes on
+      // to the piece held after.
+      let stretches = p.piece.matches(unbroken).filter(m => m.text != "").map(m => measure(raw(m.text)).width)
+      if stretches.len() == 0 { stretches = (0pt,) }
+      let first = if p.held { run + by + stretches.first() } else { stretches.first() }
+      widest = calc.max(widest, first, ..stretches)
+      run = if stretches.len() == 1 { first } else { stretches.last() }
     }
     widest = calc.max(widest, run)
   }
@@ -811,7 +819,7 @@ impl Rest {
 /// Sets the file's first blocks, up to about two screens of source, as a
 /// page of their own; the rest comes back to set, unless that was all.
 /// Given a block to open at, it sets as far as that block and about two
-/// screens past it, and always the block after it. The rest is set at the same `width`.
+/// screens past it, and the block after it unless that is longer still. The rest is set at the same `width`.
 pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First, String> {
     let start = Instant::now();
     let mut parts = Vec::new();
@@ -848,8 +856,13 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
         }
         // At least the block after the one it opens at, whose top says how
         // tall that one stands, so a place kept in a long block lands as
-        // far through it.
-        if chars > FIRST_CHARS && i > from {
+        // far through it, unless that block is itself more than a first
+        // screen, whose marks then wait for the whole page.
+        let next_too = i == from
+            && blocks
+                .get(i + 1)
+                .is_some_and(|next| next.len() <= FIRST_CHARS);
+        if chars > FIRST_CHARS && !next_too {
             all = i + 1 == blocks.len();
             break;
         }

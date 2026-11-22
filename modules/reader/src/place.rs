@@ -321,6 +321,24 @@ pub fn pt_of(
     Some(top + into_pt)
 }
 
+/// Where a mark kept in `block`, `into_pt` into it when it stood
+/// `block_pt` tall, lands on a page whose blocks start at `starts`, or
+/// none while it waits: for its block, and on the first screen's page,
+/// not `whole`, for the block after it too when it was kept with its
+/// height, since only that says how tall its block stands now.
+pub fn mark_at(
+    starts: &[(usize, f64)],
+    whole: bool,
+    block: usize,
+    into_pt: f64,
+    block_pt: Option<f64>,
+) -> Option<f64> {
+    if !whole && block_pt.is_some() && height_of(starts, block).is_none() {
+        return None;
+    }
+    pt_of(starts, block, into_pt, block_pt)
+}
+
 /// The least height a kept block is believed to have stood: a line of the
 /// smallest type is taller, so one kept less is a file gone wrong, whose
 /// share would throw the place far down the page.

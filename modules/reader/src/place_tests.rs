@@ -1,7 +1,39 @@
 use super::{
     Block, Mark, Opens, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in,
-    mark, moved, opening, pt_of, read_in, through, window_in, write_in,
+    mark, mark_at, moved, opening, pt_of, read_in, through, window_in, write_in,
 };
+
+#[test]
+fn a_mark_kept_with_its_blocks_height_waits_on_the_first_screen_for_the_block_after() {
+    // The first screen's page ends on block 4; the whole page has 5 after.
+    let first = [(3, 100.0), (4, 140.0)];
+    let whole = [(3, 100.0), (4, 140.0), (5, 300.0)];
+    assert_eq!(
+        mark_at(&first, false, 4, 20.0, Some(80.0)),
+        None,
+        "on the first screen, its block's height is unknown, so it waits"
+    );
+    assert_eq!(
+        mark_at(&whole, true, 4, 20.0, Some(80.0)),
+        Some(180.0),
+        "on the whole page, as far through its block, now twice as tall"
+    );
+    assert_eq!(
+        mark_at(&first, false, 3, 20.0, Some(80.0)),
+        Some(110.0),
+        "a block the first screen sets the next of lands at once"
+    );
+    assert_eq!(
+        mark_at(&first, false, 4, 20.0, None),
+        Some(160.0),
+        "kept before heights were, it lands at its distance at once"
+    );
+    assert_eq!(
+        mark_at(&whole, true, 9, 20.0, Some(80.0)),
+        None,
+        "a block the page has no longer"
+    );
+}
 
 /// A block of a page, a heading's words given.
 fn block(number: usize, heading: Option<&str>) -> Block {

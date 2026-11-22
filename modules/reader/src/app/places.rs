@@ -239,7 +239,12 @@ impl App {
         if let Some(file) = incoming.opens {
             self.shown_now(file);
             self.aim = landed;
+        } else {
+            // The whole page, set again at another width or saved, has the
+            // blocks the first screen's marks waited for.
+            self.take_kept_marks();
         }
+        self.marks_on_lines();
         self.read_layout();
         self.refind();
     }
@@ -289,10 +294,7 @@ impl App {
         let marks = &mut self.marks;
         self.kept_marks
             .retain(|(letter, block, into_pt, block_pt)| {
-                if !whole && block_pt.is_some() && place::height_of(&starts, *block).is_none() {
-                    return true;
-                }
-                match place::pt_of(&starts, *block, *into_pt, *block_pt) {
+                match place::mark_at(&starts, whole, *block, *into_pt, *block_pt) {
                     Some(pt) => {
                         marks.entry(*letter).or_insert(pt);
                         false
@@ -300,6 +302,22 @@ impl App {
                     None => true,
                 }
             });
+    }
+
+    /// Puts each mark on the line nearest it once the page's lines are
+    /// read: one moved through its block as the page was set at another
+    /// width, or kept from the last time, lands as far through it, between
+    /// lines, and going to it would take the line below, which may be the
+    /// next block's heading. A mark set on a line stays on it.
+    pub(crate) fn marks_on_lines(&mut self) {
+        let Some(lines) = self.words.as_deref() else {
+            return;
+        };
+        for pt in self.marks.values_mut() {
+            if let Some(top) = moves::nearest_top(lines, *pt) {
+                *pt = top;
+            }
+        }
     }
 
     /// Keeps where the view is on the file shown, and its marks, for the
@@ -344,6 +362,23 @@ impl App {
             .iter()
             .map(|(letter, pt)| place::mark(&blocks, *letter, line(*pt), height))
             .collect();
+        // Marks still waiting for the whole page are kept as they were
+        // read, so closing on the first screen loses none.
+        marks.extend(
+            self.kept_marks
+                .iter()
+                .filter(|(letter, ..)| !self.marks.contains_key(letter))
+                .map(|&(letter, block, into_pt, block_pt)| place::Mark {
+                    letter,
+                    block,
+                    into_pt,
+                    block_pt,
+                    said: place::Said {
+                        heading: place::heading_of(&blocks, block),
+                        through: None,
+                    },
+                }),
+        );
         marks.sort_by_key(|mark| mark.letter);
         let at_end = self.at_end();
         if let Err(error) = place::write(

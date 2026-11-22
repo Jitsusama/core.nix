@@ -23,6 +23,15 @@ pub fn top_of(line: &Line) -> f64 {
     line.baseline_pt - line.size_pt
 }
 
+/// The top of the line in `lines` nearest `pt`, as a mark moved between
+/// lines is put back on one.
+pub fn nearest_top(lines: &[Line], pt: f64) -> Option<f64> {
+    lines
+        .iter()
+        .map(top_of)
+        .min_by(|a, b| (a - pt).abs().total_cmp(&(b - pt).abs()))
+}
+
 /// Where a line's foot is, its descenders' room in, as a match's is.
 pub fn foot_of(line: &Line) -> f64 {
     line.baseline_pt + line.size_pt * 0.3
@@ -377,6 +386,25 @@ pub fn written_paths(line: &Line) -> Vec<String> {
 mod tests {
     use super::*;
     use crate::text::test_line as line;
+
+    #[test]
+    fn a_point_between_lines_goes_to_the_nearest_lines_top() {
+        let lines = [line(20.0, "one"), line(40.0, "two"), line(60.0, "three")];
+        let tops: Vec<f64> = lines.iter().map(top_of).collect();
+        let near = |pt: f64| nearest_top(&lines, pt);
+        assert_eq!(near(tops[1]), Some(tops[1]), "on a line's top, it stays");
+        assert_eq!(
+            near(tops[1] + 3.0),
+            Some(tops[1]),
+            "a little below, back up"
+        );
+        assert_eq!(
+            near(tops[2] - 3.0),
+            Some(tops[2]),
+            "a little above the next, on"
+        );
+        assert_eq!(nearest_top(&[], 5.0), None, "no lines, no top");
+    }
 
     /// The eyebrow's label, the words and a section's heading, at the
     /// theme's sizes: the rule beside each is the page's pitch tall,
