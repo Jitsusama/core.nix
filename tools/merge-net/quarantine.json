@@ -2,26 +2,13 @@
   {
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
-    "due": "2026-11-21",
-    "due_why": "The time here failed 2 of the 25 net runs to 20 Nov, racing the rows of Now as it steps in, so a rerun alone wouldn't take it off. Its owner, the launcher's, fixes it within 2026-11-21 UTC, aiming for 17:00, moved from 2026-11-19 because Joel's pivot of 19 Nov at 15:31 EST, relayed by the orchestrator, puts the launcher's interfaces to mycelium first. Firmware, listed here once too, has its own entry with its own date. The other two once listed, which with these failed 9 of 40 net runs from 15 Nov to 18 Nov 05:30 UTC, failed in none of the 25 and are excused no longer",
+    "due": "2026-11-26",
+    "due_why": "Its owner, the shaper's, given it by the orchestrator on 22 Nov after the launcher's date of 21 Nov passed with it still failing, by 2026-11-23 23:59 UTC, three days before its due, when it comes off, finds what closes the launcher as the time here walks Now, Date and Calendars again once the reader is back, and fixes it. The time here failed 6 of the 39 net runs from 20 Nov 19:27 to 22 Nov 05:23 UTC, each in calendars_from_now, each stepping in to find the launcher closed; the one log that says what it last heard shows it closed on the home rows, Now selected and nothing held, before the first Return took, so it isn't Calendars' own Return. 1599ed7d2, which kept what a wait last heard, merged before all six. It comes off once twenty net runs in a row after the fix exit 0, counted by exit code, since a failure only here is recorded as passed: at 6 in 39, twenty pass by luck about one time in thirty, and twenty take about a day at the net's pace of about twenty a day. A red run past the count's first few starts it again and moves the due, and its owner sends the new one before this one passes. Firmware, listed beside it, came off on 22 Nov once seven net runs after #5869 exited 0. While it stands, nothing catches a change that breaks Date's calendars, the clock's figures or chrony's servers in the launcher",
     "owner_pr": 3304,
-    "owner_session": "Y2YBTS",
+    "owner_session": "2DZF5Z",
     "reason": "failed, then passed, at 042387bc604a",
     "subtests": [
       "test_the_time_here_says_how_the_clock_is_kept"
-    ],
-    "test": "vm-desktop-launcher-answers"
-  },
-  {
-    "at": 1794421209,
-    "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
-    "due": "2026-11-23",
-    "due_why": "Firmware failed because the test stepped out past where the launcher had already stepped back by itself; the test now waits for that step back, then asserts that a Return on the gone row writes no line, as the launcher has done since its fix, ruled 20 Nov and merged 21 Nov UTC. It comes off once five net runs after that change exit 0, counted by exit code, since a failure only here is recorded as passed. Its own entry, apart from the time here's, so those five runs, about a day at the net's pace from a merge on 21 Nov, count against a date that holds them and leave the time here's date its own",
-    "owner_pr": 5869,
-    "owner_session": "Y2YBTS",
-    "reason": "failed every net run from 18 Nov but one, stepping out past the launcher's own step back",
-    "subtests": [
-      "test_firmware_installs_an_update_once_asked_and_waits_for_the_restart"
     ],
     "test": "vm-desktop-launcher-answers"
   },
