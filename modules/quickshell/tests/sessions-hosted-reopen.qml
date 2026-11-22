@@ -24,7 +24,10 @@ pragma ComponentBehavior: Bound
 // orchestrator's workspace; a plain pi kept nowhere comes back held, with no
 // window, its folder gone or not, the walk going on at its pace; and with
 // no boot's places known, one kept nowhere opens in a window. It exits 0
-// once that holds, and otherwise 1, saying what didn't.
+// once that holds, and otherwise 1, saying what didn't. Long because its
+// stages run in turn on one walk, one stand-in niri and node, and one
+// windows daemon, each stage's workspaces and windows the next one's
+// ground, so a split would build that world again for each half.
 import qs
 import Quickshell
 import Quickshell.Io
