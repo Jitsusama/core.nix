@@ -10,7 +10,8 @@
 }:
 let
   # The files the keys check reads: cadence's copies of spend-watch's keys,
-  # then spend-watch's own, in the order reads-the-keys.sh takes them.
+  # then spend-watch's own, then the main.rs that hands cadence its runtime
+  # folder, in the order reads-the-keys.sh takes them.
   keysRead = builtins.concatStringsSep " " [
     "${./src/hour/measures/unbilled.rs}"
     "${./src/hour/measures/unresolved.rs}"
@@ -21,6 +22,7 @@ let
     "${../spend-watch/src/status.rs}"
     "${../spend-watch/src/config.rs}"
     "${../spend-watch/src/daemon.rs}"
+    "${./src/main.rs}"
   ];
 in
 # cadence reads Linux's pressure files and systemd's journal, and builds

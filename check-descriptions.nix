@@ -557,9 +557,10 @@
   cadence-reads-the-keys-spend-watch-writes = ''
     each finding key cadence's budget measures copy from spend-watch, and each field of
     budgets.json its budget alarm reads, with its file and the folder spend-watch
-    writes it in unless its config names another, is still the one spend-watch writes,
-    and is a line of cadence's own rather than of a test's fixture; and copies renamed
-    as each guard means are refused by that guard
+    writes it in unless its config names another, from the variable each side reads,
+    is still the one spend-watch writes, and is a line of cadence's own rather than of
+    a test's fixture; each struct written derives Serialize and none is written by
+    hand; and copies renamed as each guard means are refused by that guard
   '';
   cadence-spec-passes-clippy = ''
     clippy finds nothing in cadence-spec or its tests

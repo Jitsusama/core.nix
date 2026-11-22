@@ -212,8 +212,10 @@ const SAME_WINDOW_S: i64 = 5 * 60;
 /// How far a reset may stand from a remembered whole hour and name its
 /// window: keys written before resets were kept to the second named a
 /// window by its reset rounded to the hour, so one standing at an upgrade
-/// keeps its window told.
-const ROUNDED_TO_HOUR_S: i64 = 30 * 60;
+/// keeps its window told. A reset that rounded to the hour stood within
+/// half an hour of it, and the next read within one drift of that reset,
+/// still hours short of an allowance's next window.
+const ROUNDED_TO_HOUR_S: i64 = 30 * 60 + SAME_WINDOW_S;
 
 /// Where `key`'s window is remembered under resets read earlier, each key
 /// of that window in `remembered`, under every reset that matches, beside
@@ -425,6 +427,10 @@ mod tests {
             // A window split across two hours by the old rounding.
             "budget:proxy:split:80:2026-11-21T16:00:00Z",
             "budget:proxy:split:90:2026-11-21T17:00:00Z",
+            "budget:proxy:rim:90:2026-11-21T16:00:00Z",
+            "budget:proxy:late:80:2026-11-21T17:00:00Z",
+            "budget:proxy:torn:80:2026-11-21T16:00:00Z",
+            "budget:proxy:torn:90:2026-11-21T17:00:00Z",
         ];
         let moves = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
             pairs
@@ -467,7 +473,36 @@ mod tests {
             ),
             ("budget:proxy:edge:80:2026-11-21T10:05:31Z", none.clone()),
             // A window remembered by its hour stays told within half an
-            // hour of it.
+            // hour and one drift of it, either side.
+            (
+                "budget:proxy:rim:90:2026-11-21T16:30:01Z",
+                moves(&[(
+                    "budget:proxy:rim:90:2026-11-21T16:00:00Z",
+                    "budget:proxy:rim:90:2026-11-21T16:30:01Z",
+                )]),
+            ),
+            (
+                "budget:proxy:late:80:2026-11-21T16:29:59Z",
+                moves(&[(
+                    "budget:proxy:late:80:2026-11-21T17:00:00Z",
+                    "budget:proxy:late:80:2026-11-21T16:29:59Z",
+                )]),
+            ),
+            // A window split across two hours moves whole from a read a
+            // second past the half hour.
+            (
+                "budget:proxy:torn:90:2026-11-21T16:30:01Z",
+                moves(&[
+                    (
+                        "budget:proxy:torn:80:2026-11-21T16:00:00Z",
+                        "budget:proxy:torn:80:2026-11-21T16:30:01Z",
+                    ),
+                    (
+                        "budget:proxy:torn:90:2026-11-21T17:00:00Z",
+                        "budget:proxy:torn:90:2026-11-21T16:30:01Z",
+                    ),
+                ]),
+            ),
             (
                 "budget:proxy:hour:90:2026-11-21T16:30:01Z",
                 moves(&[(
@@ -475,7 +510,7 @@ mod tests {
                     "budget:proxy:hour:80:2026-11-21T16:30:01Z",
                 )]),
             ),
-            ("budget:proxy:hour:80:2026-11-21T17:30:01Z", none.clone()),
+            ("budget:proxy:hour:80:2026-11-21T17:35:01Z", none.clone()),
             // Half an hour from each of its two hours exactly, every level
             // under each moves.
             (
