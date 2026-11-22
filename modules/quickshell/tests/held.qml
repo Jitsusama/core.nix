@@ -278,11 +278,135 @@ QtObject {
             `${typedEnded.leave} ${typedEnded.all}`, "1 false");
 
         leaving(check, steps, nothing, below);
+        guessing(check);
 
         for (const failure of failures) {
             console.warn(`FAIL ${failure}`);
         }
         Qt.exit(failures.length === 0 ? 0 : 1);
+    }
+
+    // Whether Return holds after a step left by itself, as an ask's during
+    // a share: its held step offers nothing, so the launcher leaves it,
+    // and the ask, hidden, is no row to land back on. Joel's second
+    // Return, meant for its Release It, must never act on the row the
+    // selection was left on instead. Each told to `check`.
+    function guessing(check) {
+        const ask = { key: "ask:7", at: 2 };
+        const onIt = (from, landed) => Held.onItsRow(from, landed);
+        check("a leave that lands on the row stepped in from, by its key, is on it",
+            onIt(ask, "ask:7"), true);
+        check("one that lands on another row, as one hidden leaves it, is not",
+            onIt(ask, "copies"), false);
+        check("and one that lands on no row at all", onIt(ask, ""), false);
+        check("a row stepped in from with no key is never known to be landed on",
+            [onIt({ key: "", at: 0 }, ""), onIt({ at: 0 }, ""), onIt(undefined, "x")].join(" "),
+            "false false false");
+        // A row clicked into isn't selected, so a step's record stands on
+        // the headline under the clicked row's key: where the selection
+        // lands back says nothing.
+        check("a landing on the headline under another row's key is not on it",
+            onIt({ key: "ask:7", at: -1 }, "named:answer"), false);
+        // The guess a leave makes, as heldAgain asks for it: a leave at 5
+        // keys, landing 2 deep.
+        const shown = g => `${g.keys}@${g.at} d${g.depth}${g.broken ? " broken" : ""}`;
+        const landing = (before, landed, more) => Held.landedAfter(before, ask, landed,
+            Object.assign({ keys: 5, open: true, depth: 2, byKey: false }, more));
+        const after = (before, landed, more) => shown(landing(before, landed, more));
+        const none = Held.unguessed();
+        const left = landing(none, "copies");
+        check("a landing on another row is guessed at its keys and depth", shown(left),
+            "5@0 d2");
+        check("a landing on its own row by key guesses nothing", after(none, "ask:7"),
+            "-1@0 d-1");
+        check("a shut launcher guesses nothing", after(none, "copies", { open: false }),
+            "-1@0 d-1");
+        // A change within keyedWithin of Joel's key is his key's, so its
+        // leave is one he watched.
+        check("a leave Joel's key caused guesses nothing",
+            after(none, "copies", { byKey: true }), "-1@0 d-1");
+        check("but keeps a guess an earlier leave left pending",
+            after(left, "copies", { byKey: true, depth: 1 }), "5@0 d1");
+        // A second leave before any key, landing by its key a step up,
+        // leaves the Return still meant for the first step's ask.
+        check("a leave by key keeps a guess no key has answered, at its own depth",
+            after(left, "ask:7", { depth: 1 }), "5@0 d1");
+        // A first leave threw, and a second closed whole before any key: the
+        // Return is still meant for the first step, but the selection is
+        // whole again, so it holds once, not until another key.
+        check("a leave by key keeps a broken guess whole again",
+            after(Held.whileLeaving(5, true, none), "ask:7", { depth: 1 }), "5@0 d1");
+        check("but not once a key came between", after(left, "ask:7", { keys: 6 }),
+            "-1@0 d-1");
+        check("a leave that left nothing keeps it too", after(left, null), "5@0 d2");
+        check("a leave that left nothing, with nothing pending, guesses nothing",
+            after(none, null), "-1@0 d-1");
+        check("a leave runs broken, so a throw partway holds",
+            [shown(Held.whileLeaving(5, true, none)),
+                shown(Held.whileLeaving(5, false, none))].join(", "),
+            "5@0 d-1 broken, -1@0 d-1");
+        // A busy source throws again on each refresh: the guess stays at
+        // the first throw's keys, so the one key its foot asks for ends it.
+        const threw = Held.whileLeaving(5, true, none);
+        check("a broken guess standing is kept at its keys, a key on",
+            [shown(Held.whileLeaving(5, true, threw)),
+                shown(Held.whileLeaving(6, true, threw))].join(", "),
+            "5@0 d-1 broken, 5@0 d-1 broken");
+        check("and a throw once Joel has pressed more is a new one",
+            shown(Held.whileLeaving(7, true, threw)), "7@0 d-1 broken");
+
+        // Held.returnUnder, as the field's Return asks it: 2 deep, no words
+        // asked for, and the key-timing wait 300 ms.
+        const press = (guess, keys, at, more) => Held.returnUnder(guess,
+            Object.assign({ keys, at, depth: 2, asking: false }, more), 300);
+        const said = s => `${s.holds} ${s.next.keys}@${s.next.at}`;
+        const first = press(left, 6, 1000);
+        check("the first key after a guessed landing, a Return, holds, and marks when",
+            said(first), "true 6@1000");
+        check("a guess a Return was held under is no longer one a leave keeps",
+            after(first.next, "ask:7", { keys: 6 }), "-1@0 d-1");
+        // One Return more costs less than a row Joel never chose acting,
+        // so the first holds however late it comes.
+        check("a first Return holds however late", said(press(left, 6, 60000)),
+            "true 6@60000");
+        // A guess made before the field's first key is 0, a count still.
+        check("a landing guessed before any key holds the first",
+            said(press(Object.assign({}, left, { keys: 0 }), 1, 1000)), "true 1@1000");
+        check("a Return after another key first acts, as Joel moved or typed since",
+            said(press(left, 7, 1000)), "false -1@0");
+        check("a Return with nothing guessed acts", said(press(none, 0, 1000)), "false -1@0");
+        // Clicks, walks and chords end the guess themselves; the depth holds
+        // it to where it landed should anything else move the steps
+        // without a key, so the Return is then on a row Joel was brought to.
+        check("a Return at another depth acts", said(press(left, 6, 1000, { depth: 3 })),
+            "false -1@0");
+        check("words asked for are given, and the guess ends",
+            said(press(left, 6, 1000, { asking: true })), "false -1@0");
+        // The Return just held, doubled as a key bounces or is pressed twice
+        // for one, holds once more within the wait, then lets the next act.
+        check("the Return straight after a held one, within the wait, holds, and ends it",
+            said(press(first.next, 7, 1250)), "true -1@0");
+        check("nor at the wait itself", said(press(first.next, 7, 1300)), "false -1@0");
+        check("nor after another key between", said(press(first.next, 8, 1100)),
+            "false -1@0");
+        // After a throw, the selection is half made, so every Return holds,
+        // at any depth and past the wait, until another key.
+        const broken = press(threw, 6, 15000, { depth: 0 });
+        const again = press(broken.next, 7, 40000, { depth: 0 });
+        check("after a leave that threw, Return holds until another key, however late",
+            [said(broken), said(again), said(press(again.next, 9, 40100))].join(", "),
+            "true 6@15000, true 7@40000, false -1@0");
+        // Shift or Ctrl alone chose nothing, so the Return after it holds.
+        check("a modifier alone between leaves the Return held",
+            said(press(Held.passedOver(left, true), 7, 1000)), "true 7@1000");
+        check("and the doubled Return after a held one",
+            said(press(Held.passedOver(first.next, true), 8, 1100)), "true -1@0");
+        // Any other key, é and Delete among those with no name, may move
+        // the rows, so Joel's Return is on the row it chose.
+        check("any other key between lets it act",
+            said(press(Held.passedOver(left, false), 7, 1000)), "false -1@0");
+        check("a modifier alone with nothing guessed changes nothing",
+            shown(Held.passedOver(none, true)), "-1@0 d-1");
     }
 
     // Where a step that offers nothing now leaves to, as `nothing` and

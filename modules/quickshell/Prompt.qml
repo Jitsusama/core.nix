@@ -290,8 +290,7 @@ Item {
         if (returning)
             return true;
         // A modifier pressed alone is no key typed.
-        if (![Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_Super_L,
-            Qt.Key_Super_R, Qt.Key_AltGr].includes(event.key))
+        if (!KeyNames.alone(event.key, Qt))
             returnWaits = false;
         return false;
     }
@@ -636,6 +635,10 @@ Item {
     property int keysTaken: 0
     // The last of them, by name, as Vim writes it.
     property string keyTaken: ""
+    // Whether the last of them was a modifier or lock pressed alone
+    // (KeyNames.alone), which chose nothing, as a key the names don't know
+    // ("", as é or Delete) may have typed.
+    property bool keyAlone: false
     // Whether the last key only moved through the rows, as j and Down do,
     // which changes nothing a source holds, so the launcher never takes a
     // source changing beside it for the key's doing.
@@ -674,6 +677,7 @@ Item {
         prompt.pressing();
         const key = named(event);
         keyMoved = false;
+        keyAlone = KeyNames.alone(event.key, Qt);
         keyTaken = key;
         // A press is a key taken as it comes; a repeat only once it's
         // known to do something (QueryKeys.heldDoes, below).
