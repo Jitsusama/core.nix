@@ -252,7 +252,11 @@ kinds = ["page"]
 # The link on the line here, or the file it names, as Ctrl+] follows a tag
 # and gf opens the file under the cursor; on a list, the cursor row in the
 # place it lives, as a row found from home, a Now row or a notice's sender
-# lives in another, the cursor landing on it there.
+# lives in another, the cursor landing on it there. gf works in visual
+# mode too, as Vim's v_gf: a page ends the selection and takes what it
+# held on one line as the name, V its whole line. Vim's v_CTRL-] waits,
+# since a list selects rows too and Ctrl+] over them would mean something
+# it hasn't chosen.
 [acts.follow-link]
 keys = ["<C-]>"]
 kinds = ["page", "list"]
@@ -265,6 +269,7 @@ kinds = ["list"]
 
 [acts.follow-file]
 keys = ["gf"]
+modes = ["normal", "visual"]
 kinds = ["page"]
 
 # The next file and the one before: his open files, or a page's folder's.

@@ -123,6 +123,101 @@ impl Layout {
         found
     }
 
+    /// What Vim's `v_gf` takes as a file's name, as the page sets it, blanks
+    /// round it left off: the words a selection of characters holds, or
+    /// the cursor's whole line of the file for one of pieces, as Vim's V
+    /// gives its line. Lines are the file's, as Vim's are its buffer's,
+    /// found by the bytes the page's characters were set from, since the
+    /// page joins a paragraph's lines and wraps them where it likes. A
+    /// selection of characters is on the lines of the file's characters it
+    /// holds, so a blank at its end, which may be the line break the page
+    /// joined, decides nothing, at any width. A selection over the file's
+    /// lines, as Vim's, or of blanks alone names none; words the file
+    /// doesn't hold, the eyebrow or an alert's kind, are a line each, so
+    /// one taken with the next row's names none either.
+    pub fn named(&self, selection: &Selection) -> Option<String> {
+        let (from, to) = selection.ends();
+        let unheld = |pos| self.file_line_at(pos).is_none();
+        if from.line != to.line && (unheld(from) || unheld(to)) {
+            return None;
+        }
+        let (first, last) = match selection.kind {
+            Kind::Chars => self.matched_within(from, to).unwrap_or((from, to)),
+            Kind::Pieces => (from, to),
+        };
+        let text = match (self.file_line_at(first), self.file_line_at(last)) {
+            (Some(top), Some(bottom)) if top != bottom => return None,
+            (Some(line), Some(_)) if selection.kind == Kind::Pieces => {
+                self.file_line_shown(to, line)?
+            }
+            (Some(_), Some(_)) => self.page_text(from, to),
+            _ if selection.kind == Kind::Pieces => {
+                let end = self.chars[to.line].len().saturating_sub(1);
+                self.page_text(Pos { ch: 0, ..to }, Pos { ch: end, ..to })
+            }
+            _ => self.page_text(from, to),
+        };
+        let name = text.trim();
+        (!name.is_empty()).then(|| name.to_string())
+    }
+
+    /// The first and last characters from `from` to `to` that the file's
+    /// bytes set; none when it holds only blanks and marks.
+    fn matched_within(&self, from: Pos, to: Pos) -> Option<(Pos, Pos)> {
+        let mut units: Vec<usize> = (from.line..=to.line)
+            .filter_map(|line| self.of_line.get(line).copied().flatten())
+            .collect();
+        units.dedup();
+        let within: Vec<Pos> = units
+            .into_iter()
+            .flat_map(|unit| self.matched(unit))
+            .map(|(at, _)| at)
+            .filter(|at| from <= *at && *at <= to)
+            .collect();
+        Some((*within.iter().min()?, *within.iter().max()?))
+    }
+
+    /// The file's line, from 0, that the character at `pos` was set from:
+    /// a blank's or a mark's is the word's before it on its page line, as a
+    /// line break the page joins ends the line before it, mid-row or at a
+    /// row's end alike, or the first word's ahead of them. None on a line
+    /// no word of the file is set on.
+    fn file_line_at(&self, pos: Pos) -> Option<usize> {
+        let unit = self.of_line.get(pos.line).copied().flatten()?;
+        let matched = self.matched(unit);
+        let on_line: Vec<&(Pos, usize)> = matched
+            .iter()
+            .filter(|(at, _)| at.line == pos.line)
+            .collect();
+        let (_, byte) = on_line
+            .iter()
+            .rev()
+            .find(|(at, _)| at.ch <= pos.ch)
+            .or(on_line.first())?;
+        self.source_lines
+            .iter()
+            .position(|range| range.start <= *byte && *byte < range.end)
+    }
+
+    /// The words of the file's `line` as the page sets them, over every
+    /// page line it shares with the rest of the piece at `pos`.
+    fn file_line_shown(&self, pos: Pos, line: usize) -> Option<String> {
+        let range = self.source_lines.get(line)?;
+        let unit = self.of_line.get(pos.line).copied().flatten()?;
+        let matched = self.matched(unit);
+        let mut on_line = matched
+            .iter()
+            .filter(|(_, byte)| range.start <= *byte && *byte < range.end);
+        let first = on_line.next()?.0;
+        let last = on_line.next_back().map_or(first, |(at, _)| *at);
+        Some(self.page_text(first, last))
+    }
+
+    /// The file's markdown the page was set from.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
     /// What a selection copies: the file's own markdown for what it covers.
     /// A selection of pieces copies the lines they were written on, whole,
     /// each ending with its newline, as Neovim's V does. A selection of

@@ -39,8 +39,46 @@ impl App {
                 is_file,
             )
         };
+        self.go(going);
+    }
+
+    /// gf over a selection: goes by what it held on one line as a file's
+    /// name, as Vim's `v_gf` does, or says it can't find that one.
+    pub(crate) fn follow_named(&mut self, name: String) {
+        let name = links::Name::Written(name);
+        match links::going(&name, &self.file, std::path::Path::is_file) {
+            None => self.say(&format!(
+                "E447: Can't find file \"{}\" in path",
+                name.said()
+            )),
+            going => self.go(going),
+        }
+    }
+
+    /// Goes where gf found: a heading here, another file, or nowhere, the
+    /// page shown itself said by its name, lines and bytes, as Vim says a
+    /// file it edits again.
+    fn go(&mut self, going: Option<links::Going>) {
         match going {
             None => self.say("E446: No file name under cursor"),
+            Some(links::Going::Here) => {
+                if keys_logged() {
+                    eprintln!("file: here");
+                }
+                // Counted from the file as this page's lines were read from
+                // it, as Vim counts its buffer, and from the disk only
+                // before they're read.
+                let shown = (self.layout.as_ref())
+                    .and_then(|layout| layout.of(self.painter.version))
+                    .map(crate::select::Layout::source);
+                let read = || {
+                    std::fs::read_to_string(&self.file).inspect_err(|error| {
+                        eprintln!("reader: can't read {}: {error}", self.file.display());
+                    })
+                };
+                let said = links::staying(&self.file, shown, read);
+                self.say(&said);
+            }
             Some(links::Going::Heading(anchor)) => self.follow(&format!("#{anchor}")),
             Some(links::Going::File(file, heading)) => {
                 if keys_logged() {

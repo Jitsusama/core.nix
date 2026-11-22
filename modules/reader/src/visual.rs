@@ -61,12 +61,16 @@ impl App {
         let file = self.file.clone();
         let to = self.layout_to.clone();
         // Without its lines a standing character's keys say they're still
-        // reading, so a thread that can't start says why.
+        // reading, so a thread that can't start says why, and one that
+        // fails sends none, so its keys act as before the first read
+        // rather than wait for lines that never come.
         let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
-                let source = std::fs::read_to_string(&file).unwrap_or_default();
-                let _ = to.send((version, select::Layout::read(&page.frame, source, version)));
+                let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    select::Layout::read_file(&page.frame, &file, version)
+                }));
+                let _ = to.send((version, read.unwrap_or(None)));
             });
         if let Err(error) = started {
             eprintln!("reader: can't read the page's lines: {error}");
@@ -75,10 +79,21 @@ impl App {
 
     /// The page's words for selecting have been read. A selection holds
     /// while its lines are the same on the new page, and ends otherwise.
-    pub(crate) fn layout_read(&mut self, version: u32, layout: select::Layout) {
+    pub(crate) fn layout_read(&mut self, version: u32, layout: Option<select::Layout>) {
         if version != self.painter.version {
             return;
         }
+        let shown = (self.selection.is_some(), self.character.is_some());
+        // A file that couldn't be read gives no lines, and the last page's
+        // go too, or a copy would take another file's words over this one;
+        // the selection goes without them, so '<,'> keeps none of theirs.
+        let Some(layout) = layout else {
+            self.drop_selection();
+            self.character = None;
+            self.layout = None;
+            self.draw_gone(shown);
+            return;
+        };
         if let (Some(selection), Some(old)) = (&self.selection, &self.layout) {
             let (from, to) = selection.ends();
             if !(layout.same_line(old, from.line) && layout.same_line(old, to.line)) {
@@ -91,6 +106,38 @@ impl App {
             self.character = None;
         }
         self.layout = Some(Arc::new(layout));
+        self.draw_gone(shown);
+    }
+
+    /// Draws at once when the lines read ended the selection or took the
+    /// cursor's character, which nothing else would draw gone until it
+    /// drew for itself.
+    fn draw_gone(&mut self, shown: (bool, bool)) {
+        let now = (self.selection.is_some(), self.character.is_some());
+        if now != shown && !self.frame_pending {
+            self.draw();
+        }
+    }
+
+    /// Ends the selection without its lines, as another file opens or this
+    /// one's can't be read, where the last page's would put its place and
+    /// its '<,'> on this one.
+    pub(crate) fn drop_selection(&mut self) {
+        if self.selection.take().is_some() && keys_logged() {
+            eprintln!("selected: nothing");
+        }
+    }
+
+    /// Whether `layout` was read from the page as it's set now, saying it's
+    /// still reading when not: until a page set again has its lines read,
+    /// they're the last setting's, or another file's, and a copy of them
+    /// would be that file's words.
+    fn read_now(&mut self, layout: &select::Layout) -> bool {
+        let now = layout.of(self.painter.version).is_some();
+        if !now {
+            self.say(crate::app::STILL_READING);
+        }
+        now
     }
 
     /// Ends the selection, leaving the cursor on the character its cursor
@@ -106,6 +153,18 @@ impl App {
         }
         if keys_logged() {
             eprintln!("selected: nothing");
+        }
+    }
+
+    /// gf over the selection, given the name its lines give. It ends the
+    /// selection, as Vim's leaves visual mode, and takes what it held on one
+    /// line of the file as the name, as Vim's `v_gf` does, spaces and all;
+    /// over lines, or of blanks, it names none.
+    fn follow_selected(&mut self, named: Option<String>) {
+        self.end_selection();
+        match named {
+            Some(name) => self.follow_named(name),
+            None => self.say("E446: No file name under cursor"),
         }
     }
 
@@ -180,19 +239,25 @@ impl App {
                 self.follow_cursor();
                 return true;
             }
-            // y leaves the cursor at the selection's start, as Vim's does.
             (None, Act::Copy) => {
                 let taken = selection.clone();
-                self.end_selection();
-                let (top, foot) = layout.line_extent(taken.ends().0.line);
-                self.aim = Some(top);
-                self.character = Some(Selection::new(Kind::Chars, taken.ends().0));
-                self.follow_line(top, foot, None);
-                self.copy(&layout, taken);
+                self.copy_selection(&layout, taken);
                 return true;
             }
             (None, Act::Rest) => {
                 self.end_selection();
+                return true;
+            }
+            (None, Act::FollowFile) => {
+                // Between a page set again and its lines read, they're the
+                // old page's, so it waits as gf at rest does.
+                let named = layout
+                    .of(self.painter.version)
+                    .map(|it| it.named(selection));
+                match named {
+                    Some(named) => self.follow_selected(named),
+                    None => self.say(crate::app::STILL_READING),
+                }
                 return true;
             }
             // A mark made while selecting is the cursor's line, as his
@@ -338,6 +403,9 @@ impl App {
     /// yank, the cursor goes to the start of what it took when that's above
     /// it, as y i p's is from inside.
     fn copy_at_rest(&mut self, layout: &Arc<select::Layout>, act: Act, times: usize) {
+        if !self.read_now(layout) {
+            return;
+        }
         let (_, foot) = self.view_pt();
         let here = self.cursor_pt();
         let taken = layout.piece_at(here, foot).and_then(|unit| match act {
@@ -363,6 +431,9 @@ impl App {
         let Some(layout) = self.layout.clone() else {
             return;
         };
+        if !self.read_now(&layout) {
+            return;
+        }
         let (first, last) = match range {
             ex::Range::Here => return self.copy_at_rest(&layout, Act::CopyPiece, 1),
             ex::Range::Lines(first, last) => (first, last),
@@ -439,6 +510,20 @@ impl App {
         } else {
             self.step_to(to);
         }
+    }
+
+    /// Visual y: it ends the selection and leaves the cursor at its start,
+    /// as Vim's does, once the page's own lines are read.
+    fn copy_selection(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
+        if !self.read_now(layout) {
+            return;
+        }
+        self.end_selection();
+        let (top, foot) = layout.line_extent(taken.ends().0.line);
+        self.aim = Some(top);
+        self.character = Some(Selection::new(Kind::Chars, taken.ends().0));
+        self.follow_line(top, foot, None);
+        self.copy(layout, taken);
     }
 
     /// Copies a selection as the file's markdown, on a thread, through

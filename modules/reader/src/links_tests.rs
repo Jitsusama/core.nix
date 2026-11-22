@@ -105,9 +105,11 @@ fn in_notes<'a>(there: &'a [&str]) -> impl Fn(&Path) -> bool + 'a {
     }
 }
 
-/// Where gf goes, as it reads: a heading here, or a file, at a heading.
+/// Where gf goes, as it reads: a heading here, or a file, at a heading,
+/// or nowhere, staying on the page.
 fn read(going: &Going) -> String {
     match going {
+        Going::Here => "stays".to_string(),
         Going::Heading(anchor) => format!("#{anchor} here"),
         Going::File(file, None) => file.display().to_string(),
         Going::File(file, Some(heading)) => format!("{} at {heading}", file.display()),
@@ -136,6 +138,46 @@ fn followed(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize
     let (line, x_pt) = character(lines, words, at);
     link_here(pieces, line, x_pt)
         .map_or_else(|| format!("nothing at {words:?}"), |link| link.href.clone())
+}
+
+#[test]
+fn gf_stays_on_the_pages_own_name_written_and_goes_to_its_top_linked() {
+    let page = Path::new("/notes/page.md");
+    let there = in_notes(&["page.md", "other.md"]);
+    let gone = |name: Name| going(&name, page, &there).map_or_else(|| "none".into(), |g| read(&g));
+    assert_eq!(gone(Name::Written("page.md".into())), "stays", "written");
+    // A link to the page goes to its top, as Ctrl+] goes, a bare # too.
+    assert_eq!(gone(Name::Link("page.md".into())), "# here", "linked");
+    assert_eq!(gone(Name::Link("#".into())), "# here", "linked bare");
+    // The page's name written another way is still the page, on a real
+    // disk, where it's the file that's compared and not its spelling:
+    // through its folder's parent, and by a link to it of another name.
+    let dir = std::env::temp_dir().join(format!("reader-links-own-{}", std::process::id()));
+    // A run killed before its cleanup leaves the link behind, which a
+    // later one of the same pid couldn't make again.
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, "# Page\n").expect("the file");
+    std::os::unix::fs::symlink(&file, dir.join("alias.md")).expect("a link to it");
+    let folder = dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .expect("a name");
+    let on_disk = |written: &str| going(&Name::Written(written.into()), &file, Path::is_file);
+    let spelt = ["alias.md".to_string(), format!("../{folder}/page.md")];
+    let read_back: Vec<_> = spelt.iter().map(|written| on_disk(written)).collect();
+    std::fs::remove_dir_all(&dir).expect("cleaned");
+    assert_eq!(
+        read_back,
+        [Some(Going::Here), Some(Going::Here)],
+        "{spelt:?}"
+    );
+    assert_eq!(
+        gone(Name::Written("other.md".into())),
+        "/notes/other.md",
+        "another file still opens"
+    );
 }
 
 #[test]
@@ -309,7 +351,7 @@ fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
 fn gf_from_a_whole_line_takes_the_first_other_file_down_at_its_heading() {
     let (lines, linked) = set_reading(
         "whole-line",
-        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md and [the spec](spec.md).\n",
+        "See [the keys](#the-keys) and [its part](other.md#part) first.\n\nOr notes.md and [the spec](spec.md).\n\nThis is page.md, then later.md.\n",
         links,
     );
     let page = Path::new("/notes/page.md");
@@ -349,7 +391,12 @@ fn gf_from_a_whole_line_takes_the_first_other_file_down_at_its_heading() {
     assert_eq!(
         down((second, f64::INFINITY), &all),
         "nothing",
-        "nor above the cursor"
+        "nor above the cursor, nor the page's own name written"
+    );
+    assert_eq!(
+        down((second, f64::INFINITY), &["page.md", "later.md"]),
+        "/notes/later.md",
+        "past the page's own name written, to the file after it"
     );
 }
 
@@ -373,6 +420,57 @@ fn a_word_read_as_a_path_after_the_character_stops_gf_only_when_its_a_file() {
         opened(&lines, &pieces, ("Read", 0), &["guide.md", "and/or"]),
         "/notes/and/or",
         "a written path that is a file comes first"
+    );
+}
+
+#[test]
+fn the_pages_own_name_after_the_character_is_no_stop() {
+    let (lines, pieces) = set("own-after", "See page.md and the [guide](guide.md).\n");
+    let there = ["page.md", "guide.md"];
+    assert_eq!(
+        opened(&lines, &pieces, ("See", 0), &there),
+        "/notes/guide.md",
+        "past the page's own name, to the link, as gf from a line goes"
+    );
+    assert_eq!(
+        opened(&lines, &pieces, ("page.md", 2), &there),
+        "stays",
+        "under the character, it's where he is"
+    );
+    let (lines, pieces) = set("own-alone", "See page.md, and nothing more.\n");
+    assert_eq!(
+        opened(&lines, &pieces, ("See", 0), &there),
+        "stays",
+        "with no name past it, the page's own is the name after the character"
+    );
+}
+
+#[test]
+fn staying_says_the_page_as_vim_says_a_file_it_edits_again() {
+    let page = Path::new("/notes/page.md");
+    assert_eq!(file_info(page, "# Page\n\nWords.\n"), "\"page.md\" 3L, 15B");
+    assert_eq!(
+        file_info(page, "Unended"),
+        "\"page.md\" 1L, 7B",
+        "a last line unended"
+    );
+    assert_eq!(file_info(page, ""), "\"page.md\" 0L, 0B", "empty");
+    let unread = || -> std::io::Result<String> { panic!("the disk read with the lines in") };
+    assert_eq!(
+        staying(page, Some("Shown.\n"), unread),
+        "\"page.md\" 1L, 7B",
+        "the words the lines were read from"
+    );
+    assert_eq!(
+        staying(page, None, || Ok("On disk.\nTwo.\n".into())),
+        "\"page.md\" 2L, 14B",
+        "the disk before the lines are read"
+    );
+    let gone = || Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+    assert_eq!(
+        staying(page, None, gone),
+        "E484: Can't open file /notes/page.md",
+        "a file it can't read, never an empty count"
     );
 }
 
