@@ -79,6 +79,9 @@ pub struct Piece {
     pub persona: String,
     /// The budget it drew on, by name, declared or not.
     pub budget: String,
+    /// The machine its session ran on where that's another than this
+    /// one; empty for this one's, or for spend no log here knows.
+    pub machine: String,
     pub dollars: f64,
     pub list: f64,
     pub source: Source,
@@ -128,6 +131,9 @@ pub struct Inputs {
     settled: HashMap<String, (i64, i64)>,
     /// Sessions a log here knows.
     logged: HashSet<String>,
+    /// The machine each session ran on, by its id, for those that ran on
+    /// another than this one.
+    machines: HashMap<String, String>,
     /// A subagent's session, by id, to the run it was part of.
     subagents: HashMap<String, Known>,
     /// Whether any feed has ever billed anything.
@@ -162,6 +168,7 @@ impl Inputs {
             billed: BTreeMap::new(),
             settled: HashMap::new(),
             logged: HashSet::new(),
+            machines: HashMap::new(),
             subagents: HashMap::new(),
             fed: false,
             fed_budgets: HashSet::new(),
@@ -186,13 +193,13 @@ impl Inputs {
         Ok(inputs)
     }
 
-    /// Every session a log here knows, with its repo, and an agent's kind
-    /// and name, by where its log was found.
+    /// Every session a log here knows, with its repo, an agent's kind and
+    /// name, by where its log was found, and the machine it ran on.
     fn read_sessions(&mut self, db: &Connection) -> Result<(Repos, Agents), String> {
         let mut repos = Repos::new();
         let mut agents = Agents::new();
         let mut statement = db
-            .prepare("SELECT id, repo, kind, name FROM sessions")
+            .prepare("SELECT id, repo, kind, name, machine FROM sessions")
             .map_err(fail)?;
         let rows = statement
             .query_map([], |row| {
@@ -201,12 +208,16 @@ impl Inputs {
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             })
             .map_err(fail)?;
         for row in rows {
-            let (id, repo, kind, name) = row.map_err(fail)?;
+            let (id, repo, kind, name, machine) = row.map_err(fail)?;
             self.logged.insert(id.clone());
+            if let Some(machine) = machine {
+                self.machines.insert(id.clone(), machine);
+            }
             if let Some(kind) = kind {
                 agents.insert(id.clone(), (kind, name.unwrap_or_default()));
             }
@@ -569,6 +580,21 @@ impl Inputs {
         for hour in hours {
             self.hour_pieces(hour, ratios, &mut out);
         }
+        // A piece is shown under the session that spent it or started its
+        // run, which ran where its log was written, so its machine is
+        // that session's, whichever way the piece was priced. Spend no
+        // session claims, under no id or elsewhere, is no machine's, even
+        // should a brought log name itself so.
+        if !self.machines.is_empty() {
+            for piece in &mut out {
+                if piece.session.is_empty() || piece.session == crate::config::ELSEWHERE {
+                    continue;
+                }
+                if let Some(machine) = self.machines.get(&piece.session) {
+                    piece.machine.clone_from(machine);
+                }
+            }
+        }
         out
     }
 
@@ -583,6 +609,7 @@ impl Inputs {
             kind: known.kind.clone(),
             persona: known.persona.clone(),
             budget: known.budget.clone(),
+            machine: String::new(),
             dollars,
             list: known.list,
             source,
@@ -610,6 +637,7 @@ impl Inputs {
             kind: tool.into(),
             persona: String::new(),
             budget: budget.into(),
+            machine: String::new(),
             dollars,
             list: 0.0,
             source,
@@ -1137,6 +1165,31 @@ mod tests {
         assert_eq!(at(H), [("delta".into(), 12.0)]);
         assert_eq!(at(H + 1), [("cistern".into(), 1.0), ("delta".into(), 4.0)]);
         assert_eq!(at(H + 2), [("proxy".into(), 12.0)]);
+    }
+
+    // A run's agents and its total beyond their logs are shown under the
+    // session that started it, so they ran on that session's machine,
+    // though no agent's own log was brought from there.
+    #[test]
+    fn a_run_s_agents_take_their_session_s_machine() {
+        let history = history();
+        budgeted(&history, "me", H, "anthropic", None, 10.0);
+        budgeted(&history, "r1", H + 1, "anthropic", None, 4.0);
+        budgeted(&history, "here", H + 1, "anthropic", None, 1.0);
+        run(&history, "council", "me", H, 9.0, &["r1"]);
+        history
+            .db
+            .execute("UPDATE sessions SET machine = 'teal' WHERE id = 'me'", [])
+            .unwrap();
+        let pieces = Inputs::read(&history, &declared(), H, H + 2)
+            .unwrap()
+            .pieces(&Ratios::default());
+        let machines = by(&pieces, |piece| piece.machine.clone());
+        assert_eq!(
+            machines,
+            vec![("teal".into(), 19.0), (String::new(), 1.0)],
+            "a run's agents weren't counted on their session's machine"
+        );
     }
 
     fn turn(

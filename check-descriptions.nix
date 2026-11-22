@@ -4186,8 +4186,8 @@
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
-    with a hard memory floor agents.slice keeps as large, so a session opening never starves the
-    window Joel types in
+    with a hard memory floor agents.slice keeps beside the 1.5 GiB jobs-sorter holds for the
+    windows Joel is at, so a session opening never starves the window Joel types in
   '';
   a-paste-lands-while-the-shell-is-busy-on-niri = ''
     on niri, Return on a copy in the launcher pastes it into the terminal under, though the
@@ -5610,7 +5610,7 @@
     through the kernel, and no slice inside the account, machine or system does; every slice's
     io.weight follows its CPU weight;
     app.slice holds a hard and a soft 13% of memory and session.slice a hard and a soft 4.5 GiB,
-    agents.slice a soft 10% and a hard 512 MiB, every slice above them a hard 21% and a soft 31%,
+    agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 31%,
     and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
     itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in jobs; a
     scope it starts through systemd's own systemd-run goes back to the scope of the work that

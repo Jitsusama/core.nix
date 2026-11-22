@@ -215,6 +215,38 @@ fn an_import_beside_a_running_daemon_is_to_try_again() {
     assert_eq!(imported.exit, Exit::TryAgain, "{}", imported.stderr);
 }
 
+// The daemon brings an older history up to date as it starts, holding it
+// for minutes on a large one, so a read meanwhile is to try again: not an
+// unreadable history, and not a second move of it from under the daemon.
+#[test]
+fn a_read_while_the_daemon_moves_the_history_is_to_try_again() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let path = config_in(dir.path()).history();
+    History::open(&path)
+        .expect("a history is made")
+        .db
+        .execute("UPDATE meta SET value = '9' WHERE key = 'schema'", [])
+        .expect("its shape is set back");
+    let _held = crate::daemon::lock(&dir.path().join("state")).expect("the lock is free");
+    let read = ran(dir.path(), &["findings"]);
+    assert_eq!(read.exit, Exit::TryAgain, "{}", read.stderr);
+    assert_eq!(
+        History::older(&path),
+        Some(9),
+        "the read moved the history from under the daemon"
+    );
+}
+
+// Beside a daemon that holds a history of this shape, a read reads.
+#[test]
+fn a_read_beside_a_running_daemon_reads() {
+    let dir = tempfile::tempdir().expect("a folder");
+    History::open(&config_in(dir.path()).history()).expect("a history is made");
+    let _held = crate::daemon::lock(&dir.path().join("state")).expect("the lock is free");
+    let read = ran(dir.path(), &["findings"]);
+    assert_eq!(read.exit, Exit::Done, "{}", read.stderr);
+}
+
 fn long_finding() -> crate::findings::Finding {
     serde_json::from_value(json!({
         "key": "burn:2026-11-14", "detector": "burn", "severity": "note",

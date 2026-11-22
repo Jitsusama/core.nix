@@ -195,6 +195,32 @@ fn held(config: &Config) -> Result<std::fs::File, Failure> {
     })
 }
 
+/// The history, to be read. One of an older shape is brought up to date
+/// as it opens, which on a large history holds it for minutes. The daemon
+/// does that as it starts, so beside it a reader is told to try again
+/// rather than wait out the lock and call the history unreadable, or move
+/// the history itself from under the daemon; with no daemon, the reader
+/// moves it, holding the lock so none starts meanwhile.
+fn readable(config: &Config) -> Result<History, Failure> {
+    let path = config.history();
+    let _lock = match History::older(&path) {
+        Some(shape) => Some(crate::daemon::lock(&config.state).map_err(|why| {
+            Failure::new(
+                Exit::TryAgain,
+                "spend-watch is bringing the history up to date",
+            )
+            .because(format!(
+                "it's moving the history from shape {shape} to {}, which takes a few \
+                     minutes on a large one, and {why}",
+                crate::history::SCHEMA
+            ))
+            .try_this("try again in a few minutes")
+        })?),
+        None => None,
+    };
+    History::open(&path).map_err(unread)
+}
+
 /// Facts as an answer under their schema.
 fn answer(context: &Context, schema: &str, facts: impl serde::Serialize) -> Result<(), Failure> {
     let mut value = serde_json::to_value(facts).map_err(|error| {
@@ -220,7 +246,7 @@ fn no_own_form(context: &Context, command: &str) -> Result<(), Failure> {
 }
 
 fn picture(config: &Config) -> Result<(History, Picture), Failure> {
-    let history = History::open(&config.history()).map_err(unread)?;
+    let history = readable(config)?;
     let picture = Picture::read(&history, config, crate::time::now()).map_err(unread)?;
     Ok((history, picture))
 }
@@ -355,7 +381,7 @@ fn budgets(context: &Context, config: &Config, session: Option<&str>) -> Result<
 /// `findings`: every standing finding.
 fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let history = readable(config)?;
     let findings = crate::findings::standing(&history).map_err(unread)?;
     if context.format().is_json() {
         return answer(
@@ -379,7 +405,7 @@ fn findings(context: &Context, config: &Config) -> Result<(), Failure> {
 /// starts so, as `findings` says each.
 fn finding(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let history = readable(config)?;
     let standing = crate::findings::standing(&history).map_err(unread)?;
     let exact: Vec<_> = standing
         .iter()
@@ -455,7 +481,7 @@ fn session_spend(context: &Context, config: &Config, id: &str) -> Result<(), Fai
 /// so, expected.
 fn expect(context: &Context, config: &Config, key: &str) -> Result<(), Failure> {
     no_own_form(context, "findings")?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let history = readable(config)?;
     let marked =
         crate::findings::mark(&history, key, crate::time::now()).map_err(
             |unmarked| match unmarked {
@@ -492,7 +518,7 @@ fn replay(context: &Context, config: &Config, from: &str, to: &str) -> Result<()
     let zone = config.zone().map_err(|why| {
         Failure::new(Exit::Config, "the config's zone can't be read").because(why)
     })?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let history = readable(config)?;
     let budgets = crate::budgets::Budgets::of(config);
     let changes = crate::tokens::replay(&history, &budgets, &zone, from, to).map_err(unread)?;
     if context.format().is_json() {
@@ -640,7 +666,7 @@ fn check_config(context: &Context, file: &str) -> Result<(), Failure> {
 /// forms are the file's JSON, since that's what it shows.
 fn show(context: &Context, config: &Config, collection: bool) -> Result<(), Failure> {
     no_own_form(context, "show")?;
-    let history = History::open(&config.history()).map_err(unread)?;
+    let history = readable(config)?;
     let now = crate::time::now();
     let began = std::time::Instant::now();
     let picture = Picture::read(&history, config, now).map_err(unread)?;
