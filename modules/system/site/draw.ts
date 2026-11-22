@@ -216,8 +216,13 @@ function partSaid(part: Part): Said {
     return { said: WORDS.unread, aside: capital(part.says) };
   }
   const [first, ...rest] = part.side;
-  if (part.health === "good" || first === undefined) {
+  if (first === undefined) {
     return { said: capital(part.holds ?? part.says), aside: "Nothing in it is worth a look." };
+  }
+  // A good part has an empty side, but for one read from its owner's last
+  // answer, which keeps its health and says how old it is there.
+  if (part.health === "good") {
+    return { said: capital(part.holds ?? part.says), aside: capital(part.side.join("; ")) };
   }
   return {
     said: capital(first),

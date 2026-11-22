@@ -18,6 +18,7 @@ use std::time::Duration;
 use daemon_serve::asks::Domain;
 use daemon_serve::serve::{self, Shared};
 use serde_json::{Map, Value, json};
+use system::kept::Notes;
 use system::record::{Health, System};
 use terminal_kit::{Exit, Failure, flags};
 
@@ -53,8 +54,8 @@ pub fn run(args: &[String]) -> Result<(), Failure> {
     })?;
     serve::accept(Arc::clone(&shared), listener);
     loop {
-        let system = crate::read();
-        shared.change(system.records(), sources(&system));
+        let (system, notes) = crate::read();
+        shared.change(system.records(), sources(&system, &notes));
         thread::sleep(PACE);
     }
 }
@@ -76,16 +77,20 @@ fn socket(args: &[String]) -> Result<PathBuf, Failure> {
     }
 }
 
-/// How each owner stands, by its part: answering, or not, with why.
-fn sources(system: &System) -> Value {
+/// How each owner stands, by its part: answering, or not, with why. One
+/// whose part stands on its last kept answer didn't answer, and says so
+/// with the note saying when that answer was read.
+fn sources(system: &System, notes: &Notes) -> Value {
     let sources: Map<String, Value> = system
         .parts
         .iter()
         .map(|part| {
-            let said = if part.health == Health::Unread {
-                json!({"state": "not answering", "reason": part.says})
-            } else {
-                json!("answering")
+            let said = match notes.of(part.name) {
+                Some(note) => json!({"state": "not answering", "reason": note}),
+                None if part.health == Health::Unread => {
+                    json!({"state": "not answering", "reason": part.says})
+                }
+                None => json!("answering"),
             };
             (part.name.to_owned(), said)
         })
@@ -134,11 +139,30 @@ mod tests {
             ],
         };
         assert_eq!(
-            sources(&read),
+            sources(&read, &Notes::default()),
             json!({
                 "network": {"state": "not answering", "reason": "net isn't on this machine"},
                 "code": "answering",
             })
+        );
+    }
+
+    #[test]
+    fn an_owner_standing_on_its_kept_answer_is_said_as_not_answering_with_when() {
+        let read = System {
+            machine: "laptop".to_owned(),
+            read_at: "2026-11-15T19:00:00Z".to_owned(),
+            parts: vec![parts::code(&Ok(json!({"repositories": []})))],
+        };
+        let note = "as read at 18:54; just now repos --json gave no answer in 20 s";
+        let notes = Notes {
+            repos: Some(note.to_owned()),
+            ..Notes::default()
+        };
+        assert_eq!(
+            sources(&read, &notes),
+            json!({"code": {"state": "not answering", "reason": note}}),
+            "an owner that missed its read isn't said to answer while its last answer stands"
         );
     }
 }

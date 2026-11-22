@@ -63,6 +63,16 @@ interface Acts {
   readonly commands: readonly string[];
 }
 
+/**
+ * Of the ties read from an owner's last good answer, when the newest read
+ * missed: when that was read and why the newest wasn't (system's kept.rs).
+ */
+interface Kept {
+  readonly cells: string | undefined;
+  readonly network: string | undefined;
+  readonly code: string | undefined;
+}
+
 /** What ties a machine to the other parts; each tie none when it wasn't read. */
 interface Ties {
   readonly cells: Cells | undefined;
@@ -70,6 +80,7 @@ interface Ties {
   readonly code: Code | undefined;
   readonly figures: Figures;
   readonly acts: Acts;
+  readonly kept: Kept;
 }
 
 /** A count the record says, or none when it says none or a negative. */
@@ -142,6 +153,7 @@ function figuresOf(said: Fields): Figures {
 function tiesOf(value: unknown): Ties {
   const said = isObject(value) ? value : EMPTY;
   const acts = object(said, "acts") ?? EMPTY;
+  const kept = object(said, "kept") ?? EMPTY;
   return {
     cells: cellsOf(object(said, "cells")),
     network: placesOf(said["network"]),
@@ -150,6 +162,11 @@ function tiesOf(value: unknown): Ties {
     acts: {
       link: launcherLink(text(acts, "link")),
       commands: (texts(acts, "commands") ?? []).filter(copyable),
+    },
+    kept: {
+      cells: text(kept, "cells"),
+      network: text(kept, "network"),
+      code: text(kept, "code"),
     },
   };
 }
