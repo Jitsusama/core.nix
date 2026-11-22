@@ -125,11 +125,11 @@ mod tests {
 
     #[test]
     fn openings_are_read_with_their_times_from_short_unix_lines() {
-        let lines = "1795303690.981234 optimus quickshell[2101]: \
+        let lines = "1795303690.981234 laptop quickshell[2101]: \
                      INFO qml: launcher: opening presented 41 ms after the chord\n\
                      -- No entries --\n\
-                     \x20 1795303700.5 optimus quickshell[2101]: launcher: opening presented 7 ms\n\
-                     1795303701.0 optimus quickshell[2101]: launcher: opening presented late\n";
+                     \x20 1795303700.5 laptop quickshell[2101]: launcher: opening presented 7 ms\n\
+                     1795303701.0 laptop quickshell[2101]: launcher: opening presented late\n";
         assert_eq!(
             timed(lines),
             [(1_795_303_690.981_234, 41.0), (1_795_303_700.5, 7.0)]
