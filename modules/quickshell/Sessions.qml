@@ -712,7 +712,7 @@ Singleton {
     // The screens connected now, of those last said (Places.connected), for
     // anything sending a window or a workspace to one.
     function screensThere() {
-        return Places.connected(screens, Object.values(Niri.workspaces));
+        return Places.connected(screens, Object.values(Niri.workspaces ?? {}));
     }
     property var screensWaiting: []
     function lookAtScreens(then) {
