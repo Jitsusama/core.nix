@@ -585,7 +585,8 @@
   call-under-load-tells-the-hour = ''
     call-under-load counts a call's frame rates by frame slots and its freezes per ten minutes,
     keeps a run ten minutes from any meeting and refuses a stale calendar, takes Chrome's and
-    Slack's waits from lag-watch's last hour, and writes the hour in the shape cadence reads
+    Slack's waits from lag-watch's last hour, sets the launcher's openings during the run against
+    the same span before it, and writes the hour in the shape cadence reads
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine

@@ -146,11 +146,13 @@ pub fn measures(
     ]
 }
 
-/// Writes the hour for cadence, whole or not at all, and adds the run's
-/// line to the history beside it.
+/// Writes the hour for cadence, whole or not at all, with the run beside
+/// its figures, and adds the run's line to the history beside it. Cadence
+/// reads only the figures; the run says what lies behind them, the
+/// launcher's openings during the test and just before it among them.
 pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::Result<()> {
     fs::create_dir_all(folder)?;
-    let hour = json!({"at": at, "measures": measures});
+    let hour = json!({"at": at, "measures": measures, "run": run});
     // Named for this run, so a run by hand beside the hour's can't take it.
     let part = folder.join(format!("hour.json.{}.part", std::process::id()));
     fs::write(&part, serde_json::to_vec_pretty(&hour)?)?;
@@ -244,6 +246,11 @@ mod tests {
         let parts = fs::read_dir(&root).unwrap().count();
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(hour["at"], 1_795_203_600);
+        assert_eq!(
+            hour["run"],
+            json!({"took_s": 191}),
+            "the newest run beside the hour"
+        );
         let first = &hour["measures"][0];
         for key in [
             "measure",

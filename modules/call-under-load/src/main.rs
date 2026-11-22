@@ -9,7 +9,9 @@
 //! real one, and clicks the call's tab every five seconds. It writes what
 //! the call did, with the hour's Chrome and Slack drawing waits from
 //! lag-watch's history and the launcher's openings from the journal, to
-//! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges.
+//! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges. The
+//! run beside them sets the launcher's openings while the test ran against
+//! the same span just before, and says when the test made them worse.
 //!
 //! It keeps out of Joel's calls: it asks `a-call-is-on --here`, which hears
 //! a call on this machine by its microphone, before it starts and every five seconds after,
@@ -25,13 +27,14 @@ mod figures;
 mod gate;
 mod history;
 mod hour;
+mod launcher;
 mod managed;
 
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
 
@@ -297,14 +300,13 @@ fn run(context: &Context) -> Result<(), Failure> {
         history::ran(&std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default());
     let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
     let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
-    let measures = hour::measures(
-        &call,
-        call::STAND_IN,
-        &chrome_waits,
-        &slack_waits,
-        &launcher_opens(),
-    );
-    let run = json!({"started": started, "seconds": SECONDS, "call": call});
+    let opens = launcher::read();
+    let took: Vec<f64> = opens.iter().map(|(_, ms)| *ms).collect();
+    let measures = hour::measures(&call, call::STAND_IN, &chrome_waits, &slack_waits, &took);
+    // From the run's start, Chromium's own included, to now: the whole of
+    // the load the test put beside Joel's programs.
+    let launcher = launcher::beside(&opens, started, at);
+    let run = json!({"started": started, "seconds": SECONDS, "call": call, "launcher": launcher});
     hour::write(&folder(), at, &measures, &run).map_err(|error| {
         Failure::new(Exit::Failed, "the hour couldn't be written")
             .because(error.to_string())
@@ -322,37 +324,6 @@ fn on_path(name: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// How long the launcher took to open over the last hour, in ms, each
-/// from the line it writes to the shell's journal as it's on screen; read
-/// from the shell's unit alone, as cadence reads it, so no other program's
-/// line passes for one.
-fn launcher_opens() -> Vec<f64> {
-    Command::new("journalctl")
-        .args(["--user", "-u", "quickshell", "--since", "-1h"])
-        .args(["--no-pager", "-o", "cat"])
-        .args(["--grep", "launcher: opening presented"])
-        .output()
-        .map(|out| opens(&String::from_utf8_lossy(&out.stdout)))
-        .unwrap_or_default()
-}
-
-/// The openings' times in `lines`, each `... opening presented N ms ...`.
-fn opens(lines: &str) -> Vec<f64> {
-    lines
-        .lines()
-        .filter_map(|line| {
-            let after = line.split_once("opening presented ")?.1;
-            after
-                .strip_suffix(" ms")
-                .unwrap_or(after)
-                .split(' ')
-                .next()?
-                .parse()
-                .ok()
-        })
-        .collect()
-}
-
 /// Where the call's page is installed beside the program at `exe`.
 fn page_beside(exe: &Path) -> Option<PathBuf> {
     Some(
@@ -365,14 +336,6 @@ fn page_beside(exe: &Path) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_launcher_s_openings_are_read_from_its_journal_lines() {
-        let lines = "  INFO qml: launcher: opening presented 41 ms after the chord\n\
-                     something else\n\
-                     launcher: opening presented 7 ms\n";
-        assert_eq!(opens(lines), [41.0, 7.0]);
-    }
 
     #[test]
     fn the_hour_is_said_figure_by_figure_against_its_target() {
