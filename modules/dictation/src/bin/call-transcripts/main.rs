@@ -105,10 +105,11 @@ use std::process::ExitCode;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, mpsc};
 
+use dictation::echo;
 use dictation::openvino::Priority;
 use dictation::parakeet::Parakeet;
 use dictation::takes::{Cutter, Take};
-use dictation::transcript::{self, Side, markdown};
+use dictation::transcript::{Side, markdown};
 use dictation::wav;
 use terminal_kit::{Exit, Failure, Help};
 
@@ -447,7 +448,7 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
             }
         }
     }
-    let (cut, _) = transcript::cut_echoes(&lines, &words, said::spoken);
+    let (cut, _) = echo::cut_echoes(&lines, &words, said::spoken);
     print!("{}", markdown(&cut, &own_name(), None, None));
     Ok(())
 }

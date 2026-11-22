@@ -33,6 +33,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::Duration;
 
+use dictation::echo;
 use dictation::mel::RATE;
 use dictation::parakeet::{Parakeet, Timings, Word};
 use dictation::pieces;
@@ -696,7 +697,7 @@ fn write(book: &Shared, key: &str, writing: &Writing, me: &str, transcribing: bo
 /// Lines read back from the file were told when first written, and are
 /// kept, since a split take's parts read back can't be joined again.
 fn transcript_of(writing: &Writing, me: &str, them: Option<&str>, note: Option<&str>) -> String {
-    let (cut, _) = transcript::cut_echoes(&writing.lines, &writing.words, said::spoken);
+    let (cut, _) = echo::cut_echoes(&writing.lines, &writing.words, said::spoken);
     let heard = split::unechoed(&cut, &writing.pieces, writing.read);
     let guesses = writing.guesses.as_deref();
     markdown_unechoed(&heard, me, them, note, guesses)

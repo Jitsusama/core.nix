@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
+use dictation::echo;
 use dictation::parakeet::{Parakeet, RATE, Timings, WINDOW, Word};
 use dictation::takes::Take;
 use dictation::transcript::{self, Line, Side, markdown};
@@ -159,13 +160,13 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                 .flat_map(|line| said(&line.text))
                 .collect()
         };
-        let (cut, cuts) = transcript::cut_echoes(&lines, &timed, said::spoken);
-        for echo in &cuts {
-            let ms = echo.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
+        let (cut, cuts) = echo::cut_echoes(&lines, &timed, said::spoken);
+        for taken in &cuts {
+            let ms = taken.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
             println!(
                 "{name}: Joel's words at {} taken for an echo, {ms} ms after theirs: {}",
-                transcript::clock(echo.at),
-                echo.text
+                transcript::clock(taken.at),
+                taken.text
             );
         }
         let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
@@ -179,7 +180,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
         }
         for line in joels(&cut)
             .into_iter()
-            .filter(|line| transcript::echoes(line, &cut))
+            .filter(|line| echo::echoes(line, &cut))
         {
             let at = transcript::clock(line.start);
             println!(
