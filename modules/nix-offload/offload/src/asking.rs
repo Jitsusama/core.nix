@@ -1,9 +1,9 @@
 //! Keeping every ssh nix-offload starts, its own and the ones under the
 //! Nix it runs, from asking anyone anything. A copy up's Nix pins the
-//! builder's host key in a file under its TMPDIR, and its ssh reads it
+//! builder's host key in a file under its `TMPDIR`, and its ssh reads it
 //! there. At 22:37 on 21 November something emptied /tmp under the copies
 //! running then, the files went, and each copy's ssh, with no tty but the
-//! user manager's SSH_ASKPASS and DISPLAY, asked Joel on his screen
+//! user manager's `SSH_ASKPASS` and `DISPLAY`, asked Joel on his screen
 //! whether to trust the builder: about 22 dialogs in six minutes. Told
 //! never to ask and to trust only a key it was given, ssh refuses the
 //! builder instead, which the run reads as a lost one and sends again.
