@@ -23,7 +23,10 @@ const SCRATCHES: &str = ".cache/pi/agentic-harness.pi/quest-workspace";
 /// the far home, the command runs there through a login shell that says
 /// something of its own first, and the handover crosses back. Each
 /// crossing keeps home what a shared quest does: anything hidden and any
-/// folder a build fills. Every ask is kept in `asked`, a line each.
+/// folder a build fills. The run stands as a strict fence does: it starts
+/// in the `--folder` named, at its place under the far home, refuses to
+/// start in the home itself, and can't write the far home or its `.cache`
+/// outside the quests' scratch. Every ask is kept in `asked`, a line each.
 const MYCELIUM: &str = r#"#!/bin/sh
 echo "$@" >> "$REALM/asked"
 case "$1" in
@@ -33,8 +36,16 @@ case "$1" in
   *) exit 64 ;;
 esac
 case " $* " in *" machine=gone "*) echo "no link reaches gone" >&2; exit 255 ;; esac
-while [ "$1" != -- ]; do shift; done
+folder=
+while [ "$1" != -- ]; do
+  [ "$1" = --folder ] && folder=$2
+  shift
+done
 shift
+case $folder in
+  "$HOME"/?*) ;;
+  *) echo "pi-fence: won't let commands write the home, so no command runs" >&2; exit 126 ;;
+esac
 here="$HOME/$SCRATCHES" far="$REALM/far/$SCRATCHES"
 cross() {
   carried=$(mktemp -d "$REALM/carried.XXXXXX") || exit 70
@@ -45,8 +56,10 @@ cross() {
 }
 cross "$here" "$far"
 echo "a login shell's welcome"
-(cd "$REALM/far" && HOME="$REALM/far" "$@")
+chmod a-w "$REALM/far" "$REALM/far/.cache"
+(cd "$REALM/far/${folder#"$HOME"/}" && HOME="$REALM/far" "$@")
 code=$?
+chmod u+w "$REALM/far" "$REALM/far/.cache"
 cross "$far" "$here"
 exit $code
 "#;
@@ -105,7 +118,7 @@ impl Realm {
     fn bringing(&self, machine: &str, brings_back: &[&str]) {
         let settings = serde_json::json!({
             "machines": [machine],
-            "scratch": ".cache/elsewhere",
+            "scratch": "elsewhere-runs",
             "mycelium": self.root.join("bin/mycelium"),
             "kinds": {"check": {
                 "description": "a stand-in check",
@@ -238,12 +251,17 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
     );
     let (out, err) = said(&output);
     assert!(output.status.success(), "the far job failed: {err}");
-    let far = realm.root.join("far/.cache/elsewhere");
+    let far = realm
+        .root
+        .join("far")
+        .join(SCRATCHES)
+        .join(QUEST)
+        .join("elsewhere-runs");
     assert!(
         out.lines()
             .next()
             .is_some_and(|ran_in| Path::new(ran_in).starts_with(&far)),
-        "the job didn't run in a copy under the far scratch: {out}"
+        "the job didn't run in a copy within the quest's far scratch: {out}"
     );
     assert!(
         out.contains("spec\nset\n"),
@@ -263,7 +281,9 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
         "mycelium wasn't asked to place the kind as it says it needs: {asked}"
     );
     assert!(
-        asked.contains(&format!("share {QUEST}")) && asked.contains("run --need machine=far"),
+        asked.contains(&format!("share {QUEST}"))
+            && asked.contains("run --need machine=far --folder ")
+            && asked.contains(&format!("/{SCRATCHES}/{QUEST} -- ")),
         "the job didn't go by the quest's handover and mycelium's run: {asked}"
     );
     assert!(
@@ -436,7 +456,9 @@ fn a_job_placed_here_runs_here() {
     );
     let told = realm.check(&["--there"], "pwd");
     assert!(
-        said(&told).0.contains("/far/.cache/elsewhere/"),
+        said(&told)
+            .0
+            .contains(&format!("/far/{SCRATCHES}/{QUEST}/elsewhere-runs/")),
         "--there didn't send the job away: {:?}",
         said(&told)
     );

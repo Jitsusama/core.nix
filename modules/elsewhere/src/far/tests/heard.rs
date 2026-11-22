@@ -1,4 +1,4 @@
-use super::{far_line, far_line_in, far_run, kind, said};
+use super::{far_line, far_line_in, far_run, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
 use terminal_kit::Exit;
@@ -25,7 +25,9 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
         "a file finished crossing wasn't taken: {err}"
     );
     assert_eq!(
-        std::fs::read_to_string(home.join("s/ran")).ok().as_deref(),
+        std::fs::read_to_string(work(&home).join("ran"))
+            .ok()
+            .as_deref(),
         Some("xyz"),
         "the job ran before its file was whole"
     );
@@ -53,7 +55,7 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
         "the wait, or the file it was for, went unsaid: {err}"
     );
     assert!(
-        !home.join("s/ran").exists(),
+        !work(&home).join("ran").exists(),
         "the job ran over a file still crossing"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -116,7 +118,7 @@ fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, Strin
         }),
         &[],
     );
-    let ran = code == Some(0) && home.join("s/ran").exists();
+    let ran = code == Some(0) && work(&home).join("ran").exists();
     let _ = std::fs::remove_dir_all(&home);
     (ran, format!("({code:?}): {err}"))
 }
@@ -290,7 +292,7 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
             "a tree it couldn't make for {step} read as {heard:?}, ending {code:?}: {err}"
         );
         assert!(
-            !home.join("s/ran").exists() && !home.join("s/1").exists(),
+            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
             "a tree it couldn't make for {step} was run, or left behind"
         );
         let _ = std::fs::remove_dir_all(&home);
@@ -318,7 +320,7 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
         "why it was refused went unsaid: {err}"
     );
     assert!(
-        !home.join("s/1").exists(),
+        !work(&home).join("1").exists(),
         "a refused job's copy of its tree was left behind"
     );
     let _ = std::fs::remove_dir_all(&home);
@@ -340,7 +342,7 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     // At the tree's top, the job runs in a tree with nothing in it.
     let (code, err, home) = far_run("end\n", &[], "touch ../ran");
     assert!(
-        code == Some(0) && home.join("s/ran").exists(),
+        code == Some(0) && work(&home).join("ran").exists(),
         "a job with no file that travels didn't run ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);

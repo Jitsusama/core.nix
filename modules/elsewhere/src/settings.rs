@@ -49,7 +49,9 @@ pub struct Settings {
     /// The machines it may send to; a placement on any other stays here.
     /// `--there` takes the first.
     pub machines: Vec<String>,
-    /// The folder under a far machine's home its copies run in.
+    /// The folder within the quest's scratch on a far machine that its
+    /// copies run in: a strict fence there writes only the quest's
+    /// scratch, so a copy anywhere else in its home can't be made.
     pub scratch: String,
     /// The realm mycelium is asked about, or the one it's set to.
     pub realm: Option<String>,
@@ -62,7 +64,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             machines: Vec::new(),
-            scratch: ".cache/elsewhere".to_owned(),
+            scratch: "elsewhere-runs".to_owned(),
             realm: None,
             kinds: BTreeMap::new(),
             mycelium: "mycelium".to_owned(),
@@ -203,7 +205,7 @@ mod tests {
             "a kind asked mycelium for what it wasn't given"
         );
         assert_eq!(
-            settings.scratch, ".cache/elsewhere",
+            settings.scratch, "elsewhere-runs",
             "the scratch didn't default"
         );
         assert_eq!(

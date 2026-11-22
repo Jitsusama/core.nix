@@ -86,8 +86,8 @@ in
     };
     scratch = lib.mkOption {
       type = lib.types.str;
-      default = ".cache/elsewhere";
-      description = "The folder under a far machine's home a job's copy runs in, taken away once it ends.";
+      default = "elsewhere-runs";
+      description = "The folder within the quest's scratch on a far machine that a job's copy runs in, taken away once it ends; a strict fence there writes nowhere else.";
     };
     realm = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
