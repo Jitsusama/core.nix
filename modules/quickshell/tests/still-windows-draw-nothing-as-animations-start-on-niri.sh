@@ -62,14 +62,15 @@ fi
 # branch with all three shown, but only where it's the loop's next line
 # on the GUI thread after its own "- animationStarted()": the loop starts
 # its timer as a window is exposed too, and a start's timer line from
-# that would say nothing of the branch. So each of the case's starts, from its
-# own line to the next start's or the count's, is asked for that line,
+# that would say nothing of the branch. So each of the case's starts, from
+# its own line to the next start's or the count's, is asked for that line,
 # and at least half of the starts the case counted must have one. Not
 # every start: on a loaded builder Qt logged it 8 times over a whole run
 # of ten starts, one stop finding a window not shown, likely a late frame
-# callback (2026-11-21, before the timeout above), and how many of those fell within the starts that
-# log doesn't say; a passing run logged 11 over the run and 10 within
-# them. The timer's line is Qt's own wording, which a Qt bump may change.
+# callback (2026-11-21, before the timeout above), and how many of those
+# fell within the starts that log doesn't say; a passing run logged 11
+# over the run and 10 within them. The timer's line is Qt's own wording,
+# which a Qt bump may change.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
