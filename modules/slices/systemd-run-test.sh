@@ -29,6 +29,8 @@ for place in jobs.service jobs.service/sub jobs.service/x.slice/y pi-spawner-9-a
   pi-spawner-9-a1.scope/sub; do
   says "${manager}/jobs.slice/${place}" "--slice=jobs-work.slice --user --scope true" \
     --user --scope true
+  # An explicit --slice-inherit is the caller's own choice, and still inherits.
+  says "${manager}/jobs.slice/${place}" "--user --slice-inherit true" --user --slice-inherit true
 done
 # One from a slice inside jobs keeps that slice: Joel's terminal work and
 # timed work stay free, and pi's sorted work stays where it was sorted. So

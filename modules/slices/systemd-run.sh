@@ -29,8 +29,11 @@
 # too: polkit's agents-ask-first.rules refuses it rather than asking Joel,
 # the sorter clears its real-time scheduling and ranks it first for the
 # OOM killer, and it sits beside any tiers' slices at the default weight,
-# outside their order. An explicit --slice-inherit is the caller's own
-# choice, and still inherits.
+# outside their order. That weight counts once for each unit, so 146 such
+# units weigh 14,600 beside tiers weighing 620 together; before, they sat
+# beside jobs-work.slice itself, at 100, tiers and all, so ranked work's
+# share of CPU against them grows. An explicit --slice-inherit is the
+# caller's own choice, and still inherits.
 #
 # A slice named as a property, -p Slice=, is named too: systemd keeps the
 # last Slice= a unit is given, so an added --slice-inherit put the units

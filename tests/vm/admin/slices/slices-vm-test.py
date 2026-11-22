@@ -300,8 +300,10 @@ def test_an_agents_run_naming_no_slice_from_jobs_goes_in_work(jobs: Account) -> 
         f" systemd-run --user --unit=bare {jobs.sleep} 1015; exec {jobs.sleep} infinity'"
     )
     jobs.wait_until_in(1015, "jobs.slice/jobs-work.slice/bare.service$")
-    # The sorter moves a shell only once it has run a second, so it asks from jobs.service; had
-    # it been moved, the unit would have inherited a work slice and proved nothing here.
+    # The sorter moves a shell only once it has run a second, and had it been moved, the unit
+    # would have inherited a work slice and proved nothing here. The shell's place is read just
+    # before the call rather than after, so a move while systemd-run runs, slow on a loaded
+    # builder, can't fail a sound run; a move in the moment between goes unseen.
     asked = jobs.machine.succeed("cat /tmp/asked").strip()
     assert asked.endswith("/jobs.slice/jobs.service"), f"the shell asked from {asked}"
 
