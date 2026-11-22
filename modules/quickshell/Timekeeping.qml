@@ -5,8 +5,8 @@
 // It's asked only while something shown watches it, home's Now or Time,
 // since the reader asks chronyd once a second for as long as it's asked
 // and nothing otherwise; the reading is dropped a minute after it isn't,
-// so nothing staler than chrony's own last poll is shown. A machine without chrony has no socket, and Time
-// says nothing keeps the time.
+// so nothing staler than chrony's own last poll is shown. A machine
+// without chrony has no socket, and Time says nothing keeps the time.
 pragma Singleton
 pragma ComponentBehavior: Bound
 import Quickshell
