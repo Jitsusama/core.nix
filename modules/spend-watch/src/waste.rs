@@ -478,38 +478,45 @@ mod tests {
             );
             let mut sessions = super::work(&history, from, to).expect("the work reads");
             sessions.sort_by(|one, other| one.session.cmp(&other.session));
-            let mut agents: Vec<Work> = Vec::new();
-            for name in (0..5).map(|i| format!("s{i}")) {
-                let own: Vec<&&Kept> = within
-                    .iter()
-                    .filter(|turn| turn.session == name && turn.kind == "agent")
-                    .collect();
-                if own.is_empty() {
-                    continue;
-                }
-                let turns = f64::from(u32::try_from(own.len()).expect("a few turns"));
-                let dollars: f64 = own.iter().map(|turn| turn.cost).sum();
-                let read: f64 = own.iter().map(|turn| turn.cache_read).sum();
-                let prompt: f64 = own.iter().map(|turn| turn.cache_read + 8.0).sum();
-                agents.push(Work {
-                    session: name.clone(),
-                    quest: own.iter().map(|turn| turn.quest.clone()).max(),
-                    turns,
-                    dollars,
-                    per_turn: dollars / turns.max(1.0),
-                    cached: if prompt > 0.0 { read / prompt } else { 0.0 },
-                    rebuilt_after_gaps: own
-                        .iter()
-                        .filter(|turn| turn.cause == Some("gap"))
-                        .map(|turn| turn.cost / 2.0)
-                        .sum(),
-                });
-            }
             assert_eq!(
-                sessions, agents,
+                sessions,
+                agents(&within),
                 "the span from {from} to {to} saw other work"
             );
         }
+    }
+
+    /// Each session's work among `within`, summed from its agent turns.
+    fn agents(within: &[&Kept]) -> Vec<Work> {
+        let mut agents: Vec<Work> = Vec::new();
+        for name in (0..5).map(|i| format!("s{i}")) {
+            let own: Vec<&&Kept> = within
+                .iter()
+                .filter(|turn| turn.session == name && turn.kind == "agent")
+                .collect();
+            if own.is_empty() {
+                continue;
+            }
+            let turns = f64::from(u32::try_from(own.len()).expect("a few turns"));
+            let dollars: f64 = own.iter().map(|turn| turn.cost).sum();
+            let read: f64 = own.iter().map(|turn| turn.cache_read).sum();
+            // Each fixture turn's input and cache write are 3 and 5.
+            let prompt: f64 = own.iter().map(|turn| turn.cache_read + 8.0).sum();
+            agents.push(Work {
+                session: name.clone(),
+                quest: own.iter().map(|turn| turn.quest.clone()).max(),
+                turns,
+                dollars,
+                per_turn: dollars / turns.max(1.0),
+                cached: if prompt > 0.0 { read / prompt } else { 0.0 },
+                rebuilt_after_gaps: own
+                    .iter()
+                    .filter(|turn| turn.cause == Some("gap"))
+                    .map(|turn| turn.cost / 2.0)
+                    .sum(),
+            });
+        }
+        agents
     }
 
     #[test]
