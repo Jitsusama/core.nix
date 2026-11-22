@@ -865,7 +865,9 @@ fn held_before(under: &[PathBuf], prefixes: &[String], pis: &[String]) -> holds:
     );
     if holding.held() > 0 {
         eprintln!(
-            "Took up {} windows' holds from the sorter before, {} of them hard.",
+            // A held window holds two scopes, its own and its pi's, so these
+            // count scopes, and a hard one may be one whose floor can't be read.
+            "Took up {} scopes' holds from the sorter before, {} of them hard.",
             holding.held(),
             holding.hard()
         );

@@ -263,7 +263,10 @@ impl Holding {
     /// give-back that fails still does, and none past them. One that keeps
     /// a hard floor already keeps it: the kernel holds it whatever this
     /// says, and taking it off while a stale one's give-back fails took the
-    /// floor from the window Joel is at and left it on those he'd left.
+    /// floor from the window Joel is at and left it on those he'd left. So
+    /// while one fails, more than `MOST` may hold one, past what the
+    /// assertion over agents.slice's floor allows, and the kernel shares
+    /// that floor among them until the give-back lands: meant, and brief.
     pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
         let others = self.hard.iter().filter(|held| *held != scope).count();
         if self.hard.contains(scope) || others < crate::focus::MOST {
