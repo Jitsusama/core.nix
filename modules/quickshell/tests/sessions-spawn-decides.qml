@@ -6,12 +6,13 @@ pragma ComponentBehavior: Bound
 // opens told why, the one it says nothing of in three seconds opens once
 // it's ended, and the one it fails on opens as before; a saved one opens
 // at once, never asked. Then, with the harness's config saying sessions start
-// in its host, five are started on quests: the one hosted opens only a
-// viewer, the ones kept out open their windows, and two hosted under an
-// id or host no viewer could carry open neither, and are said; and once
-// the config says
-// nothing, one opens its window never asked. It exits 0 once that holds,
-// and otherwise 1, saying what didn't.
+// in its host, nine are started on quests: the one hosted opens only a
+// viewer, the ones kept out open their windows, four hosted under an id or
+// host no viewer could carry open neither, and are said, and of two the
+// host answers with one session, the second is said opening while the
+// first's viewer comes; started again once its viewer is listed, the first
+// raises it. Once the config says nothing, one opens its window never
+// asked. It exits 0 once that holds, and otherwise 1, saying what didn't.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -27,6 +28,9 @@ ShellRoot {
     // Why Sessions said each start by its quest wasn't viewed.
     property var unhosted: ({})
     property real startedAt: 0
+    // When QEST-HOSTED's session was started again, once its viewer was
+    // listed, or 0 before.
+    property real againAt: 0
     // How long a start the host runs may go unsaid, well past the stand-in
     // decider's answer and well inside the check's 60 s.
     readonly property int unsaidFor: 10000
@@ -38,11 +42,12 @@ ShellRoot {
     }
 
     // Each window the shell spawns opens, as niri would say it, so the
-    // walk goes on to the next rather than waiting out its patience.
+    // walk goes on to the next rather than waiting out its patience; but
+    // s-late's viewer, which niri is slow to list.
     function openSpawned() {
         for (const command of Niri.spawns) {
             const classed = /\/pi-sessions\/kitty\.sock (\S+) /.exec(command)?.[1] ?? "";
-            if (classed === "" || root.opened[classed])
+            if (classed === "" || classed === "pi-hosted.s-late" || root.opened[classed])
                 continue;
             const id = 100 + Object.keys(root.opened).length;
             root.opened = Object.assign({}, root.opened, { [classed]: Date.now() });
@@ -124,6 +129,10 @@ ShellRoot {
         Sessions.start("QEST-PLAIN", root.folder, false);
         Sessions.start("QEST-DOTTED", root.folder, false);
         Sessions.start("QEST-BADHOST", root.folder, false);
+        Sessions.start("QEST-DASHID", root.folder, false);
+        Sessions.start("QEST-DASHHOST", root.folder, false);
+        Sessions.start("QEST-LATE", root.folder, false);
+        Sessions.start("QEST-LATER", root.folder, false);
         root.startedAt = Date.now();
         stage = "starting";
     }
@@ -142,12 +151,13 @@ ShellRoot {
         // mycelium couldn't be given, it has no viewer to open, nor a
         // window, which would begin a second pi on its quest: it's said
         // started instead.
+        const unviewed = ["QEST-DOTTED", "QEST-BADHOST", "QEST-DASHID", "QEST-DASHHOST"];
         Expect.expect("one hosted under an id or host no viewer can carry opens neither",
-            !Niri.spawns.some(command => /--session s(\.dotted|-badhost)/.test(command))
-            && startedOn("QEST-DOTTED").length === 0 && startedOn("QEST-BADHOST").length === 0,
-            Niri.spawns.join("\n"));
-        const unviewed = ["QEST-DOTTED", "QEST-BADHOST"];
-        if (!unviewed.every(quest => quest in root.unhosted)) {
+            !Niri.spawns.some(command => /--session (s\.dotted|s-badhost|-s-x|s-y)/.test(command))
+            && unviewed.every(quest => startedOn(quest).length === 0), Niri.spawns.join("\n"));
+        const late = ["QEST-LATE", "QEST-LATER"];
+        if (!unviewed.every(quest => quest in root.unhosted)
+            || !late.some(quest => quest in root.unhosted)) {
             // The decider answers within moments, so one still unsaid
             // after a few seconds was let go with nothing said.
             if (Date.now() - root.startedAt > unsaidFor)
@@ -157,6 +167,12 @@ ShellRoot {
         Expect.expect("and each is said started, though it can't be viewed",
             unviewed.every(quest => root.unhosted[quest] === "unviewable"),
             JSON.stringify(root.unhosted));
+        // The host answers both with one session: the first's viewer opens
+        // and, while niri is slow to list it, the second is said opening.
+        Expect.expect("of two started on one session, one viewer opens and the second says so",
+            late.filter(quest => root.unhosted[quest] === "opening").length === 1
+            && Niri.spawns.filter(command => command.includes("/kitty.sock pi-hosted.s-late "))
+                .length === 1, `${JSON.stringify(root.unhosted)}\n${Niri.spawns.join("\n")}`);
         const viewer = Niri.spawns.filter(command => command.includes(
             " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
@@ -180,6 +196,26 @@ ShellRoot {
         if (![started("QEST-HOSTED", true), started("QEST-AWAY", false),
             started("QEST-PLAIN", false)].every(line => lines.includes(line)))
             return;
+        // Started again once niri lists its viewer, that viewer is raised,
+        // never a second.
+        const shown = Object.values(Niri.windows).find(window => window.opened
+            === "pi-hosted.s-begun");
+        if (!shown)
+            return;
+        if (root.againAt === 0) {
+            Sessions.start("QEST-AGAIN", root.folder, false);
+            root.againAt = Date.now();
+            return;
+        }
+        if (!Niri.acts.some(act => act.FocusWindow?.id === shown.id)) {
+            if (Date.now() - root.againAt > unsaidFor)
+                Expect.fail("started again but its viewer wasn't raised: "
+                    + JSON.stringify(Niri.acts));
+            return;
+        }
+        Expect.expect("started again, its listed viewer is raised, never a second",
+            Niri.spawns.filter(command => command.includes("/kitty.sock pi-hosted.s-begun "))
+                .length === 1, Niri.spawns.join("\n"));
         // Said outside sections, where the harness never reads it, is said
         // nothing of.
         config.setText('{"quest-workflow": {"startHost": "attended"}}');

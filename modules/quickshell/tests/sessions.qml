@@ -322,11 +322,15 @@ ShellRoot {
         expect("its viewer is its window, by the name it opened with",
             Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": [window] }) === window,
             JSON.stringify(Sessions.windowOf(record, {}, { "pi-hosted.s-hosted": [window] })));
+        const listing = Niri.windows;
+        Niri.windows = Object.assign({}, listing, { "40": window });
         Sessions.goTo(Object.assign({}, hosted, { window: window }));
+        Niri.windows = listing;
         const raised = JSON.stringify(Niri.acted);
         expect("Go To raises its viewer", raised === '{"FocusWindow":{"id":40}}', raised);
-        Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null,
-            presence: Object.assign({}, hosted.presence, { session: "s-wordless" }) }));
+        // No words to view it by is said as that, even while a viewer
+        // asked for moments ago comes, as a row's Reopen says it.
+        Sessions.goTo(Object.assign({}, hosted, { address: "WORDLESS", attach: null }));
         expect("one with no words is said, never opened", root.unhosted === "WORDLESS"
             && root.unhostedWhy === "hosted" && Niri.spawns.length === before + 1,
             `${root.unhosted} ${root.unhostedWhy} ${Niri.spawned.join(" ")}`);
@@ -390,28 +394,55 @@ ShellRoot {
             JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":77}}'
             && Niri.spawns.length === before + 2,
             `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(before).join("\n")}`);
-        // One only the windows daemon lists while niri lists others is one
-        // niri has closed, the daemon lagging: it's said, neither raised
-        // nor opened again.
+        // niri's list is the windows daemon's own, so one only this
+        // file's index of the daemon lists while niri lists others is gone:
+        // it's viewed afresh, never raised.
         const index = Sessions.niriWindows;
         Sessions.niriWindows = { pids: index.pids, opened: Object.assign({}, index.opened,
-            { "pi-hosted.s-row-listed": [{ id: 78, opened: "pi-hosted.s-row-listed" }] }) };
+            { "pi-hosted.s-row-listed": [{ id: 78, opened: "pi-hosted.s-row-listed" }],
+                "pi-hosted.s-row-stale": [{ id: 79, opened: "pi-hosted.s-row-stale" }] }) };
         Niri.acted = null;
         Sessions.reopen({ id: "s-row-listed", cwd: "/tmp", hosted: true, view });
-        expect("one only the lagging windows daemon lists is said closing, not raised",
-            Niri.acted === null && Niri.spawns.length === before + 2
-            && root.unhosted === "s-row-listed" && root.unhostedWhy === "closing",
-            `${JSON.stringify(Niri.acted)} ${root.unhosted} ${root.unhostedWhy}`);
-        // While niri lists none, as just after a crash, the daemon's is
-        // raised.
+        expect("one only the index lists while niri lists others is viewed afresh, not raised",
+            Niri.acted === null && Niri.spawns.length === before + 3
+            && asked(Niri.spawned.join(" "))?.classed === "pi-hosted.s-row-listed",
+            `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(before).join("\n")}`);
+        // While niri lists none, as before it has heard the daemon, the
+        // index's is raised.
         Niri.windows = {};
         Sessions.reopen({ id: "s-row-listed", cwd: "/tmp", hosted: true, view });
+        const fromIndex = JSON.stringify(Niri.acted);
+        // But not while niri's own stream stands in for a daemon that
+        // isn't answering, which leaves the index as it last stood.
+        Niri.acted = null;
+        Niri.standIn = true;
+        Sessions.reopen({ id: "s-row-stale", cwd: "/tmp", hosted: true, view });
+        Niri.standIn = false;
         Niri.windows = shown;
         Sessions.niriWindows = index;
         expect("while niri lists none, a viewer the windows daemon lists is raised",
-            JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":78}}'
-            && Niri.spawns.length === before + 2,
+            fromIndex === '{"FocusWindow":{"id":78}}' && Niri.spawns.length === before + 4,
+            `${fromIndex} ${Niri.spawns.slice(before).join("\n")}`);
+        expect("unless niri stands in for the daemon: the index's is viewed afresh, not raised",
+            Niri.acted === null
+            && asked(Niri.spawned.join(" "))?.classed === "pi-hosted.s-row-stale",
             `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(before).join("\n")}`);
+        // Go To on one whose window the index names but niri doesn't list
+        // views it afresh, rather than raising a window that's gone.
+        const stale = { id: 41, opened: "pi-hosted.s-stale" };
+        Sessions.goTo(Object.assign({}, hosted, { address: "STALE", window: stale,
+            attach: view.slice(0, -1).concat(["s-stale"]),
+            presence: Object.assign({}, hosted.presence, { session: "s-stale" }) }));
+        expect("Go To on one whose window niri doesn't list views it afresh",
+            Niri.acted === null && asked(Niri.spawned.join(" "))?.classed === "pi-hosted.s-stale",
+            `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(before).join("\n")}`);
+        // A row whose id begins with a dash, which mycelium's --session
+        // could take for a flag, names no viewer.
+        Sessions.reopen({ id: "-row", cwd: "/tmp", hosted: true, view });
+        expect("a row whose id begins with a dash is said unnamed, never opened",
+            root.unhosted === "-row" && root.unhostedWhy === "unnamed"
+            && !Niri.spawns.some(one => one.includes("pi-hosted.-row")),
+            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(before).join("\n")}`);
         holdsAlone();
     }
 

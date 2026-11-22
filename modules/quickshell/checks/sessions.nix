@@ -140,6 +140,9 @@ in
             workspace_id: 3, layout: { pos_in_scrolling_layout: [2, 1] } }
         })
         property int revision: 0
+        // Whether niri's own stream stands in for a windows daemon that
+        // isn't answering, as Niri.qml says it; a case sets it.
+        property bool standIn: false
         property var current: null
         // Workspace 5, where a sleeper's window was, and 8, named for the
         // orchestrator of a session elsewhere, Joel on another.
