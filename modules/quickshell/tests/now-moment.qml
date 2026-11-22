@@ -1495,6 +1495,25 @@ ShellRoot {
             now.openedAt === toldOpening && now.openingAt === -1,
             JSON.stringify([now.openedAt, toldOpening, now.openingAt]));
         theLauncher.open = false;
+        // A notice read while Now sleeps holds still from the launcher's
+        // opening, not from none, so Desktop still counts it unread until
+        // the launcher shuts, rather than dropping it and taking it back
+        // as Now wakes.
+        const historyBeforeRead = Notices.history;
+        Notices.history = [{ id: 31, at: Date.now() - 1000, app: "Firefox",
+            summary: "Read before Now woke", read: false }];
+        now.asleep = true;
+        theLauncher.open = true;
+        const readOpening = now.openingAt - 60000;
+        now.openingAt = readOpening;
+        Notices.history = [Object.assign({}, Notices.history[0],
+            { read: true, readHow: "read", readAt: Date.now() })];
+        expect("a notice read while Now sleeps in an open launcher stays unread there",
+            now.openedAt === readOpening && now.unreadNotices.some(notice => notice.id === 31),
+            JSON.stringify([now.openedAt, readOpening,
+                now.unreadNotices.map(notice => notice.id)]));
+        theLauncher.open = false;
+        Notices.history = historyBeforeRead;
         now.asleep = true;
         theLauncher.open = true;
         theLauncher.open = false;
