@@ -14,7 +14,8 @@
 //! `refs/heads` is no path at all. A path cut just before a hyphen, as
 //! `tests/vm/screens/screens-` is, names where names begin rather than one
 //! file, so it's there while any path begins with it, hyphen and all:
-//! `screens.nix` beside it begins only with its letters.
+//! `screens.nix` beside it begins only with its letters. It's there too
+//! when found whole, the dash then punctuation, as in `home.nix- which`.
 
 use std::collections::HashSet;
 
