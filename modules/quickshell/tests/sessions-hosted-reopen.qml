@@ -709,18 +709,22 @@ ShellRoot {
             .sort((a, b) => a.idx - b.idx);
         cornerOn = its[its.length - 1].id;
         joelOn(cornerOn);
+        corneredAt = Date.now();
         stage = "cornered";
         Sessions.reopenAll([waitingEntry("s-cornered")], root.never,
             kept({ "s-cornered": { unplaced: true } }), "");
     }
     property int cornerOn: -1
+    property real corneredAt: 0
 
     // Its viewer waits for Joel to leave, as one bound for his workspace
-    // does, rather than being dropped from the walk.
+    // does, rather than being dropped from the walk. Looked at once its
+    // place is kept, or a walk's few paces after: s-next, given up on
+    // earlier, keeps the reopening going, so it never ends to wait on.
     function cornered() {
-        if (Sessions.reopening !== null)
-            return;
         const place = Sessions.keptPlaces["s-cornered"];
+        if (place === undefined && Date.now() - corneredAt < 10000)
+            return;
         Expect.expect("one kept as unplaced, with nowhere quiet, waits for Joel to leave",
             place?.workspace === cornerOn && place?.there === true
             && viewerSpawns("s-cornered").length === 0,
