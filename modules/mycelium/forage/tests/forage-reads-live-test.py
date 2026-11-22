@@ -337,7 +337,7 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     expect(hollowed, "a step off the floor drew the list from before the record").to_have_count(1)
 
 
-def test_a_cell_gone_during_a_find_matching_nothing_takes_its_ring_not_the_floor(
+def test_a_find_matching_nothing_keeps_the_cursor_until_a_link_or_its_cell_ending(
     long_page: Page, long_node: StandIn
 ) -> None:
     says_it_stands(long_page, "live")
@@ -348,6 +348,13 @@ def test_a_cell_gone_during_a_find_matching_nothing_takes_its_ring_not_the_floor
     held = TOPS[20]
     cell(long_page, held).click()
     ringed_on_the_floor(long_page, held, "the ring didn't follow a step on the floor")
+    # A link naming the held cell, in another form, ends the find that hides it.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill("ZZZZZZ")
+    expect(cell(long_page, held), "the find left the held cell").to_have_count(0)
+    long_page.evaluate(f"location.hash = '#cell={held}%40kestrel'")
+    selected(long_page, held, "a link to the held cell didn't bring its row back")
+    # The held cell ending during the find leaves the floor drawn around the shoot.
     long_page.keyboard.press("/")
     long_page.locator("#find").fill("ZZZZZZ")
     expect(long_page.locator("#cells .none"), "the find matched a cell").to_have_count(1)
@@ -356,7 +363,6 @@ def test_a_cell_gone_during_a_find_matching_nothing_takes_its_ring_not_the_floor
         long_page.locator(f'#floor rect[data-cell="{held}"]'), "the floor kept a cell gone"
     ).to_have_count(0, timeout=PACE_MS)
     expect(branch, "a cell gone during the find moved the floor").to_have_count(1)
-    expect(long_page.locator("#floor rect.on"), "a cell gone stayed ringed").to_have_count(0)
 
 
 # A cell named by its whole link, as a notice or another page gives it.

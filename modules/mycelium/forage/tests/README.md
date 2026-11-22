@@ -60,5 +60,7 @@ narrowing the list to the cell the cursor is on keeps it on the same
 cells, as one matching nothing keeps the cursor and the floor through
 its end. A record
 hollowing a cell on it is drawn there with the floor kept, and a step
-off it draws it again over the list the record left. A cell that ends
-during a find matching nothing takes its ring, not the floor.
+off it draws it again over the list the record left. During a find
+matching nothing, a link to the cell the cursor is on brings its row
+back, and that cell ending leaves a floor drawn around another cell
+where it was.

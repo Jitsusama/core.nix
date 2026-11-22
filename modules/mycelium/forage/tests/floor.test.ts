@@ -242,7 +242,7 @@ it("keeps the floor drawn on a step it holds, and draws another for a step it le
   assert.equal(floorStepped(emptied, "C12"), emptied);
 });
 
-it("keeps the floor through a find that matches nothing, and moves it with the cursor a find moves", () => {
+it("keeps the floor for a cursor it holds or none, and moves it for one off it", () => {
   const kept = floorFor(LONG, "C55");
   // A find that matches nothing keeps the cursor, on C30 here, and the floor with it.
   const typo = floorAfter(LONG, kept, "C30");
@@ -256,6 +256,9 @@ it("keeps the floor through a find that matches nothing, and moves it with the c
   assert.equal(floorAfter(LONG, kept, "C00").around, "C00");
   // A cursor off the floor moves it from a floor kept with no cursor too.
   assert.equal(floorAfter(ended, none, "C00").around, "C00");
+  // With no cursor, a floor whose own cell ends goes back to the list's first cells.
+  const gone = LONG.filter((each) => each.cell !== "C55");
+  assert.equal(floorAfter(gone, kept, null).around, null);
 });
 
 it("keeps the floor still as the page steps and records arrive, until a step leaves it", () => {
