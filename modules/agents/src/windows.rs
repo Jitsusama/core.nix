@@ -174,7 +174,10 @@ pub fn records<S: BuildHasher>(
                 })
                 .collect();
             let window = one_of(&among, pid);
-            if kitty.is_none() && window.is_none() {
+            // One with no kitty and no window has no record, unless it has
+            // several it can't tell apart, as a hosted one with two viewers
+            // does, which says so below.
+            if kitty.is_none() && window.is_none() && among.is_empty() {
                 return None;
             }
             let address = one.address();

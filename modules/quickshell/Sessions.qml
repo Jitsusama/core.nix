@@ -1552,7 +1552,7 @@ Singleton {
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
-            kept: placeable[at], gone, told,
+            kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
             back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true,
                 Reopening.satHere(one)) }))
             .sort(order));
@@ -1950,7 +1950,9 @@ Singleton {
     // place the boot kept, quietly, as any other reopened window does: it
     // goes in the one walk, waited for and placed as theirs are, so the
     // columns after it land beside it (Y2YBTS and KP0L6A, [342c50d4]). One
-    // whose viewer is open, or that the boot kept no place of, opens none.
+    // whose viewer is open, or that the boot kept no place of, opens none;
+    // one it kept as unplaced, floating or untold, had a window, so it
+    // opens going home, as a pi kept so does.
     // One whose host isn't serving it yet, as after a crash, while the host
     // comes back, opens there all the same by the words its restore entry
     // says (Viewers.waitingWords), and waits in the window for its host:
@@ -1970,11 +1972,14 @@ Singleton {
         const id = next.one.id;
         const session = root.hostedHere(id);
         const at = Reopening.atOf(next.at);
-        const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
-            next.back?.home === false ? "" : undefined) : null;
+        const into = at !== null || next.unplaced === true
+            ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
+                next.back?.home === false ? "" : undefined)
+            : null;
         if (session?.window || into === null) {
             console.info(`sessions: ${id}'s viewer not opened, since `
-                + (session?.window ? "it is open" : `none was kept at ${root.keptSaid(at)}`));
+                + (session?.window ? "it is open" : next.unplaced === true
+                    ? "it has nowhere to open" : `none was kept at ${root.keptSaid(at)}`));
             reopenNext();
             return;
         }

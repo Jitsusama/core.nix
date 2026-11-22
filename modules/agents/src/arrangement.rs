@@ -416,15 +416,25 @@ impl Arrangement {
             let Some(place) = place.as_object_mut() else {
                 return !unwindowed.closed.contains(id);
             };
-            // One in a window again, or heard parked, ended or elsewhere,
-            // keeps its place as it was kept, unmarked, so no mark outlives
-            // what set it and comes due at once, again and again. One not
-            // heard, as before the node's sessions are, keeps its marks.
+            // One in a window again keeps its place as it was kept, unmarked.
+            // One heard parked, ended or elsewhere keeps a closed mark and
+            // lets its place go once that's due, since the host parks an
+            // idle one minutes after Joel closes its window, or sooner while
+            // short of memory; only its orphaned mark goes, as nothing of it
+            // runs here to be unsure of. One not heard, as before the node's
+            // sessions are, keeps its marks.
             let windowless = unwindowed.closed.contains(id) || unwindowed.unsure.contains(id);
-            if now.contains_key(id) || (!windowless && unwindowed.heard.contains(id)) {
+            if now.contains_key(id) {
                 place.remove("closed");
                 place.remove(ORPHANED);
                 return true;
+            }
+            if !windowless && unwindowed.heard.contains(id) {
+                place.remove(ORPHANED);
+                return place
+                    .get("closed")
+                    .and_then(Value::as_u64)
+                    .is_none_or(|closed| at.saturating_sub(closed) < closed_for());
             }
             if unwindowed.unsure.contains(id) && !place.contains_key("closed") {
                 place.insert(ORPHANED.to_owned(), json!(true));
