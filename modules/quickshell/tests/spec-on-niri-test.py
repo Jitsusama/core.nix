@@ -5,8 +5,9 @@ Spec's place as the account's cadence module gives it, and cadence-spec serving 
 stand-in for cadence prints from a file here. On 18 November Spec was listed twice in Agents,
 as its part and among Agents' own rows, and the cursor moved between the two as each read
 came; Qt's own engine holds the parts' order (tests/ranking.qml), and this holds the whole
-launcher to listing it once, the cursor staying on it as the daemon's answers change, and a
-step held in Spec taking the rows the daemon serves after a restart.
+launcher to listing it once, the cursor staying on it as the daemon's answers change, a
+step held in Spec taking the rows the daemon serves after a restart, and Spec kept while its
+head says the same, so a - out of Now makes it again only once the head has changed.
 """
 
 from __future__ import annotations
@@ -146,4 +147,64 @@ def test_a_step_held_in_spec_takes_the_rows_a_restarted_daemon_serves(shell: She
                 shown["held"] == ["agents", "Spec"]
                 and shown["rows"] == ["Time to Done", "Quality Held Up"]
             )
+        )
+
+
+def in_now(shell: Shell) -> None:
+    """Open Now by its chord, home read first, and wait until Agents makes no more rows."""
+    shell.launcher_closed()
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    shell.made_settled("agents")
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"])
+    shell.made_settled("agents")
+
+
+def stepped_out_of_now(shell: Shell) -> list[str]:
+    """Press - in Now, and give the keys of Agents' rows made as home is held and after."""
+    before = shell.rows_made("agents")
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    shell.made_settled("agents")
+    return shell.made_since("agents", before)
+
+
+def test_a_step_out_of_now_makes_no_spec_while_its_head_says_the_same(shell: Shell) -> None:
+    """- out of Now makes Agents' Spec again only if cadence-spec's head has changed.
+
+    Made anew each time Agents' rows were read, Spec was made in every - out of Now as home was
+    held, though nothing it says had changed, where the rest of Agents' are kept (core.nix#6037).
+    """
+    in_now(shell)
+    try:
+        made = stepped_out_of_now(shell)
+    finally:
+        shell.close_launcher()
+    assert "agents:spec" not in made, f"- out of Now made Spec again: {made}"
+
+
+def test_spec_says_a_head_that_changed_while_now_was_held(shell: Shell) -> None:
+    """A head that changes while Now is held is the one Spec says once Agents is read again.
+
+    Kept while what it says is the same, Spec is made again once the head changes, rather than
+    saying the one it was made of while nothing read it.
+    """
+    in_now(shell)
+    try:
+        served = served_first()
+        served["head"]["said"] = "3 readings out of spec"
+        serve(served)
+        shell.daemon_stopped("cadence-spec")
+        spec_daemon(shell)
+        stepped_out_of_now(shell)
+    finally:
+        shell.close_launcher()
+    with agents_with_spec(shell):
+        shell.down_to("Spec")
+        shell.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("side") == "3 readings out of spec"
         )
