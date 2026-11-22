@@ -817,6 +817,7 @@ let
       pkgs.inotify-tools
       pkgs.quickshell
       pkgs.systemd
+      pkgs.util-linux
     ];
     text = builtins.readFile ./askpass.sh;
   };

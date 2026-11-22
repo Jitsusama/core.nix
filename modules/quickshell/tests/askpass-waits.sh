@@ -1,9 +1,11 @@
 # shellcheck shell=bash
-# How the askpass waits on the shell (modules/quickshell/home.nix), run with
-# bash and the built askpass as its argument. A stand-in for qs plays a
-# shell that answers, one that restarts and so forgets what it was asking,
-# and one that's gone. A copy of the askpass runs with the stand-in first on
-# its PATH, so no real shell is asked.
+# How the askpass waits on the shell (modules/quickshell/home.nix), and
+# whom it asks for, run with bash and the built askpass as its argument. A
+# stand-in for qs plays a shell that answers, one that restarts and so
+# forgets what it was asking, and one that's gone. A copy of the askpass
+# runs with the stand-in first on its PATH, so no real shell is asked, and
+# reads its caller's cgroup from a folder of this test's, so each case says
+# where the program asking runs.
 set -u
 here=$PWD
 mkdir -p bin run
@@ -14,6 +16,7 @@ while IFS= read -r line; do
   if [[ $line == 'export PATH="'*':$PATH"' ]]; then
     line="export PATH=\"$here/bin:${line#export PATH=\"}"
   fi
+  [[ $line == proc=/proc ]] && line="proc=$here/proc"
   printf '%s\n' "$line"
 done < "$1" > askpass
 chmod +x askpass
@@ -21,6 +24,18 @@ grep -q "^export PATH=\"$here/bin:" askpass || {
   echo "the askpass no longer sets its PATH as this expects"
   exit 1
 }
+grep -q "^proc=$here/proc$" askpass || {
+  echo "the askpass no longer names /proc as this expects"
+  exit 1
+}
+
+# The askpass's caller is this shell: its words as the kernel has them, and
+# a cgroup each case names, Joel's terminal's unless it says otherwise.
+mkdir -p "proc/$$"
+cp "/proc/$$/cmdline" "proc/$$/cmdline"
+user=/user.slice/user-1000.slice/user@1000.service
+from() { printf '0::%s\n' "$1" > "proc/$$/cgroup"; }
+from "$user/jobs.slice/jobs-awaited.slice/kitty-1-2.scope"
 
 # qs ipc call askpass <what> <args...>, answered as the shell would, or not
 # at all while it's down.
@@ -141,4 +156,48 @@ for words in "" "one two"; do
   check "'$words' is refused as asked wrongly" exited 64
   check "and asks nothing" asked 0
 done
+
+# Asked for by a program of Joel's, it asks; by anything else, it refuses
+# without a word to the shell, saying where the asker ran.
+for place in \
+  "$user/app.slice/ssh-tpm-agent.service" \
+  "$user/session.slice/niri.service" \
+  "$user/background.slice/backup.service" \
+  /system.slice/linux-id.service; do
+  from "$place"
+  start confirm
+  printf 'yes\n' > "$reply/answer"
+  ended
+  check "one in $place is asked for" exited 0
+  check "and asked once" asked 1
+done
+for place in \
+  "$user/agents.slice/kitty-4248-24.scope" \
+  "$user/agents.slice/mycelium.service" \
+  "$user/jobs.slice/jobs.service" \
+  "$user/jobs.slice/sj-gates-225013.service" \
+  "$user/jobs.slice/jobs-work.slice/jobs-work-a.slice/work-1-2.scope" \
+  "$user/jobs.slice/jobs-timed.slice/vm.service" \
+  "$user/shared.slice/walk.scope" \
+  "$user/offload.slice/nix-offload-vm-8.service" \
+  "$user/app.slice/pi-jobs-7.scope" \
+  "$user/jobs.slice/jobs-awaited.slice/pi-jobs-7.scope/x" \
+  "$user/jobs.slice/jobs-awaited.slice" \
+  /user.slice/user-1000.slice/session-3.scope; do
+  from "$place"
+  : > said
+  SSH_ASKPASS_PROMPT=confirm ./askpass "Are you sure you want to continue connecting?" \
+    > out 2> err
+  echo $? > status
+  check "one in $place is refused" exited 1
+  check "saying where it runs" complained "runs in $place, where agents' work runs"
+  check "and asks nothing" asked 0
+done
+rm "proc/$$/cgroup"
+: > said
+SSH_ASKPASS_PROMPT=confirm ./askpass "Allow use of key?" > out 2> err
+echo $? > status
+check "one whose cgroup can't be read is refused" exited 1
+check "saying it's gone" complained "a process gone"
+check "and asks nothing" asked 0
 exit "$failed"

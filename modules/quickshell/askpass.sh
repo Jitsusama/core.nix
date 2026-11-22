@@ -45,10 +45,13 @@ if [[ -z ${WAYLAND_DISPLAY:-} ]] && environment=$(systemctl --user show-environm
   display=$(sed -n 's/^WAYLAND_DISPLAY=//p' <<< "$environment")
   [[ -z $display ]] || export WAYLAND_DISPLAY=$display
 fi
+# Where the kernel keeps each process's words and cgroup; the askpass's
+# tests point it at a folder of their own.
+proc=/proc
 # Who asked: the program that ran this, or the script an interpreter
 # runs, named without its store path or a wrapper's dots.
 argv=()
-mapfile -d "" -t argv < "/proc/$PPID/cmdline" || true
+mapfile -d "" -t argv < "$proc/$PPID/cmdline" || true
 asker=${argv[0]:-}
 asker=${asker##*/}
 case $asker in
@@ -59,6 +62,34 @@ case $asker in
 esac
 [[ $asker =~ ^[0-9a-z]{32}-(.+)$ ]] && asker=${BASH_REMATCH[1]}
 [[ $asker =~ ^\.(.+)-wrapped$ ]] && asker=${BASH_REMATCH[1]}
+# Only a program of Joel's may put a prompt on his screen: one his
+# desktop, his apps, his timers or his terminals started, or the system's
+# own services, such as linux-id's pinentry. ssh-tpm-agent runs among
+# his apps and refuses agents' requests itself. Everything else, agents'
+# sessions and commands, their units and nix-offload's, is refused
+# without asking, and the refusal goes to the journal saying where the
+# asker ran. On 21 November at 22:37, nix copies to the builders lost
+# their pinned host keys and put about 22 host-key questions on his
+# screen. Like polkit's rules (modules/slices/agents-ask-first.rules),
+# this catches an agent's mistake: a process set on it can move itself
+# among his slices, and stopping that is the fence's work.
+place=$(sed -n 's/^0:://p' "$proc/$PPID/cgroup" 2> /dev/null || true)
+joels=false
+case $place in
+  */pi-jobs-*.scope | */pi-jobs-*.scope/*) ;;
+  */user@*.service/app.slice/* | */user@*.service/session.slice/*) joels=true ;;
+  */user@*.service/background.slice/*) joels=true ;;
+  */user@*.service/jobs.slice/jobs-awaited.slice/*) joels=true ;;
+  /system.slice/*) joels=true ;;
+  *) ;;
+esac
+if [[ $joels != true ]]; then
+  why="$asker (pid $PPID) runs in ${place:-a process gone}, where agents' work runs"
+  logger -t ssh-askpass -- "refused to ask Joel, as $why" 2> /dev/null || true
+  printf '%s\n' "ssh-askpass: refused, as $why" \
+    "  nothing an agent runs asks Joel; use BatchMode and pinned host keys" >&2
+  exit 1
+fi
 reply=$(mktemp -d -p "$XDG_RUNTIME_DIR" askpass.XXXXXXXX)
 exec 3< <(exec inotifywait -m -e moved_to,close_write --format %f "$reply" 2>&1)
 watcher=$!
