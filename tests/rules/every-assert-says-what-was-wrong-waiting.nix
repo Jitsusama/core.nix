@@ -48,7 +48,6 @@
   "modules/dictation/src/daemon.rs" = 2;
   "modules/dictation/src/mel.rs" = 2;
   "modules/dictation/src/openvino.rs" = 6;
-  "modules/dictation/src/parakeet.rs" = 2;
   "modules/dictation/src/picture.rs" = 9;
   "modules/dictation/src/service_tests.rs" = 11;
   "modules/dictation/src/vocab.rs" = 3;

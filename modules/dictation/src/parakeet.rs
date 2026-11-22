@@ -704,6 +704,9 @@ mod tests {
                 Ok(())
             }
         }
-        assert!(greedy(1, &mut Short).is_err());
+        assert!(
+            greedy(1, &mut Short).is_err(),
+            "a joint with no scores for its durations was read"
+        );
     }
 }

@@ -130,7 +130,10 @@ pub(super) mod tests {
 
     #[test]
     fn a_vocabulary_with_a_gap_is_refused() {
-        assert!(Vocab::parse(r#"{"0": "a", "2": "b"}"#).is_err());
+        assert!(
+            Vocab::parse(r#"{"0": "a", "2": "b"}"#).is_err(),
+            "a vocabulary missing token 1 was taken"
+        );
     }
 
     #[test]
