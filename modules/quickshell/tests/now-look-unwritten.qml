@@ -85,7 +85,7 @@ ShellRoot {
 
     // The launcher as Now reads it, shut, with no other source, counting
     // each time it's asked to say a Go's session is gone (Launcher.qml's
-    // toldGone), which Now calls by name, so a rename fails here.
+    // toldGone): this pins Now's call, by name, not the launcher's own.
     QtObject {
         id: theLauncher
 
@@ -175,12 +175,13 @@ ShellRoot {
             run: () => {
                 Sessions.running = [{ address: "HERE01",
                     presence: { session: "s-h", quest: "QEST-H" } }];
+                theLauncher.goneTold = 0;
                 root.openServed("g", "GONEGG", "QEST-G");
                 root.openServed("h", "HERE01", "QEST-H");
             },
             // Asked in order on one socket, so with h's here g's would be too.
             holds: () => root.settles.includes("h") && !root.settles.includes("g")
-                && Sessions.wentTo?.address === "HERE01"
+                && Sessions.wentTo?.address === "HERE01" && theLauncher.goneTold === 1
         }
     ]
 

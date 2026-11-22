@@ -427,6 +427,10 @@ QtObject {
             (Looks.answer(Object.assign({}, elsewhere, { cell: "CCCCCC" }), posted,
                 { address: "CCCCCC", presence: { addresses: ["07HV3N"] } }, now) ?? {})
                 .address, "CCCCCC");
+        expect("and to the cell the look names, though it lists none of the look's names",
+            (Looks.answer(Object.assign({}, elsewhere, { cell: "CCCCCC", session: "s-p" }), posted,
+                { address: "CCCCCC", presence: { session: "s-q" } }, now) ?? {}).address,
+            "CCCCCC");
         expect("a cell that only lists the look's address, at the look's own, never its own",
             (Looks.answer(elsewhere, posted, { address: "DDDDDD",
                 presence: { quest: "QEST-2-XXXXXX", addresses: ["07HV3N"] } }, now) ?? {})

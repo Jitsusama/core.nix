@@ -205,6 +205,16 @@ QtObject {
                 Looks.movedOn(naming("GGGGGG"), [{ address: "PPPPPP",
                     presence: { session: "s-7", addresses: ["AAAAAA"] } }], [])],
             [true, true, false, false]);
+        expect("held on no quest, or on the look's own, not moved on; for a look on none, on any",
+            [Looks.movedOn(naming("GGGGGG"), [{ address: "AAAAAA", presence: { session: "s-9" } }],
+                []),
+                Looks.movedOn(naming("GGGGGG"), [{ address: "AAAAAA",
+                    presence: { session: "s-9", quest: "Q-1" } }], []),
+                Looks.movedOn(Object.assign({}, naming("GGGGGG"), { quest: "" }),
+                    [{ address: "AAAAAA", presence: { session: "s-9" } }], []),
+                Looks.movedOn(Object.assign({}, naming("GGGGGG"), { quest: "" }),
+                    [{ address: "AAAAAA", presence: { session: "s-9", quest: "Q-9" } }], [])],
+            [false, false, false, true]);
         expect("the daemon away, the look's quest's session still, never the one moved away",
             Looks.cellFor(naming("GGGGGG"), {}, [movedAway, heir], []).address, "BBBBBB");
         expect("the daemon's answer on its quest before the one that left it there",

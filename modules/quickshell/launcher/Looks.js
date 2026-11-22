@@ -106,8 +106,9 @@ function offers(choices) {
 
 // Joel's answer to a look, as the steer that tells it to the session that
 // left it, `{ address, steer }`, at `at`: to that session where it is the
-// look's cell (`cell`, cellFor's), by the address it goes by now, which
-// Talk and Go To reach too, else to its quest's, whose address is the
+// look's cell (`cell`, cellFor's) and left it (leftIt) by its id, the
+// look's address or as the cell the look names, by the address it goes by
+// now, which Talk and Go To reach too, else to its quest's, whose address is the
 // quest's own last part, so the look is answered where the asking goes on
 // (85PKB2, 2026-11-12). A cell that is its leaver only by listing the
 // look's address among its own, which any session may claim, takes it at
@@ -115,7 +116,7 @@ function offers(choices) {
 // Null where neither is known.
 function answer(one, choice, cell, at) {
     const quest = String(one.quest ?? "").split("-").pop();
-    const live = cell !== null && cell !== undefined && ForYou.leftBy(one, cell);
+    const live = leftIt(one, cell);
     const upper = name => String(name ?? "").toUpperCase();
     const itself = live && (leftByItsId(one, cell)
         || [one.address, one.cell].some(name => upper(name) !== ""
@@ -198,6 +199,15 @@ function servedSettles(one, opened) {
         && (one.state === "waiting" || one.state === "quiet");
 }
 
+// Whether `cell`, the session a look's Talk reaches, left look `one`: by
+// the session or an address the look names (ForYou.leftBy), or as the very
+// cell the look names, so Joel's answer and who asks go where Talk does.
+function leftIt(one, cell) {
+    const upper = name => String(name ?? "").toUpperCase();
+    return cell !== null && cell !== undefined && (ForYou.leftBy(one, cell)
+        || (upper(one.cell) !== "" && upper(one.cell) === upper(cell.address)));
+}
+
 // Whether `session` is the one that left look `one`, by pi's own id for it,
 // which no other session lists and which carries across a move.
 function leftByItsId(one, session) {
@@ -236,10 +246,10 @@ function cellGoes(one, cells) {
 // started again can name its quest a beat after it's held. A look on no
 // quest reaches only the session that left it, by its own id, wherever it
 // is, since sessions on no quest share nothing, and there a session that
-// merely lists the cell's address is never found. The daemon and the lists each read the node and either
-// can be a beat behind, so a cell back again wins over an older answer. A
-// look naming no cell searches every session until every look names its
-// cell, by Mon 23 Nov 2026.
+// merely lists the cell's address is never found. The daemon and the
+// lists each read the node and either can be a beat behind, so a cell
+// back again wins over an older answer. A look naming no cell searches
+// every session until every look names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
     if (typeof one.cell !== "string" || one.cell === "") {
         return cellOf(one, running, parked);
@@ -276,15 +286,18 @@ function goneWords(said, moved) {
 
 // Whether the session that left look `one` is still held, running or
 // parked, by pi's id for it or the very address the look names, where
-// cellFor leads nowhere: it has moved on to another quest rather than
-// ended, so Go says so. One that merely lists the look's address among
-// its own is no sign the leaver lives.
+// cellFor leads nowhere, and on a quest other than the look's: it has
+// moved on to another quest rather than ended, so Go says so. One that
+// merely lists the look's address among its own is no sign the leaver
+// lives, and one on no quest hasn't moved on to another.
 function movedOn(one, running, parked) {
     const held = (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
     const address = typeof one.address === "string" ? one.address : "";
-    return held.some(session => leftByItsId(one, session)
-        || (address !== "" && session.address === address));
+    const quest = typeof one.quest === "string" ? one.quest : "";
+    return held.some(session => (leftByItsId(one, session)
+        || (address !== "" && session.address === address))
+        && questOf(session) !== "" && (quest === "" || !onQuest(session, quest)));
 }
 
 // A look done with, as History leads it to its cell: one written before

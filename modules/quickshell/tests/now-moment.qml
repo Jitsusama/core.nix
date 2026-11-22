@@ -1877,6 +1877,11 @@ ShellRoot {
         Sessions.running = [lister, ownOne, movedOne];
         expect("and the cell Talk reaches where it is the one that left it",
             now.lookAsker(onQuestOne) === "Moved", JSON.stringify(now.lookAsker(onQuestOne)));
+        const namedOne = Object.assign({}, onQuestOne, { cell: "CCCCCC" });
+        Sessions.running = [lister, ownOne, { address: "CCCCCC", title: "Named",
+            presence: { session: "s-9", quest: "QEST-1-ABCDEF" } }];
+        expect("and the cell the look names, though it lists none of the look's names",
+            now.lookAsker(namedOne) === "Named", JSON.stringify(now.lookAsker(namedOne)));
         Sessions.running = heldBefore[0];
         Sessions.parked = heldBefore[1];
         // Later cases count the steers the shell itself sends from none.
