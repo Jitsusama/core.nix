@@ -47,7 +47,7 @@ REOPENED = "crashed and was opened once more"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
 # What a first visit to the page may cost, drawn from the three murmurs.
-BUDGET = Budget(files=20, kilobytes=440, elements=145)
+BUDGET = Budget(files=20, kilobytes=428, elements=145)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
 
