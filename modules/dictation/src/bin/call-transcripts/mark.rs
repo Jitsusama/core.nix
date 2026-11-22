@@ -229,6 +229,37 @@ mod tests {
     }
 
     #[test]
+    fn with_no_speaker_named_a_line_without_one_is_the_far_ends_too() {
+        // A doubled space leaves a reference line's speaker empty, and
+        // with none named as Joel's it's still not his.
+        let reference = [line("", "A yes.")];
+        let written = file("**Others**, 0:00: A yes.\n");
+        assert_eq!(
+            marked(&written, &reference, None, "Joel"),
+            Ok([
+                Errors::default(),
+                Errors {
+                    words: 2,
+                    ..Errors::default()
+                }
+            ]),
+            "a line with no speaker was put on Joel's side with none named"
+        );
+    }
+
+    #[test]
+    fn a_reference_with_no_words_cant_be_marked_against() {
+        // An empty or wrong file would otherwise read as 0.0% wrong.
+        let reference = [line("A", "")];
+        let written = file("**Others**, 0:00: Thursday works.\n");
+        assert_eq!(
+            marked(&written, &reference, None, "Joel"),
+            Err("it holds no words to mark against".to_owned()),
+            "a reference with no words was marked against"
+        );
+    }
+
+    #[test]
     fn a_speaker_who_never_speaks_cant_be_joels_side() {
         // A mistyped speaker would otherwise move all of Joel's lines to
         // the far end and still give a number.
