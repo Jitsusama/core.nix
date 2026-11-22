@@ -6,8 +6,9 @@
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { looksDrawn } from "../draw.ts";
+import { Held } from "../../../local-sites/kit/records.ts";
 import { LOOKS_LISTED, looksOf } from "../looks.ts";
-import type { Part, System, Thing } from "../model.ts";
+import { type Part, type System, systemOf, type Thing } from "../model.ts";
 import { tiesOf } from "../ties.ts";
 
 const deeper = { command: "net", site: "network/", launcher: "Network" };
@@ -117,6 +118,11 @@ it("lists what the machines part has worth a look that no machine does", () => {
   );
   const coming: Part = { ...machinesOf([], ["wren out of reach"]), named: ["wren"], untold: 1 };
   assert.deepEqual(listed(coming), [], "a machine named before its record waits for it");
+  assert.deepEqual(
+    listed(machinesOf([machine("as", "good")], [note], "good")),
+    [["good", "Machines", said]],
+    "the note is never a machine's, whatever one is named",
+  );
   const net = "as read at 11:56; just now net --json gave no answer in 20 s";
   assert.deepEqual(
     listed(machinesOf([], []), part("network", "good", [net])),
@@ -131,6 +137,80 @@ it("lists what the machines part has worth a look that no machine does", () => {
     ],
     "a kept note comes after a look that is worse",
   );
+  const weak = part("network", "watch", ["the hall point is weak", net, "and 2 more worth a look"]);
+  assert.deepEqual(
+    listed(machinesOf([], []), weak),
+    [
+      ["watch", "Network", "The hall point is weak"],
+      ["good", "Network", `A${net.slice(1)}`],
+    ],
+    "a watched part's kept note is good, not the part's health",
+  );
+  const tired = machine("kestrel", "watch", ["on battery at 9%", note]);
+  assert.deepEqual(
+    listed(machinesOf([tired], [])),
+    [
+      ["watch", "kestrel", "On battery at 9%"],
+      ["good", "kestrel", said],
+    ],
+    "a machine's kept note is good too",
+  );
+});
+
+it("counts what a side counts past those it lists, rather than listing the count", () => {
+  const network = part("network", "watch", ["the hall point is weak", "and 2 more worth a look"]);
+  const kestrel = machine("kestrel", "watch", ["one", "two", "and 1 more worth a look"]);
+  const machines = { ...part("machines", "watch", ["kestrel one", "and 3 more worth a look"]) };
+  const read: System = {
+    ...system([]),
+    parts: [{ ...machines, things: [kestrel], named: ["kestrel"] }, network],
+  };
+  const list = looksOf(read, 8);
+  assert.deepEqual(
+    list.looks.map((look) => look.words),
+    ["One", "Two", "The hall point is weak"],
+    "no side's count is a row",
+  );
+  assert.equal(list.more, 3, "the network's two and kestrel's one, not the machines' own three");
+  const unread = part("code", "unread", ["and 9 more worth a look"], "repos timed out.");
+  assert.equal(looksOf({ ...read, parts: [unread] }, 8).more, 0, "a part not read counts none");
+});
+
+it("leaves a machine named before its record to its record, as the records tell it", () => {
+  const summary = new Held();
+  const parts = new Held();
+  const things = new Held();
+  const deep = { command: "mycelium machines", site: "mycelium/", launcher: "Agents" };
+  summary.took({
+    records: [{ key: "summary", kind: "summary", health: "watch", parts: ["machines"] }],
+  });
+  const side = ["kestrel on battery at 9%", "wren out of reach", "tern:gull out of reach"];
+  const named = ["machine:kestrel", "machine:wren", "machine:tern:gull"];
+  parts.took({
+    records: [
+      { key: "part:machines", kind: "part", health: "bad", side, things: named, deeper: deep },
+    ],
+  });
+  things.took({
+    records: [
+      {
+        key: "machine:kestrel",
+        kind: "machine",
+        name: "kestrel",
+        health: "watch",
+        side: ["on battery at 9%"],
+      },
+    ],
+  });
+  const read = systemOf(summary, parts, things);
+  assert.ok(read, "the summary is told");
+  const list = looksOf(read, 8);
+  assert.deepEqual(
+    list.looks.map((look) => [look.whose, look.words]),
+    [["kestrel", "On battery at 9%"]],
+    "a machine named before its record, a colon in its name or not, waits for it",
+  );
+  assert.equal(list.settled, false, "and the list isn't settled while it does");
 });
 
 it("keys each row by whose it is and its own words, apart from any other", () => {

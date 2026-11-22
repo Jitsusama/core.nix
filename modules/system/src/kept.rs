@@ -75,6 +75,8 @@ impl Kept {
                 // isn't known to be recent, so it doesn't stand.
                 Some((at, value)) if (0..=KEPT_FOR).contains(&(now - at)) => Used {
                     answer: Ok(value),
+                    // The system page tells this note from a look by its
+                    // opening words (site/looks.ts NOTE), so change both.
                     note: Some(format!("as read at {}; just now {why}", clock(at))),
                 },
                 _ => Used {

@@ -16,7 +16,31 @@ const LOOKS_LISTED = 8;
 const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch: 2, good: 3 };
 
 /** The item a side ends with when it had more than it lists, as the daemon says it. */
-const MORE = /^and \d+ more worth a look$/u;
+const MORE = /^and (\d+) more worth a look$/u;
+
+/**
+ * The note a part carries when it was read from its owner's last answer, as
+ * the daemon words it (modules/system/src/kept.rs). It is good wherever it
+ * stands: a kept answer raises no alarm of its own, and the part keeps the
+ * health that answer gave it, which the note is no part of.
+ */
+const NOTE = /^as read at \d{2}:\d{2}; just now /u;
+
+/** `words`' own health, in a side whose looks are at `health`. */
+function healthIn(words: string, health: Health): Health {
+  return NOTE.test(words) ? "good" : health;
+}
+
+/** How many more looks `side` counts past those it lists, as its last item says. */
+function moreIn(side: readonly string[]): number {
+  const count = MORE.exec(side.at(-1) ?? "")?.[1];
+  return count === undefined ? 0 : Number(count);
+}
+
+/** `side`'s looks, without the item counting those it doesn't list. */
+function listed(side: readonly string[]): readonly string[] {
+  return MORE.test(side.at(-1) ?? "") ? side.slice(0, -1) : side;
+}
 
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {
@@ -84,13 +108,14 @@ function machineLooks(part: Part, drawn: number): readonly Look[] {
  * names each machine worth a look, "kestrel on battery at 9%", then how many
  * more; those are left to the machines' own looks, which clear first when a
  * machine's record changes before the part's, and wait with the list's
- * settling for a machine named before its record. The note is good, since
- * the part's health is its machines' and a kept answer raises no alarm.
+ * settling for a machine named before its record, as is how many more it
+ * counts. The note is never a machine's, whatever a machine is named. What
+ * else it says is good too, since the part's health is its machines'.
  */
 function ownLooks(part: Part): readonly Look[] {
   const machines = part.named.map((name) => `${name} `);
-  const own = part.side.filter(
-    (words) => !(MORE.test(words) || machines.some((name) => words.startsWith(name))),
+  const own = listed(part.side).filter(
+    (words) => NOTE.test(words) || !machines.some((name) => words.startsWith(name)),
   );
   return keyed(own).map(({ words, key }) => lookOf(part, "good", words, key));
 }
@@ -98,8 +123,8 @@ function ownLooks(part: Part): readonly Look[] {
 /** Each machine's side, a look a word, leading to its section or the map. */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   return part.things.flatMap((thing, at) =>
-    keyed(thing.side).map(({ words, key }) => ({
-      health: thing.health,
+    keyed(listed(thing.side)).map(({ words, key }) => ({
+      health: healthIn(words, thing.health),
       whose: thing.name,
       machine: true,
       words: capital(words),
@@ -125,21 +150,43 @@ function lookOf(part: Part, health: Health, words: string, key: string): Look {
 }
 
 /**
- * Another part's looks: each of its side's, or why it couldn't be read. A
- * good part's side is empty but for the note it carries when it was read
- * from its owner's last answer, which is listed as the machines' is.
+ * Another part's looks: each of its side's, or why it couldn't be read. Each
+ * is at the part's health but the note it carries when it was read from its
+ * owner's last answer, which is good, as the machines' is. A good part's
+ * side holds nothing else.
  */
 function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
-  return keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
+  return keyed(listed(part.side)).map(({ words, key }) =>
+    lookOf(part, healthIn(words, part.health), words, key),
+  );
+}
+
+/**
+ * How many looks the sides in `system` count past those they list: a part's,
+ * and each machine's, as the daemon counts them. The machines part's own
+ * count is of its machines' looks, which they list themselves, and a part
+ * not read lists none.
+ */
+function uncounted(system: System): number {
+  return system.parts
+    .filter((part) => part.health !== "unread")
+    .reduce(
+      (more, part) =>
+        more +
+        (part.part === "machines" ? 0 : moreIn(part.side)) +
+        part.things.reduce((things, thing) => things + moreIn(thing.side), 0),
+      0,
+    );
 }
 
 /**
  * Everything worth a look in `system`, the worst first and in the daemon's
  * own order within a health, `drawn` of its machines drawn whole on the
- * page. Past what the list holds, the rest are counted.
+ * page. Past what the list holds, the rest are counted, with those the
+ * sides count but don't list.
  */
 function looksOf(system: System, drawn: number): Looks {
   const all = system.parts
@@ -149,7 +196,7 @@ function looksOf(system: System, drawn: number): Looks {
     .map(({ look }) => look);
   return {
     looks: all.slice(0, LOOKS_LISTED),
-    more: Math.max(0, all.length - LOOKS_LISTED),
+    more: Math.max(0, all.length - LOOKS_LISTED) + uncounted(system),
     // A part still to come, a machine named before its record, or a record
     // that couldn't be read may hold the one look there is.
     settled:
