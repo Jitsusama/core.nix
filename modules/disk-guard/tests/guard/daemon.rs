@@ -1512,8 +1512,65 @@ fn a_fresh_measure_above_nixs_floor_says_when_it_reaches_it() {
     );
 }
 
-/// A status counts to Nix's floor while it has a time to reach it, in
-/// its own sentence and the machine's, and otherwise to full.
+/// The heartbeat's fresh measures write the machine's sentence from the
+/// room each filesystem tells, so it says what the filesystem's own does,
+/// on either side of Nix's floor and across it.
+#[test]
+fn a_fresh_measures_machine_sentence_says_what_its_own_does() {
+    use disk_guard::band::Space;
+    use disk_guard::config::Bands;
+    use disk_guard::daemon::FilesystemStatus;
+    use disk_guard::words::machine;
+    let bands = Bands {
+        filling: Size::Percent(25.0),
+        nearly_full: Size::Percent(10.0),
+        critically_full: Size::Percent(4.0),
+        target: Size::Percent(35.0),
+    };
+    let space = |free| Space {
+        total: 1000,
+        free,
+        btrfs: None,
+    };
+    let mut status = FilesystemStatus {
+        path: PathBuf::from("/"),
+        band: Band::Healthy,
+        free: 500,
+        total: 1000,
+        size: 1000,
+        used: 500,
+        forecast: None,
+        fill_per_hour: Some(36_000.0),
+        full_at: None,
+        nix_floor: Some(100),
+        floor_at: Some(1960.0),
+        says: String::new(),
+        exhausted: false,
+    };
+    let at_rate = |said: &str| said.split("At this rate").nth(1).map(str::to_owned);
+    let agrees = |status: &FilesystemStatus, why: &str| {
+        let said = machine(&[status.told(1900.0)], None);
+        assert_eq!(
+            at_rate(&said),
+            at_rate(&status.says),
+            "{why}: the machine said {said:?} where the disk said {:?}",
+            status.says
+        );
+    };
+    status.measured(&space(490), &bands, 1900.0, None);
+    agrees(&status, "above the floor");
+    status.measured(&space(100), &bands, 1900.0, None);
+    agrees(&status, "at the floor");
+    status.floor_at = None;
+    status.full_at = Some(1960.0);
+    status.measured(&space(90), &bands, 1900.0, None);
+    agrees(&status, "under the floor");
+    status.measured(&space(200), &bands, 1900.0, None);
+    agrees(&status, "back above the floor");
+}
+
+/// A status counts to Nix's floor while above it with a time to reach
+/// it, in its own sentence and the machine's, and to full at or under it.
 #[test]
 fn a_status_tells_the_time_to_nixs_floor_and_otherwise_to_full() {
     use disk_guard::daemon::FilesystemStatus;
@@ -1538,12 +1595,21 @@ fn a_status_tells_the_time_to_nixs_floor_and_otherwise_to_full() {
     assert!(said.contains(floor), "its own sentence: {said}");
     let said = machine(&[status.told(1900.0)], None);
     assert!(said.contains(floor), "the machine's sentence: {said}");
+    status.free = 90;
     status.floor_at = None;
     status.full_at = Some(1960.0);
     let said = filesystem(&status.told(1900.0), None);
     assert!(
         said.contains("At this rate it fills in 1 m."),
-        "with no time to the floor, when it fills: {said}"
+        "under the floor, when it fills: {said}"
+    );
+    // Above the floor Nix collects before the disk fills, so a time to
+    // full alone is told as no time at all.
+    status.free = 500;
+    let said = filesystem(&status.told(1900.0), None);
+    assert!(
+        !said.contains("At this rate"),
+        "above the floor, not when it fills: {said}"
     );
 }
 

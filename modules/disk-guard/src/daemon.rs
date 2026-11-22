@@ -691,29 +691,22 @@ impl FilesystemStatus {
         if self.full_at.is_some_and(|at| at <= now) {
             self.full_at = None;
         }
-        // A fresh measure that crossed Nix's floor either way since the
-        // status was worked out has neither time, so neither is told: one
-        // at or under the floor has reached it, and one back above it
-        // doesn't fill while Nix collects.
-        let above = self.nix_floor.is_some_and(|floor| space.free > floor);
-        let room = match (self.floor_at, self.full_at) {
+        self.says = crate::words::filesystem(&self.told(now), home);
+    }
+
+    /// The room it's told from at `now`: until Nix's floor while it's
+    /// above it with a time to reach it, and until full while it's at or
+    /// under it with a time to fill. A fresh measure that crossed the floor
+    /// either way since the status was worked out has neither time, so
+    /// neither is told: one at or under the floor has reached it, and one
+    /// back above it doesn't fill while Nix collects. Its own sentence and
+    /// the machine's both come from here, so they never disagree.
+    pub fn told(&self, now: f64) -> crate::words::Room<'_> {
+        let above = self.nix_floor.is_some_and(|floor| self.free > floor);
+        match (self.floor_at, self.full_at) {
             (Some(at), _) if above => self.ahead(Some(at - now), true),
             (None, Some(at)) if !above => self.ahead(Some(at - now), false),
             _ => self.ahead(None, false),
-        };
-        self.says = crate::words::filesystem(&room, home);
-    }
-
-    fn room(&self, full_in: Option<f64>) -> crate::words::Room<'_> {
-        self.ahead(full_in, false)
-    }
-
-    /// The room it's told from at `now`: until Nix's floor while it has a
-    /// time to reach it, and otherwise until full.
-    pub fn told(&self, now: f64) -> crate::words::Room<'_> {
-        match self.floor_at {
-            Some(at) => self.ahead(Some(at - now), true),
-            None => self.room(self.full_at.map(|at| at - now)),
         }
     }
 
@@ -3335,7 +3328,7 @@ impl Guard {
                     let rooms: Vec<_> = status
                         .filesystems
                         .iter()
-                        .map(|filesystem| filesystem.room(filesystem.full_at.map(|at| at - now)))
+                        .map(|filesystem| filesystem.told(now))
                         .collect();
                     status.says = crate::words::machine(&rooms, home.as_deref());
                     mark(status, &state, home.as_deref());
