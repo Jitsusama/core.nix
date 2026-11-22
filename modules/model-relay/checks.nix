@@ -28,7 +28,7 @@ onLinux {
   # unfinished going nowhere, another origin's 421 said once the body is
   # read, even a body too large, a body pi left counted as its cancel, never
   # a 421, one past its deadline told as late, the counts said as it leaves,
-  # answers broken off among them, those the origin broke off itself too,
+  # answers broken off among them, by a fallen connection or the origin,
   # the requests pi gave up on counted on each connection and no answer read whole or broken off, a
   # request the origin reset told from one a fallen
   # connection lost, an origin out of reach said as a 502 or a 504 without a
@@ -38,8 +38,11 @@ onLinux {
   # beside an answer longer than the idle time, the relay leaving once idle
   # even while refusing other hosts, held open by a kept connection or
   # knocked on as it goes, a relay stopped finishing each answer it streams
-  # and sending what comes meanwhile direct, a socket the account's alone, never taken from a
-  # relay answering it nor from a file or a link that isn't a socket, and
+  # and sending what comes meanwhile direct past the idle leave's ten
+  # seconds, then giving those a few seconds, even one pi says nothing on,
+  # cutting its answers after its drain time or at a second stop and saying
+  # what it waited on and its counts, a socket the account's alone, never
+  # taken from a relay answering it nor from a file or a link that isn't a socket, and
   # nothing of a header or body logged, a failure included.
   model-relay-carries-requests-whole = pkgs.callPackage ./package.nix { };
 
@@ -50,8 +53,8 @@ onLinux {
 
   # A workstation that names no origin has no relay and tells pi of none;
   # one that names an origin listens where only the account may ask, in the
-  # agents' lane, forwards to that origin alone, and tells every pi the
-  # folder its sockets are in.
+  # agents' lane, forwards to that origin alone, stops before systemd
+  # would kill it, and tells every pi the folder its sockets are in.
   model-relay-runs-in-background-slice =
     let
       named = account (bareNixos [
@@ -66,7 +69,7 @@ onLinux {
       service = named.systemd.user.services.model-relay-agents.Service;
     in
     holds "model-relay-runs-in-background-slice"
-      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, or doesn't tell pi where it is."
+      "model-relay is installed where no origin is named, lets other accounts ask, leaves its socket behind, runs without its socket or outside background.slice, forwards somewhere other than the origin named, sees more of the machine than its origin needs, is restarted by a switch, waits on its answers once stopped past what its stop timeout leaves for its goodbyes, or doesn't tell pi where it is."
       (
         !(bare.systemd.user.sockets ? model-relay-agents)
         && !(bare.systemd.user.sessionVariables ? PI_PROXY_RELAY)
@@ -77,9 +80,12 @@ onLinux {
         && unit.Requires == [ "model-relay-agents.socket" ]
         && unit.X-SwitchMethod == "keep-old"
         && service.Slice == "background.slice"
-        && lib.hasSuffix " --origin https://models.example" (
+        && lib.hasSuffix " --drain-within 80 --origin https://models.example" (
           lib.concatStringsSep " " (lib.toList service.ExecStart)
         )
+        # Its drain, then five seconds of goodbyes, end inside the stop
+        # timeout, so it leaves on its own and says its counts.
+        && service.TimeoutStopSec or null == 90
         # It holds every agent's key while it carries a request, so it
         # sees no more of the machine than reaching the origin needs.
         && service.ProtectSystem or null == "strict"

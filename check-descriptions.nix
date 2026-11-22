@@ -2034,26 +2034,29 @@
   model-relay-carries-requests-whole = ''
     model-relay, against an HTTP/2 origin of its tests' own, forwards a request's method, path,
     headers and body as they came, a body of many pieces whole, refuses any other host, carries many
-    requests at once on a few connections, streams an answer as it comes, opens again a connection the origin lets go, sends
-    a request the origin reset before its answer, or left out of a goodbye saying nothing was
-    wrong or a protocol error, once more on another connection, one already open, even beside one kept, or one opened
-    for a burst of them together, whose failure to open each hears at once, and sends pi direct
-    with its own 421 when reset or left out again or lost, when its connection was kept with none
-    other open or when none would open, but says a 502 when a
+    requests at once on a few connections, streams an answer as it comes, opens again a connection
+    the origin lets go, sends a request the origin reset before its answer, or left out of a goodbye
+    saying nothing was wrong or a protocol error, once more on another connection, one already open,
+    even beside one kept, or one opened for a burst of them together, whose failure to open each
+    hears at once, and sends pi direct with its own 421 when reset or left out again or lost, when
+    its connection was kept with none other open or when none would open, but says a 502 when a
     reset, first or again, said to calm down, retiring its connection, sends on no body too large
     or left unfinished, says another origin's 421 once the body is read, even a body too large,
     counts a body pi left as its cancel, never a 421, tells a body past its deadline as late,
     passes a TE of trailers as h2 sends it, says its counts as it leaves, answers broken off among
-    them, those the origin broke off itself too, counts on each connection the requests pi gave up on and no
-    answer read whole or broken off, tells one a fallen
-    connection lost from a reset, the origin hearing a lost one once, says an origin out of reach as a
-    502 or a 504 without queueing, doesn't ask for a connection that won't open on every request, forgets a failure once the origin is back, sends pi direct with a
-    421 when it can't trust the origin, answers beside an answer longer than its idle time, leaves
-    once idle even while refusing other hosts, held open by a kept connection or knocked on as it
-    goes, finishes each answer it streams when stopped, sending what comes meanwhile direct with
-    the 421 of one leaving, keeps its socket to its account, from a second relay and off a file or a link that isn't
-    a socket, and logs nothing of a header or a body, a failure included; and its own cases hold a
-    ping from behind an upload, with little held unsent in its sockets and short frames, retire a
+    them, both those a fallen connection broke off and those the origin did, counts on each
+    connection the requests pi gave up on and no answer read whole or broken off, tells one a
+    fallen connection lost from a reset, the origin hearing a lost one once, says an origin out of
+    reach as a 502 or a 504 without queueing, doesn't ask for a connection that won't open on every
+    request, forgets a failure once the origin is back, sends pi direct with a 421 when it can't
+    trust the origin, answers beside an answer longer than its idle time, leaves once idle even
+    while refusing other hosts, held open by a kept connection or knocked on as it goes, finishes
+    each answer it streams when stopped, sending what comes meanwhile direct with the 421 of one
+    leaving, past the ten seconds a relay leaving idle takes them, gives those a few seconds once
+    its answers end, even one pi says nothing on, cuts its answers after its drain time or at a
+    second stop, says what it waited on and its counts, keeps its socket to its account, from a
+    second relay and off a file or a link that isn't a socket, and logs nothing of a header or a
+    body, a failure included; and its own cases hold a ping from behind an upload, with little held unsent in its sockets and short frames, retire a
     connection by its number alone, sparing one opened since, and at most once a minute for a
     reset, and say an error with its causes, cut to a line
   '';
@@ -2063,7 +2066,8 @@
   model-relay-runs-in-background-slice = ''
     model-relay is installed only where a machine names an origin, listens where only its account
     may ask, removes its socket when stopped, runs with its socket in background.slice, forwards
-    to the origin named alone, outlasts a switch, and tells every pi where to find it
+    to the origin named alone, outlasts a switch, stops waiting on its answers in time to leave
+    before its stop timeout, and tells every pi where to find it
   '';
   mona-sans-vf-is-the-whole-face = ''
     the graphical role's fontconfig, asked for Mona Sans VF by name as GitHub asks, gives the variable

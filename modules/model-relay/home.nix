@@ -51,6 +51,11 @@ let
   cfg = config.jitsusama.model-relay;
   package = pkgs.callPackage ./package.nix { };
   folder = "model-relay";
+  # How long a stopped relay waits on the answers it streams before it
+  # cuts them, in seconds. The stop timeout gives it this and ten more:
+  # five for those it sends direct to finish their 421, five to spare, so
+  # it leaves on its own and says its counts rather than being killed.
+  drainsWithin = 80;
 in
 {
   options.jitsusama.model-relay.origin = lib.mkOption {
@@ -91,9 +96,11 @@ in
         After = [ "model-relay-agents.socket" ];
         # A restart lets each answer the relay is streaming, each a turn
         # some agent is taking, end first, sending every new request direct
-        # meanwhile, and cuts one still going at the stop timeout, 90 s by
-        # default. That sends a busy machine's agents past the relay for
-        # as long as its longest answer, so a switch leaves it be. It
+        # meanwhile, and cuts one still going after drainsWithin; a second
+        # stop cuts them at once. A logout or a shutdown gives it only the
+        # user manager's own stop timeout. That sends a busy machine's
+        # agents past the relay for as long as its longest answer, so a
+        # switch leaves it be. It
         # leaves on its own once it has forwarded nothing for two minutes,
         # and its socket starts the new build and origin at the next
         # request. Agents busy enough never to leave it two quiet minutes
@@ -104,9 +111,12 @@ in
       Service = {
         ExecStart = lib.escapeShellArgs [
           (lib.getExe package)
+          "--drain-within"
+          (toString drainsWithin)
           "--origin"
           cfg.origin
         ];
+        TimeoutStopSec = drainsWithin + 10;
         # The agents' lane, never app.slice, where it would ride Joel's.
         Slice = "background.slice";
         Restart = "on-failure";

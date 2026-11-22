@@ -13,18 +13,19 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use model_relay::{CONNECT_WITHIN, Clocks, IDLE_EXIT, Origin, Relay, Roots};
+use model_relay::{CONNECT_WITHIN, Clocks, DRAINS_WITHIN, IDLE_EXIT, Origin, Relay, Roots};
 use terminal_kit::{Exit, Failure, Help, flags};
 use tokio::signal::unix::SignalKind;
 
 /// The named flags it reads, every one taking a value.
-const FLAGS: [&str; 6] = [
+const FLAGS: [&str; 7] = [
     "--origin",
     "--socket",
     "--connections",
     "--roots",
     "--connect-within",
     "--idle-exit",
+    "--drain-within",
 ];
 
 /// How many connections it keeps to the origin unless told.
@@ -66,6 +67,10 @@ fn help() -> Help {
     .option(
         "--idle-exit SECONDS",
         "leave once asked nothing this long, 120 if not told, never at 0",
+    )
+    .option(
+        "--drain-within SECONDS",
+        "once stopped, wait on the answers it holds this long, 80 if not told",
     )
     .exit(
         Exit::Failed,
@@ -217,6 +222,7 @@ fn serve(args: &[String]) -> Result<(), Failure> {
     let clocks = Clocks {
         connect_within,
         idle_exit: (!idle_exit.is_zero()).then_some(idle_exit),
+        drains_within: seconds(given[6].as_deref(), "--drain-within", DRAINS_WITHIN)?,
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;
@@ -243,16 +249,22 @@ fn serve(args: &[String]) -> Result<(), Failure> {
             Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
         })?;
         // systemd stops it with SIGTERM, which it takes as its word to
-        // leave once its answers end rather than at once.
+        // leave once its answers end rather than at once, and a second as
+        // its word to leave now. Each is heard for as long as it runs,
+        // since taking SIGTERM ends its default of leaving at once.
         let mut terminate =
             tokio::signal::unix::signal(SignalKind::terminate()).map_err(|why| {
                 Failure::new(Exit::Failed, "it couldn't hear its stop").because(why.to_string())
             })?;
-        relay
-            .serve_until(listener, async move {
-                terminate.recv().await;
-            })
-            .await;
+        let (stop, stops) = tokio::sync::mpsc::channel(1);
+        tokio::spawn(async move {
+            while terminate.recv().await.is_some() {
+                // One already waiting says the same, so a full channel loses
+                // nothing.
+                let _ = stop.try_send(());
+            }
+        });
+        relay.serve_until(listener, stops).await;
         Ok(())
     })
 }

@@ -122,7 +122,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
 use tokio::net::{TcpStream, UnixListener};
-use tokio::sync::{Mutex, Notify, watch};
+use tokio::sync::{Mutex, Notify, mpsc, watch};
 use tokio_rustls::TlsConnector;
 
 /// The port an https origin names when it names none.
@@ -133,6 +133,11 @@ pub const CONNECT_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay waits, asked nothing and answering nothing, before
 /// it leaves, unless told otherwise.
 pub const IDLE_EXIT: Duration = Duration::from_secs(120);
+/// How long a stopped relay waits on the answers it holds before it cuts
+/// them, unless told otherwise: past most turns' answers, and with
+/// `SAYS_GO_DIRECT_WITHIN` after it, under the stop timeout its unit sets,
+/// so it leaves on its own and says its counts rather than being killed.
+pub const DRAINS_WITHIN: Duration = Duration::from_secs(80);
 /// How often an open connection is pinged, so one the network lost is
 /// found before a request is sent down it.
 const PING_EVERY: Duration = Duration::from_secs(20);
@@ -387,14 +392,17 @@ impl Roots {
     }
 }
 
-/// How long a relay gives things: a connection to open, and itself to
-/// sit idle before it leaves (never, when none).
+/// How long a relay gives things: a connection to open, itself to sit
+/// idle before it leaves (never, when none), and its answers to end once
+/// stopped.
 #[derive(Clone, Copy, Debug)]
 pub struct Clocks {
     /// How long a connection to the origin may take to open.
     pub connect_within: Duration,
     /// How long it sits asked nothing before it leaves, if ever.
     pub idle_exit: Option<Duration>,
+    /// How long, once stopped, it waits on the answers it holds.
+    pub drains_within: Duration,
 }
 
 impl Default for Clocks {
@@ -402,6 +410,7 @@ impl Default for Clocks {
         Clocks {
             connect_within: CONNECT_WITHIN,
             idle_exit: Some(IDLE_EXIT),
+            drains_within: DRAINS_WITHIN,
         }
     }
 }
@@ -1002,28 +1011,25 @@ pub struct Relay {
     busy: Arc<Busy>,
 }
 
-/// Which connection one opened is, as it's said: a slot's, by its slot
-/// and its number there.
+/// Which connection one opened is, as it's said: by its slot and its
+/// number there.
 #[derive(Clone, Copy)]
-enum Named {
-    Slot(usize, u64),
+struct Named {
+    at: usize,
+    number: u64,
 }
 
 impl Named {
-    /// What one that couldn't be made is said as: a slot's by its slot,
-    /// as the number goes to the next one tried.
+    /// What one that couldn't be made is said as: by its slot alone, as
+    /// the number goes to the next one tried.
     fn tried(self) -> String {
-        match self {
-            Named::Slot(at, _) => format!("connection {at}"),
-        }
+        format!("connection {}", self.at)
     }
 }
 
 impl fmt::Display for Named {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Named::Slot(at, number) => write!(f, "connection {at}.{number}"),
-        }
+        write!(f, "connection {}.{}", self.at, self.number)
     }
 }
 
@@ -1073,16 +1079,20 @@ impl Relay {
     /// ends, and while any is open, a request on a connection taken since
     /// is sent direct with a 421, so no pi waits on a relay that's going.
     pub async fn serve(self, listener: UnixListener) {
-        self.serve_until(listener, std::future::pending()).await;
+        // Kept until it leaves, so no stop is ever heard.
+        let (_never, stops) = mpsc::channel(1);
+        self.serve_until(listener, stops).await;
     }
 
-    /// Answers `listener` as `serve` does, and leaves as well once
-    /// `stopped` ends, as systemd's stop does: it closes each connection
-    /// it holds as its answer ends, and sends every request taken
-    /// meanwhile direct with a 421 until the last has, however long they
-    /// keep coming, since a restart's new relay can't answer them until
-    /// this one is gone. systemd's stop timeout bounds the wait.
-    pub async fn serve_until(self, listener: UnixListener, stopped: impl Future<Output = ()>) {
+    /// Answers `listener` as `serve` does, and leaves as well once `stops`
+    /// says, as systemd's stop does: it closes each connection it holds as
+    /// its answer ends, and sends every request taken meanwhile direct with
+    /// a 421 until the last has, however long they keep coming, since a
+    /// restart's new relay can't answer them until this one is gone. It
+    /// waits on its answers its clocks' `drains_within` at most, and a
+    /// second stop ends the wait at once. Stopped as it leaves idle, it
+    /// gives those it sends direct `SAYS_GO_DIRECT_WITHIN` more.
+    pub async fn serve_until(self, listener: UnixListener, mut stops: mpsc::Receiver<()>) {
         eprintln!(
             "model-relay: forwarding to {} over at most {} connections",
             self.origin.authority,
@@ -1091,24 +1101,30 @@ impl Relay {
         let relay = Arc::new(self);
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
         let (leave, leaving) = watch::channel(false);
-        tokio::pin!(stopped);
         let was_stopped = loop {
             let stopping = tokio::select! {
                 () = relay.accept(&listener, &leaving) => false,
                 () = relay.idle() => false,
-                () = &mut stopped => true,
+                () = stopped(&mut stops) => true,
             };
+            // A stop leaves whatever comes, so it gives nothing more the
+            // moment to begin an answer it would then wait on.
+            if stopping {
+                break true;
+            }
             // Taking no more, it gives a connection it took just now the
             // moment pi needs to say its request, which then holds it here.
             tokio::time::sleep(LEAVING_GRACE).await;
-            if stopping || relay.is_idle() {
-                break stopping;
+            if relay.is_idle() {
+                break false;
             }
         };
         // Said as it leaves too, or the last stretch's would go unsaid.
         relay.counts.say();
         if was_stopped {
-            relay.leave_as_stopped(&listener, &leave, &leaving).await;
+            relay
+                .leave_as_stopped(&listener, &leave, &leaving, &mut stops)
+                .await;
             return;
         }
         let idle_for = relay.clocks.idle_exit.unwrap_or_default().as_secs();
@@ -1127,10 +1143,24 @@ impl Relay {
             });
         let drained = relay.connections.none_held();
         tokio::pin!(drained);
-        tokio::select! {
-            () = relay.accept(&listener, &leaving) => {}
-            () = tokio::time::sleep(taking_for) => drained.await,
-            () = &mut drained => {}
+        // Whether it was stopped as it left, when it's done taking pis.
+        let taking = tokio::select! {
+            () = relay.accept(&listener, &leaving) => None,
+            () = tokio::time::sleep(taking_for) => None,
+            () = &mut drained => Some(false),
+            () = stopped(&mut stops) => Some(true),
+        };
+        let stopped_as_it_left = if let Some(was) = taking {
+            was
+        } else {
+            tokio::select! {
+                () = &mut drained => false,
+                () = stopped(&mut stops) => true,
+            }
+        };
+        if stopped_as_it_left {
+            eprintln!("model-relay: stopped as it left, so it ends what it was sending direct");
+            relay.lets_the_late_finish(&mut stops).await;
         }
         // Once more for those refused while it left.
         relay.counts.say();
@@ -1142,23 +1172,62 @@ impl Relay {
         listener: &UnixListener,
         leave: &watch::Sender<bool>,
         leaving: &watch::Receiver<bool>,
+        stops: &mut mpsc::Receiver<()>,
     ) {
+        let drains_within = self.clocks.drains_within;
         eprintln!(
-            "model-relay: stopped, so it sends what it's asked direct until the answers it holds \
-             have ended"
+            "model-relay: stopped with {} connections taken, so it sends what it's asked direct \
+             until their answers have ended, {} s at most",
+            self.kept.now.load(Ordering::SeqCst),
+            drains_within.as_secs()
         );
         self.leaving.store(true, Ordering::SeqCst);
         // Nobody is left to tell when every connection has gone already.
         let _ = leave.send(true);
-        tokio::select! {
-            () = self.accept(listener, leaving) => {}
-            () = self.kept.none_held() => {}
+        let began = Instant::now();
+        let ended = tokio::select! {
+            () = self.accept(listener, leaving) => true,
+            () = self.kept.none_held() => true,
+            () = tokio::time::sleep(drains_within) => false,
+            () = stopped(stops) => {
+                eprintln!("model-relay: stopped again, so it leaves now");
+                self.counts.say();
+                return;
+            }
+        };
+        if ended {
+            eprintln!(
+                "model-relay: the connections it had taken ended within {} s",
+                began.elapsed().as_secs()
+            );
+        } else {
+            eprintln!(
+                "model-relay: {} connections it had taken hadn't ended within {} s, so they're cut",
+                self.kept.now.load(Ordering::SeqCst),
+                drains_within.as_secs()
+            );
         }
-        // Taking no more, it gives those it was sending direct the moment
-        // they need to finish saying so; one taking longer is cut.
-        let _ = tokio::time::timeout(SAYS_GO_DIRECT_WITHIN, self.connections.none_held()).await;
+        self.lets_the_late_finish(stops).await;
         // Once more for those refused while it left.
         self.counts.say();
+    }
+
+    /// Taking no more, gives those it was sending direct the moment they
+    /// need to finish saying so, and cuts one taking longer, or every one
+    /// at a second stop.
+    async fn lets_the_late_finish(&self, stops: &mut mpsc::Receiver<()>) {
+        let late = tokio::time::timeout(SAYS_GO_DIRECT_WITHIN, self.connections.none_held());
+        let finished = tokio::select! {
+            finished = late => finished.is_ok(),
+            () = stopped(stops) => false,
+        };
+        if !finished {
+            eprintln!(
+                "model-relay: {} connections hadn't finished within {} s, so they're cut",
+                self.connections.now.load(Ordering::SeqCst),
+                SAYS_GO_DIRECT_WITHIN.as_secs()
+            );
+        }
     }
 
     /// Answers each connection `listener` takes. One taken before `leaving`
@@ -1170,11 +1239,13 @@ impl Relay {
                 Ok((stream, _)) => {
                     let relay = Arc::clone(self);
                     let mut leaving = leaving.clone();
+                    // Told apart here, not in the task, so a stop sees each
+                    // connection taken before it as kept, on any runtime.
                     let holding = self.connections.one();
+                    let late = *leaving.borrow_and_update();
+                    let kept = (!late).then(|| self.kept.one());
                     tokio::spawn(async move {
-                        let _holding = holding;
-                        let late = *leaving.borrow_and_update();
-                        let _kept = (!late).then(|| relay.kept.one());
+                        let (_holding, _kept) = (holding, kept);
                         let service = hyper::service::service_fn(move |request| {
                             let relay = Arc::clone(&relay);
                             async move { Ok::<_, Infallible>(relay.forward(request).await) }
@@ -1740,7 +1811,7 @@ impl Relay {
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
         let number = self.slots[at].next_number();
         let tally = Arc::new(Tally::of(at, number));
-        match self.connect(Named::Slot(at, number)).await {
+        match self.connect(Named { at, number }).await {
             Ok(sender) => {
                 let kept = self.slots[at].keep(number, sender, tally);
                 // The origin is back, so others may be opened behind.
@@ -2137,6 +2208,13 @@ where
         Ok(Err(why)) if why.is::<LengthLimitError>() => Err(Unread::TooLarge),
         Err(_) => Err(Unread::Late),
         Ok(Err(_)) => Err(Unread::Gone),
+    }
+}
+
+/// Ends at the next stop `stops` says, or never once nothing can say one.
+async fn stopped(stops: &mut mpsc::Receiver<()>) {
+    if stops.recv().await.is_none() {
+        std::future::pending::<()>().await;
     }
 }
 

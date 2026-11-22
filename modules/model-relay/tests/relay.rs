@@ -13,11 +13,14 @@
 //! against an origin writing its frames by hand, goes once more and then
 //! direct, one a fallen connection lost is a 502 and no reset, the origin
 //! hearing a lost one once, a body too large or left unfinished goes
-//! nowhere, the latter as pi's cancel, never a 421, the counts are said as the relay leaves, an origin out of
+//! nowhere, the latter as pi's cancel, never a 421, the counts are said
+//! as the relay leaves, answers broken off among them, an origin out of
 //! reach is said as a 502 or a 504 without queueing, a
 //! connection that won't open isn't asked for again on every request, nor
 //! does a failure outlast the origin coming back, the relay leaves once
-//! idle but never mid-answer, even while refusing other hosts, its socket
+//! idle but never mid-answer, even while refusing other hosts, stopped it
+//! ends its answers whole and sends the rest direct, within its drain time
+//! or at once at a second stop, its socket
 //! is the account's alone and never taken from a relay that answers it,
 //! and nothing of a header or a body reaches the relay's log, a failure
 //! included.
@@ -63,18 +66,29 @@ const STREAM_GAP: Duration = Duration::from_millis(1500);
 /// How long it waits between the halves of `/long`, past a relay's idle
 /// time of a second and the grace it gives before leaving.
 const LONG_GAP: Duration = Duration::from_secs(3);
-/// How long it waits between the halves of `/longer`, past the five
-/// seconds a stopped relay gives those it sends direct once its answers
-/// have ended, so a relay waiting only that long is seen cutting one.
-const LONGER_GAP: Duration = Duration::from_secs(7);
-/// How long after its stop the stopped relay is asked again, past those
-/// five seconds and inside `LONGER_GAP`.
-const ASKED_AGAIN_AFTER: Duration = Duration::from_secs(6);
+/// How long it waits between the halves of `/longer`, past the ten
+/// seconds a relay leaving idle takes late connections for and the five a
+/// stopped relay gives those it sends direct once its answers have ended,
+/// so a relay waiting only either is seen cutting one.
+const LONGER_GAP: Duration = Duration::from_secs(14);
+/// How long after its stop the stopped relay is asked again, past the
+/// idle leave's ten seconds, and three inside `LONGER_GAP`, so a slow
+/// builder still asks while the answer streams.
+const ASKED_AGAIN_AFTER: Duration = Duration::from_secs(11);
+/// How long after its stop a stopped relay is asked on a connection taken
+/// before it: inside the half second a stop once still forwarded in, and
+/// long enough for the relay to have heard its SIGTERM.
+const PROBED_AFTER_THE_STOP: Duration = Duration::from_millis(250);
+/// How long a stopped relay gives those it sends direct once its answers
+/// have ended, as its own constant has it.
+const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
+/// How long the drain test lets a stopped relay wait on its answers.
+const DRAINS_WITHIN: Duration = Duration::from_secs(2);
 /// How long the origin holds each request the sharing test sends.
 const HELD: Duration = Duration::from_millis(300);
 
-/// How long `/broken` waits after its first half before its answer
-/// breaks, so the relay has the half first.
+/// How long `/cut` waits after its first half before its connection falls,
+/// and `/broken` before its answer breaks, so the relay has the half first.
 const CUT_AFTER: Duration = Duration::from_millis(100);
 /// How long the tests wait for the relay to listen.
 const LISTENS_WITHIN: Duration = Duration::from_secs(10);
@@ -328,7 +342,8 @@ const BODY_AT_MOST: usize = 64 * 1024 * 1024;
 /// The origin's answer: `/echo` hands the body back, `/held` waits a
 /// moment first, `/stream` sends its halves a gap apart and `/long` a
 /// longer one, `/sized` names its length and ends in a frame of its own,
-/// `/broken` fails after its first half, `/bye` answers and lets its
+/// `/broken` fails after its first half, `/cut` lets its connection fall
+/// with no word after its first half, `/bye` answers and lets its
 /// connection go, `/reset` reads the request and resets its stream rather
 /// than answer, `/reset-once` does so the first time it's asked and
 /// echoes after, `/reset-on-the-first` does so on the origin's first
@@ -378,7 +393,7 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
         return Err(h2::Error::from(reason));
     }
     let answer = match path.as_str() {
-        "/stream" | "/long" | "/longer" | "/sized" | "/broken" => in_halves(&path),
+        "/stream" | "/long" | "/longer" | "/sized" | "/broken" | "/cut" => in_halves(&path, gone),
         "/small-frames" => in_small_frames(sent),
         "/held" => {
             let now = held.now.fetch_add(1, Ordering::SeqCst) + 1;
@@ -405,8 +420,9 @@ async fn answer(request: Request<Incoming>, served: Served) -> Result<Response<A
 }
 
 /// The origin's answer for `path`, one of the routes `answer` names whose
-/// body comes in halves, or ends or fails after its first.
-fn in_halves(path: &str) -> hyper::http::Result<Response<Answer>> {
+/// body comes in halves, or ends or fails after its first; `/cut` lets
+/// its connection fall by `gone`.
+fn in_halves(path: &str, gone: Arc<Notify>) -> hyper::http::Result<Response<Answer>> {
     match path {
         "/sized" => {
             let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
@@ -429,6 +445,19 @@ fn in_halves(path: &str) -> hyper::http::Result<Response<Answer>> {
             Response::builder()
                 .header("content-type", "text/event-stream")
                 .body(body.boxed())
+        }
+        "/cut" => {
+            let (mut sender, body) = Channel::<Bytes, Infallible>::new(1);
+            tokio::spawn(async move {
+                let _ = sender.send_data(Bytes::from_static(b"first\n")).await;
+                // The first half goes out before the connection falls, so
+                // the answer is broken off midway rather than never begun.
+                tokio::time::sleep(CUT_AFTER).await;
+                gone.notify_one();
+            });
+            Response::builder()
+                .header("content-type", "text/event-stream")
+                .body(boxed(body))
         }
         _ => {
             let gap = match path {
@@ -1402,7 +1431,7 @@ async fn a_burst_reset_while_no_connection_opens_waits_on_one_attempt() {
 }
 
 #[tokio::test(flavor = "current_thread")]
-async fn a_body_over_64_mib_goes_nowhere_its_421s_said_and_one_pi_left_its_cancel() {
+async fn a_body_over_64_mib_goes_nowhere_another_origins_421_said_and_one_pi_left_its_cancel() {
     let origin = origin().await;
     let host = origin.address.to_string();
     let mut relay = Relay::start_with(
@@ -1886,6 +1915,47 @@ async fn answers_the_origin_breaks_off_are_counted_broken_off() {
     );
 }
 
+/// An answer lost midway with its connection to the origin fails by
+/// another road through h2 than one the origin breaks off on a live
+/// connection, and is counted broken off all the same.
+#[tokio::test(flavor = "current_thread")]
+async fn answers_lost_midway_with_their_connection_are_counted_broken_off() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    // Its idle time short, so it leaves and says its counts.
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", "1"],
+    );
+
+    for _ in 0..3 {
+        let (mut pi, connection) = pi_asks(&relay.socket).await;
+        let cut = pi
+            .send_request(request(&host, "/cut", b""))
+            .await
+            .expect("an answer begun");
+        assert_eq!(cut.status(), StatusCode::OK, "an answer to be cut off");
+        assert!(
+            cut.into_body().collect().await.is_err(),
+            "an answer cut off midway came whole"
+        );
+        drop(pi);
+        connection.abort();
+    }
+
+    assert!(
+        relay.left_within(LISTENS_WITHIN).is_some(),
+        "the relay didn't leave once idle"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("; 3 broken off midway"),
+        "the counts don't say the answers lost with their connection as broken off: {said}"
+    );
+}
+
 #[tokio::test(flavor = "current_thread")]
 async fn a_reset_saying_to_calm_down_is_a_502_and_goes_no_more() {
     let origin = origin().await;
@@ -2147,32 +2217,20 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
     let stream = UnixStream::connect(&relay.socket)
         .await
         .expect("the socket answers");
-    let (kept_sender, kept) =
+    let (mut kept_sender, kept) =
         hyper::client::conn::http1::handshake::<_, Full<Bytes>>(TokioIo::new(stream))
             .await
             .expect("an HTTP/1.1 connection");
-    let stream = UnixStream::connect(&relay.socket)
-        .await
-        .expect("the socket answers");
-    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
-        .await
-        .expect("an HTTP/1.1 connection");
-    tokio::spawn(connection);
-    let response = sender
-        .send_request(request(&host, "/longer", b""))
-        .await
-        .expect("an answer");
-    let mut body = response.into_body();
-    let first = loop {
-        let frame = body.frame().await.expect("a frame").expect("a good frame");
-        if let Ok(data) = frame.into_data() {
-            break data;
-        }
-    };
+    let kept = tokio::spawn(kept);
+    let (_pi, first, body) = longer_begun(&relay, &host).await;
 
     // Stopped between the answer's halves, which come LONGER_GAP apart.
     relay.stop();
     let stopped = Instant::now();
+    // Asked on a connection taken before the stop, as a pi that wrote just
+    // after it would: nothing new may begin, so it's closed or sent direct.
+    tokio::time::sleep(PROBED_AFTER_THE_STOP).await;
+    let probed = answered_on(&mut kept_sender, &host).await;
     let closed = tokio::time::timeout(Duration::from_secs(2), kept).await;
     assert!(
         relay.left().is_none(),
@@ -2186,11 +2244,20 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
     );
     drop(kept_sender);
     let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
+    // A late connection on which pi says nothing holds the relay only the
+    // few seconds it gives those it sends direct, not until hyper gives up.
+    let silent = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
     // Still streaming its answer, it sends one asked later direct too.
     tokio::time::sleep_until((stopped + ASKED_AGAIN_AFTER).into()).await;
     let later = ask(&relay.socket, request(&host, "/echo", b"")).await;
     let rest = body.collect().await.expect("the rest").to_bytes();
 
+    assert!(
+        probed.is_none_or(|status| status == StatusCode::MISDIRECTED_REQUEST),
+        "a request on a connection kept from before the stop was carried: {probed:?}"
+    );
     assert_eq!(
         &first[..],
         b"first\n",
@@ -2217,15 +2284,135 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
         1,
         "a request taken after the relay was stopped reached the origin"
     );
-    let left = relay.left_within(Duration::from_secs(5));
+    let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
     assert!(
         left.is_some_and(|status| status.success()),
         "the relay didn't leave cleanly once its answer ended: {left:?}"
     );
     let said = relay.said();
+    drop(silent);
+    // The kept one and the one streaming, both taken before the stop.
     assert!(
-        said.contains("stopped"),
-        "it left without saying why: {said}"
+        said.contains("stopped with 2 connections taken"),
+        "it didn't say what it waited on when stopped: {said}"
+    );
+    assert!(
+        said.contains("the connections it had taken ended within"),
+        "it didn't say its answers ended: {said}"
+    );
+    assert!(
+        said.contains("connections hadn't finished within 5 s, so they're cut"),
+        "it didn't say it cut the connection pi said nothing on: {said}"
+    );
+    assert!(
+        said.split_once("stopped with")
+            .is_some_and(|(_, after)| after.contains(" asked, ")),
+        "it didn't say its counts as it left: {said}"
+    );
+}
+
+/// What `/echo` is answered on `sender`'s connection, if it's answered.
+async fn answered_on(
+    sender: &mut hyper::client::conn::http1::SendRequest<Full<Bytes>>,
+    host: &str,
+) -> Option<StatusCode> {
+    sender.ready().await.ok()?;
+    sender
+        .send_request(request(host, "/echo", b""))
+        .await
+        .ok()
+        .map(|answer| answer.status())
+}
+
+/// A `/longer` answer begun on a connection of its own: the connection's
+/// sender, kept so pi is still there for the rest, its first half, and the
+/// body still to come.
+async fn longer_begun(
+    relay: &Relay,
+    host: &str,
+) -> (
+    hyper::client::conn::http1::SendRequest<Full<Bytes>>,
+    Bytes,
+    Incoming,
+) {
+    let (mut sender, connection) = pi_asks(&relay.socket).await;
+    let response = sender
+        .send_request(request(host, "/longer", b""))
+        .await
+        .expect("an answer");
+    // The connection outlives this function, so its task is left running.
+    drop(connection);
+    let mut body = response.into_body();
+    loop {
+        let frame = body.frame().await.expect("a frame").expect("a good frame");
+        if let Ok(first) = frame.into_data() {
+            break (sender, first, body);
+        }
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_stopped_relay_cuts_an_answer_longer_than_its_drain() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let drain = DRAINS_WITHIN.as_secs().to_string();
+    let mut relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--drain-within", &drain],
+    );
+    let (_pi, _, body) = longer_begun(&relay, &host).await;
+
+    relay.stop();
+    let rest = body
+        .collect()
+        .await
+        .map(http_body_util::Collected::to_bytes);
+
+    let whole = matches!(&rest, Ok(rest) if &rest[..] == b"second\n");
+    assert!(!whole, "an answer outlasting the drain came whole");
+    let left = relay.left_within(DRAINS_WITHIN + SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave on its own once its drain ran out: {left:?}"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains(&format!(
+            "1 connections it had taken hadn't ended within {drain} s, so they're cut"
+        )),
+        "it didn't say it cut the answer it held: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_stopped_again_leaves_at_once() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    let (_pi, _, _body) = longer_begun(&relay, &host).await;
+
+    relay.stop();
+    // Apart, so the relay has heard the first and begun its drain before
+    // the second comes, rather than taking both as one.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    relay.stop();
+
+    let left = relay.left_within(Duration::from_secs(3));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave at once when stopped again: {left:?}"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("stopped again, so it leaves now"),
+        "it didn't say why it left: {said}"
+    );
+    assert!(
+        said.split_once("stopped again")
+            .is_some_and(|(_, after)| after.contains(" asked, ")),
+        "it didn't say its counts as it left: {said}"
     );
 }
 
