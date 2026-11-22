@@ -1933,11 +1933,13 @@ in
     # changed, so they start on it too. Without the account's systemd, as
     # before the first login, the login takes it from the variables above.
     # What niri itself starts keeps the login's until the next one.
-    home.activation.askpassFollowsTheSwitch = lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ] ''
-      run env XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
-        ${lib.getExe' pkgs.systemd "systemctl"} --user set-environment \
-        SSH_ASKPASS=${lib.getExe askpass} || true
-    '';
+    home.activation.askpassFollowsTheSwitch =
+      lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ]
+        ''
+          run env XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+            ${lib.getExe' pkgs.systemd "systemctl"} --user set-environment \
+            SSH_ASKPASS=${lib.getExe askpass} || true
+        '';
 
     # run0 waits for polkit's prompt inside one D-Bus call, which systemd
     # gives up on after 25 seconds, cancelling a prompt Joel hadn't reached
