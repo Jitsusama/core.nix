@@ -11008,11 +11008,14 @@ Scope {
         // "opening", with what's left of it the bindings and handlers
         // `open` turning runs besides: in a day of Joel's journal, 1259 ms
         // of 42 openings' longest stalls were "opening", while these laps
-        // came to 371 ms over the day's 40 fills (2026-11-21).
+        // came to 371 ms over the day's 40 fills (2026-11-21). Each is
+        // felt as the opening's, since the slices after it say "waking"
+        // and "joining" for their own work, and a stall adds its time up
+        // by name.
         const lap = name => {
             const now = KeyTimes.now();
             parts[name] = (parts[name] ?? 0) + now - lapped;
-            feltSpan(name, lapped);
+            feltSpan(`opening's ${name}`, lapped);
             lapped = now;
         };
         // Opened from what it kept, it was shown already, holding the keys
@@ -11095,6 +11098,9 @@ Scope {
         else
             traces.closed({ depth: held.length, rows: matches.length });
         if (open) {
+            // What ran before the sources wake, marking it open and its
+            // spots, is a lap of its own, so waking is the waking alone.
+            lap("beginning");
             openWoke = wakeEach();
             lap("waking");
             // Joined whole each time it opens, stale or not: a

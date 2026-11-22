@@ -20,7 +20,9 @@
 #include <ctime>
 #include <pthread.h>
 #include <sched.h>
+#include <sys/mman.h>
 #include <thread>
+#include <unistd.h>
 
 namespace {
 
@@ -105,14 +107,40 @@ bool threadTimed(const KeyTimes &times) {
     return ran && waited;
 }
 
-// The thread's major faults read, and never fewer later: the launcher
-// takes a count that went back, or one it couldn't read, as none said.
+// How many fresh pages the thread touches, each a minor fault: a page
+// never touched is handed out zeroed, with nothing to read in.
+constexpr long TOUCHED_PAGES = 1024;
+
+// Touches TOUCHED_PAGES fresh pages, and gives whether they could be had.
+bool touchedFresh() {
+    const long page = sysconf(_SC_PAGESIZE);
+    const auto length = static_cast<std::size_t>(page * TOUCHED_PAGES);
+    void *mapped = mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
+                        -1, 0);
+    if (mapped == MAP_FAILED)
+        return false;
+    auto *bytes = static_cast<volatile char *>(mapped);
+    for (long at = 0; at < TOUCHED_PAGES; at++)
+        bytes[at * page] = 1;
+    munmap(mapped, length);
+    return true;
+}
+
+// The thread's faults are read, are never fewer later, and are the major
+// ones alone: a thousand minor faults don't raise them a thousand, which
+// a count of every fault would. That they're the calling thread's alone
+// rests on getrusage's RUSAGE_THREAD and isn't shown here, since nothing
+// in the build can make a page wait on the disk to order.
 bool faultsCounted(const KeyTimes &times) {
     const double before = times.faulted();
-    const double after = before + spun(times, &KeyTimes::faulted);
-    const bool holds = before >= 0 && after >= before;
+    const bool touched = touchedFresh();
+    const double after = times.faulted();
+    const bool holds = before >= 0 && touched && after >= before
+        && after - before < TOUCHED_PAGES;
     if (!holds)
-        std::fprintf(stderr, "FAIL a thread's faults are read: %.0f, then %.0f\n", before, after);
+        std::fprintf(stderr, "FAIL a thread's major faults are read: %.0f, then %.0f over %ld"
+                     " fresh pages%s\n", before, after, TOUCHED_PAGES,
+                     touched ? "" : ", which couldn't be had");
     return holds;
 }
 

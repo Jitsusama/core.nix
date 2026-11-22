@@ -37,11 +37,13 @@ public:
     Q_INVOKABLE double ran() const;
     Q_INVOKABLE double waited() const;
 
-    // How many pages the calling thread has had to wait to have read back
-    // in since it began, its major faults, or -1 where they can't be read,
-    // so a stall it slept through says whether it slept on its own memory:
-    // Joel's "s" slept 448 ms of 566 searching, in synchronous work that
-    // never waits on the event loop, with memory short (2026-11-21).
+    // The calling thread's major page faults since it began, each a wait
+    // on the disk for a page, or -1 where they can't be read, so a stall
+    // it slept through says how often it waited on its own memory: Joel's
+    // "s" slept 448 ms of 566 searching, in synchronous work that never
+    // waits on the event loop, with memory short (2026-11-21). Reclaiming
+    // pages to allocate, or waiting on a page another thread is reading
+    // in, is no major fault of its own, so none doesn't clear memory.
     Q_INVOKABLE double faulted() const;
 
 protected:

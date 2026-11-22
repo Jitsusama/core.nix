@@ -399,7 +399,7 @@ function openingParts(parts) {
 // named work didn't say (H6EDLC, 2026-11-14); and `thread`, the shell
 // thread's `{ ran, waited, faulted }` (KeyTimes.ran, waited and faulted),
 // so `stallThread` is how much of the stall it ran and waited for a CPU,
-// the rest it slept, and the pages it had read back in. `asked`, where
+// the rest it slept, and its major page faults. `asked`, where
 // the heap stood at the opening's ask (Heap.standing), is read only as it
 // begins and kept, so a second ask before its line is said can't lend it
 // its own.

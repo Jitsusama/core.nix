@@ -13,10 +13,13 @@
 // repeat with every move around it under 6, and his "ca" waited 62 ms
 // behind the shell's other work, neither saying which of the three it was
 // (2026-11-16).
-// Beside them, `faulted`, the pages it had to wait to have read back in
-// (KeyTimes.faulted), so a sleep says whether it was on the thread's own
-// memory: Joel's "s" slept 448 ms of 566 searching, in work that never
-// waits on its event loop, with memory short (2026-11-21).
+// Beside them, `faulted`, its major page faults (KeyTimes.faulted), each
+// a wait on the disk for a page, though one may read in several around
+// it, so a sleep says how often it waited on its own memory: Joel's "s"
+// slept 448 ms of 566 searching, in work that never waits on its event
+// loop, with memory short (2026-11-21). None doesn't clear memory: a
+// thread reclaiming pages to allocate, or waiting on a page another
+// thread is reading in, takes no major fault of its own.
 
 // The thread's clocks across a span, from `from` to `to`; null where
 // either end wasn't read, or its wait read 0, as KeyTimes.waited gives a
@@ -30,7 +33,7 @@ function spent(from, to) {
     return { ran: to.ran - from.ran, waited: to.waited - from.waited, faulted: faults(from, to) };
 }
 
-// The pages faulted in across a span, or undefined where either end
+// The major page faults across a span, or undefined where either end
 // wasn't read, as KeyTimes.faulted gives -1, or the count went back.
 function faults(from, to) {
     if (!(from?.faulted >= 0) || !(to?.faulted >= from.faulted)) {
@@ -40,9 +43,9 @@ function faults(from, to) {
 }
 
 // What the thread did in `all` ms of `of` (the stall, its searching), and
-// the pages it had read back in where there were any, said last on its
-// line; or nothing when the span was under a millisecond or its clocks
-// weren't read.
+// its major page faults, said last on its line where they were read; or
+// nothing when the span was under a millisecond or its clocks weren't
+// read.
 function said(all, inSpan, of) {
     const whole = Math.round(all);
     if (whole < 1 || !inSpan) {
@@ -50,7 +53,19 @@ function said(all, inSpan, of) {
     }
     const ran = Math.round(inSpan.ran);
     const waited = Math.round(inSpan.waited);
-    const paged = inSpan.faulted > 0 ? ` with ${inSpan.faulted} pages read back in` : "";
+    const paged = pageFaults(inSpan.faulted);
     return `; its thread ran ${ran} ms of ${of}, waited ${waited} for a CPU and slept`
         + ` ${Math.max(0, whole - ran - waited)}${paged}`;
+}
+
+// A span's major page faults as its line ends: none said as none, so it
+// reads apart from a count that couldn't be read, which says nothing.
+function pageFaults(faulted) {
+    if (faulted === undefined) {
+        return "";
+    }
+    if (faulted === 0) {
+        return ", with no major page faults";
+    }
+    return `, with ${faulted} major page fault${faulted === 1 ? "" : "s"}`;
 }

@@ -296,7 +296,7 @@ QtObject {
             [132, { ran: 20, waited: 2, faulted: 1206 }]];
         const pagedStall = paging.reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace,
             { thread }), Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
-        check(failures, "the stall counts the pages its thread had read back in",
+        check(failures, "the stall counts its thread's major page faults",
             pagedStall.stallThread.faulted, 1203);
         keyThreaded(failures);
     }
@@ -327,22 +327,30 @@ QtObject {
         keyPaged(failures);
     }
 
-    // The pages a key's thread had read back in while it searched: Joel's
+    // The major page faults a key's thread took while it searched: Joel's
     // "s" slept 448 ms of 566 searching, in work that never waits on its
     // event loop, with memory short (2026-11-21).
     function keyPaged(failures) {
         const paged = Thread.spent({ ran: 5, waited: 40, faulted: 120 },
             { ran: 120, waited: 43, faulted: 1323 });
-        check(failures, "a key's part counts the pages its thread had read back in",
+        check(failures, "a key's part counts its thread's major page faults",
             paged.faulted, 1203);
         check(failures, "they're said after its sleep",
             Thread.said(566, paged, "its searching"),
             "; its thread ran 115 ms of its searching, waited 3 for a CPU and slept 448"
-                + " with 1203 pages read back in");
-        check(failures, "none read back in says nothing of them",
+                + ", with 1203 major page faults");
+        check(failures, "one is said as one",
+            Thread.said(20, { ran: 15, waited: 1, faulted: 1 }, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4"
+                + ", with 1 major page fault");
+        check(failures, "none read is said as none",
             Thread.said(20, { ran: 15, waited: 1, faulted: 0 }, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4"
+                + ", with no major page faults");
+        check(failures, "a count that wasn't read says nothing of them",
+            Thread.said(20, { ran: 15, waited: 1 }, "the stall"),
             "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4");
-        check(failures, "a count that went back isn't taken as pages",
+        check(failures, "a count that went back isn't taken as faults",
             Thread.spent({ ran: 5, waited: 4, faulted: 9 }, { ran: 9, waited: 5, faulted: 3 })
                 .faulted, undefined);
         check(failures, "nor one that couldn't be read",
