@@ -93,11 +93,30 @@ let
   # The port src/house.rs hears another machine's reports on.
   housePort = 47110;
   houses = lib.filter (house: house != null) (lib.catAttrs "house" (lib.attrValues networks));
-  # An address as the firewall and src/networks.rs read it alike: four
-  # octets, or IPv6's groups, never an IPv4 one written as IPv6, which no
-  # IPv4 report would match.
+  # An address as the firewall and src/networks.rs read it alike: IPv4's
+  # four octets, or IPv6's eight groups with at most one :: for a run of
+  # them. An IPv4 one written as IPv6, in any spelling, is refused: the
+  # firewall would match it as IPv6, which no IPv4 report is.
   octet = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
-  address = "${octet}([.]${octet}){3}|[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,7}";
+  group = "[0-9a-fA-F]{1,4}";
+  isIpv4 = text: builtins.match "${octet}([.]${octet}){3}" text != null;
+  isIpv6 =
+    text:
+    let
+      halves = lib.splitString "::" text;
+      groups = lib.concatMap (half: lib.optionals (half != "") (lib.splitString ":" half)) halves;
+      each = lib.all (part: builtins.match group part != null) groups;
+      counted =
+        if lib.length halves == 1 then
+          lib.length groups == 8
+        else
+          lib.length halves == 2 && lib.length groups <= 7;
+    in
+    each && counted;
+  isMapped = text: builtins.match "[0:]*:ffff:${group}:${group}" (lib.toLower text) != null;
+  address = lib.types.addCheck lib.types.str (text: isIpv4 text || isIpv6 text && !isMapped text) // {
+    description = "IPv4 or IPv6 address";
+  };
 in
 {
   imports = [
@@ -172,15 +191,16 @@ in
                 '';
               };
               options.from = lib.mkOption {
-                type = lib.types.strMatching address;
+                type = address;
                 example = "192.0.2.7";
                 description = ''
                   The address the other machine reports from, the only one
                   heard, so a report from anywhere else holds nothing. The
                   address alone says a report is the other machine's, so a
-                  device on the same line could forge one: at worst it holds
-                  this machine's upload at 4 Mb/s, as a trial may, or lets
-                  it go.
+                  device on the same line that is given that address could
+                  forge one: for as long as it keeps sending, it holds this
+                  machine's upload as low as 4 Mb/s, as a trial may, or lets
+                  it go. An IPv4 address written as IPv6 is refused.
                 '';
               };
             }

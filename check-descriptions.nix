@@ -3641,6 +3641,11 @@
     connection unshaped: a p95 delay of 100 ms or half the unshaped one, 75% of each way carried,
     and no direction under half 30 s longer
   '';
+  shaper-hears-only-the-house = ''
+    a network's house opens the port the shaper hears its reports on, the one src/house.rs names,
+    to the house's address alone, over IPv4 or IPv6 as it's written, and an IPv4 address written
+    as IPv6 is refused
+  '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
   '';

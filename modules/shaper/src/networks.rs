@@ -6,6 +6,7 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
+use std::net::IpAddr;
 use std::path::Path;
 
 /// Each network's declared upload rate, its anchor, in kbit/s, by its
@@ -23,7 +24,7 @@ pub type Ceilings = BTreeMap<String, f64>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct House {
     pub most: u64,
-    pub from: std::net::IpAddr,
+    pub from: IpAddr,
 }
 
 /// A house as written, read loosely so one written wrongly loses only
@@ -84,16 +85,24 @@ pub fn ceilings(path: &Path) -> Ceilings {
         .collect()
 }
 
+/// The most a house's ceiling may name, in kbit/s, as nixos.nix says.
+const HOUSE_MOST_KBIT: f64 = 10_000_000.0;
+
 /// The houses written at `path`, or none where there is no such file or it
-/// can't be read as one, leaving out one whose address isn't one or whose
-/// ceiling is under the least a trial may set, as nixos.nix refuses too.
+/// can't be read as one, leaving out one whose address isn't one, or is
+/// IPv4's written as IPv6, which the firewall and the ear would read
+/// apart, or whose ceiling is under the least a trial may set or past the
+/// most, as nixos.nix refuses too.
 pub fn houses(path: &Path) -> Houses {
     networks(path)
         .into_iter()
         .filter_map(|(router, network)| {
             let house: Written = serde_json::from_value(network.house?).ok()?;
-            let from = house.from.parse().ok()?;
-            (house.most.is_finite() && house.most >= crate::oneway::MOST_KBIT_LEAST).then(|| {
+            let from: IpAddr = house.from.parse().ok()?;
+            let mapped = matches!(from, IpAddr::V6(v6) if v6.to_ipv4_mapped().is_some());
+            let least = crate::oneway::MOST_KBIT_LEAST;
+            let bounded = (least..=HOUSE_MOST_KBIT).contains(&house.most);
+            (bounded && !mapped).then(|| {
                 let most = crate::rate::whole(house.most);
                 (router, House { most, from })
             })
@@ -261,6 +270,23 @@ mod tests {
         );
         assert_eq!(anchors(&file).len(), 3, "which loses no anchor");
         assert_eq!(ceilings(&file).len(), 1, "nor a ceiling");
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5e:00:53:01": {"up": 12000, "#,
+                r#""house": {"most": 4000, "from": "192.0.2.7"}}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "#,
+                r#""house": {"most": 10000001, "from": "192.0.2.7"}}, "#,
+                r#""00:00:5e:00:53:03": {"up": 9000, "#,
+                r#""house": {"most": 8000, "from": "::ffff:c000:207"}}}"#,
+            ),
+        )
+        .expect("houses at the bounds");
+        assert_eq!(
+            houses(&file).into_keys().collect::<Vec<_>>(),
+            ["00:00:5e:00:53:01"],
+            "the least kept; past the most, or IPv4's written as IPv6, left out"
+        );
         let _ = fs::remove_dir_all(&folder);
     }
 }

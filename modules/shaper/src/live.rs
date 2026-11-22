@@ -689,6 +689,16 @@ mod tests {
         assert_eq!(ceiling(&follow), Some(9_500.0), "another network's house");
         follow.house(Ceilings::new());
         assert_eq!(ceiling(&follow), Some(9_500.0), "a house let go");
+        assert_eq!(
+            follow.controller.up.tuning().most_kbit,
+            Some(9_500.0),
+            "the controller held under home's again"
+        );
+        assert_eq!(
+            follow.controller.up.limit(),
+            Some(5_000),
+            "and climbing from where the house held it, not jumped to it"
+        );
     }
 
     // A network's ceiling holds its upload from a stay's first line, with

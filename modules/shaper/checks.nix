@@ -3,6 +3,7 @@
 {
   bareNixos,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -16,6 +17,44 @@ let
       self.nixosModules.shaper
       { jitsusama.shaper.controller = "one-way"; }
     ]).config.systemd.services;
+  # A machine whose two networks each name a house, one reporting over
+  # IPv4 and one over IPv6, and one naming an IPv4 address written as
+  # IPv6, which the firewall would match only as IPv6.
+  housed =
+    from:
+    (bareNixos [
+      self.nixosModules.shaper
+      {
+        jitsusama.shaper.networks = lib.mapAttrs (_: address: {
+          up = 12000;
+          house = {
+            most = 7000;
+            from = address;
+          };
+        }) from;
+      }
+    ]).config.networking.firewall.extraInputRules;
+  rules = housed {
+    "00:00:5e:00:53:01" = "192.0.2.7";
+    "00:00:5e:00:53:02" = "2001:db8::7";
+  };
+  # The port src/house.rs listens on, read from it so the two can't part.
+  port = lib.pipe ./src/house.rs [
+    builtins.readFile
+    (lib.splitString "\n")
+    (map (builtins.match "pub const PORT: u16 = ([0-9_]+);"))
+    (lib.findFirst (found: found != null) [ "none" ])
+    lib.head
+    (lib.replaceStrings [ "_" ] [ "" ])
+  ];
+  opened = lib.all (rule: lib.hasInfix rule rules) [
+    "ip saddr 192.0.2.7 udp dport ${port} accept"
+    "ip6 saddr 2001:db8::7 udp dport ${port} accept"
+  ];
+  mapped =
+    (builtins.tryEval (housed {
+      "00:00:5e:00:53:01" = "::ffff:c000:207";
+    })).success;
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -45,6 +84,17 @@ onLinux {
         && services.shaper-record.restartIfChanged
         && !services.shaper-record.stopIfChanged
       );
+
+  # A network's house opens the port the shaper hears its reports on to
+  # the house's address alone, over IPv4 or IPv6 as it is written, and an
+  # IPv4 address written as IPv6, which would open the port to no report,
+  # is refused.
+  shaper-hears-only-the-house = holds "shaper-hears-only-the-house" (
+    if !opened then
+      "A house doesn't open UDP port ${port} to its address alone: ${rules}"
+    else
+      "An IPv4 address written as IPv6 was taken as a house's."
+  ) (opened && !mapped);
 
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for

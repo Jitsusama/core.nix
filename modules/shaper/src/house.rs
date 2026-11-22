@@ -5,9 +5,11 @@
 //! November the VPN ran late in 6 to 14% of seconds while the two sent
 //! under 5 Mb/s between them, and in 87% at 11 to 12, whichever sent it.
 //!
-//! The source address alone says a report is the other machine's, so one
-//! forged on the line could hold this machine at the least a trial may
-//! set, or let it go: no worse than a trial.
+//! The source address alone says a report is the other machine's, so a
+//! device on a line that gives it that address can forge one: it holds
+//! this machine's upload down to the least a trial may set, or lets it
+//! go, for as long as it keeps sending. Unlike a trial it needs no
+//! administrator, only the address.
 //!
 //! A report is one datagram a second to `PORT`: the bytes the machine's
 //! uplink has sent since it started, and its own clock in milliseconds,
@@ -15,7 +17,7 @@
 //! kbit/s, measured on the machine's clock rather than by when the
 //! datagrams arrive.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, UdpSocket};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
@@ -41,9 +43,22 @@ const APART_MS: u64 = 3_000;
 const SENT_MOST_KBIT: f64 = 10_000_000.0;
 
 /// The most bytes two reports may lie apart by and be read as such: what
-/// `SENT_MOST_KBIT` sends in `APART_MS`. It keeps the count far below
-/// 2^53, where a float holds it exactly.
+/// `SENT_MOST_KBIT` sends in `APART_MS`. The rate is bounded after all the
+/// same; this keeps what `rate::float` is handed far below 2^53, as its
+/// reason says every count is.
 const BYTES_MOST: u64 = 3_750_000_000;
+
+/// How long the controller is given the highest of the house's ceilings.
+/// What the other machine sends moves each second with its own TCP's
+/// sawtooth, and a ceiling that moved with it would clamp the controller
+/// to each second's low and let it climb back only by its 5% a second, so
+/// it would hold this machine under the lowest of the last several, not
+/// what the house leaves. The link is held to each second's all the same.
+pub const STEADY: Duration = Duration::from_secs(5);
+
+/// The step the controller's ceiling moves by, in kbit/s, so it is tuned
+/// again only when the house's moves by this much.
+const STEP_KBIT: u64 = 250;
 
 /// One report: the bytes sent, by the reporter's clock in ms.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -82,6 +97,43 @@ pub fn held(most: u64, sent: Option<(f64, Duration)>, floor: u64) -> Option<u64>
     Some(crate::rate::whole(crate::rate::float(most) - kbit).max(floor))
 }
 
+/// The house's ceilings heard over the last `STEADY`, by network, so the
+/// controller is given a ceiling that holds still.
+#[derive(Default)]
+pub struct Steady {
+    seen: BTreeMap<String, VecDeque<(Instant, u64)>>,
+}
+
+impl Steady {
+    /// The ceiling the controller is given on each network at `now`, in
+    /// kbit/s, from this moment's `held`: the highest of the last
+    /// `STEADY`, rounded down to `STEP_KBIT`, never under `floor`. A
+    /// network whose house holds nothing now is forgotten at once, so a
+    /// house that lets go lets the controller go too.
+    pub fn of(
+        &mut self,
+        held: &BTreeMap<String, u64>,
+        now: Instant,
+        floor: u64,
+    ) -> BTreeMap<String, u64> {
+        self.seen.retain(|network, _| held.contains_key(network));
+        held.iter()
+            .map(|(network, &most)| {
+                let seen = self.seen.entry(network.clone()).or_default();
+                seen.push_back((now, most));
+                while seen
+                    .front()
+                    .is_some_and(|&(at, _)| now.saturating_duration_since(at) > STEADY)
+                {
+                    seen.pop_front();
+                }
+                let high = seen.iter().map(|&(_, most)| most).max().unwrap_or(most);
+                (network.clone(), (high / STEP_KBIT * STEP_KBIT).max(floor))
+            })
+            .collect()
+    }
+}
+
 /// What each reporter last said, by its address: its report, and the
 /// rate it gives with the one before and when that came.
 #[derive(Clone, Default)]
@@ -98,30 +150,22 @@ struct Heard {
 }
 
 impl Ear {
-    /// Hears reports on `PORT` from `from` alone, on a thread of its own;
-    /// one the port can't be had for says so and hears nothing. Only an
-    /// IPv6 address named listens on IPv6, so a machine with IPv6 turned
-    /// off still hears an IPv4 one.
+    /// Hears reports on `PORT` from `from` alone, on a thread of its own,
+    /// which tries for the port each second until it has it.
     pub fn start(from: Vec<IpAddr>) -> Self {
         let ear = Ear::default();
-        let any: IpAddr = if from.iter().all(IpAddr::is_ipv4) {
-            Ipv4Addr::UNSPECIFIED.into()
-        } else {
-            Ipv6Addr::UNSPECIFIED.into()
-        };
-        match UdpSocket::bind((any, PORT)) {
-            Ok(socket) => {
-                let heard = ear.clone();
-                thread::spawn(move || heard.listen(&socket, &from));
-            }
-            Err(e) => eprintln!("{e}: the house's reports on port {PORT} go unheard"),
-        }
+        let heard = ear.clone();
+        thread::spawn(move || {
+            let socket = bound(&from);
+            heard.listen(&socket, &from);
+        });
         ear
     }
 
     fn listen(&self, socket: &UdpSocket, from: &[IpAddr]) {
         let mut buf = [0_u8; 64];
         let mut failed = false;
+        let mut first = BTreeSet::new();
         loop {
             let (n, peer) = match socket.recv_from(&mut buf) {
                 Ok(heard) => heard,
@@ -136,36 +180,49 @@ impl Ear {
                     continue;
                 }
             };
+            if failed {
+                eprintln!("the house's reports are read again");
+            }
             failed = false;
-            self.take(from, peer.ip(), &buf[..n], Instant::now());
+            let heard = self.take(from, peer.ip(), &buf[..n], Instant::now());
+            if let Some(address) = heard.filter(|&address| first.insert(address)) {
+                eprintln!("the house's first report from {address} was heard");
+            }
         }
     }
 
     /// Takes a datagram from `peer`, heard `at`, when it comes from an
-    /// address in `from` and reads as a report.
-    fn take(&self, from: &[IpAddr], peer: IpAddr, datagram: &[u8], at: Instant) {
+    /// address in `from` and reads as a report, giving that address.
+    fn take(&self, from: &[IpAddr], peer: IpAddr, datagram: &[u8], at: Instant) -> Option<IpAddr> {
         let address = canonical(peer);
         if !from.contains(&address) {
-            return;
+            return None;
         }
-        if let Some(report) = std::str::from_utf8(datagram).ok().and_then(report) {
-            self.hear(address, report, at);
-        }
+        let report = std::str::from_utf8(datagram).ok().and_then(report)?;
+        self.hear(address, report, at);
+        Some(address)
     }
 
-    /// Takes a report from `address`, heard `at`. One no later on the
-    /// reporter's clock than the last, heard within `FRESH`, is a copy or
-    /// came out of order, and is left out, so it neither ends the rate nor
-    /// becomes what the next is read against. Past `FRESH` any report is
-    /// read against from then, as one is after the reporter restarts. One
-    /// that can't give a rate with the last, after a report was lost, is
-    /// read against from then too, and the last rate stands until it is
-    /// past `FRESH`, as it would through silence.
+    /// Takes a report from `address`, heard `at`. Within `FRESH` of the
+    /// last one taken, a report is left out when it's no later on the
+    /// reporter's clock, as a copy or one come out of order is, or further
+    /// ahead than the time since plus `APART_MS`, as a forged one or a
+    /// clock that jumped is: either would become what the next is read
+    /// against, and the second would leave out every true one for `FRESH`.
+    /// Past `FRESH` any report is read against from then, as one is after
+    /// the reporter restarts. One that can't give a rate with the last,
+    /// after a report was lost, is read against from then too, and the
+    /// last rate stands until it is past `FRESH`, as it would through
+    /// silence.
     pub fn hear(&self, address: IpAddr, report: Report, at: Instant) {
         let mut heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
         let was = heard.get(&address).copied();
-        let lately = |w: &Heard| at.saturating_duration_since(w.at) <= FRESH;
-        if was.is_some_and(|w| lately(&w) && report.ms <= w.report.ms) {
+        let since = |w: &Heard| at.saturating_duration_since(w.at);
+        let in_step = |w: &Heard| {
+            let since_ms = u64::try_from(since(w).as_millis()).unwrap_or(u64::MAX);
+            report.ms > w.report.ms && report.ms - w.report.ms <= since_ms.saturating_add(APART_MS)
+        };
+        if was.is_some_and(|w| since(&w) <= FRESH && !in_step(&w)) {
             return;
         }
         let rate = was
@@ -180,6 +237,53 @@ impl Ear {
         let heard = self.heard.lock().unwrap_or_else(PoisonError::into_inner);
         let (kbit, at) = heard.get(&address)?.rate?;
         Some((kbit, now.saturating_duration_since(at)))
+    }
+}
+
+/// The addresses to listen on for houses at `from`, in the order tried:
+/// IPv4's alone where every one is IPv4, so a machine with IPv6 turned off
+/// hears them, else IPv6's, which hears both, then IPv4's, so IPv4 houses
+/// are still heard where IPv6's port can't be had.
+fn wildcards(from: &[IpAddr]) -> Vec<IpAddr> {
+    let v4 = Ipv4Addr::UNSPECIFIED.into();
+    if from.iter().all(IpAddr::is_ipv4) {
+        vec![v4]
+    } else {
+        vec![Ipv6Addr::UNSPECIFIED.into(), v4]
+    }
+}
+
+/// A socket on `PORT` for houses at `from`, tried for each second until
+/// one is had, saying once that it isn't, and saying where reports are
+/// heard once it is, so a house configured but never heard shows why.
+fn bound(from: &[IpAddr]) -> UdpSocket {
+    let named: Vec<String> = from.iter().map(ToString::to_string).collect();
+    let mut said = false;
+    loop {
+        let mut refused = Vec::new();
+        for any in wildcards(from) {
+            match UdpSocket::bind((any, PORT)) {
+                Ok(socket) => {
+                    // Only IPv6's can be refused before another is had.
+                    for e in &refused {
+                        eprintln!("{e}: the house's reports over IPv6 go unheard");
+                    }
+                    eprintln!(
+                        "the house's reports are heard on {any} port {PORT}, from {}",
+                        named.join(", ")
+                    );
+                    return socket;
+                }
+                Err(e) => refused.push(e),
+            }
+        }
+        if let Some(e) = refused.last().filter(|_| !said) {
+            eprintln!("{e}: the house's reports on port {PORT} go unheard until it can be had");
+            said = true;
+        }
+        // Another program may hold the port a while, as across a switch;
+        // a report a second needs no quicker try.
+        thread::sleep(Duration::from_secs(1));
     }
 }
 
@@ -282,25 +386,107 @@ mod tests {
         assert_eq!(rate(was, now), Some(SENT_MOST_KBIT), "a count off the wire");
     }
 
+    // The next report reads 4 Mb/s against the last in order and 3 Mb/s
+    // against the late one, so a late one taken as its baseline shows.
     #[test]
     fn a_copy_or_a_report_out_of_order_leaves_the_rate_as_it_was() {
         let ear = Ear::default();
         let mac: IpAddr = "192.0.2.7".parse().expect("an address");
         let at = Instant::now();
-        let second = |s: u64| at + Duration::from_secs(s);
+        let ms = |ms: u64| at + Duration::from_millis(ms);
         let report = |bytes, ms| Report { bytes, ms };
         ear.hear(mac, report(0, 0), at);
-        ear.hear(mac, report(250_000, 1_000), second(1));
-        let rate = Some((2_000.0, Duration::ZERO));
-        ear.hear(mac, report(250_000, 1_000), second(1));
-        assert_eq!(ear.sent(mac, second(1)), rate, "a copy");
-        ear.hear(mac, report(0, 0), second(1));
-        assert_eq!(ear.sent(mac, second(1)), rate, "one come late");
-        ear.hear(mac, report(500_000, 2_000), second(2));
+        ear.hear(mac, report(250_000, 1_000), ms(1_000));
+        let half = Some((2_000.0, Duration::from_millis(500)));
+        ear.hear(mac, report(250_000, 1_000), ms(1_500));
         assert_eq!(
-            ear.sent(mac, second(2)),
-            Some((2_000.0, Duration::ZERO)),
+            ear.sent(mac, ms(1_500)),
+            half,
+            "a copy, which renews nothing"
+        );
+        ear.hear(mac, report(0, 0), ms(1_500));
+        assert_eq!(ear.sent(mac, ms(1_500)), half, "one come late");
+        ear.hear(mac, report(750_000, 2_000), ms(2_000));
+        assert_eq!(
+            ear.sent(mac, ms(2_000)),
+            Some((4_000.0, Duration::ZERO)),
             "the next read against the last in order"
+        );
+    }
+
+    // A report far ahead on the reporter's clock, forged or from a clock
+    // that jumped, would otherwise be what the next is read against, and
+    // leave out every true one for `FRESH`.
+    #[test]
+    fn a_report_far_ahead_of_its_clock_is_left_out() {
+        let ear = Ear::default();
+        let mac: IpAddr = "192.0.2.7".parse().expect("an address");
+        let at = Instant::now();
+        let ms = |ms: u64| at + Duration::from_millis(ms);
+        let report = |bytes, ms| Report { bytes, ms };
+        ear.hear(mac, report(0, 0), at);
+        ear.hear(mac, report(250_000, 1_000), ms(1_000));
+        ear.hear(mac, report(0, u64::MAX), ms(1_500));
+        ear.hear(mac, report(0, 1_000 + 500 + APART_MS + 1), ms(1_500));
+        ear.hear(mac, report(750_000, 2_000), ms(2_000));
+        assert_eq!(
+            ear.sent(mac, ms(2_000)),
+            Some((4_000.0, Duration::ZERO)),
+            "the true report after them heard at once"
+        );
+        ear.hear(mac, report(1_000_000, 4_500), ms(2_500));
+        assert_eq!(
+            ear.sent(mac, ms(2_500)),
+            Some((800.0, Duration::ZERO)),
+            "one further ahead than the time since, within its step, taken"
+        );
+    }
+
+    // The controller's ceiling holds the highest of the last few seconds,
+    // stepped, while the other machine's sending swings each second.
+    #[test]
+    fn the_controller_s_ceiling_holds_still_while_the_house_s_swings() {
+        let mut steady = Steady::default();
+        let at = Instant::now();
+        let home = |most| BTreeMap::from([("home".to_string(), most)]);
+        let mut said = Vec::new();
+        for (s, most) in [5_400, 4_600, 5_300, 4_500, 5_200, 4_700]
+            .into_iter()
+            .enumerate()
+        {
+            let now = at + Duration::from_secs(u64::try_from(s).expect("a few"));
+            said.push(steady.of(&home(most), now, 4_000)["home"]);
+        }
+        assert_eq!(said, [5_250; 6], "the highest, stepped down");
+        let later = at + Duration::from_secs(12);
+        assert_eq!(
+            steady.of(&home(4_600), later, 4_000)["home"],
+            4_500,
+            "a lower that lasts"
+        );
+        assert_eq!(steady.of(&home(3_900), later, 4_000)["home"], 4_500);
+        assert!(
+            steady.of(&BTreeMap::new(), later, 4_000).is_empty(),
+            "a house let go"
+        );
+        assert_eq!(
+            steady.of(&home(4_100), later, 4_000)["home"],
+            4_000,
+            "from nothing after it, and never under the floor"
+        );
+    }
+
+    #[test]
+    fn ipv4_houses_alone_listen_on_ipv4_and_any_ipv6_one_tries_ipv6_first() {
+        let v4: IpAddr = "192.0.2.7".parse().expect("an address");
+        let v6: IpAddr = "2001:db8::7".parse().expect("an address");
+        let any4: IpAddr = Ipv4Addr::UNSPECIFIED.into();
+        let any6: IpAddr = Ipv6Addr::UNSPECIFIED.into();
+        assert_eq!(wildcards(&[v4]), [any4], "IPv4 alone");
+        assert_eq!(
+            wildcards(&[v4, v6]),
+            [any6, any4],
+            "IPv6's, then IPv4's where it can't be had"
         );
     }
 
