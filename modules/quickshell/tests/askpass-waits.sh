@@ -290,10 +290,17 @@ from "$user/agents.slice/kitty-1-2.scope/app.slice/kitty-3-4.scope"
 refuses "a cgroup named as Joel's inside agents' place"
 # An asker that exits before its askpass reads it leaves the askpass with
 # the user manager, whose place is Joel's: its own place, its asker's,
-# still decides.
-from "$user/jobs.slice/pi-spawner-1-2.scope" "$user/init.scope"
+# still decides. Its own place is set apart from this shell's, which is
+# Joel's here, so a chain started at its parent would ask.
+from "$user/app.slice/kitty-2210-1.scope" "$user/init.scope"
+rm proc/self
+mkdir proc/self
+printf '0::%s\n' "$user/jobs.slice/pi-spawner-1-2.scope" > proc/self/cgroup
+printf 'Name:\tx\nPPid:\t5000001\n' > proc/self/status
 refuses "an askpass whose asker has gone, taken on by the user manager"
 check "saying where it runs" complained "runs in $user/jobs.slice/pi-spawner-1-2.scope"
+rm -r proc/self
+ln -s "$$" proc/self
 
 # A chain it can't read to init is refused, as the gate refuses it.
 cut "$user/app.slice/kitty-2210-1.scope" "$user/app.slice/app-niri-kitty-1.scope"

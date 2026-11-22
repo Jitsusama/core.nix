@@ -1929,9 +1929,11 @@ in
     # niri's session imports the login's environment into the account's
     # systemd, which outranks environment.d, so a switch alone leaves units
     # started after it on the askpass of the login before: each switch
-    # gives systemd this one. Without the account's systemd, as before the
-    # first login, the login takes it from the variables above.
-    home.activation.askpassFollowsTheSwitch = lib.hm.dag.entryAfter [ "reloadSystemd" ] ''
+    # gives systemd this one, before it restarts the units the switch
+    # changed, so they start on it too. Without the account's systemd, as
+    # before the first login, the login takes it from the variables above.
+    # What niri itself starts keeps the login's until the next one.
+    home.activation.askpassFollowsTheSwitch = lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ] ''
       run env XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
         ${lib.getExe' pkgs.systemd "systemctl"} --user set-environment \
         SSH_ASKPASS=${lib.getExe askpass} || true

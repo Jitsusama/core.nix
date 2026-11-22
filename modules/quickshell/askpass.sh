@@ -72,9 +72,12 @@ esac
 # and asks, as the agent serves; where that file is gone, as on a machine
 # without the agent, it's the copy this was built with. So his terminals,
 # his editor and ssh-tpm-agent asking for his PIN are asked for, as the
-# agent serves them. As the agent does, it refuses for everyone while its
-# gate can't be read or parsed, and refuses an asker whose chain can't be
-# read to init, a parent gone as it's read or past 32 of them.
+# agent serves them. It refuses for everyone while its gate can't be read
+# or parsed, where the agent keeps judging by the gate it last read, since
+# an askpass remembers nothing between asks and a gate failing open looks
+# just like one that works. As the agent does, it refuses an asker whose
+# chain can't be read to init, a parent gone as it's read or past 32 of
+# them.
 #
 # Three places the agent serves are refused here too, since a key is used
 # by work unattended and a prompt never should be. nix-offload's serving
@@ -129,11 +132,14 @@ else
   broken="it can't be read"
 fi
 [[ -z $broken ]] || refuse "its gate (${gate:-none}) can't be judged by: $broken" \
-  "nothing asks anyone until the gate reads again, as ssh-tpm-agent serves no one"
+  "nothing asks anyone until the gate reads again; ssh-tpm-agent judges by the gate it last read"
 # The asker's chain: its cgroup, then each parent's up to init. It starts
 # at this askpass's own, which it took from its asker as it was started
 # and keeps, so an asker that exits first leaves its place behind rather
 # than the reaper's that took the askpass on, and no chain is empty.
+# Each file is read by the shell's own read, never a command it starts,
+# since /proc/self is whoever opens it: read by sed, it would be sed's,
+# whose parent is a subshell gone by the next step.
 places=() pids=()
 pid=self whole=0 lost=
 while :; do
@@ -145,17 +151,21 @@ while :; do
     lost="has more than 32 parents"
     break
   fi
-  if ! cgroups=$(cat "$proc/$pid/cgroup" 2> /dev/null); then
+  where='' parent=''
+  if ! { while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line == 0::* ]]; then where=${line#0::}; fi
+  done < "$proc/$pid/cgroup"; } 2> /dev/null; then
     lost="is gone, or its cgroup can't be read"
     break
   fi
-  where=$(sed -n 's/^0:://p' <<< "$cgroups")
   if [[ -z $where ]]; then
     lost="has no unified cgroup"
     break
   fi
   places+=("$where") pids+=("$pid")
-  parent=$(sed -n 's/^PPid:[[:space:]]*//p' "$proc/$pid/status" 2> /dev/null || true)
+  { while IFS= read -r line || [[ -n $line ]]; do
+    if [[ $line =~ ^PPid:[[:space:]]*(.*)$ ]]; then parent=${BASH_REMATCH[1]}; fi
+  done < "$proc/$pid/status"; } 2> /dev/null || true
   if ! [[ $parent =~ ^[1-9][0-9]*$ ]]; then
     lost="is gone, or its status can't be read"
     break
