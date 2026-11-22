@@ -69,15 +69,17 @@ function media({ width, height, fps }) {
 // Held for the whole call, so the element playing it is never collected partway.
 let speaker;
 
-// Plays the far end's sound, and marks it stopped if playing ends partway, so a stall reads as
-// unheard rather than as sound heard well over the part that played.
+// Plays the far end's sound, and marks it stopped if the player stops or fails partway, so that
+// reads as unheard rather than as sound heard well over the part that played. A track muted by
+// packets ceasing isn't marked: the player plays on, and that shows in the made-up share.
+// That last part is untested: whether the counts keep growing while muted hasn't been tried.
 function play(track) {
   speaker = new Audio();
   speaker.srcObject = new MediaStream([track]);
   const stopped = (event) => {
     played = `stopped: ${event.type}`;
   };
-  for (const stop of ['pause', 'ended', 'emptied']) {
+  for (const stop of ['pause', 'ended', 'emptied', 'error']) {
     speaker.addEventListener(stop, stopped);
   }
   track.addEventListener('ended', () => {

@@ -15,6 +15,8 @@ use std::path::Path;
 const OWNER: &str = "5193FV";
 /// Who answers for the launcher's.
 const LAUNCHER: &str = "XY9H5C";
+/// The one sound figure cadence always reads, higher being better.
+const HEARD: &str = "call sound heard and counted";
 
 /// What stands in for Joel's voice, said beside the sound's figures. The
 /// far end plays on this machine too, under the same load, so what it
@@ -82,15 +84,23 @@ fn sound(call: &Call) -> Vec<Measure> {
         said
     };
     vec![
-        // A figure cadence reads whether or not any sound came, so a call
-        // that heard none files a fault carrying why, rather than its
-        // other sound figures dropping off unread.
+        // A figure cadence reads whatever the sound did, since it drops a
+        // figure with no reading: a call that heard none, or heard some
+        // but couldn't count it all, files a fault carrying why, rather
+        // than its other sound figures dropping off unread.
         measure(
-            "call sound heard",
-            Some(if call.heard { 1.0 } else { 0.0 }),
+            HEARD,
+            Some(if call.heard && call.sound_why.is_none() {
+                1.0
+            } else {
+                0.0
+            }),
             1.0,
             false,
-            call_sound("1 when the far end played the near end's sound, 0 when it didn't"),
+            call_sound(
+                "1 when the far end played the near end's sound and every figure of it was \
+                 counted, 0 when not",
+            ),
         ),
         // Past 1% made up, a voice starts to sound clipped; past 30 ms of
         // jitter, a call's buffer has to grow or drop sound to keep up.
@@ -272,7 +282,7 @@ mod tests {
         assert_eq!(all.len(), 12);
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         for (name, now, target) in [
-            ("call sound heard", 1.0, 1.0),
+            (HEARD, 1.0, 1.0),
             ("call sound concealed %", 0.4, 1.0),
             ("call sound jitter p99 ms", 24.0, 30.0),
             ("call sound packets lost", 3.0, 0.0),
@@ -291,7 +301,7 @@ mod tests {
         assert_eq!(named("call sent fps p10").now, Some(30.0));
         // A figure read the wrong way passes cadence at any value.
         for m in &all {
-            let higher = m.measure.contains(" fps ") || m.measure == "call sound heard";
+            let higher = m.measure.contains(" fps ") || m.measure == HEARD;
             assert_eq!(
                 m.lower_is_better,
                 !higher,
@@ -369,11 +379,43 @@ mod tests {
                 m.measure
             );
         }
-        let heard = all.iter().find(|m| m.measure == "call sound heard");
+        let heard = all.iter().find(|m| m.measure == HEARD);
         assert_eq!(
             heard.map(|m| m.now),
             Some(Some(0.0)),
             "a call that heard nothing reads 0, which cadence files, not a null it drops"
+        );
+    }
+
+    #[test]
+    fn sound_heard_but_not_all_counted_files_why_on_a_figure_cadence_reads() {
+        let why = "the far end's counts started again partway, so what it made up and lost \
+                   can't be told";
+        let restarted = Call {
+            heard: true,
+            concealed: None,
+            lost: None,
+            sound_why: Some(why.to_string()),
+            ..call()
+        };
+        let all = measures(
+            &restarted,
+            "a fake camera",
+            &Waits::default(),
+            &Waits::default(),
+            &[],
+            None,
+        );
+        let heard = all.iter().find(|m| m.measure == HEARD);
+        assert_eq!(
+            heard.map(|m| m.now),
+            Some(Some(0.0)),
+            "sound partly counted reads 0, past its target, so cadence files it"
+        );
+        assert_eq!(
+            heard.and_then(|m| m.behind.last()).map(String::as_str),
+            Some(format!("heard, but: {why}").as_str()),
+            "the filed figure carries why"
         );
     }
 

@@ -114,9 +114,12 @@ const GROWING: [&str; 3] = [
     "packetsReceived",
 ];
 
-/// A share in %, to two places, or none when there was nothing to share.
+/// A share in %, rounded up to the tenth the hour files, so a share just
+/// past its target never reads as on it; none when there was nothing to
+/// share. The nudge down keeps a whole tenth's float error from rounding
+/// it up a tenth more, and adding 0 makes a share of none 0 rather than -0.
 fn share(part: f64, whole: f64) -> Option<f64> {
-    (whole > 0.0).then(|| (part / whole * 10_000.0).round() / 100.0)
+    (whole > 0.0).then(|| ((part / whole * 1000.0 - 1e-9).ceil() + 0.0) / 10.0)
 }
 
 /// The far end's sound, as the hour counts it.
@@ -142,7 +145,9 @@ fn heard(far: &[Value]) -> Sound {
         ..Sound::default()
     };
     if far.is_empty() {
-        return unheard("the far end sent no samples".to_string());
+        return unheard(format!(
+            "the far end sent no samples past the first {SKIP}, which settle the call"
+        ));
     }
     match far.iter().rev().find_map(|row| row["played"].as_str()) {
         None => return unheard("the far end never began playing what it heard".to_string()),
@@ -156,13 +161,17 @@ fn heard(far: &[Value]) -> Sound {
     let (Some(first), Some(end)) = (sound.first(), sound.last()) else {
         return unheard("the far end counted no sound".to_string());
     };
-    // Each pair of neighbouring samples' `key`, where both have it.
+    if sound.len() < 2 {
+        return unheard("the far end counted sound only once, too few to tell".to_string());
+    }
+    // Each step in `key` between the samples that carry it, so a fall
+    // across a sample that left it out is still a fall.
     let steps = |key: &str| -> Vec<(f64, f64)> {
-        let count = |row: &Value| row["aud"][key].as_f64();
-        sound
-            .windows(2)
-            .filter_map(|pair| count(pair[0]).zip(count(pair[1])))
-            .collect()
+        let counts: Vec<f64> = sound
+            .iter()
+            .filter_map(|row| row["aud"][key].as_f64())
+            .collect();
+        counts.windows(2).map(|pair| (pair[0], pair[1])).collect()
     };
     let rose = |key: &str| steps(key).iter().any(|(a, b)| b > a);
     let fell = |key: &str| steps(key).iter().any(|(a, b)| b < a);
@@ -175,15 +184,18 @@ fn heard(far: &[Value]) -> Sound {
         .map(|s| s * 1000.0)
         .collect();
     let jitter_p99 = percentile(&jitter, 99);
+    let unreported = |missing: &[&str]| format!("the far end didn't report {}", missing.join(", "));
     if GROWING.iter().any(|key| fell(key)) {
+        let mut why = "the far end's counts started again partway, so what it made up and lost \
+                       can't be told"
+            .to_string();
+        if jitter_p99.is_none() {
+            why = format!("{why}; {}", unreported(&["jitter"]));
+        }
         return Sound {
             heard: true,
             jitter_p99,
-            why: Some(
-                "the far end's counts started again partway, so what it made up and lost \
-                 can't be told"
-                    .to_string(),
-            ),
+            why: Some(why),
             ..Sound::default()
         };
     }
@@ -209,8 +221,7 @@ fn heard(far: &[Value]) -> Sound {
         concealed,
         jitter_p99,
         lost,
-        why: (!missing.is_empty())
-            .then(|| format!("the far end didn't report {}", missing.join(", "))),
+        why: (!missing.is_empty()).then(|| unreported(&missing)),
     }
 }
 
@@ -459,8 +470,36 @@ mod tests {
                 "jitter": 0.01,
             }})
         };
+        let counted = |t: u32| {
+            json!({
+                "totalSamplesReceived": 48_000.0 * f64::from(t),
+                "concealedSamples": 0.0,
+                "packetsReceived": 50.0 * f64::from(t),
+                "packetsLost": 0.0,
+                "jitter": 0.01,
+            })
+        };
+        // Playing until `at`, then what it said after, its counts growing.
+        let stopped = |at: u32, said: &'static str| -> Vec<Value> {
+            (0..30_u32)
+                .map(|t| {
+                    let played = if t < at { "playing" } else { said };
+                    json!({"t": t * 1000, "played": played, "aud": counted(t)})
+                })
+                .collect()
+        };
         let cases = [
-            (Vec::new(), "sent no samples"),
+            (Vec::new(), "sent no samples past the first 10"),
+            // A far end that sent samples, but all within the settling ones.
+            (
+                (0..5).map(|t| playing(t, &counted(t))).collect(),
+                "sent no samples past the first 10",
+            ),
+            (stopped(15, "stopped: pause"), "playing was stopped: pause"),
+            (
+                stopped(20, "failed: AbortError: gone"),
+                "playing was failed: AbortError: gone",
+            ),
             (
                 (0..30)
                     .map(|t| json!({"t": t * 1000, "aud": stat}))
@@ -476,11 +515,12 @@ mod tests {
                 (0..30).map(|t| playing(t, &stat)).collect(),
                 "played no sound",
             ),
+            // One settled sample can't show sound growing, so isn't heard.
             (
                 (0..11)
                     .map(|t| playing(t, &json!({"totalSamplesReceived": 1.0})))
                     .collect(),
-                "played no sound",
+                "counted sound only once",
             ),
         ];
         for (far, why) in cases {
@@ -496,28 +536,114 @@ mod tests {
 
     #[test]
     fn a_figure_the_far_end_never_reported_says_so() {
-        let far: Vec<Value> = (0..30_u32)
-            .map(|t| {
-                playing(
-                    t,
-                    &json!({
+        // The far end's counts with `gone` left out of every sample.
+        let without = |gone: &[&str]| -> Vec<Value> {
+            (0..30_u32)
+                .map(|t| {
+                    let mut aud = json!({
                         "totalSamplesReceived": 48_000.0 * f64::from(t),
                         "concealedSamples": 0.0,
                         "packetsReceived": 50.0 * f64::from(t),
                         "packetsLost": 0.0,
-                    }),
-                )
+                        "jitter": 0.01,
+                    });
+                    if let Some(aud) = aud.as_object_mut() {
+                        for key in gone {
+                            aud.remove(*key);
+                        }
+                    }
+                    playing(t, &aud)
+                })
+                .collect()
+        };
+        let cases = [
+            (vec!["jitter"], (Some(0.0), None, Some(0.0)), "jitter"),
+            (
+                vec!["concealedSamples"],
+                (None, Some(10.0), Some(0.0)),
+                "concealedSamples",
+            ),
+            (
+                vec!["packetsLost"],
+                (Some(0.0), Some(10.0), None),
+                "packetsLost or packetsReceived",
+            ),
+            (
+                vec!["packetsReceived"],
+                (Some(0.0), Some(10.0), None),
+                "packetsLost or packetsReceived",
+            ),
+            (
+                vec!["concealedSamples", "jitter"],
+                (None, None, Some(0.0)),
+                "concealedSamples, jitter",
+            ),
+        ];
+        for (gone, left, said) in cases {
+            let figures = call(&[], &without(&gone), &[]);
+            assert_eq!(
+                (figures.concealed, figures.jitter_p99, figures.lost),
+                left,
+                "the figures left without {gone:?}"
+            );
+            assert!(figures.heard, "sound played without {gone:?} is heard");
+            assert_eq!(
+                figures.sound_why,
+                Some(format!("the far end didn't report {said}")),
+                "what's said without {gone:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_fall_across_a_sample_without_the_count_is_still_a_restart() {
+        // concealedSamples falls from 100 to 5 across a sample that left it
+        // out, which neighbouring pairs alone would never compare.
+        let far: Vec<Value> = (0..30_u32)
+            .map(|t| {
+                let mut aud = json!({
+                    "totalSamplesReceived": 48_000.0 * f64::from(t),
+                    "concealedSamples": if t < 20 { 100.0 } else { 5.0 },
+                    "packetsReceived": 50.0 * f64::from(t),
+                    "packetsLost": 0.0,
+                    "jitter": 0.01,
+                });
+                if let Some(aud) = aud.as_object_mut().filter(|_| t == 19) {
+                    aud.remove("concealedSamples");
+                }
+                playing(t, &aud)
             })
             .collect();
         let figures = call(&[], &far, &[]);
         assert_eq!(
-            (figures.heard, figures.concealed, figures.jitter_p99),
-            (true, Some(0.0), None)
+            figures.concealed, None,
+            "a fall across the gap gave a share"
         );
+        assert!(
+            figures
+                .sound_why
+                .as_deref()
+                .is_some_and(|why| why.contains("started again partway")),
+            "the restart isn't said: {:?}",
+            figures.sound_why
+        );
+    }
+
+    #[test]
+    fn a_share_is_rounded_up_to_the_tenth_the_hour_files() {
+        assert_eq!(share(104.0, 10_000.0), Some(1.1), "1.04% is past 1%");
+        assert_eq!(share(100.0, 10_000.0), Some(1.0), "1% is on 1%");
         assert_eq!(
-            figures.sound_why.as_deref(),
-            Some("the far end didn't report jitter")
+            share(9_120.0, 912_000.0),
+            Some(1.0),
+            "a whole tenth's float error doesn't round it up"
         );
+        let none = share(0.0, 48_000.0).unwrap_or(f64::NAN);
+        assert!(
+            none == 0.0 && none.is_sign_positive(),
+            "no share is 0, not -0: {none}"
+        );
+        assert_eq!(share(1.0, 0.0), None, "nothing played, nothing shared");
     }
 
     #[test]
@@ -544,12 +670,39 @@ mod tests {
                 })
                 .collect()
         };
-        for (at, all) in [(20, false), (12, false), (20, true)] {
-            let figures = call(&[], &restarted(at, all), &[]);
+        // One count started again alone, the others growing on.
+        let alone = |key: &str| -> Vec<Value> {
+            (0..30_u32)
+                .map(|t| {
+                    let mut aud = json!({
+                        "totalSamplesReceived": 48_000.0 * f64::from(t),
+                        "concealedSamples": 4_800.0 * f64::from(t),
+                        "packetsReceived": 49.0 * f64::from(t),
+                        "packetsLost": f64::from(t),
+                        "jitter": 0.01,
+                    });
+                    if t >= 20 {
+                        aud[key] = json!(10.0 * f64::from(t - 20));
+                    }
+                    playing(t, &aud)
+                })
+                .collect()
+        };
+        let mut cases: Vec<(String, Vec<Value>)> = [(20, false), (12, false), (20, true)]
+            .into_iter()
+            .map(|(at, all)| (format!("at {at} (all: {all})"), restarted(at, all)))
+            .collect();
+        cases.extend(
+            GROWING
+                .into_iter()
+                .map(|key| (format!("{key} alone"), alone(key))),
+        );
+        for (case, far) in cases {
+            let figures = call(&[], &far, &[]);
             assert_eq!(
                 (figures.heard, figures.concealed, figures.lost),
                 (true, None, None),
-                "counts started again at {at} (all: {all}) gave a share"
+                "counts started again {case} gave a share"
             );
             assert_eq!(figures.jitter_p99, Some(10.0), "jitter isn't a count");
             assert!(
@@ -557,7 +710,7 @@ mod tests {
                     .sound_why
                     .as_deref()
                     .is_some_and(|why| why.contains("started again partway")),
-                "a restart at {at} (all: {all}) isn't said: {:?}",
+                "a restart {case} isn't said: {:?}",
                 figures.sound_why
             );
         }
@@ -594,9 +747,14 @@ mod tests {
             (figures.camera, figures.freezes, figures.clicks_p99),
             (None, None, None)
         );
-        assert_eq!(
-            (figures.heard, figures.sound_why.as_deref()),
-            (false, Some("the far end sent no samples"))
+        assert!(!figures.heard, "a call with no far end isn't heard");
+        assert!(
+            figures
+                .sound_why
+                .as_deref()
+                .is_some_and(|why| why.starts_with("the far end sent no samples")),
+            "{:?}",
+            figures.sound_why
         );
     }
 }
