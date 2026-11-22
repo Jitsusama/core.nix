@@ -827,9 +827,9 @@ struct Ranks {
     /// The slices whose floor couldn't be read to fit their units' floors
     /// into, so each is said once.
     unfitted: HashSet<String>,
-    /// The sessions said to be in no slot of their host's live
-    /// conversation units, so each is said once while it lasts.
-    unslotted: HashSet<String>,
+    /// The sessions viewers attach to that no slot holds, as the looks
+    /// before found them, so each is said once while it lasts.
+    unslotted: Unslotted,
     /// The orchestrators each pid holds, as the presences last said.
     orchestrating: HashMap<u32, usize>,
     /// The windows Joel was at within [`keep::SPARED_FOR`], by unit, which
@@ -1671,15 +1671,16 @@ fn shares(pis: usize, units: &[PathBuf], viewers: &[String]) -> HashMap<String, 
     holds::shares(pis, &in_agents)
 }
 
-/// The units windows' viewers join ([`viewers_and_shown`]).
+/// What windows' viewers join ([`viewers_and_shown`]).
 struct Joined {
-    /// One for each viewer in a window held, in the order they're held.
+    /// The unit for each viewer in a window held, in the order they're held.
     viewers: Vec<String>,
-    /// One for each viewer in any window.
+    /// The unit for each viewer in any window.
     shown: Vec<String>,
-    /// Each session a viewer attaches to that its host's live conversation
-    /// units hold in no slot, so its host is joined in its place.
-    unslotted: Vec<String>,
+    /// Each host's key and session a viewer attaches to that no slot holds,
+    /// though the host runs conversations apart, so its host is joined in
+    /// its place ([`unslotted_session`]).
+    unslotted: Vec<(String, String)>,
 }
 
 /// The units among `units` each window `held` shows, and each window
@@ -1727,9 +1728,9 @@ fn viewers_and_shown(
             Some((words, unit))
         })
         .collect();
-    let mut unslotted: Vec<String> = showing
+    let mut unslotted: Vec<(String, String)> = showing
         .iter()
-        .filter_map(|(words, unit)| unslotted(words, unit, windows.conversations, &names))
+        .filter_map(|(words, unit)| unslotted_session(words, unit, windows.conversations, &names))
         .collect();
     let shown = showing.into_iter().map(|(_, unit)| unit).collect();
     unslotted.sort();
@@ -1741,40 +1742,94 @@ fn viewers_and_shown(
     }
 }
 
-/// The session a viewer's `words` attach to, said as one, when it joined
-/// its host's `unit` though some of `names` are that host's live
-/// conversation units: none of their slots holds the session, so the
-/// conversation Joel views goes unranked.
-fn unslotted(
+/// The host's key and session a viewer's `words` attach to, as the journal
+/// may say them, when it joined its host's `unit` though some of `names`
+/// are that host's live conversation units and no slot of the host's holds
+/// the session: the conversation Joel views goes unranked.
+fn unslotted_session(
     words: &[String],
     unit: &str,
     conversations: Option<(&str, &Path)>,
     names: &HashSet<&str>,
-) -> Option<String> {
-    let (conversations, _) = conversations?;
+) -> Option<(String, String)> {
+    let (conversations, slots) = conversations?;
     if joins::keeps_its_work(unit, Some(conversations)) {
         return None;
     }
     let (key, session) = joins::session(words)?;
     let theirs = format!("{conversations}{key}@");
-    names
-        .iter()
-        .any(|name| name.starts_with(&theirs))
-        .then(|| format!("session {session} on host {key}"))
+    if !names.iter().any(|name| name.starts_with(&theirs)) {
+        return None;
+    }
+    // A slot that holds the session though its unit isn't live is a
+    // conversation parked, or starting, since the host writes the slot
+    // before its unit: that's its life, not drift.
+    if joins::conversation(words, conversations, slots, |_| true).is_some() {
+        return None;
+    }
+    // The words are the process's own to choose, so neither starts a
+    // journal line of its own nor fills it.
+    let said = |word: &str| {
+        word.chars()
+            .take(SAID_MOST)
+            .collect::<String>()
+            .escape_debug()
+            .to_string()
+    };
+    Some((said(&key), said(&session)))
 }
 
-/// Says each of the sessions `now` unslotted that `said` hasn't, and
-/// keeps only those, so one that clears and comes back is said again.
-fn say_unslotted(said: &mut HashSet<String>, now: Vec<String>) {
-    for missed in &now {
-        if !said.contains(missed) {
-            eprintln!(
-                "Ranking the host in place of {missed}'s conversation: no slot of its live \
-                 conversation units holds the session."
-            );
-        }
+/// The most of a viewer's host key or session said in the journal, in
+/// characters: a session is a 36-character UUID.
+const SAID_MOST: usize = 64;
+
+/// The unslotted sessions the looks before found, each a host's key and a
+/// session.
+#[derive(Default)]
+struct Unslotted {
+    /// Those the last look found.
+    last: HashSet<(String, String)>,
+    /// Those said, and found by every look since.
+    said: HashSet<(String, String)>,
+}
+
+impl Unslotted {
+    /// From this look's `now`, the sessions to say are unslotted and those
+    /// said before that no longer are. A session is said at its second
+    /// look in a row, as [`focus::says_alone`] says a window, so a slot
+    /// read as the host rewrites it isn't said; and once, until it clears.
+    fn look(&mut self, now: Vec<(String, String)>) -> UnslottedSaid {
+        let now: HashSet<(String, String)> = now.into_iter().collect();
+        let mut missing: Vec<_> = now
+            .iter()
+            .filter(|session| self.last.contains(*session) && !self.said.contains(*session))
+            .cloned()
+            .collect();
+        let mut found: Vec<_> = self.said.difference(&now).cloned().collect();
+        missing.sort();
+        found.sort();
+        self.said.retain(|session| now.contains(session));
+        self.said.extend(missing.iter().cloned());
+        self.last = now;
+        (missing, found)
     }
-    *said = now.into_iter().collect();
+}
+
+/// The sessions a look says are unslotted, and those it says no longer are.
+type UnslottedSaid = (Vec<(String, String)>, Vec<(String, String)>);
+
+/// Says what this look found of the unslotted sessions `said` holds.
+fn say_unslotted(said: &mut Unslotted, now: Vec<(String, String)>) {
+    let (missing, found) = said.look(now);
+    for (key, session) in missing {
+        eprintln!(
+            "Ranking host {key} in place of session {session}'s conversation: no slot holds \
+             the session."
+        );
+    }
+    for (key, session) in found {
+        eprintln!("No longer ranking host {key} in place of session {session}'s conversation.");
+    }
 }
 
 /// The words of each process in `scope`, from its command line.
@@ -3056,19 +3111,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn viewers_join_in_the_order_their_windows_are_held_and_an_unslotted_session_is_said() {
+    fn viewers_join_in_the_order_their_windows_are_held_and_only_a_session_no_slot_holds_is_found()
+    {
         let root = std::env::temp_dir().join(format!("viewers-{}", std::process::id()));
         let slice = root.join("agents.slice");
         for scope in [
             "kitty-1-1.scope",
             "kitty-1-2.scope",
             "kitty-1-3.scope",
+            "kitty-1-4.scope",
+            "kitty-1-5.scope",
             "mycelium-pi-x.scope",
         ] {
             fs::create_dir_all(slice.join(scope)).unwrap();
         }
         let slots = root.join("slots");
-        fs::create_dir_all(slots.join("a.d")).unwrap();
+        let host = slots.join("a.d");
+        fs::create_dir_all(&host).unwrap();
+        // s1 runs in its slot's unit; s7's slot outlives its unit, parked or starting.
+        fs::write(host.join("s1.json"), r#"{"session": {"sessionId": "s1"}}"#).unwrap();
+        fs::write(host.join("s9.json"), r#"{"session": {"sessionId": "s7"}}"#).unwrap();
         let attach = |host: &str, session: &str| {
             ["mycelium", "attach", "--host", host, "--session", session]
                 .map(str::to_owned)
@@ -3079,6 +3141,9 @@ mod tests {
             Some("kitty-1-1.scope") => vec![attach("a", "s2")],
             Some("kitty-1-2.scope") => vec![attach("c", "s3")],
             Some("kitty-1-3.scope") => vec![attach("b", "s4")],
+            Some("kitty-1-4.scope") => vec![attach("a", "s1"), attach("a", "s7")],
+            // A second window on s2, and a session spelled to start a journal line.
+            Some("kitty-1-5.scope") => vec![attach("a", "s2"), attach("a", "x\nRanked")],
             Some("mycelium-pi-x.scope") => vec![attach("d", "s5")],
             _ => Vec::new(),
         };
@@ -3104,30 +3169,72 @@ mod tests {
             conversations: Some(("pi-conversation-", &slots)),
             pis: &pis,
         };
-        let held = ["kitty-1-3.scope", "mycelium-pi-x.scope", "kitty-1-1.scope"].map(str::to_owned);
+        // Neither the scopes' names nor the order they were made in, so only `held` gives it.
+        let held = [
+            "kitty-1-2.scope",
+            "mycelium-pi-x.scope",
+            "kitty-1-1.scope",
+            "kitty-1-3.scope",
+        ]
+        .map(str::to_owned);
         let joined = viewers_and_shown(&windows, "pi-host-", &held, &units, &cmdlines);
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             joined.viewers,
-            ["pi-host-b.service", "pi-host-a.service"],
+            [
+                "pi-host-c.service",
+                "pi-host-a.service",
+                "pi-host-b.service"
+            ],
             "the held windows' viewers join in the order they're held, the pi's scope passed over"
         );
-        let mut shown = joined.shown;
-        shown.sort();
-        assert_eq!(
-            shown,
-            [
-                "pi-host-a.service",
-                "pi-host-b.service",
-                "pi-host-c.service"
-            ],
-            "every window shows the host its viewer joins, and the pi's scope none"
+        assert!(
+            joined
+                .shown
+                .contains(&"pi-conversation-a@s1.service".to_owned()),
+            "a viewer of a conversation in its slot's unit shows that unit, got {:?}",
+            joined.shown
         );
         assert_eq!(
             joined.unslotted,
-            ["session s2 on host a"],
-            "a session none of its host's live conversation units holds is said once, though \
-             its window is both held and shown"
+            [
+                ("a".to_owned(), "s2".to_owned()),
+                ("a".to_owned(), "x\\nRanked".to_owned())
+            ],
+            "only sessions no slot holds are found, s2 once for its two windows, and a session's \
+             newline can't start a journal line; s1 runs in its unit, and s7's slot holds it"
+        );
+    }
+
+    #[test]
+    fn an_unslotted_session_is_said_at_its_second_look_once_and_again_when_it_clears() {
+        let x = ("a".to_owned(), "x".to_owned());
+        let y = ("a".to_owned(), "y".to_owned());
+        let mut unslotted = Unslotted::default();
+        let looks: Vec<_> = [
+            vec![x.clone()],
+            vec![x.clone(), y.clone()],
+            vec![x.clone()],
+            vec![],
+            vec![x.clone()],
+            vec![x.clone()],
+        ]
+        .into_iter()
+        .map(|now| unslotted.look(now))
+        .collect();
+        let none = (vec![], vec![]);
+        assert_eq!(
+            looks,
+            [
+                none.clone(),
+                (vec![x.clone()], vec![]),
+                none.clone(),
+                (vec![], vec![x.clone()]),
+                none,
+                (vec![x.clone()], vec![]),
+            ],
+            "a session is said at its second look in a row and once, said cleared when it \
+             goes, and said again when it comes back; y, for one look, is never said"
         );
     }
 
