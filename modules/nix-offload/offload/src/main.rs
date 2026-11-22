@@ -3256,6 +3256,8 @@ struct SaidKept {
     reached: bool,
     stalled: bool,
     busy: bool,
+    /// That no build is seen to reach it, but it answers.
+    answering: bool,
     /// How many times in a row the builder hasn't said whether it answers.
     silent: u32,
 }
@@ -3287,10 +3289,15 @@ fn unanswered(
         &mut said.silent,
         || answers(settings, builder, ssh),
     );
-    if unanswered && (reached || stalled) {
+    if unanswered {
+        let reaching = if reached || stalled {
+            "though builds reach it"
+        } else {
+            "and no build is seen to reach it"
+        };
         eprintln!(
             "nix-offload: {} didn't say whether it answers {} times in a row, so it's lost \
-             though builds reach it",
+             {reaching}",
             builder.name, said.silent
         );
     }
@@ -3314,7 +3321,18 @@ fn unanswered(
         );
     }
     said.stalled &= dropped && stalled;
-    if dropped && !unanswered && !stalled && !std::mem::replace(&mut said.reached, true) {
+    let unreached = dropped && !unanswered && !stalled && !reached;
+    if unreached && said.silent == 0 && !std::mem::replace(&mut said.answering, true) {
+        eprintln!(
+            "nix-offload: {} failed {failures} proofs in a row and no build is seen to reach \
+             it, but it answers, so no new build goes there, and it's kept until it stops \
+             answering or sits idle",
+            builder.name
+        );
+    }
+    said.answering &= unreached;
+    if dropped && !unanswered && !stalled && reached && !std::mem::replace(&mut said.reached, true)
+    {
         eprintln!(
             "nix-offload: {} failed {failures} proofs in a row, so no new build goes there, but \
              builds still reach it, so it's kept until they end, or once it has failed {} in a \
@@ -3360,10 +3378,9 @@ fn answers(settings: &Settings, builder: &Lent, ssh: &str) -> bool {
 /// at once, as after any builder lost.
 fn give_back_unanswered(settings: &Settings, machines: &mut Machines, builder: Lent) {
     eprintln!(
-        "nix-offload: {} failed {} proofs in a row, so no build goes there, its relay ends \
-         and it's given back",
-        builder.name,
-        proof::FAILS
+        "nix-offload: {} failed its last proofs, so no build goes there, its relay ends and \
+         it's given back",
+        builder.name
     );
     machines.proven(None, State::Dropped);
     give_back(settings, machines, builder, Event::Lost);

@@ -186,7 +186,7 @@ pub fn give_back_proven(
 /// gives up on its own within 3 minutes, which ends what reaches it.
 pub const FAILS_WHILE_REACHED: u32 = 10;
 
-/// How many times in a row a builder that builds still reach may leave
+/// How many times in a row a builder failing its proofs may leave
 /// unanswered whether it answers at all before it's given back as lost. A
 /// builder whose every core is taken can be slow to answer too: on 22
 /// November one two hours into a model check missed a single answer and
@@ -195,16 +195,21 @@ pub const SILENT_WHILE_REACHED: u32 = 3;
 
 /// Whether a builder whose proofs say it's dropped (`dropped`, after
 /// `failures` in a row) is given back as lost, given whether a build
-/// reaches it (`reached`) and, asked only once it has failed
-/// [`FAILS_WHILE_REACHED`] with builds on it, whether it `answers` at all,
+/// reaches it (`reached`) and whether it `answers` at all, asked of one
+/// builds reach only once it has failed [`FAILS_WHILE_REACHED`],
 /// counting in `silent` how many times in a row it hasn't, which an
 /// answer, a passed proof or a builder short of those failures (as one
 /// just lent is) starts again. Dropped, it's named nowhere
 /// either way, so no new build goes there. One that answers is busy, not
 /// lost, and keeps what it builds until it ends: on 10 November a builder
 /// whose slots stayed full failed ten proofs in a row and was given back,
-/// ending three test suites 35 to 68 minutes in. One that builds reach
-/// goes only once it has missed [`SILENT_WHILE_REACHED`] answers in a row.
+/// ending three test suites 35 to 68 minutes in. One no build is seen to
+/// reach is asked at once, since reach can miss a build: on 22 November
+/// two builders whose builds it didn't see were given back after two
+/// failed proofs, one 41 s after it had answered, deleting a model check
+/// and a test suite with it. Kept while it answers, it's given back once
+/// it sits idle, as any builder is. Either goes only once it has missed
+/// [`SILENT_WHILE_REACHED`] answers in a row.
 pub fn proven_lost(
     dropped: bool,
     failures: u32,
@@ -216,10 +221,7 @@ pub fn proven_lost(
         *silent = 0;
         return false;
     }
-    if !reached {
-        return true;
-    }
-    if failures < FAILS_WHILE_REACHED {
+    if reached && failures < FAILS_WHILE_REACHED {
         *silent = 0;
         return false;
     }
@@ -371,8 +373,8 @@ mod tests {
         let unasked = || panic!("it isn't asked whether it answers");
         let mut silent = 0;
         assert!(
-            proven_lost(true, 2, false, &mut silent, unasked),
-            "nothing reaches it"
+            !proven_lost(true, 2, true, &mut silent, unasked),
+            "a build reaches it"
         );
         assert!(
             !proven_lost(true, 2, true, &mut silent, unasked),
@@ -413,8 +415,29 @@ mod tests {
             );
         }
         assert!(
-            proven_lost(true, FAILS_WHILE_REACHED * 5, false, &mut silent, || true),
-            "once nothing reaches it, it goes"
+            !proven_lost(true, FAILS_WHILE_REACHED * 5, false, &mut silent, || true),
+            "nothing is seen to reach it, but it answers"
+        );
+    }
+
+    // nix-offload at 12:38 on 22 November: it answered at 12:37:34, then
+    // reach saw no build on it, so it was given back after two failed
+    // proofs, deleting a model check and a test suite it was building.
+    #[test]
+    fn a_builder_nothing_is_seen_to_reach_goes_only_once_it_stops_answering() {
+        let mut silent = 0;
+        assert!(
+            !proven_lost(true, 2, false, &mut silent, || true),
+            "two failed proofs, but it answers"
+        );
+        assert_eq!(silent, 0, "an answer starts the count again");
+        let lost: Vec<bool> = (0..SILENT_WHILE_REACHED)
+            .map(|_| proven_lost(true, 2, false, &mut silent, || false))
+            .collect();
+        assert_eq!(
+            lost,
+            [false, false, true],
+            "it goes once it hasn't answered three times in a row"
         );
     }
 
