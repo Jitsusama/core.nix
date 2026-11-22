@@ -81,10 +81,11 @@
   {
     "at": 1795369415,
     "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
-    "due": "2026-11-24",
-    "owner_pr": 6065,
-    "owner_session": "orchestrator",
-    "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "due": "2026-11-26",
+    "due_why": "Its owner, the still-windows check's, takes it off once twenty net runs in a row exit 0 after #6132 merges, about two and a quarter days at the net's pace of about nine a day, and moves the due and says why before this date if a run fails. It failed on loaded builders for changes that never touch it, #6065 among them, which the case doesn't import: each start then lasted a fixed 600 ms and lost frames that came late. #6132 ends every start on quiet instead. While it stands, nothing catches a still window drawing as animations start",
+    "owner_pr": 6132,
+    "owner_session": "XY9H5C",
+    "reason": "failed on loaded builders while each start lasted a fixed 600 ms; #6132 fixes it forward",
     "test": "still-windows-draw-nothing-as-animations-start-on-niri"
   },
   {
@@ -120,8 +121,8 @@
   {
     "at": 1795355612,
     "commit": "a6901f968d038fc3be538ac699ffda63c7fb8f49",
-    "due": "2026-11-26",
-    "due_why": "Its owner, the margin cat's, by 2026-11-24 23:00 UTC, two days before its due, when it comes off, reads why the cat drew with the launcher under load and fixes it or the case's floor, splitting the frame count into a subtest of its own so the walk's holds guard again whatever stays listed. It failed at a6901f968d03, the net's run 1 of 2, and on 22 Nov on a loaded lender at 847f070456cd, a branch touching only the launcher's stall clocks, the same way both times: the cat drew 8 frames of its own under the launcher, {'cat winit': 8, 'launcher': 8}. The still neighbours it takes as its floor, the notices and the talk line, drew none there, so the floor was 0 and the cat matched the launcher frame for frame. The same count twice points to a cause that load sets off rather than noise, though that is untested; the fix reads it with Qt's render loop log on. It comes off once the fix merges, passes on a loaded lender, and twenty net runs in a row after it exit 0. While it stands, nothing catches the cat drawing or stepping under the launcher, or its walk not going on from where it was held",
+    "due": "2026-11-28",
+    "due_why": "Its owner, the margin cat's, by 2026-11-24 23:00 UTC, about three and a half days before its due, reads why the cat drew with the launcher under load and fixes it or the case's floor, splitting the frame count into a subtest of its own so the walk's holds guard again whatever stays listed. It failed at a6901f968d03, the net's run 1 of 2, and on 22 Nov on a loaded lender at 847f070456cd, a branch touching only the launcher's stall clocks, the same way both times: the cat drew 8 frames of its own under the launcher, {'cat winit': 8, 'launcher': 8}. The still neighbours it takes as its floor, the notices and the talk line, drew none there, so the floor was 0 and the cat matched the launcher frame for frame. The same count twice points to a cause that load sets off rather than noise, though that is untested; the fix reads it with Qt's render loop log on. It comes off once the fix merges, passes on a loaded lender, and twenty net runs in a row after it exit 0. While it stands, nothing catches the cat drawing or stepping under the launcher, or its walk not going on from where it was held. The twenty runs take about two and a quarter days at the net's pace of about nine a day; its owner moves the due and says why before this date if a run fails",
     "owner_pr": 5815,
     "owner_session": "XY9H5C",
     "reason": "failed, then passed, at a6901f968d03",
