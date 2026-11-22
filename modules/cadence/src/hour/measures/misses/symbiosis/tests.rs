@@ -1030,16 +1030,15 @@ fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
 fn a_hold_no_reading_mends_lasts_and_one_a_reading_mends_passes() {
     let held =
         |reason: &str| format!("ab12 from IKQ63G: y{HELD}core #6000{UNRUN}{reason} · OSPHT4");
-    for lasting in [
-        "cadence can't tell what a pi host loads",
-        "cadence can't tell when the harness carrying it was installed",
-    ] {
+    for lasting in ["cadence can't tell what a pi host loads"] {
         assert!(
             held_for_good(&held(lasting)) && held_unseen(&held(lasting)),
             "a hold no reading mends passed: {lasting}"
         );
     }
     for passing in [
+        "cadence can't tell whether a pi host applied it",
+        "cadence can't tell when the harness carrying it was installed",
         "cadence can't list the pi hosts",
         "cadence can't see what runs here",
         "cadence can't find its merge",
@@ -1093,6 +1092,66 @@ fn a_regression_beneath_a_fix_no_reading_shows_running_counts() {
         measure.says,
         measure.behind
     );
+}
+
+#[test]
+fn a_lasting_part_holds_no_finding_while_the_rest_of_its_fix_waits() {
+    let core = |number| Named {
+        repo: "core".to_owned(),
+        number,
+    };
+    let root = finding(3 * DAY, "IKQ63G", "IKQ63G finding for OSPHT4: y");
+    let posted = [
+        root.clone(),
+        answer(
+            3 * DAY - 60,
+            "OSPHT4",
+            "Landed core #6000 and #6001.",
+            &root,
+        ),
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    let findings = Findings {
+        text: as_misses(&found),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let lasting = "cadence can't tell what a pi host loads";
+    // One part not merged yet, then both merged with the other waiting on a
+    // switch: either way the owner still owes something.
+    for (merged, unrun) in [
+        (
+            BTreeSet::from([core(6000)]),
+            BTreeMap::from([(core(6000), lasting)]),
+        ),
+        (
+            BTreeSet::from([core(6000), core(6001)]),
+            BTreeMap::from([
+                (core(6000), lasting),
+                (core(6001), "the last switch doesn't carry it"),
+            ]),
+        ),
+    ] {
+        let judged = Judged {
+            merged: &merged,
+            unread: &BTreeSet::new(),
+            unrun: &unrun,
+            here: "here",
+        };
+        let measure = findings.measured(&repos, &judged, NOW);
+        assert!(
+            (measure.now - 1.0).abs() < 1e-9
+                && measure
+                    .behind
+                    .iter()
+                    .any(|line| line.contains(" · OSPHT4") && !held_for_good(line)),
+            "a lasting part held a finding whose fix still waits: {} {:?}",
+            measure.says,
+            measure.behind
+        );
+    }
 }
 
 #[test]

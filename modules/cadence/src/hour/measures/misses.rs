@@ -21,6 +21,7 @@ mod running;
 mod symbiosis;
 
 pub use held::{BLIND, HELD, held};
+use running::LASTING;
 pub use running::{UNRUN, UNSEEN, hosts_started};
 pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
 
@@ -444,9 +445,19 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
                     )
                 })
                 .or_else(|| {
-                    let (change, why) = changes
-                        .iter()
-                        .find_map(|change| Some((change, unrun.get(change)?)))?;
+                    // A lasting reason speaks for the check only once all of
+                    // it merged and nothing else waits, or a fix half done
+                    // would be held for good while its owner still owes it.
+                    let lasts = |why: &str| LASTING.iter().any(|it| why.starts_with(it));
+                    let waiting = || {
+                        changes
+                            .iter()
+                            .filter_map(|change| Some((change, *unrun.get(change)?)))
+                    };
+                    let whole = changes.iter().all(|change| merged.contains(change));
+                    let (change, why) = waiting()
+                        .find(|&(_, why)| !lasts(why))
+                        .or_else(|| waiting().next().filter(|_| whole))?;
                     Some(format!(
                         "{HELD}{} #{}{UNRUN}{why}",
                         change.repo, change.number

@@ -152,6 +152,10 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         Some("cadence can't tell what a pi host loads"),
         "a fix to core's runtime build alone was told fixed"
     );
+    assert!(
+        LASTING.contains(&"cadence can't tell what a pi host loads"),
+        "a fix to core's runtime build, which no hour can read, held only for the hour"
+    );
     let note = |_: &str| Some("modules/pi/host-patches/README.md".to_owned());
     assert_eq!(
         judge("core", at, Some("f00d"), all, note, lack),
@@ -359,7 +363,7 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
     );
     assert_eq!(
         lack(Some(&[host(Some("new"), None), host(None, None)])),
-        Some("cadence can't tell what a pi host loads"),
+        Some("cadence can't tell whether a pi host applied it"),
         "a runtime keeping no copies counted as carrying it"
     );
     assert_eq!(
@@ -376,9 +380,21 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
     let unread = |hosts: &[Host]| hosts_lack(Some(hosts), &runtime, None, |_| None);
     assert_eq!(
         unread(&[host(Some("new"), None)]),
-        Some("cadence can't tell what a pi host loads"),
+        Some("cadence can't tell whether a pi host applied it"),
         "a patch whose merged version went unread counted as loaded"
     );
+    // Git failing or a host between processes mends within the hour, so
+    // neither may give a reason that holds a finding for good.
+    for why in [
+        unread(&[host(Some("new"), None)]),
+        lack(Some(&[host(None, None)])),
+    ] {
+        let why = why.expect("a host cadence couldn't read was told running");
+        assert!(
+            !LASTING.iter().any(|lasting| why.starts_with(lasting)),
+            "a passing failure gave the lasting reason {why}"
+        );
+    }
 }
 
 /// The 19:05 miss of 19 November: #5800 added a patch that the work hosts'

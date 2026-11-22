@@ -36,16 +36,14 @@ pub const UNRUN: &str = " merged, but ";
 pub const UNSEEN: &str = "cadence can't ";
 
 /// What a host loads can't be read from a fix to how core builds its
-/// runtime, ever, nor from a runtime keeping no patch copies until the
-/// hosts restart onto another.
+/// runtime, ever, since a runtime built elsewhere copies only its patches.
 const LOADS_UNSEEN: &str = "cadence can't tell what a pi host loads";
 
-/// The harness's install time stays unknown until it is installed again.
-const INSTALL_UNSEEN: &str = "cadence can't tell when the harness carrying it was installed";
-
 /// The reasons of cadence's blindness that no fetch or listing mends, so
-/// a hold on one lasts rather than passing with the hour.
-pub const LASTING: [&str; 2] = [LOADS_UNSEEN, INSTALL_UNSEEN];
+/// a hold on one lasts rather than passing with the hour. Each is given
+/// by one path alone: a reason a passing failure also gives would close a
+/// drag one hour and file it again the next.
+pub const LASTING: [&str; 1] = [LOADS_UNSEEN];
 
 /// The repositories whose running revision cadence reads: core's and
 /// World's from the last switch, mycelium's as that switch's core pins it,
@@ -436,11 +434,14 @@ fn hosts_lack(
             "a pi host or conversation keeps its unit from before it"
         });
     }
+    // Git failing, a host between processes or a runtime keeping no copies
+    // each mends with a later hour or restart, so this passes.
     if runtime && loaded.contains(&None) {
-        return Some(LOADS_UNSEEN);
+        return Some("cadence can't tell whether a pi host applied it");
     }
+    // Only `current` moving as the hour reads it leaves no install time.
     if reaches.program && since.is_none() {
-        return Some(INSTALL_UNSEEN);
+        return Some("cadence can't tell when the harness carrying it was installed");
     }
     if restarts && (since.is_none() || running().any(|host| host.started.is_none())) {
         return Some("cadence can't tell when a pi host or conversation started");
