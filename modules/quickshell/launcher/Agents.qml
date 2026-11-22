@@ -2927,12 +2927,14 @@ Provider {
     function budgetsKept() {
         // AI spend's row as it reads now, since AI spend makes its rows
         // only while it's wanted, which it isn't while Agents is held;
-        // found among them where it can't say (1KZFHC, 2026-11-10).
+        // found among them where it can't say (1KZFHC, 2026-11-10). Its
+        // words and weight are the vocabulary's and the settings', as the
+        // other rows kept here are.
         const spend = source("spend");
         const now = spend?.rowNow("spend:budgets");
         const spent = now !== undefined ? now : (spend?.everything() ?? [])
             .find(row => row.key === "spend:budgets") ?? null;
-        return ownKept("budgets", [spent], () => budgetsOf(spent));
+        return ownKept("budgets", [Words.all, provider.weight, spent], () => budgetsOf(spent));
     }
     function budgetsOf(spent) {
         if (spent === null)
@@ -2964,7 +2966,8 @@ Provider {
         const place = source("spec");
         const head = place?.head() ?? null;
         const says = head === null ? [null] : [String(head.said ?? ""), head.glyph, head.hue];
-        return ownKept("spec", [place].concat(says), () => specOf(place, head));
+        return ownKept("spec", [Words.all, provider.weight, place].concat(says),
+            () => specOf(place, head));
     }
     function specOf(place, head) {
         if (head === null)
