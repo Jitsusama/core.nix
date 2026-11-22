@@ -1461,11 +1461,10 @@ fn this_system() -> String {
     format!("{}-{os}", env::consts::ARCH)
 }
 
-/// The store a lender's folder names while its builder stands.
+/// The store a lender's folder names while its builder stands and root
+/// vouches for it.
 fn standing(dir: &Path) -> Option<String> {
-    fs::read_to_string(dir.join("store"))
-        .ok()
-        .filter(|store| !store.trim().is_empty())
+    there::vouched_store(dir)
 }
 
 /// Says why a passing suite run in a warm target isn't kept as passed,

@@ -3186,18 +3186,10 @@ const VOUCHED_PATIENCE: Duration = Duration::from_secs(60);
 /// signed. Only a run whose key is hidden waits, since only the fence's
 /// agent reads the file.
 fn vouched(file: &Path, lender: &str, host_key: &str, patience: Duration) -> Result<(), String> {
-    let wanted = format!("{lender} ");
-    let names = |text: &str| {
-        text.lines().any(|line| {
-            line.strip_prefix(&wanted)
-                .and_then(|rest| rest.split_once(' '))
-                .is_some_and(|(_, key)| key == host_key)
-        })
-    };
     let started = std::time::Instant::now();
     let mut said = false;
     loop {
-        if fs::read_to_string(file).is_ok_and(|text| names(&text)) {
+        if fs::read_to_string(file).is_ok_and(|text| names(&text, lender, host_key)) {
             return Ok(());
         }
         if started.elapsed() >= patience {
@@ -3219,6 +3211,79 @@ fn vouched(file: &Path, lender: &str, host_key: &str, patience: Duration) -> Res
         // reads costs a waiting run little and the file's reader less.
         std::thread::sleep(Duration::from_secs(1));
     }
+}
+
+/// Whether root's `text`, read from [`VOUCHED`], names `lender`'s builder
+/// with `host_key`.
+fn names(text: &str, lender: &str, host_key: &str) -> bool {
+    let wanted = format!("{lender} ");
+    text.lines().any(|line| {
+        line.strip_prefix(&wanted)
+            .and_then(|rest| rest.split_once(' '))
+            .is_some_and(|(_, key)| key == host_key)
+    })
+}
+
+/// Root's file of the builders it vouches for, or the one
+/// `NIX_OFFLOAD_VOUCHED` names for a test.
+fn vouching() -> PathBuf {
+    std::env::var_os("NIX_OFFLOAD_VOUCHED").map_or_else(|| PathBuf::from(VOUCHED), PathBuf::from)
+}
+
+/// Whether root vouches for the builder `store` names, as `file` says:
+/// its lender and its host key on one line. A machine without the file
+/// vouches for every builder, since nothing there keeps a list; one whose
+/// file can't be read, or a store pinning no host key, for none. On 22
+/// November a run sent to one lender spilled to another whose builder
+/// root no longer vouched for, and outputs built on builders it didn't
+/// name came back trusted.
+fn vouched_in(file: &Path, store: &str) -> bool {
+    let text = match fs::read_to_string(file) {
+        Ok(text) => text,
+        Err(error) => return error.kind() == std::io::ErrorKind::NotFound,
+    };
+    let Some(lent) = builder(store.lines().next().unwrap_or_default().trim()) else {
+        return false;
+    };
+    let alias = lent.host.rsplit('@').next().unwrap_or(&lent.host);
+    lent.host_key
+        .as_deref()
+        .is_some_and(|host_key| names(&text, alias, host_key))
+}
+
+/// The store `dir`'s lender names while its builder stands and root
+/// vouches for it; none while it stands unvouched, said once a folder,
+/// so nothing is sent or spilled to a builder root doesn't name. Root
+/// vouches for a new builder within seconds to minutes of its standing,
+/// so one waited on is taken once it does.
+pub fn vouched_store(dir: &Path) -> Option<String> {
+    // Each folder is said once a run, however often it's looked at.
+    static SAID: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
+    let store = fs::read_to_string(dir.join("store"))
+        .ok()
+        .filter(|store| !store.trim().is_empty())?;
+    let file = vouching();
+    if vouched_in(&file, &store) {
+        return Some(store);
+    }
+    if SAID
+        .lock()
+        .is_ok_and(|mut said| said.insert(dir.to_path_buf()))
+    {
+        eprintln!(
+            "nix-offload: root doesn't vouch for the builder in {} as {} says, so nothing goes \
+             to it",
+            dir.display(),
+            file.display()
+        );
+    }
+    None
+}
+
+/// Whether `dir`'s builder stands but root doesn't vouch for it.
+pub fn unvouched(dir: &Path) -> bool {
+    fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty())
+        && vouched_store(dir).is_none()
 }
 
 /// Whether `file` is a key hidden from this process, as the fence hides
@@ -3624,7 +3689,7 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
             .filter(|text| !text.trim().is_empty())
     };
     let stood = loop {
-        if let Some(store) = read("store") {
+        if let Some(store) = vouched_store(dir) {
             break Some(store);
         }
         let so_far = began.elapsed();
@@ -3677,10 +3742,7 @@ pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> O
         }
         std::thread::sleep(AGAIN.min(waiting.answered));
         if lender_stands(dir) {
-            return fs::read_to_string(dir.join("store"))
-                .ok()
-                .filter(|store| !store.trim().is_empty())
-                .or_else(|| waited(dir, waiting));
+            return vouched_store(dir).or_else(|| waited(dir, waiting));
         }
         let bound = if dir.join("lender").exists() {
             waiting.restarting
@@ -4057,7 +4119,7 @@ pub fn admitted<'a>(
         let here_warm = warm(dir);
         if let Some((other, claimed)) = others
             .iter()
-            .filter(|other| !here_warm || warm(other))
+            .filter(|other| !unvouched(other) && (!here_warm || warm(other)))
             .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
         {
             eprintln!(
@@ -4347,7 +4409,7 @@ pub const WARMING: &str = "warming";
 /// themselves, against 2 to 12 once warm, so VM tests go to a warm one
 /// while any stands.
 pub fn warm(dir: &Path) -> bool {
-    let stands = fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty());
+    let stands = vouched_store(dir).is_some();
     let warming = fs::read_to_string(dir.join(WARMING)).is_ok_and(|held| {
         held.split_whitespace()
             .next()
@@ -7548,6 +7610,46 @@ mod tests {
         assert!(
             missing.is_err(),
             "nor is anything without the file: {missing:?}"
+        );
+    }
+
+    #[test]
+    fn only_a_builder_root_names_with_its_host_key_is_vouched_for() {
+        let folder = tempfile::tempdir().unwrap();
+        let file = folder.path().join("lent");
+        fs::write(&file, "nix-offload-vm vm-1 ssh-ed25519 AAAA\n").unwrap();
+        // "c3NoLWVkMjU1MTkgQUFBQQ==" is "ssh-ed25519 AAAA", and the
+        // other "ssh-ed25519 BBBB".
+        let store = |host: &str, key: &str| {
+            format!("ssh-ng://{host}?ssh-key=/key&base64-ssh-public-host-key={key}\n")
+        };
+        let aaaa = "c3NoLWVkMjU1MTkgQUFBQQ==";
+        let bbbb = "c3NoLWVkMjU1MTkgQkJCQg==";
+
+        assert!(vouched_in(&file, &store("nix-offload-vm", aaaa)));
+        assert!(
+            vouched_in(&file, &store("hook@nix-offload-vm", aaaa)),
+            "the account isn't the lender's name"
+        );
+        assert!(
+            !vouched_in(&file, &store("nix-offload-vm-4", aaaa)),
+            "another lender's builder isn't"
+        );
+        assert!(
+            !vouched_in(&file, &store("nix-offload-vm", bbbb)),
+            "nor a builder with another host key"
+        );
+        assert!(
+            !vouched_in(&file, "ssh-ng://nix-offload-vm\n"),
+            "nor one pinning no host key"
+        );
+        assert!(
+            vouched_in(&folder.path().join("none"), "ssh-ng://far\n"),
+            "with no file of root's, every builder is"
+        );
+        assert!(
+            !vouched_in(folder.path(), &store("nix-offload-vm", aaaa)),
+            "a file that can't be read vouches for none"
         );
     }
 
