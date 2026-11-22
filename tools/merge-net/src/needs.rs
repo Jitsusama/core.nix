@@ -12,7 +12,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
 use crate::state::{self, short};
-use crate::{SYSTEM, comments, gated, git, macs, owners, ready, rules, world};
+use crate::{SYSTEM, comments, gated, git, lock, macs, owners, ready, rules, world};
 
 /// Say whether the branch's change runs VM tests before merging, and which,
 /// then each of a Mac's comparisons its gate passed without (`macs.rs`).
@@ -167,37 +167,37 @@ fn lock_decided(
     base: impl Fn(&str) -> Option<String>,
     working: impl Fn(&str) -> Option<String>,
 ) -> (Vec<String>, Option<String>) {
-    if !files.iter().any(|file| file == rules::LOCK) {
+    if !files.iter().any(|file| file == lock::LOCK) {
         return (files, None);
     }
     let judged = match (
-        base(rules::LOCK_AFTER),
-        base(rules::LOCK),
-        working(rules::LOCK),
+        base(lock::LOCK_AFTER),
+        base(lock::LOCK),
+        working(lock::LOCK),
     ) {
-        (None, _, _) => Err(format!("the merge base holds no {}", rules::LOCK_AFTER)),
+        (None, _, _) => Err(format!("the merge base holds no {}", lock::LOCK_AFTER)),
         (_, None, _) => Err("it can't be read at the merge base".to_owned()),
         (_, _, None) => Err("it can't be read in the working copy".to_owned()),
         (Some(after), Some(before), Some(now)) => {
-            rules::lock_judged(&before, &now, &rules::lock_after(&after))
+            lock::lock_judged(&before, &now, &lock::lock_after(&after))
         }
     };
     match judged {
         Ok(moved) => (
             files
                 .into_iter()
-                .filter(|file| file != rules::LOCK)
+                .filter(|file| file != lock::LOCK)
                 .collect(),
             Some(format!(
                 "({} moves only {}, which lock-after.txt lets move with its VM tests run after \
                  the merge)",
-                rules::LOCK,
+                lock::LOCK,
                 moved.join(" ")
             )),
         ),
         Err(why) => (
             files,
-            Some(format!("({} runs its VM tests first: {why})", rules::LOCK)),
+            Some(format!("({} runs its VM tests first: {why})", lock::LOCK)),
         ),
     }
 }
@@ -297,7 +297,7 @@ mod tests {
     }
 
     /// A lock whose root names mycelium and nixpkgs, at the revs given.
-    fn lock(mycelium: &str, nixpkgs: &str) -> String {
+    fn lock_at(mycelium: &str, nixpkgs: &str) -> String {
         serde_json::json!({
             "nodes": {
                 "root": { "inputs": { "mycelium": "mycelium", "nixpkgs": "nixpkgs" } },
@@ -315,19 +315,19 @@ mod tests {
     fn side(lock: String, after: Option<&str>) -> impl Fn(&str) -> Option<String> {
         let after = after.map(str::to_owned);
         move |path| match path {
-            rules::LOCK => Some(lock.clone()),
-            rules::LOCK_AFTER => after.clone(),
+            lock::LOCK => Some(lock.clone()),
+            lock::LOCK_AFTER => after.clone(),
             _ => None,
         }
     }
 
     #[test]
     fn a_lock_moving_only_a_listed_input_leaves_the_files() {
-        let files = vec![rules::LOCK.to_owned(), "flake.nix".to_owned()];
+        let files = vec![lock::LOCK.to_owned(), "flake.nix".to_owned()];
         let (left, said) = lock_decided(
             files,
-            side(lock("a", "n"), Some("mycelium\n")),
-            side(lock("b", "n"), Some("mycelium\n")),
+            side(lock_at("a", "n"), Some("mycelium\n")),
+            side(lock_at("b", "n"), Some("mycelium\n")),
         );
         assert_eq!(left, vec!["flake.nix".to_owned()]);
         assert!(
@@ -340,11 +340,11 @@ mod tests {
     #[test]
     fn a_lock_is_judged_by_the_list_its_merge_base_holds() {
         // The change adds nixpkgs to its own list beside a nixpkgs move.
-        let files = vec![rules::LOCK.to_owned()];
+        let files = vec![lock::LOCK.to_owned()];
         let (left, said) = lock_decided(
             files.clone(),
-            side(lock("a", "n"), Some("mycelium\n")),
-            side(lock("a", "m"), Some("mycelium\nnixpkgs\n")),
+            side(lock_at("a", "n"), Some("mycelium\n")),
+            side(lock_at("a", "m"), Some("mycelium\nnixpkgs\n")),
         );
         assert_eq!(
             left, files,
@@ -358,11 +358,11 @@ mod tests {
 
     #[test]
     fn a_merge_base_without_the_list_lets_no_lock_through() {
-        let files = vec![rules::LOCK.to_owned()];
+        let files = vec![lock::LOCK.to_owned()];
         let (left, said) = lock_decided(
             files.clone(),
-            side(lock("a", "n"), None),
-            side(lock("b", "n"), Some("mycelium\n")),
+            side(lock_at("a", "n"), None),
+            side(lock_at("b", "n"), Some("mycelium\n")),
         );
         assert_eq!(left, files, "a base with no list let the lock through");
         assert!(
