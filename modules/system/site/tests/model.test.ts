@@ -129,6 +129,20 @@ it("a part's side and what it holds are read apart", () => {
       [[], "18 repositories"],
     ],
   );
+  const note = "as read at 11:54; just now repos --json gave no answer in 20 s";
+  const noted = told(
+    records.map((record) => {
+      if (record.key === "part:code") {
+        return { ...record, note };
+      }
+      return record.key === "part:machines" ? { ...record, note: null } : record;
+    }),
+  );
+  assert.deepEqual(
+    systemOf(noted.summary, noted.part, noted.machine)?.parts.map((each) => each.note),
+    [undefined, note],
+    "a part's note is read as told, and a null one is none",
+  );
 });
 
 /** What `markup` reads as, its tags gone and its spaces run together. */

@@ -658,6 +658,11 @@ mod tests {
             (Health::Good, vec![note.to_owned()]),
             "the machines part read from a kept answer keeps its health, saying why once"
         );
+        assert_eq!(
+            system.parts[0].note.as_deref(),
+            Some(note),
+            "the machines part carries its note on its own, which the page tells it by"
+        );
     }
 
     #[test]

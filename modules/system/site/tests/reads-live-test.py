@@ -36,9 +36,9 @@ RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
-# about 477 KB and 404 elements since the list of what is worth a look, six to a row,
-# and the network's kept note.
-BUDGET = Budget(files=25, kilobytes=480, elements=407)
+# about 477 KB and 398 elements since the list of what is worth a look, six to a row,
+# and the line counting what more the network holds.
+BUDGET = Budget(files=25, kilobytes=480, elements=401)
 
 
 @pytest.fixture
@@ -198,8 +198,7 @@ LOOKED_AT = [
     ("Network", KEPT_NOTE),
 ]
 # The network's side ends with how many more it holds, which the list counts
-# rather than listing as a look of its own. The summary's side says 3, so a
-# count read from it instead would show.
+# rather than listing as a look of its own.
 MORE_LOOKS = "And 2 more."
 # The rows' keys a steps through: whose each is, then how many the same came
 # before it, then its own words.

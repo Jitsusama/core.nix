@@ -54,7 +54,11 @@ The object has `schema` (system.view/1), `machine` (where it was read),
 part has `part`, `health`, `says` (a sentence, worst first), `side` (what
 is worth a look, an item each, worded to stand at a side: lower case
 unless a name leads, no closing stop, without what the part holds, at
-most three, and empty when nothing is), `holds` (what it holds, counted
+most three, and empty when nothing is, with a fourth, the note, when the
+part was read from its owner's last answer), `note` (that note, as "as
+read at 11:54; just now net --json gave no answer in 20 s", also said in
+`says` and `side`, or null for a part read just now: tell the note in
+`side` by this, never by its wording), `holds` (what it holds, counted
 in a few words, as "21 devices", or null when it wasn't read), `things`
 (the machines, worst first, each with
 `kind`, `name`, `health`, `says`, `address`, its home on the local
