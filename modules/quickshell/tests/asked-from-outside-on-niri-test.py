@@ -91,8 +91,7 @@ def test_a_links_row_is_counted(shell: Shell, call: str, start: str, missing: st
     """A link to a machine or a repository says what it named by letters, where it's listed."""
     answer, said = asked(shell, start, call, MARKER)
     assert MARKER not in said, f"{call} said the link's words:\n{said}"
-    if missing in answer:
-        pytest.skip(f"this shell has no place for {call}")
+    assert missing not in answer, f"this shell has no place for {call}, so nothing's counted"
     assert line_of(said, start).endswith(COUNTED), said
     close_after_link(shell)
 

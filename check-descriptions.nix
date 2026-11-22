@@ -6638,9 +6638,7 @@
     the launcher's Wi-Fi joins a network by the acts wifid serves it: a password asked as a
     secret, an account's name, its server's domain and password in turn, each set in the ask and
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
-    refusal are said in the foot, never a card; no password is shown; and with reports off a
-    refused join is journalled by its act and code, with no network's name, password or wifid's
-    words on any launcher line
+    refusal are said in the foot, never a card; and no password is shown
   '';
   wifi-holds-the-network-joined-ahead = ''
     the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,
