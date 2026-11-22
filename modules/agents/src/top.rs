@@ -172,6 +172,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
                 "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off(),
+                "putOffAs": row.unwanted.map(Stands::id),
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -325,6 +326,7 @@ fn member(row: &Row, parent: &str, depth: usize, under: usize, said: &Said) -> V
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
                 "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off(),
+                "putOffAs": row.unwanted.map(Stands::id),
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -500,6 +502,7 @@ mod tests {
             orchestrates: false,
             gone: false,
             waits_on_joel: state == "needs",
+            unwanted: None,
             state,
             doing: state.to_owned(),
             returns: "switch",
@@ -925,7 +928,7 @@ mod tests {
     fn a_session_inside_whose_want_joel_put_off_lights_nothing_and_offers_no_talk() {
         let mut put_off = row("A", "needs", 1, LIVE);
         if let Shown::Session(row) = &mut put_off {
-            (row.waits_on_joel, row.glyph) = (false, "waitsOnJoel");
+            (row.waits_on_joel, row.unwanted) = (false, Some(Stands::Working));
         }
         let rows = top(&[
             wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning"),
@@ -938,16 +941,18 @@ mod tests {
                 format!("{}:{}", head["glyph"], head["hue"]),
                 &head["held"]["anyWaitsOnJoel"],
                 &member["held"]["putOff"],
+                &member["held"]["putOffAs"],
                 &member["held"]["waitsOnJoel"],
             ),
             (
                 "\"shapeSquare\":\"warning\"".to_owned(),
                 &json!(false),
                 &json!(true),
+                &json!("working"),
                 &json!(false)
             ),
             "its state still says needs, but put off it marks nothing above it, and is served as \
-             put off so Networks counts it quiet"
+             put off and as it would stand wanting nothing, so Networks counts it so"
         );
         assert_eq!(
             acts(member),

@@ -390,6 +390,7 @@ mod tests {
             orchestrates: false,
             gone: false,
             waits_on_joel: false,
+            unwanted: None,
             state: "working",
             doing: "working".to_owned(),
             returns: "switch",

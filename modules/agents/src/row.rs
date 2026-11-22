@@ -138,6 +138,13 @@ pub struct Row {
     /// his still open, which For You lists as waiting too, so its row and
     /// those over it wear his mark either way.
     pub waits_on_joel: bool,
+    /// How it would stand wanting nothing, when it wants Joel but he put it
+    /// off for the hour: it wears his mark, quietly, yet waits on him for
+    /// nothing (`worn`), so it counts as it would stand without the want
+    /// everywhere (networks.rs). None when nothing it wants is put off.
+    /// Served only as top.rs's `putOffAs`, by its id.
+    #[serde(skip)]
+    pub unwanted: Option<Stands>,
     pub state: &'static str,
     /// How it stands in words, among its side's items too: For You's
     /// heading over the cell says it alone, without its figures.
@@ -346,8 +353,8 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         .orchestrates
         .then(|| (known.shape)(session.id()))
         .flatten();
-    let (wears, put_off, hue) = worn(session, stands, known, !full.is_empty());
-    let waits_on_joel = wears == Stands::Needs && !put_off;
+    let (wears, unwanted, hue) = worn(session, known, !full.is_empty());
+    let waits_on_joel = wears == Stands::Needs && unwanted.is_none();
     let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
         said: under.clone(),
@@ -371,6 +378,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
         waits_on_joel,
+        unwanted,
         state: stands.id(),
         doing: doing_said,
         // One standing at the top is gone to to be told something, the
@@ -393,12 +401,10 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
 }
 
 impl Row {
-    /// Whether it wants Joel but he put it off for the hour: it wears his
-    /// mark, quietly, yet waits on him for nothing (`worn`), so it counts
-    /// as needing him nowhere (networks.rs).
+    /// Whether it wants Joel but he put it off for the hour (`unwanted`).
     #[must_use]
     pub fn put_off(&self) -> bool {
-        self.glyph == standing::glyph(Stands::Needs, None) && !self.waits_on_joel
+        self.unwanted.is_some()
     }
 
     /// The act `id` as the launcher's rows hold it: its verb's key and the
@@ -443,25 +449,20 @@ impl Row {
     }
 }
 
-/// How a session stands to Joel, whether he put off what it wants of
-/// him, and the hue its row wears. A want put off still waits, so its row
-/// keeps his mark, but in the hue its own standing (`stands`) gives it,
-/// muted for one parked, as its mark is, lighting nothing above it
-/// (top.rs) until the hour is up.
-fn worn(
-    session: Session,
-    stands: Stands,
-    known: &Known,
-    warns: bool,
-) -> (Stands, bool, &'static str) {
+/// How a session stands to Joel, how it would stand wanting nothing when
+/// he put off what it wants of him, and the hue its row wears. A want put
+/// off still waits, so its row keeps his mark, but in the hue it would
+/// wear wanting nothing, muted for one parked, as its mark is, lighting
+/// nothing above it (top.rs) until the hour is up.
+fn worn(session: Session, known: &Known, warns: bool) -> (Stands, Option<Stands>, &'static str) {
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
-    let put_off = wears == Stands::Needs && (known.put_off)(session);
-    let hue = if put_off {
-        standing::unwaited_hue(stands, warns)
-    } else {
-        standing::hue(wears, warns)
-    };
-    (wears, put_off, hue)
+    let unwanted = (wears == Stands::Needs && (known.put_off)(session))
+        .then(|| session.stands_wanting_nothing(known.jobs));
+    (
+        wears,
+        unwanted,
+        standing::hue(unwanted.unwrap_or(wears), warns),
+    )
 }
 
 /// What Close leaves of a session here: its worktree, where it works in a

@@ -593,10 +593,7 @@ impl Inputs {
         let states: Vec<_> = sessions
             .iter()
             .map(|one| match one.stands_to_joel(&joel_can, &jobs) {
-                Stands::Needs if put_off(*one) => match one.stands(&joel_can, &jobs) {
-                    Stands::Parked => Stands::Parked,
-                    _ => Stands::Listening,
-                },
+                Stands::Needs if put_off(*one) => one.stands_wanting_nothing(&jobs),
                 stands => stands,
             })
             .collect();
@@ -1595,10 +1592,12 @@ mod tests {
     #[test]
     fn a_want_joel_put_off_lights_nothing_above_it_nor_home() {
         let mut inputs = inputs();
-        // Q, in P's team under O, asks Joel, who put it off for the hour.
+        // Q, in P's team under O, asks Joel, who put it off for the hour,
+        // and works on meanwhile.
         inputs.sessions.took(&json!({"changed": [
             {"key": "session:q", "standing": "running", "here": true,
              "presence": {"addresses": ["Q"], "session": "s-q", "orchestratedBy": "P",
+                          "busy": true,
                           "wants": {"kind": "approval", "said": "May I push?"}}}]}));
         inputs
             .put_off
@@ -1614,13 +1613,14 @@ mod tests {
         assert_ne!(p["glyph"], "waitsOnJoel", "P wears no mark for Q: {p}");
         assert_eq!(
             sides(&row("row:agents-top:network:repo.kelp")),
-            "1 moving, 1 quiet",
-            "the node counted Q needing Joel; put off, it's quiet for the hour"
+            "2 moving",
+            "the node counted Q needing Joel; put off, it counts as working, as it is"
         );
-        let said = shown.get(served::SUMMARY).expect("the summary")["summary"]["said"].clone();
-        assert!(
-            !said.to_string().contains("need"),
-            "Home's summary says nobody needs him: {said}"
+        assert_eq!(
+            summary_of(&shown),
+            "2 working \u{b7} $214 today",
+            "Home's summary says nobody needs him, and counts Q working, as it would stand \
+             wanting nothing"
         );
     }
 
