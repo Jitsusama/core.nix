@@ -2,7 +2,7 @@
 
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in system daemon (modules/local-sites/tests/stand_in_daemon.py) holding
-a summary, four parts, two machines and two builders under test names,
+a summary, four parts, two machines and a builder under test names,
 system.json, trimmed to the kinds home.nix declares (SYSTEM_KINDS). It must
 say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
@@ -45,8 +45,9 @@ COUNTED = "Two machines, both worth a look."
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down;
 # 403 elements since each machine's look carries its act, opening it in the launcher;
-# about 490 KB since the builders' code, which adds 45 KB and a card when one is named.
-BUDGET = Budget(files=25, kilobytes=495, elements=415)
+# about 490 KB and 413 elements since the builders' code and card, ten elements, which
+# the fixture's one good builder always draws.
+BUDGET = Budget(files=25, kilobytes=495, elements=416)
 
 
 @pytest.fixture
@@ -690,7 +691,7 @@ def test_a_long_name_leaves_its_words_room_at_every_size(
 def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: StandIn) -> None:
     says_it_stands(system_page, "live")
     card = system_page.locator('#parts [data-part="part-builders"]')
-    expect(card, "builders were drawn while the node named none").to_have_count(0)
+    expect(card, "heron's card wasn't drawn").to_contain_text("One builder")
     gull: dict[str, object] = {
         "key": "builder:gull",
         "kind": "builder",
@@ -701,11 +702,12 @@ def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: Stan
         "ties": None,
     }
     system_daemon.tell("builder", changed=[gull])
-    named = ["machine:kestrel", "machine:osprey", "builder:gull"]
+    named = ["machine:kestrel", "machine:osprey", "builder:heron", "builder:gull"]
     system_daemon.tell("part", changed=[{"key": "part:machines", "things": named}])
     expect(card, "gull's record never reached the page").to_contain_text(
         "gull (watch) isn't answering", timeout=PACE_MS
     )
+    expect(card, "heron wasn't said beside gull").to_contain_text("heron")
     look = system_page.locator("#looks a[data-row^='look:builder:gull:']")
     expect(look, "gull's look wasn't listed").to_have_attribute("href", "../mycelium/#builder=gull")
     counted(system_page)
