@@ -56,7 +56,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     let line = script(
         "QEST-20261115-ABC123",
         "7-9",
-        ".cache/e/",
+        ".e",
         Path::new("a b"),
         &kind("export PATH=/far/bin:$PATH"),
         &command,
@@ -64,7 +64,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     for says in [
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
         "work=\"${XDG_CACHE_HOME:-$HOME/.cache}\"/pi/agentic-harness.pi/quest-workspace/\
-         QEST-20261115-ABC123/.cache/e/7-9\n",
+         QEST-20261115-ABC123/.e/7-9\n",
         "until arrived; do",
         "cd \"$work\"/'a b' || {\n",
         "  say 'elsewhere: refusing 7-9'\n  exit 77\n}\nsay 'elsewhere: running 7-9'\n",

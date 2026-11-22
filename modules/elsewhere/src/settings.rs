@@ -1,5 +1,5 @@
 //! What elsewhere is told: the machines it may send to, the first taken
-//! by `--there`, the folder under each machine's home its copies run in, and
+//! by `--there`, the hidden folder in the quest's far scratch its copies run in, and
 //! each kind of job it may send. A machine repository writes them, through
 //! home.nix, to `$XDG_CONFIG_HOME/elsewhere/settings.json`, since which
 //! machines a realm holds and what each needs to run a kind are its
@@ -99,9 +99,9 @@ pub fn read(text: &str) -> Result<Settings, String> {
             text.clone_into(slot);
         }
     }
-    if !one_folder(&settings.scratch) {
+    if !one_hidden_folder(&settings.scratch) {
         return Err(format!(
-            "scratch is one folder's name in the quest's scratch, other than the handover, not {:?}",
+            "scratch is one hidden folder's name in the quest's scratch, such as .elsewhere-runs, not {:?}",
             settings.scratch
         ));
     }
@@ -178,16 +178,12 @@ fn plain(path: &str) -> bool {
             .all(|part| !part.is_empty() && !part.starts_with('.'))
 }
 
-/// Whether `name` names one folder within the quest's scratch, and not
-/// the handover: a job's copy is emptied before it's made, so it must
-/// never land on the files that crossed for the job, or outside the quest.
-fn one_folder(name: &str) -> bool {
-    let handover = crate::far::HANDOVER.split('/').next().unwrap_or_default();
-    !name.is_empty()
-        && !name.contains('/')
-        && !name.starts_with('-')
-        && !matches!(name, "." | "..")
-        && name != handover
+/// Whether `name` names one hidden folder within the quest's scratch: a
+/// job's copy is emptied before it's made, so it must never land on the
+/// handover, in any case a far disk may fold, or outside the quest; and a
+/// share carries home every name that isn't hidden.
+fn one_hidden_folder(name: &str) -> bool {
+    name.len() > 1 && name.starts_with('.') && name != ".." && !name.contains('/')
 }
 
 fn strings(value: &Value, what: &str) -> Result<Vec<String>, String> {
@@ -262,17 +258,20 @@ mod tests {
             "a/b",
             "/runs/",
             "-x",
+            "runs",
             "handover",
+            "Handover",
             "handover/elsewhere",
+            ".runs/x",
         ] {
             let text = serde_json::json!({ "scratch": scratch }).to_string();
             let problem = read(&text).expect_err(&format!("the scratch {scratch:?} was taken"));
             assert!(
-                problem.contains("one folder's name"),
+                problem.contains("one hidden folder's name"),
                 "the scratch {scratch:?} was refused as {problem}"
             );
         }
-        for scratch in [".elsewhere-runs", "runs"] {
+        for scratch in [".elsewhere-runs", "..."] {
             let text = serde_json::json!({ "scratch": scratch }).to_string();
             assert_eq!(
                 read(&text).map(|settings| settings.scratch),

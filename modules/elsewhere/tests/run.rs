@@ -26,8 +26,9 @@ const SCRATCHES: &str = ".cache/pi/agentic-harness.pi/quest-workspace";
 /// folder a build fills. The run stands as a strict fence does: it starts
 /// in the `--folder` named, at its place under the far home, refuses to
 /// start in the home itself, and can write nothing in the far home outside
-/// that folder, and ends 99 if it finds it can, as under root, so a fence
-/// that stopped holding fails every far test. Every ask is kept in
+/// that folder, and ends 99 if it finds it can, as under root, so under a
+/// fence that stopped holding no job runs far, and every test that looks
+/// for a far run fails. Every ask is kept in
 /// `asked`, a line each.
 const MYCELIUM: &str = r#"#!/bin/sh
 echo "$@" >> "$REALM/asked"
