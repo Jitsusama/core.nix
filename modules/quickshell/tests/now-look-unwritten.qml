@@ -83,13 +83,21 @@ ShellRoot {
     }
     property string watch: "all"
 
-    // The launcher as Now reads it, shut, with no other source.
+    // The launcher as Now reads it, shut, with no other source, counting
+    // each time it's asked to say a Go's session is gone (Launcher.qml's
+    // toldGone), which Now calls by name, so a rename fails here.
     QtObject {
         id: theLauncher
 
         property bool open: false
         property var held: []
         readonly property var sources: []
+        property int goneTold: 0
+
+        function toldGone(moved) {
+            goneTold += 1;
+            return true;
+        }
 
         function wants(source) {
             return true;

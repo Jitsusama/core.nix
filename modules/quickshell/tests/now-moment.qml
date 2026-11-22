@@ -245,6 +245,7 @@ ShellRoot {
         property var told: []
         property string intoAsked: ""
         property int goneTold: 0
+        property var goneMoved: []
 
         function toldThat(what, why) {
             told = told.concat([{ what: what, why: why }]);
@@ -252,8 +253,9 @@ ShellRoot {
         function into(name) {
             intoAsked = name;
         }
-        function toldGone() {
+        function toldGone(moved) {
             goneTold += 1;
+            goneMoved = goneMoved.concat([moved]);
             return true;
         }
         // Set without one only by a case that asks what's left without it.
@@ -1839,6 +1841,41 @@ ShellRoot {
                 && Sessions.steered[steeredBefore]?.fields?.value === "merge"
                 && askingRow() === undefined,
             JSON.stringify([Sessions.steered.slice(steeredBefore), askingRow()?.side]));
+        // Where an answer goes: to the cell Talk reaches where that is the
+        // one that left it, by the address it goes by now, else to the
+        // quest's own, never to a stranger on another quest that lists the
+        // look's address; and who asks, where the look says none, is that
+        // same cell's title.
+        const queue = { value: "merge", label: "Queue It" };
+        const onQuestOne = { id: "r", kind: "pr", title: "Read R", state: "waiting",
+            quest: "QEST-1-ABCDEF", session: "s-1", address: "AAAAAA", cell: "AAAAAA" };
+        const lister = { address: "DDDDDD", title: "Elsewhere", presence: { session: "s-4",
+            quest: "QEST-2-XXXXXX", addresses: ["AAAAAA"] } };
+        const ownOne = { address: "ABCDEF", title: "Here", presence: { session: "s-2",
+            quest: "QEST-1-ABCDEF" } };
+        const movedOne = { address: "NNNNNN", title: "Moved", presence: { session: "s-1",
+            quest: "QEST-1-ABCDEF" } };
+        const heldBefore = [Sessions.running, Sessions.parked];
+        const steerOf = (running, parked) => {
+            Sessions.running = running;
+            Sessions.parked = parked;
+            const from = Sessions.steered.length;
+            now.answerLook(onQuestOne, queue);
+            now.lookAnswers = {};
+            return Sessions.steered.slice(from).map(one => one.address);
+        };
+        expect("an answer, a stranger on another quest listing its address, to its quest's",
+            steerOf([lister], []), ["ABCDEF"]);
+        expect("an answer, the one that left it under a new address, there",
+            steerOf([lister, movedOne], []), ["NNNNNN"]);
+        expect("an answer, the one that left it parked, there too",
+            steerOf([lister], [movedOne]), ["NNNNNN"]);
+        Sessions.running = [lister, ownOne];
+        Sessions.parked = [];
+        expect("who asks, where the look names none, the cell Talk reaches, not a stranger",
+            now.lookAsker(onQuestOne), "Here");
+        Sessions.running = heldBefore[0];
+        Sessions.parked = heldBefore[1];
         // Later cases count the steers the shell itself sends from none.
         Sessions.steered = Sessions.steered.slice(0, steeredBefore);
         now.lookAnswers = {};
@@ -2204,6 +2241,20 @@ ShellRoot {
         expect("a served quiet terminal look whose session is gone opens nothing and says so",
             Sessions.wentTo === null && theLauncher.goneTold === 1,
             JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneTold]));
+        // One whose session is still held, on another quest now, says it has
+        // moved on, not that it has ended.
+        const runningBefore = Sessions.running;
+        Sessions.running = [{ address: "GONEQQ", title: "Elsewhere",
+            presence: { session: "s-gone", quest: "QEST-OTHER" } }];
+        theLauncher.goneMoved = [];
+        now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
+            state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
+            cell: "GONEQQ" } }, "row:looks-history:q").run();
+        expect("one whose session works on another quest now says it moved on, not gone",
+            Sessions.wentTo === null && JSON.stringify(theLauncher.goneMoved) === "[true]",
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneMoved]));
+        Sessions.running = runningBefore;
+        theLauncher.goneMoved = [];
         theLauncher.goneTold = 0;
         theLauncher.told = [];
         theLauncher.intoAsked = "";

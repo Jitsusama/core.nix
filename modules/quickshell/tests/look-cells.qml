@@ -183,11 +183,28 @@ QtObject {
         const moved = { address: "NNNNNN", presence: { session: "s-1", quest: "Q-1" } };
         expect("said to go nowhere, the one that left it under a new address, on its quest",
             Looks.cellFor(naming("GGGGGG"), cells, [heir, moved], []).address, "NNNNNN");
+        const movedOnNone = { address: "NNNNNN", presence: { session: "s-1" } };
+        expect("the one that left it under a new address, on no quest yet, by its id",
+            Looks.cellFor(naming("GGGGGG"), cells, [movedOnNone, heir], []).address, "NNNNNN");
+        expect("but never another on no quest yet that only lists its address",
+            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "PPPPPP",
+                presence: { session: "s-7", addresses: ["AAAAAA"] } }, heir], []).address,
+            "BBBBBB");
         const movedAway = { address: "NNNNNN", presence: { session: "s-1", quest: "Q-9" } };
         expect("the one that left it, on another quest now, not followed",
             Looks.cellFor(naming("GGGGGG"), cells, [movedAway], []), null);
         expect("the one that left it on another quest now, the look's quest's session instead",
             Looks.cellFor(naming("GGGGGG"), cells, [movedAway, heir], []).address, "BBBBBB");
+        // Go on such a look says its session has moved on rather than ended,
+        // where the one that left it is held by its id or the very address.
+        expect("the one that left it, held on another quest, moved on; gone or listing, not",
+            [Looks.movedOn(naming("GGGGGG"), [movedAway], []),
+                Looks.movedOn(naming("GGGGGG"), [], [{ address: "AAAAAA",
+                    presence: { quest: "Q-9" } }]),
+                Looks.movedOn(naming("GGGGGG"), [stranger], []),
+                Looks.movedOn(naming("GGGGGG"), [{ address: "PPPPPP",
+                    presence: { session: "s-7", addresses: ["AAAAAA"] } }], [])],
+            [true, true, false, false]);
         expect("the daemon away, the look's quest's session still, never the one moved away",
             Looks.cellFor(naming("GGGGGG"), {}, [movedAway, heir], []).address, "BBBBBB");
         expect("the daemon's answer on its quest before the one that left it there",

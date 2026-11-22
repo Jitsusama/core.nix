@@ -105,13 +105,15 @@ function offers(choices) {
 }
 
 // Joel's answer to a look, as the steer that tells it to the session that
-// left it, `{ address, steer }`, at `at`: to that session while it runs,
-// else to its quest's, whose address is the quest's own last part, so the
-// look is answered where the asking goes on (85PKB2, 2026-11-12). Null
-// where neither is known.
-function answer(one, choice, live, at) {
+// left it, `{ address, steer }`, at `at`: to that session where it is the
+// look's cell (`cell`, cellFor's), by the address it goes by now, which
+// Talk and Go To reach too, else to its quest's, whose address is the
+// quest's own last part, so the look is answered where the asking goes on
+// (85PKB2, 2026-11-12). Null where neither is known.
+function answer(one, choice, cell, at) {
     const quest = String(one.quest ?? "").split("-").pop();
-    const address = String((live ? one.address : quest) || one.address || "").toUpperCase();
+    const live = cell !== null && cell !== undefined && ForYou.leftBy(one, cell);
+    const address = String((live ? cell.address : quest) || one.address || "").toUpperCase();
     if (address === "") {
         return null;
     }
@@ -221,10 +223,12 @@ function cellGoes(one, cells) {
 // sessions on the look's quest alone: the one that left it, by its id or
 // any address it answers to, as cells.rs `claim` ranks a cell's old name
 // on its quest, then the quest's own, so the daemon going away never moves
-// Talk off the look's quest. A look on no quest reaches only the session
-// that left it, by its own id, wherever it is, since sessions on no quest
-// share nothing, and there a session that merely lists the cell's address
-// is never found. The daemon and the lists each read the node and either
+// Talk off the look's quest; the one that left it, by its own id, counts
+// there on no quest yet too, as the cell itself does, since a session
+// started again can name its quest a beat after it's held. A look on no
+// quest reaches only the session that left it, by its own id, wherever it
+// is, since sessions on no quest share nothing, and there a session that
+// merely lists the cell's address is never found. The daemon and the lists each read the node and either
 // can be a beat behind, so a cell back again wins over an older answer. A
 // look naming no cell searches every session until every look names its
 // cell, by Mon 23 Nov 2026.
@@ -244,9 +248,23 @@ function cellFor(one, cells, running, parked) {
     if (quest === "") {
         return held.find(session => leftByItsId(one, session)) ?? null;
     }
-    const on = held.filter(session => onQuest(session, quest));
+    const on = held.filter(session => onQuest(session, quest)
+        || (questOf(session) === "" && leftByItsId(one, session)));
     return on.find(session => goes !== null && goes !== "" && session.address === goes)
         ?? cellOf(one, on, []);
+}
+
+// Whether the session that left look `one` is still held, running or
+// parked, by pi's id for it or the very address the look names, where
+// cellFor leads nowhere: it has moved on to another quest rather than
+// ended, so Go says so. One that merely lists the look's address among
+// its own is no sign the leaver lives.
+function movedOn(one, running, parked) {
+    const held = (Array.isArray(running) ? running : [])
+        .concat(Array.isArray(parked) ? parked : []);
+    const address = typeof one.address === "string" ? one.address : "";
+    return held.some(session => leftByItsId(one, session)
+        || (address !== "" && session.address === address));
 }
 
 // A look done with, as History leads it to its cell: one written before

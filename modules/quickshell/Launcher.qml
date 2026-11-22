@@ -1625,11 +1625,13 @@ Scope {
     // launcher on Agents to say it with Joel's first keys held back (Prompt.qml's linked), as
     // one he didn't open himself; over a launcher in use it says nothing (inUse). goToCell's,
     // and a look's Go in Now, which runs once the launcher has shut, while he may be typing
-    // into the terminal he expected. Whether it said so.
-    function toldGone() {
+    // into the terminal he expected. Where it's `moved`, a look's session still held on
+    // another quest, it says that it has moved on, not that it has ended. Whether it said so.
+    function toldGone(moved) {
         if (inUse())
             return false;
-        const gone = Words.of("verb:notice:goTo").said ?? {};
+        const said = Words.of("verb:notice:goTo").said ?? {};
+        const gone = moved === true ? said.moved ?? {} : said;
         toldThat(gone.gone ?? "", gone.why ?? "");
         into("agents");
         prompt.linked();

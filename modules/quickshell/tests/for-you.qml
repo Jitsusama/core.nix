@@ -417,14 +417,18 @@ QtObject {
             ["The trunk disk incident", "Merge it now, or hold it?",
                 "It waits, unmerged, and the rescans go on."]);
         const posted = { value: "posted", label: "Posted" };
-        expect("an answer, to the session while it runs",
-            Looks.answer(choosing, posted, true, now),
-            { address: "VP50PC", steer: { act: "answer", look: "P", value: "posted",
+        const elsewhere = Object.assign({}, choosing, { address: "07HV3N" });
+        expect("an answer, to the session that left it, by the address it goes by now",
+            Looks.answer(elsewhere, posted, { address: "m0ved1",
+                presence: { addresses: ["07HV3N"] } }, now),
+            { address: "M0VED1", steer: { act: "answer", look: "P", value: "posted",
                 from: "joel", at: "2026-11-08T14:00:00.000Z" } });
         expect("and to its quest once it's ended",
-            (Looks.answer(Object.assign({}, choosing, { address: "07HV3N" }), posted, false,
-                now) ?? {}).address, "VP50PC");
-        expect("with nowhere to go, none", Looks.answer({ id: "N" }, posted, false, now), null);
+            (Looks.answer(elsewhere, posted, null, now) ?? {}).address, "VP50PC");
+        expect("and to its quest where its cell is another that didn't leave it",
+            (Looks.answer(elsewhere, posted, { address: "DDDDDD", presence: {} }, now) ?? {})
+                .address, "VP50PC");
+        expect("with nowhere to go, none", Looks.answer({ id: "N" }, posted, null, now), null);
         const given = { P: { label: "Posted", at: now } };
         expect("an answer given, while it may take, then not",
             [Looks.answering(choosing, given, now + 59 * 1000),

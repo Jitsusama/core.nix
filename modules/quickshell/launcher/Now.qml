@@ -1206,19 +1206,24 @@ Provider {
     // pressed, waking it first where it's parked, as a want's Go To does.
     // Where none is held it says so through the launcher's toldGone, the
     // same as a Go To from outside, his first keys held back, since a press
-    // runs once the launcher has shut and a press never goes nowhere
-    // unsaid. The journal names what the look led by, so a report reads
-    // why. Whether a session was held to go to: a parked one whose wake is
-    // refused says why on the foot, and still counts.
+    // runs once the launcher has shut: that its session has ended, or has
+    // moved on to another quest where it's still held (Looks.js's movedOn).
+    // Over a launcher or a talk line Joel has up by then it says nothing
+    // on screen, as toldGone never opens over what he's typing, and only
+    // the journal says so. The journal names what the look led by, so a
+    // report reads why. Whether a session was held to go to: a parked one
+    // whose wake is refused says why on the foot, and still counts.
     function goToCell(one) {
         const cell = lookCell(one);
         if (cell === null) {
-            console.warn(`Now: no session held for look ${one.id} to go to: cell`
-                + ` ${JSON.stringify(one.cell ?? null)},`
+            const moved = Looks.movedOn(one, Sessions.running, Sessions.parked);
+            const told = provider.launcher?.toldGone(moved) === true;
+            console.warn(`Now: no session held for look ${JSON.stringify(one.id)} to go to:`
+                + ` cell ${JSON.stringify(one.cell ?? null)},`
                 + ` quest ${JSON.stringify(one.quest ?? null)},`
                 + ` session ${JSON.stringify(one.session ?? null)}, the daemon says`
-                + ` ${JSON.stringify(Looks.cellGoes(one, cellsDaemon.held))}`);
-            provider.launcher?.toldGone?.();
+                + ` ${JSON.stringify(Looks.cellGoes(one, cellsDaemon.held))},`
+                + ` ${moved ? "moved on" : "gone"}, ${told ? "told" : "not told, in use"}`);
             return false;
         }
         Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
@@ -1300,14 +1305,13 @@ Provider {
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
     // into a pi sessino that has already moved on from it is a waste of my
     // time"): a steer tells the session that left it, where that is the
-    // look's cell (lookCell), never one on another quest that lists its
-    // address, or else its quest's, which writes the look resolved. One the
-    // node took leaves what waits at once; one it didn't is no longer shown as given, so its choices
-    // come back.
+    // look's cell (lookCell), by the address Talk reaches, never one on
+    // another quest that lists its address, or else its quest's, which
+    // writes the look resolved (Looks.js's answer). One the node took
+    // leaves what waits at once; one it didn't is no longer shown as given,
+    // so its choices come back.
     function answerLook(one, choice) {
-        const cell = lookCell(one);
-        const told = Looks.answer(one, choice, cell !== null && ForYou.leftBy(one, cell),
-            Date.now());
+        const told = Looks.answer(one, choice, lookCell(one), Date.now());
         if (told === null)
             return;
         lookAnswers = Object.assign({}, lookAnswers,

@@ -114,6 +114,11 @@
     and the field's path shares its room with a folder's path giving way first, down to its least,
     before the other steps share what's left
   '';
+  a-look-leads-to-its-cell = ''
+    a look's Talk and Go To reach the session that left it, the agents daemon's answer for its
+    cell, or a session on its quest, never one on another, a Go whose session works on another
+    quest now says it moved on, and a served look settles only once it opened
+  '';
   a-low-charge-is-said-once = ''
     a battery that reports only its charge runs low at its mark and critical at its own, only ever
     deeper until it charges or rises five points past the low mark, so a charge wavering about a
@@ -1381,7 +1386,7 @@
     history, newest first, leaving out any it can't read, offers a look's choices, answered by a
     steer to the session that left it or its quest's and then in History, and gathers what other
     sources give it, as Passwords' one to-do, into what waits, weighed beside the rest, and what's
-    done, and finds the cell a look leads to: the session that left it, else one on its quest
+    done
   '';
   formatting = ''
     everything is formatted and passes the linters
