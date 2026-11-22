@@ -544,26 +544,6 @@ in
       touch $out
     '';
 
-  # A shut launcher counts the holders of its heap once a shell and weighs
-  # what letting go of each of the largest would free, keeping what a busy
-  # answer or an opening put off for the next closing, as
-  # modules/quickshell/tests/weighing.qml holds launcher/Weighing.js to it
-  # in Qt's own engine.
-  the-launcher-weighs-what-it-owes =
-    let
-      qt = pkgs.qt6.qtdeclarative;
-    in
-    pkgs.runCommandLocal "the-launcher-weighs-what-it-owes" { } ''
-      cp ${../tests/weighing.qml} weighing.qml
-      cp ${../launcher/Weighing.js} Weighing.js
-      cp ${../../../tests/lib/Expect.js} Expect.js
-      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
-      ${shellFolderLint}
-      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml weighing.qml
-      touch $out
-    '';
-
   # A row an act asked a daemon to change is drawn as it will be until its
   # source agrees, as modules/quickshell/tests/becoming.qml holds
   # launcher/Becoming.js to it in Qt's own engine.
