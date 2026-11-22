@@ -5213,14 +5213,16 @@ exit 0
     fn a_builder_that_failed_its_proofs_goes_as_lost_whatever_gave_it_back() {
         assert_eq!(gone_as(true, Event::Stopped), Event::Lost, "left idle");
         assert_eq!(gone_as(false, Event::Stopped), Event::Stopped, "it passed");
-        let after = |event| decide::next_after(event, true, 0, u64::MAX, false, 100).until;
+        // Long enough after its making for an idle builder's hold to apply.
+        let now = decide::IDLE + 100;
+        let after = |event| decide::next_after(event, true, 0, u64::MAX, false, now).until;
         assert_eq!(
             after(gone_as(true, Event::Stopped)),
-            100,
+            now,
             "another is asked for at once"
         );
         assert!(
-            after(Event::Stopped) > 100,
+            after(Event::Stopped) > now,
             "as Stopped it would have waited an idle builder's hold"
         );
     }
