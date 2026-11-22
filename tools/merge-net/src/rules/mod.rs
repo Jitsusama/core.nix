@@ -1,11 +1,14 @@
 //! Which changes run their VM tests before they merge: `must-run.txt`
-//! names each area, the paths that are it and the tests it runs.
+//! names each area, the paths that are it and the tests it runs. Beside
+//! it, which lock changes may leave the lock's area untouched (`lock`).
+
+pub mod lock;
 
 use crate::watch::Changed;
 
 /// The areas, as `must-run.txt` holds them, built into the program so it
 /// answers the same on any branch it was built from.
-const MUST_RUN: &str = include_str!("../must-run.txt");
+const MUST_RUN: &str = include_str!("../../must-run.txt");
 
 /// An area whose changes run their VM tests before merging.
 #[derive(Debug, PartialEq, Eq)]

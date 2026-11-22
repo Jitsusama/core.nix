@@ -1,6 +1,6 @@
 //! `merge-net needs`, on a branch: whether its change runs VM tests before
 //! it merges, rather than after on the net, and which. It names each VM
-//! test whose area the change touches (`rules.rs`) and each that owns one
+//! test whose area the change touches (`rules/`) and each that owns one
 //! of its files (`owners/`), and keeps only those whose derivation moved
 //! from main, read from a run that passed at a clean head where one did
 //! (`gated.rs`) and asked of changed-checks otherwise.
@@ -11,6 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
+use crate::rules::lock;
 use crate::state::{self, short};
 use crate::{SYSTEM, comments, gated, git, macs, owners, ready, rules, world};
 
@@ -43,6 +44,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     let areas = rules::areas();
     let known = known_vm_tests();
     let root = git(&["rev-parse", "--show-toplevel"])?;
+    let (files, lock_moved) = lock_left(files, &merge_base, Path::new(&root));
     let owning = owning(&root, &files);
     let clean = git(&["status", "--porcelain"]).is_ok_and(|status| status.is_empty());
     let came_before = |commit: &str| {
@@ -61,11 +63,12 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         crate::earlier::pass(&head, &git(&["rev-parse", base]).ok()?)
     });
     let named = kept.as_ref().map(|(said, _)| said.as_str());
-    if owning.is_empty()
-        && rules::first(&areas, &files, named, known.as_deref())
-            .touched
-            .is_empty()
-    {
+    if nothing_asked(
+        &owning,
+        &rules::first(&areas, &files, named, known.as_deref()),
+        named,
+        lock_moved,
+    ) {
         println!("no: nothing here needs its VM tests before merging; the net runs them after");
         gated::keep(&head, began, gated::Asked::Nothing);
         return Ok(ExitCode::SUCCESS);
@@ -90,6 +93,7 @@ fn answer(base: &str) -> Result<ExitCode, String> {
     if said.is_none() {
         println!("(changed-checks couldn't say which VM tests moved, so every one named runs)");
     }
+    let files = lock_kept_unsaid(files, lock_moved, said.as_deref());
     let found = rules::first(&areas, &files, said.as_deref(), known.as_deref());
     let moved = said.as_deref().map(rules::moved);
     let owning: Vec<String> = owning
@@ -136,6 +140,101 @@ fn answer(base: &str) -> Result<ExitCode, String> {
         println!("(the names are patterns: no list of the checks was found to match them against)");
     }
     Ok(ExitCode::SUCCESS)
+}
+
+/// Whether `needs` may answer no without asking changed-checks which VM
+/// tests moved: no VM test owns a file of the change, `found` touches no
+/// area, and no lock was let through unread, since a lock's inputs can move
+/// a machine's initrd, which only a passed gate's record (`named`) or an
+/// evaluation says.
+fn nothing_asked(
+    owning: &[String],
+    found: &rules::Needs,
+    named: Option<&str>,
+    lock_moved: bool,
+) -> bool {
+    owning.is_empty() && found.touched.is_empty() && (named.is_some() || !lock_moved)
+}
+
+/// `files` with the lock put back where it was let through but
+/// changed-checks couldn't say what moved (`said`), since only that says
+/// whether a let-through input reached a machine's initrd; so the lock's
+/// area names every VM test, as it did before any lock was let through.
+fn lock_kept_unsaid(mut files: Vec<String>, lock_moved: bool, said: Option<&str>) -> Vec<String> {
+    if lock_moved && said.is_none() {
+        println!(
+            "({} runs its VM tests first after all: what its inputs moved couldn't be read)",
+            lock::LOCK
+        );
+        files.push(lock::LOCK.to_owned());
+        files.sort();
+    }
+    files
+}
+
+/// `files` as `lock_decided` leaves them, reading each file as
+/// `merge_base` holds it in the repo at `root`, or as its working copy
+/// does, and printing what it says; with whether it let the lock through.
+fn lock_left(files: Vec<String>, merge_base: &str, root: &Path) -> (Vec<String>, bool) {
+    let had_lock = files.iter().any(|file| file == lock::LOCK);
+    let (files, said) = lock_decided(
+        files,
+        |path| crate::git_at(root, &["show", &format!("{merge_base}:{path}")]).ok(),
+        |path| fs::read_to_string(root.join(path)).ok(),
+    );
+    if let Some(said) = said {
+        println!("{said}");
+    }
+    let moved = had_lock && !files.iter().any(|file| file == lock::LOCK);
+    (files, moved)
+}
+
+/// `files` without the lock file where its change from the merge base,
+/// read by `base`, to the working copy, read by `working`, moves only
+/// inputs `lock-after.txt` names, since a broken one can't stop a machine
+/// booting and the net runs its VM tests after the merge; with a line
+/// saying so, or why the lock stays. The list is read from the merge base
+/// alone, so a change can't widen the list it is judged by, and a base
+/// without it lets nothing through. A lock either side doesn't hold, or
+/// that doesn't read, stays.
+fn lock_decided(
+    files: Vec<String>,
+    base: impl Fn(&str) -> Option<String>,
+    working: impl Fn(&str) -> Option<String>,
+) -> (Vec<String>, Option<String>) {
+    if !files.iter().any(|file| file == lock::LOCK) {
+        return (files, None);
+    }
+    let judged = match (
+        base(lock::LOCK_AFTER),
+        base(lock::LOCK),
+        working(lock::LOCK),
+    ) {
+        (None, _, _) => Err(format!("the merge base holds no {}", lock::LOCK_AFTER)),
+        (_, None, _) => Err("it can't be read at the merge base".to_owned()),
+        (_, _, None) => Err("it can't be read in the working copy".to_owned()),
+        (Some(after), Some(before), Some(now)) => {
+            lock::lock_judged(&before, &now, &lock::lock_after(&after))
+        }
+    };
+    match judged {
+        Ok(moved) => (
+            files
+                .into_iter()
+                .filter(|file| file != lock::LOCK)
+                .collect(),
+            Some(format!(
+                "({} moves only {}, which lock-after.txt lets move with its VM tests run after \
+                 the merge)",
+                lock::LOCK,
+                moved.join(" ")
+            )),
+        ),
+        Err(why) => (
+            files,
+            Some(format!("({} runs its VM tests first: {why})", lock::LOCK)),
+        ),
+    }
 }
 
 /// The VM tests that own one of `files` in the checkout at `root`, saying
@@ -230,5 +329,184 @@ mod tests {
             said.contains("with no words"),
             "it doesn't warn that no words runs nothing: {said}"
         );
+    }
+
+    /// A lock whose root names mycelium and nixpkgs, at the revs given.
+    fn lock_at(mycelium: &str, nixpkgs: &str) -> String {
+        serde_json::json!({
+            "nodes": {
+                "root": { "inputs": { "mycelium": "mycelium", "nixpkgs": "nixpkgs" } },
+                "mycelium": { "locked": { "rev": mycelium } },
+                "nixpkgs": { "locked": { "rev": nixpkgs } },
+            },
+            "root": "root",
+            "version": 7,
+        })
+        .to_string()
+    }
+
+    /// A side of a change holding `lock` and, when given, `after` as its
+    /// list.
+    fn side(lock: String, after: Option<&str>) -> impl Fn(&str) -> Option<String> {
+        let after = after.map(str::to_owned);
+        move |path| match path {
+            lock::LOCK => Some(lock.clone()),
+            lock::LOCK_AFTER => after.clone(),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn a_lock_moving_only_a_listed_input_leaves_the_files() {
+        let files = vec![lock::LOCK.to_owned(), "flake.nix".to_owned()];
+        let (left, said) = lock_decided(
+            files,
+            side(lock_at("a", "n"), Some("mycelium\n")),
+            side(lock_at("b", "n"), Some("mycelium\n")),
+        );
+        assert_eq!(left, vec!["flake.nix".to_owned()]);
+        assert!(
+            said.as_deref()
+                .is_some_and(|said| said.contains("moves only mycelium")),
+            "it doesn't say the lock was let through: {said:?}"
+        );
+    }
+
+    #[test]
+    fn a_lock_is_judged_by_the_list_its_merge_base_holds() {
+        // The change adds nixpkgs to its own list beside a nixpkgs move.
+        let files = vec![lock::LOCK.to_owned()];
+        let (left, said) = lock_decided(
+            files.clone(),
+            side(lock_at("a", "n"), Some("mycelium\n")),
+            side(lock_at("a", "m"), Some("mycelium\nnixpkgs\n")),
+        );
+        assert_eq!(
+            left, files,
+            "a list widened by the change let its lock through"
+        );
+        assert!(
+            said.as_deref().is_some_and(|said| said.contains("nixpkgs")),
+            "it doesn't name what kept the lock: {said:?}"
+        );
+    }
+
+    #[test]
+    fn a_merge_base_without_the_list_lets_no_lock_through() {
+        let files = vec![lock::LOCK.to_owned()];
+        let (left, said) = lock_decided(
+            files.clone(),
+            side(lock_at("a", "n"), None),
+            side(lock_at("b", "n"), Some("mycelium\n")),
+        );
+        assert_eq!(left, files, "a base with no list let the lock through");
+        assert!(
+            said.as_deref()
+                .is_some_and(|said| said.contains("holds no tools/merge-net/lock-after.txt")),
+            "it doesn't say the base lacks the list: {said:?}"
+        );
+    }
+
+    #[test]
+    fn the_list_is_read_from_the_merge_base_not_the_change() {
+        // Round 2 of #6039: nothing reached the git read the safety claim
+        // rests on, so reading the list from the working copy passed.
+        let repo = std::env::temp_dir().join(format!("merge-net-lock-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&repo);
+        fs::create_dir_all(repo.join("tools/merge-net")).unwrap();
+        let in_repo = |arguments: &[&str]| crate::tests::git_in(&repo, arguments);
+        in_repo(&["init", "-q", "-b", "main"]);
+        fs::write(repo.join(lock::LOCK_AFTER), "mycelium\n").unwrap();
+        fs::write(repo.join(lock::LOCK), lock_at("a", "n")).unwrap();
+        in_repo(&["add", "."]);
+        in_repo(&["commit", "-qm", "base"]);
+        let base = in_repo(&["rev-parse", "HEAD"]);
+        let files = vec![lock::LOCK.to_owned()];
+        // The change commits its widened list, so reading HEAD's list, not
+        // the merge base's, would let it through too.
+        fs::write(repo.join(lock::LOCK_AFTER), "mycelium\nnixpkgs\n").unwrap();
+        fs::write(repo.join(lock::LOCK), lock_at("a", "m")).unwrap();
+        in_repo(&["commit", "-qam", "widen"]);
+        assert_eq!(
+            lock_left(files.clone(), &base, &repo),
+            (files.clone(), false),
+            "a change widening its own list let its lock through"
+        );
+        fs::write(repo.join(lock::LOCK), lock_at("b", "n")).unwrap();
+        assert_eq!(
+            lock_left(files, &base, &repo),
+            (Vec::new(), true),
+            "a lock moving only what the merge base lists was kept"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn a_lock_neither_side_can_read_stays() {
+        let files = vec![lock::LOCK.to_owned()];
+        let list_only = |path: &str| (path == lock::LOCK_AFTER).then(|| "mycelium\n".to_owned());
+        for (base_has_lock, why) in [(false, "at the merge base"), (true, "in the working copy")] {
+            let base = side(lock_at("a", "n"), Some("mycelium\n"));
+            let working = side(lock_at("b", "n"), Some("mycelium\n"));
+            let (left, said) = if base_has_lock {
+                lock_decided(files.clone(), base, list_only)
+            } else {
+                lock_decided(files.clone(), list_only, working)
+            };
+            assert_eq!(left, files, "a lock missing {why} was let through");
+            assert!(
+                said.as_deref().is_some_and(|said| said.contains(why)),
+                "it doesn't say the lock can't be read {why}: {said:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_lock_let_through_with_no_gate_record_still_asks_what_moved() {
+        // Round 2 of #6039: a lock moving only mycelium, with no passed gate
+        // to read, answered no before changed-checks could say whether the
+        // example laptop's initrd moved.
+        let found = rules::first(&rules::areas(), &[], None, None);
+        assert!(
+            !nothing_asked(&[], &found, None, true),
+            "a let-through lock with no record answered no unasked"
+        );
+        assert!(
+            nothing_asked(&[], &found, Some(""), true),
+            "a let-through lock whose gate record named nothing was asked again"
+        );
+        assert!(
+            nothing_asked(&[], &found, None, false),
+            "a change touching nothing, with no lock, was asked of changed-checks"
+        );
+    }
+
+    #[test]
+    fn a_let_through_lock_changed_checks_cant_compare_runs_every_vm_test() {
+        // Round 3 of #6039: with no record and changed-checks unable to
+        // compare, the let-through lock's area was gone and needs answered
+        // no, naming no test though it said every one named runs.
+        let known = vec!["vm-boot".to_owned(), "vm-desktop".to_owned()];
+        let files = lock_kept_unsaid(Vec::new(), true, None);
+        let found = rules::first(&rules::areas(), &files, None, Some(&known));
+        assert_eq!(
+            found.tests, known,
+            "a let-through lock nobody could compare ran fewer than every VM test"
+        );
+        assert!(
+            lock_kept_unsaid(Vec::new(), true, Some("")).is_empty(),
+            "a let-through lock changed-checks compared was kept"
+        );
+        assert!(
+            lock_kept_unsaid(Vec::new(), false, None).is_empty(),
+            "a change with no let-through lock gained one"
+        );
+    }
+
+    #[test]
+    fn a_change_leaving_the_lock_says_nothing_of_it() {
+        let files = vec!["flake.nix".to_owned()];
+        let (left, said) = lock_decided(files.clone(), |_| None, |_| None);
+        assert_eq!((left, said), (files, None));
     }
 }
