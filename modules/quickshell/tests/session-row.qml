@@ -1,8 +1,8 @@
 // How the launcher says where a pi session stands, run in Qt's own
 // JavaScript engine, the one the shell runs it in. The
 // `the-launcher-says-how-each-session-stands` check copies
-// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js
-// and Landed.js beside this file and runs
+// modules/quickshell/launcher/SessionRow.js, SessionDrawer.js, Holders.js,
+// Landed.js and ReopenTally.js beside this file and runs
 // `qml -platform offscreen session-row.qml`. How each session stands, in
 // the one order every list keeps (needs you, working, in line, listening,
 // paused, parked), is the agents daemon's (modules/agents/src/standing.rs),
@@ -15,6 +15,7 @@ import "SessionDrawer.js" as SessionDrawer
 import "Holders.js" as Holders
 import "SessionRow.js" as SessionRow
 import "Landed.js" as Landed
+import "ReopenTally.js" as ReopenTally
 import "Reading.js" as Reading
 
 QtObject {
@@ -537,6 +538,26 @@ QtObject {
             if (said !== want)
                 failures.push(`footName, ${what}: "${said}", not "${want}"`);
         }
+
+        // Reopen Them All counts what it finds gone as it goes, and a second
+        // run over the same kept row counts afresh rather than adding to the
+        // first's (core.nix#6037's F39).
+        const tally = ReopenTally.begun(3);
+        const heard = [];
+        const findingGone = count => gone => {
+            for (let found = 0; found < count; found += 1)
+                gone();
+        };
+        const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
+        ReopenTally.run(tally, findingGone(2), hear);
+        ReopenTally.run(tally, findingGone(1), hear);
+        const runs = heard.join("; ");
+        if (runs !== "1 gone, 2 reopened; 2 gone, 1 reopened; 1 gone, 2 reopened")
+            failures.push(`a second Reopen Them All counts afresh: "${runs}"`);
+        const none = ReopenTally.begun(3);
+        ReopenTally.run(none, findingGone(0), hear);
+        if (JSON.stringify(ReopenTally.said(none)) !== '{"gone":0,"reopened":3}')
+            failures.push(`none gone, all reopened: ${JSON.stringify(ReopenTally.said(none))}`);
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);

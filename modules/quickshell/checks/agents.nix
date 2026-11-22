@@ -253,9 +253,10 @@
   # worded, and the sessions beside the one drawn are found to watch their
   # drawers ahead, as modules/quickshell/tests/session-row.qml holds
   # launcher/SessionRow.js and SessionDrawer.js to them in Qt's own engine, and
-  # Landed what they landed, kept past their end (Landed.js). How Agents lays
-  # sessions out, and what its drawer says, is the agents daemon's, proven in
-  # its crate.
+  # Landed what they landed, kept past their end (Landed.js), and Reopen Them
+  # All counts what it found gone afresh each run (ReopenTally.js). How Agents
+  # lays sessions out, and what its drawer says, is the agents daemon's, proven
+  # in its crate.
   the-launcher-says-how-each-session-stands =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -266,6 +267,7 @@
       cp ${../launcher/SessionRow.js} SessionRow.js
       cp ${../launcher/Order.js} Order.js
       cp ${../launcher/Landed.js} Landed.js
+      cp ${../launcher/ReopenTally.js} ReopenTally.js
       cp ${../launcher/SessionDrawer.js} SessionDrawer.js
       ${copied [ "Reading.js" ]}
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
