@@ -11,7 +11,7 @@ import type { Forage } from "../model.ts";
 
 /** The floor of `list`, drawn with no cursor. */
 const floorOfAll = (list: readonly Forage[]): string =>
-  floorOf(list, floorFor(list, null), null, "kestrel");
+  floorOf(floorFor(list, null), null, "kestrel");
 
 /** A forage of kestrel's on `quest`, with `more` over its fields. */
 function forage(more: Partial<Forage> = {}): Forage {

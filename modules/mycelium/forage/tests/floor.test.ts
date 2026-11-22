@@ -62,7 +62,7 @@ const floorAt = (
   list: readonly Forage[],
   cursor: string | null,
   around: string | null = cursor,
-): string => floorOf(list, floorFor(list, around), cursor, "kestrel");
+): string => floorOf(floorFor(list, around), cursor, "kestrel");
 
 it("draws every cell of a list that fits, whatever the cursor", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 5), "C04")), span(0, 4));
@@ -216,16 +216,23 @@ it("draws the floor again only for a step to a cell it leaves off, or one that g
   assert.equal(stepsOff(kept, "C10"), false);
   assert.equal(stepsOff(kept, "C30"), false);
   assert.equal(stepsOff(kept, "C12"), true);
+  // A find that matches nothing leaves no cursor, and the floor stays.
+  assert.equal(stepsOff(kept, null), false);
   // A floor drawing the whole list never redraws.
   assert.equal(stepsOff(floorFor(LONG.slice(0, 5), null), "C04"), false);
 });
 
 it("keeps the floor drawn on a step it holds, and draws another for a step it leaves off", () => {
   const kept = floorFor(LONG, "C55");
-  assert.equal(floorStepped(LONG, kept, "C30"), kept);
-  assert.equal(floorStepped(LONG, kept, "C12").around, "C12");
+  assert.equal(floorStepped(kept, "C30"), kept);
+  const off = floorStepped(kept, "C12");
+  assert.equal(off.around, "C12");
+  // It draws the new floor over the list the old one was worked out for.
+  assert.equal(off.of, LONG);
   // With no cells, there's no floor to step off.
-  assert.equal(floorStepped([], UNDRAWN, "C12"), UNDRAWN);
+  assert.equal(floorStepped(UNDRAWN, "C12"), UNDRAWN);
+  const emptied = floorAfter([], kept, null);
+  assert.equal(floorStepped(emptied, "C12"), emptied);
 });
 
 it("keeps the floor still as the page steps and records arrive, until a step leaves it", () => {
@@ -233,16 +240,27 @@ it("keeps the floor still as the page steps and records arrive, until a step lea
   let shown = floorAfter(LONG, UNDRAWN, "C55");
   assert.equal(shown.around, "C55");
   const opened = shown;
-  shown = floorStepped(LONG, shown, "C30");
+  shown = floorStepped(shown, "C30");
   assert.equal(shown, opened);
-  shown = floorAfter(startedOn(LONG, "C59", "C58"), shown, "C30");
+  const recorded = startedOn(LONG, "C59", "C58");
+  shown = floorAfter(recorded, shown, "C30");
   assert.equal(shown.around, "C55");
   assert.deepEqual(
     shown.drawn.map((each) => each.cell),
     opened.drawn.map((each) => each.cell),
   );
-  shown = floorStepped(LONG, shown, "C12");
+  shown = floorStepped(shown, "C12");
   assert.equal(shown.around, "C12");
+  assert.equal(shown.of, recorded);
+});
+
+it("keeps the floor on its cell when a record adds one near it, shifting the cells beside it", () => {
+  // A record brings C40X in after C40, inside the floor kept around C55.
+  const inserted = LONG.flatMap((each) => (each.cell === "C40" ? [each, forage("C40X")] : [each]));
+  const shown = floorAfter(inserted, floorFor(LONG, "C55"), "C30");
+  assert.equal(shown.around, "C55");
+  const drawn = shown.drawn.map((each) => each.cell);
+  assert.deepEqual(drawn, ["C10", ...span(14, 40), "C40X", ...span(41, 59)]);
 });
 
 it("keeps the floor where it is while it holds the cursor, else draws it around the cursor", () => {
@@ -265,7 +283,7 @@ it("draws the cursor after a redraw around any kept cell, keeping it there while
     const there = floorFor(GROWN, kept);
     for (const { cell: cursor } of GROWN) {
       const floor = floorAfter(GROWN, there, cursor);
-      const drawn = compartments(floorOf(GROWN, floor, cursor, "kestrel"));
+      const drawn = compartments(floorOf(floor, cursor, "kestrel"));
       assert.ok(drawn.includes(cursor), `${kept}, ${cursor}: ${drawn.join(" ")}`);
       // Kept around another cell, it draws every cell the cursor started.
       const started = GROWN.filter((each) => each.startedBy === cursor);

@@ -314,8 +314,14 @@ function bookedFirst(forages: readonly Forage[], kids: readonly number[]): reado
   return [...kids.filter((place) => !claimed(place)), ...kids.filter(claimed)];
 }
 
-/** A floor drawn around a cell, the cells it draws, and the cells a step to which leaves it be. */
+/**
+ * A floor drawn around a cell: the list it was worked out for, the cells it
+ * draws, and the cells a step to which leaves it be. It carries its list, so
+ * nothing can draw or judge it against another.
+ */
 interface Floor {
+  /** The list it was worked out for. */
+  readonly of: readonly Forage[];
   /** The cell it's drawn around. */
   readonly around: string | null;
   /** The cells it draws, in the list's order. */
@@ -325,7 +331,7 @@ interface Floor {
 }
 
 /** The floor before the page has drawn one. */
-const UNDRAWN: Floor = { around: null, drawn: [], holds: new Set() };
+const UNDRAWN: Floor = { of: [], around: null, drawn: [], holds: new Set() };
 
 /**
  * The floor drawn around `around`, worked out once a draw so that a step
@@ -343,7 +349,7 @@ function floorFor(forages: readonly Forage[], around: string | null): Floor {
       holds.delete(by);
     }
   }
-  return { around, drawn: shown, holds };
+  return { of: forages, around, drawn: shown, holds };
 }
 
 /**
@@ -359,23 +365,25 @@ function stepsOff(floor: Floor, cursor: string | null): boolean {
 /**
  * The floor after a step to `cursor`: `shown` itself while it holds the
  * cursor, so the page redraws only when this gives another, and else the
- * floor around the cursor. With no cells, nothing's drawn to step off.
+ * floor around the cursor, over the same list. With no cells, nothing's
+ * drawn to step off.
  */
-function floorStepped(forages: readonly Forage[], shown: Floor, cursor: string | null): Floor {
-  return forages.length > 0 && stepsOff(shown, cursor) ? floorFor(forages, cursor) : shown;
+function floorStepped(shown: Floor, cursor: string | null): Floor {
+  return shown.of.length > 0 && stepsOff(shown, cursor) ? floorFor(shown.of, cursor) : shown;
 }
 
 /**
- * The floor a redraw draws: around the cell `shown` is drawn around while
- * the list still holds it and the floor there holds the cursor, so a live
- * record or a find leaves it still; else around the cursor, as when a
- * record pushes the cursor off it or grows a cell from the cursor that it
- * leaves off.
+ * The floor a redraw draws over `forages`: around the cell `shown` is drawn
+ * around while the list still holds it and the floor there holds the
+ * cursor, so a live record or a find keeps it on the same cell; else around
+ * the cursor, as when a record pushes the cursor off it or grows a cell
+ * from the cursor that it leaves off. A record that adds or ends a cell
+ * near the one kept can still shift the cells drawn beside it.
  */
 function floorAfter(forages: readonly Forage[], shown: Floor, cursor: string | null): Floor {
   const kept = shown.around;
   const around = kept !== null && forages.some((each) => each.cell === kept) ? kept : cursor;
-  return floorStepped(forages, floorFor(forages, around), cursor);
+  return floorStepped(floorFor(forages, around), cursor);
 }
 
 /** Where each cell `floor` draws sits, by its place among those drawn and its depth. */
@@ -407,15 +415,11 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  * of its own on the main line; a cell started by another branches down
  * from it, dashed where that's only claimed, each named for the cell it
  * leads to. `substrate` names the machine the cells stand on. It draws
- * the cells of `floor`, worked out for `forages`, so what's drawn is
- * always what the page judges a step by.
+ * the cells of `floor` over the list it was worked out for, so what's
+ * drawn is always what the page judges a step by.
  */
-function floorOf(
-  forages: readonly Forage[],
-  floor: Floor,
-  cursor: string | null,
-  substrate: string,
-): string {
+function floorOf(floor: Floor, cursor: string | null, substrate: string): string {
+  const forages = floor.of;
   const cells = placed(floor);
   const width = Math.max(FLOOR.margin * 2 + cells.length * FLOOR.room, 320);
   const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);

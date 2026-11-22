@@ -134,10 +134,10 @@ function select(): void {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
   }
   // A step the floor leaves off draws it again around the cell stepped to.
-  const onStep = floorStepped(forages, shownFloor, cursor);
+  const onStep = floorStepped(shownFloor, cursor);
   if (onStep !== shownFloor) {
     shownFloor = onStep;
-    floor.innerHTML = floorOf(forages, onStep, cursor, machine());
+    floor.innerHTML = floorOf(onStep, cursor, machine());
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);
@@ -249,9 +249,11 @@ function draw(): void {
     rows.length === 0 && forages.length > 0
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
+  // Worked out for every list, an empty one too, so a step never draws a
+  // floor over a list the page no longer holds.
+  shownFloor = floorAfter(forages, shownFloor, cursor);
   if (forages.length > 0) {
-    shownFloor = floorAfter(forages, shownFloor, cursor);
-    floor.innerHTML = floorOf(forages, shownFloor, cursor, machine());
+    floor.innerHTML = floorOf(shownFloor, cursor, machine());
   }
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();

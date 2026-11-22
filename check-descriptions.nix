@@ -3882,8 +3882,9 @@
   forage-site-holds = ''
     the forage page typechecks on the kit at its strictest and builds, its tests passing: each
     cell's forage under the cell that started it, even in a ring, plans first with their steps
-    added up, how many cells have no purpose written, what each quest waits on its person for, and
-    a record it can't read said, not dropped
+    added up, how many cells have no purpose written, what each quest waits on its person for, a
+    record it can't read said, not dropped, and a floor past 48 cells drawn around the open cell
+    with the cells it started and every cell each grew from, kept on its cell through records
   '';
   forage-site-reads-live = ''
     the forage page, served by the local sites' server beside a stand-in node, reads live in
@@ -3894,7 +3895,9 @@
     said, a cell going, broken while the node is away with its cells kept and live with them read
     again once it's back, stale once the server goes with its cells kept, a first visit within its
     budget and a second answered unchanged, the web-design skill's page checks passing at a phone's
-    width and a desk's in both looks, and nothing logged but what a test causes
+    width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
+    floor following the cursor to a booked start past the 48th, drawn solid, not drawn again on a
+    step it holds, a record on it drawn with it kept, and drawn again on a step off it
   '';
   murmurs-site-holds = ''
     the murmurs page typechecks on the kit at its strictest and builds, its tests passing: murmurs

@@ -27,10 +27,11 @@ a terminal, `mycelium forage` gathers the realm's.
   holds every one. Past 48 it draws the cell you're on, the cells that
   grew from it (those the node's book holds first) and those nearest it
   in the list, each with every cell it grew from, so no branch is left
-  hanging. It holds still as records
-  arrive, unless one would leave off the cell you're on or a cell that
-  grew from it, and draws again when you step to a cell it leaves off, or
-  to one that grew a cell it leaves off.
+  hanging. As records arrive it stays drawn around the same cell, unless
+  that would leave off the cell you're on or a cell that grew from it,
+  though a cell added or ended near it shifts the cells beside it. It
+  draws again when you step to a cell it leaves off, or to one that grew
+  a cell it leaves off.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you

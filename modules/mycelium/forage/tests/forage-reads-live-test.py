@@ -295,16 +295,19 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     expect(branch, f"{SHOOT}'s booked branch was dashed").to_have_css("stroke-dasharray", "none")
     drawn = on_the_floor(long_page)
     # The floor around the shoot holds the list's 21st, though one around it wouldn't.
+    # A mark on the floor drawn shows whether a step draws it again.
     held = TOPS[20]
+    long_page.evaluate("document.querySelector('#floor svg').dataset.kept = 'yes'")
     cell(long_page, held).click()
     selected(long_page, held, f"{held}'s row didn't take the cursor")
     ringed_on_the_floor(long_page, held, "the ring didn't follow a step on the floor")
-    assert on_the_floor(long_page) == drawn, "a step the floor holds drew it again"
-    # A record arrives for a cell the floor draws, and the floor holds still.
-    long_node.tell("forage", changed=[{"key": f"forage:{TOPS[-1]}", "purpose": WRITTEN}])
-    expect(cell(long_page, TOPS[-1]), "the record wasn't followed").to_contain_text(
-        WRITTEN, timeout=PACE_MS
-    )
+    assert on_the_floor(long_page) == drawn, "a step the floor holds moved it"
+    kept = long_page.evaluate("document.querySelector('#floor svg')?.dataset.kept ?? ''")
+    assert kept == "yes", "a step the floor holds drew it again"
+    # A record hollows a cell the floor draws: it's drawn hollow, and the floor holds still.
+    long_node.tell("forage", changed=[{"key": f"forage:{TOPS[-1]}", "purpose": ""}])
+    hollowed = long_page.locator(f'#floor rect.hollow[data-cell="{TOPS[-1]}"]')
+    expect(hollowed, "the floor didn't draw the record").to_have_count(1, timeout=PACE_MS)
     ringed_on_the_floor(long_page, held, "a record moved the ring")
     assert on_the_floor(long_page) == drawn, "a record moved the floor"
     long_page.keyboard.press("g")
