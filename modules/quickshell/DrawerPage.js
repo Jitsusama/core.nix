@@ -3,9 +3,9 @@
 // takes the cursor and the view, read apart from the drawing (Drawer.qml)
 // so tests/query-keys.qml can hold it in Qt's own engine.
 //
-// A page is its lines, each { top, height, length, text } in pixels down
-// the drawer's content, letters along it and the words it says, as Qt laid
-// them out, in order; the
+// A page is its lines, each { top, height, length, text, on } in pixels
+// down the drawer's content, letters along it, the words it says and what
+// it wrapped at (DrawerLines.js), as Qt laid them out, in order; the
 // cursor's line and letter, and `want`, how far along the line it wants to
 // be, as Vim's curswant keeps the column j and k go back to; the view's top
 // and height, and `end`, the furthest its top goes; the pitch its body's
@@ -38,16 +38,6 @@ function chosen(began, cursor, kind, lines) {
     return taken;
 }
 
-// How many paragraphs words hold, as the drawer's foot counts those it
-// hides, never their lines (VKCF3Z, 2026-11-05). Each line another program
-// broke is one, which Qt keeps in a pre-wrap block as a line separator, and
-// so is each a styled text breaks; a line Qt wraps is part of its own, and
-// a blank one is none.
-const PARAGRAPH_BREAK = /[\n\u2028\u2029]/;
-function paragraphs(text) {
-    return text.split(PARAGRAPH_BREAK).filter(paragraph => paragraph.trim() !== "").length;
-}
-
 // How far from the view's edges the cursor keeps: `off` lines, but never
 // past the view's middle, so a short view still has a place for it.
 function margin(page) {
@@ -56,10 +46,46 @@ function margin(page) {
 }
 
 // Every match of a search in lines as they're shown, as { line, letter },
-// in order down the page, matched by smartcase as Search.js matches.
+// in order down the page, matched by smartcase as Search.js matches. A
+// line Qt wrapped runs on into the next with what it broke at between
+// them, its `on`, as Vim's search runs on across its wrap and the wash
+// reads a text whole; a line's end, an `on` of null or none, stops it.
 function matchesIn(lines, pattern) {
-    return [].concat(...lines.map((line, at) => Search.found(pattern, line.text ?? "")
-        .map(([start]) => ({ line: at, letter: start }))));
+    const find = Search.finder(pattern);
+    const matches = [];
+    for (let first = 0; first < lines.length;) {
+        const { run, text } = runFrom(lines, first);
+        let along = 0;
+        for (const [start] of find(text)) {
+            while (along + 1 < run.length && run[along + 1].from <= start) {
+                along += 1;
+            }
+            // One begun at the space a line wrapped at lands on the next.
+            const { line, from, length } = run[along];
+            matches.push(start - from < length || along + 1 === run.length
+                ? { line, letter: start - from } : { line: run[along + 1].line, letter: 0 });
+        }
+        first = run[run.length - 1].line + 1;
+    }
+    return matches;
+}
+
+// The lines from `first` as one runs on into the next, each with where
+// its letters start in their text.
+function runFrom(lines, first) {
+    const run = [];
+    let text = "";
+    for (let line = first; line < lines.length; line += 1) {
+        const said = lines[line].text ?? "";
+        run.push({ line, from: text.length, length: said.length });
+        text += said;
+        const on = lines[line].on ?? null;
+        if (on === null) {
+            break;
+        }
+        text += on;
+    }
+    return { run, text };
 }
 
 // Which match the cursor stands on, of how many, as { at, of } counting
@@ -78,8 +104,8 @@ function found(lines, pattern, line, letter) {
 // count going on that many, round past either end as Vim's wrapscan does,
 // `wrapped` naming the end it went round, "bottom" or "top", as the rows'
 // Finding.matchTo does, else ""; matched by smartcase as Search.js
-// matches. Each line is searched as it's shown, so a match never runs
-// across a line's end, and the view follows the cursor there as a move's
+// matches. A match runs on across a line Qt wrapped but never a line's
+// end (matchesIn), and the view follows the cursor there as a move's
 // does.
 function sought(page, pattern, forward, count) {
     const matches = matchesIn(page.lines, pattern);

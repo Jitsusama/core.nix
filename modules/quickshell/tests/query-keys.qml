@@ -2,8 +2,8 @@
 // table in Qt's own JavaScript engine, the one the shell runs it in, and
 // what its operators do to the rows. The `the-query-field-takes-vi-modes`
 // check copies modules/quickshell/QueryKeys.js, Editing.js, Typing.js,
-// ListedKeys.js, DrawerPage.js, DrawerFigure.js, DrawerProse.js, DrawerValue.js, Search.js,
-// Reading.js, Changes.js,
+// ListedKeys.js, DrawerPage.js, DrawerLines.js, DrawerRun.js, DrawerFigure.js, DrawerProse.js,
+// DrawerValue.js, Search.js, Reading.js, Changes.js,
 // LineEditing.js, Operators.js, Finding.js, Confirm.js and launcher/Headings.js beside this
 // file and runs
 // `qml -platform offscreen query-keys.qml`.
@@ -18,6 +18,7 @@ import "Operators.js" as Operators
 import "Finding.js" as Finding
 import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
+import "DrawerLines.js" as Lines
 import "DrawerFigure.js" as Figure
 import "DrawerProse.js" as Prose
 import "DrawerRun.js" as Run
@@ -1226,6 +1227,25 @@ QtObject {
             { at: 1, of: 3 });
         holds("the cursor off a match says none", Page.found(lines, "deploy", 1, 0), null);
         holds("nor where nothing's sought", Page.found(lines, "", 0, 0), null);
+        // A line Qt wrapped runs on into the next, as Vim's search runs on
+        // across its wrap, with what it broke at between them: a space, or
+        // nothing at a zero-width space or inside a word. A line's end,
+        // null, stops it, as Vim's does, as the wash reads its text whole.
+        const wrapped = [
+            { text: "Server time.\u200b", on: "" }, { text: "harbour.\u200btest", on: null },
+            { text: "Sparkling", on: " " }, { text: "heart", on: null },
+            { text: "plain", on: null }, { text: "end" }
+        ];
+        const runningOn = [
+            ["across a wrap at a zero-width space", "time.harbour", [[0, 7]]],
+            ["across a wrap at a space", "g h", [[2, 8]]],
+            ["landing on the next line from the space it wrapped at", " heart", [[3, 0]]],
+            ["never across a line's end", "plainend", []],
+            ["and a wrapped line's own where they stand", "test", [[1, 9]]]
+        ];
+        for (const [what, pattern, want] of runningOn)
+            holds(`the drawer's search runs on ${what}`,
+                Page.matchesIn(wrapped, pattern).map(match => [match.line, match.letter]), want);
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
@@ -1852,14 +1872,43 @@ QtObject {
         holds("the drawer's visual: normal isn't", Keys.paged("normal"), false);
 
         // What the drawer's foot counts of the words it hides
-        // (DrawerPage.paragraphs): a paragraph each, a line Qt wrapped
+        // (DrawerLines.paragraphs): a paragraph each, a line Qt wrapped
         // part of its own, however Qt keeps the breaks between them.
         holds("the words hidden: a log's lines are a paragraph each",
-            Page.paragraphs("line 14\u2028line 15\u2028line 16"), 3);
+            Lines.paragraphs("line 14\u2028line 15\u2028line 16"), 3);
         holds("the words hidden: so are a plain text's and a styled one's",
-            Page.paragraphs("one\ntwo\u2029three"), 3);
+            Lines.paragraphs("one\ntwo\u2029three"), 3);
         holds("the words hidden: a wrapped paragraph is one, a blank line none",
-            Page.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
+            Lines.paragraphs("a long paragraph Qt wrapped\n\n  \u2028"), 1);
+        // What a laid line runs on into the next with (DrawerLines.runsOn),
+        // from all it holds to the next line past the letters it keeps:
+        // what Qt wrapped at, or null for a break however Qt keeps it.
+        const runsOn = [
+            ["a space wrapped at", "Sparkling ", 9, " "],
+            ["nothing at a zero-width space", "Server time.\u200b", 13, ""],
+            ["nothing inside a word", "supercalifragil", 15, ""],
+            ["none at a log's line", "line 14\u2028", 7, null],
+            ["none at a plain text's", "one \n", 3, null],
+            ["none at a styled one's", "end\u2029", 3, null]
+        ];
+        for (const [what, raw, kept, want] of runsOn)
+            holds(`a laid line runs on with ${what}`, Lines.runsOn(raw, kept), want);
+        // Which laid lines run on (DrawerLines.linesOf): only one of a
+        // single piece into its own words' next line, never into another
+        // text's or past the last, nor one that shares its baseline.
+        const story = {};
+        const label = {};
+        const piece = (words, base, x, on) => ({ words, base, x, on, top: base - 8,
+            height: 12, caps: 7, length: 4 });
+        const onOf = pieces => Lines.linesOf(pieces).map(line => line.on);
+        holds("a wrapped line runs on into its words' next",
+            onOf([piece(story, 8, 0, " "), piece(story, 32, 0, null)]), [" ", null]);
+        holds("but not into another text's",
+            onOf([piece(story, 8, 0, " "), piece(label, 32, 0, null)]), [null, null]);
+        holds("nor past the last line", onOf([piece(story, 8, 0, "")]), [null]);
+        holds("nor from a line two texts share",
+            onOf([piece(story, 8, 0, " "), piece(label, 8, 40, null), piece(story, 32, 0, null)]),
+            [null, null]);
 
         // What visual takes (DrawerPage.chosen), from where it began to the
         // cursor, either way round, on lines ten letters long but the 3rd,

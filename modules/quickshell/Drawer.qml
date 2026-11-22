@@ -45,13 +45,15 @@
 // TextEdits (PageText, below), which can say which letters each line
 // holds and where, so the cursor stands on the letters drawn;
 // DrawerPage.js says where each key takes it and the view, and
-// DrawerRun.js what a key and a page shown lay of a long run.
+// DrawerRun.js what a key and a page shown lay of a long run, and
+// DrawerLines.js how its laid texts are read as lines.
 pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
+import "DrawerLines.js" as Lines
 import "DrawerPage.js" as Page
 import "DrawerProse.js" as Prose
 import "DrawerRun.js" as Run
@@ -845,7 +847,7 @@ Floating {
                 pieces.push(piece);
         }
         laidPieces.of = read;
-        return linesOf(pieces);
+        return Lines.linesOf(pieces);
     }
     // Every line's piece of one text, its reader made to read them: none of
     // one hidden, but for a run's part, drawn only near the view, whose
@@ -870,42 +872,16 @@ Floating {
                 : words.length;
             const box = words.positionToRectangle(from);
             const place = words.mapToItem(into, box.x, box.y);
-            pieces.push({ text, words, from, y,
-                length: words.getText(from, next).replace(/\s+$/, "").length,
+            // All it holds to the next line, the space it wrapped at too,
+            // so a search runs on across a wrap (DrawerLines.runsOn).
+            const raw = words.getText(from, next);
+            const length = raw.replace(/\s+$/, "").length;
+            pieces.push({ text, words, from, y, length,
+                on: at + 1 < words.lineCount ? Lines.runsOn(raw, length) : null,
                 x: place.x, top: place.y, height: box.height,
                 base: place.y + words.baselineOffset, caps: words.caps });
         }
         return pieces;
-    }
-    // Pieces as lines, top to bottom, those sharing a baseline one line.
-    function linesOf(pieces) {
-        pieces.sort((one, other) => one.base - other.base || one.x - other.x);
-        const found = [];
-        for (const piece of pieces) {
-            const line = found[found.length - 1];
-            const together = line && Math.abs(line.base - piece.base) < 2;
-            // A blank piece on another's baseline is no part of its line,
-            // which would take a letter the eye can't see: a blank line
-            // is a line only where it stands alone.
-            if (together && piece.length === 0)
-                continue;
-            if (together && line.length === 0) {
-                found[found.length - 1] = { base: piece.base, top: piece.top,
-                    height: piece.height, caps: piece.caps, length: piece.length,
-                    parts: [piece] };
-            } else if (together) {
-                const bottom = Math.max(line.top + line.height, piece.top + piece.height);
-                line.top = Math.min(line.top, piece.top);
-                line.height = bottom - line.top;
-                line.caps = Math.max(line.caps, piece.caps);
-                line.length += piece.length;
-                line.parts.push(piece);
-            } else {
-                found.push({ base: piece.base, top: piece.top, height: piece.height,
-                    caps: piece.caps, length: piece.length, parts: [piece] });
-            }
-        }
-        return found;
     }
 
     // The part of a line a letter along it lies in, and the letter's place
@@ -2253,7 +2229,7 @@ Floating {
         // A run's lines are where it was laid to wrap, one paragraph still.
         const left = reader.getText(at, reader.length);
         return shownAndHidden.hidden
-            + Page.paragraphs(drawer.runs ? left.replace(/[\n\u2028]/g, " ") : left);
+            + Lines.paragraphs(drawer.runs ? left.replace(/[\n\u2028]/g, " ") : left);
     }
     // Whether the words are cut at the foot, so their reader is made to
     // count their paragraphs. It's handed to the words once the cut is

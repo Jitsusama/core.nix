@@ -120,17 +120,22 @@ function cased(pattern) {
 // first and none overlapping, ignoring case until the pattern has a
 // capital, as Joel's smartcase does.
 function found(pattern, text) {
-    if (pattern === "") {
-        return [];
-    }
+    return finder(pattern)(text);
+}
+
+// found for one pattern, read once for every text it's looked for in, as
+// a drawer's search looks in each of its lines on each key typed.
+function finder(pattern) {
     const byCase = cased(pattern);
+    const sought = pattern === "" ? ""
+        : seen(pattern, byCase).letters.replace(unbroken, " ");
+    return text => sought === "" ? [] : spansOf(sought, text, byCase);
+}
+
+function spansOf(sought, text, byCase) {
     const plain = seen(text, byCase);
     const looked = plain.letters.replace(unbroken, " ");
-    const sought = seen(pattern, byCase).letters.replace(unbroken, " ");
     const spans = [];
-    if (sought === "") {
-        return spans;
-    }
     let from = looked.indexOf(sought);
     while (from >= 0) {
         // Its end is where its last letter ends: in a text whose places
