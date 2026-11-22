@@ -566,8 +566,9 @@ fn round(
         (Ok(phrase), Ok(tagged)) => (phrase, tagged),
         (phrase, tagged) => {
             let failed = [phrase.err(), tagged.err()];
-            // A refusal is said first, then a sign-in none could give.
-            return [Deafness::Refused, Deafness::NoSignIn]
+            // A refusal is said first, then a sign-in none could give,
+            // then an answer none could read.
+            return [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable]
                 .into_iter()
                 .map(Round::Deaf)
                 .find(|deaf| failed.contains(&Some(*deaf)))

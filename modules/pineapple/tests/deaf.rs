@@ -204,6 +204,35 @@ fn the_row_says_what_isnt_heard_and_how_to_fix_it() {
         locked["items"][0]["steps"][0], "Unlock your keyring if it asks",
         "no sign-in may be a locked keyring"
     );
+    let unread = &waits(Deafness::Unreadable, AT, AT)["items"][0];
+    assert!(
+        unread["why"]
+            .as_str()
+            .is_some_and(|why| why.starts_with("Slack's answers to the safe word can't be read")),
+        "an answer that can't be read says so: {unread}"
+    );
+    assert_eq!(
+        (&unread["doneWhen"], &unread["steps"][0]),
+        (
+            &serde_json::json!({"by": "person"}),
+            &serde_json::json!(
+                "Ask an agent to read the reader's journal, which says what it couldn't read"
+            )
+        ),
+        "no sign-in mends it, so only Joel's word marks it done"
+    );
+}
+
+#[test]
+fn answers_that_cant_be_read_two_rounds_running_are_told() {
+    let mut deaf = Deaf::new();
+    let unread = Round::Deaf(Deafness::Unreadable);
+    assert_eq!(deaf.heard(unread, AT), Change::Keep, "one may be a blip");
+    assert_eq!(
+        deaf.heard(unread, AT + 30_000),
+        Change::Tell(waits(Deafness::Unreadable, AT + 30_000, AT + 30_000)),
+        "two in a row are no quiet Slack"
+    );
 }
 
 #[test]

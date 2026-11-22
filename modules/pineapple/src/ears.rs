@@ -101,7 +101,7 @@ impl Through {
             .filter(|id| !id.is_empty());
         id.ok_or_else(|| {
             eprintln!("<4>the gateway didn't say whose Slack it reads");
-            Round::Unasked
+            Round::Deaf(Deafness::Unreadable)
         })
     }
 
@@ -140,10 +140,11 @@ impl Ears for Through {
                 "response_format": "detailed",
             }),
         )?;
-        // An answer it can't read is no quiet Slack, so it isn't heard.
+        // An answer it can't read is no quiet Slack: it isn't heard, and
+        // since its cause lasts, it's said as deaf rather than let go.
         crate::gateway::found(&inner(&said, "results")).map_err(|why| {
             eprintln!("<4>the gateway's search for {query:?} can't be read: {why}");
-            Round::Unasked
+            Round::Deaf(Deafness::Unreadable)
         })
     }
 

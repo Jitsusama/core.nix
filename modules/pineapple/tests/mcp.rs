@@ -260,42 +260,47 @@ fn a_tool_whose_backend_went_quiet_has_it_turned_on_and_is_asked_again() {
 
 #[test]
 fn a_refused_sign_in_is_asked_for_again_once() {
-    let dir = scratch("refused");
-    let (url, seen) = gateway(|one, calls| match (one.method.as_str(), calls) {
-        ("initialize", _) => opened("s1"),
-        ("tools/call", 0) => status(401),
-        ("tools/call", _) => tool("me", false),
-        _ => status(202),
-    });
-    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    assert_eq!(
-        gateway.call("slack_who_am_i", &json!({})),
-        Ok("me".to_owned()),
-        "a sign-in renewed since is taken up without a restart"
-    );
-    assert_eq!(
-        last(&seen).sign_in.as_deref(),
-        Some("Bearer tok-2"),
-        "the program is run again for a fresh sign-in"
-    );
-    let _ = fs::remove_dir_all(&dir);
+    // Unauthorized and forbidden both refuse the sign-in.
+    for refused in [401, 403] {
+        let dir = scratch(&format!("refused-{refused}"));
+        let (url, seen) = gateway(move |one, calls| match (one.method.as_str(), calls) {
+            ("initialize", _) => opened("s1"),
+            ("tools/call", 0) => status(refused),
+            ("tools/call", _) => tool("me", false),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Ok("me".to_owned()),
+            "a sign-in renewed since a {refused} is taken up without a restart"
+        );
+        assert_eq!(
+            last(&seen).sign_in.as_deref(),
+            Some("Bearer tok-2"),
+            "the program is run again for a fresh sign-in after a {refused}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[test]
 fn a_sign_in_refused_twice_is_said_as_refused() {
-    let dir = scratch("refused-twice");
-    let (url, _) = gateway(|one, _| match one.method.as_str() {
-        "initialize" => opened("s1"),
-        "tools/call" => status(401),
-        _ => status(202),
-    });
-    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-    assert_eq!(
-        gateway.call("slack_who_am_i", &json!({})),
-        Err(Called::Refused),
-        "a gateway refusing every sign-in is said so, not asked for good"
-    );
-    let _ = fs::remove_dir_all(&dir);
+    for refused in [401, 403] {
+        let dir = scratch(&format!("refused-twice-{refused}"));
+        let (url, _) = gateway(move |one, _| match one.method.as_str() {
+            "initialize" => opened("s1"),
+            "tools/call" => status(refused),
+            _ => status(202),
+        });
+        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Err(Called::Refused),
+            "a gateway refusing every sign-in with {refused} is said so, not asked for good"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[test]
@@ -506,6 +511,10 @@ fn an_answer_as_an_event_stream_is_read() {
                 "result": { "content": [{ "type": "text", "text": "me" }] },
             });
             let notice = json!({ "jsonrpc": "2.0", "method": "notifications/message" });
+            let another = json!({
+                "jsonrpc": "2.0", "id": 999,
+                "result": { "content": [{ "type": "text", "text": "not mine" }] },
+            });
             let pretty = serde_json::to_string_pretty(&answer).expect("the answer");
             let split: String = pretty
                 .lines()
@@ -513,7 +522,10 @@ fn an_answer_as_an_event_stream_is_read() {
                 .collect();
             Reply {
                 kind: "text/event-stream",
-                body: format!("event: message\n{split}\nevent: message\ndata: {notice}\n\n"),
+                body: format!(
+                    "event: message\ndata: {notice}\n\nevent: message\ndata: {another}\n\n\
+                     event: message\n{split}\nevent: message\ndata: {notice}\n\n"
+                ),
                 ..status(200)
             }
         }
@@ -523,7 +535,8 @@ fn an_answer_as_an_event_stream_is_read() {
     assert_eq!(
         gateway.call("slack_who_am_i", &json!({})),
         Ok("me".to_owned()),
-        "a gateway may answer as a stream, over several lines, a notice after"
+        "a gateway may answer as a stream, over several lines, among a notice and an \
+         answer to another request before it and a notice after"
     );
     let _ = fs::remove_dir_all(&dir);
 }

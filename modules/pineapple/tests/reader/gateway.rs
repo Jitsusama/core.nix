@@ -42,6 +42,13 @@ const THREAD: &str = "1700000000.000001";
 /// message naming a pull request; with its URL and the tools it was asked
 /// for, in order, with what each was asked.
 fn gateway() -> (String, Called) {
+    serving(|tool, _, now| said(tool, now))
+}
+
+/// A fake gateway answering each tool, given what it was asked, as
+/// `answer` says, given when a minute ago was; with its URL and what it
+/// was asked, as above.
+fn serving(answer: fn(&str, &Value, u64) -> String) -> (String, Called) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let url = format!("http://{}/mcp", listener.local_addr().expect("its address"));
     let called = Arc::new(Mutex::new(Vec::new()));
@@ -76,10 +83,11 @@ fn gateway() -> (String, Called) {
                 "tools/call" => {
                     let tool = request["params"]["name"].as_str().unwrap_or_default();
                     let asked = request["params"]["arguments"].clone();
+                    let text = answer(tool, &asked, now);
                     kept.lock()
                         .expect("what was called")
                         .push((tool.to_owned(), asked));
-                    Some(json!({ "content": [{ "type": "text", "text": said(tool, now) }] }))
+                    Some(json!({ "content": [{ "type": "text", "text": text }] }))
                 }
                 _ => None,
             };
@@ -325,6 +333,59 @@ fn a_gateway_with_no_sign_in_to_give_writes_its_row_in_its_own_folder() {
     assert!(
         tools(&called).is_empty(),
         "no tool is called without a sign-in"
+    );
+    assert!(decisions(&home).is_empty(), "and nothing is judged");
+    std::fs::remove_dir_all(&home).expect("the case's home goes");
+}
+
+#[test]
+fn a_gateway_whose_search_cant_be_read_writes_its_row_in_its_own_folder() {
+    let (origin, _) = stand_in();
+    // The search for Joel's tag counts two results and gives one, as one
+    // would whose wording changed under the reader; the phrase's reads.
+    let (url, called) = serving(|tool, asked, now| {
+        if tool == "slack_search_public_and_private" && asked["query"] != "pineapple" {
+            json!({ "results": "## Messages (2 results)\n### Result 1 of 2\n\
+                Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
+                Message_ts: 1.000100\nText: \nhi\n\n---\n" })
+            .to_string()
+        } else {
+            said(tool, now)
+        }
+    });
+    let home = home();
+    let program = sign_in(&home, false);
+    let program = program.to_str().expect("a path in UTF-8");
+    let named = home.join("named-waiting.json");
+    let waiting = home.join(OWN).join("waiting.json");
+    let mut reader = reading(
+        &home,
+        &origin,
+        &["--gateway", &url, "--gateway-sign-in", program],
+        Some(&named),
+    );
+    let began = Instant::now();
+    while !waiting.exists() && began.elapsed() < PATIENCE {
+        // The reader goes round every tenth of a second in a case.
+        thread::sleep(Duration::from_millis(20));
+    }
+    reader.kill().expect("the reader stops");
+    reader.wait().expect("the reader is gone");
+    let row: Value = std::fs::read_to_string(&waiting)
+        .ok()
+        .and_then(|said| serde_json::from_str(&said).ok())
+        .unwrap_or_default();
+    assert!(
+        row["items"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("can't be read")),
+        "answers it can't read are told, not taken for a quiet Slack: {row}"
+    );
+    assert!(!named.exists(), "the live reader's row is never written");
+    assert!(
+        tools(&called).contains(&"slack_search_public_and_private".to_owned()),
+        "it did ask: {:?}",
+        tools(&called)
     );
     assert!(decisions(&home).is_empty(), "and nothing is judged");
     std::fs::remove_dir_all(&home).expect("the case's home goes");
