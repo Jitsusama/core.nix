@@ -8,12 +8,12 @@
 # theme-color and its favicon, the two places a site can't name a role. Each
 # page gets the strip every one of Joel's sites opens with, written here
 # rather than carried by each page, so no app's copy says more than its kind.
-# usage: site.sh <tsc> <node> <esbuild> <bare-sheet.sh> <kit> <site> <name>
-#   <out> <dark ground> <light ground> <dark tint> <light tint>
+# usage: site.sh <tsc> <node> <esbuild> <bare-sheet.sh> <kept-comments.sh> <kit>
+#   <site> <name> <out> <dark ground> <light ground> <dark tint> <light tint>
 set -euo pipefail
 
-tsc=$1 node=$2 esbuild=$3 bare_sheet=$4 kit=$5 site=$6 name=$7 out=$8
-dark_ground=$9 light_ground=${10} dark_tint=${11} light_tint=${12}
+tsc=$1 node=$2 esbuild=$3 bare_sheet=$4 kept_comments=$5 kit=$6 site=$7 name=$8 out=$9
+dark_ground=${10} light_ground=${11} dark_tint=${12} light_tint=${13}
 
 # The sources as they sit in the tree, so the site's imports of the kit
 # resolve here as they do there.
@@ -66,16 +66,9 @@ EOF
   "${tsc}" -p "${work}/plain.json"
   cp "${work}/plain/"*.js "${out}/"
 fi
-# The compiler keeps a comment marked to stay, as a licence notice often is,
-# however it's told to drop the rest. Dropping that is a person's choice,
-# not the build's, so a script still holding one fails, saying which.
-for script in "${out}"/*.js; do
-  [[ -f ${script} ]] || continue
-  if grep -q '/\*!' "${script}"; then
-    echo "${script##*/}: a comment marked to stay is still in it" >&2
-    exit 1
-  fi
-done
+# The compiler keeps a comment marked to stay however it's told to drop the
+# rest, so a script still holding one fails (kept-comments.sh says why).
+bash "${kept_comments}" "${out}"/*.js
 # The styles go through a CSS compiler for the same reason, as the theme's
 # own do (bare-sheet.sh says how, and what it refuses).
 for sheet in "${out}"/*.css; do

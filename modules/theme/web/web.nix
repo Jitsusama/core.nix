@@ -369,15 +369,15 @@ pkgs.runCommandLocal "web-kit"
     # from these (modules/local-sites/site.nix) rather than copying by hand.
     passthru.looks = sides;
   }
+  # base.css reaches a browser without its comments, as each site's sheets
+  # do (bare-sheet.sh says how). theme.css keeps its few, since the sites'
+  # home reads its grounds out of it as it is written. A sheet esbuild warns
+  # on fails the kit's build here too, on purpose: a lock bump that brings
+  # such a warning fails its checks before it merges, and a machine keeps
+  # the kit it has until one builds.
   ''
     mkdir -p $out/fonts
     cp $cssPath $out/theme.css
-    # base.css reaches a browser without its comments, as each site's
-    # sheets do (bare-sheet.sh says how). theme.css keeps its few, since the
-    # sites' home reads its grounds out of it as it is written. A sheet
-    # esbuild warns on fails the kit's build here too, on purpose: a lock
-    # bump that brings such a warning fails its checks before it merges, and
-    # a machine keeps the kit it has until one builds.
     ${lib.getExe pkgs.bash} ${./bare-sheet.sh} ${lib.getExe pkgs.esbuild} \
       ${./base.css} $out/base.css
     ${lib.concatStrings (

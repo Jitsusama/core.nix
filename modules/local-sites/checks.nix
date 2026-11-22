@@ -91,6 +91,7 @@ in
             (lib.getExe pkgs.nodejs)
             (lib.getExe pkgs.esbuild)
             ../theme/web/bare-sheet.sh
+            ./kept-comments.sh
             "${./kit}"
             "${../system/site}"
             "system"

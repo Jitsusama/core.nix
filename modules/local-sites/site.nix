@@ -21,6 +21,8 @@ let
   # holds it to that (bare-sheet.sh says why).
   esbuild = lib.getExe pkgs.esbuild;
   bareSheet = ../theme/web/bare-sheet.sh;
+  # What fails a compiled script still holding a comment marked to stay.
+  keptComments = ./kept-comments.sh;
 
   # The kit, typechecked and tested, as the browser's modules and the
   # switch's styles, without their comments as a site's are.
@@ -32,6 +34,7 @@ let
     ${node} --test --test-reporter=spec tests/*.test.ts
     ${tsc} -p tsconfig.json --noEmit false --outDir $out/kit
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} switch.css $out/kit/switch.css
+    ${lib.getExe pkgs.bash} ${keptComments} $out/kit/*.js
   '';
 in
 {
@@ -80,6 +83,7 @@ in
           node
           esbuild
           "${bareSheet}"
+          "${keptComments}"
           "${./kit}"
           "${src}"
           name

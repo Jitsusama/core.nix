@@ -52,7 +52,10 @@ What holds it together:
   [`site.sh`][sitesh] sends a script written by hand through the same
   compiler and each sheet through esbuild, unminified, so rules and
   declarations keep their order; the kit's `switch.css` and the theme's
-  `base.css` go the same way. The comments stay in the tree. Still sent
+  `base.css` go the same way. A script or a sheet still holding a
+  comment marked to stay fails its build, the kit's too
+  ([`kept-comments.sh`][kept], [`bare-sheet.sh`][baresheet]). The
+  comments stay in the tree. Still sent
   with theirs: `theme.css`, which the home reads as it is written, the
   home's own `strip.css` and `home.css`, which home.py copies, and the
   pages' few HTML comments, the strip's markers among them.
@@ -120,9 +123,11 @@ it's served from, and draws what answers there, the commands it offers to
 copy into a terminal among them, so a folder belongs only on a host whose
 feed the reader trusts. Deploying it stays outside core.
 
+[baresheet]: ../theme/web/bare-sheet.sh
 [checks]: ./checks.nix
 [daemons]: ../../docs/daemons.md
 [gate]: ./src/gate.rs
+[kept]: ./kept-comments.sh
 [kit]: ./kit
 [livepage]: ./tests/live_page.py
 [module]: ./home.nix
