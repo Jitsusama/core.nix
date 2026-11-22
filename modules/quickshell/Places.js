@@ -139,6 +139,22 @@ function placed(places, screens, inUse, moments) {
     });
 }
 
+// Of `screens` (screensOf), those niri lists a workspace on, as it does on
+// each screen it has connected, an empty one where none other is. The
+// screens are asked for apart from the workspaces, and under load, or once
+// niri's patience runs out on the last known, an answer from before a screen
+// went still lists it: taken for there, a workspace or a window was sent to
+// a connector niri no longer had and its note dropped (vm-screens-keep-places,
+// 21 and 22 Nov).
+function connected(screens, workspaces) {
+    const listed = new Set((workspaces ?? []).map(each => each.output));
+    const there = {};
+    for (const name of Object.keys(screens ?? {}).filter(name => listed.has(name))) {
+        there[name] = screens[name];
+    }
+    return there;
+}
+
 // The moves that take workspaces given in place of a gone screen to it once
 // it's connected again. `away` holds, by each screen's description (or its
 // connector, for a place kept before screens were named so), the workspaces
@@ -151,17 +167,11 @@ function placed(places, screens, inUse, moments) {
 // another screen as one left or the other way, never takes the other's
 // connector or one given it, and `waiting` is `away` with those still
 // waiting, each knowing those as another screen's for later calls. Of
-// `screens`, only those niri lists a workspace on are there, since niri
-// keeps one on each it has connected, and `screens` is asked for apart from
-// the workspaces: an answer from before a screen went still lists it.
+// `screens`, only those connected now are there (connected).
 function homeward(away, screens, workspaces) {
     const moves = [];
     const waiting = {};
-    const connected = new Set(workspaces.map(each => each.output));
-    const there = {};
-    for (const name of Object.keys(screens ?? {}).filter(name => connected.has(name))) {
-        there[name] = screens[name];
-    }
+    const there = connected(screens, workspaces);
     for (const screen of Object.keys(away ?? {}).sort()) {
         const given = [];
         const held = [];

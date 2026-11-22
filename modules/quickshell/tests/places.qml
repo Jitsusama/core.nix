@@ -240,6 +240,20 @@ QtObject {
         expect("a screen niri said before it went isn't there to go back to",
             Places.homeward(left, { "Virtual-1": qemu, "Virtual-2": qemu },
                 [{ id: 21, output: "Virtual-1" }]), waits);
+        expect("an alike screen niri said before it went isn't one new since",
+            Places.homeward(left, { "Virtual-1": qemu, "Virtual-3": qemu },
+                [{ id: 21, output: "Virtual-1" }]), waits);
+        // The other way round, the screens heard before niri says the
+        // workspace it makes on one come, it waits as just above, and goes
+        // once that's said.
+        expect("a screen come back goes once niri lists a workspace on it",
+            Places.homeward(left, { "Virtual-1": qemu, "Virtual-2": qemu },
+                [{ id: 21, output: "Virtual-1" }, { id: 22, output: "Virtual-2" }]),
+            { moves: [{ output: "Virtual-2", id: 21 }], waiting: {} });
+        expect("the screens connected are those niri lists a workspace on",
+            Places.connected({ "Virtual-1": qemu, "Virtual-2": qemu, "eDP-1": panel },
+                [{ id: 21, output: "Virtual-1" }, { id: 22, output: "eDP-1" }]),
+            { "Virtual-1": qemu, "eDP-1": panel });
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",
