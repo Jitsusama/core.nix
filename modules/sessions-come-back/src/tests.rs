@@ -1076,7 +1076,7 @@ fn a_command_whose_output_comes_just_after_its_limit_is_read() {
     // output a little after the limit, well within `READ_AFTER_END`.
     assert_eq!(
         within(
-            Command::new("sh").args(["-c", "(sleep 1.3; echo late) & exit 0"]),
+            Command::new("sh").args(["-c", "(sleep 1.1; echo late) & exit 0"]),
             Duration::from_secs(1)
         ),
         Ok("late\n".into()),

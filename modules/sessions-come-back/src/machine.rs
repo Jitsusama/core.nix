@@ -186,6 +186,8 @@ pub(super) fn read_by(deadline: Instant, ended: Instant) -> Instant {
 /// Why a command still running at its `limit` was stopped: plain late,
 /// unless starting it took `READ_AFTER_END` or more of the limit, which a
 /// program that answers at once never does, when that's said too.
+/// `starting` is only how long spawning it took, so a program slow to load
+/// once it runs, as with a cold dynamic loader, still reads as plain late.
 pub(super) fn late(limit: Duration, starting: Duration) -> Unheard {
     if starting >= READ_AFTER_END {
         Unheard::LateToStart { limit, starting }
