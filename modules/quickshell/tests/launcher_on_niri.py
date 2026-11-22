@@ -29,6 +29,8 @@ from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+import pytest
+
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
 
@@ -763,3 +765,10 @@ def running() -> Iterator[Shell]:
         yield shell
     finally:
         shell.stop()
+
+
+@pytest.fixture(scope="module")
+def shell() -> Iterator[Shell]:
+    """Give the shell, started once for the cases of a file that names this its `shell`."""
+    with running() as started_once:
+        yield started_once

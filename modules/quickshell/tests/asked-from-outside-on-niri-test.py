@@ -18,8 +18,6 @@ import launcher_on_niri
 import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
-
     from launcher_on_niri import Json, Shell
 
 # Words no row has, each one the line would say whole while reports were on.
@@ -32,11 +30,8 @@ WRITTEN_WITHIN = 5.0
 LINK_QUIET = 0.8
 
 
-@pytest.fixture(scope="module")
-def shell() -> Iterator[Shell]:
-    """Give the shell, started once for the file's cases."""
-    with launcher_on_niri.running() as started:
-        yield started
+# The shell, started once for the file's cases.
+shell = launcher_on_niri.shell
 
 
 def logged_since(shell: Shell, mark: int) -> str:

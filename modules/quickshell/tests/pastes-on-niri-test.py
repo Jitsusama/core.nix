@@ -37,10 +37,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import launcher_on_niri
-import pytest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Callable
 
     from launcher_on_niri import Shell
 
@@ -73,11 +72,8 @@ with open(sys.argv[1], "a") as out:
 """
 
 
-@pytest.fixture(scope="module")
-def shell() -> Iterator[Shell]:
-    """Give the shell, started once a run."""
-    with launcher_on_niri.running() as started:
-        yield started
+# The shell, started once a run.
+shell = launcher_on_niri.shell
 
 
 def landed(log: Path) -> list[tuple[float, str]]:
