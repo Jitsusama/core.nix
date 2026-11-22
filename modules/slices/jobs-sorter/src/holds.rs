@@ -150,6 +150,10 @@ pub struct Holding {
     /// before this one with one: what each was held with, as a pi held
     /// past [`crate::focus::MOST`] gets none.
     hard: HashSet<PathBuf>,
+    /// The scopes in `hard` only as their memory.min couldn't be read:
+    /// each counts against the others, but keeps no floor of its own
+    /// until it's held again.
+    unread: HashSet<PathBuf>,
     /// Whether a failure to hold a window has been said.
     pub failed: bool,
 }
@@ -170,7 +174,9 @@ impl Holding {
     /// keep theirs. So only a scope this sorter would hold hard counts, a
     /// window's own never, whatever memory.min it reads; and one whose
     /// memory.min can't be read counts, as a failed give-back does, so
-    /// no floor past the three is given while it might still be set.
+    /// no floor past the three is given while it might still be set. It
+    /// counts for the others only: it's given a floor of its own only
+    /// while fewer than three others keep theirs, or a fourth would be.
     pub fn left(
         scopes: impl IntoIterator<Item = PathBuf>,
         floor: impl Fn(&Path) -> Option<u64>,
@@ -182,6 +188,12 @@ impl Holding {
             .held
             .iter()
             .filter(|scope| hard_for(scope, pis) > 0 && min(scope).is_none_or(|min| min > 0))
+            .cloned()
+            .collect();
+        holding.unread = holding
+            .hard
+            .iter()
+            .filter(|scope| min(scope).is_none())
             .cloned()
             .collect();
         holding
@@ -202,6 +214,7 @@ impl Holding {
         Self {
             again: held.clone(),
             hard: HashSet::new(),
+            unread: HashSet::new(),
             held,
             failed: false,
         }
@@ -233,6 +246,7 @@ impl Holding {
     /// given back.
     pub fn done(&mut self, scope: &Path, held: Option<u64>) {
         self.again.remove(scope);
+        self.unread.remove(scope);
         if held.is_some() {
             self.held.insert(scope.to_path_buf());
         } else {
@@ -267,9 +281,12 @@ impl Holding {
     /// while one fails, more than `MOST` may hold one, past what the
     /// assertion over agents.slice's floor allows, and the kernel shares
     /// that floor among them until the give-back lands: meant, and brief.
+    /// One whose memory.min couldn't be read keeps none it isn't known to
+    /// have, so it's given one only as any other pi is.
     pub fn hard_floor(&self, scope: &Path, pis: &[String]) -> u64 {
         let others = self.hard.iter().filter(|held| *held != scope).count();
-        if self.hard.contains(scope) || others < crate::focus::MOST {
+        let keeps = self.hard.contains(scope) && !self.unread.contains(scope);
+        if keeps || others < crate::focus::MOST {
             hard_for(scope, pis)
         } else {
             0
@@ -281,6 +298,7 @@ impl Holding {
         self.held.retain(|scope| there(scope));
         self.again.retain(|scope| there(scope));
         self.hard.retain(|scope| there(scope));
+        self.unread.retain(|scope| there(scope));
     }
 }
 
@@ -563,6 +581,34 @@ mod tests {
              the three is given"
         );
         assert_eq!(holding.hard_floor(&pi(4), &pis), 0, "a fourth pi gets none");
+    }
+
+    #[test]
+    fn a_taken_up_pi_whose_memory_min_cant_be_read_gets_no_floor_past_three() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        let unread = pi(4);
+        let min = |scope: &Path| (scope != unread).then_some(HARD);
+        let holding = Holding::left([pi(1), pi(2), pi(3), pi(4)], |_| Some(FLOOR), min, &pis);
+        assert_eq!(
+            holding.hard_floor(&pi(4), &pis),
+            0,
+            "the pi whose floor can't be read gets none of its own while three others keep \
+             theirs"
+        );
+        assert_eq!(
+            holding.hard_floor(&pi(1), &pis),
+            HARD,
+            "a pi read keeping its floor keeps it beside one that can't be read"
+        );
+        let mut fewer = Holding::left([pi(1), pi(4)], |_| Some(FLOOR), min, &pis);
+        assert_eq!(
+            fewer.hard_floor(&pi(4), &pis),
+            HARD,
+            "with fewer than three others it gets its floor"
+        );
+        fewer.done(&pi(4), Some(HARD));
+        assert_eq!(fewer.hard(), 2, "and once held, it counts as keeping it");
     }
 
     #[test]
