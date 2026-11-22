@@ -84,13 +84,15 @@ QtObject {
                 since: 9 }, { name: "keys", state: "connected", since: 2 },
             { name: "pad", state: "paired" }, { name: "dial", state: "seen" }], devices),
             "keys pods pad dial mouse");
-        // Nearby's devices, heard afresh at each opening (Nearby.js).
-        const heard = Order.live({ stands: row => row.paired ? 0 : 1,
+        // As Nearby orders its devices, heard afresh at each opening
+        // (Nearby.js): each stands alike, so its measure decides, and names
+        // only where it ties. By name alone it would read airport first.
+        const heard = Order.live({ stands: () => 0,
             then: (one, other) => other.rssi - one.rssi, name: byName });
         check(failures, "live: a kind's own measure before A to Z",
-            sorted([{ name: "cafe", rssi: -60 }, { name: "home", paired: true, rssi: -80 },
-                { name: "airport", rssi: -40 }, { name: "bus", rssi: -60 }], heard),
-            "home airport bus cafe");
+            sorted([{ name: "dock", rssi: -60 }, { name: "airport", rssi: -70 },
+                { name: "bus", rssi: -40 }, { name: "cafe", rssi: -60 }], heard),
+            "bus cafe dock airport");
 
         check(failures, "amounts: the largest first",
             sorted([{ name: "sh", used: 1 }, { name: "chrome", used: 90 },

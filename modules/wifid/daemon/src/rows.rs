@@ -264,9 +264,10 @@ fn networks(described: &Described) -> Vec<Network<'_>> {
     // are, so not even those fall back to the air's strongest first.
     // A stranger names a network as they do a Bluetooth device, so with
     // nothing joined or saved in range, one called "!" heads the list. That
-    // is let be, unlike Nearby's: a network joined is trusted with nothing
-    // here, where a paired device may type, and by signal a stranger had
-    // only to be loudest.
+    // is let be, unlike Nearby's. A network joined is saved and joined again
+    // unasked, as a paired device is, but it carries traffic, where a paired
+    // device may type; and by signal a stranger had only to be loudest. The
+    // guard owed here is asking before joining an open network never met.
     heard.sort_by(|one, other| {
         stands(one)
             .cmp(&stands(other))
