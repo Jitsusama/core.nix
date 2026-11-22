@@ -58,6 +58,13 @@ pub fn started(text: &str) -> Option<u64> {
     stat_field(text, 22)?.parse().ok()
 }
 
+/// Whether a thread's `stat` says it was neither running nor ready to
+/// run (field 3 other than R): asleep, so any wait it has yet to have
+/// begins after this read. A `stat` that can't be read says nothing.
+pub fn asleep(text: &str) -> bool {
+    stat_field(text, 3).is_some_and(|state| state != "R")
+}
+
 /// A process's parent's pid, from its `stat`: field 4.
 pub fn parent(text: &str) -> Option<&str> {
     stat_field(text, 4)
@@ -365,6 +372,23 @@ pub mod tests {
         assert_eq!(field(text, "workingset_refault_anon"), 12);
         assert_eq!(field(text, "anon"), 4096);
         assert_eq!(field(text, "file"), 0);
+    }
+
+    #[test]
+    fn a_thread_is_asleep_unless_its_stat_says_it_runs_or_is_ready() {
+        assert!(
+            asleep("7 (Chrome_ChildIOT) S 1 7 7 0 -1\n"),
+            "a sleeping thread counted as ready"
+        );
+        assert!(
+            asleep("7 (a (b) c) D 1 7 7 0 -1\n"),
+            "a thread in disk sleep, named with brackets, counted as ready"
+        );
+        assert!(
+            !asleep("7 (CrBrowserMain) R 1 7 7 0 -1\n"),
+            "a ready thread counted as asleep"
+        );
+        assert!(!asleep(""), "an unread stat counted as asleep");
     }
 
     #[test]

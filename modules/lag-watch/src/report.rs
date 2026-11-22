@@ -453,6 +453,7 @@ mod tests {
             Worst {
                 thread: thread.to_string(),
                 wait_us,
+                doubted: 0,
             },
         );
         w
