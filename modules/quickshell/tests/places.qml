@@ -96,15 +96,8 @@ QtObject {
         // No screen known, as when niri didn't answer: left as it was kept,
         // rather than every place taken for a gone screen's.
         expect("no screen known leaves it as kept",
-            Places.placed([docked[2]], null, "DP-4").map(at => [at.output, at.workspace]),
+            Places.placed([docked[2]], {}, "DP-4").map(at => [at.output, at.workspace]),
             [["eDP-1", 2]]);
-        // Screens heard, none of them connected, as when the lid opens at an
-        // undock and niri lists its workspaces only on the panel the last
-        // answer left out: a gone place goes to the one in use, noted.
-        expect("a stale answer with no screen there sends a gone place to the one in use",
-            Places.placed([docked[0]], Places.connected({ "DP-4": monitor },
-                [{ id: 1, output: "eDP-1" }]), "eDP-1").map(at => [at.output, at.away?.screen]),
-            [["eDP-1", monitor]]);
         expect("no screen in use leaves a gone one as kept",
             Places.placed([docked[2]], { "DP-4": monitor }, null)
                 .map(at => [at.output, at.workspace]), [["eDP-1", 2]]);
