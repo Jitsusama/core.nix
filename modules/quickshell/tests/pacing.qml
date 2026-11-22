@@ -1126,14 +1126,23 @@ QtObject {
             Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
             "window:kitty");
         // An act's lines name it by its key, whose verbs are its daemon's
-        // own words, as agents' close or a calendar's no, but a part not
-        // shaped as one may be a path or a name.
+        // own words, as agents' close or a calendar's no, but a part after
+        // its kind may be a device's, a network's or a person's name, which
+        // its shape can't tell from an act, so only a known act is said.
         check(failures, "an act's key keeps its verb with reports off",
             Presented.keyShown("verb:wifi-join", false), "verb:wifi-join");
-        check(failures, "and each part after it shaped as a kind's word",
+        check(failures, "and an act after it that the daemons name",
             Presented.keyShown("verb:agent:close", false), "verb:agent:close");
-        check(failures, "up to the first that isn't",
-            Presented.keyShown("verb:disk:nvme0:/home/joel", false), "verb:disk:nvme0");
+        check(failures, "but not a device's name",
+            Presented.keyShown("verb:disk:nvme0:/home/joel", false), "verb:disk");
+        check(failures, "nor a lowercase network's, shaped as a kind's word",
+            Presented.keyShown("verb:wifi-join:eduroam", false), "verb:wifi-join");
+        check(failures, "nor an id that starts with a letter",
+            Presented.keyShown("verb:agent:f3a7:close", false), "verb:agent");
+        check(failures, "and a kind's word past 32 letters is no kind",
+            Presented.keyShown(`verb:${"a".repeat(33)}`, false), "verb");
+        check(failures, "and the launcher's own id is said to 64 letters",
+            Presented.keyShown(`place:${"x".repeat(80)}`, false), `place:${"x".repeat(58)}`);
         check(failures, "nor anything after that",
             Presented.keyShown("verb:agent:7f3a:close", false), "verb:agent");
         check(failures, "and a verb that isn't a kind's word is said as verb",
@@ -1182,6 +1191,8 @@ QtObject {
         check(failures, "and a key of one word, which may be a record's name, as a row",
             Presented.actShown("eduroam", false), "row");
         check(failures, "as is an act with no key", Presented.actShown(undefined, false), "row");
+        check(failures, "but by its kind where what follows isn't an act, as a person's name",
+            Presented.actShown("person:ada", false), "person");
         check(failures, "and a verb no further than keyShown says it",
             Presented.actShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
         check(failures, "and the launcher's own whole",

@@ -260,9 +260,31 @@ function intoKept(keyAt, into, whole) {
 // config.
 const keysOwn = ["place:", "category:", "collection:"];
 
-// A kind's word, as the launcher and its daemons write one, and the keys whose kind keyShown
-// says, as actShown leaves them, since their later parts may be someone's words.
-const kindWord = /^[a-z][a-z0-9-]*$/;
+// How many letters of such a key are said with reports off, since its kind alone vouches for
+// it, and a daemon's row may be keyed so as well.
+const ownLength = 64;
+
+// A kind's word, as the launcher and its daemons write one, at most 32 letters, and the keys
+// whose kind keyShown says, as actShown leaves them, since their later parts may be someone's
+// words.
+const kindWord = /^[a-z][a-z0-9-]{0,31}$/;
+
+// The words a key may say after its kind with reports off: the acts the daemons and the launcher
+// build their keys from, as `verb:agent:close`'s close or `displays:sleep`'s sleep, and what some
+// act on, as `verb:recent:site:open`'s site. A part's shape can't tell an act from a lowercase
+// name, a person's in `person:ada` or a hex id (PV3TE0's F12), so only these are said, and a new
+// act is said by its kind alone until it's named here.
+const actWords = new Set(`act add address afresh again ahead archive ask attachments audit awake
+    back bluetooth branches call cancel changes clear close code copied copy copy-marked copy-name
+    device download drawing edit end expect favourite file find folder follow-room forget further
+    gather go guests here install join keep landed lap layer let-in link look louder low machine
+    mail map mark markdown marked maybe message move mute muted network next night-light no offer
+    on onward open orchestrate page password paste path pause picture play previous pull put-back
+    quiet quieter quit read reopen replace reply repository reset run save search see seen set
+    settle setup sharing show sign-in site slack sleep speedtest sqm-off sqm-on ssh start
+    start-anywhere start-new-work starts stop switch take-back talk terminal timers title
+    to-reopen transcript unlock unmark-all update username waiting wake wave website window write
+    yes`.split(/\s+/));
 const keysSaidByKind = /^(row|window|verb):/;
 
 // A program's own id, as kitty, 1Password or org.gnome.Evolution. A browser's app window may build
@@ -280,9 +302,11 @@ function appShown(app, whole) {
     return whole || (appWord.test(text) && !appsUnnamed.includes(text)) ? text : "app";
 }
 
-// A key's parts up to the first that isn't a kind's word.
-function kindsLed(parts) {
-    const end = parts.findIndex(part => !kindWord.test(part));
+// A key's parts up to the first that isn't a kind's word, among its first `kinds`, or an act's,
+// after them.
+function kindsLed(parts, kinds) {
+    const end = parts.findIndex((part, at) =>
+        (at < kinds ? !kindWord.test(part) : !actWords.has(part)));
     return end < 0 ? parts : parts.slice(0, end);
 }
 
@@ -291,14 +315,17 @@ function kindsLed(parts) {
 // since most keys carry what someone else wrote, a network's name or a window's title. The
 // launcher's own ids are whole, `window:<app>:<title>` is `window:<app>`, or `window` where that
 // isn't a program's id or nothing follows it, and a `verb:` key, its daemon's own words, goes to
-// its act or its first part that isn't a kind's word, if sooner: `verb:agent:close` whole,
-// `verb:disk:nvme0:/home` as `verb:disk:nvme0`, `verb:notice:offer:<sender's id>` as
+// its kind, and its act where that's one of actWords: `verb:agent:close` whole,
+// `verb:disk:nvme0:/home` as `verb:disk`, `verb:notice:offer:<sender's id>` as
 // `verb:notice:offer`. A new kind says nothing more until it's named here, and a first part that
 // isn't a kind's word, as a name with a colon in it, nothing at all. A number is read as text.
 function keyShown(key, whole) {
     const text = String(key);
-    if (whole || keysOwn.some(own => text.startsWith(own))) {
+    if (whole) {
         return text;
+    }
+    if (keysOwn.some(own => text.startsWith(own))) {
+        return [...text].slice(0, ownLength).join("");
     }
     const parts = (text.startsWith("row:") ? text.slice(4) : text).split(":");
     if (parts[0] === "window") {
@@ -306,7 +333,7 @@ function keyShown(key, whole) {
         return appWord.test(app) && !appsUnnamed.includes(app) ? `window:${app}` : "window";
     }
     if (parts[0] === "verb") {
-        return kindsLed(parts.slice(0, 3)).join(":");
+        return kindsLed(parts.slice(0, 3), 2).join(":");
     }
     return parts.length > 1 && kindWord.test(parts[0]) ? parts[0] : "";
 }
@@ -354,14 +381,15 @@ function typedInSaid(typed, within, whole) {
 }
 
 // An act's key as its lines say it: as rowShown says a row's, or a daemon's own act of a kind, as
-// `displays:sleep`, by its kind and act where both are kinds' words, never more, and a record's,
-// a window's or a verb's as keyShown says it; bare, as the desktop's tests read it, with what
-// quoting escapes escaped, so a line break can't forge another line.
+// `displays:sleep`, by its kind and act where its act is one of actWords, never more, though a
+// key of one word, perhaps a record's name, as a row; and a record's, a window's or a verb's as
+// keyShown says it; bare, as the desktop's tests read it, with what quoting escapes escaped, so
+// a line break can't forge another line.
 function actShown(key, whole) {
     const said = rowShown({ key }, whole);
-    const led = whole || keysSaidByKind.test(String(key)) ? []
-        : kindsLed(String(key).split(":").slice(0, 2));
-    const kinds = led.length === 2 ? led.join(":") : "";
+    const parts = String(key).split(":").slice(0, 2);
+    const kinds = whole || keysSaidByKind.test(String(key)) || parts.length < 2 ? ""
+        : kindsLed(parts, 1).join(":");
     return quoted(kinds.length > said.length ? kinds : said).slice(1, -1);
 }
 
