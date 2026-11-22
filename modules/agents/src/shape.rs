@@ -8,6 +8,19 @@ use std::collections::HashMap;
 
 use serde_json::Value;
 
+/// Every shape the map draws a network in, in its order, so a test of
+/// each mark it wears can't miss one.
+#[cfg(test)]
+pub const SHAPES: [&str; 7] = [
+    "square",
+    "triangle",
+    "plus",
+    "hexagon",
+    "circle",
+    "down-triangle",
+    "star",
+];
+
 /// The theme's mark for a shape the node serves, or none for one the theme
 /// has no mark for, whose row keeps the agent's mark. The down triangle's is
 /// the triangle turned a half turn, since the icon font draws none at the
@@ -65,16 +78,7 @@ mod tests {
 
     #[test]
     fn every_shape_the_map_draws_has_its_own_mark() {
-        let shapes = [
-            "square",
-            "triangle",
-            "plus",
-            "hexagon",
-            "circle",
-            "down-triangle",
-            "star",
-        ];
-        let marks: Vec<_> = shapes.iter().filter_map(|shape| mark(shape)).collect();
+        let marks: Vec<_> = SHAPES.iter().filter_map(|shape| mark(shape)).collect();
         assert_eq!(
             marks,
             [

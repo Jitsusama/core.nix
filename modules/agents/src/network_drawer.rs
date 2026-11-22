@@ -292,6 +292,27 @@ mod tests {
     }
 
     #[test]
+    fn a_networks_drawer_says_how_it_stands_as_its_row_does() {
+        let repo = record("repo.world", "repository", &["KELP01", "REEF02", "TIDE03"]);
+        let mut lead = session("KELP01", "working");
+        lead["kind"] = json!("orchestration");
+        lead["held"]["anyWaitsOnJoel"] = json!(true);
+        let mut put_off = session("REEF02", "needs");
+        put_off["held"]["putOff"] = json!(true);
+        let top = [lead, put_off, session("TIDE03", "working")];
+        let drawn = drawers(&[&repo], &top, &words(), &nothing_spent);
+        assert_eq!(
+            facts(&drawn[0])[0],
+            (
+                "Standing".to_owned(),
+                json!("1 needs you \u{b7} 1 moving \u{b7} 1 quiet")
+            ),
+            "the node counted REEF02 needing Joel and KELP01 moving; his put-off quiets one, his \
+             mark on the lead lights the other, as the network's row says"
+        );
+    }
+
+    #[test]
     fn a_session_in_a_network_twice_is_spent_once() {
         let repo = record("repo.world", "repository", &["KELP01", "kelp01"]);
         let spent = |_: &str| Some((2.0, false));

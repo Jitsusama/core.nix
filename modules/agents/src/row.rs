@@ -138,6 +138,9 @@ pub struct Row {
     /// his still open, which For You lists as waiting too, so its row and
     /// those over it wear his mark either way.
     pub waits_on_joel: bool,
+    /// Whether it wants Joel but he put it off for the hour, so it wears
+    /// his mark quietly and counts as needing him nowhere (networks.rs).
+    pub put_off: bool,
     pub state: &'static str,
     /// How it stands in words, among its side's items too: For You's
     /// heading over the cell says it alone, without its figures.
@@ -346,7 +349,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         .orchestrates
         .then(|| (known.shape)(session.id()))
         .flatten();
-    let (wears, put_off, hue) = worn(session, known, !full.is_empty());
+    let (wears, put_off, hue) = worn(session, stands, known, !full.is_empty());
     let waits_on_joel = wears == Stands::Needs && !put_off;
     let glyph = standing::glyph(wears, shape);
     let ranked_items: Vec<Item> = std::iter::once(Item {
@@ -371,6 +374,7 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
         waits_on_joel,
+        put_off,
         state: stands.id(),
         doing: doing_said,
         // One standing at the top is gone to to be told something, the
@@ -437,13 +441,19 @@ impl Row {
 
 /// How a session stands to Joel, whether he put off what it wants of
 /// him, and the hue its row wears. A want put off still waits, so its row
-/// keeps his mark, but in its own hue, lighting nothing above it (top.rs)
-/// until the hour is up.
-fn worn(session: Session, known: &Known, warns: bool) -> (Stands, bool, &'static str) {
+/// keeps his mark, but in the hue its own standing (`stands`) gives it,
+/// muted for one parked, as its mark is, lighting nothing above it
+/// (top.rs) until the hour is up.
+fn worn(
+    session: Session,
+    stands: Stands,
+    known: &Known,
+    warns: bool,
+) -> (Stands, bool, &'static str) {
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
     let put_off = wears == Stands::Needs && (known.put_off)(session);
     let hue = if put_off {
-        standing::unwaited_hue(wears, warns)
+        standing::unwaited_hue(stands, warns)
     } else {
         standing::hue(wears, warns)
     };
@@ -743,6 +753,38 @@ mod tests {
                 "needs:waitsOnJoel:program:false"
             ],
             "put off, it still waits, so it keeps his mark, but quietly, lifting nothing above it"
+        );
+    }
+
+    #[test]
+    fn a_want_put_off_wears_the_hue_its_own_standing_gives_it() {
+        let record = |state: &str| {
+            json!({"presence": {"addresses": ["P"], "session": "s-1", "state": state,
+                "wants": {"kind": "approval", "said": "May I push?"}}})
+        };
+        let put_off = Given {
+            put_off: vec!["P".to_owned()],
+            ..given()
+        };
+        let marks = |record: &Value| {
+            let row = made(record, Place::default(), &put_off);
+            format!(
+                "{}:{}:{}:{}:{}",
+                row.glyph, row.hue, row.mark_hue, row.waits_on_joel, row.put_off
+            )
+        };
+        assert_eq!(
+            marks(&record("parked")),
+            "waitsOnJoel:muted:muted:false:true",
+            "one parked keeps a parked one's muted hue, as its mark does, not a listening one's"
+        );
+        let nearing = json!({"presence": {"addresses": ["P"], "session": "s-1",
+            "wants": {"kind": "approval", "said": "May I push?"},
+            "usage": {"context": {"used": 90, "limit": 100}}}});
+        assert_eq!(
+            marks(&nearing),
+            "waitsOnJoel:warning:warning:false:true",
+            "one whose limit nears is still warned of it while its want waits"
         );
     }
 

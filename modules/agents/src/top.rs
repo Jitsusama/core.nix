@@ -171,7 +171,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
-                "waitsOnJoel": row.waits_on_joel,
+                "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off,
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -257,7 +257,9 @@ fn act_rows<'a>(
 }
 
 /// The acts a session inside an orchestration offers: Talk and Go To only
-/// where it waits on Joel.
+/// where it waits on Joel. One whose want he put off waits on him for
+/// nothing until its hour is up, so it offers neither, as one working
+/// doesn't; For You still lists it, where both are.
 fn member_acts(row: &Row) -> impl Iterator<Item = &str> {
     let needs = row.waits_on_joel;
     row.acts
@@ -322,7 +324,7 @@ fn member(row: &Row, parent: &str, depth: usize, under: usize, said: &Said) -> V
             "depth": depth, "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
-                "waitsOnJoel": row.waits_on_joel,
+                "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off,
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -498,6 +500,7 @@ mod tests {
             orchestrates: false,
             gone: false,
             waits_on_joel: state == "needs",
+            put_off: false,
             state,
             doing: state.to_owned(),
             returns: "switch",
@@ -916,6 +919,41 @@ mod tests {
             found(&rows, "row:agents-top:B")["side"][0]["said"],
             "working",
             "a session inside says what its own row says"
+        );
+    }
+
+    #[test]
+    fn a_session_inside_whose_want_joel_put_off_lights_nothing_and_offers_no_talk() {
+        let mut put_off = row("A", "needs", 1, LIVE);
+        if let Shown::Session(row) = &mut put_off {
+            (row.waits_on_joel, row.put_off, row.glyph) = (false, true, "waitsOnJoel");
+        }
+        let rows = top(&[
+            wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning"),
+            put_off,
+        ]);
+        let head = found(&rows, "row:agents-top:O");
+        let member = found(&rows, "row:agents-top:A");
+        assert_eq!(
+            (
+                format!("{}:{}", head["glyph"], head["hue"]),
+                &head["held"]["anyWaitsOnJoel"],
+                &member["held"]["putOff"],
+                &member["held"]["waitsOnJoel"],
+            ),
+            (
+                "\"shapeSquare\":\"warning\"".to_owned(),
+                &json!(false),
+                &json!(true),
+                &json!(false)
+            ),
+            "its state still says needs, but put off it marks nothing above it, and is served as \
+             put off so Networks counts it quiet"
+        );
+        assert_eq!(
+            acts(member),
+            ["verb:details", "verb:agent:pause", "verb:agent:close"],
+            "and offers no Talk or Go To inside, as one working doesn't"
         );
     }
 

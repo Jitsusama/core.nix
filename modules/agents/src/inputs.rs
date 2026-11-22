@@ -38,6 +38,7 @@ use crate::row::{self, Known, Row, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::shape;
+use crate::standing::Stands;
 use crate::starts;
 use crate::starts_stopped::{self, Stood};
 use crate::summary;
@@ -586,9 +587,18 @@ impl Inputs {
             self.sessions.records().map(|(_, one)| Session(one)),
             &last_used,
         );
+        // One whose want Joel put off needs him nowhere for its hour, so
+        // Home's summary counts it as it would stand wanting nothing, as
+        // its row's hue and the networks' counts do.
         let states: Vec<_> = sessions
             .iter()
-            .map(|one| one.stands_to_joel(&joel_can, &jobs))
+            .map(|one| match one.stands_to_joel(&joel_can, &jobs) {
+                Stands::Needs if put_off(*one) => match one.stands(&joel_can, &jobs) {
+                    Stands::Parked => Stands::Parked,
+                    _ => Stands::Listening,
+                },
+                stands => stands,
+            })
             .collect();
         let mut rows = row::rows(&sessions, &known, &self.words);
         let answers = self.answers();
@@ -643,7 +653,7 @@ impl Inputs {
         .with_wants(wants::records(
             &sessions,
             &joel_can,
-            (&self.put_off, clock::now_ms()),
+            (&self.put_off, now_ms),
         ))
         .with_talks(inboxes::records(
             &talks::by_address(self.talks.records().map(|(_, one)| one)),
@@ -1514,14 +1524,16 @@ mod tests {
             {"key": "session:r", "standing": "running", "here": true,
              "presence": {"addresses": ["R"], "session": "s-r", "state": "parked",
                           "wants": {"kind": "approval", "said": "Run it?"}}}]}));
-        // The node counts each cell by its own standing: nobody here needs Joel.
-        let network = |name: &str, cells: [&str; 2]| {
+        // The node counts each cell by its own standing, any with a want as
+        // needing Joel: R in reef, but P, wanting nothing itself, moving.
+        let network = |name: &str, cells: [&str; 2], counts: Value| {
             json!({"key": format!("network:{name}"), "kind": "network", "name": name,
                    "shape": "repository", "short": name, "title": name, "heard": 0,
-                   "cells": cells, "machines": [], "counts": {"moving": 2}})
+                   "cells": cells, "machines": [], "counts": counts})
         };
         inputs.networks.took(&json!({"records": [
-            network("repo.kelp", ["t", "p"]), network("repo.reef", ["t", "r"])]}));
+            network("repo.kelp", ["t", "p"], json!({"needs-you": 0, "moving": 2})),
+            network("repo.reef", ["t", "r"], json!({"needs-you": 1, "moving": 1}))]}));
         let shown = served(&inputs);
         let row = |key: &str| {
             shown
@@ -1561,10 +1573,54 @@ mod tests {
             ],
             "each network sorts first the cell wearing the mark, as the tree served it"
         );
+        assert_eq!(
+            [sides(&row("repo.kelp")), sides(&row("repo.reef"))],
+            ["1 needs you, 1 moving", "1 needs you, 1 moving"],
+            "kelp's lead counts once for the want under it, which isn't a cell of kelp; reef's \
+             R the node counted already, so it counts once"
+        );
+    }
+
+    /// What a served row says at its right, its items in order.
+    fn sides(row: &Value) -> String {
+        row["side"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item["said"].as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    #[test]
+    fn a_want_joel_put_off_lights_nothing_above_it_nor_home() {
+        let mut inputs = inputs();
+        // Q, in P's team under O, asks Joel, who put it off for the hour.
+        inputs.sessions.took(&json!({"changed": [
+            {"key": "session:q", "standing": "running", "here": true,
+             "presence": {"addresses": ["Q"], "session": "s-q", "orchestratedBy": "P",
+                          "wants": {"kind": "approval", "said": "May I push?"}}}]}));
+        inputs
+            .put_off
+            .put("Q approval May I push?", clock::now_ms());
+        inputs.networks.took(&json!({"records": [
+            {"key": "network:repo.kelp", "kind": "network", "name": "repo.kelp",
+             "shape": "repository", "short": "kelp", "title": "kelp", "heard": 0,
+             "cells": ["q", "p"], "machines": [],
+             "counts": {"needs-you": 1, "moving": 1, "quiet": 0}}]}));
+        let shown = served(&inputs);
+        let row = |key: &str| shown.get(key).expect(key)["row"].clone();
+        let p = row("row:agents-top:network:repo.kelp:p");
+        assert_ne!(p["glyph"], "waitsOnJoel", "P wears no mark for Q: {p}");
+        assert_eq!(
+            sides(&row("row:agents-top:network:repo.kelp")),
+            "1 moving, 1 quiet",
+            "the node counted Q needing Joel; put off, it's quiet for the hour"
+        );
+        let said = shown.get(served::SUMMARY).expect("the summary")["summary"]["said"].clone();
         assert!(
-            row("repo.kelp")["side"].to_string().contains("1 needs you"),
-            "and its row says Joel's wanted: {}",
-            row("repo.kelp")["side"]
+            !said.to_string().contains("need"),
+            "Home's summary says nobody needs him: {said}"
         );
     }
 

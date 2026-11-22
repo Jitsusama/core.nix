@@ -476,16 +476,7 @@ mod tests {
             .lines()
             .filter_map(|line| line.strip_prefix("  ")?.strip_suffix(" = {"))
             .collect();
-        let shapes = [
-            "square",
-            "triangle",
-            "plus",
-            "hexagon",
-            "circle",
-            "down-triangle",
-            "star",
-        ];
-        let worn = shapes
+        let worn = crate::shape::SHAPES
             .iter()
             .map(|shape| crate::shape::mark(shape).expect("the theme marks each shape"));
         for shape in std::iter::once(None).chain(worn.map(Some)) {

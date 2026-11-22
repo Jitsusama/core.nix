@@ -2662,9 +2662,11 @@ def test_a_session_waiting_on_joel_is_drawn_in_his_mark_not_the_agents(
         assert waiting["ink"] != idle["ink"], f"a waiting row's mark is a live one's ink: {marks}"
         shoot("launcher-agents-waiting-on-joel")
     finally:
-        shell.close_launcher()
+        # Gone first, so a launcher that won't close still leaves no asking session for the
+        # cases after.
         for address in ("asking", "idling"):
             (PRESENCE / f"{address}.json").unlink(missing_ok=True)
+        shell.close_launcher()
         # A session asking for Joel's yes, left for the cases after, would stand first in
         # For You and Agents, so it's gone from the node before they begin.
         deadline = time.monotonic() + 10

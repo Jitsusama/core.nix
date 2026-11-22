@@ -12,8 +12,9 @@
 //! Long because over half of it is its cases: each fold and each count a
 //! heading says needs a mycelium of its own built beside it.
 
+use std::borrow::Cow;
 use std::cmp::Reverse;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
 
@@ -163,50 +164,107 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
         .collect()
 }
 
-/// `network` as Joel's mark has it: needing him at least once for each
-/// of its cells wearing the mark (top.rs's `anyWaitsOnJoel`), a team's
-/// lead waiting for a session under it too, which the node, counting a
-/// cell by its own standing alone, leaves out. So a network holding a
-/// marked cell sorts first, says it needs him and never folds away, as
-/// the cell does inside it. Each cell it moves to needing him leaves the
-/// count the node put it in, so the counts still sum to the cells; the
-/// node's counts don't say which cell is where, so it comes from the
+/// `network` as Joel's mark has it, each want counted once. The node
+/// counts a cell by its own standing alone, any cell with a want as
+/// needing Joel. So a cell whose want Joel put off (top.rs's `putOff`)
+/// leaves needs-you for quiet, lighting nothing for its hour; and a lead
+/// wearing his mark for a session under it (`anyWaitsOnJoel`) counts
+/// once more, unless that session is a cell here, counted already. A
+/// network so holding a marked cell sorts first, says it needs him and
+/// never folds away, as the cell does inside it. A lead it moves leaves
+/// the count the node put it in, so the counts still sum to the cells;
+/// the node's counts don't say which cell is where, so it comes from the
 /// likeliest of a lead's standings first, moving.
-pub(crate) fn as_marked(network: &Value, rows: &HashMap<String, &Value>) -> Value {
-    let mut seen = network.clone();
+pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) -> Cow<'a, Value> {
     if network["shape"] == "machines" {
-        return seen;
+        return Cow::Borrowed(network);
     }
-    let marked = network["cells"]
+    let cells: Vec<&Value> = network["cells"]
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
-        .filter(|name| {
-            rows.get(&name.to_lowercase())
-                .is_some_and(|row| row["held"]["anyWaitsOnJoel"] == true)
-        })
+        .filter_map(|name| rows.get(&name.to_lowercase()).copied())
+        .collect();
+    let held = |row: &Value, field: &str| row["held"][field] == true;
+    let put_off = cells.iter().filter(|row| held(row, "putOff")).count();
+    let counted: HashSet<String> = cells
+        .iter()
+        .filter(|row| held(row, "waitsOnJoel"))
+        .flat_map(|row| leads_of(row, rows))
+        .collect();
+    let leads = cells
+        .iter()
+        .filter(|row| held(row, "anyWaitsOnJoel") && !held(row, "waitsOnJoel"))
+        .filter(|row| !counted.contains(&address_of(row)))
         .count();
-    let marked = u64::try_from(marked).unwrap_or(u64::MAX);
-    let needs = count(network, "needs-you");
-    if marked <= needs {
-        return seen;
+    let [put_off, leads] = [put_off, leads].map(|many| u64::try_from(many).unwrap_or(u64::MAX));
+    if put_off == 0 && leads == 0 {
+        return Cow::Borrowed(network);
     }
-    seen["counts"]["needs-you"] = json!(marked);
-    let mut moved = marked - needs;
+    let mut seen = network.clone();
+    let mut counts: HashMap<&str, u64> = STANDINGS_HELD
+        .into_iter()
+        .map(|standing| (standing, count(network, standing)))
+        .collect();
+    let unlit = counts["needs-you"].min(put_off);
+    *counts.entry("needs-you").or_default() -= unlit;
+    *counts.entry("quiet").or_default() += unlit;
+    let mut moved = leads;
     for standing in MARKED_FROM {
-        let left = count(network, standing);
-        let taken = left.min(moved);
-        if taken > 0 {
-            seen["counts"][standing] = json!(left - taken);
-        }
+        let taken = counts[standing].min(moved);
+        *counts.entry(standing).or_default() -= taken;
         moved -= taken;
     }
-    seen
+    *counts.entry("needs-you").or_default() += leads - moved;
+    for (standing, many) in counts {
+        if seen["counts"].get(standing).is_some() || many > 0 {
+            seen["counts"][standing] = json!(many);
+        }
+    }
+    Cow::Owned(seen)
 }
 
-/// The counts a cell wearing Joel's mark leaves, likeliest first: a lead
-/// waiting on a session under it is most often moving.
+/// The addresses of every lead above `row` in the tree, through any fold,
+/// in lower case.
+fn leads_of(row: &Value, rows: &HashMap<String, &Value>) -> Vec<String> {
+    let lead = key_of("");
+    let mut above = Vec::new();
+    let mut at = row;
+    while let Some(parent) = at["parent"].as_str() {
+        let Some(parent) = parent.strip_prefix(&lead) else {
+            break;
+        };
+        let address = parent
+            .strip_prefix("fold:")
+            .unwrap_or(parent)
+            .to_lowercase();
+        if above.contains(&address) {
+            break;
+        }
+        above.push(address.clone());
+        match rows.get(&address) {
+            Some(next) => at = next,
+            None => break,
+        }
+    }
+    above
+}
+
+/// A served row's address, in lower case, as `sessions` keys it.
+fn address_of(row: &Value) -> String {
+    row["held"]["address"]
+        .as_str()
+        .unwrap_or_default()
+        .to_lowercase()
+}
+
+/// The counts a network's record holds, by the node's standings.
+const STANDINGS_HELD: [&str; 5] = ["needs-you", "stuck", "moving", "quiet", "dormant"];
+
+/// The counts a lead wearing Joel's mark leaves, likeliest first: a lead
+/// waiting on a session under it is most often moving. If none is left
+/// (the node a beat behind), the lead counts anyway, so its want shows.
 const MARKED_FROM: [&str; 4] = ["moving", "quiet", "dormant", "stuck"];
 
 /// A cell of a network keyed `parent`: its session's row as the tree
@@ -350,7 +408,7 @@ fn capitalised(word: &str) -> String {
 /// none where the node serves no network but orchestrations.
 pub fn rows(records: &[&Value], top: &[Value], words: &Words) -> Vec<Value> {
     let sessions = sessions(top);
-    let marked: Vec<Value> = records
+    let marked: Vec<Cow<'_, Value>> = records
         .iter()
         .map(|record| as_marked(record, &sessions))
         .collect();
@@ -360,6 +418,7 @@ pub fn rows(records: &[&Value], top: &[Value], words: &Words) -> Vec<Value> {
         let each = ordered(
             marked
                 .iter()
+                .map(AsRef::as_ref)
                 .filter(|record| record["shape"] == shape)
                 .collect(),
         );
@@ -677,6 +736,91 @@ mod tests {
             seen["counts"],
             json!({"needs-you": 2, "stuck": 1, "moving": 0, "quiet": 0, "dormant": 0}),
             "two marked cells leave moving, then quiet, and the counts still sum to three cells"
+        );
+    }
+
+    #[test]
+    fn marked_leads_leave_what_is_left_and_count_even_when_nothing_is() {
+        let lead = |address: &str| {
+            let mut lead = session(address, "working", "orchestration");
+            lead["held"]["anyWaitsOnJoel"] = json!(true);
+            lead
+        };
+        let top = [lead("KELP01"), lead("KELP02")];
+        let seen = |counts: Value| {
+            let team = record(
+                "repo.world",
+                "repository",
+                &["kelp01", "kelp02"],
+                &counts,
+                0,
+            );
+            as_marked(&team, &sessions(&top))["counts"].clone()
+        };
+        assert_eq!(
+            [
+                seen(json!({"needs-you": 0, "stuck": 0, "moving": 1, "quiet": 0, "dormant": 1})),
+                seen(json!({"needs-you": 0, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0})),
+                seen(json!({"needs-you": 0, "stuck": 0, "moving": 1})),
+            ],
+            [
+                json!({"needs-you": 2, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0}),
+                json!({"needs-you": 2, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0}),
+                json!({"needs-you": 2, "stuck": 0, "moving": 0}),
+            ],
+            "leads leave moving, then dormant past an empty quiet; with nothing left, the node a \
+             beat behind, they count anyway, so their wants show"
+        );
+    }
+
+    #[test]
+    fn a_lead_and_its_waiting_member_both_cells_need_joel_once() {
+        let mut lead = session("KELP01", "working", "orchestration");
+        lead["held"]["anyWaitsOnJoel"] = json!(true);
+        let member = |parent: &str| {
+            let mut member = session("REEF02", "needs", "session");
+            member["parent"] = json!(key_of(parent));
+            member
+        };
+        // As the node counts them: REEF02 needs Joel, KELP01 moves.
+        let counts = json!({"needs-you": 1, "stuck": 0, "moving": 1, "quiet": 0, "dormant": 0});
+        let repo = record(
+            "repo.world",
+            "repository",
+            &["kelp01", "reef02"],
+            &counts,
+            0,
+        );
+        let said_of = |member: Value| {
+            let top = [lead.clone(), member];
+            let made = rows(&[&repo], &top, &words());
+            said(&made[2]).join(", ")
+        };
+        assert_eq!(
+            [said_of(member("KELP01")), said_of(member("fold:KELP01"))],
+            ["1 needs you, 1 moving", "1 needs you, 1 moving"],
+            "the lead's mark is its member's want, counted once already, under it or a fold"
+        );
+    }
+
+    #[test]
+    fn a_network_whose_only_want_joel_put_off_needs_him_for_nothing() {
+        let mut put_off = session("TERN03", "needs", "session");
+        put_off["held"] = json!({"address": "TERN03", "state": "needs",
+            "waitsOnJoel": false, "anyWaitsOnJoel": false, "putOff": true});
+        let counts = json!({"needs-you": 1, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0});
+        let repo = record("repo.world", "repository", &["tern03"], &counts, 0);
+        let calm = record("repo.calm", "repository", &[], &quiet(), 9);
+        let made = rows(&[&repo, &calm], &[put_off], &words());
+        let world = made
+            .iter()
+            .find(|row| row["key"] == "row:agents-top:network:repo.world")
+            .expect("its row");
+        assert_eq!(
+            (said(world), &made[2]["key"]),
+            (vec!["1 quiet"], &json!("row:agents-top:network:repo.calm")),
+            "put off, its cell is quiet for the hour, so the network neither says it needs Joel \
+             nor sorts first"
         );
     }
 
