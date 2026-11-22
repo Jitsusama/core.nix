@@ -571,8 +571,8 @@ fn alive(pid: u32) -> bool {
         return false;
     };
     // SAFETY: signal 0 sends nothing; it only asks whether the process is.
-    unsafe { kill(pid, 0) == 0 }
-    || std::io::Error::last_os_error().kind() == std::io::ErrorKind::PermissionDenied
+    let found = unsafe { kill(pid, 0) } == 0;
+    found || std::io::Error::last_os_error().kind() == std::io::ErrorKind::PermissionDenied
 }
 
 /// Whether mycelium, asked `words`, says yes.
