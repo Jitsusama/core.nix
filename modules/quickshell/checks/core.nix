@@ -161,6 +161,16 @@ in
         };
       });
 
+  # With reports off, an ask from outside (a link, a catalogue run or a
+  # terminal's do) says the words it was given by kind and how many letters,
+  # and the shell's own failure by its error's name, since a page or a source
+  # wrote them (modules/quickshell/tests/asked-from-outside-on-niri-test.py).
+  the-launcher-says-asks-from-outside-by-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-asks-from-outside-by-kind-on-niri";
+    tests = ../tests/asked-from-outside-on-niri-test.py;
+    shell.reports = lib.mkForce false;
+  };
+
   # Each of Super+E's groups has its emoji centred on its name as niri shows
   # the launcher, at 1.5 and 2 (modules/quickshell/tests/emoji-marks-on-niri-test.py).
   # It reads the launcher's own rows, which kept each emoji's measure with no

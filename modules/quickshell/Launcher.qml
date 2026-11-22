@@ -1551,7 +1551,9 @@ Scope {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const talk = agents ? agents.talkFor(said) : null;
         const whom = talk?.whom ?? { to: "none", said: String(said ?? "") };
-        console.info(`launcher: asked from outside to talk to ${JSON.stringify(whom)}`);
+        // A link is a page's words, so its line says whom by kind with reports off.
+        console.info("launcher: asked from outside to talk to "
+            + Presented.whomShown(whom, Options.reports));
         if (whom.to === "none")
             return { error: `the launcher has nothing called ${whom.said}` };
         if (inUse())
@@ -1611,7 +1613,8 @@ Scope {
     // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
     function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
-        console.info(`launcher: asked from outside to go to ${JSON.stringify(String(said ?? ""))}`);
+        console.info("launcher: asked from outside to go to "
+            + Presented.typedShown(String(said ?? ""), Options.reports));
         if (inUse())
             return inUseSaid;
         const session = agents ? agents.goToFor(said) : null;
@@ -1662,7 +1665,8 @@ Scope {
     function showNetwork(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const walk = agents ? agents.networkWalk(said) : { name: String(said ?? ""), rows: [] };
-        console.info(`launcher: asked from outside to show the network ${walk.name}`);
+        console.info("launcher: asked from outside to show the network "
+            + Presented.typedShown(walk.name, Options.reports));
         if (walk.rows.length === 0)
             return { error: `the launcher has nothing called ${walk.name}` };
         if (inUse())
@@ -1704,7 +1708,8 @@ Scope {
         if (machines === null)
             return { error: "the launcher has no Machines" };
         const { name, key } = machines.linked(said);
-        console.info(`launcher: asked from outside to show the machine ${JSON.stringify(name)}`);
+        console.info("launcher: asked from outside to show the machine "
+            + Presented.typedShown(name, Options.reports));
         if (inUse())
             return inUseSaid;
         if (key === null) {
@@ -1728,7 +1733,8 @@ Scope {
         if (code === null)
             return { error: "the launcher has no Code" };
         const { key, row, unlisted } = code.linked(said);
-        console.info(`launcher: asked from outside to show the repository ${JSON.stringify(key)}`);
+        console.info("launcher: asked from outside to show the repository "
+            + Presented.typedShown(key, Options.reports));
         if (inUse())
             return inUseSaid;
         if (unlisted) {
@@ -1779,7 +1785,8 @@ Scope {
         const target = path[path.length - 1];
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
-        console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} ${said}`);
+        console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} `
+            + Presented.pathShown(path, Options.reports));
         // One held still, as an ask hidden while Joel shares, is refused,
         // saying why, rather than run or said done for nothing: any step on
         // the way, or the last one's Return's act, asked first, so a held
@@ -2021,7 +2028,8 @@ Scope {
         } catch (error) {
             // The shell's own failure, said in its log in the engine's words;
             // the terminal says it in words.json's (Y2YBTS's review of #2421).
-            console.warn(`launcher: a terminal's do failed: ${error}`);
+            console.warn("launcher: a terminal's do failed: "
+                + Presented.failureShown(error, Options.reports));
             return { failed: true };
         } finally {
             cataloguing = false;
@@ -2056,8 +2064,8 @@ Scope {
         const holder = trail.length > 1 ? trail[trail.length - 2] : null;
         const names = trail.map(one => one.name);
         const ids = trail.map(one => steadyId(one));
-        console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
-            + ` ${names.join(" \u203a ")}`);
+        console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)} `
+            + Presented.pathShown(trail, Options.reports));
         // One held still on the way, or as the last step's Return's act, is
         // refused, saying why, as the walk refuses it: first, so it's never
         // opened or asked about, and never said done.

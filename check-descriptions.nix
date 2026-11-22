@@ -4643,6 +4643,12 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
+  the-launcher-says-asks-from-outside-by-kind-on-niri = ''
+    on niri with reports off, a link to a session, a network, a machine or a repository, a catalogue
+    run and a terminal's do each say in the journal the words they were given by how many letters
+    and the rows they walked by kind, never whole, and a terminal's do that fails says only its
+    error's name
+  '';
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
