@@ -9,9 +9,11 @@
 //! with a keyring that hangs in keyring.rs, telling Joel in For You when
 //! Slack can't be heard in deaf.rs, how far it had read when that can't
 //! be trusted in kept.rs, and GitHub's reader, against its own stand-in,
-//! in github.rs, and the guard each case holds its reader by in guard.rs.
+//! in github.rs, the reader hearing Slack through a tool gateway in
+//! gateway.rs, and the guard each case holds its reader by in guard.rs.
 
 mod deaf;
+mod gateway;
 mod github;
 mod guard;
 mod kept;

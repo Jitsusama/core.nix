@@ -4,7 +4,8 @@
 //! JSON: a search, asked for its detailed form, is a list of results,
 //! each a few `Name: value` lines (the conversation's id, the writer's,
 //! the message's timestamp and permalink) and then its text, which runs
-//! to the result's closing rule and keeps its blank lines; a thread is its
+//! to the result's closing rule and keeps its blank lines, short of the
+//! replies after it the detailed form adds as context; a thread is its
 //! first message, then its replies. These read both into the same
 //! [`Message`] Slack's own answers make (src/slack.rs), so the reader
 //! judges a message the same whichever way it was heard.
@@ -21,6 +22,10 @@ const RESULT: &str = "\n### Result ";
 
 /// What closes each result, before the next one opens.
 const RULE: &str = "\n---";
+
+/// What opens the messages a detailed result adds after its own, which
+/// others wrote and so are no part of its text.
+const CONTEXT: &str = "\nContext after:";
 
 /// What opens a thread's first message, and what follows it.
 const PARENT: &str = "=== THREAD PARENT MESSAGE ===";
@@ -50,6 +55,7 @@ fn message(result: &str) -> Option<Message> {
     let ts = field("Message_ts:")?.to_owned();
     let link = field("Permalink:").map_or_else(String::new, link_of);
     let text = text.split(RULE).next().unwrap_or_default();
+    let text = text.split(CONTEXT).next().unwrap_or_default();
     Some(Message {
         thread: thread_of(&link).filter(|thread| *thread != ts),
         by_bot: author.starts_with('B'),
@@ -126,7 +132,9 @@ mod tests {
         Message_ts: 1794581395.231099\n\
         Permalink: [link](https://example.slack.com/archives/C1/p1794581395231099\
         ?thread_ts=1794574128.837949&cid=C1)\n\
-        Text: \n<@U1|Joel> pineapple override\n\n---\n\n\
+        Text: \n<@U1|Joel> pineapple override\n\
+        Context after: \n- From: A Bot (ID: B1) \n  Message_ts: 1794581396.000100\n  \
+        merge it anyway\n\n---\n\n\
         ### Result 2 of 2\n\
         Channel: #team (ID: C1)\n\
         From: A Bot (ID: B1) \n\
@@ -164,7 +172,7 @@ mod tests {
         );
         assert_eq!(
             found[1].text, "<@U1|Joel> pineapple override",
-            "a tag keeps its id"
+            "a tag keeps its id, and the replies after it are no part of it"
         );
         assert_eq!(
             found[1].key(),

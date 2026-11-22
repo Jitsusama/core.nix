@@ -81,7 +81,11 @@ let
       };
       Install.WantedBy = [ "default.target" ];
     };
-  inherit (config.jitsusama.pineapple) sites;
+  inherit (config.jitsusama.pineapple) sites gateway;
+  # Where the reader over a tool gateway keeps what it judged, apart from
+  # the live reader's, so its shadow stops reach nothing that acts on one
+  # and the two can be compared.
+  gatewayState = "${config.xdg.stateHome}/pineapple-gateway";
 in
 {
   imports = [ ../quickshell/providers.nix ];
@@ -167,7 +171,62 @@ in
     );
   };
 
+  options.jitsusama.pineapple.gateway = lib.mkOption {
+    description = ''
+      A tool gateway reading Slack for Joel, heard by a second reader in
+      shadow beside the one asking Slack itself, so the two can be compared
+      before the gateway's is trusted; none unless a machine names one.
+    '';
+    default = null;
+    type = lib.types.nullOr (
+      lib.types.submodule {
+        options = {
+          url = lib.mkOption {
+            description = "Where the gateway answers MCP, such as https://gateway.example.com/mcp.";
+            type = lib.types.str;
+          };
+          signIn = lib.mkOption {
+            description = "A program printing Joel's sign-in to the gateway, run when asked.";
+            type = lib.types.path;
+          };
+        };
+      }
+    );
+  };
+
   config = lib.mkMerge [
+    (lib.mkIf (gateway != null) {
+      # The Slack reader again, hearing Slack through the gateway
+      # (src/ears.rs), only ever in shadow, as the reader refuses --live
+      # with --gateway: it keeps its own state, and tells For You in a file
+      # there that nothing reads, so a gateway it can't hear never reaches
+      # Joel while the reader he trusts goes on.
+      systemd.user.services.pineapple-slack-gateway = {
+        Unit = {
+          Description = "Reads Slack through a tool gateway for the safe word, in shadow";
+          X-SwitchMethod = "restart";
+        };
+        Service = {
+          Slice = "background.slice";
+          ExecStart = lib.escapeShellArgs [
+            "@${pineapple}/bin/pineapple-slack"
+            "pineapple-slack-gateway"
+            "run"
+            "--gateway"
+            gateway.url
+            "--gateway-sign-in"
+            gateway.signIn
+          ];
+          Environment = [
+            ''"XDG_STATE_HOME=${gatewayState}"''
+            ''"SAFE_WORD_WAITING=${gatewayState}/waiting.json"''
+          ];
+          Restart = "on-failure";
+          RestartSec = 30;
+        };
+        Install.WantedBy = [ "default.target" ];
+      };
+    })
     {
       # A name is a unit's and a file's, and GitHub's and Slack's are taken.
       # A site allows 30 searches a minute and a round spends one a

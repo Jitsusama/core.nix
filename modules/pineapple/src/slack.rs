@@ -2,7 +2,7 @@
 //! each with the text Slack keeps (a tag is `<@ID>` there, whatever name
 //! it shows), who wrote it and the thread it sits in, and the message a
 //! thread starts with, which says what the thread is about. Only reading;
-//! the program asks (src/bin/pineapple-slack.rs).
+//! the program asks (src/bin/pineapple-slack/).
 
 use serde_json::Value;
 

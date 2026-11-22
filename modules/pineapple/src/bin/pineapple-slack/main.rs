@@ -35,30 +35,42 @@
 //! Slack is Slack's own, unless a test names a stand-in with `--origin`
 //! and a quicker pace with `--every`.
 //!
+//! Given `--gateway URL` and `--gateway-sign-in PROGRAM`, it hears Slack
+//! through that tool gateway instead (src/ears.rs), signed in by what
+//! the program prints, and only in shadow: it tells no phone, as the
+//! gateway's Slack is only read, so it can run beside the reader that
+//! acts and its decisions be held against that one's.
+//!
 //! Which messages it has judged is kept in judged.json beside the log
 //! (src/judged.rs), so a restart neither judges a message twice nor
 //! misses one said while it was down. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
 use std::collections::HashSet;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use pineapple::deaf::{self, Deaf, Deafness, Round};
+use pineapple::deaf::{self, Deaf, Deafness, Round, Waiting};
+use pineapple::ears::{Api, Ears, Through};
 use pineapple::gate::{Asked, gate};
 use pineapple::judged::{self, Afresh, Judged};
-use pineapple::phone::{self, Alert, Missed, OwnIm, UNSURE, done, told_as};
+use pineapple::mcp::Gateway;
+use pineapple::phone;
 use pineapple::record::{self, Source};
 use pineapple::reply::{self, Post};
 use pineapple::resume;
 use pineapple::sign_in::{self, ran_over};
-use pineapple::slack::{Message, found, micros, root};
+use pineapple::slack::{Message, micros};
 use pineapple::vocabulary::Words;
 use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
 use slack_people::{Account, LastSignIn, Signed, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
+
+mod alerts;
+use alerts::Phone;
 
 /// How often Slack is searched, unless a test says otherwise: with the
 /// enforcer's few seconds after, a stop lands well inside five minutes.
@@ -71,9 +83,6 @@ const SIGN_IN_ROUNDS: u32 = 20;
 
 /// How far back a first start looks, in seconds.
 const LOOK_BACK: u64 = 10 * 60;
-
-/// How many of the newest matches each search asks for.
-const COUNT: &str = "20";
 
 /// How many of the newest decisions `heard` says.
 const NEWEST: usize = 20;
@@ -88,7 +97,7 @@ const SLACK_RESUMES_LIVE: bool = false;
 
 /// The replies' words, as Joel said yes to them (2026-11-14); a reply
 /// missing any of them has nothing to say.
-const REPLIES: &str = include_str!("../../replies.json");
+const REPLIES: &str = include_str!("../../../replies.json");
 
 /// Milliseconds in a second.
 const MILLIS: u64 = 1000;
@@ -131,6 +140,14 @@ fn help() -> Help {
             .option(
                 "--every MS",
                 "how often it searches, half a minute unless given",
+            )
+            .option(
+                "--gateway URL",
+                "hears Slack through that tool gateway, in shadow only",
+            )
+            .option(
+                "--gateway-sign-in PROGRAM",
+                "prints the gateway's sign-in, as --gateway needs",
             ),
     )
     .exit(Exit::BadInput, "the log can't be read")
@@ -146,7 +163,13 @@ fn main() -> ExitCode {
         };
         match command {
             "heard" => none_after(rest).and_then(|()| heard(context)),
-            "run" => run(&run_options(rest)?),
+            "run" => {
+                let how = run_options(rest)?;
+                match &how.gateway {
+                    Some((url, program)) => hear_through(&how, url, program),
+                    None => run(&how),
+                }
+            }
             word => Err(flags::unknown("command", word, &commands)),
         }
     })
@@ -175,13 +198,18 @@ struct Run {
     /// down: unless its service says `--live`, they are, so nothing that
     /// runs it unasked, a test or a machine not yet let go live, acts.
     shadow: bool,
+    /// The tool gateway it hears Slack through, and the program printing
+    /// its sign-in, when it isn't Slack's own API.
+    gateway: Option<(String, OsString)>,
 }
 
-/// How run runs, from its `--live`, `--origin` and `--every`.
+/// How run runs, from its `--live`, `--origin`, `--every`, `--gateway`
+/// and `--gateway-sign-in`.
 fn run_options(rest: &[String]) -> Result<Run, Failure> {
     let mut origin = SLACK.to_owned();
     let mut every = EVERY;
     let mut shadow = true;
+    let (mut gateway, mut sign_in) = (None, None);
     let mut args = rest.iter();
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -203,17 +231,55 @@ fn run_options(rest: &[String]) -> Result<Run, Failure> {
                             .try_this("pineapple-slack run --every 500")
                     })?;
             }
+            "--gateway" => gateway = Some(given(&mut args, "--gateway", "a URL")?),
+            "--gateway-sign-in" => {
+                sign_in = Some(given(&mut args, "--gateway-sign-in", "a program")?);
+            }
             other => {
-                let known = ["--live", "--origin", "--every"];
+                let known = [
+                    "--live",
+                    "--origin",
+                    "--every",
+                    "--gateway",
+                    "--gateway-sign-in",
+                ];
                 return Err(flags::unknown("option", other, &known));
             }
         }
     }
+    let gateway = match (gateway, sign_in) {
+        (None, None) => None,
+        (Some(url), Some(program)) if shadow => Some((url, OsString::from(program))),
+        (Some(_), Some(_)) => {
+            return Err(
+                Failure::new(Exit::Usage, "--live isn't taken with --gateway")
+                    .because("a reader over a tool gateway only writes down what it hears"),
+            );
+        }
+        _ => {
+            return Err(
+                Failure::new(Exit::Usage, "--gateway and --gateway-sign-in go together")
+                    .try_this("pineapple-slack run --gateway URL --gateway-sign-in PROGRAM"),
+            );
+        }
+    };
     Ok(Run {
         origin,
         every,
         shadow,
+        gateway,
     })
+}
+
+/// The word after an option that takes one.
+fn given<'a>(
+    args: &mut impl Iterator<Item = &'a String>,
+    option: &str,
+    what: &str,
+) -> Result<String, Failure> {
+    args.next()
+        .cloned()
+        .ok_or_else(|| Failure::new(Exit::Usage, format!("{option} takes {what}")))
 }
 
 fn env_dir(var: &str, fallback: &str) -> PathBuf {
@@ -309,17 +375,10 @@ fn said(decisions: &[Value]) -> String {
     out
 }
 
-/// The reader, which runs until its service stops it.
-fn run(how: &Run) -> Result<(), Failure> {
-    let credentials = credentials();
-    let state = state();
-    let slack = Slack::new(&how.origin);
-    let reader = Reader {
-        origin: how.origin.clone(),
-        words: Words::from_object(REPLIES).unwrap_or_default(),
-        shadow: how.shadow,
-    };
-    let (mut judged, afresh) = judged::read(&state, seconds().saturating_sub(LOOK_BACK));
+/// What either reader starts from: what it has judged, saying what of
+/// that couldn't be read, and where For You is told it can't hear Slack.
+fn begin(state: &Path) -> (Judged, Waiting) {
+    let (judged, afresh) = judged::read(state, seconds().saturating_sub(LOOK_BACK));
     match afresh {
         Some(Afresh::Unreadable) => eprintln!(
             "<4>how far Slack was read can't all be read, so it reads from ten minutes back, \
@@ -331,16 +390,6 @@ fn run(how: &Run) -> Result<(), Failure> {
         ),
         Some(Afresh::Nothing) | None => {}
     }
-    let mut phone = Phone {
-        origin: how.origin.clone(),
-        own: None,
-        looked: false,
-        shadow: how.shadow,
-    };
-    let patience = sign_in::PATIENCE.min(how.every * SIGN_IN_ROUNDS);
-    let rest = slack_people::REST.min(how.every * SIGN_IN_ROUNDS);
-    // A locked keyring doesn't end a sign-in, so stops are still heard.
-    let mut last = LastSignIn::new();
     // Where For You reads what waits on Joel: told there when Slack
     // can't be heard, since the phone's alert goes through Slack.
     let waiting = deaf::waiting(
@@ -355,6 +404,39 @@ fn run(how: &Run) -> Result<(), Failure> {
             waiting.file.to_string_lossy()
         );
     }
+    (judged, waiting)
+}
+
+/// Tells For You whether this round heard Slack, as it changes.
+fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
+    let change = deaf.heard(heard, millis());
+    if let Err(error) = deaf::make(&waiting.file, &change) {
+        eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
+        deaf.failed(&change);
+    }
+}
+
+/// The reader, which runs until its service stops it.
+fn run(how: &Run) -> Result<(), Failure> {
+    let credentials = credentials();
+    let state = state();
+    let slack = Slack::new(&how.origin);
+    let reader = Reader {
+        origin: how.origin.clone(),
+        words: Words::from_object(REPLIES).unwrap_or_default(),
+        shadow: how.shadow,
+    };
+    let (mut judged, waiting) = begin(&state);
+    let mut phone = Phone {
+        origin: how.origin.clone(),
+        own: None,
+        looked: false,
+        shadow: how.shadow,
+    };
+    let patience = sign_in::PATIENCE.min(how.every * SIGN_IN_ROUNDS);
+    let rest = slack_people::REST.min(how.every * SIGN_IN_ROUNDS);
+    // A locked keyring doesn't end a sign-in, so stops are still heard.
+    let mut last = LastSignIn::new();
     let mut deaf = Deaf::new();
     loop {
         let now = Instant::now();
@@ -384,8 +466,13 @@ fn run(how: &Run) -> Result<(), Failure> {
         }
         let heard = match last.heard(signed, now) {
             Some(account) if !account.user.is_empty() => {
-                let heard = round(&slack, &reader, &account, &state, &mut judged);
-                tell_phone(&slack, &mut phone, &account, &state);
+                let mut api = Api {
+                    slack: &slack,
+                    account: &account,
+                };
+                let joel = (account.user.as_str(), Some(&account));
+                let heard = round(&mut api, &reader, joel, &state, &mut judged);
+                alerts::tell(&slack, &mut phone, &account, &state);
                 heard
             }
             Some(_) => {
@@ -394,103 +481,38 @@ fn run(how: &Run) -> Result<(), Failure> {
             }
             None => Round::Deaf(Deafness::NoSignIn),
         };
-        let change = deaf.heard(heard, millis());
-        if let Err(error) = deaf::make(&waiting.file, &change) {
-            eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
-            deaf.failed(&change);
-        }
+        tell_deaf(&mut deaf, &waiting, heard);
         std::thread::sleep(how.every);
     }
 }
 
-/// Where Joel's phone is told: his own IM, once it's found.
-struct Phone {
-    origin: String,
-    own: Option<OwnIm>,
-    /// Whether it has looked for the IM yet: once as it starts, so the
-    /// finding is tried against Slack whether or not an alert comes, and
-    /// then again only when an alert finds none.
-    looked: bool,
-    /// Whether alerts are only written down, as the reader is in shadow.
-    shadow: bool,
-}
-
-/// Tells Joel's phone each alert the launcher's daemon wrote down in the
-/// last ten minutes and his phone wasn't told yet. One Slack didn't take
-/// is tried again next round, until it's ten minutes old.
-fn tell_phone(slack: &Slack, phone: &mut Phone, account: &Account, state: &Path) {
-    let phoned = state.join("phoned.jsonl");
-    let told = done(&lines(&phoned));
-    let since = millis().saturating_sub(LOOK_BACK * MILLIS);
-    let new: Vec<Value> = lines(&state.join("would-tell.jsonl"))
-        .into_iter()
-        .filter(|line| line["at"].as_u64().unwrap_or(0) >= since && !told.contains(&told_as(line)))
-        .collect();
-    if phone.own.is_none() && (!phone.looked || !new.is_empty()) {
-        phone.looked = true;
-        match phone::own_im(&phone.origin, slack, account) {
-            Ok(own) => {
-                eprintln!("<6>Joel's own IM is {}", own.id());
-                phone.own = Some(own);
+/// The reader over a tool gateway, in shadow, until its service stops it.
+/// Whose Slack it reads, the gateway says once; until it does, nothing is.
+fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
+    let state = state();
+    let reader = Reader {
+        origin: how.origin.clone(),
+        words: Words::from_object(REPLIES).unwrap_or_default(),
+        shadow: true,
+    };
+    let (mut judged, waiting) = begin(&state);
+    let mut through = Through {
+        gateway: Gateway::new(url, program),
+    };
+    let mut me: Option<String> = None;
+    let mut deaf = Deaf::new();
+    loop {
+        let heard = match me.clone().map_or_else(|| through.me(), Ok) {
+            Ok(user) => {
+                let heard = round(&mut through, &reader, (&user, None), &state, &mut judged);
+                me = Some(user);
+                heard
             }
-            Err(why) => eprintln!("<4>Joel's own IM wasn't found, so his phone isn't told: {why}"),
-        }
-    }
-    if new.is_empty() {
-        return;
-    }
-    for line in new {
-        let field = |name: &str| line[name].as_str().unwrap_or_default().to_owned();
-        let (title, words, link) = (field("title"), field("words"), field("link"));
-        let alert = Alert {
-            title: &title,
-            words: &words,
-            link: &link,
+            Err(round) => round,
         };
-        let shadow = phone.shadow || line["shadow"] != false;
-        let sent = match (&phone.own, shadow) {
-            (_, true) => {
-                eprintln!("<5>Joel's phone, in shadow: {link}");
-                json!(false)
-            }
-            (Some(own), false) => match phone::tell(&phone.origin, account, own, alert) {
-                Ok(()) => {
-                    eprintln!("<5>Joel's phone was told: {link}");
-                    json!(true)
-                }
-                Err(Missed::NotSent(why)) => {
-                    eprintln!("<3>Slack didn't take Joel's phone alert: {why}");
-                    continue;
-                }
-                Err(Missed::Unsure(why)) => {
-                    eprintln!("<4>Joel's phone alert may have gone: {why}");
-                    json!(UNSURE)
-                }
-            },
-            (None, false) => continue,
-        };
-        let one = json!({
-            "at": millis(),
-            "key": line["key"],
-            "saying": line["saying"],
-            "shadow": shadow,
-            "sent": sent,
-            "im": phone.own.as_ref().map(OwnIm::id),
-            "text": phone::text(alert),
-        });
-        if let Err(error) = record::append(&phoned, &one) {
-            eprintln!("<3>couldn't keep a phone alert's line: {error}");
-        }
+        tell_deaf(&mut deaf, &waiting, heard);
+        std::thread::sleep(how.every);
     }
-}
-
-/// The lines of a log kept as JSON lines, those that read.
-fn lines(path: &Path) -> Vec<Value> {
-    std::fs::read_to_string(path)
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect()
 }
 
 /// What the reader acts with: where replies go, the words they say, and
@@ -503,15 +525,18 @@ struct Reader {
 
 /// One search of each kind, and each new message judged and written down;
 /// what it came to, a refused sign-in before a Slack that couldn't be asked.
+/// `me` is Joel's Slack id, and his sign-in, where a reply could be said
+/// with it.
 fn round(
-    slack: &Slack,
+    ears: &mut dyn Ears,
     reader: &Reader,
-    account: &Account,
+    me: (&str, Option<&Account>),
     state: &Path,
     judged: &mut Judged,
 ) -> Round {
+    let (me, account) = me;
     let joel = Joel {
-        slack_ids: vec![account.user.clone()],
+        slack_ids: vec![me.to_owned()],
         logins: Vec::new(),
         emails: Vec::new(),
     };
@@ -523,13 +548,10 @@ fn round(
              leaves it, so it reads from ten minutes back"
         );
     }
-    let tag = format!("<@{}>", account.user);
+    let tag = format!("<@{me}>");
     // A round counts as read only once both searches answered, so
     // judged.json's read_at never says Slack was read when it wasn't.
-    let (phrase, tagged) = match (
-        search(slack, account, "pineapple"),
-        search(slack, account, &tag),
-    ) {
+    let (phrase, tagged) = match (ears.search("pineapple"), ears.search(&tag)) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged),
         (phrase, tagged) => {
             let refused = Round::Deaf(Deafness::Refused);
@@ -546,11 +568,11 @@ fn round(
     heard.sort_by_key(|message| micros(&message.ts));
     for message in heard {
         // The reader's own alert quotes others as Joel, so it's no saying.
-        if message.author == account.user && phone::is_alert(&message.text) {
+        if message.author == me && phone::is_alert(&message.text) {
             judged.judged(message);
             continue;
         }
-        judge(slack, reader, account, state, &joel, message);
+        judge(ears, reader, account, state, &joel, message);
         judged.judged(message);
     }
     if let Err(error) = judged::write(state, judged, millis()) {
@@ -559,38 +581,11 @@ fn round(
     Round::Heard
 }
 
-/// The newest messages a search finds, oldest first; else whether Slack
-/// refused the sign-in or couldn't be asked now, tried again next round.
-fn search(slack: &Slack, account: &Account, query: &str) -> Result<Vec<Message>, Round> {
-    let asked = [
-        ("query", query),
-        ("count", COUNT),
-        ("sort", "timestamp"),
-        ("sort_dir", "desc"),
-        ("highlight", "false"),
-    ];
-    let said = match slack.read(account, "search.messages", &asked) {
-        Ok(said) => said,
-        Err(why) => {
-            eprintln!("<4>couldn't search Slack: {why:?}");
-            return Err(Round::Unasked);
-        }
-    };
-    found(&said).map_err(|why| {
-        eprintln!("<4>Slack refused a search: {why}");
-        if deaf::refuses_the_sign_in(&why) {
-            Round::Deaf(Deafness::Refused)
-        } else {
-            Round::Unasked
-        }
-    })
-}
-
 /// One message judged where it was said, and written down.
 fn judge(
-    slack: &Slack,
+    ears: &mut dyn Ears,
     reader: &Reader,
-    account: &Account,
+    account: Option<&Account>,
     state: &Path,
     joel: &Joel,
     message: &Message,
@@ -598,7 +593,7 @@ fn judge(
     let context = message
         .thread
         .as_deref()
-        .and_then(|thread| thread_root(slack, account, &message.channel, thread))
+        .and_then(|thread| ears.root(&message.channel, thread))
         .map(|root| Context::of_thread(&root))
         .unwrap_or_default();
     let decision = decide(
@@ -710,11 +705,20 @@ fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str,
 /// Say a reply the rules let through, and whether it counts as said: in
 /// shadow each does, said or not, so the rules are tried as they will be;
 /// out of it, only one Slack took.
-fn answer(reader: &Reader, account: &Account, message: &Message, post: Option<&Post>) -> bool {
+fn answer(
+    reader: &Reader,
+    account: Option<&Account>,
+    message: &Message,
+    post: Option<&Post>,
+) -> bool {
     if reader.shadow {
         eprintln!("<5>a reply, in shadow: {}", message.link);
         return true;
     }
+    let Some(account) = account else {
+        eprintln!("<3>no sign-in to say a reply with: {}", message.link);
+        return false;
+    };
     let Some(post) = post else {
         eprintln!(
             "<4>a reply has no words Joel said yes to, so none was said: {}",
@@ -730,18 +734,6 @@ fn answer(reader: &Reader, account: &Account, message: &Message, post: Option<&P
         Err(why) => {
             eprintln!("<3>Slack didn't take a reply: {why}");
             false
-        }
-    }
-}
-
-/// What the message starting a thread says, or none when Slack won't say.
-fn thread_root(slack: &Slack, account: &Account, channel: &str, thread: &str) -> Option<String> {
-    let asked = [("channel", channel), ("ts", thread), ("limit", "1")];
-    match slack.read(account, "conversations.replies", &asked) {
-        Ok(said) => root(&said),
-        Err(why) => {
-            eprintln!("<4>couldn't read a thread's first message: {why:?}");
-            None
         }
     }
 }
