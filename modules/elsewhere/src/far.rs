@@ -294,7 +294,7 @@ pub fn script(
     let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!(
         "{scratches}/{}",
-        quoted(&format!("{}/{id}", scratch.trim_matches('/')))
+        quoted(&format!("{scratch}/{id}"))
     );
     let folder = match within.to_string_lossy() {
         within if within.is_empty() => "\"$work\"".to_owned(),

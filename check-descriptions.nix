@@ -1080,19 +1080,22 @@
   '';
   elsewhere-reads-what-a-machine-declares = ''
     the machines and kinds of job a machine repository declares reach elsewhere's settings in the
-    words it reads, and an account declaring none has it on its path and sends nothing
+    words it reads, an account declaring none has it on its path and sends nothing, and a scratch
+    that isn't one hidden folder's name fails the build
   '';
   elsewhere-goes-where-mycelium-places-it = ''
     elsewhere asks mycelium to place a job with its kind's needs and how long it lasts, and when
     mycelium places it on a machine it may send to, sends only its tracked files, never a hidden
     file, key or excluded path, those under a folder a share keeps home included, through the
-    quest's handover and runs it by mycelium run, never ssh or rsync, after its kind's setup; it
-    brings back what the kind names, landing each as a plain file within the job's folder and
-    never through a link out of it, and ends with the far job's own code, or says why what came
-    back fell short, ending 77 when another try meets it again and 75 when it may not, the far
-    side's own refusal told from mycelium's; a job placed here, with no quest or one mycelium
-    doesn't run far runs here saying why, or under --there ends saying why; a program its kind
-    doesn't allow is refused before anything runs, and a command asked wrongly says what it takes
+    quest's handover and runs it by mycelium run, never ssh or rsync, started in the quest's
+    scratch and copied into a hidden folder within it, as a far strict fence allows, after its
+    kind's setup; it brings back what the kind names, landing each as a plain file within the
+    job's folder and never through a link out of it, and ends with the far job's own code, or
+    says why what came back fell short, ending 77 when another try meets it again and 75 when it
+    may not, the far side's own refusal told from mycelium's; a job placed here, with no quest or
+    one mycelium doesn't run far runs here saying why, or under --there ends saying why; a
+    program its kind doesn't allow is refused before anything runs, and a command asked wrongly
+    says what it takes
   '';
   ergodox-on-every-workstation = ''
     every workstation can flash the ErgoDox, a Mac as much as Linux
