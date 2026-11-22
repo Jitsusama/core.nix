@@ -2175,11 +2175,10 @@ Provider {
         // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
         // after is counted with how many reopened, and said once the
         // launcher opens next (ReopenTally.js).
-        const tally = ReopenTally.begun(reopenable.length);
-        const tellAll = now => provider.launcher?.tellOnOpen([
-            [String(now.gone), String(said[now.gone === 1 ? "folderGone"
-                : "foldersGone"] ?? ""), Theme.alert],
-            [String(now.reopened), String(said.reopened ?? "")]]);
+        const tellAll = now => {
+            const [gone, reopened] = ReopenTally.told(now, said);
+            provider.launcher?.tellOnOpen([[...gone, Theme.alert], reopened]);
+        };
         // Its count of what failed is drawn in the alert's colour, as the
         // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
         const themAll = () => act("all", {
@@ -2191,8 +2190,8 @@ Provider {
             // and then the windows that reopen themselves. Each is told to
             // carry on as it opens, so none waits to be poked; one reopened
             // alone from its own row isn't, since Joel is there. Each run
-            // counts afresh, though the row and its tally are kept.
-            run: () => ReopenTally.run(tally,
+            // counts on its own, though the row is kept.
+            run: () => ReopenTally.run(reopenable.length,
                 gone => Sessions.reopenThemAll(reopenable, gone), tellAll)
         });
         return thingRow({
