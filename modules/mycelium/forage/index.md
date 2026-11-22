@@ -23,8 +23,9 @@ a terminal, `mycelium forage` gathers the realm's.
   it is. A dotted arc, bowing below both, joins a cell to one serving a
   need of its. A cap rises over a cell whose plans
   have landed steps, its gills lit as they land. The machine the cells
-  stand on is named under the ground. The first 48 cells are drawn; the
-  list holds every one.
+  stand on is named under the ground. It draws 48 cells, and the list
+  holds every one. Past 48 it draws the cell you're on, each cell it grew
+  from and those nearest it in the list, so its branch is always there.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you

@@ -212,11 +212,57 @@ ${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
 `;
 }
 
-/** Where each cell drawn sits on the floor, by its place in the list and its depth. */
+/**
+ * The places in `forages` of the cell at `start` and each cell it grew
+ * from, up to the floor's most, and once round a ring of starts.
+ */
+function lineOf(forages: readonly Forage[], start: number): Set<number> {
+  const here = new Set(forages.map((each) => each.cell));
+  const index = new Map(forages.map((each, place) => [each.cell, place]));
+  const line = new Set<number>();
+  let at: number | undefined = start;
+  while (at !== undefined && !line.has(at) && line.size < FLOOR.most) {
+    const forage: Forage | undefined = forages[at];
+    if (forage === undefined) {
+      break;
+    }
+    line.add(at);
+    const from = grewFrom(forage, here);
+    at = from === undefined ? undefined : index.get(from);
+  }
+  return line;
+}
+
+/**
+ * The cells the floor draws, in the list's order: every one when they fit.
+ * Past that, `cursor` and each cell it grew from come first, so its own
+ * branch is always drawn, even from a starter far up the list; then the
+ * cells nearest it fill the rest, so the floor follows the cursor down a
+ * list longer than it holds. With no cursor, that's the list's first.
+ */
+function drawn(forages: readonly Forage[], cursor: string | null): readonly Forage[] {
+  if (forages.length <= FLOOR.most) {
+    return forages;
+  }
+  const found = forages.findIndex((each) => each.cell === cursor);
+  const centre = Math.max(found, 0);
+  const chosen = found < 0 ? new Set<number>() : lineOf(forages, found);
+  for (let step = 0; chosen.size < FLOOR.most; step += 1) {
+    for (const near of [centre + step, centre - step]) {
+      if (near >= 0 && near < forages.length && chosen.size < FLOOR.most) {
+        chosen.add(near);
+      }
+    }
+  }
+  return [...chosen].sort((one, other) => one - other).flatMap((each) => forages[each] ?? []);
+}
+
+/** Where each cell drawn sits on the floor, by its place among those drawn and its depth. */
 function placed(
   forages: readonly Forage[],
+  cursor: string | null,
 ): readonly { readonly forage: Forage; readonly x: number; readonly y: number }[] {
-  return forages.slice(0, FLOOR.most).map((forage, at) => ({
+  return drawn(forages, cursor).map((forage, at) => ({
     forage,
     x: FLOOR.margin + at * FLOOR.room + FLOOR.room / 2,
     y: FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop,
@@ -240,10 +286,11 @@ function cap(x: number, y: number, ticked: number, all: number): string {
  * compartment along them, `cursor`'s ringed. Each top cell starts a hypha
  * of its own on the main line; a cell started by another branches down
  * from it, dashed where that's only claimed, each named for the cell it
- * leads to. `substrate` names the machine the cells stand on.
+ * leads to. `substrate` names the machine the cells stand on. A list
+ * longer than the floor holds is drawn around `cursor`.
  */
 function floorOf(forages: readonly Forage[], cursor: string | null, substrate: string): string {
-  const cells = placed(forages);
+  const cells = placed(forages, cursor);
   const width = Math.max(FLOOR.margin * 2 + cells.length * FLOOR.room, 320);
   const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
   const height = deepest + 40;

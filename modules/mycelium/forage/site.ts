@@ -115,8 +115,15 @@ function select(): void {
     list.setAttribute("aria-activedescendant", row.id);
     row.scrollIntoView({ block: "nearest" });
   }
+  let onFloor = false;
   for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
+    onFloor ||= mark.dataset["cell"] === cursor;
+  }
+  // A step off the floor, down a list longer than it holds, draws it again
+  // around the cell stepped to; every other step only moves its ring.
+  if (!onFloor && cursor !== null && forages.length > 0) {
+    floor.innerHTML = floorOf(forages, cursor, machine());
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
     history.replaceState(null, "", `#cell=${encodeURIComponent(cursor)}`);

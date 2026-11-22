@@ -26,6 +26,10 @@ run by Node's own test runner when the local sites build the page.
   it said or drawn while the node sends none; and a branch drawn solid
   only for a start the node's book holds, dashed otherwise, and each tie
   the book doesn't hold said "as claimed" in the panel at either end.
+- `floor.test.ts` tries which cells the floor draws of a list longer
+  than it holds: the first 48 with no cursor, and otherwise the cell the
+  cursor is on, each cell it grew from, once round a ring, and those
+  nearest it, so a booked start far down the list still draws solid.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.
