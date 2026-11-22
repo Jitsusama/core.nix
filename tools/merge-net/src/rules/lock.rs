@@ -248,7 +248,7 @@ mod tests {
     #[test]
     fn the_inputs_let_through_are_mycelium() {
         assert_eq!(
-            lock_after(include_str!("../lock-after.txt")),
+            lock_after(include_str!("../../lock-after.txt")),
             words("mycelium")
         );
     }

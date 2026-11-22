@@ -64,7 +64,6 @@ mod gated;
 mod holds;
 mod kit;
 mod lists;
-mod lock;
 mod macs;
 mod movers;
 mod needs;
@@ -451,7 +450,7 @@ fn newest_rules(main: &str) -> String {
         main,
         "--",
         "tools/merge-net/must-run.txt",
-        lock::LOCK_AFTER,
+        rules::lock::LOCK_AFTER,
     ])
     .unwrap_or_default()
 }

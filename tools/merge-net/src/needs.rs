@@ -11,8 +11,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 
+use crate::rules::lock;
 use crate::state::{self, short};
-use crate::{SYSTEM, comments, gated, git, lock, macs, owners, ready, rules, world};
+use crate::{SYSTEM, comments, gated, git, macs, owners, ready, rules, world};
 
 /// Say whether the branch's change runs VM tests before merging, and which,
 /// then each of a Mac's comparisons its gate passed without (`macs.rs`).
