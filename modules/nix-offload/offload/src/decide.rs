@@ -378,13 +378,10 @@ mod tests {
             !proven_lost(true, 2, true, &mut silent, unasked),
             "a build reaches it"
         );
-        assert!(!proven_lost(
-            true,
-            FAILS_WHILE_REACHED - 1,
-            true,
-            &mut silent,
-            unasked
-        ));
+        assert!(
+            !proven_lost(true, FAILS_WHILE_REACHED - 1, true, &mut silent, unasked),
+            "a build reaches it, short of ten failures"
+        );
         let lost: Vec<bool> = (0..SILENT_WHILE_REACHED)
             .map(|_| proven_lost(true, FAILS_WHILE_REACHED, true, &mut silent, || false))
             .collect();
@@ -399,7 +396,10 @@ mod tests {
         );
         assert_eq!(silent, 0, "a passed proof starts the count again");
         silent = SILENT_WHILE_REACHED;
-        assert!(!proven_lost(true, 2, true, &mut silent, unasked));
+        assert!(
+            !proven_lost(true, 2, true, &mut silent, unasked),
+            "one just lent that a build reaches"
+        );
         assert_eq!(silent, 0, "one just lent doesn't take the last one's count");
     }
 
