@@ -959,16 +959,19 @@ mod tests {
                 &member["held"]["putOff"],
                 &member["held"]["putOffAs"],
                 &member["held"]["waitsOnJoel"],
+                &member["held"]["wants"],
             ),
             (
                 "\"shapeSquare\":\"warning\"".to_owned(),
                 &json!(false),
                 &json!(true),
                 &json!("working"),
-                &json!(false)
+                &json!(false),
+                &json!("approval")
             ),
             "its state still says needs, but put off it marks nothing above it, and is served as \
-             put off and as it would stand wanting nothing, so Networks counts it so"
+             put off and as it would stand wanting nothing, with its want's kind, so Networks \
+             counts it so"
         );
         assert_eq!(
             acts(member),

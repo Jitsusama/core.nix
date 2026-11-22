@@ -230,6 +230,11 @@ pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) 
         return Cow::Borrowed(network);
     }
     let mut seen = network.clone();
+    // Counts that aren't an object can't be written into, and indexing
+    // one to write would panic, so they're written afresh.
+    if !seen["counts"].is_object() {
+        seen["counts"] = json!({});
+    }
     let mut counts: HashMap<&str, u64> = STANDINGS_HELD
         .into_iter()
         .map(|standing| (standing, count(network, standing)))
@@ -810,6 +815,30 @@ mod tests {
             ],
             "a parked lead leaves dormant and a paused one stuck, so the working cell still \
              moves, and the counts still sum to the cells"
+        );
+    }
+
+    #[test]
+    fn a_record_whose_counts_arent_an_object_is_counted_afresh_never_panicking() {
+        let mut lead = session("KELP01", "working", "orchestration");
+        lead["held"]["anyWaitsOnJoel"] = json!(true);
+        let counted = |counts: Value| {
+            let team = record("repo.world", "repository", &["kelp01"], &counts, 0);
+            as_marked(&team, &sessions(std::slice::from_ref(&lead)))["counts"].clone()
+        };
+        assert_eq!(
+            [
+                counted(json!([])),
+                counted(json!(3)),
+                counted(json!("many"))
+            ],
+            [
+                json!({"needs-you": 1}),
+                json!({"needs-you": 1}),
+                json!({"needs-you": 1})
+            ],
+            "counts the node sent as no object are read as none, and the marked lead is \
+             counted as needing Joel, rather than the daemon panicking on every rebuild"
         );
     }
 
