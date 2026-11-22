@@ -57,6 +57,10 @@ let
   rendered = {
     sessions = cfg.paths.sessions;
     inherit (cfg) agents;
+    machines = lib.mapAttrsToList (name: machine: {
+      inherit name;
+      inherit (machine) sessions agents;
+    }) cfg.machines;
     inherit workspaces;
     runs = cfg.paths.runs;
     registry = cfg.paths.registry;
@@ -115,6 +119,7 @@ let
       providerNames
       ;
   }
+  // lib.optionalAttrs (cfg.machine != null) { inherit (cfg) machine; }
   // lib.optionalAttrs (cfg.zone != null) { inherit (cfg) zone; }
   // lib.optionalAttrs (cfg.cap != null) { inherit (cfg) cap; };
 
@@ -364,6 +369,67 @@ in
         }
       ];
       defaultText = lib.literalMD "a swarm's homes in each quest's workspace, and review transcripts";
+    };
+
+    machine = lib.mkOption {
+      description = ''
+        What this machine is called, which its own sessions' work is shown under
+        beside other machines'; its host name when null. A null name is told apart
+        from `machines` only once the daemon starts, since a build reads its
+        builder's host name rather than this machine's.
+      '';
+      type = lib.types.nullOr lib.types.str;
+      default = osConfig.networking.hostName or null;
+    };
+
+    machines = lib.mkOption {
+      description = ''
+        Other machines whose pi logs are brought here, by name, each counted as
+        this machine's logs are and shown under its own name, rather than as a
+        bill nothing here explains. Only their logs are read: their subagent
+        runs and quests' workspaces stay there, so a run's spend there is told
+        by its session alone. Each keeps its logs where they're brought to, by
+        default a folder of its own in spend-watch's state laid out as
+        `sessions`, and `review` as the harness lays out its state's own.
+      '';
+      type = lib.types.attrsOf (
+        lib.types.submodule (
+          { name, ... }:
+          let
+            root = "${cfg.paths.state}/machines/${name}";
+          in
+          {
+            options = {
+              sessions = path "Its pi session logs, laid out as pi lays them out." "${root}/sessions";
+              agents = lib.mkOption {
+                description = "Its agents' logs, as `agents` names this machine's.";
+                type = lib.types.listOf (
+                  lib.types.submodule {
+                    options = {
+                      pattern = lib.mkOption {
+                        description = "The logs' paths, each `*` one name.";
+                        type = lib.types.str;
+                      };
+                      kind = lib.mkOption {
+                        description = "The kind of work they are, one word.";
+                        type = lib.types.strMatching "[A-Za-z0-9-]+";
+                      };
+                    };
+                  }
+                );
+                default = [
+                  {
+                    pattern = "${root}/review/transcripts/runs/*/reviewers/*/session/*.jsonl";
+                    kind = "review";
+                  }
+                ];
+                defaultText = lib.literalMD "its review transcripts, under its folder's `review/transcripts/runs`";
+              };
+            };
+          }
+        )
+      );
+      default = { };
     };
 
     zone = lib.mkOption {

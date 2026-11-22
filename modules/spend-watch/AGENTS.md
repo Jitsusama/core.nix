@@ -68,6 +68,51 @@ feed speaks.
   name, and serves the quest whose workspace it works in until a quest
   entry says otherwise. `src/ingest.rs` finds them; `src/series.rs` maps
   them.
+- **Machines.** Another machine is counted as this one is, the only
+  difference being where its credentials live: the config names where its
+  session logs and its agents' logs are brought, and each is read the
+  same way, so its budgets come from its own logs' entries. Each session
+  is its machine's, kept on the session rather than each turn, since a
+  run's agents run where their session does; a session read before
+  machines were is this machine's. The by-machine cut shows each machine
+  by its name, this one by the config's `machine` or else its host name,
+  pi spend no log explains as elsewhere, and another tool's bill as its
+  tool's, since a bill names no machine. It shows only for a period in
+  which another machine spent money, not just took turns on a plan. Only
+  another machine's logs are read: its subagent runs and quest
+  workspaces stay there, so its runs' spend beyond their logs is
+  elsewhere. A copy's turns from before its header are its parent's when
+  the parent's log is beside it or the parent's turns from before the
+  fork are held already, read from any machine's logs, so every copy of a
+  session agrees, and a header alone naming the parent takes nothing; a copy
+  brought before its parent counts whole until the parent lands, then is
+  read again for its own turns. A brought log drops what a session of
+  this machine's was counted for only when its header begins when this
+  machine's log of it does. Each machine's sessions folder
+  stands apart from every other's where it really is, links passed over
+  inside, so nothing is counted twice. A session copied to another
+  machine and gone on there keeps its id, so its logs share the turns
+  from before the copy: each turn is kept once by its session, time,
+  model, kind and tokens, and each refusal and unresolved budget by its
+  session, time and model or budget, whichever log said it first. A
+  session once read from a log here stays this machine's, as this
+  machine says it; one only elsewhere is the machine's whose log was
+  last read from its start, so a machine renamed, or its logs brought
+  somewhere new, takes its sessions along. A log replaced or shrunk is
+  read again from its start. When it's its session's only log, what it
+  no longer says is no longer counted; when it's one of several, gone
+  from disk or not, its session's turns stay, since which log said what
+  isn't kept, and clearing old logs away never lowers what was counted. A finding
+  on another machine's session offers no terminal to go to. The logs
+  are read as they grow in place, which whatever brings them has to
+  keep to: a log replaced on each copy is read again whole every time,
+  and a session two other machines both carry on then takes the machine
+  of whichever log was read last.
+  A brought folder is trusted as fully as
+  this machine's own: its refusals, budgets and workspaces count here,
+  and its headers can drop what another brought machine's logs were
+  counted for; only this machine's counts are guarded. A copy cleared
+  away while it still waits on its parent keeps the parent's turns.
 - **Budgets.** pi's logs name one provider for everything a proxy
   carries, whether it spends Joel's own key or a team's token, so each
   turn's budget is worked out: the budget claiming its provider, since
@@ -158,7 +203,10 @@ feed speaks.
   it. It clears on the first pass that finds it back. The history keeps
   since when each source has been as it is, so a restart doesn't reset it.
 - **History.** A shape that only grows is brought up to date where it
-  stands; one that doesn't read is set aside under a name nothing holds
+  stands, by the daemon as it starts, in minutes on a large one; a
+  command reading it meanwhile is told to try again, and with no daemon
+  it moves the history itself under the lock. One that doesn't read is
+  set aside under a name nothing holds
   yet and built again, and each feed is told what's kept of its bill, none
   of it then, so it tells the bill again. One a newer spend-watch keeps,
   as when an older system boots again, is never touched: the watch holds,

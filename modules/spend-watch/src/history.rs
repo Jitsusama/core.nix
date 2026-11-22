@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 9;
+pub const SCHEMA: i64 = 10;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -105,6 +105,22 @@ CREATE TABLE unresolved (session TEXT NOT NULL, at REAL NOT NULL, budget TEXT NO
     };
 }
 
+/// Each turn, refusal and unresolved budget once, whichever log said it.
+/// A session copied to another machine and gone on there keeps its id, so
+/// both machines' logs hold the turns from before the copy, and each holds
+/// its own after; read together they're the session's turns once. A turn
+/// is told by its kind and tokens as well as its instant, so two calls
+/// logged in the same millisecond are still two.
+macro_rules! once {
+    () => {
+        "
+CREATE UNIQUE INDEX turns_once ON turns (session, at, model, kind, input, output);
+CREATE UNIQUE INDEX refusals_once ON refusals (session, at, model);
+CREATE UNIQUE INDEX unresolved_once ON unresolved (session, at, budget);
+"
+    };
+}
+
 /// Each time an allowance went over: from when, until when it came back
 /// under (none while it's over), and what every source said as it went,
 /// kept here as well as in the report written from it.
@@ -171,7 +187,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 8] = [
+const UPGRADES: [&str; 9] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -208,6 +224,18 @@ const UPGRADES: [&str; 8] = [
     ),
     crossings!(),
     unresolved!(),
+    concat!(
+        // A session read before machines were is this machine's, and a
+        // turn kept twice before is kept once.
+        "ALTER TABLE sessions ADD COLUMN machine TEXT;
+         DELETE FROM turns WHERE rowid NOT IN
+             (SELECT MIN(rowid) FROM turns GROUP BY session, at, model, kind, input, output);
+         DELETE FROM refusals WHERE rowid NOT IN
+             (SELECT MIN(rowid) FROM refusals GROUP BY session, at, model);
+         DELETE FROM unresolved WHERE rowid NOT IN
+             (SELECT MIN(rowid) FROM unresolved GROUP BY session, at, budget);",
+        once!()
+    ),
 ];
 
 const TABLES: &str = concat!(
@@ -218,7 +246,8 @@ CREATE TABLE files (
     carry TEXT NOT NULL, session TEXT);
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY, cwd TEXT NOT NULL, repo TEXT NOT NULL, started REAL NOT NULL,
-    kind TEXT, name TEXT);
+    kind TEXT, name TEXT,
+    machine TEXT);
 CREATE TABLE turns (
     session TEXT NOT NULL, at REAL NOT NULL, hour INTEGER NOT NULL, model TEXT NOT NULL,
     provider TEXT NOT NULL, kind TEXT NOT NULL, quest TEXT,
@@ -272,7 +301,8 @@ CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
     id INTEGER NOT NULL, withdrawn REAL);
 ",
     crossings!(),
-    hours!()
+    hours!(),
+    once!()
 );
 
 pub struct History {
@@ -346,17 +376,26 @@ impl History {
     /// The shape of the history at `path`, when a newer spend-watch keeps
     /// it, read without writing anything.
     pub fn newer(path: &Path) -> Option<i64> {
+        History::shape(path).filter(|shape| *shape > SCHEMA)
+    }
+
+    /// The shape of the history at `path`, when opening it would bring it
+    /// up to this one's first, read without writing anything. On a large
+    /// history that takes minutes and holds it throughout.
+    pub fn older(path: &Path) -> Option<i64> {
+        History::shape(path).filter(|shape| (1..SCHEMA).contains(shape))
+    }
+
+    fn shape(path: &Path) -> Option<i64> {
         let flags = rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY;
         let db = Connection::open_with_flags(path, flags).ok()?;
         db.busy_timeout(Duration::from_secs(10)).ok()?;
-        let shape: i64 = db
-            .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .ok()?
-            .parse()
-            .ok()?;
-        (shape > SCHEMA).then_some(shape)
+        db.query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
+            row.get::<_, String>(0)
+        })
+        .ok()?
+        .parse()
+        .ok()
     }
 
     /// Where a history of `shape` is set aside: a name nothing holds yet,
@@ -488,10 +527,17 @@ impl History {
             .and_then(|(offset, carry)| Some((u64::try_from(offset).ok()?, carry)))
     }
 
-    /// Forgets a log's turns, for one replaced or read again from its start.
+    /// Forgets a log, for one replaced or read again from its start. A
+    /// session's only log takes its turns with it, so what the log no
+    /// longer says is no longer counted. One of several keeps them, since
+    /// which log said what isn't kept: reading it again from its start
+    /// counts only turns not held already, and the turn first read stays.
+    /// A log gone from disk still counts as one of them: what it said was
+    /// spent, and the history is the only record left of it, so clearing
+    /// old logs away never lowers what was counted.
     pub fn forget_file(&self, path: &str) -> Result<(), String> {
-        let session: Option<String> = self
-            .db
+        let forget = self.db.unchecked_transaction().map_err(sql)?;
+        let session: Option<String> = forget
             .query_row("SELECT session FROM files WHERE path = ?1", [path], |row| {
                 row.get(0)
             })
@@ -499,20 +545,68 @@ impl History {
             .map_err(sql)?
             .flatten();
         if let Some(session) = session {
-            self.db
-                .execute("DELETE FROM turns WHERE session = ?1", [&session])
+            let others: bool = forget
+                .query_row(
+                    "SELECT EXISTS (SELECT 1 FROM files WHERE session = ?1 AND path != ?2)",
+                    params![session, path],
+                    |row| row.get(0),
+                )
                 .map_err(sql)?;
-            self.db
-                .execute("DELETE FROM refusals WHERE session = ?1", [&session])
-                .map_err(sql)?;
-            self.db
-                .execute("DELETE FROM unresolved WHERE session = ?1", [&session])
-                .map_err(sql)?;
+            if !others {
+                for table in ["turns", "refusals", "unresolved"] {
+                    forget
+                        .execute(
+                            &format!("DELETE FROM {table} WHERE session = ?1"),
+                            [&session],
+                        )
+                        .map_err(sql)?;
+                }
+            }
         }
-        self.db
+        forget
             .execute("DELETE FROM files WHERE path = ?1", [path])
             .map_err(sql)?;
-        Ok(())
+        forget.commit().map_err(sql)
+    }
+
+    /// Whether turns of a session from no later than `until` are counted
+    /// under it, as a parent's are once its log is read up to a fork.
+    pub fn holds_turns(&self, id: &str, until: f64) -> bool {
+        self.db
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM turns WHERE session = ?1 AND at <= ?2)",
+                rusqlite::params![id, until],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+    }
+
+    /// When a session of this machine's began, as its log here says, or
+    /// none for a session that isn't this machine's.
+    pub fn this_machines_start(&self, id: &str) -> Option<f64> {
+        self.db
+            .query_row(
+                "SELECT started FROM sessions WHERE id = ?1 AND machine IS NULL",
+                [id],
+                |row| row.get(0),
+            )
+            .ok()
+    }
+
+    /// Forgets what a session was counted for before `until`, for a copy
+    /// pi carried it into that was read whole before its parent was
+    /// known: those turns are its parent's, counted under the parent.
+    pub fn forget_copied(&self, session: &str, until: f64) -> Result<(), String> {
+        let forget = self.db.unchecked_transaction().map_err(sql)?;
+        for table in ["turns", "refusals", "unresolved"] {
+            forget
+                .execute(
+                    &format!("DELETE FROM {table} WHERE session = ?1 AND at < ?2"),
+                    params![session, until],
+                )
+                .map_err(sql)?;
+        }
+        forget.commit().map_err(sql)
     }
 
     pub fn set_file(
@@ -538,13 +632,27 @@ impl History {
     pub fn add_event(&self, event: &crate::logs::Event) -> Result<(), String> {
         use crate::logs::Event;
         match event {
-            Event::Session { id, cwd, at, kind } => {
-                // A log read again keeps the name its session was given.
+            Event::Session {
+                id,
+                cwd,
+                at,
+                kind,
+                machine,
+            } => {
+                // A log read again keeps the name its session was given. A
+                // session once read from a log here stays this machine's, as
+                // it was here first, and what a brought log says of it
+                // changes nothing. One only elsewhere is the machine's whose
+                // log was read from its start last, so a machine renamed, or
+                // its logs brought somewhere new, takes its sessions along.
                 self.db
                     .execute(
-                        "INSERT OR REPLACE INTO sessions VALUES (?1, ?2, ?3, ?4, ?5,
-                         (SELECT name FROM sessions WHERE id = ?1))",
-                        params![id, cwd, crate::logs::repo_of(cwd), at, kind],
+                        "INSERT INTO sessions VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6)
+                         ON CONFLICT (id) DO UPDATE SET cwd = excluded.cwd,
+                             repo = excluded.repo, started = excluded.started,
+                             kind = excluded.kind, machine = excluded.machine
+                         WHERE sessions.machine IS NOT NULL OR excluded.machine IS NULL",
+                        params![id, cwd, crate::logs::repo_of(cwd), at, kind, machine],
                     )
                     .map_err(sql)?;
             }
@@ -559,7 +667,8 @@ impl History {
             Event::Turn(turn) => {
                 self.db
                     .execute(
-                        "INSERT INTO turns VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
+                        "INSERT OR IGNORE INTO turns VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9,
+                         ?10, ?11,
                          ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
                         params![
                             turn.session,
@@ -594,7 +703,7 @@ impl History {
             } => {
                 self.db
                     .execute(
-                        "INSERT INTO refusals VALUES (?1, ?2, ?3, ?4)",
+                        "INSERT OR IGNORE INTO refusals VALUES (?1, ?2, ?3, ?4)",
                         params![session, at, model, said],
                     )
                     .map_err(sql)?;
@@ -607,7 +716,7 @@ impl History {
             } => {
                 self.db
                     .execute(
-                        "INSERT INTO unresolved VALUES (?1, ?2, ?3, ?4)",
+                        "INSERT OR IGNORE INTO unresolved VALUES (?1, ?2, ?3, ?4)",
                         params![session, at, budget, missing],
                     )
                     .map_err(sql)?;
@@ -783,7 +892,7 @@ mod tests {
                 "INSERT INTO turns (session, at, hour, model, provider, kind, quest, input,
                  output, cache_read, cache_write, cache_write_long, cost, cost_cache_write,
                  cost_output, gap, rebuilt, rebuilt_cost, cause) VALUES
-                 (?1, ?2, ?3, 'opus', 'anthropic', 'agent', ?4,
+                 (?1, ?2 + (SELECT COUNT(*) FROM turns), ?3, 'opus', 'anthropic', 'agent', ?4,
                  0, 0, 0, 0, 0, ?5, 0, 0, NULL, 0, 0, NULL)",
                 params![session, crate::time::hour_start(hour), hour, quest, cost],
             )
@@ -906,6 +1015,9 @@ mod tests {
     /// What shape 6 added to a turn.
     const TURNS_6: &str = ",\n    budget TEXT";
 
+    /// What shape 10 added to a session.
+    const SESSIONS_10: &str = ",\n    machine TEXT";
+
     /// The tables as the fifth shape kept them.
     fn fifth_shape() -> String {
         sixth_shape()
@@ -939,6 +1051,8 @@ mod tests {
         TABLES
             .replace(crossings!(), "")
             .replace(unresolved!(), "")
+            .replace(SESSIONS_10, "")
+            .replace(once!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1066,6 +1180,7 @@ mod tests {
             cwd: "/x".into(),
             at: 1.0,
             kind: Some("swarm".into()),
+            machine: None,
         };
         history.add_event(&session).unwrap();
         history
@@ -1094,8 +1209,13 @@ mod tests {
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace(unresolved!(), ""))
-                .unwrap();
+            db.execute_batch(
+                &TABLES
+                    .replace(unresolved!(), "")
+                    .replace(SESSIONS_10, "")
+                    .replace(once!(), ""),
+            )
+            .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '8');
                  INSERT INTO refusals VALUES ('s1', 1.0, 'm', 'over');",
@@ -1121,6 +1241,95 @@ mod tests {
             )
             .unwrap();
         assert_eq!(kept, (1, 1));
+    }
+
+    // The ninth shape knew no machine; its sessions are this machine's,
+    // and a session read after is kept under the machine its log was on.
+    #[test]
+    fn the_ninth_shape_gains_machines() {
+        use crate::logs::Event;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let db = Connection::open(&path).unwrap();
+            db.execute_batch(&TABLES.replace(SESSIONS_10, "").replace(once!(), ""))
+                .unwrap();
+            db.execute_batch(
+                "INSERT INTO meta VALUES ('schema', '9');
+                 INSERT INTO sessions VALUES ('here', '/x', 'x', 1.0, NULL, NULL);
+                 INSERT INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'person', NULL,
+                     1, 1, 0, 0, 0, 2.0, 0, 0, NULL, 0, 0, NULL, NULL);
+                 INSERT INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'person', NULL,
+                     1, 1, 0, 0, 0, 2.0, 0, 0, NULL, 0, 0, NULL, NULL);
+                 INSERT INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'side', NULL,
+                     1, 1, 0, 0, 0, 0.5, 0, 0, NULL, 0, 0, NULL, NULL);
+                 INSERT INTO refusals VALUES ('here', 5.0, 'm', 'no');
+                 INSERT INTO refusals VALUES ('here', 5.0, 'm', 'no');
+                 INSERT INTO unresolved VALUES ('here', 5.0, 'teal', 'no key');
+                 INSERT INTO unresolved VALUES ('here', 5.0, 'teal', 'no key');",
+            )
+            .unwrap();
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        history
+            .add_event(&Event::Session {
+                id: "there".into(),
+                cwd: "/x".into(),
+                at: 2.0,
+                kind: None,
+                machine: Some("teal".into()),
+            })
+            .unwrap();
+        let machines: Vec<(String, Option<String>)> = history
+            .db
+            .prepare("SELECT id, machine FROM sessions ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            machines,
+            [("here".into(), None), ("there".into(), Some("teal".into()))],
+            "a session kept before machines wasn't this machine's, or one read after lost its own"
+        );
+        // A turn held already, read again, is still kept once: the shape
+        // keeps each turn by its key, not only by dropping what it held twice.
+        history
+            .db
+            .execute_batch(
+                "INSERT OR IGNORE INTO turns VALUES ('here', 5.0, 0, 'm', 'p', 'person', NULL,
+                     1, 1, 0, 0, 0, 2.0, 0, 0, NULL, 0, 0, NULL, NULL);
+                 INSERT OR IGNORE INTO refusals VALUES ('here', 5.0, 'm', 'no');
+                 INSERT OR IGNORE INTO unresolved VALUES ('here', 5.0, 'teal', 'no key');",
+            )
+            .unwrap();
+        let (turns, cost): (i64, f64) = history
+            .db
+            .query_row("SELECT SUM(turns), SUM(cost) FROM turn_hours", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(
+            (turns, cost),
+            (2, 2.5),
+            "a turn kept twice before machines wasn't kept once, or a side call in the same \
+             millisecond was taken for it, with its hour's sum"
+        );
+        let kept: (i64, i64) = history
+            .db
+            .query_row(
+                "SELECT (SELECT COUNT(*) FROM refusals), (SELECT COUNT(*) FROM unresolved)",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            kept,
+            (1, 1),
+            "a refusal or unresolved budget kept twice before machines wasn't kept once"
+        );
     }
 
     #[test]
