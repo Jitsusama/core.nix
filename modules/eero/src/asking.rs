@@ -18,7 +18,7 @@ use crate::watch;
 /// isn't for a slow cloud through every read falling due at once, or a
 /// refresh doubling a call. Past it, the outcome is said unknown, and the
 /// daemon lets the act go, logged `gone`, unless it has begun it, so
-/// reading the device again settles which.
+/// the act's last line in the change log says which once it ends.
 const PATIENCE: Duration = Duration::from_mins(6);
 
 /// How long a daemon that took no ask is given to say it refused the
@@ -135,7 +135,8 @@ fn line_by(reading: &mut BufReader<UnixStream>, deadline: Instant) -> Result<Str
 fn unanswered(socket: &Path, hung_up: bool, sent: &std::io::Result<()>) -> Undone {
     match sent {
         Ok(()) => Undone::Unknown(format!(
-            "{}; it may have been done, so read it again before asking again",
+            "{}; it may have been done or still be under way, and its last line in the change \
+             log says which once it ends",
             if hung_up {
                 "the daemon went before it answered"
             } else {

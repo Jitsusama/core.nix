@@ -165,7 +165,9 @@ impl Cloud {
 /// A change eero took may come back with no data, which is null then
 /// rather than a refusal, since only a status eero refused with says it
 /// was refused, and each change is judged by what eero reads after it.
-/// Signing in is no change: verifying a code carries no token to judge
+/// eero can say an error inside a 2xx, so a change answered with one in
+/// its `meta` is refused too, since a speed test has no read after it to
+/// say it never ran. Signing in is no change: verifying a code carries no token to judge
 /// it by, so an answer to a login path with no data is refused, as a
 /// read's is. A read with no data is one eero couldn't answer, never an
 /// empty one.
@@ -174,6 +176,15 @@ fn judge(method: Method, path: &str, status: u16, read: &Value) -> Result<Value,
         && !path.starts_with("/2.2/login")
         && (200..300).contains(&status)
     {
+        if let Some(error) = read
+            .pointer("/meta/error")
+            .and_then(Value::as_str)
+            .filter(|error| !error.is_empty())
+        {
+            return Err(Refused::Failed(Failure::Refused(format!(
+                "eero answered {status} to {path}, saying {error}"
+            ))));
+        }
         return Ok(api::data(read).cloned().unwrap_or(Value::Null));
     }
     if api::session_expired(status, read) {
@@ -370,6 +381,17 @@ mod tests {
                     Err(Failure::Refused(_))
                 ),
                 "a {method:?} eero refused read as taken"
+            );
+            assert!(
+                matches!(
+                    judged(
+                        method,
+                        200,
+                        json!({"meta": {"code": 200, "error": "error.speedtest.busy"}})
+                    ),
+                    Err(Failure::Refused(_))
+                ),
+                "a {method:?} eero refused inside a 200 read as taken"
             );
         }
         assert!(

@@ -108,11 +108,17 @@ fn append(path: &Path, line: &Value) -> io::Result<()> {
         .mode(0o600)
         .open(path)?;
     let before = out.metadata()?.len();
-    if let Err(error) = out.write_all(text.as_bytes()) {
+    // A line that can't be put on the disk is cut back off too, since
+    // the act it names won't be done, and an `asked` line left alone would
+    // read as one cut short, which may have been.
+    if let Err(error) = out
+        .write_all(text.as_bytes())
+        .and_then(|()| out.sync_data())
+    {
         let _ = out.set_len(before);
         return Err(error);
     }
-    out.sync_data()
+    Ok(())
 }
 
 /// One line: who asked, in which unit, the act and what it names, and

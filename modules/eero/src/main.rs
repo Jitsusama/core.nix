@@ -404,16 +404,20 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
             .because(why)
             .try_this("eero sign-in <email or phone>"),
         asking::Undone::Unknown(why) => {
-            // The reservations are rewritten only once the daemon's next
-            // read ends, which it starts as it answers, so read now they
-            // still show the reservation as it was before the act. The
-            // internet's view lists every reservation, a device that
-            // isn't on now included, which the device's own view refuses.
+            // The reservations are rewritten only once a read after the
+            // act ends: the daemon starts one as it answers, but eero's
+            // list can lag it, and the next is fifteen minutes on, and
+            // where this command stopped waiting the act may still be
+            // under way. So it says to wait for the outcome, never to ask
+            // again, since an ask again would find its own change and
+            // call it one already there. The internet's view lists every
+            // reservation, a device that isn't on now included, which the
+            // device's own view refuses.
             Failure::new(
                 Exit::TryAgain,
                 format!(
-                    "whether eero took it for {mac} isn't known until the daemon's next read, \
-                     a few seconds on"
+                    "whether eero took it for {mac} isn't known yet, so ask again only once \
+                     eero internet or the change log says it wasn't"
                 ),
             )
             .because(why)

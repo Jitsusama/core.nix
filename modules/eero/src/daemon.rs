@@ -384,7 +384,7 @@ impl Daemon {
     /// Does an act the shell asked for, and has the network read at once
     /// after, so the row it changed is served as eero now says it; after a
     /// reservation, its routing too, which holds the reservations, so
-    /// `eero devices <MAC>` can settle an outcome said unknown. A session
+    /// `eero internet` can show an outcome said unknown. A session
     /// eero refuses is let go, as a read's is.
     fn act(&mut self, act: Act) -> Came {
         let came = match session(&mut self.cloud, &mut self.network) {
@@ -402,15 +402,7 @@ impl Daemon {
             if matches!(failure, Failure::SignedOut(_)) {
                 self.cloud = None;
             }
-            // A reason can hold a name a device on the network gave
-            // itself, so it's kept to one line, and no line break in it
-            // writes a journal entry of its own.
-            let why = terminal_kit::layout::one_line(&failure.to_string()).into_owned();
-            if matches!(failure, Failure::Unknown(_)) {
-                eprintln!("eero: whether {act:?} was done isn't known: {why}");
-            } else {
-                eprintln!("eero: {act:?} wasn't done: {why}");
-            }
+            eprintln!("{}", journal_line(&act, failure));
         }
         came
     }
@@ -594,9 +586,44 @@ fn act(daemon: &mut Daemon, listeners: &Listeners, asked: &Asked) {
     }
 }
 
+/// What the journal says of an act that wasn't done, or isn't known to
+/// be. A reason can hold a name a device on the network gave itself, so
+/// it's kept to one line, and no line break in it writes a journal entry
+/// of its own; the MAC reads as the CLI and the change log write it.
+fn journal_line(act: &Act, failure: &Failure) -> String {
+    let why = terminal_kit::layout::one_line(&failure.to_string()).into_owned();
+    if matches!(failure, Failure::Unknown(_)) {
+        format!("eero: whether {act:?} was done isn't known: {why}")
+    } else {
+        format!("eero: {act:?} wasn't done: {why}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_journal_line_names_the_mac_as_written_and_stays_one_line() {
+        let act = Act::Reserve {
+            mac: acts::Mac::parse("02:00:00:00:00:01").expect("a MAC"),
+            address: "10.0.0.31".parse().expect("an address"),
+        };
+        for failure in [
+            Failure::Refused("held by kitchen\neero: forged".into()),
+            Failure::Unknown("held by kitchen\neero: forged".into()),
+        ] {
+            let line = journal_line(&act, &failure);
+            assert!(
+                !line.contains('\n'),
+                "a reason's line break wrote a journal entry of its own: {line:?}"
+            );
+            assert!(
+                line.contains("02:00:00:00:00:01"),
+                "the journal wrote the MAC otherwise than the CLI does: {line:?}"
+            );
+        }
+    }
 
     fn contract(file: &str) -> Value {
         let path = format!("{}/contract/{file}", env!("CARGO_MANIFEST_DIR"));

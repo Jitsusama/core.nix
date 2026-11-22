@@ -265,6 +265,11 @@ mod tests {
             Some("02:ab:00:00:00:3f".to_owned()),
             "a good MAC didn't read, or wrote back otherwise"
         );
+        assert_eq!(
+            Mac::parse("02:ab:00:00:00:3f").map(|mac| format!("{mac:?}")),
+            Some("02:ab:00:00:00:3f".to_owned()),
+            "a MAC debugged otherwise than it writes, as the journal shows it"
+        );
         for bad in [
             "",
             "02:00:00:00:00",
