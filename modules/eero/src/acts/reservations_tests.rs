@@ -32,7 +32,9 @@ fn reservations() -> Vec<Kept> {
 }
 
 /// An eero that answers each method and path from a queue the test fills,
-/// and keeps what it was asked, in order.
+/// each answer once, and keeps what it was asked, in order: a read or a
+/// change the test didn't foresee fails it, rather than being answered as
+/// the last one was.
 #[derive(Default)]
 struct Eero {
     answers: HashMap<String, VecDeque<Result<Value, Failure>>>,
@@ -58,13 +60,7 @@ impl Eero {
     }
 
     fn answer(&mut self, asked: &str) -> Result<Value, Failure> {
-        let answer = self.answers.get_mut(asked).and_then(|queue| {
-            if queue.len() > 1 {
-                queue.pop_front()
-            } else {
-                queue.front().cloned()
-            }
-        });
+        let answer = self.answers.get_mut(asked).and_then(VecDeque::pop_front);
         self.asked.push(asked.to_owned());
         answer.unwrap_or_else(|| panic!("the test gave eero no answer to {asked}"))
     }
@@ -206,7 +202,12 @@ fn only_an_address_the_home_subnet_gives_a_device_is_kept() {
     let subnets = contract("subnets_config");
     for (ok, said) in [
         (true, "10.0.0.77"),
-        (true, "10.0.3.254"),
+        (true, "10.0.0.20"),
+        (true, "10.0.0.254"),
+        (false, "10.0.0.19"),
+        (false, "10.0.0.2"),
+        (false, "10.0.0.255"),
+        (false, "10.0.3.254"),
         (false, "10.0.4.1"),
         (false, "192.168.4.20"),
         (false, "10.0.0.0"),
@@ -215,9 +216,19 @@ fn only_an_address_the_home_subnet_gives_a_device_is_kept() {
         assert_eq!(
             within(&subnets, address(said)).is_ok(),
             ok,
-            "{said} was judged wrongly against the contract's 10.0.0.0/22"
+            "{said} was judged wrongly against the contract's 10.0.0.0/22, given out from \
+             10.0.0.20 to 10.0.0.254"
         );
     }
+    let mut no_range = subnets.clone();
+    no_range[0]["dedicated_subnet"]
+        .as_object_mut()
+        .expect("the contract's home subnet")
+        .remove("end_ip");
+    assert!(
+        within(&no_range, address("10.0.0.77")).is_err(),
+        "an address was kept with no range to check it against"
+    );
     assert!(
         within(&json!([]), address("10.0.0.77")).is_err(),
         "an address was kept with no home subnet to check it against"
@@ -237,27 +248,72 @@ fn an_address_a_device_or_an_eero_holds_is_another_devices() {
             holder(&devices, &eeros, ours, address("10.0.0.77")),
         ],
         [
-            Some("held by printer 1".to_owned()),
-            Some("an eero's own".to_owned()),
-            None,
-            None,
+            Ok(Some("held by printer 1".to_owned())),
+            Ok(Some("an eero's own".to_owned())),
+            Ok(None),
+            Ok(None),
         ],
         "a held address was missed, or the device's own counted as another's"
+    );
+    let wrapped = json!({"data": []});
+    assert_eq!(
+        [
+            holder(&wrapped, &eeros, ours, address("10.0.0.77")),
+            holder(&devices, &wrapped, ours, address("10.0.0.77")),
+        ],
+        [
+            Err("eero lists its devices in a way this can't read".to_owned()),
+            Err("eero lists its eeros in a way this can't read".to_owned()),
+        ],
+        "a list of devices or eeros this can't read was taken as no one holding the address"
     );
 }
 
 #[test]
-fn a_port_forward_naming_an_address_is_found_wherever_it_says_it() {
-    let forwards = json!([{"url": "/2.2/networks/1001/forwards/1",
-        "reservation": {"ip": "10.0.0.208"}, "ports": [{"from": 25565}]}]);
+fn a_port_forward_naming_the_reservation_any_way_is_found_wherever_it_says_it() {
+    let held = &reservations()[0];
+    let forward = |target: Value| {
+        json!([{"url": "/2.2/networks/1001/forwards/1", "target": {"to": target},
+            "ports": [{"from": 25565}]}])
+    };
+    for target in [
+        json!("10.0.0.208"),
+        json!("10.0.0.208:25565"),
+        json!("10.0.0.208/32"),
+        json!(KEPT_URL),
+        json!(KEPT_URL.to_ascii_uppercase()),
+        json!("/2.2/networks/1001/devices/020000000038"),
+        json!("02:00:00:00:00:38"),
+        json!("02:00:00:00:00:38".to_ascii_uppercase()),
+        json!("020000000038"),
+        json!(u32::from(held.address)),
+    ] {
+        assert_eq!(
+            forwarded(&forward(target.clone()), held),
+            Ok(true),
+            "a forward naming the reservation by {target} was missed"
+        );
+    }
+    for target in [
+        json!("10.0.0.20"),
+        json!("10.0.0.2080"),
+        json!("/2.2/networks/1001/devices/020000000001"),
+        json!(25565),
+    ] {
+        assert_eq!(
+            forwarded(&forward(target.clone()), held),
+            Ok(false),
+            "a forward naming something else, {target}, was taken for the reservation's"
+        );
+    }
     assert_eq!(
-        [
-            forwarded(&forwards, address("10.0.0.208")),
-            forwarded(&forwards, address("10.0.0.20")),
-            forwarded(&contract("forwards"), address("10.0.0.208")),
-        ],
-        [true, false, false],
-        "a forward was missed, or one found that names another address"
+        forwarded(&contract("forwards"), held),
+        Ok(false),
+        "the contract's empty forwards were found to reach the reservation"
+    );
+    assert!(
+        forwarded(&json!({"data": []}), held).is_err(),
+        "forwards this can't read were taken as none"
     );
 }
 
@@ -293,15 +349,18 @@ fn a_free_address_is_posted_and_read_back() {
         Ok(Done::Made),
         "a free address eero then kept wasn't said made"
     );
+    let read = |name: &str| format!("GET {NETWORK}/{name}");
     assert_eq!(
-        eero.changes(),
-        [posted("02:00:00:00:00:01", "10.0.0.77")],
-        "the reservation wasn't asked of eero once, as it should be"
-    );
-    assert_eq!(
-        eero.asked.last().map(String::as_str),
-        Some(format!("GET {NETWORK}/reservations").as_str()),
-        "the reservation wasn't read back after it was asked"
+        eero.asked,
+        [
+            read("reservations"),
+            read("subnets_config"),
+            read("devices"),
+            read("eeros"),
+            posted("02:00:00:00:00:01", "10.0.0.77"),
+            read("reservations"),
+        ],
+        "the reservation wasn't checked, asked once, then read back, in that order"
     );
 }
 
@@ -329,17 +388,29 @@ fn nothing_is_posted_where_the_reservation_stands_or_crosses_a_device() {
     );
     let mut outside = Eero::contract();
     kept_then(&mut outside, Ok(contract("reservations")));
-    assert!(
-        reserve(
-            &mut outside,
-            NETWORK,
-            mac("02:00:00:00:00:01"),
-            address("10.0.8.1")
-        )
-        .is_err(),
-        "an address outside the home subnet wasn't refused"
+    let refused = reserve(
+        &mut outside,
+        NETWORK,
+        mac("02:00:00:00:00:01"),
+        address("10.0.8.1"),
     );
-    for eero in [stands, taken, outside] {
+    assert!(
+        matches!(&refused, Err(Failure::Refused(why)) if why.contains("home subnet")),
+        "an address outside the home subnet wasn't refused for it: {refused:?}"
+    );
+    let mut below = Eero::contract();
+    kept_then(&mut below, Ok(contract("reservations")));
+    let refused = reserve(
+        &mut below,
+        NETWORK,
+        mac("02:00:00:00:00:01"),
+        address("10.0.0.5"),
+    );
+    assert!(
+        matches!(&refused, Err(Failure::Refused(why)) if why.contains("range eero gives out")),
+        "an address below the range eero gives out wasn't refused for it: {refused:?}"
+    );
+    for eero in [stands, taken, outside, below] {
         assert_eq!(eero.changes(), Vec::<&str>::new(), "eero was sent a change");
     }
 }
@@ -366,17 +437,42 @@ fn a_reservations_outcome_is_what_eero_keeps_after_it() {
         Err(no_data),
         "a refusal eero keeps nothing of wasn't said as eero said it"
     );
-    assert!(
-        matches!(
-            walk(Ok(json!({})), Ok(contract("reservations"))),
-            Err(Failure::Refused(_))
+    let unknown = |came: Result<Done, Failure>| {
+        matches!(&came, Err(Failure::Unknown(why))
+            if why.contains("read eero devices 02:00:00:00:00:01 to see"))
+    };
+    for (sent, after, what) in [
+        (
+            Ok(json!({})),
+            Ok(contract("reservations")),
+            "eero answered, but whose list doesn't show it yet",
         ),
-        "a reservation eero answered but doesn't keep wasn't refused"
-    );
-    assert!(
-        matches!(walk(Err(lost.clone()), Err(lost)), Err(Failure::Unknown(_))),
-        "a reservation neither eero's answer nor a read settles wasn't said unknown"
-    );
+        (
+            Err(lost.clone()),
+            Ok(contract("reservations")),
+            "a send timed out, which may still land, and the list doesn't show yet",
+        ),
+        (
+            Ok(json!({})),
+            Err(lost.clone()),
+            "eero answered, then couldn't be read",
+        ),
+        (
+            Ok(json!({})),
+            Ok(json!({"oops": 1})),
+            "eero answered, then listed in a way this can't read",
+        ),
+        (
+            Err(lost.clone()),
+            Err(lost),
+            "neither eero's answer nor a read settles",
+        ),
+    ] {
+        assert!(
+            unknown(walk(sent, after)),
+            "a reservation {what} wasn't said unknown, with how to find out"
+        );
+    }
     assert_eq!(
         walk(Err(signed_out.clone()), Ok(with_new(ours, "10.0.0.77"))),
         Err(signed_out),
@@ -384,29 +480,78 @@ fn a_reservations_outcome_is_what_eero_keeps_after_it() {
     );
 }
 
-#[test]
-fn an_unreservation_deletes_the_devices_own_and_says_what_it_freed() {
+/// What unreserving the contract's reservation comes to, eero answering
+/// its DELETE with `sent` and the read after with `after`, and what it
+/// was asked other than reads.
+fn unreserved(sent: Result<Value, Failure>, after: Result<Value, Failure>) -> (Came, Vec<String>) {
     let mut eero = Eero::contract();
-    kept_then(&mut eero, Ok(json!([])));
-    eero.answers(&format!("DELETE {KEPT_URL}"), Ok(Value::Null));
+    kept_then(&mut eero, after);
+    eero.answers(&format!("DELETE {KEPT_URL}"), sent);
+    let came = unreserve(&mut eero, NETWORK, mac("02:00:00:00:00:38"));
+    (
+        came,
+        eero.changes().into_iter().map(str::to_owned).collect(),
+    )
+}
+
+#[test]
+fn an_unreservations_outcome_is_what_eero_keeps_after_it_and_names_what_it_held() {
+    let held = Some(address("10.0.0.208"));
+    let lost = Failure::Unreachable("couldn't reach eero: timed out".into());
+    let undo = "eero devices 02:00:00:00:00:38 reserve 10.0.0.208";
+    for (sent, after, what) in [
+        (
+            Ok(Value::Null),
+            Ok(contract("reservations")),
+            "eero answered, but still lists",
+        ),
+        (
+            Err(lost.clone()),
+            Err(lost.clone()),
+            "neither eero's answer nor a read settles",
+        ),
+    ] {
+        let (came, _) = unreserved(sent, after);
+        assert!(
+            matches!(&came.done, Err(Failure::Unknown(why)) if why.contains(undo))
+                && came.held == held,
+            "an unreservation {what} wasn't said unknown with the address it held: {came:?}"
+        );
+    }
+    let signed_out = Failure::SignedOut("aged".into());
+    let mut refused = Eero::contract();
+    kept_then(&mut refused, Ok(json!([])));
+    refused.answers(&format!("DELETE {KEPT_URL}"), Err(signed_out.clone()));
+    let came = unreserve(&mut refused, NETWORK, mac("02:00:00:00:00:38"));
     assert_eq!(
-        unreserve(&mut eero, NETWORK, mac("02:00:00:00:00:38")),
-        Ok(Done::Freed(address("10.0.0.208"))),
-        "an unreservation didn't say the address it freed"
+        (came.done, refused.asked.last().map(String::as_str)),
+        (Err(signed_out), Some(format!("DELETE {KEPT_URL}").as_str())),
+        "an unreservation sent under a refused session wasn't said signed out, or was read back"
+    );
+}
+
+#[test]
+fn an_unreservation_deletes_the_devices_own_and_says_what_it_held() {
+    let (came, changes) = unreserved(Ok(Value::Null), Ok(json!([])));
+    assert_eq!(
+        came,
+        Came {
+            done: Ok(Done::Made),
+            held: Some(address("10.0.0.208")),
+        },
+        "an unreservation didn't say the address it held"
     );
     assert_eq!(
-        eero.changes(),
+        changes,
         [format!("DELETE {KEPT_URL}")],
         "the wrong thing was deleted"
     );
 
-    let mut gone = Eero::contract();
-    kept_then(&mut gone, Ok(json!([])));
     let missing = Failure::Refused("eero answered 404".into());
-    gone.answers(&format!("DELETE {KEPT_URL}"), Err(missing));
+    let (came, _) = unreserved(Err(missing), Ok(json!([])));
     assert_eq!(
-        unreserve(&mut gone, NETWORK, mac("02:00:00:00:00:38")),
-        Ok(Done::Freed(address("10.0.0.208"))),
+        came.done,
+        Ok(Done::Made),
         "a reservation already gone when deleted wasn't judged by eero's list"
     );
 
@@ -414,8 +559,8 @@ fn an_unreservation_deletes_the_devices_own_and_says_what_it_freed() {
     kept_then(&mut none, Ok(contract("reservations")));
     assert_eq!(
         unreserve(&mut none, NETWORK, mac("02:00:00:00:00:01")),
-        Ok(Done::Unchanged),
-        "a device keeping no address wasn't said unchanged"
+        Came::of(Ok(Done::Unchanged)),
+        "a device keeping no address wasn't said unchanged, with nothing held"
     );
     assert_eq!(none.changes(), Vec::<&str>::new(), "eero was sent a change");
 }
@@ -430,7 +575,7 @@ fn an_unreservation_a_forward_reaches_or_eero_names_oddly_is_refused() {
     );
     assert!(
         matches!(
-            unreserve(&mut forwarded, NETWORK, mac("02:00:00:00:00:38")),
+            unreserve(&mut forwarded, NETWORK, mac("02:00:00:00:00:38")).done,
             Err(Failure::Refused(why)) if why.contains("port forward")
         ),
         "an address a forward reaches was unreserved"
@@ -440,8 +585,11 @@ fn an_unreservation_a_forward_reaches_or_eero_names_oddly_is_refused() {
         "ip": "10.0.0.208"}]);
     odd.answers(&format!("GET {NETWORK}/reservations"), Ok(elsewhere));
     assert!(
-        unreserve(&mut odd, NETWORK, mac("02:00:00:00:00:38")).is_err(),
-        "a reservation whose url isn't the network's was deleted"
+        matches!(
+            unreserve(&mut odd, NETWORK, mac("02:00:00:00:00:38")).done,
+            Err(Failure::Refused(why)) if why.contains("oddly")
+        ),
+        "a reservation whose url isn't the network's wasn't refused for it"
     );
     for eero in [forwarded, odd] {
         assert_eq!(eero.changes(), Vec::<&str>::new(), "eero was sent a change");

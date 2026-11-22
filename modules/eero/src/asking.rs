@@ -6,17 +6,22 @@
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
 use crate::watch;
 
-/// How long an act may take: a reservation reads eero's reservations,
-/// its home subnet, devices and eeros before it asks, and reads the
-/// reservations back after, each up to the cloud's 20 s, behind whatever
-/// read the daemon is in.
-const PATIENCE: Duration = Duration::from_mins(3);
+/// How long an act may take, all told: a reservation makes six calls of
+/// up to the cloud's 20 s each, and waits behind whatever read the daemon
+/// is in, the longest of which makes ten. Past it, the outcome is said
+/// unknown; the daemon then lets the act go, logged `gone`, unless it has
+/// begun it.
+const PATIENCE: Duration = Duration::from_mins(6);
+
+/// How long a daemon that took no ask is given to say it refused the
+/// connection, which it does as it closes it.
+const REFUSAL: Duration = Duration::from_secs(2);
 
 /// Why an act wasn't done, or isn't known to be.
 #[derive(Debug, PartialEq, Eq)]
@@ -31,6 +36,14 @@ pub enum Undone {
     SignedOut(String),
     /// It was asked, but whether it was done isn't known.
     Unknown(String),
+    /// The daemon couldn't log the ask, so it did nothing: its own state
+    /// folder, not eero, is at fault.
+    Unlogged(String),
+    /// The daemon knows no such act, as one older than this command
+    /// wouldn't, so nothing was done.
+    NoSuchAct(String),
+    /// The daemon answers only its own account, so nothing was read.
+    NotOurs(String),
 }
 
 /// Asks the daemon for `act`, an act's fields as acts.rs reads them, and
@@ -40,44 +53,77 @@ pub fn act(act: &Value) -> Result<Value, Undone> {
     act_at(&socket, act, PATIENCE)
 }
 
-/// Asks the daemon at `socket` for `act`, waiting up to `patience` for
-/// its answer. Once the ask is sent, the daemon may do it whatever comes
-/// after, so silence then is an unknown outcome, never an absent daemon.
+/// Asks the daemon at `socket` for `act`, waiting up to `patience` in all
+/// for its answer, however much else it says meanwhile. Once the ask is
+/// sent, the daemon may do it whatever comes after, so silence then is an
+/// unknown outcome, never an absent daemon. A daemon that refused the
+/// connection says so first, read even when the ask couldn't be sent.
 fn act_at(socket: &Path, act: &Value, patience: Duration) -> Result<Value, Undone> {
+    let started = Instant::now();
     let absent = |error: std::io::Error| Undone::Absent(format!("{}: {error}", socket.display()));
     let mut stream = UnixStream::connect(socket).map_err(absent)?;
-    stream.set_read_timeout(Some(patience)).map_err(absent)?;
     let mut asked = act.clone();
     asked["id"] = json!(1);
     asked["ask"] = json!("act");
-    writeln!(stream, "{asked}").map_err(absent)?;
+    let sent = writeln!(stream, "{asked}");
+    // An ask that couldn't be sent was never read, so only a refusal the
+    // daemon wrote as it closed is waited for, briefly.
+    let deadline = if sent.is_ok() {
+        started + patience
+    } else {
+        Instant::now() + REFUSAL.min(patience)
+    };
+    let mut reading = BufReader::new(stream);
     let unknown = |what: &str| {
         Undone::Unknown(format!(
             "{what}; it may have been done, so read it again before asking again"
         ))
     };
-    for line in BufReader::new(stream).lines() {
-        let Ok(line) = line else {
-            return Err(unknown("the daemon didn't answer in time"));
+    let mut line = String::new();
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        line.clear();
+        let read = if left.is_zero() {
+            None
+        } else {
+            reading
+                .get_ref()
+                .set_read_timeout(Some(left))
+                .ok()
+                .and_then(|()| reading.read_line(&mut line).ok())
         };
-        if let Some(answer) = answered(&line) {
-            return answer;
+        let answer = match (read, &sent) {
+            (Some(0), Ok(())) => return Err(unknown("the daemon went before it answered")),
+            (None, Ok(())) => return Err(unknown("the daemon didn't answer in time")),
+            (Some(0) | None, Err(error)) => {
+                return Err(absent(std::io::Error::new(error.kind(), error.to_string())));
+            }
+            (Some(_), _) => answered(line.trim_end()),
+        };
+        match (answer, &sent) {
+            (Some(answer @ Err(Undone::NotOurs(_))), _) | (Some(answer), Ok(())) => return answer,
+            _ => {}
         }
     }
-    Err(unknown("the daemon went before it answered"))
 }
 
 /// The daemon's answer to our ask, if `line` is it, rather than anything
 /// else it tells a listener.
 fn answered(line: &str) -> Option<Result<Value, Undone>> {
     let said: Value = serde_json::from_str(line).ok()?;
+    let code = said["error"]["code"].as_str();
+    // A refused connection is told before its ask is read, so under no id.
+    if code == Some("not-ours") {
+        return Some(Err(Undone::NotOurs(
+            "eero-daemon answers only its own account".into(),
+        )));
+    }
     if said["id"] != json!(1) {
         return None;
     }
     if said["done"] == json!(true) {
         return Some(Ok(said));
     }
-    let code = said["error"]["code"].as_str();
     let why = said["error"]["message"]
         .as_str()
         .or(code)
@@ -87,6 +133,8 @@ fn answered(line: &str) -> Option<Result<Value, Undone>> {
         Some("unreachable") => Undone::Unreachable(why),
         Some("signed-out") => Undone::SignedOut(why),
         Some("unknown") => Undone::Unknown(why),
+        Some("unlogged") => Undone::Unlogged(why),
+        Some("bad-act") => Undone::NoSuchAct(why),
         _ => Undone::Refused(why),
     }))
 }
@@ -104,25 +152,32 @@ mod tests {
         let unreachable = r#"{"id":1,"error":{"code":"unreachable","message":"down"}}"#;
         let signed_out = r#"{"id":1,"error":{"code":"signed-out","message":"aged"}}"#;
         let unknown = r#"{"id":1,"error":{"code":"unknown","message":"read it"}}"#;
+        let unlogged = r#"{"id":1,"error":{"code":"unlogged","message":"disk full"}}"#;
         assert_eq!(
             [
-                answered(r#"{"id":1,"done":true,"freed":"10.0.0.208"}"#),
+                answered(r#"{"id":1,"done":true,"held":"10.0.0.208"}"#),
                 answered(refused),
                 answered(unreachable),
                 answered(signed_out),
                 answered(unknown),
+                answered(unlogged),
                 answered(r#"{"id":1,"error":{"code":"bad-act"}}"#),
+                answered(NOT_OURS),
                 answered(r#"{"id":2,"done":true}"#),
                 answered(r#"{"change":"devices"}"#),
                 answered("not json"),
             ],
             [
-                Some(Ok(json!({"id": 1, "done": true, "freed": "10.0.0.208"}))),
+                Some(Ok(json!({"id": 1, "done": true, "held": "10.0.0.208"}))),
                 Some(Err(Undone::Refused("no".into()))),
                 Some(Err(Undone::Unreachable("down".into()))),
                 Some(Err(Undone::SignedOut("aged".into()))),
                 Some(Err(Undone::Unknown("read it".into()))),
-                Some(Err(Undone::Refused("bad-act".into()))),
+                Some(Err(Undone::Unlogged("disk full".into()))),
+                Some(Err(Undone::NoSuchAct("bad-act".into()))),
+                Some(Err(Undone::NotOurs(
+                    "eero-daemon answers only its own account".into()
+                ))),
                 None,
                 None,
                 None,
@@ -191,6 +246,65 @@ mod tests {
             Err(Undone::Refused("taken".into())),
             "a refusal wasn't said as the daemon said it"
         );
+    }
+
+    use crate::listeners::NOT_OURS;
+
+    /// A socket in a folder of the test's own, and the folder.
+    fn socket(name: &str) -> (std::path::PathBuf, UnixListener) {
+        let folder =
+            std::env::temp_dir().join(format!("eero-asking-{name}-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("the test's folder is made");
+        let socket = folder.join("socket");
+        let _ = std::fs::remove_file(&socket);
+        let listener = UnixListener::bind(&socket).expect("the test's socket listens");
+        (socket, listener)
+    }
+
+    #[test]
+    fn a_daemon_saying_other_things_is_waited_for_no_longer_than_our_patience() {
+        let (socket, listener) = socket("chatty");
+        let daemon = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("the ask connects");
+            let until = Instant::now() + Duration::from_secs(3);
+            while Instant::now() < until && writeln!(stream, r#"{{"change":"devices"}}"#).is_ok() {
+                thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let started = Instant::now();
+        let answer = act_at(
+            &socket,
+            &json!({"act": "speedtest"}),
+            Duration::from_millis(300),
+        );
+        let waited = started.elapsed();
+        assert!(
+            matches!(answer, Err(Undone::Unknown(_))) && waited < Duration::from_secs(2),
+            "a daemon saying other things held the ask {waited:?}, to {answer:?}"
+        );
+        let _ = daemon.join();
+        let _ = std::fs::remove_dir_all(socket.parent().expect("the socket's folder"));
+    }
+
+    #[test]
+    fn a_daemon_refusing_the_connection_is_said_to_have_read_nothing() {
+        let (socket, listener) = socket("not-ours");
+        let daemon = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("the ask connects");
+            writeln!(stream, "{NOT_OURS}").expect("the refusal is written");
+            let _ = stream.shutdown(std::net::Shutdown::Both);
+        });
+        let answer = act_at(
+            &socket,
+            &json!({"act": "speedtest"}),
+            Duration::from_millis(300),
+        );
+        assert!(
+            matches!(answer, Err(Undone::NotOurs(_))),
+            "a refused connection was said as {answer:?}, not as never read"
+        );
+        let _ = daemon.join();
+        let _ = std::fs::remove_dir_all(socket.parent().expect("the socket's folder"));
     }
 
     #[test]

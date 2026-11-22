@@ -265,7 +265,9 @@ fn speedtest(context: &Context) -> Result<(), Failure> {
     let mut cloud = Cloud::signed_in().map_err(from_cloud)?;
     let networks = api::networks(&cloud.get(api::ACCOUNT).map_err(from_cloud)?);
     for url in &networks {
-        acts::done(&mut cloud, url, acts::Act::SpeedTest).map_err(from_cloud)?;
+        acts::done(&mut cloud, url, acts::Act::SpeedTest)
+            .done
+            .map_err(from_cloud)?;
     }
     if context.format().is_json() {
         return said(context.answer(&json!({
@@ -284,7 +286,9 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
     let mut cloud = Cloud::signed_in().map_err(from_cloud)?;
     let mut networks = Vec::new();
     for url in api::networks(&cloud.get(api::ACCOUNT).map_err(from_cloud)?) {
-        acts::done(&mut cloud, &url, acts::Act::Conferencing(on)).map_err(from_cloud)?;
+        acts::done(&mut cloud, &url, acts::Act::Conferencing(on))
+            .done
+            .map_err(from_cloud)?;
         networks.push(api::network(&url, &cloud.get(&url).map_err(from_cloud)?));
     }
     if context.format().is_json() {
@@ -298,45 +302,74 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
 }
 
 /// Keeps `address` for the device `mac`, or with none stops keeping one,
-/// by asking the daemon (asking.rs). It says what it changes and how to
-/// undo it before asking, since the change is to the whole house.
+/// by asking the daemon (asking.rs). It says what it changes before
+/// asking, since the change is to the whole house, and its undo once it's
+/// known to have changed anything.
 fn reserve(context: &Context, mac: &str, address: Option<&str>) -> Result<(), Failure> {
     let (mac, address) = reservation(mac, address)?;
-    let (asked, doing, undo) = match address {
+    let (asked, doing) = match address {
         Some(address) => (
             json!({"act": "reserve", "mac": mac.to_string(), "address": address.to_string()}),
             format!("Keeping {address} for {mac}"),
-            Some(format!("eero devices {mac} unreserve")),
         ),
         None => (
             json!({"act": "unreserve", "mac": mac.to_string()}),
             format!("No longer keeping an address for {mac}"),
-            None,
         ),
     };
-    eprintln!(
-        "{doing}{}.",
-        undo.as_ref()
-            .map_or_else(String::new, |undo| format!("; undo with {undo}"))
-    );
+    eprintln!("{doing}.");
     let answered = asking::act(&asked).map_err(|undone| undone_said(undone, mac))?;
-    // An unreservation's undo is known only once the daemon says the
-    // address it freed.
-    let freed = answered["freed"].as_str();
-    let undo = undo.or_else(|| freed.map(|freed| format!("eero devices {mac} reserve {freed}")));
+    let report = reported(mac, address, &answered);
     if context.format().is_json() {
         return said(context.answer(&json!({
             "schema": "eero.reservation/1",
             "mac": mac.to_string(),
             "address": address.map(|address| address.to_string()),
-            "undo": undo,
+            "unchanged": answered["unchanged"] == json!(true),
+            "undo": report.undo,
         })));
     }
-    said(context.say(&match (address, &undo) {
-        (Some(address), _) => format!("eero keeps {address} for {mac}.\n"),
-        (None, Some(undo)) => format!("eero keeps no address for {mac}; undo with {undo}.\n"),
-        (None, None) => format!("eero keeps no address for {mac}.\n"),
-    }))
+    said(context.say(&report.said))
+}
+
+/// What a reservation the daemon did comes to, for a person and an agent.
+#[derive(Debug, PartialEq, Eq)]
+struct Report {
+    /// The command that undoes it, if it changed anything.
+    undo: Option<String>,
+    /// Its line.
+    said: String,
+}
+
+/// The report of keeping `address` for `mac`, or with none no longer
+/// keeping one, as the daemon `answered` it done: one that already stood
+/// changed nothing, so it has no undo, since undoing it would undo
+/// someone else's reservation. An unreservation's undo keeps again the
+/// address the daemon says it held.
+fn reported(mac: acts::Mac, address: Option<std::net::Ipv4Addr>, answered: &Value) -> Report {
+    let unchanged = answered["unchanged"] == json!(true);
+    let undone = |undo: String, said: String| Report {
+        said: format!("{said}; undo with {undo}.\n"),
+        undo: Some(undo),
+    };
+    let unchanged_said = |said: String| Report {
+        undo: None,
+        said: format!("{said}; nothing changed.\n"),
+    };
+    match (address, unchanged, answered["held"].as_str()) {
+        (Some(address), false, _) => undone(
+            format!("eero devices {mac} unreserve"),
+            format!("eero keeps {address} for {mac}"),
+        ),
+        (Some(address), true, _) => {
+            unchanged_said(format!("eero already kept {address} for {mac}"))
+        }
+        (None, false, Some(held)) => undone(
+            format!("eero devices {mac} reserve {held}"),
+            format!("eero keeps no address for {mac}"),
+        ),
+        (None, _, _) => unchanged_said(format!("eero kept no address for {mac}")),
+    }
 }
 
 /// How an act asked of the daemon that wasn't done is said, each by what
@@ -361,6 +394,23 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
                 .because(why)
                 .try_this(format!("eero devices {mac}"))
         }
+        asking::Undone::Unlogged(why) => Failure::new(
+            Exit::Unavailable,
+            "eero-daemon couldn't log the ask, so nothing was done",
+        )
+        .because(why)
+        .try_this("journalctl --user -u eero-daemon"),
+        asking::Undone::NoSuchAct(why) => Failure::new(
+            Exit::Unavailable,
+            "eero-daemon doesn't know this act, as one older than this command wouldn't",
+        )
+        .because(why)
+        .try_this("systemctl --user status eero-daemon"),
+        asking::Undone::NotOurs(why) => Failure::new(
+            Exit::Refused,
+            "eero-daemon answers only its own account, so nothing was asked",
+        )
+        .because(why),
     }
 }
 
@@ -399,9 +449,12 @@ fn each_said(networks: &[api::Network]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{api, commands, each_said, reservation, view_words};
+    use super::{
+        Report, acts, api, asking, commands, each_said, reported, reservation, undone_said,
+        view_words,
+    };
     use serde_json::json;
-    use terminal_kit::tree;
+    use terminal_kit::{Exit, tree};
 
     /// The words a body is given for a command line, as the kit walks it.
     fn walked(line: &str) -> Vec<String> {
@@ -546,5 +599,83 @@ mod tests {
                 "eero devices {mac} reserve {address:?} should be refused with 64"
             );
         }
+    }
+
+    fn mac() -> acts::Mac {
+        acts::Mac::parse("02:00:00:00:00:38").expect("a MAC")
+    }
+
+    #[test]
+    fn each_act_undone_exits_by_what_mends_it() {
+        use asking::Undone;
+        let why = || "why".to_owned();
+        let exits = [
+            Undone::Absent(why()),
+            Undone::Refused(why()),
+            Undone::Unreachable(why()),
+            Undone::SignedOut(why()),
+            Undone::Unknown(why()),
+            Undone::Unlogged(why()),
+            Undone::NoSuchAct(why()),
+            Undone::NotOurs(why()),
+        ]
+        .map(|undone| undone_said(undone, mac()).exit);
+        assert_eq!(
+            exits,
+            [
+                Exit::Unavailable,
+                Exit::Failed,
+                Exit::TryAgain,
+                Exit::Refused,
+                Exit::TryAgain,
+                Exit::Unavailable,
+                Exit::Unavailable,
+                Exit::Refused,
+            ],
+            "an act undone exits as something other mends it, which an agent would act on"
+        );
+        assert_eq!(
+            undone_said(Undone::Unknown(why()), mac()).then.as_deref(),
+            Some("eero devices 02:00:00:00:00:38"),
+            "an outcome no one knows doesn't say to read the device again"
+        );
+    }
+
+    #[test]
+    fn a_reservation_has_an_undo_only_where_it_changed_something() {
+        let kept = Some("10.0.0.208".parse().expect("an address"));
+        let report = |undo: Option<&str>, said: &str| Report {
+            undo: undo.map(str::to_owned),
+            said: said.to_owned(),
+        };
+        assert_eq!(
+            [
+                reported(mac(), kept, &json!({"done": true})),
+                reported(mac(), kept, &json!({"done": true, "unchanged": true})),
+                reported(mac(), None, &json!({"done": true, "held": "10.0.0.208"})),
+                reported(mac(), None, &json!({"done": true, "unchanged": true})),
+            ],
+            [
+                report(
+                    Some("eero devices 02:00:00:00:00:38 unreserve"),
+                    "eero keeps 10.0.0.208 for 02:00:00:00:00:38; undo with eero devices \
+                     02:00:00:00:00:38 unreserve.\n"
+                ),
+                report(
+                    None,
+                    "eero already kept 10.0.0.208 for 02:00:00:00:00:38; nothing changed.\n"
+                ),
+                report(
+                    Some("eero devices 02:00:00:00:00:38 reserve 10.0.0.208"),
+                    "eero keeps no address for 02:00:00:00:00:38; undo with eero devices \
+                     02:00:00:00:00:38 reserve 10.0.0.208.\n"
+                ),
+                report(
+                    None,
+                    "eero kept no address for 02:00:00:00:00:38; nothing changed.\n"
+                ),
+            ],
+            "a reservation that changed nothing gave an undo, or one that did gave none"
+        );
     }
 }

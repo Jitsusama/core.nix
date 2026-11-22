@@ -2,9 +2,12 @@
 //! folder as `changes.jsonl`: when, the act and the MAC and address it
 //! names, which process asked and the unit it ran in, and its result. An
 //! act is logged as asked before the daemon does it and again once it
-//! has, so one cut short still leaves a line, and an ask refused as no
-//! act at all is logged too, by its name cut short. It holds no session
-//! and nothing eero answered, so it can be read anywhere the account can.
+//! has, so one cut short still leaves a line; one let go because its asker
+//! left first is logged as `gone`, and an ask refused as no act at all is
+//! logged too, by its name cut short. An unreservation's last line names
+//! the address eero kept for it, its undo, whatever it came to. It holds
+//! no session and nothing eero answered, so it can be read anywhere the
+//! account can. Nothing trims it: it grows by a line or two an act.
 //!
 //! It's a record kept by the daemon, not an audit: any process running as
 //! the account can write to the file, and a process can ask through
@@ -18,7 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Value, json};
 
-use crate::acts::{self, Act, Done};
+use crate::acts::{self, Act, Came, Done};
 use crate::cloud::Failure;
 use crate::listeners::{Asked, Peer};
 use crate::session;
@@ -31,13 +34,28 @@ pub fn asked(log: &Path, asked: &Asked, at: i64) -> io::Result<()> {
     )
 }
 
-/// Logs to `log` what `asked` came to, at `at`.
-pub fn ended(log: &Path, asked: &Asked, done: &Result<Done, Failure>, at: i64) -> io::Result<()> {
-    let mut line = line(asked.peer.as_ref(), Some(&asked.act), result(done), at);
-    if let Ok(Done::Freed(address)) = done {
-        line["address"] = json!(address.to_string());
+/// Logs to `log` what `asked` came to, at `at`, with the address an
+/// unreservation found kept, done or not.
+pub fn ended(log: &Path, asked: &Asked, came: &Came, at: i64) -> io::Result<()> {
+    let mut line = line(
+        asked.peer.as_ref(),
+        Some(&asked.act),
+        result(&came.done),
+        at,
+    );
+    if let Some(held) = came.held {
+        line["address"] = json!(held.to_string());
     }
     append(log, &line)
+}
+
+/// Logs to `log` that `asked` was let go undone, at `at`, since who asked
+/// it left before the daemon reached it.
+pub fn gone(log: &Path, asked: &Asked, at: i64) -> io::Result<()> {
+    append(
+        log,
+        &line(asked.peer.as_ref(), Some(&asked.act), "gone", at),
+    )
 }
 
 /// Logs to `log` an ask the daemon refused as no act it does, naming the
@@ -105,7 +123,7 @@ fn line(peer: Option<&Peer>, act: Option<&Act>, result: &str, at: i64) -> Value 
 /// since eero's refusal can carry the whole body it answered.
 fn result(done: &Result<Done, Failure>) -> &'static str {
     match done {
-        Ok(Done::Made | Done::Freed(_)) => "made",
+        Ok(Done::Made) => "made",
         Ok(Done::Unchanged) => "unchanged",
         Err(Failure::SignedOut(_)) => "signed-out",
         Err(Failure::Unreachable(_)) => "unreachable",
@@ -241,6 +259,72 @@ mod tests {
             "a refused ask was logged whole, or without who asked"
         );
         let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    /// The lines a test's log holds, each read as JSON.
+    fn logged(log: &Path) -> Vec<Value> {
+        std::fs::read_to_string(log)
+            .expect("the log")
+            .lines()
+            .map(|line| serde_json::from_str(line).expect("a line is JSON"))
+            .collect()
+    }
+
+    #[test]
+    fn an_unreservations_last_line_names_the_address_it_kept_whatever_it_came_to() {
+        let folder = std::env::temp_dir().join(format!("eero-ended-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("the test's folder is made");
+        let log = folder.join("changes.jsonl");
+        let _ = std::fs::remove_file(&log);
+        let unreserve = Asked {
+            listener: 1,
+            id: json!(1),
+            act: Act::Unreserve { mac: mac() },
+            peer: Some(peer()),
+        };
+        let held = Some("10.0.0.208".parse().expect("an address"));
+        asked(&log, &unreserve, 1).expect("the ask is logged");
+        let made = Came {
+            done: Ok(Done::Made),
+            held,
+        };
+        ended(&log, &unreserve, &made, 2).expect("the end is logged");
+        let unknown = Came {
+            done: Err(Failure::Unknown("eero didn't say".into())),
+            held,
+        };
+        ended(&log, &unreserve, &unknown, 3).expect("the end is logged");
+        gone(&log, &unreserve, 4).expect("the let-go is logged");
+        let who = json!({"pid": 4242, "uid": 1000, "unit": "pi-1.scope",
+            "act": "unreserve", "mac": "02:00:00:00:00:01"});
+        let with = |extra: Value| {
+            let mut line = who.clone();
+            for (key, value) in extra.as_object().expect("the test's fields") {
+                line[key] = value.clone();
+            }
+            line
+        };
+        assert_eq!(
+            logged(&log),
+            [
+                with(json!({"at": 1, "result": "asked"})),
+                with(json!({"at": 2, "result": "made", "address": "10.0.0.208"})),
+                with(json!({"at": 3, "result": "unknown", "address": "10.0.0.208"})),
+                with(json!({"at": 4, "result": "gone"})),
+            ],
+            "an unreservation's lines lost the address that undoes it, or who asked"
+        );
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn conferencing_is_logged_by_whether_it_was_asked_on() {
+        assert_eq!(
+            line(None, Some(&Act::Conferencing(false)), "made", 1),
+            json!({"at": 1, "pid": null, "uid": null, "unit": null,
+                "act": "sqm", "on": false, "result": "made"}),
+            "conferencing's line misses whether it was turned on or off"
+        );
     }
 
     #[test]

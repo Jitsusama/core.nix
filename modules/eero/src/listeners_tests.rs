@@ -201,22 +201,24 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
         Act::Conferencing(true),
         "the act is the one asked"
     );
+    // The unit is read by the code under test whichever way, so only the
+    // kernel's own answers are checked here; reading a unit is
+    // changes.rs's to test.
     let pid = i32::try_from(std::process::id()).expect("a pid fits");
     assert_eq!(
-        asked.peer,
-        Some(Peer {
-            pid: Some(pid),
-            // SAFETY: getuid has no failure and touches no memory.
-            uid: unsafe { libc::getuid() },
-            unit: changes::unit(pid),
-        }),
+        asked.peer.as_ref().map(|peer| (peer.pid, peer.uid)),
+        // SAFETY: getuid has no failure and touches no memory.
+        Some((Some(pid), unsafe { libc::getuid() })),
         "the act carries who asked, as the kernel says it"
     );
     assert!(
         listeners.waits(&asked),
         "a listener still connected isn't waiting"
     );
-    listeners.answer_act(&asked, &Err(Failure::Unreachable("eero is busy".into())));
+    listeners.answer_act(
+        &asked,
+        &Came::of(Err(Failure::Unreachable("eero is busy".into()))),
+    );
 
     assert_eq!(
         read(&mut reader),
@@ -230,11 +232,24 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
     let Ok(Call::Act(asked)) = woken.recv() else {
         panic!("the act wakes the daemon to do it");
     };
-    listeners.answer_act(&asked, &Ok(Done::Made));
+    listeners.answer_act(&asked, &Came::of(Ok(Done::Made)));
     assert_eq!(
         read(&mut reader),
         json!({"id": "act-2", "done": true}),
         "an act done is answered done"
+    );
+    listeners.answer_act(&asked, &Came::of(Ok(Done::Unchanged)));
+    assert_eq!(
+        read(&mut reader),
+        json!({"id": "act-2", "done": true, "unchanged": true}),
+        "an act that already stood wasn't said unchanged, so its undo would undo another's"
+    );
+    listeners.answer_unlogged(&asked, &io::Error::other("the disk is full"));
+    assert_eq!(
+        read(&mut reader),
+        json!({"id": "act-2", "error": {"code": "unlogged", "message":
+            "eero-daemon couldn't log the ask, so nothing was done: the disk is full"}}),
+        "an ask the daemon couldn't log wasn't said as the daemon's own"
     );
     ask(
         &mut stream,
@@ -243,12 +258,31 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
     let Ok(Call::Act(asked)) = woken.recv() else {
         panic!("the act wakes the daemon to do it");
     };
-    let freed = "10.0.0.208".parse().expect("an address");
-    listeners.answer_act(&asked, &Ok(Done::Freed(freed)));
+    let held = Some("10.0.0.208".parse().expect("an address"));
+    listeners.answer_act(
+        &asked,
+        &Came {
+            done: Ok(Done::Made),
+            held,
+        },
+    );
     assert_eq!(
         read(&mut reader),
-        json!({"id": "act-3", "done": true, "freed": "10.0.0.208"}),
-        "an unreservation's answer doesn't say what it freed"
+        json!({"id": "act-3", "done": true, "held": "10.0.0.208"}),
+        "an unreservation's answer doesn't say the address it kept"
+    );
+    listeners.answer_act(
+        &asked,
+        &Came {
+            done: Err(Failure::Unknown("eero didn't say".into())),
+            held,
+        },
+    );
+    assert_eq!(
+        read(&mut reader),
+        json!({"id": "act-3", "error": {"code": "unknown", "message": "eero didn't say"},
+            "held": "10.0.0.208"}),
+        "an unreservation no one knows the outcome of lost the address it kept"
     );
     drop((stream, reader));
     assert_eq!(woken.recv(), Ok(Call::Left), "leaving wakes the daemon");
@@ -267,10 +301,14 @@ fn only_the_daemons_own_account_is_answered() {
         uid,
         unit: None,
     };
-    assert!(peer(ours).is_ours(), "the daemon's own account was refused");
-    assert!(
-        !peer(ours.wrapping_add(1)).is_ours(),
-        "another account was answered"
+    assert_eq!(
+        [
+            admits(Some(&peer(ours)), ours),
+            admits(Some(&peer(ours.wrapping_add(1))), ours),
+            admits(None, ours),
+        ],
+        [true, false, false],
+        "another account, or one the kernel wouldn't say, was answered, or ours refused"
     );
 }
 
@@ -294,9 +332,20 @@ fn an_act_eero_has_none_of_is_answered_at_once() {
         woken.try_recv().is_err(),
         "an act refused doesn't wake the daemon"
     );
+    // The line is written once the answer is out and the hub let go, so a
+    // slow disk holds up no other listener; it's waited for, briefly.
     let log = path.with_file_name("changes.jsonl");
-    let logged: Value = serde_json::from_str(&fs::read_to_string(&log).expect("the log"))
-        .expect("the line is JSON");
+    let until = std::time::Instant::now() + Duration::from_secs(5);
+    let line = loop {
+        match fs::read_to_string(&log) {
+            Ok(line) if line.ends_with('\n') => break line,
+            _ if std::time::Instant::now() < until => {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            read => panic!("the refusal wasn't logged within 5 s: {read:?}"),
+        }
+    };
+    let logged: Value = serde_json::from_str(&line).expect("the line is JSON");
     assert_eq!(
         (&logged["act"], &logged["result"], logged["uid"].is_u64()),
         (&json!("reboot"), &json!("bad-act"), true),

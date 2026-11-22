@@ -147,7 +147,8 @@ off, keep an address for a device, and stop keeping one. Each is an ask
 no DNS, port forward, firewall, admin or account change goes through
 that door. The socket's folder is 0700, and the daemon answers only its
 own account, by the connection's peer credentials, closing any other at
-once. The fence gives its commands an empty runtime folder of their
+once with one line saying so, `not-ours`, so its asker knows nothing was
+read. The fence gives its commands an empty runtime folder of their
 own, so no fenced or strict session reaches the socket at all.
 `eero devices <MAC> reserve <address>` and `eero devices <MAC> unreserve`
 ask the daemon ([`src/asking.rs`][asking]) rather than opening the
@@ -162,29 +163,46 @@ three commands do. Only the fence keeps an agent from it, by hiding
 A reservation changes which device DHCP gives which address, so each
 refuses rather than guesses ([`src/acts/reservations.rs`][reservations]). A
 reservation crossing one eero keeps is refused, not replaced, and so is
-an address a device or an eero holds now, or one outside the home
-subnet. An unreservation is refused where a port forward reaches the
-address, where eero keeps more than one for the device, or where its
-reservation lives anywhere but under the network's reservations. A list
-this can't read whole refuses too. Each change is judged by reading
-eero's reservations after it rather than by eero's answer, whose shape
-for a change was taken from an open-source client rather than seen.
-Where neither says, the outcome is unknown: the CLI exits 75 and says to
-read the device again, never that it was done or refused. An act whose
-asker has gone before the daemon reaches it is let go undone.
+an address a device or an eero holds now, or one outside the range the
+home subnet gives out, where a device set up by hand may keep its own.
+An unreservation is refused where a port forward may reach the
+reservation, by its address, its url, its device's url or its MAC,
+where eero keeps more than one for the device, or where its reservation
+lives anywhere but under the network's reservations. No forward has
+been seen, so the whole answer is searched for any of those. A list
+this can't read whole, reservations, devices, eeros or forwards,
+refuses too. Each change is judged by reading eero's reservations after
+it rather than by eero's answer, whose shape for a change was taken
+from an open-source client rather than seen. Only eero's own refusal of
+a change it then doesn't keep is said refused: a send that timed out may
+still land, and eero's list may lag its answer, so a change that
+doesn't show yet is unknown. The CLI then exits 75 and says to read the
+device again, never that it was done or refused; an unreservation's
+says the address it kept, which keeping again undoes it. A reservation
+that already stood changed nothing, so it's said with no undo. An act
+whose asker has gone before the daemon reaches it is let go undone,
+which the CLI's six minutes of patience leaves room for behind the
+daemon's longest read.
 
 Each act the daemon is asked is logged as asked before it's done and
 with its result after, as JSON lines in
 `$XDG_STATE_HOME/eero/changes.jsonl` ([`src/acts/changes.rs`][changes]), and
-one whose ask can't be logged isn't done. A line holds when, the act and
-the MAC and address it names, the asking process's pid and uid from the
-socket's peer credentials, the unit or scope it ran in as it connected,
-and its result by kind alone. An unreservation's result names the
-address it freed, which is its undo. An ask refused as `bad-act` is
-logged too, its act's name cut short. The log holds no session and
-nothing eero answered, whose refusals can carry their whole body. It's
-a record the daemon keeps, not an audit: any process running as the
-account can write the file, and a process can ask through another.
+one whose ask can't be logged isn't done ([`src/acts/carried.rs`][carried]).
+That holds for all four acts, the speed test and conferencing too, so
+every act is to be found in the log. It's answered `unlogged`, which the
+CLI says as the daemon's own fault, exit 69, never as eero's refusal. A
+line holds when, the act and the MAC and address it names, the asking
+process's pid and uid from the socket's peer credentials, the unit or
+scope it ran in as it connected, and its result by kind alone. An
+unreservation's last line names the address eero kept for it, its undo,
+whatever it came to. An act let go because its asker left is logged as
+`gone`, and an ask refused as `bad-act` is logged too, its act's name
+cut short; the CLI says `bad-act` as a daemon older than itself, exit
+69. The log holds no session and nothing eero answered, whose refusals
+can carry their whole body. Nothing trims it, since it grows by a line
+or two an act. It's a record the daemon keeps, not an audit: any
+process running as the account can write the file, and a process can
+ask through another.
 
 The session sealed in `session.cred` is the account's alone: the file is
 made mode 600 from the start and its folder 700, never narrowed after
@@ -301,6 +319,7 @@ offered by its hardware address.
 
 [acts]: src/acts/mod.rs
 [asking]: src/asking.rs
+[carried]: src/acts/carried.rs
 [changes]: src/acts/changes.rs
 [reservations]: src/acts/reservations.rs
 [contract]: contract/README.md

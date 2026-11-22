@@ -36,7 +36,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::acts::{Act, Done, changes};
+use crate::acts::{Act, Came, Done, changes};
 use crate::cloud::Failure;
 use crate::model::HomeNetwork;
 use crate::served::{self, Mapped, Said, Vocabularies};
@@ -111,15 +111,20 @@ impl Peer {
             unit: pid.and_then(changes::unit),
         })
     }
-
-    /// Whether this is the daemon's own account, the only one it answers:
-    /// what it tells holds the home network's devices, and what it's asked
-    /// can change it.
-    fn is_ours(&self) -> bool {
-        // SAFETY: getuid has no failure and touches no memory.
-        self.uid == unsafe { libc::getuid() }
-    }
 }
+
+/// Whether the daemon answers `peer`: only its own account, `ours`, since
+/// what it tells holds the home network's devices and what it's asked can
+/// change it. One the kernel won't say is refused.
+fn admits(peer: Option<&Peer>, ours: u32) -> bool {
+    peer.is_some_and(|peer| peer.uid == ours)
+}
+
+/// What a refused connection is told before it's closed, so its asker
+/// knows nothing it sent was read, let alone done. It says nothing of who
+/// the daemon is.
+pub const NOT_OURS: &str =
+    r#"{"error":{"code":"not-ours","message":"eero-daemon answers only its own account"}}"#;
 
 /// The kind of the one record, and its key.
 pub const KIND: &str = "home-network";
@@ -184,7 +189,9 @@ impl Listeners {
     /// tells `wake` whenever a listener joins, leaves, looks or asks for a
     /// read. Its rows offer the network map's page, `map`, if any.
     pub fn listen(path: &Path, wake: Sender<Call>, map: Option<Mapped>) -> io::Result<Listeners> {
-        let log = changes::file().ok();
+        let log = changes::file()
+            .inspect_err(|error| eprintln!("eero: asks refused as no act won't be logged: {error}"))
+            .ok();
         Listeners::listen_within(path, wake, Vocabularies::default().mapped(map), log)
     }
 
@@ -307,15 +314,15 @@ impl Listeners {
     }
 
     /// Answers an act a listener asked for, done or not and why, as every
-    /// daemon answers one: `done`, or an error the shell says in its own
-    /// words, coded by what mends it. One gone since it asked hears
+    /// daemon answers one: `done`, and `unchanged` where it already stood,
+    /// or an error the shell says in its own words, coded by what mends
+    /// it. An unreservation's says the address eero kept, `held`, either
+    /// way, which keeping again undoes it. One gone since it asked hears
     /// nothing.
-    pub fn answer_act(&self, asked: &Asked, done: &Result<Done, Failure>) {
-        let answer = match done {
-            Ok(Done::Freed(address)) => {
-                json!({"id": asked.id, "done": true, "freed": address.to_string()})
-            }
-            Ok(_) => json!({"id": asked.id, "done": true}),
+    pub fn answer_act(&self, asked: &Asked, came: &Came) {
+        let mut answer = match &came.done {
+            Ok(Done::Made) => json!({"id": asked.id, "done": true}),
+            Ok(Done::Unchanged) => json!({"id": asked.id, "done": true, "unchanged": true}),
             Err(failure) => {
                 let code = match failure {
                     Failure::SignedOut(_) => "signed-out",
@@ -326,6 +333,25 @@ impl Listeners {
                 json!({"id": asked.id, "error": {"code": code, "message": failure.to_string()}})
             }
         };
+        if let Some(held) = came.held {
+            answer["held"] = json!(held.to_string());
+        }
+        self.answer_asker(asked, &answer);
+    }
+
+    /// Answers an act the daemon didn't do because it couldn't log the ask,
+    /// coded `unlogged`, so it's never put down to eero.
+    pub fn answer_unlogged(&self, asked: &Asked, error: &io::Error) {
+        let message = format!("eero-daemon couldn't log the ask, so nothing was done: {error}");
+        self.answer_asker(
+            asked,
+            &json!({"id": asked.id, "error": {"code": "unlogged", "message": message}}),
+        );
+    }
+
+    /// Writes `answer` to the listener that asked `asked`, if it's still
+    /// there.
+    fn answer_asker(&self, asked: &Asked, answer: &Value) {
         let mut hub = self.hub();
         let Some(listener) = hub
             .listeners
@@ -345,11 +371,14 @@ impl Listeners {
             return;
         }
         let peer = Peer::of(&stream);
-        if !peer.as_ref().is_some_and(Peer::is_ours) {
+        // SAFETY: getuid has no failure and touches no memory.
+        if !admits(peer.as_ref(), unsafe { libc::getuid() }) {
             eprintln!(
                 "eero: refused a listener of uid {:?}, which isn't the daemon's",
                 peer.map(|peer| peer.uid)
             );
+            let mut stream = stream;
+            let _ = write_line(&mut stream, NOT_OURS);
             let _ = stream.shutdown(Shutdown::Both);
             return;
         }
@@ -393,10 +422,13 @@ impl Listeners {
 
     /// Answers one line from listener `id`, saying what it asks of the
     /// daemon, if anything. The answer is written under the hub's lock, so
-    /// a watch's answer comes before any change told after it.
+    /// a watch's answer comes before any change told after it; an ask
+    /// refused as no act is logged once the lock is let go, so a slow disk
+    /// holds up no other listener.
     fn answer(&self, id: u64, line: &str) -> Option<Call> {
         let asked: Value = serde_json::from_str(line).ok()?;
         let said = asked.get("id").cloned().unwrap_or(Value::Null);
+        let mut refusal = None;
         let mut hub = self.hub();
         let Hub {
             record,
@@ -460,12 +492,7 @@ impl Listeners {
                     }));
                 }
                 Err(why) => {
-                    let logged = log.as_deref().map(|log| {
-                        changes::refused(log, listener.peer.as_ref(), &asked, changes::now())
-                    });
-                    if let Some(Err(error)) = logged {
-                        eprintln!("eero: couldn't log a refused act: {error}");
-                    }
+                    refusal = log.clone().map(|log| (log, listener.peer.clone()));
                     (
                         json!({"id": said, "error": {"code": "bad-act", "message": why}}),
                         None,
@@ -479,6 +506,12 @@ impl Listeners {
         };
         if write_line(&mut listener.stream, &answer.to_string()).is_err() {
             let _ = listener.stream.shutdown(Shutdown::Both);
+        }
+        drop(hub);
+        if let Some((log, peer)) = refusal
+            && let Err(error) = changes::refused(&log, peer.as_ref(), &asked, changes::now())
+        {
+            eprintln!("eero: couldn't log a refused act: {error}");
         }
         call
     }

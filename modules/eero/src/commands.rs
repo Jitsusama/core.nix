@@ -135,7 +135,8 @@ fn reserve() -> Help {
     )
     .argument(
         "<address>",
-        "the IPv4 address to keep for it, in the home subnet and held by no other device",
+        "the IPv4 address to keep for it, in the range the home subnet gives out and \
+         held by no other device",
     )
     .exit(
         Exit::Failed,
@@ -145,8 +146,14 @@ fn reserve() -> Help {
         Exit::TryAgain,
         "eero couldn't be reached, or whether it took it isn't known",
     )
-    .exit(Exit::Refused, "not signed in to eero")
-    .exit(Exit::Unavailable, "eero-daemon isn't answering")
+    .exit(
+        Exit::Refused,
+        "not signed in to eero, or not eero-daemon's own account",
+    )
+    .exit(
+        Exit::Unavailable,
+        "eero-daemon isn't answering, couldn't log the ask, or doesn't know the act",
+    )
 }
 
 /// Stop keeping an address for one device.
@@ -161,14 +168,20 @@ fn unreserve() -> Help {
     )
     .exit(
         Exit::Failed,
-        "eero refused, or a port forward reaches the address",
+        "eero refused, or a port forward may reach the address",
     )
     .exit(
         Exit::TryAgain,
         "eero couldn't be reached, or whether it took it isn't known",
     )
-    .exit(Exit::Refused, "not signed in to eero")
-    .exit(Exit::Unavailable, "eero-daemon isn't answering")
+    .exit(
+        Exit::Refused,
+        "not signed in to eero, or not eero-daemon's own account",
+    )
+    .exit(
+        Exit::Unavailable,
+        "eero-daemon isn't answering, couldn't log the ask, or doesn't know the act",
+    )
 }
 
 /// The whole tree, from `eero` down.

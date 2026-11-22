@@ -4,19 +4,21 @@
 //!
 //! Each refuses rather than guesses. A reservation crossing one eero keeps
 //! is refused, not replaced; so is an address a device or an eero holds
-//! now, one outside the home subnet, and an unreservation where a port
-//! forward reaches the address or eero keeps more than one for the device.
-//! A list this can't read whole refuses too, since a reservation read as
-//! none could be one the act crosses. Each change is judged by reading
-//! eero's reservations after it rather than by eero's answer, whose shape
-//! for a change was taken from an open-source client rather than seen;
-//! where neither says, the outcome is unknown, never done or refused.
+//! now, one outside the range the home subnet gives out, and an
+//! unreservation where a port forward may reach the address or eero keeps
+//! more than one for the device. A list this can't read whole refuses
+//! too, since a reservation, device or forward read as none could be one
+//! the act crosses. Each change is judged by reading eero's reservations
+//! after it rather than by eero's answer, whose shape for a change was
+//! taken from an open-source client rather than seen; only eero's own
+//! refusal of a change it then doesn't keep is said refused, and where
+//! neither says, the outcome is unknown, never done or refused.
 
 use std::net::Ipv4Addr;
 
 use serde_json::{Value, json};
 
-use crate::acts::{Done, Mac};
+use crate::acts::{Came, Done, Mac};
 use crate::cloud::{Asks, Failure};
 
 /// A reservation eero keeps: where it lives, for which device and which
@@ -96,8 +98,10 @@ pub fn to_unreserve(kept: &[Kept], mac: Mac) -> Result<Option<&Kept>, String> {
 }
 
 /// Whether `address` is one the home subnet, as `subnets_config` names it,
-/// gives to a device: inside it, and neither its own address nor its
-/// broadcast.
+/// gives to a device: inside it, neither its own address nor its
+/// broadcast, and inside the range DHCP gives out. One below or above that
+/// range is where a device set up by hand keeps its own address, which eero
+/// may not list, so the holder check can't see it.
 pub fn within(subnets: &Value, address: Ipv4Addr) -> Result<(), String> {
     let home = subnets
         .as_array()
@@ -112,8 +116,13 @@ pub fn within(subnets: &Value, address: Ipv4Addr) -> Result<(), String> {
             .and_then(|part| part.parse::<Ipv4Addr>().ok())
             .map(u32::from)
     };
-    let (Some(base), Some(mask)) = (part("subnet_ip"), part("subnet_mask")) else {
-        return Err("eero names no home subnet to check the address against".into());
+    let (Some(base), Some(mask), Some(start), Some(end)) = (
+        part("subnet_ip"),
+        part("subnet_mask"),
+        part("start_ip"),
+        part("end_ip"),
+    ) else {
+        return Err("eero names no home subnet and range to check the address against".into());
     };
     let asked = u32::from(address);
     let network = base & mask;
@@ -123,15 +132,34 @@ pub fn within(subnets: &Value, address: Ipv4Addr) -> Result<(), String> {
             "{address} isn't one the home subnet gives a device"
         ));
     }
+    if !(start..=end).contains(&asked) {
+        return Err(format!(
+            "{address} is outside the range eero gives out, {} to {}",
+            Ipv4Addr::from(start),
+            Ipv4Addr::from(end)
+        ));
+    }
     Ok(())
 }
 
 /// Who holds `address` now other than `mac`, among the devices and the
-/// eeros, if anyone: keeping it for `mac` would take it from them.
-pub fn holder(devices: &Value, eeros: &Value, mac: Mac, address: Ipv4Addr) -> Option<String> {
+/// eeros, if anyone: keeping it for `mac` would take it from them. A list
+/// of either that isn't one can't say no one does, so it's refused.
+pub fn holder(
+    devices: &Value,
+    eeros: &Value,
+    mac: Mac,
+    address: Ipv4Addr,
+) -> Result<Option<String>, String> {
+    fn listed<'a>(answer: &'a Value, what: &str) -> Result<&'a Vec<Value>, String> {
+        answer
+            .as_array()
+            .ok_or_else(|| format!("eero lists its {what} in a way this can't read"))
+    }
     let said = address.to_string();
-    let none = Vec::new();
-    let device = devices.as_array().unwrap_or(&none).iter().find(|device| {
+    let devices = listed(devices, "devices")?;
+    let eeros = listed(eeros, "eeros")?;
+    let device = devices.iter().find(|device| {
         let holds = device["ip"] == said.as_str()
             || device["ips"]
                 .as_array()
@@ -144,27 +172,50 @@ pub fn holder(devices: &Value, eeros: &Value, mac: Mac, address: Ipv4Addr) -> Op
             .or_else(|| device["hostname"].as_str())
             .or_else(|| device["mac"].as_str())
             .unwrap_or("another device");
-        return Some(format!("held by {named}"));
+        return Ok(Some(format!("held by {named}")));
     }
-    let eero = eeros
-        .as_array()
-        .unwrap_or(&none)
-        .iter()
-        .any(|eero| eero["ip_address"] == said.as_str());
-    eero.then(|| "an eero's own".to_owned())
+    let eero = eeros.iter().any(|eero| eero["ip_address"] == said.as_str());
+    Ok(eero.then(|| "an eero's own".to_owned()))
 }
 
-/// Whether anything in eero's port forwards names `address`: a forward
+/// Whether anything in eero's port forwards may reach `held`: a forward
 /// reaches a device by its reserved address, so taking the reservation
 /// away could leave the forward reaching whichever device DHCP gives the
-/// address next. The whole answer is searched, since no forward has been
-/// seen to know its shape.
-pub fn forwarded(forwards: &Value, address: Ipv4Addr) -> bool {
-    let said = address.to_string();
-    match forwards {
-        Value::String(text) => *text == said,
-        Value::Array(items) => items.iter().any(|item| forwarded(item, address)),
-        Value::Object(fields) => fields.values().any(|field| forwarded(field, address)),
+/// address next. No forward has been seen to know its shape, so the whole
+/// answer is searched for anything naming the reservation: its address,
+/// with a port or a mask or as a number, its url, its device's url, or the
+/// device's MAC, in either case or bare. A list that isn't one can't say
+/// none does, so it's refused.
+pub fn forwarded(forwards: &Value, held: &Kept) -> Result<bool, String> {
+    if !forwards.is_array() {
+        return Err("eero lists its port forwards in a way this can't read".into());
+    }
+    let address = held.address.to_string();
+    let url = held.url.to_ascii_lowercase();
+    let mac = held.mac.to_string();
+    let bare = mac.replace(':', "");
+    let names = |text: &str| {
+        let text = text.to_ascii_lowercase();
+        text == address
+            || text
+                .strip_prefix(&address)
+                .is_some_and(|rest| rest.starts_with([':', '/']))
+            || text == url
+            || text == mac
+            || text == bare
+            || text.ends_with(&format!("/devices/{bare}"))
+    };
+    Ok(reaches(forwards, &names, u32::from(held.address)))
+}
+
+/// Whether anything in `answer` is a string `names` says names the
+/// reservation, or the number `address` is.
+fn reaches(answer: &Value, names: &impl Fn(&str) -> bool, address: u32) -> bool {
+    match answer {
+        Value::String(text) => names(text),
+        Value::Number(number) => number.as_u64() == Some(u64::from(address)),
+        Value::Array(items) => items.iter().any(|item| reaches(item, names, address)),
+        Value::Object(fields) => fields.values().any(|field| reaches(field, names, address)),
         _ => false,
     }
 }
@@ -192,7 +243,7 @@ pub fn reserve(
     within(&eero.get(&format!("{network}/subnets_config"))?, address).map_err(Failure::Refused)?;
     let devices = eero.get(&format!("{network}/devices"))?;
     let eeros = eero.get(&format!("{network}/eeros"))?;
-    if let Some(holder) = holder(&devices, &eeros, mac, address) {
+    if let Some(holder) = holder(&devices, &eeros, mac, address).map_err(Failure::Refused)? {
         return Err(Failure::Refused(format!(
             "{address} is {holder} now; reserve one no device holds"
         )));
@@ -200,49 +251,77 @@ pub fn reserve(
     let asked = json!({"mac": mac.to_string(), "ip": address.to_string(),
         "description": mac.to_string()});
     let sent = eero.post(&reservations, Some(&asked));
-    settled(eero, &reservations, sent, mac, |kept| {
+    let unknown = format!("read eero devices {mac} to see");
+    settled(eero, &reservations, sent, &unknown, |kept| {
         to_reserve(kept, mac, address) == Ok(Change::Nothing)
     })
     .map(|()| Done::Made)
 }
 
-/// No longer keeps an address for `mac` on `network`.
-pub fn unreserve(eero: &mut impl Asks, network: &str, mac: Mac) -> Result<Done, Failure> {
+/// No longer keeps an address for `mac` on `network`, saying the address
+/// it kept once it's found, whatever eero answers after.
+pub fn unreserve(eero: &mut impl Asks, network: &str, mac: Mac) -> Came {
+    let held = match found(eero, network, mac) {
+        Ok(Some(held)) => held,
+        Ok(None) => return Came::of(Ok(Done::Unchanged)),
+        Err(failure) => return Came::of(Err(failure)),
+    };
     let reservations = format!("{network}/reservations");
-    let before = kept(&eero.get(&reservations)?).map_err(Failure::Refused)?;
-    let Some(held) = to_unreserve(&before, mac)
-        .map_err(Failure::Refused)?
-        .cloned()
-    else {
-        return Ok(Done::Unchanged);
+    let checked = eero
+        .get(&format!("{network}/forwards"))
+        .and_then(|forwards| forwarded(&forwards, &held).map_err(Failure::Refused));
+    let done = match checked {
+        Ok(true) => Err(Failure::Refused(format!(
+            "a port forward may reach {}; change it in the eero app first",
+            held.address
+        ))),
+        Ok(false) => {
+            let sent = eero.delete(&held.url);
+            let unknown = format!(
+                "it kept {address} for {mac}, so if that's gone, eero devices {mac} reserve \
+                 {address} keeps it again",
+                address = held.address
+            );
+            settled(eero, &reservations, sent, &unknown, |kept| {
+                kept.iter().all(|kept| kept.mac != mac)
+            })
+            .map(|()| Done::Made)
+        }
+        Err(failure) => Err(failure),
+    };
+    Came {
+        done,
+        held: Some(held.address),
+    }
+}
+
+/// The one reservation eero keeps for `mac`, if any, once it's known to
+/// be the network's to delete.
+fn found(eero: &mut impl Asks, network: &str, mac: Mac) -> Result<Option<Kept>, Failure> {
+    let before = kept(&eero.get(&format!("{network}/reservations"))?).map_err(Failure::Refused)?;
+    let Some(held) = to_unreserve(&before, mac).map_err(Failure::Refused)? else {
+        return Ok(None);
     };
     if !of_network(network, &held.url) {
         return Err(Failure::Refused(format!(
             "eero names {mac}'s reservation oddly; change it in the eero app"
         )));
     }
-    if forwarded(&eero.get(&format!("{network}/forwards"))?, held.address) {
-        return Err(Failure::Refused(format!(
-            "a port forward reaches {}; change it in the eero app first",
-            held.address
-        )));
-    }
-    let sent = eero.delete(&held.url);
-    settled(eero, &reservations, sent, mac, |kept| {
-        kept.iter().all(|kept| kept.mac != mac)
-    })
-    .map(|()| Done::Freed(held.address))
+    Ok(Some(held.clone()))
 }
 
 /// What a change eero was sent came to, judged by its reservations read
 /// after it (`stands`) rather than by its answer. A session refused was
-/// never taken, so it's said as it is; otherwise what eero keeps decides,
-/// and where it can't be read the outcome is unknown.
+/// never taken, so it's said as it is, and a change eero refused that it
+/// then doesn't keep is refused. Otherwise only what eero keeps decides: a
+/// send that timed out may still land after the read, and eero's list may
+/// lag its answer, so a change that doesn't show yet is unknown, said with
+/// `unknown`, how to find out.
 fn settled(
     eero: &mut impl Asks,
     reservations: &str,
     sent: Result<Value, Failure>,
-    mac: Mac,
+    unknown: &str,
     stands: impl Fn(&[Kept]) -> bool,
 ) -> Result<(), Failure> {
     if let Err(failure @ Failure::SignedOut(_)) = sent {
@@ -254,12 +333,12 @@ fn settled(
         .and_then(|after| kept(&after).ok());
     match (sent, after) {
         (_, Some(kept)) if stands(&kept) => Ok(()),
-        (Err(failure), Some(_)) => Err(failure),
-        (Ok(_), Some(_)) => Err(Failure::Refused(
-            "eero answered the change, but doesn't keep it".into(),
-        )),
+        (Err(failure @ Failure::Refused(_)), Some(_)) => Err(failure),
+        (_, Some(_)) => Err(Failure::Unknown(format!(
+            "eero doesn't show the change yet, though it may still take it; {unknown}"
+        ))),
         (_, None) => Err(Failure::Unknown(format!(
-            "eero didn't say whether it took the change; read eero devices {mac} to see"
+            "eero didn't say whether it took the change; {unknown}"
         ))),
     }
 }

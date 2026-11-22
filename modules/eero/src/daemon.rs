@@ -31,7 +31,8 @@ use std::time::{Duration, Instant};
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use crate::acts::{self, Act, Done, changes};
+use crate::acts::carried::{Carried, carried};
+use crate::acts::{self, Act, Came, changes};
 use crate::api;
 use crate::cloud::{self, Failure};
 use crate::day;
@@ -383,19 +384,22 @@ impl Daemon {
     /// Does an act the shell asked for, and has the network read at once
     /// after, so the row it changed is served as eero now says it. A
     /// session eero refuses is let go, as a read's is.
-    fn act(&mut self, act: Act) -> Result<Done, Failure> {
-        let done = session(&mut self.cloud, &mut self.network)
-            .and_then(|(cloud, network)| acts::done(cloud, &network, act));
+    fn act(&mut self, act: Act) -> Came {
+        let came = match session(&mut self.cloud, &mut self.network) {
+            Ok((cloud, network)) => acts::done(cloud, &network, act),
+            Err(failure) => Came::of(Err(failure)),
+        };
         self.schedule.ask();
-        if done.is_ok() && act == Act::SpeedTest {
+        if came.done.is_ok() && act == Act::SpeedTest {
             self.testing = Some(now_unix());
         }
-        done.inspect_err(|failure| {
+        if let Err(failure) = &came.done {
             if matches!(failure, Failure::SignedOut(_)) {
                 self.cloud = None;
             }
             eprintln!("eero: {act:?} wasn't done: {failure}");
-        })
+        }
+        came
     }
 
     fn read(&mut self, read: Read) -> Result<(), Failure> {
@@ -568,30 +572,13 @@ fn now_unix() -> i64 {
 /// reads behind it; one whose ask can't be logged isn't done, since a
 /// change no line names couldn't be found again.
 fn act(daemon: &mut Daemon, listeners: &Listeners, asked: &Asked) {
-    if !listeners.waits(asked) {
-        eprintln!(
-            "eero: let {:?} go undone, since who asked it has gone",
-            asked.act
-        );
-        return;
-    }
     let log = changes::file();
-    let done = match log
-        .as_deref()
-        .map_err(|error| io::Error::new(error.kind(), error.to_string()))
-        .and_then(|log| changes::asked(log, asked, now_unix()))
-    {
-        Ok(()) => daemon.act(asked.act),
-        Err(error) => Err(Failure::Refused(format!(
-            "couldn't log the ask, so nothing was done: {error}"
-        ))),
-    };
-    if let Ok(log) = &log
-        && let Err(error) = changes::ended(log, asked, &done, now_unix())
-    {
-        eprintln!("eero: couldn't log how {:?} went: {error}", asked.act);
+    let log = log.as_deref();
+    match carried(log, listeners.waits(asked), asked, |act| daemon.act(act)) {
+        Carried::Gone => {}
+        Carried::Unlogged(error) => listeners.answer_unlogged(asked, &error),
+        Carried::Came(came) => listeners.answer_act(asked, &came),
     }
-    listeners.answer_act(asked, &done);
 }
 
 #[cfg(test)]

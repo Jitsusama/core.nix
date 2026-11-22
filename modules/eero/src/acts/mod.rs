@@ -6,9 +6,11 @@
 //! shell runs no program to change the home network, and `eero devices
 //! <MAC> reserve` asks the daemon rather than opening the session. These
 //! are the only acts: an ask naming anything else is refused. Beside them
-//! are how a reservation is judged and checked (reservations.rs) and the
-//! log every act is written to (changes.rs).
+//! are how a reservation is judged and checked (reservations.rs), the
+//! log every act is written to (changes.rs), and the rules the daemon
+//! carries out each by (carried.rs).
 
+pub mod carried;
 pub mod changes;
 pub mod reservations;
 
@@ -38,11 +40,26 @@ pub enum Act {
 pub enum Done {
     /// eero made the change.
     Made,
-    /// It already stood as asked, so nothing was sent.
+    /// It already stood as asked, so nothing was sent, and there's
+    /// nothing to undo.
     Unchanged,
-    /// The device no longer keeps this address, which undoing it keeps
-    /// again.
-    Freed(Ipv4Addr),
+}
+
+/// What an act came to, and for an unreservation the address eero kept
+/// for the device before it was asked, which keeping again undoes it.
+/// That's known before the change is sent, so it's said whatever eero
+/// answers, an outcome no one knows included.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Came {
+    pub done: Result<Done, Failure>,
+    pub held: Option<Ipv4Addr>,
+}
+
+impl Came {
+    /// What an act that holds no address came to.
+    pub fn of(done: Result<Done, Failure>) -> Came {
+        Came { done, held: None }
+    }
 }
 
 /// A device's hardware address, written as eero writes it: six pairs of
@@ -116,23 +133,29 @@ fn mac(said: &Value) -> Result<Mac, String> {
 /// Does `act` to the network at `network`, such as `/2.2/networks/1001`.
 /// Conferencing is read back after, since eero answers a change it ignores
 /// as gladly as one it takes; a reservation is too (reservations.rs).
-pub fn done(eero: &mut impl Asks, network: &str, act: Act) -> Result<Done, Failure> {
+pub fn done(eero: &mut impl Asks, network: &str, act: Act) -> Came {
     match act {
-        Act::SpeedTest => {
-            eero.post(&format!("{network}/speedtest"), None)?;
+        Act::Reserve { mac, address } => {
+            Came::of(reservations::reserve(eero, network, mac, address))
         }
-        Act::Conferencing(on) => {
-            let named = api::network(network, &eero.get(network)?);
-            let settings = named.settings_url.ok_or_else(|| {
-                Failure::Refused(format!("eero names no settings for {}", named.name))
-            })?;
-            eero.put(&settings, &api::conferencing(on))?;
-            let now = api::network(network, &eero.get(network)?);
-            api::taken(on, now.sqm).map_err(Failure::Refused)?;
-        }
-        Act::Reserve { mac, address } => return reservations::reserve(eero, network, mac, address),
-        Act::Unreserve { mac } => return reservations::unreserve(eero, network, mac),
+        Act::Unreserve { mac } => reservations::unreserve(eero, network, mac),
+        Act::SpeedTest => Came::of(
+            eero.post(&format!("{network}/speedtest"), None)
+                .map(|_| Done::Made),
+        ),
+        Act::Conferencing(on) => Came::of(conferencing(eero, network, on)),
     }
+}
+
+/// Turns conferencing and gaming on or off, and reads it back.
+fn conferencing(eero: &mut impl Asks, network: &str, on: bool) -> Result<Done, Failure> {
+    let named = api::network(network, &eero.get(network)?);
+    let settings = named
+        .settings_url
+        .ok_or_else(|| Failure::Refused(format!("eero names no settings for {}", named.name)))?;
+    eero.put(&settings, &api::conferencing(on))?;
+    let now = api::network(network, &eero.get(network)?);
+    api::taken(on, now.sqm).map_err(Failure::Refused)?;
     Ok(Done::Made)
 }
 
