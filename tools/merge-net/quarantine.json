@@ -81,8 +81,8 @@
   {
     "at": 1795361620,
     "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
-    "due": "2026-11-23",
-    "due_why": "Its owner, the still windows check's, by 2026-11-23 18:00 local merges the fix that ends each of the case's starts on what its windows drew rather than on a 600 ms clock, and takes this entry off with it. It failed twice at 0e420d94fa78 on 22 Nov, once with a moving window drawing no frame in starts 2, 4, 6 and 10 and once past the script's 120 s, and once at 9a896961 on 20 Nov, which passed on a rerun, so it flaked before the PR the net first named. That late frames fall past the clock is a hypothesis the fix's red and green runs test. While it stands, nothing catches a still window drawing as other windows' animations start",
+    "due": "2026-11-25",
+    "due_why": "Its owner, the still windows check's, whose #5921 added the case, by 2026-11-23 23:00 UTC, two days before its due, merges the fix that ends each of the case's starts on what its windows drew rather than on a 600 ms clock, with a timeout that leaves the case room for its own verdict. It failed twice at 0e420d94fa78 on 22 Nov, once with the sliding window drawing no frame in starts 2, 4, 6 and 10 and once past the script's 120 s, and once at 9a896961 on 20 Nov, which passed on a rerun, so it flaked before #6065, the PR the net named. Why is untested: a start's late frames falling past the clock is one candidate, and the slide's direction read from a position the animator writes back only as it finishes, late under load, which would leave every other start with nowhere to slide, is another; the 120 s run is unexplained. It comes off once the fix merges and twenty net runs in a row after it exit 0. While it stands, nothing guards the qtdeclarative patch that keeps still windows from drawing as other windows' animations start, since this case is its only check, and a failure of any kind in it, a broken build included, is excused",
     "owner_pr": 5921,
     "owner_session": "XY9H5C",
     "reason": "failed twice at 0e420d94fa78, and once at 9a896961 before it",
