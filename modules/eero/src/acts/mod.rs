@@ -5,7 +5,12 @@
 //! the daemon does every one as a listener asks it (listeners.rs), so the
 //! shell runs no program to change the home network, and `eero devices
 //! <MAC> reserve` asks the daemon rather than opening the session. These
-//! are the only acts: an ask naming anything else is refused.
+//! are the only acts: an ask naming anything else is refused. Beside them
+//! are how a reservation is judged and checked (reservations.rs) and the
+//! log every act is written to (changes.rs).
+
+pub mod changes;
+pub mod reservations;
 
 use std::fmt;
 use std::net::Ipv4Addr;
@@ -14,7 +19,6 @@ use serde_json::Value;
 
 use crate::api;
 use crate::cloud::{Asks, Failure};
-use crate::reservations;
 
 /// What's asked of the home network.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -31,9 +31,8 @@ use std::time::{Duration, Instant};
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use crate::acts::{self, Act, Done};
+use crate::acts::{self, Act, Done, changes};
 use crate::api;
-use crate::changes;
 use crate::cloud::{self, Failure};
 use crate::day;
 use crate::desktop::Notifier;

@@ -140,7 +140,7 @@ The model's `cloud.state` says whether the figures are current:
 
 ## What It Changes
 
-The daemon makes four changes, and only these ([`src/acts.rs`][acts]):
+The daemon makes four changes, and only these ([`src/acts/mod.rs`][acts]):
 start eero's speed test, turn Optimize for Conferencing and Gaming on or
 off, keep an address for a device, and stop keeping one. Each is an ask
 `act` on its socket; an act it doesn't name is refused as `bad-act`, so
@@ -160,7 +160,7 @@ three commands do. Only the fence keeps an agent from it, by hiding
 `session.cred` and systemd's credentials as well as the socket.
 
 A reservation changes which device DHCP gives which address, so each
-refuses rather than guesses ([`src/reservations.rs`][reservations]). A
+refuses rather than guesses ([`src/acts/reservations.rs`][reservations]). A
 reservation crossing one eero keeps is refused, not replaced, and so is
 an address a device or an eero holds now, or one outside the home
 subnet. An unreservation is refused where a port forward reaches the
@@ -175,7 +175,7 @@ asker has gone before the daemon reaches it is let go undone.
 
 Each act the daemon is asked is logged as asked before it's done and
 with its result after, as JSON lines in
-`$XDG_STATE_HOME/eero/changes.jsonl` ([`src/changes.rs`][changes]), and
+`$XDG_STATE_HOME/eero/changes.jsonl` ([`src/acts/changes.rs`][changes]), and
 one whose ask can't be logged isn't done. A line holds when, the act and
 the MAC and address it names, the asking process's pid and uid from the
 socket's peer credentials, the unit or scope it ran in as it connected,
@@ -299,10 +299,10 @@ the views and for the nodes, devices and profiles the record holds now,
 each by the name its view finds it by: a device two share a name with is
 offered by its hardware address.
 
-[acts]: src/acts.rs
+[acts]: src/acts/mod.rs
 [asking]: src/asking.rs
-[changes]: src/changes.rs
-[reservations]: src/reservations.rs
+[changes]: src/acts/changes.rs
+[reservations]: src/acts/reservations.rs
 [contract]: contract/README.md
 [model]: home-network.json
 [read]: src/read/mod.rs

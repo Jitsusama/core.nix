@@ -36,8 +36,7 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::acts::{Act, Done};
-use crate::changes;
+use crate::acts::{Act, Done, changes};
 use crate::cloud::Failure;
 use crate::model::HomeNetwork;
 use crate::served::{self, Mapped, Said, Vocabularies};
