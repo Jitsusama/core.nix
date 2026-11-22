@@ -890,6 +890,8 @@ fn only_a_word_shaped_like_a_repository_names_one_cadence_cant_read() {
         "Landed `core` #6000.",
         "Landed this #6000",
         "Landed agentic-harness.pi #1958.",
+        "Landed Jitsusama/core.nix#6000.",
+        "Landed shop/world#2507636.",
     ] {
         assert!(
             !names_unreadable(note, &repos),
@@ -899,12 +901,70 @@ fn only_a_word_shaped_like_a_repository_names_one_cadence_cant_read() {
     for note in [
         "Landed mycelial-node #12.",
         "Landed core #6001 and `mycelial-node` #13.",
+        "Landed Jitsusama/mycelial-node#12.",
     ] {
         assert!(
             names_unreadable(note, &repos),
             "{note:?} didn't read as naming a repository cadence can't read"
         );
     }
+    // Each way of naming core's change is read as core's, so its finding
+    // closes once it runs.
+    for note in [
+        "Landed `core` #6000.",
+        "Landed Jitsusama/core.nix#6000.",
+        "Landed core.nix #6000.",
+    ] {
+        assert_eq!(
+            named(note, &repos),
+            [Named {
+                repo: "core".to_owned(),
+                number: 6000
+            }],
+            "{note:?} wasn't read as naming core #6000"
+        );
+    }
+}
+
+#[test]
+fn a_regression_beneath_a_finding_held_as_the_hours_blindness_counts() {
+    let held = finding(3 * DAY, "IKQ63G", "IKQ63G finding for OSPHT4: y");
+    let posted = [
+        held.clone(),
+        answer(3 * DAY - 60, "OSPHT4", "Landed mycelial-node #12.", &held),
+        answering(
+            finding(2 * DAY, "CIJMZQ", "CIJMZQ finding for OSPHT4: it's back"),
+            &held,
+        ),
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    let findings = Findings {
+        text: as_misses(&found),
+        found,
+        unread: None,
+        orchestrator: "P9R1KI".to_owned(),
+    };
+    let judged = Judged {
+        merged: &BTreeSet::new(),
+        unread: &BTreeSet::new(),
+        unrun: &BTreeMap::new(),
+        here: "here",
+    };
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let measure = findings.measured(&repos, &judged, NOW);
+    assert!(
+        (measure.now - 1.0).abs() < 1e-9
+            && measure
+                .says
+                .contains("1 more held where cadence can't see it run")
+            && measure
+                .behind
+                .iter()
+                .any(|line| line.contains("it's back · OSPHT4") && !held_unseen(line)),
+        "a regression after a fix cadence can't see run went unseen: {} {:?}",
+        measure.says,
+        measure.behind
+    );
 }
 
 #[test]

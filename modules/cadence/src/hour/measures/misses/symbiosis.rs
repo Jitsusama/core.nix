@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 use super::super::{Class, DAY, Measure, count, first_owner};
 use super::running::RUN_HERE;
-use super::{Checkouts, HELD, Judged, UNRUN, UNSEEN, named, open_misses};
+use super::{Checkouts, HELD, Judged, UNRUN, UNSEEN, named, open_misses, repo_word};
 use crate::write_whole;
 
 /// The measure's key, from one hour to the next.
@@ -55,8 +55,10 @@ const KEPT_FOR: i64 = 28 * DAY;
 const PAST: i64 = DAY;
 
 /// How far before the latest write the last reading saw the next opens
-/// files again, in ms, for one written as the last reading listed.
-const SLACK_MS: i64 = 60_000;
+/// files again, in ms: for one written as the last reading listed, and
+/// for those written after a clock stepped back by less than the hour
+/// between readings. Opening one again only finds it kept already.
+const SLACK_MS: i64 = 3_600_000;
 
 /// How long after it was written a file that doesn't parse may still be
 /// one being written, in ms. Past that it is no message, said and left
@@ -296,15 +298,15 @@ impl Findings {
                 .iter()
                 .any(|note| names_unreadable(note, repos))
                 && (line.is_none() || !readable);
-            open[index] = line.is_some() || unnamed;
+            let note = if unnamed { Some(UNNAMED) } else { line };
+            // A follow-up folds into a finding counted; beneath one held as
+            // the hour's blindness it counts on its own, so a regression
+            // after a fix cadence can't see run still reaches an owner.
+            open[index] = note.is_some_and(|note| !held_unseen(note));
             if finding.follows.is_some_and(|it| open[it]) {
                 continue;
             }
-            let note = if unnamed {
-                UNNAMED
-            } else if let Some(line) = line {
-                line
-            } else {
+            let Some(note) = note else {
                 unseen += usize::from(merged_unseen(finding, repos));
                 continue;
             };
@@ -375,22 +377,17 @@ fn merged_unseen(finding: &Finding, repos: &Checkouts) -> bool {
 
 /// Whether `note` names a change by a `#N` after a word naming a repository
 /// cadence can't read, as `mycelial-node #12`. Only a word shaped like a
-/// repository's name, joined by `-`, `.`, `_` or `/`, reads as one: a
+/// repository's name, joined by `-`, `.` or `_` once any owner before a
+/// `/` is dropped, reads as one, so `Jitsusama/core.nix#6000` is core's: a
 /// plain word, as in `Landed #6000` or `fixes #5990`, names none, so a
 /// note's readable changes still close its finding and a note naming
 /// nothing keeps it its owner's, erring toward open.
 fn names_unreadable(note: &str, repos: &Checkouts) -> bool {
     note.match_indices('#').any(|(at, _)| {
         let numbered = note[at + 1..].starts_with(|c: char| c.is_ascii_digit());
-        let word = note[..at]
-            .trim_end()
-            .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
-            .next()
-            .unwrap_or_default()
-            .to_lowercase();
-        let word = word.trim_matches(|c: char| !c.is_ascii_alphanumeric());
+        let word = repo_word(&note[..at]);
         numbered
-            && word.contains(['-', '.', '_', '/'])
+            && word.contains(['-', '.', '_'])
             && word.chars().any(|c| c.is_ascii_alphabetic())
             && named(&format!("{word} #1"), repos).is_empty()
     })

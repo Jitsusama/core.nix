@@ -42,6 +42,25 @@ pub struct Named {
 /// machine names with `--checkout`.
 pub type Checkouts = BTreeMap<String, PathBuf>;
 
+/// The repository the word ending `before` names, as the word before a
+/// `#N`: lowercased, its quotes and punctuation trimmed and any owner
+/// before a `/` dropped, so "`core`", "Jitsusama/core.nix" and
+/// "core.nix" are one.
+fn repo_word(before: &str) -> String {
+    let word = before
+        .trim_end()
+        .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
+        .next()
+        .unwrap_or_default()
+        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+        .to_lowercase();
+    match word.rsplit('/').next().unwrap_or_default() {
+        "core.nix" => "core".to_owned(),
+        "agentic-harness.pi" => "harness".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 /// The changes `check` names in a repository cadence can read: each `#N`
 /// after its name, as `core #4568`, `core#4500` or `harness #1592`. A
 /// number after any other word, such as a memory's, names nothing here.
@@ -53,19 +72,10 @@ fn named(check: &str, repos: &Checkouts) -> Vec<Named> {
                 .chars()
                 .take_while(char::is_ascii_digit)
                 .collect();
-            let word = check[..at]
-                .trim_end()
-                .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
-                .next()?
-                .to_lowercase();
-            let repo = match word.as_str() {
-                "core.nix" => "core",
-                "agentic-harness.pi" => "harness",
-                other => other,
-            };
-            repos.contains_key(repo).then_some(())?;
+            let repo = repo_word(&check[..at]);
+            repos.contains_key(&repo).then_some(())?;
             Some(Named {
-                repo: repo.to_owned(),
+                repo,
                 number: digits.parse().ok()?,
             })
         })
