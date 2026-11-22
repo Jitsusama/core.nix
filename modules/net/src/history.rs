@@ -32,11 +32,11 @@ const LATELY: u64 = 60 * 60;
 /// time, so it's trimmed about once an hour instead.
 const SLACK: u64 = 60 * 60;
 
-/// How much earlier a line may say the modem started than it last did
-/// and still mean the same start: each is a reading's time less the
-/// modem's uptime, and a reading taken under load lands some seconds
-/// late.
-const ONE_START: u64 = 5 * 60;
+/// How recent a line must be to have a say in when the modem last
+/// started: the day keeps one a minute, so the two newest, with room for
+/// a minute missed. An older line, kept before net or its machine was
+/// down, may say a start the modem has since moved past.
+const RECENT: u64 = 5 * 60;
 
 /// The network's swinging figures at one moment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,13 +220,15 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 }
 
 /// What each downstream channel lost since the day's earliest reading
-/// after the modem last started. The walk back stops at a line saying
-/// the modem started over five minutes before it last did, or where
-/// every channel that had counted any reads lower after it, which is a
-/// start too though one the modem may not count. The page misreads an
-/// uptime or a count now and then, often several channels in one
-/// minute, so either needs two lines to show it: the line before one
-/// that says it started earlier must say so too, and counts must read
+/// after the modem last started. The walk back stops at a line read
+/// before the modem last started, or where every channel that had
+/// counted any reads lower after it, which is a start too though one the
+/// modem may not count. A line is judged by when it was read, not by
+/// when it said the modem started, so a step in net's own clock moves
+/// no start unless it is longer than the modem had been up, and a line
+/// whose uptime was misread costs nothing unless it is one of the few
+/// that say when the modem last started. The page misreads a count now
+/// and then, often several channels in one minute, so counts must read
 /// lower in both newer lines. The newest line has only now after it, so
 /// its counts are judged against now alone: in the first minute after a
 /// restart the older lines still outvote now's new start, and only the
@@ -240,18 +242,11 @@ fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
         .rev()
         .filter(|moment| moment.at < now && !moment.lost.is_empty())
         .collect();
-    let latest = latest_start(started, &lines);
-    let before_start = |moment: &Moment| {
-        moment
-            .modem_started
-            .zip(latest)
-            .is_some_and(|(then, latest)| latest > then + ONE_START)
-    };
+    let latest = latest_start(started, &lines, now);
     let mut newer: Vec<Vec<Lost>> = vec![Moment::lost_of(modem)];
     let mut since: Vec<&Moment> = Vec::new();
-    for (at, &moment) in lines.iter().enumerate() {
-        let started_since =
-            before_start(moment) && lines.get(at + 1).copied().is_none_or(before_start);
+    for &moment in &lines {
+        let started_since = latest.is_some_and(|latest| latest > moment.at);
         let fell = newer
             .iter()
             .rev()
@@ -275,11 +270,19 @@ fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
 
 /// When the modem last started: the middle of what now and the two
 /// newest lines say, so one misread uptime now doesn't move it; with
-/// fewer, what now says, or else the newest line.
-fn latest_start(started: Option<u64>, lines: &[&Moment]) -> Option<u64> {
+/// fewer, what now says, or else the newest line. Only lines from the
+/// last few minutes have a say, so in the first minute after net was
+/// down across a restart, now's new start isn't outvoted by two from
+/// before it.
+fn latest_start(started: Option<u64>, lines: &[&Moment], now: u64) -> Option<u64> {
     let mut starts: Vec<u64> = started
         .into_iter()
-        .chain(lines.iter().filter_map(|moment| moment.modem_started))
+        .chain(
+            lines
+                .iter()
+                .take_while(|moment| now - moment.at <= RECENT)
+                .filter_map(|moment| moment.modem_started),
+        )
         .take(3)
         .collect();
     if starts.len() == 3 {
@@ -538,25 +541,44 @@ mod tests {
             .uncorrectable = uncorrectable;
     }
 
+    /// The golden record with the modem up `up` seconds, so it says it
+    /// started that long before now.
+    fn up_for(up: u64) -> Network {
+        let mut now = network();
+        device_mut(&mut now, "modem").up_s = Some(up);
+        now
+    }
+
+    fn device_mut<'a>(network: &'a mut Network, id: &str) -> &'a mut crate::model::Device {
+        network
+            .devices
+            .iter_mut()
+            .find(|device| device.id == id)
+            .unwrap_or_else(|| panic!("the record has the {id}"))
+    }
+
     #[test]
     fn lately_counts_only_since_the_modem_last_started() {
-        // Five hours ago the modem said it had started a day before it
-        // says now, so it started again between, though channel 16 then
-        // read lower than since; it counts from 860 two hours ago.
-        let now = network();
-        let mut before = earlier(&now, 5 * HOUR, 10, 41);
-        before.modem_started = before.modem_started.map(|started| started - DAY);
-        let day = [before, earlier(&now, 2 * HOUR, 860, 41)];
+        // The modem started three hours ago. The two lines before it say
+        // the start before that, and channel 16 read lower in them than
+        // since, so only when each line was read shows the start: it
+        // counts from 860 two hours ago, not the older lines.
+        let now = up_for(3 * HOUR);
+        let day = [
+            earlier(&network(), 6 * HOUR, 5, 41),
+            earlier(&network(), 5 * HOUR, 10, 41),
+            earlier(&now, 2 * HOUR, 860, 41),
+        ];
         let network = recalled(now, &day);
         assert_eq!(
             modem(&network).lately_s,
             Some(2 * HOUR),
-            "the walk back went past the start"
+            "the walk stopped somewhere other than the start"
         );
         assert_eq!(
             sixteen(&network).lost_lately,
             Some(18),
-            "channel 16 counted from the wrong reading"
+            "channel 16 counted from a line before the start"
         );
     }
 
@@ -576,48 +598,75 @@ mod tests {
     }
 
     #[test]
-    fn a_start_is_when_the_modem_started_moving_later_by_over_five_minutes() {
-        let now = network();
-        assert_eq!(
-            Moment::of(&read_earlier(&now, 2 * HOUR, 0)).modem_started,
-            Moment::of(&now).modem_started,
-            "a start is a reading's time less the modem's uptime"
-        );
-        for (drift, lately_s) in [(ONE_START, Some(5 * HOUR)), (ONE_START + 1, None)] {
-            let day = [Moment::of(&read_earlier(&now, 5 * HOUR, drift))];
+    fn a_line_read_before_the_modem_started_is_before_the_start() {
+        // The modem started five hours ago: a line read then is after it,
+        // and one read a second sooner is before it.
+        let now = up_for(5 * HOUR);
+        for (ago, lately_s) in [(5 * HOUR, Some(5 * HOUR)), (5 * HOUR + 1, None)] {
+            let day = [earlier(&network(), ago, 800, 41)];
             let network = recalled(now.clone(), &day);
             assert_eq!(
                 modem(&network).lately_s,
                 lately_s,
-                "a start {drift} seconds later was judged wrongly"
+                "a line read {ago} seconds ago was judged wrongly"
             );
         }
     }
 
     #[test]
-    fn a_start_in_the_middle_of_the_day_is_found_by_uptime() {
-        // Two lines say the modem started a day before the latest line
-        // does, and the walk stops at the newer of them, not the oldest.
+    fn a_step_in_nets_clock_is_no_start() {
+        // Net's clock stepped an hour forward three minutes ago. The lines
+        // before it say the modem started an hour before the lines since
+        // do, but the modem was up all along, so lately reaches back to
+        // the day's first line, five hours and the step ago.
+        const STEP: u64 = HOUR;
         let now = network();
-        let mut day: Vec<Moment> = [(6 * HOUR, 5), (5 * HOUR, 10)]
-            .into_iter()
-            .map(|(ago, sixteen)| {
-                let mut before = earlier(&now, ago, sixteen, 41);
-                before.modem_started = before.modem_started.map(|started| started - DAY);
-                before
-            })
-            .collect();
-        day.push(earlier(&now, 2 * HOUR, 860, 41));
+        let before = |ago, sixteen| {
+            let mut line = Moment::of(&read_earlier(&now, ago + STEP, STEP));
+            line.lost
+                .iter_mut()
+                .filter(|lost| lost.channel == Some(16))
+                .for_each(|lost| lost.uncorrectable = sixteen);
+            line
+        };
+        let day = [
+            before(5 * HOUR, 800),
+            before(3 * HOUR, 840),
+            before(4 * 60, 870),
+            before(3 * 60, 870),
+            earlier(&now, 2 * 60, 875, 41),
+            earlier(&now, 60, 875, 41),
+        ];
         let network = recalled(now, &day);
         assert_eq!(
             modem(&network).lately_s,
-            Some(2 * HOUR),
-            "the walk stopped somewhere other than the start"
+            Some(5 * HOUR + STEP),
+            "a step in net's clock was taken as the modem starting"
         );
         assert_eq!(
             sixteen(&network).lost_lately,
-            Some(18),
-            "channel 16 counted from a line before the start"
+            Some(78),
+            "channel 16 counted from the wrong reading"
+        );
+    }
+
+    #[test]
+    fn a_start_while_net_was_down_is_seen_in_its_first_minute_back() {
+        // Net was down three hours, and the modem started two hours ago.
+        // The lines from before are too old to outvote now's new start,
+        // though channel 16 has since climbed past them; nothing is
+        // counted lately rather than less than was lost.
+        let now = up_for(2 * HOUR);
+        let day = [
+            earlier(&network(), 5 * HOUR, 800, 41),
+            earlier(&network(), 3 * HOUR + 60, 820, 41),
+            earlier(&network(), 3 * HOUR, 820, 41),
+        ];
+        let network = recalled(now, &day);
+        assert_eq!(
+            (modem(&network).lately_s, sixteen(&network).lost_lately),
+            (None, None),
+            "the walk back crossed a start made while net was down"
         );
     }
 
@@ -632,6 +681,8 @@ mod tests {
             let day = [
                 earlier(&now, 5 * HOUR, 800, 41),
                 earlier(&now, 3 * HOUR, 840, 41),
+                earlier(&now, 2 * 60, 870, 41),
+                earlier(&now, 60, 875, 41),
             ];
             let modem_now = now
                 .devices
@@ -716,19 +767,27 @@ mod tests {
     }
 
     #[test]
-    fn a_misread_uptime_is_passed_by() {
-        // One line's uptime read ten minutes short, so it says the modem
-        // started ten minutes after it did; that is no start.
+    fn an_old_line_whose_uptime_was_misread_is_passed_by() {
+        // One line's uptime read short, so it says the modem started
+        // after the line was read, or long, so it says a start before the
+        // one the others say; neither is a start.
         let now = network();
-        let mut misread = earlier(&now, 3 * HOUR, 840, 41);
-        misread.modem_started = misread.modem_started.map(|started| started + 10 * 60);
-        let day = [earlier(&now, 5 * HOUR, 800, 41), misread];
-        let network = recalled(now, &day);
-        assert_eq!(
-            modem(&network).lately_s,
-            Some(5 * HOUR),
-            "a misread uptime was taken as the modem starting"
-        );
+        let started_after = now.collected_at - 3 * HOUR + 60;
+        for (said, started) in [("short", started_after), ("long", 10 * 60)] {
+            let mut misread = earlier(&now, 3 * HOUR, 840, 41);
+            misread.modem_started = Some(started);
+            let day = [
+                earlier(&now, 5 * HOUR, 800, 41),
+                earlier(&now, 4 * HOUR, 820, 41),
+                misread,
+            ];
+            let network = recalled(now.clone(), &day);
+            assert_eq!(
+                modem(&network).lately_s,
+                Some(5 * HOUR),
+                "an uptime misread {said} was taken as the modem starting"
+            );
+        }
     }
 
     #[test]
@@ -761,42 +820,19 @@ mod tests {
     }
 
     #[test]
-    fn an_old_line_whose_uptime_read_long_is_passed_by() {
-        // One line's uptime read ten minutes long, so it says the modem
-        // started ten minutes before it did; the line before it says the
-        // start it did, so that is no start.
-        let now = network();
-        let mut misread = earlier(&now, 4 * HOUR, 820, 41);
-        misread.modem_started = misread.modem_started.map(|started| started - 10 * 60);
-        let day = [
-            earlier(&now, 5 * HOUR, 800, 41),
-            misread,
-            earlier(&now, 3 * HOUR, 840, 41),
-        ];
-        let network = recalled(now, &day);
-        assert_eq!(
-            modem(&network).lately_s,
-            Some(5 * HOUR),
-            "an uptime misread long was taken as the modem starting"
-        );
-    }
-
-    #[test]
     fn an_uptime_misread_now_is_outvoted_by_the_newest_lines() {
-        // Now's uptime reads ten minutes short, so now says the modem
-        // started ten minutes after the day's lines do; they outvote it.
-        let mut now = network();
+        // Now's uptime reads four hours, so now says the modem started
+        // after the day's first lines were read; the two newest lines say
+        // it didn't, and outvote it.
+        let now = network();
         let day = [
             earlier(&now, 5 * HOUR, 800, 41),
             earlier(&now, 3 * HOUR, 840, 41),
-            earlier(&now, 2 * HOUR, 860, 41),
+            earlier(&now, 2 * 60, 870, 41),
+            earlier(&now, 60, 875, 41),
         ];
-        let modem_now = now
-            .devices
-            .iter_mut()
-            .find(|device| device.id == "modem")
-            .expect("the record has the modem");
-        modem_now.up_s = modem_now.up_s.map(|up| up - 10 * 60);
+        let mut now = now;
+        device_mut(&mut now, "modem").up_s = Some(4 * HOUR);
         let network = recalled(now, &day);
         assert_eq!(
             modem(&network).lately_s,
