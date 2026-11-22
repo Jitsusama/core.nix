@@ -83,7 +83,11 @@ pub fn measures(
     unread: Option<&str>,
 ) -> Vec<Measure> {
     let call_too = |first: &str| vec![first.to_string(), stand_in.to_string()];
-    let call_sound = |first: &str| vec![first.to_string(), SOUND.to_string()];
+    let call_sound = |first: &str| {
+        let mut said = vec![first.to_string(), SOUND.to_string()];
+        said.extend(call.unheard.iter().map(|why| format!("unheard: {why}")));
+        said
+    };
     let mut behind = vec![format!(
         "{} openings in the last hour, chord or ask to on screen",
         opens.len()
@@ -220,13 +224,10 @@ mod tests {
             clicks_p99: Some(9.84),
             concealed: Some(0.42),
             jitter_p99: Some(24.0),
-            lost: Some(0.0),
+            lost: Some(0.25),
+            unheard: None,
             samples: 140,
         }
-    }
-
-    fn named_now(all: &[Measure], name: &str) -> Option<f64> {
-        all.iter().find(|m| m.measure == name).and_then(|m| m.now)
     }
 
     #[test]
@@ -246,9 +247,23 @@ mod tests {
             Some("journalctl ended with code 1: no"),
         );
         assert_eq!(all.len(), 11);
-        assert_eq!(named_now(&all, "call sound concealed %"), Some(0.4));
-        assert_eq!(named_now(&all, "call sound jitter p99 ms"), Some(24.0));
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
+        for (name, now, target) in [
+            ("call sound concealed %", 0.4, 1.0),
+            ("call sound jitter p99 ms", 24.0, 30.0),
+            ("call sound packets lost %", 0.3, 0.0),
+        ] {
+            assert_eq!(
+                (named(name).now, named(name).target),
+                (Some(now), target),
+                "{name} reads the wrong figure or target"
+            );
+            assert_eq!(
+                named(name).behind[1],
+                SOUND,
+                "{name} doesn't say what it heard"
+            );
+        }
         assert_eq!(named("call sent fps p10").now, Some(30.0));
         // A figure read the wrong way passes cadence at any value.
         for m in &all {
@@ -297,6 +312,33 @@ mod tests {
             launcher.behind,
             ["2 openings in the last hour, chord or ask to on screen"]
         );
+    }
+
+    #[test]
+    fn sound_that_went_unheard_says_why_beside_each_of_its_figures() {
+        let unheard = Call {
+            concealed: None,
+            jitter_p99: None,
+            lost: None,
+            unheard: Some("the far end's playing was refused: NotAllowedError".to_string()),
+            ..call()
+        };
+        let all = measures(
+            &unheard,
+            "a fake camera",
+            &Waits::default(),
+            &Waits::default(),
+            &[],
+            None,
+        );
+        for m in all.iter().filter(|m| m.measure.starts_with("call sound ")) {
+            assert_eq!(
+                m.behind.last().map(String::as_str),
+                Some("unheard: the far end's playing was refused: NotAllowedError"),
+                "{} doesn't say why it's missing",
+                m.measure
+            );
+        }
     }
 
     #[test]

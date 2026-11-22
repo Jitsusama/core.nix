@@ -89,13 +89,19 @@ pub struct Call {
     pub jitter_p99: Option<f64>,
     /// The sound's packets lost, in %.
     pub lost: Option<f64>,
+    /// Why the far end's sound went unheard, when it did, so its figures
+    /// say why they're missing rather than vanishing.
+    pub unheard: Option<String>,
     /// How many of the near end's samples were counted.
     pub samples: usize,
 }
 
-/// The change in a running count from the first sample to the last.
+/// The change in a running count from the first sample to the last, or
+/// none when it fell, since then the count was started again partway and
+/// says nothing about the call as a whole.
 fn grew(first: &Value, last: &Value, key: &str) -> Option<f64> {
-    Some(last["aud"][key].as_f64()? - first["aud"][key].as_f64()?)
+    let change = last["aud"][key].as_f64()? - first["aud"][key].as_f64()?;
+    (change >= 0.0).then_some(change)
 }
 
 /// A share in %, to two places, or none when there was nothing to share.
@@ -103,30 +109,49 @@ fn share(part: f64, whole: f64) -> Option<f64> {
     (whole > 0.0).then(|| (part / whole * 10_000.0).round() / 100.0)
 }
 
+/// The far end's sound: concealed, its jitter p99 and lost.
+type Heard = (Option<f64>, Option<f64>, Option<f64>);
+
 /// The far end's sound, from its samples' running counts: concealed and
-/// lost as shares of the call, its jitter as a p99.
-fn heard(far: &[Value]) -> (Option<f64>, Option<f64>, Option<f64>) {
+/// lost as shares of the call, its jitter as a p99. A far end that played
+/// nothing gives none of them, since its jitter and losses alone would
+/// read as sound heard well, and says why instead.
+fn heard(far: &[Value]) -> (Heard, Option<String>) {
+    let unheard = |why: &str| ((None, None, None), Some(why.to_string()));
+    match far.iter().rev().find_map(|row| row["played"].as_str()) {
+        None => return unheard("the far end never began playing what it heard"),
+        Some("playing") => {}
+        Some(said) => return unheard(&format!("the far end's playing was {said}")),
+    }
     let sound: Vec<&Value> = far
         .iter()
         .filter(|row| row["aud"]["totalSamplesReceived"].is_number())
         .collect();
+    let (Some(first), Some(end)) = (sound.first(), sound.last()) else {
+        return unheard("the far end counted no sound");
+    };
+    if !matches!(grew(first, end, "totalSamplesReceived"), Some(n) if n > 0.0) {
+        return unheard("the far end played no sound over the call");
+    }
     let jitter: Vec<f64> = sound
         .iter()
         .filter_map(|row| row["aud"]["jitter"].as_f64())
         .map(|s| s * 1000.0)
         .collect();
-    let (Some(first), Some(end)) = (sound.first(), sound.last()) else {
-        return (None, percentile(&jitter, 99), None);
-    };
     // Every sample the far end played counts, its quiet between beeps
     // too, since that quiet stands in for Joel talking.
     let concealed = grew(first, end, "concealedSamples")
         .zip(grew(first, end, "totalSamplesReceived"))
         .and_then(|(made_up, played)| share(made_up, played));
-    let lost = grew(first, end, "packetsLost")
+    // Packets lost is the only count that may fall without a restart,
+    // when a duplicate makes up for a loss, so a fall there is none lost.
+    let lost = end["aud"]["packetsLost"]
+        .as_f64()
+        .zip(first["aud"]["packetsLost"].as_f64())
+        .map(|(now, then)| (now - then).max(0.0))
         .zip(grew(first, end, "packetsReceived"))
         .and_then(|(lost, got)| share(lost, lost + got));
-    (concealed, percentile(&jitter, 99), lost)
+    ((concealed, percentile(&jitter, 99), lost), None)
 }
 
 pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
@@ -164,7 +189,7 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         freezes = change("freezeCount").map(|(b, a)| ((b - a) / tenths * 10.0).round() / 10.0);
         frozen_s = change("totalFreezesDuration").map(|(b, a)| ((b - a) * 100.0).round() / 100.0);
     }
-    let (concealed, jitter_p99, lost) = heard(far);
+    let ((concealed, jitter_p99, lost), unheard) = heard(far);
     Call {
         camera: percentile(&camera, 10),
         sent: percentile(&sent, 10),
@@ -176,6 +201,7 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         concealed,
         jitter_p99,
         lost,
+        unheard,
         samples: mine.len(),
     }
 }
@@ -312,29 +338,140 @@ mod tests {
     fn the_far_end_s_sound_is_counted_from_its_running_counts_once_the_call_settles() {
         // 48,000 samples a second played and 50 packets heard, with 480
         // made up and one packet lost each second once the call settles;
-        // its first seconds, left out, made up everything.
+        // its first seconds, left out, made up everything and lost three
+        // packets a second, with one jitter spike that mustn't count.
         let far: Vec<Value> = (0..30_u32)
             .map(|t| {
                 let settled = f64::from(t.saturating_sub(10));
                 let early = f64::from(t.min(10));
-                json!({"t": t * 1000, "aud": {
-                    "totalSamplesReceived": 48_000.0 * f64::from(t),
-                    "concealedSamples": 48_000.0 * early + 480.0 * settled,
-                    "packetsReceived": 49.0 * f64::from(t),
-                    "packetsLost": f64::from(t),
-                    "jitter": if t == 29 { 0.040 } else { 0.010 },
-                }})
+                playing(
+                    t,
+                    &json!({
+                        "totalSamplesReceived": 48_000.0 * f64::from(t),
+                        "concealedSamples": 48_000.0 * early + 480.0 * settled,
+                        "packetsReceived": 50.0 * f64::from(t) - 3.0 * early - settled,
+                        "packetsLost": 3.0 * early + settled,
+                        "jitter": match t { 5 => 0.090, 29 => 0.040, _ => 0.010 },
+                    }),
+                )
             })
             .collect();
         let figures = call(&[], &far, &[]);
         assert_eq!(figures.concealed, Some(1.0), "480 in 48,000 is 1%");
-        assert_eq!(figures.lost, Some(2.0), "1 in 50 packets is 2%");
-        assert_eq!(figures.jitter_p99, Some(40.0), "the worst of 20 is the p99");
-        let silent = call(&[], &[json!({"aud": {}})], &[]);
         assert_eq!(
-            (silent.concealed, silent.jitter_p99, silent.lost),
-            (None, None, None),
-            "a call that heard nothing has no sound figures"
+            figures.lost,
+            Some(2.0),
+            "1 in 50 packets once settled is 2%"
+        );
+        assert_eq!(
+            figures.jitter_p99,
+            Some(40.0),
+            "the settled seconds' worst is the p99"
+        );
+        assert_eq!(figures.unheard, None);
+    }
+
+    /// One second of the far end's samples, playing what it hears.
+    fn playing(t: u32, aud: &Value) -> Value {
+        json!({"t": t * 1000, "played": "playing", "aud": aud})
+    }
+
+    #[test]
+    fn a_call_that_heard_nothing_has_no_sound_figures_and_says_why() {
+        let sound = |far: &[Value]| {
+            let f = call(&[], far, &[]);
+            (
+                (f.concealed, f.jitter_p99, f.lost),
+                f.unheard.unwrap_or_default(),
+            )
+        };
+        let stat = json!({"totalSamplesReceived": 0.0, "packetsReceived": 50.0, "jitter": 0.01});
+        let cases = [
+            (
+                (0..30)
+                    .map(|t| json!({"t": t * 1000, "aud": stat}))
+                    .collect::<Vec<_>>(),
+                "never began playing",
+            ),
+            (
+                (0..30)
+                    .map(|t| json!({"t": t * 1000, "played": "refused: NotAllowedError"}))
+                    .collect(),
+                "refused: NotAllowedError",
+            ),
+            (
+                (0..30).map(|t| playing(t, &json!({}))).collect(),
+                "counted no sound",
+            ),
+            (
+                (0..30).map(|t| playing(t, &stat)).collect(),
+                "played no sound",
+            ),
+            (
+                (0..11)
+                    .map(|t| playing(t, &json!({"totalSamplesReceived": 1.0})))
+                    .collect(),
+                "played no sound",
+            ),
+        ];
+        for (far, why) in cases {
+            let (figures, said) = sound(&far);
+            assert_eq!(
+                figures,
+                (None, None, None),
+                "jitter or loss read with nothing heard"
+            );
+            assert!(said.contains(why), "{said:?} doesn't say {why:?}");
+        }
+    }
+
+    #[test]
+    fn a_count_started_again_partway_reads_as_unknown_never_as_better() {
+        // At second 20 the far end's made-up and received counts start
+        // again, as they would were its receiver remade, while the samples
+        // it played go on growing.
+        let far: Vec<Value> = (0..30_u32)
+            .map(|t| {
+                let since = f64::from(if t < 20 { t } else { t - 20 });
+                playing(
+                    t,
+                    &json!({
+                        "totalSamplesReceived": 48_000.0 * f64::from(t),
+                        "concealedSamples": 4_800.0 * since,
+                        "packetsReceived": 49.0 * since,
+                        "packetsLost": since,
+                    }),
+                )
+            })
+            .collect();
+        let figures = call(&[], &far, &[]);
+        assert_eq!(
+            (figures.concealed, figures.lost),
+            (None, None),
+            "a count that fell can't give a share"
+        );
+    }
+
+    #[test]
+    fn a_duplicate_making_up_for_a_loss_counts_as_none_lost() {
+        // packetsLost falls by one when a late duplicate arrives.
+        let far: Vec<Value> = (0..30_u32)
+            .map(|t| {
+                playing(
+                    t,
+                    &json!({
+                        "totalSamplesReceived": 48_000.0 * f64::from(t),
+                        "concealedSamples": 0.0,
+                        "packetsReceived": 50.0 * f64::from(t),
+                        "packetsLost": if t < 15 { 1.0 } else { 0.0 },
+                    }),
+                )
+            })
+            .collect();
+        assert_eq!(
+            call(&[], &far, &[]).lost,
+            Some(0.0),
+            "never below none lost"
         );
     }
 

@@ -27,6 +27,8 @@ let pc;
 let dc;
 const last = {};
 let tapped = 0;
+// What became of playing what the far end hears: unset until it plays or is refused.
+let played;
 
 const b64 = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
 const unb64 = (s) => JSON.parse(decodeURIComponent(escape(atob(s))));
@@ -91,6 +93,9 @@ async function sample() {
   const timed = video.find((r) => r.type === 'media-source' || r.type === 'outbound-rtp');
   const s = { t: Math.round(timed?.timestamp ?? asked), state: pc.connectionState };
   const heard = [...stats.values()].find((r) => r.type === 'inbound-rtp' && r.kind === 'audio');
+  if (played) {
+    s.played = played;
+  }
   if (heard) {
     s.aud = pick(heard, ['concealedSamples', 'totalSamplesReceived', 'packetsLost',
       'packetsReceived', 'jitter']);
@@ -163,8 +168,18 @@ globalThis.answer = async (offer, maxBitrate) => {
   said.direction = 'sendrecv';
   await said.sender.replaceTrack(voice);
   // Not waited on: nothing plays until the call connects, which needs the answer first. A
-  // refused play leaves the sound's figures unread rather than ending the call.
-  play(said.receiver.track).catch(() => null);
+  // refused play leaves the sound's figures unread rather than ending the call, and each
+  // sample says why, so the hour does too.
+  Promise.resolve()
+    .then(() => play(said.receiver.track))
+    .then(
+      () => {
+        played = 'playing';
+      },
+      (e) => {
+        played = `refused: ${e?.name ?? e}`;
+      },
+    );
   preferVp9(t);
   await pc.setLocalDescription(await pc.createAnswer());
   const p = t.sender.getParameters();

@@ -553,9 +553,14 @@ impl From<Enrolled> for Step {
 /// `--use-fake-device-for-media-stream`, with which Chrome lists only its
 /// fake devices.
 fn fake(said: &Value, end: &str) -> Result<(), Step> {
-    for (key, device) in [("label", "camera"), ("voice", "microphone")] {
+    // Matched on how Chromium names its own fakes rather than on the word
+    // anywhere, so a virtual source someone named "Fake Webcam" is refused.
+    for (key, device, named) in [
+        ("label", "camera", "fake_device_"),
+        ("voice", "microphone", "Fake Default Audio Input"),
+    ] {
         let label = said[key].as_str().unwrap_or("");
-        if !label.to_lowercase().contains("fake") {
+        if !label.starts_with(named) {
             return Err(Step::Refused(format!(
                 "the {end} end's {device} was {label:?}, not Chromium's fake one"
             )));
@@ -595,6 +600,12 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
         // Joel's session bus is named by an absolute path, which a runtime
         // folder of its own doesn't hide, so the browser isn't told it.
         .env_remove("DBUS_SESSION_BUS_ADDRESS")
+        // The same holds for Joel's sound servers' addresses, so none is
+        // told, and Pulse is named a closed one, so it can't start its own.
+        .env_remove("PULSE_RUNTIME_PATH")
+        .env_remove("PIPEWIRE_REMOTE")
+        .env_remove("PIPEWIRE_RUNTIME_DIR")
+        .env("PULSE_SERVER", "unix:/nonexistent/pulse")
         .env("XDG_CONFIG_HOME", config)
         .env("TSS2_FAPICONF", "/nonexistent/fapi-config.json")
         .env("TPM2_PKCS11_TCTI", "mssim:host=127.0.0.1,port=9")
