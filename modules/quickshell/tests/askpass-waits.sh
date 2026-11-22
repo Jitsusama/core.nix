@@ -1,11 +1,12 @@
 # shellcheck shell=bash
 # How the askpass waits on the shell (modules/quickshell/home.nix), and
-# whom it asks for, run with bash and the built askpass as its argument. A
-# stand-in for qs plays a shell that answers, one that restarts and so
-# forgets what it was asking, and one that's gone. A copy of the askpass
-# runs with the stand-in first on its PATH, so no real shell is asked, and
-# reads its caller's cgroup from a folder of this test's, so each case says
-# where the program asking runs.
+# whom it asks for, run with bash, the built askpass and ssh-tpm-agent's
+# gate-cases.txt as its arguments. A stand-in for qs plays a shell that
+# answers, one that restarts and so forgets what it was asking, and one
+# that's gone. A copy of the askpass runs with the stand-in first on its
+# PATH, so no real shell is asked, and reads its caller's cgroup and its
+# parents' from a folder of this test's, so each case says where the
+# program asking and each of its parents run.
 set -u
 here=$PWD
 mkdir -p bin run
@@ -30,11 +31,24 @@ grep -q "^proc=$here/proc$" askpass || {
 }
 
 # The askpass's caller is this shell: its words as the kernel has them, and
-# a cgroup each case names, Joel's terminal's unless it says otherwise.
+# a cgroup each case names, Joel's terminal's unless it says otherwise,
+# then the cgroup of each parent it names after, made up as processes
+# numbered from 5000001, past any pid the kernel gives, so none is this
+# shell's. The last names a parent that's gone.
 mkdir -p "proc/$$"
 cp "/proc/$$/cmdline" "proc/$$/cmdline"
 user=/user.slice/user-1000.slice/user@1000.service
-from() { printf '0::%s\n' "$1" > "proc/$$/cgroup"; }
+from() {
+  local pid=$$ parent=5000000 place
+  rm -rf proc/50000*
+  for place in "$@"; do
+    parent=$((parent + 1))
+    mkdir -p "proc/$pid"
+    printf '0::%s\n' "$place" > "proc/$pid/cgroup"
+    printf 'Name:\tx\nPPid:\t%s\n' "$parent" > "proc/$pid/status"
+    pid=$parent
+  done
+}
 from "$user/jobs.slice/jobs-awaited.slice/kitty-1-2.scope"
 
 # qs ipc call askpass <what> <args...>, answered as the shell would, or not
@@ -87,7 +101,9 @@ ended() {
   exited() { [ "$(cat status)" = "$1" ]; }
   printed() { [ "$(cat out)" = "$1" ]; }
   asked() { [ "$(grep -c '^ask ' said)" = "$1" ]; }
-  complained() { grep -q "$1" err; }
+  # What it said instead goes with a failure, as the failure's reason.
+  complained() { grep -qF -- "$1" err || { cat err; false; }; }
+  placed() { grep -qE ' (runs in|was started from) /' err || { cat err; false; }; }
   folder_gone() { ! compgen -G 'run/*askpass*' > /dev/null; }
   between() { [ "$1" -ge "$2" ] && [ "$1" -le "$3" ]; }
 }
@@ -157,47 +173,87 @@ for words in "" "one two"; do
   check "and asks nothing" asked 0
 done
 
-# Asked for by a program of Joel's, it asks; by anything else, it refuses
-# without a word to the shell, saying where the asker ran.
-for place in \
-  "$user/app.slice/ssh-tpm-agent.service" \
-  "$user/session.slice/niri.service" \
-  "$user/background.slice/backup.service" \
-  /system.slice/linux-id.service; do
-  from "$place"
+# Asked for by what Joel runs, it asks; for agents' work, judged by its
+# cgroup or a parent's as ssh-tpm-agent's gate judges them, it refuses
+# without a word to the shell, saying where the asker ran. A refusal is
+# held to 10 seconds, so one that asks after all fails by its name rather
+# than waiting out the check; it's stopped from here rather than by
+# timeout, so its parent is still this shell, whose cgroup each case set.
+asks() {
   start confirm
   printf 'yes\n' > "$reply/answer"
   ended
-  check "one in $place is asked for" exited 0
+  check "$1 is asked for" exited 0
   check "and asked once" asked 1
-done
-for place in \
-  "$user/agents.slice/kitty-4248-24.scope" \
-  "$user/agents.slice/mycelium.service" \
-  "$user/jobs.slice/jobs.service" \
-  "$user/jobs.slice/sj-gates-225013.service" \
-  "$user/jobs.slice/jobs-work.slice/jobs-work-a.slice/work-1-2.scope" \
-  "$user/jobs.slice/jobs-timed.slice/vm.service" \
-  "$user/shared.slice/walk.scope" \
-  "$user/offload.slice/nix-offload-vm-8.service" \
-  "$user/app.slice/pi-jobs-7.scope" \
-  "$user/jobs.slice/jobs-awaited.slice/pi-jobs-7.scope/x" \
-  "$user/jobs.slice/jobs-awaited.slice" \
-  /user.slice/user-1000.slice/session-3.scope; do
-  from "$place"
+}
+refuses() {
   : > said
-  SSH_ASKPASS_PROMPT=confirm ./askpass "Are you sure you want to continue connecting?" \
-    > out 2> err
+  SSH_ASKPASS_PROMPT=confirm "${2:-./askpass}" \
+    "Are you sure you want to continue connecting?" > out 2> err < /dev/null &
+  local refusing=$!
+  { sleep 10 && kill "$refusing"; } 2> /dev/null &
+  local watching=$!
+  wait "$refusing"
   echo $? > status
-  check "one in $place is refused" exited 1
-  check "saying where it runs" complained "runs in $place, where agents' work runs"
+  kill "$watching" 2> /dev/null
+  wait "$watching" 2> /dev/null
+  check "$1 is refused" exited 1
   check "and asks nothing" asked 0
+}
+for place in \
+  "$user/app.slice/ssh-tpm-agent.service" \
+  "$user/app.slice/linux-id.service" \
+  "$user/session.slice/niri.service" \
+  "$user/background.slice/backup.service"; do
+  from "$place" "$user/init.scope"
+  asks "one in $place"
 done
+
+# Each case the gate must decide, as the gate decides it.
+number=0
+while read -r verdict peer parents <&4; do
+  number=$((number + 1))
+  case $verdict in
+    serve | refuse) ;;
+    *) continue ;;
+  esac
+  # Each parent is a word of its own.
+  # shellcheck disable=SC2086
+  from "$peer" $parents
+  if [ "$verdict" = serve ]; then
+    asks "the gate's case on line $number"
+  else
+    refuses "the gate's case on line $number"
+    check "for where it ran" placed
+  fi
+done 4< "$2"
+check "having read the gate's cases" between "$number" 40 1000
+
+# nix-offload's serving units sign in with keys the gate never sees, so
+# only the askpass refuses them.
+from "$user/offload.slice/nix-offload-vm-8.service" "$user/init.scope"
+refuses "nix-offload's serving unit"
+check "saying where it runs" complained "runs in $user/offload.slice/nix-offload-vm-8.service"
+from "$user/app.slice/run-u1.scope" "$user/jobs.slice/pi-spawner-1-2.scope" "$user/init.scope"
+refuses "a command moved out of its spawner's scope"
+check "saying where it was started" complained "was started from $user/jobs.slice/pi-spawner-1-2.scope"
+from "$user/agents.slice/kitty-1-2.scope/app.slice/kitty-3-4.scope"
+refuses "a cgroup named as Joel's inside agents' place"
+printf '1:name=x:/x\n' > "proc/$$/cgroup"
+refuses "one with no unified cgroup"
+check "saying it can't be read" complained "can't be read"
 rm "proc/$$/cgroup"
-: > said
-SSH_ASKPASS_PROMPT=confirm ./askpass "Allow use of key?" > out 2> err
-echo $? > status
-check "one whose cgroup can't be read is refused" exited 1
-check "saying it's gone" complained "a process gone"
-check "and asks nothing" asked 0
+refuses "one whose cgroup can't be read"
+check "saying it's gone" complained "is gone"
+
+# With its gate gone it asks for no one, Joel's own terminal included.
+from "$user/app.slice/kitty-2210-1.scope" "$user/init.scope"
+grep -q '^SSH_ASKPASS_GATE=' askpass || {
+  echo "the askpass no longer names its gate as this expects"
+  exit 1
+}
+sed 's|^SSH_ASKPASS_GATE=.*|SSH_ASKPASS_GATE=/nowhere|' askpass > ungated
+chmod +x ungated
+refuses "one asking while the gate can't be read" ./ungated
+check "saying so" complained "gate (/nowhere) can't be read"
 exit "$failed"

@@ -62,34 +62,48 @@ case $asker in
 esac
 [[ $asker =~ ^[0-9a-z]{32}-(.+)$ ]] && asker=${BASH_REMATCH[1]}
 [[ $asker =~ ^\.(.+)-wrapped$ ]] && asker=${BASH_REMATCH[1]}
-# Only a program of Joel's may put a prompt on his screen: one his
-# desktop, his apps, his timers or his terminals started, or the system's
-# own services, such as linux-id's pinentry. ssh-tpm-agent runs among
-# his apps and refuses agents' requests itself. Everything else, agents'
-# sessions and commands, their units and nix-offload's, is refused
-# without asking, and the refusal goes to the journal saying where the
-# asker ran. On 21 November at 22:37, nix copies to the builders lost
-# their pinned host keys and put about 22 host-key questions on his
-# screen. Like polkit's rules (modules/slices/agents-ask-first.rules),
-# this catches an agent's mistake: a process set on it can move itself
-# among his slices, and stopping that is the fence's work.
-place=$(sed -n 's/^0:://p' "$proc/$PPID/cgroup" 2> /dev/null || true)
-joels=false
-case $place in
-  */pi-jobs-*.scope | */pi-jobs-*.scope/*) ;;
-  */user@*.service/app.slice/* | */user@*.service/session.slice/*) joels=true ;;
-  */user@*.service/background.slice/*) joels=true ;;
-  */user@*.service/jobs.slice/jobs-awaited.slice/*) joels=true ;;
-  /system.slice/*) joels=true ;;
-  *) ;;
-esac
-if [[ $joels != true ]]; then
-  why="$asker (pid $PPID) runs in ${place:-a process gone}, where agents' work runs"
-  logger -t ssh-askpass -- "refused to ask Joel, as $why" 2> /dev/null || true
-  printf '%s\n' "ssh-askpass: refused, as $why" \
-    "  nothing an agent runs asks Joel; use BatchMode and pinned host keys" >&2
+# Only what Joel runs may put a prompt on his screen, and agents' work is
+# refused without asking, judged as ssh-tpm-agent's gate judges who may
+# use his keys: by the cgroups of the asker and then each of its parents,
+# against the gate's refuse lines (modules/ssh-tpm-agent/gate.conf, which
+# SSH_ASKPASS_GATE names), where a chain naming none is his. So his
+# terminals, his editor and ssh-tpm-agent asking for his PIN are asked
+# for, as the agent serves them. nix-offload's serving units are refused
+# too: they sign in to the builders with keys of their own, which the gate
+# never sees, and on 21 November at 22:37 and again at 00:17, copies of
+# theirs that lost their pinned host keys put a host-key question on his
+# screen for each builder. A gate that can't be read, or a caller whose
+# cgroup can't be, refuses. Each refusal goes to the journal saying where
+# the asker ran. Like the gate, this catches an agent's mistake: a
+# process set on it can move itself among his slices, and stopping that
+# is the fence's work.
+refusing=('/offload\.slice/')
+rules=$(sed -n 's/^refuse //p' "${SSH_ASKPASS_GATE:-}" 2> /dev/null || true)
+[[ -z $rules ]] || mapfile -t -O 1 refusing <<< "$rules"
+refuse() {
+  logger -t ssh-askpass -- "refused to ask Joel, as $1" 2> /dev/null || true
+  printf '%s\n' "ssh-askpass: refused, as $1" \
+    "  only what Joel runs asks him; unattended work uses BatchMode and pinned host keys" >&2
   exit 1
-fi
+}
+[[ -n $rules ]] || refuse "its gate (${SSH_ASKPASS_GATE:-none}) can't be read"
+place=$(sed -n 's/^0:://p' "$proc/$PPID/cgroup" 2> /dev/null || true)
+[[ -n $place ]] || refuse "$asker (pid $PPID) is gone, or its cgroup can't be read"
+pid=$PPID where=$place
+# The chain ends at the kernel's own parent, pid 0, or at a parent gone,
+# and is cut off after 64, which no real one reaches.
+for _ in $(seq 64); do
+  for rule in "${refusing[@]}"; do
+    if [[ $where =~ $rule ]]; then
+      [[ $pid == "$PPID" ]] || refuse "$asker (pid $PPID) was started from $where"
+      refuse "$asker (pid $PPID) runs in $where"
+    fi
+  done
+  pid=$(sed -n 's/^PPid:[[:space:]]*//p' "$proc/$pid/status" 2> /dev/null || true)
+  [[ $pid =~ ^[1-9][0-9]*$ ]] || break
+  where=$(sed -n 's/^0:://p' "$proc/$pid/cgroup" 2> /dev/null || true)
+  [[ -n $where ]] || break
+done
 reply=$(mktemp -d -p "$XDG_RUNTIME_DIR" askpass.XXXXXXXX)
 exec 3< <(exec inotifywait -m -e moved_to,close_write --format %f "$reply" 2>&1)
 watcher=$!

@@ -819,6 +819,9 @@ let
       pkgs.systemd
       pkgs.util-linux
     ];
+    # Whom it refuses to ask for, read from the same gate as the agent that
+    # holds Joel's keys, so the two never disagree on where agents' work runs.
+    runtimeEnv.SSH_ASKPASS_GATE = "${../ssh-tpm-agent/gate.conf}";
     text = builtins.readFile ./askpass.sh;
   };
 
