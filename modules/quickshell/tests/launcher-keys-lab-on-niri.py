@@ -27,7 +27,7 @@ leaves the first word typed at home each round while a window holding it in its 
 many new titles, and prints what the shell says of those changes, as Joel's daemons change rows
 under his typed words at 17 to 35 ms in the shell (2026-11-15). It fails when a key is never
 shown, and at once when LAB_WITHIN names no function of the launcher's or comes without
-LAB_PROFILE, or LAB_BACK without LAB_STEP.
+LAB_PROFILE, LAB_PROFILE without QS_GIVEN's `--debug 3768`, or LAB_BACK without LAB_STEP.
 """
 
 from __future__ import annotations
@@ -215,21 +215,34 @@ def stepped_from_home(shell: Shell, name: str, key: str = "ret") -> tuple[str | 
     return said.get(step), out
 
 
-def chorded_out(shell: Shell, place: str) -> str | None:
-    """Open the place from shut as its chord does, step out to home, and give the step's line.
+def chorded_out(shell: Shell, place: str) -> tuple[str | None, str | None]:
+    """Open the place from shut as its chord does, step out to home, and give both lines.
 
+    The first is the opening's own, as Joel's into Now by its chord spent a median 18 ms from
+    the ask to its start where home's spent none (2026-11-21); the second is the step out's.
     Nothing is typed, so no words are put back and the step searches none, as Joel's out of
     Windows spent 20 and 19 ms of its 58 and 53 ms holding, before it searched (2026-11-17 and
     18).
     """
     shell.launcher_until(lambda shown: not shown["open"] and shown.get("kept"))
+    since = shell.mark()
     shell.as_account(shell.ipc("collection", place))
     shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
     shell.launcher_ready()
+    opening = opening_said(shell, since)
     out = stepped_out(shell)
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
-    return out
+    return opening, out
+
+
+def opening_said(shell: Shell, since: int) -> str | None:
+    """Give the opening's line the shell has said since the mark, from its time on, or None."""
+    with shell.log.open("rb") as log:
+        log.seek(since)
+        written = log.read().decode(errors="replace")
+    said = [line for line in written.splitlines() if "launcher: opening took" in line]
+    return said[0].split("launcher: opening ", 1)[1] if said else None
 
 
 def stepped_out(shell: Shell) -> str | None:
@@ -529,10 +542,12 @@ def within_asked() -> list[str]:
 
 
 def within_known(launcher: Path) -> None:
-    """Fail at once on a LAB_WITHIN name that's no function of the launcher's.
+    """Fail at once on a LAB_WITHIN name that's no function of the launcher's, or no profile.
 
     Such a name matches nothing in the trace, so its span would be left out without a word, at
-    the end of a run of minutes, and so would every name given without LAB_PROFILE.
+    the end of a run of minutes, and so would every name given without LAB_PROFILE. A shell not
+    given the profiler's port (QS_GIVEN's `--debug`) never lets it connect, and two runs into
+    Now profiled nothing over 4 and 9 minutes, failing at the end (2026-11-22).
     """
     asked = within_asked()
     source = launcher.read_text() if asked else ""
@@ -546,6 +561,8 @@ def within_known(launcher: Path) -> None:
         if unknown
         else "LAB_WITHIN profiles only with LAB_PROFILE"
         if asked and not os.environ.get("LAB_PROFILE")
+        else f'LAB_PROFILE profiles only a shell given QS_GIVEN = "--debug {PORT}"'
+        if os.environ.get("LAB_PROFILE") and f"--debug {PORT}" not in os.environ.get("QS_GIVEN", "")
         else None
     )
     if refused:
@@ -605,8 +622,9 @@ def stepped_round(
             if os.environ.get("LAB_BACK"):
                 print(f"lab-back {round_}: {out or 'under the felt'}", flush=True)
     if chord := os.environ.get("LAB_CHORD"):
-        out = chorded_out(shell, chord)
+        opening, out = chorded_out(shell, chord)
         with capsys.disabled():
+            print(f"lab-into {round_}: {opening or 'never said'}", flush=True)
             print(f"lab-chord {round_}: {out or 'under the felt'}", flush=True)
 
 
