@@ -166,7 +166,11 @@ what net says of the day.
   paired device, and pairing waits on Joel's yes, so none is asked.
 - A Samsung TV: each device eero lists with Samsung as its maker and
   generic or media streamer as its kind, at the address eero gives, so
-  a box eero places as a phone, tablet or computer isn't asked. It asks
+  a box eero places as a phone, tablet or computer isn't asked. A box
+  that has answered as a TV is asked at the address eero lists it on,
+  whatever maker or kind eero gives it later, since its own answer said
+  it was a TV; one eero lists on without an address can't be asked, so
+  it keeps its name and says it isn't answering as a TV. It asks
   `:8001/api/v2/` once, two seconds and 64 KB at most, following no
   redirect: what the TV says of itself to anyone, as JSON. Only an
   answer saying `Samsung SmartTV` counts; any other box says nothing,

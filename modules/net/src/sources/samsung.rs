@@ -1,5 +1,6 @@
 //! A Samsung TV as a source: what it says of itself at `:8001/api/v2/`,
-//! asked of each Samsung box eero lists that could be one
+//! asked of each Samsung box eero lists that could be one, and of each
+//! box that has answered as one whatever eero calls it later
 //! (contract/samsung/ holds a real one's answer, redacted). The TV is
 //! the device eero already lists by its hardware address; it becomes a
 //! television, its model, its own name and whether it's on or in standby

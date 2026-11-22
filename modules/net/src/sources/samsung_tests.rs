@@ -297,11 +297,17 @@ fn a_tv_eero_no_longer_knows_is_forgotten() {
 }
 
 #[test]
-fn a_tv_heard_once_is_asked_whatever_maker_or_kind_eero_gives_it() {
+fn a_tv_heard_once_is_asked_where_eero_lists_it_whatever_maker_or_kind() {
+    // Each listing also moves the TV to a new lease, so it is shown asked
+    // at the address eero gives now, not the one it first answered at or
+    // the one its answer holds.
+    const MOVED: &str = "10.0.0.91";
     let mut unplaced = listing();
     unplaced["make"] = Value::Null;
+    unplaced["address"] = json!(MOVED);
     let mut a_phone = listing();
     a_phone["kind"] = json!("phone");
+    a_phone["address"] = json!(MOVED);
     for (case, listed) in [("with no maker", unplaced), ("as a phone", a_phone)] {
         let mut tvs = Heard::new();
         let on = Ok::<Value, String>(json!({"devices": [listing()]}));
@@ -317,8 +323,8 @@ fn a_tv_heard_once_is_asked_whatever_maker_or_kind_eero_gives_it() {
             });
             assert_eq!(
                 reached,
-                [ADDRESS],
-                "a TV listed {case} wasn't asked at eero's address in minute {minute}"
+                [MOVED],
+                "a TV listed {case} wasn't asked at eero's address now in minute {minute}"
             );
             let (_, found) = read(asked, NOW);
             assert_eq!(
