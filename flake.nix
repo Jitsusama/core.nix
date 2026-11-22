@@ -59,10 +59,7 @@
     };
     # The node that carries the harness mesh between a realm's machines.
     mycelium = {
-      # Train 25, short of main's tip: train 26 refuses every agent's held
-      # start on a Mac, and waits for train 27's narrowed refusal. Back to
-      # the branch once train 27 is on main.
-      url = "github:Jitsusama/mycelium/d2f624fe57f78da9e35506498ecf6d949516f8e4";
+      url = "github:Jitsusama/mycelium";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # The ErgoDox's firmware: ZSA's QMK, the firmware24 branch its layout was
