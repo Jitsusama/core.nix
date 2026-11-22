@@ -47,6 +47,12 @@ const GAVE_UP: [&str; 4] = ["disconnected", "inactive", "scanning", "interface_d
 /// handshakes don't, since the card stays on its point meanwhile.
 const LEAVING: [&str; 3] = ["authenticating", "associating", "associated"];
 
+/// Whether a card at this step has left the point it was on, joining
+/// another or having given up.
+pub fn has_left(step: &str) -> bool {
+    LEAVING.contains(&step) || GAVE_UP.contains(&step)
+}
+
 /// How long a move is followed. The move that failed took 18 s to land
 /// somewhere (2026-11-16), and a good one about 100 ms.
 const FOLLOWED: Duration = Duration::from_secs(30);
@@ -287,6 +293,24 @@ impl Arrivals {
         true
     }
 
+    /// Takes back a move handed back unstarted whose card wpa_supplicant
+    /// says has left its point after all, the step saying so not yet read,
+    /// as left now, its way back kept: so it's given what a move under way
+    /// is, rather than ended with the card's networks on as it joins.
+    /// Only a move that hadn't left, and not a way back. Says whether it's
+    /// under way.
+    pub fn under_way(&mut self, card: &str, from: &str, now: Instant) -> bool {
+        let Some(moving) = self.moves.get_mut(card) else {
+            return false;
+        };
+        if moving.left.is_some() || moving.back {
+            return false;
+        }
+        moving.from = Some(from.to_owned());
+        moving.left = Some(now);
+        true
+    }
+
     /// Whether the card is on its way back to the point it left. Selected
     /// there alone, wpa_supplicant starts its join over, and says the card
     /// disconnected meanwhile, twice in a test, 117 and 18 ms in, before it
@@ -409,10 +433,12 @@ impl Arrivals {
         }
         let moving = self.moves.get_mut(card)?;
         let gave_up = GAVE_UP.contains(&step);
-        if gave_up || LEAVING.contains(&step) {
+        if has_left(step) {
             moving.left.get_or_insert(now);
         }
-        if !gave_up || moving.lost {
+        // A way back is judged by where it gets in its time alone, as it
+        // says it disconnected on its way as it goes well.
+        if !gave_up || moving.lost || moving.back {
             return None;
         }
         moving.lost = true;
@@ -1220,6 +1246,72 @@ mod tests {
             }),
             "and then where it was sent back to"
         );
+    }
+
+    #[test]
+    fn a_way_back_saying_it_disconnected_on_its_way_is_said_lost_by_nothing() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.back("wlan0", DESK, now);
+
+        let disconnected = arrivals.step("wlan0", "disconnected", now + ms(117));
+        let back = arrivals.joined("wlan0", Some(DESK), now + ms(279));
+
+        assert_eq!(disconnected, None, "its steps on the way say nothing");
+        assert_eq!(
+            back,
+            Some(Arrival::Reached {
+                to: DESK.into(),
+                asked: ms(279),
+                off: Some(ms(162))
+            }),
+            "and where it gets is said, with how long it was off"
+        );
+    }
+
+    #[test]
+    fn a_move_found_under_way_as_it_was_taken_as_unstarted_goes_on() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        let unstarted = arrivals.unreached(now + BACK_AFTER);
+
+        let on = arrivals.under_way("wlan0", DESK, now + BACK_AFTER);
+        let again = arrivals.under_way("wlan0", DESK, now + BACK_AFTER);
+
+        assert_eq!(
+            unstarted.first().map(|unreached| unreached.why),
+            Some(Short::Unstarted),
+            "taken as unstarted, its step unread"
+        );
+        assert!(on, "under way, as wpa_supplicant says it left");
+        assert!(!again, "once, as it's left now");
+        assert_eq!(
+            arrivals.due(),
+            Some(now + BACK_FOR),
+            "given what a move under way is"
+        );
+        let late = arrivals.unreached(now + BACK_FOR);
+        assert_eq!(
+            late.first()
+                .map(|unreached| (unreached.why, unreached.from.as_str())),
+            Some((Short::Late { after: BACK_FOR }, DESK)),
+            "and sent back once that's up, its way back kept"
+        );
+
+        arrivals.back("wlan0", DESK, now + BACK_FOR);
+        assert!(
+            !arrivals.under_way("wlan0", DESK, now + BACK_FOR),
+            "never a way back"
+        );
+    }
+
+    #[test]
+    fn a_card_has_left_its_point_as_it_joins_another_or_gives_up() {
+        assert!(has_left("authenticating"), "joining another");
+        assert!(has_left("disconnected"), "given up");
+        assert!(!has_left("completed"), "not while on its point");
+        assert!(!has_left("4way_handshake"), "nor as it rekeys there");
     }
 
     #[test]

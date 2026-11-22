@@ -34,11 +34,6 @@ def wifid(machine: BaseMachine) -> Wifid:
 WIFID_SAYS = "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
 
 
-def journal_now(machine: BaseMachine) -> str:
-    """Give the journal's cursor now, to read only what's said after it."""
-    return machine.succeed("journalctl -n 1 -o export | sed -n 's/^__CURSOR=//p'").strip()
-
-
 def say_wlan2_is_looking(machine: BaseMachine, since: str) -> None:
     """Say wlan2 began looking, as any account may, once wifid has heard it's off its network.
 
@@ -202,7 +197,7 @@ def test_leaving_the_inn_from_the_shell_keeps_the_card_off_it_until_its_joined(
     machine: BaseMachine, wifid: Wifid
 ) -> None:
     """Leaving the Inn from the shell keeps the card off it until it's joined."""
-    since = journal_now(machine)
+    since = wifid.journal_now()
     wifid.ask("Leave", {"name": "Roadside Inn"})
     machine.wait_until_succeeds(
         "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)
@@ -339,12 +334,11 @@ def test_a_network_saved_from_the_shell_without_joining_it_is_kept_sealed(
 # A radio here never hangs a look, so the card is stopped where it
 # stands, which wpa_supplicant then leaves alone, and said to be
 # scanning, in the signal wifid hears.
-@pytest.mark.usefixtures("wifid")
 def test_a_card_scanning_too_long_with_a_saved_network_in_range_is_told_to_join_it(
-    machine: BaseMachine,
+    machine: BaseMachine, wifid: Wifid
 ) -> None:
     """A card scanning too long with a saved network in range is told to join it."""
-    since = journal_now(machine)
+    since = wifid.journal_now()
     machine.succeed("wpa_cli -i wlan2 disconnect")
     machine.wait_until_succeeds(
         "wpa_cli -i wlan2 status | grep -qx wpa_state=DISCONNECTED", timeout=timedelta(seconds=30)

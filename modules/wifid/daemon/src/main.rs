@@ -2734,6 +2734,10 @@ impl Wifid<'_> {
                 println!("<4>{card} came off its network short of {to}, so goes back to {from}");
             }
             Short::Unstarted => {
+                if self.under_way(&card, &from).await {
+                    println!("<7>{card} has left {from} for {to} after all, so goes on");
+                    return true;
+                }
                 if self.waits_on_look(&card, &from).await {
                     println!("<7>{card} hasn't left {from} for {to}, as it's looking, so waits");
                     return true;
@@ -2769,6 +2773,23 @@ impl Wifid<'_> {
         println!("<4>{card} couldn't go back to {from}: {error}");
         self.together(&card, free).await;
         false
+    }
+
+    /// Whether a card whose move hasn't left its point, as wifid last
+    /// heard, has left it after all, asked of wpa_supplicant, and so has
+    /// its move carry on: the step saying so can be on its way across the
+    /// bus as the move's time runs out, and ended there, the move would
+    /// carry on unfollowed with the card's networks on.
+    async fn under_way(&self, card: &str, from: &str) -> bool {
+        let step = async {
+            let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
+            interface.state().await
+        };
+        step.await.is_ok_and(|step| arrive::has_left(&step))
+            && self
+                .arrivals
+                .borrow_mut()
+                .under_way(card, from, Instant::now())
     }
 
     /// Whether a card whose move hasn't left its point is looking, asked

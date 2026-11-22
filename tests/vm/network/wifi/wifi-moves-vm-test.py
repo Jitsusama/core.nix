@@ -487,8 +487,10 @@ def test_joining_a_network_of_another_name_forgets_the_neighbours_of_the_last(
     were the two to give their routers one address, as many networks do.
     """
     # Set up here rather than by the subtest before, so one that fails there, leaving the card
-    # on the Inn, doesn't fail this one too.
+    # on the Inn, doesn't fail this one too. The neighbour is known only once Lantern's address
+    # is held, so the Inn's address going can't forget it before the join it's judged by.
     rejoined_unpicked(machine)
+    wifid.holds_address("10.42.0.")
     knows_a_neighbour(machine)
     status, _, said = wifid.joining({"name": "Roadside Inn"})
     assert status == 0, said
