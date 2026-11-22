@@ -329,12 +329,12 @@ QtObject {
             after(left, "copies", { byKey: true, depth: 1 }), "5@0 d1");
         // A second leave before any key, landing by its key a step up,
         // leaves the Return still meant for the first step's ask.
-        check("a leave by key keeps a guess no key has answered, at its own depth",
+        check("a leave back on its row keeps a guess no key has answered, at its depth",
             after(left, "ask:7", { depth: 1 }), "5@0 d1");
         // A first leave threw, and a second closed whole before any key: the
         // Return is still meant for the first step, but the selection is
         // whole again, so it holds once, not until another key.
-        check("a leave by key keeps a broken guess whole again",
+        check("a leave back on its row keeps a broken guess whole again",
             after(Held.whileLeaving(5, true, none), "ask:7", { depth: 1 }), "5@0 d1");
         check("but not once a key came between", after(left, "ask:7", { keys: 6 }),
             "-1@0 d-1");

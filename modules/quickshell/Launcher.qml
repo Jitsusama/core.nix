@@ -6499,13 +6499,16 @@ Scope {
         // it stood, holds Return until another key (Held.whileLeaving).
         const standing = guessed;
         guessed = Held.whileLeaving(prompt.keysTaken, open, standing);
-        // A leave whose source changed within keyedWithin of Joel's last
-        // key is one his key caused and he watched, so it guesses nothing
-        // new (refreshed's keyedActs). A change a daemon answers later,
-        // as Release It's may be, isn't counted, and holds one Return
-        // should it land off its row; any source's change heard that soon
-        // after a key, a share's too, is counted, the one way it goes
-        // unheld.
+        // A leave whose source changed as Joel's last key's act, as
+        // refreshed counts one in keyedActs (Pacing.keyed: within
+        // keyedWithin of a key that acted, not a move or a letter typed
+        // into the find, to a place on screen), is one he watched, so it
+        // guesses nothing new. Any change heard that soon is counted, a
+        // share's too, and so is a later one the same refresh takes while
+        // an opening's find holds it (refreshDue): the two ways a leave
+        // goes unheld. A change a daemon answers later, as Release It's
+        // may be, isn't counted, and holds one Return should it land off
+        // its row.
         const byKey = keyedActs.some(one => one.source === source && one.heard === keyHeardAt);
         try {
             held = steps;
@@ -6516,11 +6519,14 @@ Scope {
         }
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
-        // deep to how deep, never the row's name, which a source served.
+        // deep to how deep, never the row's name, which a source served;
+        // and whether it counted as his key's, so a slow answer, as
+        // Release It's may be, is seen to hold where a quick one doesn't.
         if (held.length < before) {
             console.info(`launcher: left ${before - held.length} of ${before} steps to `
                 + `${held.length} by itself, as what ${source?.settings.name ?? "a place"} `
-                + "offered there offers nothing now");
+                + "offered there offers nothing now"
+                + (byKey ? ", beside a key's act" : ", with no key's act beside it"));
             // Its row may be gone from what's shown, as an ask a share
             // hides, so the selection stands on another row (leftAt), one
             // Joel never chose: a Return pressed next, meant for the step
