@@ -53,7 +53,8 @@ let
   folder = "model-relay";
   # How long a stopped relay waits on the answers it streams before it
   # cuts them, in seconds. The stop timeout gives it this and ten more:
-  # five for those it sends direct to finish their 421, five to spare, so
+  # five for those it sends direct to finish their 421 (its source's
+  # SAYS_GO_DIRECT_WITHIN, which the check reads), five to spare, so
   # it leaves on its own and says its counts rather than being killed.
   drainsWithin = 80;
 in

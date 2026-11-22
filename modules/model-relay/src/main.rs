@@ -37,6 +37,12 @@ const MOST_CONNECTIONS: usize = 16;
 /// The first descriptor systemd hands a service it starts for a socket.
 const LISTEN_FDS_START: i32 = 3;
 
+/// How long it waits, its counts said, on a name lookup of the origin
+/// still running before it leaves anyway. Nothing can cut a lookup, and
+/// one waiting on a resolver gone quiet can take tens of seconds, which a
+/// relay leaving within its stop timeout hasn't got.
+const LOOKUPS_GIVEN: Duration = Duration::from_millis(500);
+
 /// What it says of itself, set as help and read by the check.
 fn help() -> Help {
     Help::new(
@@ -70,7 +76,7 @@ fn help() -> Help {
     )
     .option(
         "--drain-within SECONDS",
-        "once stopped, wait on the answers it holds this long, 80 if not told",
+        "once stopped, wait on the answers it holds this long, then cut them, 80 if not told",
     )
     .exit(
         Exit::Failed,
@@ -219,10 +225,19 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         ));
     }
     let idle_exit = seconds(given[5].as_deref(), "--idle-exit", IDLE_EXIT)?;
+    let drains_within = seconds(given[6].as_deref(), "--drain-within", DRAINS_WITHIN)?;
+    // None would cut every answer in hand at a stop, which is what the
+    // drain is for.
+    if drains_within.is_zero() {
+        return Err(Failure::new(
+            Exit::Usage,
+            "--drain-within takes at least a second",
+        ));
+    }
     let clocks = Clocks {
         connect_within,
         idle_exit: (!idle_exit.is_zero()).then_some(idle_exit),
-        drains_within: seconds(given[6].as_deref(), "--drain-within", DRAINS_WITHIN)?,
+        drains_within,
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;
@@ -244,7 +259,7 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         .enable_all()
         .build()
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't start").because(why.to_string()))?;
-    runtime.block_on(async move {
+    let served = runtime.block_on(async move {
         let listener = tokio::net::UnixListener::from_std(listener).map_err(|why| {
             Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
         })?;
@@ -256,17 +271,22 @@ fn serve(args: &[String]) -> Result<(), Failure> {
             tokio::signal::unix::signal(SignalKind::terminate()).map_err(|why| {
                 Failure::new(Exit::Failed, "it couldn't hear its stop").because(why.to_string())
             })?;
-        let (stop, stops) = tokio::sync::mpsc::channel(1);
+        // Room for a second stop close behind a first not yet read, since
+        // the second says something the first doesn't; a third says nothing
+        // new. Stops that come between two reads of `terminate` are heard
+        // as one, as tokio's signals are.
+        let (stop, stops) = tokio::sync::mpsc::channel(2);
         tokio::spawn(async move {
             while terminate.recv().await.is_some() {
-                // One already waiting says the same, so a full channel loses
-                // nothing.
                 let _ = stop.try_send(());
             }
         });
         relay.serve_until(listener, stops).await;
         Ok(())
-    })
+    });
+    // Dropped, the runtime would wait on a lookup for as long as it took.
+    runtime.shutdown_timeout(LOOKUPS_GIVEN);
+    served
 }
 
 fn main() -> ExitCode {

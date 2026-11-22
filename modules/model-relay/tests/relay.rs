@@ -84,6 +84,25 @@ const PROBED_AFTER_THE_STOP: Duration = Duration::from_millis(250);
 const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
 /// How long the drain test lets a stopped relay wait on its answers.
 const DRAINS_WITHIN: Duration = Duration::from_secs(2);
+/// How soon past its drain a stopped relay has cut an answer outlasting
+/// it: well inside `SAYS_GO_DIRECT_WITHIN`, which a cut left to the relay
+/// leaving would take.
+const CUT_WITHIN: Duration = Duration::from_secs(2);
+/// When the drain test connects late: long past the relay hearing its
+/// stop, and inside its drain.
+const TAKEN_LATE_AFTER: Duration = Duration::from_secs(1);
+/// The idle time a relay that should leave idle is given.
+const IDLE_EXIT_IN_TESTS: Duration = Duration::from_secs(3);
+/// When a relay given `IDLE_EXIT_IN_TESTS` is surely leaving idle: past
+/// its idle time, the quarter of it it looks every, and the half second
+/// it gives a connection taken just then.
+const LEAVING_IDLE_BY: Duration = Duration::from_secs(5);
+/// How often a pi saying nothing connects to a relay leaving idle.
+const SILENT_PI_EVERY: Duration = Duration::from_millis(100);
+/// Words only the relay's counts say, not a connection's tally.
+const COUNTS_SAID: &str = " taking requests;";
+/// The exit for a relay told something it can't take.
+const USAGE: i32 = 64;
 /// How long the origin holds each request the sharing test sends.
 const HELD: Duration = Duration::from_millis(300);
 
@@ -2301,12 +2320,13 @@ async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
         "it didn't say its answers ended: {said}"
     );
     assert!(
-        said.contains("connections hadn't finished within 5 s, so they're cut"),
-        "it didn't say it cut the connection pi said nothing on: {said}"
+        said.contains("1 connections hadn't finished within 5 s, so they're cut"),
+        "it didn't say it cut the connection pi said nothing on, alone: {said}"
     );
+    // The requests it sent direct moved its counts, so it says them again.
     assert!(
         said.split_once("stopped with")
-            .is_some_and(|(_, after)| after.contains(" asked, ")),
+            .is_some_and(|(_, after)| after.contains(COUNTS_SAID)),
         "it didn't say its counts as it left: {said}"
     );
 }
@@ -2365,24 +2385,41 @@ async fn a_stopped_relay_cuts_an_answer_longer_than_its_drain() {
     let (_pi, _, body) = longer_begun(&relay, &host).await;
 
     relay.stop();
+    let stopped = Instant::now();
+    // Sent direct and saying nothing, it holds the relay its few seconds
+    // past the drain, so a cut answer can't be one cut as the relay left.
+    tokio::time::sleep(TAKEN_LATE_AFTER).await;
+    let silent = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
     let rest = body
         .collect()
         .await
         .map(http_body_util::Collected::to_bytes);
+    let cut_after = stopped.elapsed();
 
     let whole = matches!(&rest, Ok(rest) if &rest[..] == b"second\n");
     assert!(!whole, "an answer outlasting the drain came whole");
+    assert!(
+        cut_after < DRAINS_WITHIN + CUT_WITHIN,
+        "an answer outlasting the drain was cut only {cut_after:?} after the stop"
+    );
     let left = relay.left_within(DRAINS_WITHIN + SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
     assert!(
         left.is_some_and(|status| status.success()),
         "the relay didn't leave on its own once its drain ran out: {left:?}"
     );
     let said = relay.said();
+    drop(silent);
     assert!(
         said.contains(&format!(
             "1 connections it had taken hadn't ended within {drain} s, so they're cut"
         )),
         "it didn't say it cut the answer it held: {said}"
+    );
+    assert!(
+        said.contains("1 connections hadn't finished within 5 s, so they're cut"),
+        "it didn't count the connection it sent direct alone as late: {said}"
     );
 }
 
@@ -2409,11 +2446,113 @@ async fn a_relay_stopped_again_leaves_at_once() {
         said.contains("stopped again, so it leaves now"),
         "it didn't say why it left: {said}"
     );
+    // Said as it was first stopped, since nothing it counts moves after.
     assert!(
-        said.split_once("stopped again")
-            .is_some_and(|(_, after)| after.contains(" asked, ")),
-        "it didn't say its counts as it left: {said}"
+        said.contains(COUNTS_SAID),
+        "it didn't say its counts as it was stopped: {said}"
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_stopped_as_it_leaves_idle_ends_what_it_sends_direct() {
+    let origin = origin().await;
+    let (mut relay, silent) = leaving_idle_held_by_a_silent_pi(&origin).await;
+
+    relay.stop();
+
+    let left = relay.left_within(SAYS_GO_DIRECT_WITHIN + Duration::from_secs(3));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "a relay stopped as it left idle waited on a pi saying nothing: {left:?}"
+    );
+    let said = relay.said();
+    drop(silent);
+    assert!(
+        said.contains("stopped as it left, so it ends what it was sending direct"),
+        "it wasn't stopped as it left idle, or didn't say so: {said}"
+    );
+    assert!(
+        said.contains("connections hadn't finished within 5 s, so they're cut"),
+        "it didn't say it cut the connections pi said nothing on: {said}"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_stopped_twice_as_it_leaves_idle_leaves_at_once() {
+    let origin = origin().await;
+    let (mut relay, silent) = leaving_idle_held_by_a_silent_pi(&origin).await;
+
+    relay.stop();
+    // Apart, so the relay has begun giving the silent pi its few seconds
+    // before the second comes, rather than taking both as one.
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    relay.stop();
+
+    let left = relay.left_within(Duration::from_secs(2));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "a relay stopped again as it left idle didn't leave at once: {left:?}"
+    );
+    let said = relay.said();
+    drop(silent);
+    assert!(
+        said.contains("stopped as it left"),
+        "it wasn't stopped as it left idle: {said}"
+    );
+}
+
+/// A relay that leaves once idle for `IDLE_EXIT_IN_TESTS`, and the
+/// connections pi made to it every `SILENT_PI_EVERY` meanwhile, saying
+/// nothing on any. Those taken before it began to leave are closed then;
+/// those taken after are sent direct and hold it as it leaves, until
+/// hyper's own timeout for a request would end them.
+async fn leaving_idle_held_by_a_silent_pi(origin: &Origin) -> (Relay, Vec<UnixStream>) {
+    let host = origin.address.to_string();
+    let idle = IDLE_EXIT_IN_TESTS.as_secs().to_string();
+    let relay = Relay::start_with(
+        &format!("https://{host}"),
+        &origin.roots,
+        1,
+        &["--idle-exit", &idle],
+    );
+    let until = Instant::now() + LEAVING_IDLE_BY;
+    let mut silent = Vec::new();
+    while Instant::now() < until {
+        // A relay already gone is told by what it said, not here.
+        if let Ok(stream) = UnixStream::connect(&relay.socket).await {
+            silent.push(stream);
+        }
+        tokio::time::sleep(SILENT_PI_EVERY).await;
+    }
+    (relay, silent)
+}
+
+#[test]
+fn flags_it_no_longer_takes_and_a_drain_of_none_are_refused_as_usage() {
+    let folder = tempfile::tempdir().expect("a folder for the socket");
+    let socket = folder.path().join("agents.sock");
+    for flag in [
+        ["--stand-down-for", "10"],
+        ["--try-path-every", "30"],
+        ["--drain-within", "0"],
+    ] {
+        // Taken, the relay would leave idle within a second, not as usage.
+        let ran = Command::new(env!("CARGO_BIN_EXE_model-relay"))
+            .arg("--socket")
+            .arg(&socket)
+            .args(["--origin", "https://models.example", "--idle-exit", "1"])
+            .args(flag)
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .output()
+            .expect("a relay runs");
+        assert_eq!(
+            ran.status.code(),
+            Some(USAGE),
+            "{flag:?} wasn't refused as usage: {}",
+            said_of(&ran)
+        );
+    }
 }
 
 #[tokio::test(flavor = "current_thread")]

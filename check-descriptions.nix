@@ -2053,12 +2053,15 @@
     while refusing other hosts, held open by a kept connection or knocked on as it goes, finishes
     each answer it streams when stopped, sending what comes meanwhile direct with the 421 of one
     leaving, past the ten seconds a relay leaving idle takes them, gives those a few seconds once
-    its answers end, even one pi says nothing on, cuts its answers after its drain time or at a
-    second stop, says what it waited on and its counts, keeps its socket to its account, from a
-    second relay and off a file or a link that isn't a socket, and logs nothing of a header or a
-    body, a failure included; and its own cases hold a ping from behind an upload, with little held unsent in its sockets and short frames, retire a
-    connection by its number alone, sparing one opened since, and at most once a minute for a
-    reset, and say an error with its causes, cut to a line
+    its answers end, even one pi says nothing on, cuts its answers when its drain time runs out,
+    not when those few seconds do, or at a second stop, ends what it sends direct when stopped as
+    it leaves idle, at once if stopped again, says what it waited on and its counts, refuses a
+    drain of none and the flags it no longer takes, keeps its socket to its account, from a second
+    relay and off a file or a link that isn't a socket, and logs nothing of a header or a body, a
+    failure included; and its own cases hold a ping from behind an upload, with little held
+    unsent in its sockets and short frames, retire a connection by its number alone, sparing one
+    opened since, and at most once a minute for a reset, and say an error with its causes, cut to
+    a line
   '';
   model-relay-passes-clippy = ''
     clippy finds nothing in model-relay or its tests
