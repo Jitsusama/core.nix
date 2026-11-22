@@ -253,10 +253,11 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 }
 // What an unboxed piece can't break inside: a run up to a space, or up
 // to and taking a hyphen, after which a line may break, but for one
-// before a figure, closing punctuation, a quote, a bar or a slash, as in
-// -1, a-) or a-/b, which Typst's line breaking holds to what follows. A
-// flag's opening hyphens, as in --release, it breaks after.
-#let unbroken = regex("[^ -]*(?:-+[0-9)\\]}.,;:!?'\"|/][^ -]*)*-*")
+// before a figure, closing punctuation or a quote, as in -1 or a-), which
+// Typst's line breaking holds to what follows. A bar or a slash it holds
+// to the hyphen before and breaks after, as a-/ then b. A flag's opening
+// hyphens, as in --release, it breaks after.
+#let unbroken = regex("[^ -]*(?:-+[0-9)\\]}.,;:!?'\"][^ -]*)*(?:-+[|/]|-*)")
 // The least room a table's column needs for a span: its widest run of
 // pieces held together, since only between those can it break. A piece
 // too wide to box is unboxed, so it breaks where its words or a hyphen

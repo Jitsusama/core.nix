@@ -62,9 +62,10 @@ fn an_unboxed_piece_is_counted_in_the_stretches_typst_breaks_it_into() {
     assert_eq!(
         read, broken,
         "least-code's stretches are where Typst breaks: after hyphens, but not \
-         before a figure, a closing mark, a quote, a bar or a slash"
+         before a figure, a closing mark or a quote, and after a bar or a slash \
+         held to one"
     );
-    assert_eq!(read.matches('¦').count(), 18, "it breaks at all: {read}");
+    assert_eq!(read.matches('¦').count(), 20, "it breaks at all: {read}");
 }
 
 #[test]
