@@ -225,16 +225,11 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
     }
 }
 
-/// Follows main until the system's path holds another update-to-main,
-/// which it then starts in its place. The config is read again each time,
-/// since a switch may change it, and one it can't read is waited out
-/// rather than ended on: a switch writes a newer update-to-main's config
-/// before the system's path holds it, and a follower that ended there
-/// waited 30 seconds to start again, long enough for the switch to stop
-/// it for good (switch 1036 on 18 November).
 /// Keeps what the machine `runs` in `file` for the next follower, when it
 /// changed since what was `kept`. Not keeping it costs the next follower
-/// only a minute's asks while the machine is loaded.
+/// only a minute's asks while the machine is loaded, so a write that fails
+/// is told once and tried again only when what it runs changes, rather
+/// than told at every look while the fault lasts.
 fn keep_runs(file: Option<&Path>, runs: Option<&follow::Runs>, kept: &mut Option<follow::Runs>) {
     if let Some(file) = file
         && let Some(runs) = runs
@@ -242,11 +237,21 @@ fn keep_runs(file: Option<&Path>, runs: Option<&follow::Runs>, kept: &mut Option
     {
         match follow::keep_runs(file, runs) {
             Ok(()) => *kept = Some(runs.clone()),
-            Err(why) => eprintln!("update-to-main: couldn't keep what the machine runs: {why}"),
+            Err(why) => {
+                eprintln!("update-to-main: couldn't keep what the machine runs: {why}");
+                *kept = Some(runs.clone());
+            }
         }
     }
 }
 
+/// Follows main until the system's path holds another update-to-main,
+/// which it then starts in its place. The config is read again each time,
+/// since a switch may change it, and one it can't read is waited out
+/// rather than ended on: a switch writes a newer update-to-main's config
+/// before the system's path holds it, and a follower that ended there
+/// waited 30 seconds to start again, long enough for the switch to stop
+/// it for good (switch 1036 on 18 November).
 fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
     // What the machine runs carries over from the follower before, so a
