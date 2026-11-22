@@ -65,17 +65,10 @@ impl App {
         let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
-                // A file it can't read gives no lines, rather than lines
-                // matched to nothing, which would copy and count as empty;
-                // the page set from it has failed or is set again soon.
-                let source = match std::fs::read_to_string(&file) {
-                    Ok(source) => source,
-                    Err(error) => {
-                        eprintln!("reader: can't read {}: {error}", file.display());
-                        return;
-                    }
-                };
-                let _ = to.send((version, select::Layout::read(&page.frame, source, version)));
+                let _ = to.send((
+                    version,
+                    select::Layout::read_file(&page.frame, &file, version),
+                ));
             });
         if let Err(error) = started {
             eprintln!("reader: can't read the page's lines: {error}");
@@ -84,10 +77,18 @@ impl App {
 
     /// The page's words for selecting have been read. A selection holds
     /// while its lines are the same on the new page, and ends otherwise.
-    pub(crate) fn layout_read(&mut self, version: u32, layout: select::Layout) {
+    pub(crate) fn layout_read(&mut self, version: u32, layout: Option<select::Layout>) {
         if version != self.painter.version {
             return;
         }
+        // A file that couldn't be read gives no lines, and the last page's
+        // go too, or a copy would take another file's words over this one.
+        let Some(layout) = layout else {
+            self.end_selection();
+            self.character = None;
+            self.layout = None;
+            return;
+        };
         if let (Some(selection), Some(old)) = (&self.selection, &self.layout) {
             let (from, to) = selection.ends();
             if !(layout.same_line(old, from.line) && layout.same_line(old, to.line)) {
@@ -208,7 +209,15 @@ impl App {
             // what it held on one line as the name, as Vim's v_gf does,
             // spaces and all; over lines, or of blanks, it names none.
             (None, Act::FollowFile) => {
-                let named = layout.named(selection);
+                // Between a page set again and its lines read, they're the
+                // old page's, so it waits as gf at rest does.
+                let Some(named) = layout
+                    .of(self.painter.version)
+                    .map(|it| it.named(selection))
+                else {
+                    self.say(crate::app::STILL_READING);
+                    return true;
+                };
                 self.end_selection();
                 match named {
                     Some(name) => self.follow_named(name),

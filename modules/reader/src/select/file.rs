@@ -126,39 +126,61 @@ impl Layout {
     /// What Vim's `v_gf` takes as a file's name, as the page sets it, blanks
     /// round it left off: the words a selection of characters holds, or
     /// the cursor's whole line of the file for one of pieces, as Vim's V
-    /// gives its line. Lines are the file's, as Vim's are its buffer's, so
-    /// a name the page wraps is still one. A selection over the file's
-    /// lines, as Vim's, or of blanks alone names none.
+    /// gives its line. Lines are the file's, as Vim's are its buffer's,
+    /// found by the bytes the page's characters were set from, since the
+    /// page joins a paragraph's lines and wraps them where it likes. A
+    /// selection over the file's lines, as Vim's, or of blanks alone names
+    /// none; words the file doesn't hold, the eyebrow, are a line each.
     pub fn named(&self, selection: &Selection) -> Option<String> {
         let (from, to) = selection.ends();
-        let text = match selection.kind {
-            Kind::Chars => self.page_text(from, to),
-            Kind::Pieces => {
-                // The page lines the page wrapped the cursor's line onto.
-                let wrapped = |above: usize| self.between(above, above + 1) != "\n";
-                let mut first = from.line;
-                while first > 0 && wrapped(first - 1) {
-                    first -= 1;
-                }
-                let mut last = to.line;
-                while last + 1 < self.lines.len() && wrapped(last) {
-                    last += 1;
-                }
-                let end = self.chars[last].len().saturating_sub(1);
-                self.page_text(
-                    Pos { line: first, ch: 0 },
-                    Pos {
-                        line: last,
-                        ch: end,
-                    },
-                )
+        let text = match (self.file_line_at(from), self.file_line_at(to)) {
+            (Some(top), Some(bottom)) if top != bottom => return None,
+            (Some(line), Some(_)) if selection.kind == Kind::Pieces => {
+                self.file_line_shown(to, line)?
             }
+            (Some(_), Some(_)) => self.page_text(from, to),
+            _ if from.line != to.line => return None,
+            _ if selection.kind == Kind::Pieces => {
+                let end = self.chars[to.line].len().saturating_sub(1);
+                self.page_text(Pos { ch: 0, ..to }, Pos { ch: end, ..to })
+            }
+            _ => self.page_text(from, to),
         };
-        if text.contains('\n') {
-            return None;
-        }
         let name = text.trim();
         (!name.is_empty()).then(|| name.to_string())
+    }
+
+    /// The file's line, from 0, that the character at `pos` was set from:
+    /// a blank's or a mark's is the next word's on its page line, or the
+    /// last's past them. None on a line no word of the file is set on.
+    fn file_line_at(&self, pos: Pos) -> Option<usize> {
+        let unit = self.of_line.get(pos.line).copied().flatten()?;
+        let matched = self.matched(unit);
+        let on_line: Vec<&(Pos, usize)> = matched
+            .iter()
+            .filter(|(at, _)| at.line == pos.line)
+            .collect();
+        let (_, byte) = on_line
+            .iter()
+            .find(|(at, _)| at.ch >= pos.ch)
+            .or(on_line.last())?;
+        self.source_lines
+            .iter()
+            .position(|range| range.start <= *byte && *byte < range.end)
+    }
+
+    /// The words of the file's `line` as the page sets them, over every
+    /// page line it shares with the rest of the piece at `pos`.
+    fn file_line_shown(&self, pos: Pos, line: usize) -> Option<String> {
+        let range = self.source_lines.get(line)?;
+        let unit = self.of_line.get(pos.line).copied().flatten()?;
+        let matched = self.matched(unit);
+        let mut on_line = matched
+            .iter()
+            .filter(|(_, byte)| range.start <= *byte && *byte < range.end);
+        let first = on_line.next()?.0;
+        let last = on_line.last().map_or(first, |(at, _)| *at);
+        Some(self.page_text(first, last))
     }
 
     /// The file's markdown the page was set from.

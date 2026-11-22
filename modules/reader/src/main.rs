@@ -257,7 +257,7 @@ struct App {
     /// The page's words for selecting, with the file they were set from,
     /// read off the page on a thread; none until read.
     layout: Option<std::sync::Arc<select::Layout>>,
-    layout_to: channel::Sender<(u32, select::Layout)>,
+    layout_to: channel::Sender<(u32, Option<select::Layout>)>,
     /// Visual mode's selection, while there is one.
     selection: Option<select::Selection>,
     /// The cursor's character at rest, once a key moves it along its line, as
@@ -696,7 +696,7 @@ struct Senders {
     done: channel::Sender<Band>,
     made_to: channel::Sender<gl::Made<Loading>>,
     words_to: channel::Sender<(u32, Vec<text::Line>)>,
-    layout_to: channel::Sender<(u32, select::Layout)>,
+    layout_to: channel::Sender<(u32, Option<select::Layout>)>,
     prompt_to: channel::Sender<prompt::Set>,
 }
 
