@@ -28,6 +28,7 @@ case "$1 $2 $3" in
       fingerprint: "Kk2hRYug-uY=",
       metadata: {fingerprint: "MQpHVpNVmsQ=", items: [
         {key: "block-project-ssh-keys", value: "TRUE"},
+        {key: "enable-oslogin", value: "FALSE"},
         {key: "offload-hook-key", value: $hook},
         {key: "startup-script", value: $script}
       ]},

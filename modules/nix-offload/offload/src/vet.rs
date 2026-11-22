@@ -111,10 +111,12 @@ pub fn vetted(described: &Value, pinned: &Pinned) -> Result<String, String> {
             "carries the metadata {other}, which no builder is made with"
         ));
     }
-    if !value("block-project-ssh-keys").is_some_and(|said| said.eq_ignore_ascii_case("true")) {
+    if !value("block-project-ssh-keys").is_some_and(go_true) {
         return Err("takes the project's ssh keys".to_owned());
     }
-    if value("enable-oslogin").is_some_and(|said| said.eq_ignore_ascii_case("true")) {
+    // Anything but a false the agent reads, `1` among them, may turn OS
+    // Login on, so only a false passes; the project's is judged apart.
+    if value("enable-oslogin").is_some_and(|said| !go_false(said)) {
         return Err("lets OS Login make accounts".to_owned());
     }
     if !value("offload-hook-key").is_some_and(|said| same_key(said, &pinned.hook_key)) {
@@ -385,6 +387,22 @@ mod tests {
     }
 
     #[test]
+    fn a_flag_reads_as_gos_parse_bool_reads_it() {
+        for on in ["1", "t", "T", "TRUE", "true", "True"] {
+            assert!(go_true(on) && !go_false(on), "{on} wasn't read as true");
+        }
+        for off in ["0", "f", "F", "FALSE", "false", "False"] {
+            assert!(go_false(off) && !go_true(off), "{off} wasn't read as false");
+        }
+        for neither in ["tRuE", "yes", "no", "", " true", "x"] {
+            assert!(
+                !go_true(neither) && !go_false(neither),
+                "{neither:?} was read as a boolean"
+            );
+        }
+    }
+
+    #[test]
     fn an_instance_as_its_maker_makes_it_passes() {
         assert_eq!(
             vetted(&described(&[]), &pinned()),
@@ -400,9 +418,15 @@ mod tests {
 
     #[test]
     fn an_instance_changed_after_it_was_made_is_refused() {
-        let changes: [(&str, (&str, Value)); 7] = [
+        let changes: [(&str, (&str, Value)); 10] = [
             ("ssh keys", ("ssh-keys", json!("me:ssh-ed25519 AAAA me"))),
             ("project keys", ("block-project-ssh-keys", json!("FALSE"))),
+            (
+                "project keys blocked as no agent reads",
+                ("block-project-ssh-keys", json!("tRuE")),
+            ),
+            ("OS Login said 1", ("enable-oslogin", json!("1"))),
+            ("OS Login said oddly", ("enable-oslogin", json!("no"))),
             (
                 "project keys unblocked",
                 ("block-project-ssh-keys", Value::Null),
@@ -503,7 +527,10 @@ mod tests {
                 "a project's {script} was let run"
             );
         }
-        let setting = |key: &str, value: &str| json!({"commonInstanceMetadata": {"items": items(&[(key, value)])}});
+        let setting = |key: &str, value: &str| {
+            let set = items(&[(key, value)]);
+            json!({"commonInstanceMetadata": {"items": set}})
+        };
         for on in ["TRUE", "true", "1", "t"] {
             assert!(
                 project_holds(&setting("enable-osconfig", on), &builder)
