@@ -372,18 +372,14 @@ pkgs.runCommandLocal "web-kit"
   ''
     mkdir -p $out/fonts
     cp $cssPath $out/theme.css
-    # base.css reaches a browser without its comments, written again by
-    # esbuild unminified, so its rules and declarations keep their order
-    # (modules/local-sites/site.sh does the same for each site's sheets).
-    # theme.css keeps its few, since the sites' home reads its grounds out
-    # of it as it is written.
-    if ! ${lib.getExe pkgs.esbuild} --log-level=warning ${./base.css} > $out/base.css 2> said \
-      || [ -s said ]; then
-      echo "base.css: esbuild wouldn't write it again cleanly" >&2; cat said >&2; exit 1
-    fi
-    if grep -q '/\*' $out/base.css; then
-      echo "base.css: a comment is still in it once written again" >&2; exit 1
-    fi
+    # base.css reaches a browser without its comments, as each site's
+    # sheets do (bare-sheet.sh says how). theme.css keeps its few, since the
+    # sites' home reads its grounds out of it as it is written. A sheet
+    # esbuild warns on fails the kit's build here too, on purpose: a lock
+    # bump that brings such a warning fails its checks before it merges, and
+    # a machine keeps the kit it has until one builds.
+    ${lib.getExe pkgs.bash} ${./bare-sheet.sh} ${lib.getExe pkgs.esbuild} \
+      ${./base.css} $out/base.css
     ${lib.concatStrings (
       lib.mapAttrsToList (file: font: ''
         ${python}/bin/python3 ${./fonts.py} ${lib.escapeShellArg font.source} $out/fonts/${file} \

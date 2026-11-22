@@ -4,8 +4,11 @@ What the theme module gives a website, on every machine:
 
 - `web.nix` writes the kit a site copies whole, to `~/.local/share/jitsusama/web/`:
   `theme.css`, generated from the theme; `base.css`, beside it, written by hand
-  and sent without its comments, which stay here; and the two faces, cut small
-  by `fonts.py`.
+  and sent without its comments, which stay here, in this folder's copy; and
+  the two faces, cut small by `fonts.py`.
+- `bare-sheet.sh` writes a sheet again without its comments, for `base.css`
+  here and for every live site's sheets (modules/local-sites), failing on a
+  sheet esbuild can't read or warns on, or one still holding a comment.
 - `skill/`: the web-design skill, installed for every agent beside the
   aesthetic skill. `SKILL.md` is short: how to think about a site and the
   process for designing one, drawn from the four sites Joel is proud of,

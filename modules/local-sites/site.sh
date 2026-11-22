@@ -8,12 +8,12 @@
 # theme-color and its favicon, the two places a site can't name a role. Each
 # page gets the strip every one of Joel's sites opens with, written here
 # rather than carried by each page, so no app's copy says more than its kind.
-# usage: site.sh <tsc> <node> <esbuild> <kit> <site> <name> <out>
-#   <dark ground> <light ground> <dark tint> <light tint>
+# usage: site.sh <tsc> <node> <esbuild> <bare-sheet.sh> <kit> <site> <name>
+#   <out> <dark ground> <light ground> <dark tint> <light tint>
 set -euo pipefail
 
-tsc=$1 node=$2 esbuild=$3 kit=$4 site=$5 name=$6 out=$7
-dark_ground=$8 light_ground=$9 dark_tint=${10} light_tint=${11}
+tsc=$1 node=$2 esbuild=$3 bare_sheet=$4 kit=$5 site=$6 name=$7 out=$8
+dark_ground=$9 light_ground=${10} dark_tint=${11} light_tint=${12}
 
 # The sources as they sit in the tree, so the site's imports of the kit
 # resolve here as they do there.
@@ -66,28 +66,21 @@ EOF
   "${tsc}" -p "${work}/plain.json"
   cp "${work}/plain/"*.js "${out}/"
 fi
-# The styles go through a CSS compiler for the same reason. esbuild,
-# unminified, writes each sheet again with its rules and declarations in
-# their order, where a minifier reorders and merges them; what else it
-# changes reads the same, as quotes it drops round a selector's value.
-# That was read sheet by sheet on esbuild 0.27, and is worth reading again
-# when nixpkgs brings a printer that may do more. A warning fails the build
-# as an error does, saying which sheet and why, rather than scrolling by
-# unread; and a comment esbuild keeps, as one marked to stay, fails it too,
-# since the budgets count on there being none.
+# The compiler keeps a comment marked to stay, as a licence notice often is,
+# however it's told to drop the rest. Dropping that is a person's choice,
+# not the build's, so a script still holding one fails, saying which.
+for script in "${out}"/*.js; do
+  [[ -f ${script} ]] || continue
+  if grep -q '/\*!' "${script}"; then
+    echo "${script##*/}: a comment marked to stay is still in it" >&2
+    exit 1
+  fi
+done
+# The styles go through a CSS compiler for the same reason, as the theme's
+# own do (bare-sheet.sh says how, and what it refuses).
 for sheet in "${out}"/*.css; do
   [[ -f ${sheet} ]] || continue
-  if ! "${esbuild}" --log-level=warning "${sheet}" > "${work}/sheet.css" 2> "${work}/said" \
-    || [[ -s "${work}/said" ]]; then
-    echo "${sheet##*/}: esbuild wouldn't write it again cleanly" >&2
-    cat "${work}/said" >&2
-    exit 1
-  fi
-  if grep -q '/\*' "${work}/sheet.css"; then
-    echo "${sheet##*/}: a comment is still in it once written again" >&2
-    exit 1
-  fi
-  mv "${work}/sheet.css" "${sheet}"
+  bash "${bare_sheet}" "${esbuild}" "${sheet}" "${sheet}"
 done
 for page in "${out}"/*.html "${out}"/*.svg; do
   [[ -f ${page} ]] || continue
