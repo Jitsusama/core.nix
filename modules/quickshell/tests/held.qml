@@ -354,34 +354,77 @@ QtObject {
             "5@0 d-1 broken, 5@0 d-1 broken");
         check("and a throw once Joel has pressed more is a new one",
             shown(Held.whileLeaving(7, true, threw)), "7@0 d-1 broken");
-        // What the journal says once the leave is judged: a key's act can
-        // still leave a pending guess, and no key's act landing back on its
-        // row holds nothing.
+        // What the journal says once the leave is judged, as returnUnder
+        // would answer the Return next: Joel's own key's leave holds
+        // nothing, though it can still leave a pending guess, and no key's
+        // act landing back on its row holds nothing.
         check("a leave is journalled by its act and whether a Return next holds",
-            [Held.leaveSaid(true, landing(left, "copies", { byKey: true })),
-                Held.leaveSaid(false, landing(none, "ask:7")),
-                Held.leaveSaid(false, left)].join(" | "),
-            "by a key's act; a Return next holds | by no key's act; nothing holds"
-                + " | by no key's act; a Return next holds");
+            [Held.leaveSaid("a key's act", landing(none, "copies", { byKey: true })),
+                Held.leaveSaid("a key's act", landing(left, "copies", { byKey: true })),
+                Held.leaveSaid("no key's act", landing(none, "ask:7")),
+                Held.leaveSaid("a key's act, joined", left)].join(" | "),
+            "a key's act; nothing holds | a key's act; a Return next holds"
+                + " | no key's act; nothing holds | a key's act, joined; a Return next holds");
 
-        // Held.keyed and Held.mixIn, as the launcher's keyedActs hold a
-        // key's act until the refresh that shows it.
+        // Held.movesClock: only a key that may act moves the clock; a
+        // modifier alone and a letter typed into the find leave it at the
+        // key before them.
+        check("a modifier alone and a letter in the find keep the clock",
+            [Held.movesClock(true, false, ""), Held.movesClock(false, true, "a")].join(" "),
+            "false false");
+        check("Escape in the find, j in normal and an unnamed key move it",
+            [Held.movesClock(false, true, "Esc"), Held.movesClock(false, false, "j"),
+                Held.movesClock(false, true, "")].join(" "), "true true true");
+        // Held.movedOnly: j taken at 1000, done at 1070 having moved; a Shift
+        // after it says it moved nothing, but leaves j's clock, so j's word
+        // is the one read.
+        check("while a key's work runs, the prompt's word for it is read",
+            Held.movedOnly(1000, 900, false, true), true);
+        check("once it's done, its word as it was, not a modifier's after it",
+            Held.movedOnly(1000, 1070, true, false), true);
+
+        // Held.changeDoes, as refreshed and reanswer ask it of each change
+        // and answer heard, keyedWithin 50 ms.
+        const does = more => Held.changeDoes(Object.assign(
+            { ago: 10, moved: false, within: 50, shown: true, waiting: false }, more));
+        check("a change shown within keyedWithin of an acting key is its act, to 49 ms",
+            [does({}), does({ ago: 49 })].join(" "), "act act");
+        check("one at 50 ms or after a move joins the source's acts",
+            [does({ ago: 50 }), does({ moved: true })].join(" "), "joins joins");
+        // A share's change heard before the key, waiting on the pace or a
+        // fill's find, is taken into the key's refresh, so would empty the
+        // step as if Joel's key had.
+        check("an act whose source already waits on a refresh is recorded joined",
+            does({ waiting: true }), "joined act");
+        // A change to rows the launcher doesn't show, or an answer, which
+        // never records an act, is the key's within keyedWithin, so leaves
+        // its act his.
+        check("one not shown within keyedWithin is kept, past it joins",
+            [does({ shown: false }), does({ shown: false, ago: 50 })].join(" "),
+            "kept joins");
+
+        // Held.actOf, Held.keyed and Held.mixIn, as the launcher's keyedActs
+        // hold a key's act until the refresh that shows it, each case on
+        // acts of its own.
         const share = { name: "share" };
         const asks = { name: "asks" };
-        const acts = [{ source: asks, heard: 40 }];
+        const acts = () => [{ source: asks, heard: 40 }];
         check("a leave of the act's own source, under its key, is the key's",
-            Held.keyed(acts, asks, 40), true);
-        check("but not another source's, nor once another key was heard",
-            [Held.keyed(acts, share, 40), Held.keyed(acts, asks, 90)].join(" "),
-            "false false");
-        Held.mixIn(acts, share);
+            [Held.actOf(acts(), asks, 40), Held.keyed(acts(), asks, 40)].join(" | "),
+            "a key's act | true");
+        check("but not once another key was heard, nor another source's",
+            [Held.actOf(acts(), asks, 90), Held.actOf(acts(), share, 40),
+                Held.keyed(acts(), asks, 90), Held.keyed(acts(), share, 40)].join(" | "),
+            "a key's act, another key since | no key's act | false | false");
+        const shared = acts();
+        Held.mixIn(shared, share);
         check("another source's change joins none of this one's acts",
-            Held.keyed(acts, asks, 40), true);
-        // A share's change heard past keyedWithin, waiting on the refresh a
-        // fill holds, would otherwise leave the step as if Joel's key had.
-        Held.mixIn(acts, asks);
+            Held.keyed(shared, asks, 40), true);
+        const joined = acts();
+        Held.mixIn(joined, asks);
         check("a change the key doesn't own, joining its act, makes the leave no key's",
-            Held.keyed(acts, asks, 40), false);
+            [Held.actOf(joined, asks, 40), Held.keyed(joined, asks, 40)].join(" | "),
+            "a key's act, joined | false");
 
         // Held.returnUnder, as the field's Return asks it: 2 deep, no words
         // asked for, and the key-timing wait 300 ms.
