@@ -230,7 +230,9 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 /// passing. One forward by S passes by the lines read before it in the
 /// modem's first S of uptime, all of them if it came sooner, and
 /// stretches the span it names by S when the stretch's first line was
-/// read before it. One back by S hides each line read before it until S
+/// read before it; once the stretch reaches back a day, the day read
+/// drops the lines read in the S before a day ago instead, so the span
+/// stays a day and its first S goes uncounted. One back by S hides each line read before it until S
 /// after it was read, since it is stamped after now. Until a line is
 /// read after it, any lines read from S to S and five minutes ago are
 /// stamped recent and vote with the start they said, S late, outvoting
@@ -920,14 +922,19 @@ mod tests {
     fn in_the_first_two_minutes_back_from_a_gap_now_alone_says_when_the_modem_started() {
         // Net was down a while. With no line recent, or one, now's start
         // stands alone: an uptime read four hours cuts the stretch to the
-        // line three hours ago, and none leaves the counts, which kept
-        // climbing, to read on. With now's unsaid, the one recent line's
-        // misread start stands instead and cuts the stretch to that line.
-        // The line three hours ago says the modem started a minute before
-        // it, which would cut the stretch there were it given a say.
-        let gap = || {
+        // line three hours ago, though the two lines before the gap agree
+        // the modem started days back and would reach the line five hours
+        // ago were they given a say. With none, the counts, which kept
+        // climbing, read on. With now's unsaid, the one recent line's
+        // misread start stands instead and cuts the stretch to nothing
+        // lately. There the line three hours ago says the modem started a
+        // minute before it, which would start the stretch at that line in
+        // either minute were it given a say.
+        let days_back = earlier(&network(), 5 * HOUR, 800, 41).modem_started;
+        let a_minute_before = Some(network().collected_at - 3 * HOUR - 60);
+        let gap = |cut_start| {
             let mut cut = earlier(&network(), 3 * HOUR, 840, 41);
-            cut.modem_started = Some(network().collected_at - 3 * HOUR - 60);
+            cut.modem_started = cut_start;
             vec![earlier(&network(), 5 * HOUR, 800, 41), cut]
         };
         let mut misread = earlier(&network(), 60, 875, 41);
@@ -936,22 +943,36 @@ mod tests {
             (
                 "a short uptime, first minute",
                 Some(4 * HOUR),
+                days_back,
                 None,
                 Some(3 * HOUR),
             ),
             (
                 "a short uptime, second minute",
                 Some(4 * HOUR),
+                days_back,
                 Some(earlier(&network(), 60, 875, 41)),
                 Some(3 * HOUR),
             ),
-            ("no uptime, first minute", None, None, Some(5 * HOUR)),
-            ("no uptime, second minute", None, Some(misread), None),
+            (
+                "no uptime, first minute",
+                None,
+                a_minute_before,
+                None,
+                Some(5 * HOUR),
+            ),
+            (
+                "no uptime, second minute",
+                None,
+                a_minute_before,
+                Some(misread),
+                None,
+            ),
         ];
-        for (what, up_s, recent, lately_s) in cases {
+        for (what, up_s, cut_start, recent, lately_s) in cases {
             let mut now = network();
             device_mut(&mut now, "modem").up_s = up_s;
-            let mut day = gap();
+            let mut day = gap(cut_start);
             day.extend(recent);
             let network = recalled(now, &day);
             assert_eq!(
@@ -1027,6 +1048,44 @@ mod tests {
             (modem(&network).lately_s, sixteen(&network).lost_lately),
             (Some(5 * HOUR - STEP), Some(78)),
             "in the first minute after a step back, the start was judged wrongly"
+        );
+    }
+
+    #[test]
+    fn after_a_step_forward_a_full_day_names_a_day_and_counts_a_step_less() {
+        // Net's clock stepped an hour forward three minutes ago, and the
+        // day's file reaches back past a day. The line read a day less the
+        // step and a minute ago is stamped a day and a minute ago, so the
+        // day read drops it; the one read two minutes before that is kept
+        // and starts the stretch, which names just under a day but counts
+        // only a day less the step.
+        const STEP: u64 = HOUR;
+        let now = network();
+        let before = |ago, sixteen| {
+            let mut line = Moment::of(&read_earlier(&now, ago + STEP, STEP));
+            line.lost
+                .iter_mut()
+                .filter(|lost| lost.channel == Some(16))
+                .for_each(|lost| lost.uncorrectable = sixteen);
+            line
+        };
+        let file = day_file("full-day-step");
+        for line in [
+            before(DAY - STEP + 60, 700),
+            before(DAY - STEP - 60, 760),
+            before(5 * HOUR, 800),
+            before(3 * 60, 870),
+            earlier(&now, 2 * 60, 875, 41),
+            earlier(&now, 60, 875, 41),
+        ] {
+            keep(&file, &line).expect("a moment is kept");
+        }
+        let day = read(&file, now.collected_at);
+        let network = recalled(now, &day);
+        assert_eq!(
+            (modem(&network).lately_s, sixteen(&network).lost_lately),
+            (Some(DAY - 60), Some(118)),
+            "a full day after a forward step was named or counted wrongly"
         );
     }
 
