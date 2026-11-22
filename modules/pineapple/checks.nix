@@ -190,9 +190,7 @@ onLinux {
         && !(lib.hasInfix "--live" command)
         && lib.hasSuffix ", in shadow" unit.Unit.Description
         && lib.elem ''"XDG_STATE_HOME=${state}"'' (lib.toList unit.Service.Environment)
-        && lib.elem ''"SAFE_WORD_WAITING=${state}/waiting.json"'' (
-          lib.toList unit.Service.Environment
-        )
+        && lib.elem ''"SAFE_WORD_WAITING=${state}/waiting.json"'' (lib.toList unit.Service.Environment)
         && lib.elem "default.target" unit.Install.WantedBy
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.Restart == "on-failure"

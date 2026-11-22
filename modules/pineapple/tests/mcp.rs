@@ -76,7 +76,7 @@ fn gateway(
     thread::spawn(move || {
         let mut calls = 0;
         for stream in listener.incoming() {
-            let Ok(mut stream) = stream else { return };
+            let mut stream = stream.expect("the stand-in gateway takes each connection");
             let mut reader = BufReader::new(stream.try_clone().expect("a stream"));
             let (mut length, mut session, mut sign_in) = (0, None, None);
             loop {
