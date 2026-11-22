@@ -6,16 +6,16 @@
 # two strips, or one saying more than the kind, is what this replaces. And
 # that the page reads the theme's web kit from the one copy the sites share,
 # with none of its own, and a page still reading its own kit/ fails too.
-# And that the page's sheets and scripts reach it without their comments,
-# and a sheet esbuild can't read or warns on, or a sheet or a script keeping
-# a comment, fails, saying which.
+# And that the sheets and scripts a site, the kit and the theme build reach
+# a page without their comments, and a sheet esbuild refuses, warns on or
+# crashes on, or a sheet or a script keeping a comment, fails, saying which.
 # usage: each-live-page-opens-with-the-strip.sh <built site> <site.sh> <tsc>
 #   <node> <esbuild> <bare-sheet.sh> <kept-comments.sh> <kit> <site source>
-#   <name>
+#   <name> <built kit> <web kit>
 set -euo pipefail
 
 built=$1 build=$2 tsc=$3 node=$4 esbuild=$5 bare_sheet=$6 kept_comments=$7 kit=$8
-source=$9 name=${10}
+source=$9 name=${10} built_kit=${11} web_kit=${12}
 work=$(mktemp -d)
 trap 'rm -rf "${work}"' EXIT
 
@@ -98,41 +98,59 @@ sed -i '\|href="../local-sites/web/theme.css"|d' "${work}/themeless/index.html"
 refused "${work}/themeless" "index.html doesn't read the theme from the sites' one copy" \
   "a page reading no theme"
 
-# The built sheets hold no comment, so each sheet's write in place landed.
-commented=$(grep -l '/\*' "${built}"/*.css || true)
+# The built sheets hold no comment, so each sheet's write in place landed,
+# and nor do the kit's sheet and scripts or the theme's base.css, so their
+# builds still send each through the same scripts: those builds take no
+# source but their own, so a comment arriving in one is what shows it.
+compgen -G "${built}/*.css" >/dev/null || {
+  echo "the built site has no sheet to read" >&2
+  exit 1
+}
+status=0
+commented=$(grep -l '/\*' "${built}"/*.css "${built_kit}/switch.css" "${web_kit}/base.css") ||
+  status=$?
+((status <= 1)) || {
+  echo "a built sheet couldn't be read" >&2
+  exit 1
+}
 [[ -z ${commented} ]] || {
   echo "a built sheet still holds a comment: ${commented}" >&2
   exit 1
 }
+mapfile -t kit_scripts < <(find "${built_kit}" -name '*.js')
+bash "${kept_comments}" "${kit_scripts[@]}"
 
-# bare-sheet.sh on one sheet: a sheet esbuild can't read is refused, saying
+# bare-sheet.sh on one sheet: a sheet esbuild refuses is refused, saying
 # which and what esbuild said, and so is one it only warns on, and one it
-# exits on otherwise. Each is told by an esbuild standing in, since which of
-# these a given slip is belongs to esbuild's release; each fails only on
-# site.css and writes any other as it is, so a site's other sheets pass.
+# crashes on. Each is told by an esbuild standing in, since which of these
+# a given slip is belongs to esbuild's release; each fails only on site.css
+# and hands any other to the real esbuild, so a site's other sheets pass.
 # Each names this bash, since a build's sandbox has no /usr/bin/env.
 stand_in() {
   echo "#!${BASH}"
+  echo "real=$(printf %q "${esbuild}")"
   cat <<'EOF'
 if [[ ${*: -1} == */site.css ]]; then
 EOF
   echo "$1"
   cat <<'EOF'
 fi
-cat "${@: -1}"
+exec "${real}" "$@"
 EOF
 }
-stand_in '  echo "stand-in: unreadable" >&2; exit 1' >"${work}/broke"
+stand_in '  echo "stand-in: refused" >&2; exit 1' >"${work}/broke"
 stand_in '  echo "stand-in: careful" >&2' >"${work}/warns"
-stand_in '  echo "stand-in: crashed" >&2; exit 3' >"${work}/crashes"
+stand_in '  echo "stand-in: crashed" >&2; exit 2' >"${work}/crashes"
 chmod +x "${work}/broke" "${work}/warns" "${work}/crashes"
 mkdir "${work}/sheets" "${work}/bare"
 sheet=${work}/sheets/site.css
 
 # Runs bare-sheet.sh on `sheet` with the esbuild `$1` and expects it refused,
-# saying `$2` and what esbuild said, `$3`; `$4` names the case.
+# saying `$2` and what esbuild said, `$3`; `$4` names the case. It writes to
+# out.css, so the refusal names the sheet by where it was to go, as one read
+# from the store must be.
 sheet_refused() {
-  if bash "${bare_sheet}" "$1" "${sheet}" "${work}/bare/site.css" 2>"${work}/said"; then
+  if bash "${bare_sheet}" "$1" "${sheet}" "${work}/bare/out.css" 2>"${work}/said"; then
     echo "$4 was written anyway" >&2
     exit 1
   fi
@@ -143,62 +161,79 @@ sheet_refused() {
   }
 }
 echo "a { color: red; }" >"${sheet}"
-sheet_refused "${work}/broke" "site.css: esbuild couldn't read it" "stand-in: unreadable" \
-  "a sheet esbuild can't read"
-sheet_refused "${work}/warns" "site.css: esbuild warned on it" "stand-in: careful" \
+sheet_refused "${work}/broke" "out.css: esbuild refused it" "stand-in: refused" \
+  "a sheet esbuild refuses"
+sheet_refused "${work}/warns" "out.css: esbuild warned on it" "stand-in: careful" \
   "a sheet esbuild warns on"
-sheet_refused "${work}/crashes" "site.css: esbuild exited 3 on it" "stand-in: crashed" \
-  "a sheet esbuild exits on"
-# The real esbuild refuses a block left open one way or the other, and
-# keeps a comment marked to stay, which is refused.
+sheet_refused "${work}/crashes" "out.css: esbuild exited 2 on it" "stand-in: crashed" \
+  "a sheet esbuild crashes on"
+# The real esbuild refuses a block left open one way or the other, and says
+# why beneath; and keeps a comment marked to stay, which is refused.
 echo "a { color: red" >"${sheet}"
-sheet_refused "${esbuild}" "site.css: esbuild" "" "a sheet with a block left open"
+sheet_refused "${esbuild}" "out.css: esbuild" "" "a sheet with a block left open"
+[[ ${said} == *$'\n'?* ]] || {
+  echo "bare-sheet.sh refused a block left open without what esbuild said: ${said}" >&2
+  exit 1
+}
 echo "/*! kept */ a { color: red; }" >"${sheet}"
-sheet_refused "${esbuild}" "site.css: holds /* once written again" "" \
+sheet_refused "${esbuild}" "out.css: holds /* once written again" "" \
   "a sheet keeping a comment"
 # And writes a sheet's rules again without the rest of its comments.
 printf '%s\n' '/* gone */' 'a { color: red; }' >"${sheet}"
-bash "${bare_sheet}" "${esbuild}" "${sheet}" "${work}/bare/site.css"
-if grep -q 'gone' "${work}/bare/site.css" || ! grep -q 'color: red' "${work}/bare/site.css"; then
+bash "${bare_sheet}" "${esbuild}" "${sheet}" "${work}/bare/out.css"
+if grep -q 'gone' "${work}/bare/out.css" || ! grep -q 'color: red' "${work}/bare/out.css"; then
   echo "bare-sheet.sh didn't write a sheet's rules without its comment" >&2
   exit 1
 fi
-# A site's build hands its sheets to bare-sheet.sh, and stops on its refusal.
-refused "${source}" "site.css: esbuild couldn't read it" "a sheet esbuild can't read" \
-  "${work}/broke"
+# A site's build hands each of its sheets to bare-sheet.sh, the others
+# passing, and stops on a refusal.
+refused "${source}" "site.css: esbuild refused it" "a sheet esbuild refuses" "${work}/broke"
 
-# kept-comments.sh names each script holding a comment marked to stay, and
-# passes one holding none.
-printf '%s\n' '/*! kept */' 'export const kept = 1;' >"${work}/kept.js"
-echo 'export const plain = 1;' >"${work}/plain.js"
-if bash "${kept_comments}" "${work}/plain.js" "${work}/kept.js" 2>"${work}/said"; then
-  echo "a script keeping a comment passed kept-comments.sh" >&2
+# kept-comments.sh fails on nothing to read and on a path that isn't a
+# script, so a glob that missed can't pass.
+if bash "${kept_comments}" 2>/dev/null; then
+  echo "kept-comments.sh passed with no script to read" >&2
   exit 1
 fi
-said=$(<"${work}/said")
-[[ ${said} == "kept.js: holds /*! once compiled"* ]] || {
-  echo "kept-comments.sh refused a script without naming it alone: ${said}" >&2
+if bash "${kept_comments}" "${work}/*.js" 2>/dev/null; then
+  echo "kept-comments.sh passed a glob that matched nothing" >&2
+  exit 1
+fi
+# A site's build names each compiled script still holding a comment marked
+# to stay, here two, before it fails.
+copied "${work}/script"
+for each in site looks; do
+  {
+    echo '/*! kept */'
+    cat "${source}/${each}.ts"
+  } >"${work}/script/${each}.ts"
+done
+refused "${work}/script" "site.js: holds /*! once compiled" "a script keeping a comment"
+[[ ${said} == *"looks.js: holds /*! once compiled"* ]] || {
+  echo "the build named one script keeping a comment, not each: ${said}" >&2
   exit 1
 }
-bash "${kept_comments}" "${work}/plain.js"
-# A site's build hands it the scripts it compiled from TypeScript, and those
-# written by hand, which the compiler writes again without the rest of their
-# comments.
-copied "${work}/script"
-{
-  echo '/*! kept */'
-  cat "${source}/site.ts"
-} >"${work}/script/site.ts"
-refused "${work}/script" "site.js: holds /*! once compiled" "a script keeping a comment"
-copied "${work}/written"
-printf '%s\n' '/*! kept */' 'export const kept = 1;' >"${work}/written/extra.js"
-refused "${work}/written" "extra.js: holds /*! once compiled" \
-  "a script written by hand keeping a comment"
+# A script written by hand goes through the compiler, which drops its
+# comments but keeps a string, a template and a pattern holding what reads
+# like one, which a pattern couldn't tell apart.
 copied "${work}/plain"
-printf '%s\n' '// gone' 'export const plain = 1;' >"${work}/plain/extra.js"
+cat >"${work}/plain/extra.js" <<'EOF'
+// gone
+export const u = "http://x/*y*/";
+export const t = `a // b`;
+export const r = /\/\//u;
+export const n = 1; // gone too
+EOF
 rm -rf "${work}/out"
 bash "${build_with[@]}" "${work}/plain" "${looks[@]}"
-if grep -q 'gone' "${work}/out/extra.js" || ! grep -q 'plain = 1' "${work}/out/extra.js"; then
-  echo "a script written by hand reached the page with its comment" >&2
+grep -v gone "${work}/plain/extra.js" >"${work}/kept"
+while IFS= read -r kept; do
+  grep -qF "${kept}" "${work}/out/extra.js" || {
+    echo "a script written by hand lost what only reads like a comment: ${kept}" >&2
+    exit 1
+  }
+done <"${work}/kept"
+if grep -q 'gone' "${work}/out/extra.js"; then
+  echo "a script written by hand reached the page with its comments" >&2
   exit 1
 fi

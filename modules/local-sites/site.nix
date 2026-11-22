@@ -34,7 +34,7 @@ let
     ${node} --test --test-reporter=spec tests/*.test.ts
     ${tsc} -p tsconfig.json --noEmit false --outDir $out/kit
     ${lib.getExe pkgs.bash} ${bareSheet} ${esbuild} switch.css $out/kit/switch.css
-    ${lib.getExe pkgs.bash} ${keptComments} $out/kit/*.js
+    ${lib.getExe pkgs.bash} ${keptComments} $(find $out/kit -name '*.js')
   '';
 in
 {

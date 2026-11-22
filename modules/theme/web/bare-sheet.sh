@@ -22,12 +22,13 @@ name=${out##*/}
 work=$(mktemp -d)
 trap 'rm -rf "${work}"' EXIT
 
-# esbuild exits 1 on a sheet it can't read; any other status is its own
-# trouble, said as such, so a crash doesn't read as the sheet's fault.
+# esbuild exits 1 on any error it reports, in the sheet or in how it was
+# asked, and its own words say which; any other status is a crash, said as
+# one, so it doesn't read as an error esbuild found.
 status=0
 "${esbuild}" --log-level=warning "${sheet}" >"${work}/bare.css" 2>"${work}/said" || status=$?
 if ((status == 1)); then
-  echo "${name}: esbuild couldn't read it" >&2
+  echo "${name}: esbuild refused it" >&2
   cat "${work}/said" >&2
   exit 1
 elif ((status != 0)); then

@@ -15,6 +15,13 @@ set -euo pipefail
 tsc=$1 node=$2 esbuild=$3 bare_sheet=$4 kept_comments=$5 kit=$6 site=$7 name=$8 out=$9
 dark_ground=${10} light_ground=${11} dark_tint=${12} light_tint=${13}
 
+# The name is written into paths and a config below, so it's held to what
+# needs no quoting in either.
+[[ ${name} =~ ^[a-z0-9-]+$ ]] || {
+  echo "a site's name is lowercase letters, digits and dashes, not ${name}" >&2
+  exit 1
+}
+
 # The sources as they sit in the tree, so the site's imports of the kit
 # resolve here as they do there.
 work=$(mktemp -d)

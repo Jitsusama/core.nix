@@ -372,9 +372,10 @@ pkgs.runCommandLocal "web-kit"
   # base.css reaches a browser without its comments, as each site's sheets
   # do (bare-sheet.sh says how). theme.css keeps its few, since the sites'
   # home reads its grounds out of it as it is written. A sheet esbuild warns
-  # on fails the kit's build here too, on purpose: a lock bump that brings
-  # such a warning fails its checks before it merges, and a machine keeps
-  # the kit it has until one builds.
+  # on fails the kit's build here too, on purpose, and with it every
+  # machine's: a lock bump that brings such a warning fails its checks
+  # (the-web-kit-carries-the-theme) before it merges, and waits until
+  # base.css is changed.
   ''
     mkdir -p $out/fonts
     cp $cssPath $out/theme.css

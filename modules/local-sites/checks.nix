@@ -78,8 +78,10 @@ in
   # sites' one copy with no kit/ of its own; and a page that carries its own
   # strip, reads no theme from that copy, or whose styles read a kit/ of
   # their own, fails its build, saying so; and so does a sheet esbuild
-  # can't read or warns on, or a sheet or a script keeping a comment,
-  # saying which (tests/each-live-page-opens-with-the-strip.sh).
+  # refuses, warns on or crashes on, or a sheet or a script keeping a
+  # comment, saying which; and the sheets and scripts a site, the kit and
+  # the theme build reach a page without their comments
+  # (tests/each-live-page-opens-with-the-strip.sh).
   each-live-page-opens-with-the-strip =
     pkgs.runCommandLocal "each-live-page-opens-with-the-strip" { }
       ''
@@ -95,6 +97,8 @@ in
             "${./kit}"
             "${../system/site}"
             "system"
+            "${sites.kit}/kit"
+            "${webKit}"
           ]
         }
         touch $out
