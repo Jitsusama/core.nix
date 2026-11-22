@@ -138,7 +138,7 @@ function machineLede(system: System): string | undefined {
     .slice(0, LEDE_MACHINES)
     .map((thing) => stopped(`${thing.name}: ${thing.side.join("; ")}`));
   const own =
-    machines.length === 0 && part !== undefined && part.health !== "good" && part.side.length > 0
+    machines.length === 0 && part !== undefined && part.side.length > 0
       ? [stopped(`The machines, ${part.side.join("; ")}`)]
       : [];
   const rest = restOf(system.parts.filter((other) => other.part !== "machines"));

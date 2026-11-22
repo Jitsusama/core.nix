@@ -3,9 +3,9 @@
 //! newest read failed, rather than blanking a part and every machine's tie
 //! to it at once: one slow `mycelium health` once blanked both machines'
 //! cells. Kept on disk, so the command and the daemon each stand on what
-//! either last read. A part standing on one is judged no better than
-//! watch, as its owner didn't answer, so a fault it would have said isn't
-//! hidden behind a good reading.
+//! either last read. A part standing on one keeps the health it was read
+//! with and says how old that is, so a slow read raises no alarm where
+//! the launcher would draw one in place of a count.
 
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::Write;
@@ -16,7 +16,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use serde_json::{Map, Value};
 
 use crate::parts::Answer;
-use crate::record::{Health, System};
+use crate::record::System;
 
 /// How long a kept answer may stand for reads that missed: several of the
 /// daemon's paces under load, and short enough that an owner gone for good
@@ -180,12 +180,12 @@ pub fn realm_folder(realm: &str) -> String {
 /// was read and why the newest read wasn't: a part and a machine after
 /// what it says and among what is worth a look, and a machine's cells,
 /// network and code under its ties' `kept`, each only on a tie that answer
-/// gave it. A part so read is judged no better than watch, as its owner
-/// didn't answer, but for code, which is good whenever its owner answers
-/// and so hides no fault: watched, it would tell each other machine of the
-/// realm that this one's code wants a look. Each machine keeps its own
-/// health and says the machines' note only in its words, as one slow read
-/// of the realm makes no machine worth a look; the part says it once.
+/// gave it. A part so read keeps the health it was read with: watched,
+/// it would put a warning in place of the launcher's count on every slow
+/// read, and tell each other machine of the realm that this one's code
+/// wants a look, though nothing changed that anyone could act on. Each
+/// machine keeps its own health and says the machines' note only in its
+/// words; the part says it once.
 pub fn mark(system: &mut System, notes: &Notes) {
     let owners = [
         ("cells", &notes.health),
@@ -196,9 +196,6 @@ pub fn mark(system: &mut System, notes: &Notes) {
         if let Some(note) = notes.of(part.name) {
             part.says = told(&part.says, note);
             noted(&mut part.side, note);
-            if part.name != "code" {
-                part.health = part.health.max(Health::Watch);
-            }
         }
         for thing in &mut part.things {
             if part.name == "machines"
@@ -250,6 +247,7 @@ fn told(says: &str, note: &str) -> String {
 mod tests {
     use super::*;
     use crate::parts;
+    use crate::record::Health;
     use serde_json::json;
 
     /// A folder of a case's own, taken away when the case ends.
@@ -494,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn a_part_on_a_kept_answer_is_judged_no_better_than_watch() {
+    fn a_part_on_a_kept_answer_keeps_the_health_it_was_read_with() {
         let mut system = system("kestrel");
         assert_eq!(
             system.parts[1].health,
@@ -511,19 +509,14 @@ mod tests {
         let mut failing = system.clone();
         mark(&mut system, &notes);
         assert_eq!(
-            system.parts[1].health,
-            Health::Watch,
-            "an owner that didn't answer is watched, whatever it last said"
-        );
-        assert_eq!(
-            system.parts[1].side.last().map(String::as_str),
-            Some(note),
-            "what makes it worth a look is said among what is"
+            (system.parts[1].health, system.parts[1].side.clone()),
+            (Health::Good, vec![note.to_owned()]),
+            "a slow owner raises no alarm, but its part says how old its reading is"
         );
         assert_eq!(
             (system.parts[2].health, system.parts[2].side.clone()),
             (Health::Good, vec![code.to_owned()]),
-            "code, good whenever its owner answers, isn't watched, but says why"
+            "code keeps its health too, and says why"
         );
         failing.parts[1].health = Health::Bad;
         mark(&mut failing, &notes);
@@ -645,8 +638,54 @@ mod tests {
         }
         assert_eq!(
             (system.parts[0].health, system.parts[0].side.clone()),
-            (Health::Watch, vec![note.to_owned()]),
-            "the machines part read from a kept answer is watched, saying why once"
+            (Health::Good, vec![note.to_owned()]),
+            "the machines part read from a kept answer keeps its health, saying why once"
+        );
+    }
+
+    #[test]
+    fn a_network_part_on_a_kept_answer_says_so_as_a_sentence() {
+        let net = json!({
+            "sources": [{"name": "eero", "state": "answering"}],
+            "concerns": [{"kind": "weak", "says": "The Hall point is weak."}],
+            "devices": [{}, {}],
+        });
+        let mut system = System {
+            machine: "kestrel".to_owned(),
+            read_at: "2026-11-21T12:00:00Z".to_owned(),
+            parts: vec![parts::network(&Ok(net))],
+        };
+        let before = system.parts[0].clone();
+        assert_ne!(
+            before.health,
+            Health::Good,
+            "the network has something worth a look"
+        );
+        let note = "as read at 11:56; just now net --json gave no answer in 20 s";
+        mark(
+            &mut system,
+            &Notes {
+                net: Some(note.to_owned()),
+                health: Some("as read at 11:50; just now mycelium health ended with 1".to_owned()),
+                repos: Some("as read at 11:51; just now repos --json ended with 1".to_owned()),
+                ..Notes::default()
+            },
+        );
+        let network = &system.parts[0];
+        assert_eq!(
+            (network.health, network.says.clone()),
+            (before.health, told(&before.says, note)),
+            "the network part takes net's own note, keeping its health"
+        );
+        assert_eq!(
+            network
+                .side
+                .iter()
+                .filter(|said| said.as_str() == note)
+                .count(),
+            1,
+            "the network part says net's note once among its side: {:?}",
+            network.side
         );
     }
 }

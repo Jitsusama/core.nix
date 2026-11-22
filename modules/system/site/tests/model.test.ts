@@ -273,7 +273,11 @@ it("says the machines are awaited, not the part's own words, while none has come
 it("says why a good part read from its owner's last answer is that answer", () => {
   const note = "as read at 11:54; just now repos --json gave no answer in 20 s";
   const kept = partsOf(
-    systemWith((record) => (record.key === "part:code" ? { ...record, side: [note] } : record)),
+    systemWith((record) =>
+      record.key === "part:code"
+        ? { ...record, says: `18 repositories, ${note}`, side: [note] }
+        : record,
+    ),
     when,
   );
   assert.ok(
@@ -283,7 +287,9 @@ it("says why a good part read from its owner's last answer is that answer", () =
     "a good part says what it holds, with the kept note aside",
   );
   assert.ok(
-    partsOf(systemWith(), when).includes("Nothing in it is worth a look."),
+    partsOf(systemWith(), when).includes(
+      `<p class="said">18 repositories</p><p class="aside">Nothing in it is worth a look.`,
+    ),
     "a good part read from its own answer has nothing worth a look",
   );
 });

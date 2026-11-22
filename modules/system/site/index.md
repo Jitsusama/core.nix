@@ -70,8 +70,8 @@ Every health is good, watch, bad or not read, each with its own mark.
   - A part whose owner can't be asked is Not read, with why, unless the
     owner answered in the last ten minutes. Then that answer stands, and
     the part and each machine's tie read from it say when it was read and
-    why the newest read missed; the part is then worth a look at best,
-    but for code, which is good whenever its owner answers.
+    why the newest read missed; the part keeps the health it was read
+    with, so a slow read raises no warning.
 
 ## Keys
 

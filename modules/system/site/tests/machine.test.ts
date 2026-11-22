@@ -130,11 +130,24 @@ it("the lede says what the machines part has worth a look that no machine does",
   const kept = system([machine("heron", "good")]);
   const [machines, ...others] = kept.parts;
   assert.ok(machines);
-  const read = { ...kept, parts: [{ ...machines, side: [note] }, ...others] };
+  const read = {
+    ...kept,
+    parts: [{ ...machines, health: "good" as const, side: [note] }, ...others],
+  };
   assert.equal(
     machineLede(read),
     `The machines, ${note}.`,
     "machines read from a kept answer say so in the lede",
+  );
+  const kestrel = machine("kestrel", "watch", ["on battery at 9%"]);
+  const repeated = {
+    ...kept,
+    parts: [{ ...machines, things: [kestrel], side: ["kestrel on battery at 9%"] }, ...others],
+  };
+  assert.equal(
+    machineLede(repeated),
+    "kestrel: on battery at 9%.",
+    "what a machine says isn't said again for the part that lists it",
   );
 });
 

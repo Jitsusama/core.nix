@@ -220,7 +220,7 @@ function partSaid(part: Part): Said {
     return { said: capital(part.holds ?? part.says), aside: "Nothing in it is worth a look." };
   }
   // A good part has an empty side, but for one read from its owner's last
-  // answer, which says so there: code, which is good whenever it answers.
+  // answer, which keeps its health and says how old it is there.
   if (part.health === "good") {
     return { said: capital(part.holds ?? part.says), aside: capital(part.side.join("; ")) };
   }
