@@ -292,10 +292,7 @@ pub fn script(
 ) -> String {
     let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
     let job = format!("{scratches}/{HANDOVER}/{id}");
-    let work = format!(
-        "{scratches}/{}",
-        quoted(&format!("{scratch}/{id}"))
-    );
+    let work = format!("{scratches}/{}", quoted(&format!("{scratch}/{id}")));
     let folder = match within.to_string_lossy() {
         within if within.is_empty() => "\"$work\"".to_owned(),
         within => format!("\"$work\"/{}", quoted(&within)),
