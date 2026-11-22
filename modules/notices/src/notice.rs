@@ -348,22 +348,46 @@ mod tests {
         notice.cell().map(|cell| cell.address)
     }
 
-    /// The cases every copy of the address rule is held to, shared with the
+    /// The cases three copies of the address rule are held to, shared with the
     /// map and mycelium-link (modules/mycelium/site/tests/addresses.txt).
     const ADDRESSES: &str = include_str!("../../mycelium/site/tests/addresses.txt");
 
     #[test]
     fn an_address_is_judged_as_every_copy_of_the_rule_judges_it() {
+        // Split on line feeds alone, since `lines` would drop a carriage
+        // return the other readers see.
         let cases: Vec<&str> = ADDRESSES
-            .lines()
+            .split('\n')
             .filter(|line| !line.is_empty() && !line.starts_with('#'))
             .collect();
         assert!(cases.len() > 20, "the shared cases are read");
         for line in cases {
+            assert!(!line.contains('\r'), "{line:?} holds no carriage return");
             let (kind, text) = line.split_once(' ').unwrap_or((line, ""));
             assert!(matches!(kind, "is" | "not"), "{line:?} says is or not");
-            assert_eq!(address_shaped(text), kind == "is", "{text:?}");
+            let text = case_text(text);
+            assert_eq!(address_shaped(&text), kind == "is", "{text:?}");
         }
+    }
+
+    /// A case's text with each `\u{HEX}` made the character it names,
+    /// failing on any other backslash (modules/mycelium/site/tests/README.md).
+    fn case_text(written: &str) -> String {
+        let mut text = String::new();
+        let mut rest = written;
+        while let Some(at) = rest.find('\\') {
+            text.push_str(&rest[..at]);
+            let escape = rest[at..]
+                .strip_prefix("\\u{")
+                .and_then(|after| after.split_once('}'));
+            let (hex, after) =
+                escape.unwrap_or_else(|| panic!("{written:?} escapes as \\u{{HEX}}"));
+            let code = u32::from_str_radix(hex, 16).ok().and_then(char::from_u32);
+            text.push(code.unwrap_or_else(|| panic!("{written:?} names a character")));
+            rest = after;
+        }
+        text.push_str(rest);
+        text
     }
 
     #[test]

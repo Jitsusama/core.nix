@@ -85,13 +85,8 @@ it("says the cell it comes from only when that is an address", () => {
     "mycelium:sprout?words=tidy%20the%20rows&from=TERN02",
     "an open cell's address should go with the words",
   );
-  assert.equal(isAddress("TERN02"), true, "an address should be one");
   assert.equal(isAddress(null), false, "no cell should be no address");
-  for (const from of ["T", "9", "ABCDEFGHIJKL"]) {
-    assert.equal(isAddress(from), true, `${from} should be an address, 1 to 12 long`);
-  }
   for (const from of ["tern02", "TERN-02", "", "ABCDEFGHIJKLM", "X&words=Y", "calls@kestrel"]) {
-    assert.equal(isAddress(from), false, `${JSON.stringify(from)} should be no address`);
     assert.equal(
       sproutLink("tidy the rows", from),
       "mycelium:sprout?words=tidy%20the%20rows",
@@ -100,14 +95,18 @@ it("says the cell it comes from only when that is an address", () => {
   }
 });
 
-it("judges an address as every copy of the rule does", () => {
+it("judges an address as the notices daemon and mycelium-link do", () => {
   const cases = readFileSync(new URL("addresses.txt", import.meta.url), "utf8")
     .split("\n")
     .filter((line) => line !== "" && !line.startsWith("#"));
   assert.ok(cases.length > 20, "the shared cases should be read");
   for (const line of cases) {
+    assert.ok(!line.includes("\r"), `${JSON.stringify(line)} should hold no carriage return`);
     const [kind, ...rest] = line.split(" ");
-    const text = rest.join(" ");
+    const text = rest
+      .join(" ")
+      .replace(/\\u\{([0-9A-F]{1,6})\}/gu, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)));
+    assert.ok(!text.includes("\\"), `${JSON.stringify(line)} should escape only as \\u{HEX}`);
     assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
     const is = kind === "is";
     assert.equal(isAddress(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);

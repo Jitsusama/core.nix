@@ -16,7 +16,7 @@ rustPlatform.buildRustPackage rec {
       ./Cargo.toml
       ./Cargo.lock
       ./src
-      # The address cases every copy of the rule is held to, read by the
+      # The address cases three copies of the rule are held to, read by the
       # tests (src/main.rs).
       ../../mycelium/site/tests/addresses.txt
       ../../terminal-kit/Cargo.toml
