@@ -37,6 +37,20 @@ function spent(from, to) {
     return { ran: to.ran - from.ran, waited: to.waited - from.waited, faulted: faults(from, to) };
 }
 
+// What the shell's thread and the collector spent of an opening's working,
+// from the clocks read at its ask to those read as its working was done
+// (Launcher.qml's feltClocks): `thread` as `spent` gives it, and
+// `collecting`, the collector's milliseconds, never below none. An
+// opening whose working wasn't done, or whose ask wasn't read, says
+// neither, rather than a span that began with another opening's ask.
+function workingSpent(asked, worked) {
+    if (!asked || !worked) {
+        return { thread: null, collecting: 0 };
+    }
+    return { thread: spent(asked.thread, worked.thread),
+        collecting: Math.max(0, (worked.collected ?? 0) - (asked.collected ?? 0)) };
+}
+
 // The major page faults across a span, or undefined where either end
 // wasn't read, as KeyTimes.faulted gives -1, or the count went back.
 function faults(from, to) {

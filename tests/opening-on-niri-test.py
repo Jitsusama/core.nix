@@ -1113,6 +1113,8 @@ def test_a_kept_place_opens_afresh_while_niri_hasnt_said_its_casts(shell: Shell)
         said = shell.log.read_bytes()[since:].decode(errors="replace")
     unsaid_why = "as niri hasn't said its casts yet"
     assert not into_on.get("kept"), f"On was drawn from its kept rows under a share: {into_on}"
+    # Opened afresh, its working is done as its fill is told, not as its kept frame begins.
+    working_spent(into_on)
     assert f"launcher: on opened afresh, {unsaid_why}" in said, f"On's wasn't said:\n{said}"
     assert not home.get("kept"), f"home was drawn from its kept rows under a share: {home}"
     assert f"launcher: home opened afresh, {unsaid_why}" in said, f"home's wasn't said:\n{said}"
@@ -1487,6 +1489,28 @@ def made_by_others(shell: Shell, place: str) -> dict[str, int]:
     }
 
 
+def working_spent(opening: Json) -> None:
+    """Check an opening's record says what its thread and the collector spent of its working.
+
+    So a slow one's asking says whether it ran, waited for a CPU or slept: Joel's into Now asked
+    15 to 22 ms, six of 19 over 50 to the frame with nothing said of why (2026-11-21). Its thread
+    can't run and wait longer than the working it was read over, as clocks left from another
+    opening would.
+    """
+    thread = cast("Json", opening.get("thread") or {})
+    ran = cast("float", thread.get("ran", 0))
+    waited = cast("float", thread.get("waited", -1))
+    unsaid = "its thread's working went unsaid, or the builder's kernel keeps no schedstat"
+    assert ran > 0, f"{unsaid}: {opening}"
+    assert waited >= 0, f"{unsaid}: {opening}"
+    assert ran + waited <= cast("float", opening["worked"]) + 1, (
+        f"its thread spent more than its working, so not this opening's: {opening}"
+    )
+    collecting = opening.get("collecting")
+    assert isinstance(collecting, int), f"the collector's part went unsaid: {opening}"
+    assert collecting >= 0, f"the collector's part went back: {opening}"
+
+
 def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     """Its chord pressed again, a place is drawn from what was kept, there, with nothing made.
 
@@ -1504,11 +1528,7 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     shell.as_account(shell.ipc("collection", "on"))
     opening = filled_after(shell, timed)
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
-    # What its thread did while it worked, so a slow one's asking says whether it ran, waited for
-    # a CPU or slept: Joel's into Now asked 15 to 22 ms, six of 19 over 50 to the frame with
-    # nothing said of why (2026-11-21).
-    thread = cast("Json", opening.get("thread") or {})
-    assert cast("float", thread.get("ran", 0)) > 0, f"its thread's working went unsaid: {opening}"
+    working_spent(opening)
     took = [line for line in said_of_chords(shell, since).splitlines() if "opening took" in line]
     assert took, "the opening said nothing of its time"
     assert "; its thread ran " in took[-1], f"the opening's line didn't say its thread: {took[-1]}"

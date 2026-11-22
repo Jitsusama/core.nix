@@ -32,6 +32,7 @@ LAB_PROFILE, LAB_PROFILE without QS_GIVEN's `--debug 3768`, or LAB_BACK without 
 
 from __future__ import annotations
 
+import itertools
 import os
 import re
 import statistics
@@ -229,20 +230,31 @@ def chorded_out(shell: Shell, place: str) -> tuple[str | None, str | None]:
     shell.as_account(shell.ipc("collection", place))
     shell.launcher_until(lambda shown: shown["open"] and len(shown["held"]) > 0)
     shell.launcher_ready()
-    opening = opening_said(shell, since)
+    opening = into_said(shell, since)
     out = stepped_out(shell)
     shell.close_launcher()
     shell.launcher_until(lambda shown: not shown["open"])
     return opening, out
 
 
-def opening_said(shell: Shell, since: int) -> str | None:
-    """Give the opening's line the shell has said since the mark, from its time on, or None."""
-    with shell.log.open("rb") as log:
-        log.seek(since)
-        written = log.read().decode(errors="replace")
-    said = [line for line in written.splitlines() if "launcher: opening took" in line]
-    return said[0].split("launcher: opening ", 1)[1] if said else None
+def into_said(shell: Shell, since: int) -> str | None:
+    """Give the opening's line the shell has said since the mark, from its time on, or None.
+
+    A kept opening says it only after its sized frames, which may come after the launcher is
+    ready, so it's waited for as a step's is, and a line still being written is left out.
+    """
+    deadline = time.monotonic() + SAYING
+    while True:
+        with shell.log.open("rb") as log:
+            log.seek(since)
+            written = log.read()
+        whole = written[: written.rfind(b"\n") + 1].decode(errors="replace")
+        said = [line for line in whole.splitlines() if "launcher: opening took" in line]
+        if said:
+            return said[0].split("launcher: opening ", 1)[1]
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(launcher_on_niri.POLL)
 
 
 def stepped_out(shell: Shell) -> str | None:
@@ -541,7 +553,17 @@ def within_asked() -> list[str]:
     return [name for name in re.split(r"[\s,]+", os.environ.get("LAB_WITHIN", "")) if name]
 
 
-def within_known(launcher: Path) -> None:
+def debugged(given: str) -> bool:
+    """Say whether QS_GIVEN opens the shell to the profiler's port, read as the shell gets it.
+
+    launcher_on_niri gives the shell QS_GIVEN split on whitespace, so `--debug 37680` opens
+    another port, and two spaces between the words still open this one.
+    """
+    words = given.split()
+    return any(word == "--debug" and port == PORT for word, port in itertools.pairwise(words))
+
+
+def lab_asks_known(launcher: Path) -> None:
     """Fail at once on a LAB_WITHIN name that's no function of the launcher's, or no profile.
 
     Such a name matches nothing in the trace, so its span would be left out without a word, at
@@ -562,7 +584,7 @@ def within_known(launcher: Path) -> None:
         else "LAB_WITHIN profiles only with LAB_PROFILE"
         if asked and not os.environ.get("LAB_PROFILE")
         else f'LAB_PROFILE profiles only a shell given QS_GIVEN = "--debug {PORT}"'
-        if os.environ.get("LAB_PROFILE") and f"--debug {PORT}" not in os.environ.get("QS_GIVEN", "")
+        if os.environ.get("LAB_PROFILE") and not debugged(os.environ.get("QS_GIVEN", ""))
         else None
     )
     if refused:
@@ -646,7 +668,7 @@ def test_each_home_key_is_timed(capsys: pytest.CaptureFixture[str], tmp_path: Pa
     step_key = os.environ.get("LAB_STEP_KEY", "ret")
     launcher_on_niri.installed(int(os.environ.get("LAB_PROGRAMS", "0")))
     named(os.environ.get("LAB_NAMED", ""), step, step_key)
-    within_known(Path(os.environ["SHELL_FOLDER"]) / "Launcher.qml")
+    lab_asks_known(Path(os.environ["SHELL_FOLDER"]) / "Launcher.qml")
     agents = agents_served(int(os.environ.get("LAB_AGENTS", "0")))
     with agents as moved, launcher_on_niri.running() as shell:
         shell.unshared()

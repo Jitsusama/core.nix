@@ -12412,6 +12412,8 @@ Scope {
         if (unlooked.length > 0 || unready.length > 0)
             readying.start();
         openAsked = -1;
+        openAskedClocks = null;
+        openWorkedClocks = null;
         fillEarly = null;
         wokeEarly = null;
         markOpen(false);
@@ -12718,6 +12720,8 @@ Scope {
         if (asked >= 0 && !open && !opening) {
             fillEarly = null;
             wokeEarly = null;
+            openAskedClocks = null;
+            openWorkedClocks = null;
         }
         if ((!open && !opening) || asked < 0)
             return;
@@ -12737,9 +12741,7 @@ Scope {
             waiting: Math.round(begun - settled), drawing: Math.round(drawn - begun),
             sizing: Math.round(sized - drawn) };
         const worked = Math.round(openWorked);
-        const thread = Thread.spent(openAskedClocks?.thread, openWorkedClocks?.thread);
-        const collecting = openAskedClocks && openWorkedClocks
-            ? Math.max(0, openWorkedClocks.collected - openAskedClocks.collected) : 0;
+        const { thread, collecting } = Thread.workingSpent(openAskedClocks, openWorkedClocks);
         const workingSaid = Collector.workingSaid(collecting)
             + Thread.said(openWorked, thread, "its working");
         openAskedClocks = null;

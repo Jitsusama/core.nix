@@ -243,6 +243,22 @@ QtObject {
             Collector.workingSaid(12.4), "; the collector 12 ms of its working");
         check(failures, "working the collector didn't reach says nothing of it",
             Collector.workingSaid(0.4), "");
+        check(failures, "half a millisecond of it rounds to one, and is said",
+            Collector.workingSaid(0.5), "; the collector 1 ms of its working");
+        const askedClocks = { collected: 40, thread: { ran: 1000, waited: 50 } };
+        const workedClocks = { collected: 52.5, thread: { ran: 1014, waited: 53 } };
+        check(failures, "an opening's working is spent from its ask to its work done",
+            JSON.stringify(Thread.workingSpent(askedClocks, workedClocks)),
+            JSON.stringify({ thread: { ran: 14, waited: 3 }, collecting: 12.5 }));
+        check(failures, "working never done says neither the thread nor the collector",
+            JSON.stringify(Thread.workingSpent(askedClocks, null)),
+            JSON.stringify({ thread: null, collecting: 0 }));
+        check(failures, "nor does an ask whose clocks weren't read",
+            JSON.stringify(Thread.workingSpent(null, workedClocks)),
+            JSON.stringify({ thread: null, collecting: 0 }));
+        check(failures, "a collector's count gone back takes none of the working",
+            Thread.workingSpent({ collected: 60, thread: askedClocks.thread },
+                workedClocks).collecting, 0);
         // Read once the room is left, so outside has the room or more and
         // the chunks the room, or more under Qt's own limit, or, as here,
         // less, their cap holding them nearer.
