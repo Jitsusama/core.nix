@@ -417,19 +417,17 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
     let scratches = far::scratches();
     let handover = scratches.join(&quest).join(far::HANDOVER);
     let cleared = far::spent::clear(&scratches, &handover, &here(), std::time::SystemTime::now());
-    if cleared.gone > 0 {
-        let (gone, folders) = (
-            cleared.gone,
-            if cleared.gone == 1 {
-                "folder"
-            } else {
-                "folders"
-            },
-        );
+    let gone = cleared.gone;
+    if gone > 0 {
+        let folders = if gone == 1 { "folder" } else { "folders" };
         eprintln!("cleared {gone} spent job {folders} from {quest}'s handover");
     }
     for (name, error) in &cleared.kept {
-        eprintln!("couldn't clear {name} from {quest}'s handover, so it travels again: {error}");
+        let name = name.escape_debug();
+        eprintln!("couldn't clear {name} from {quest}'s handover: {error}");
+    }
+    if cleared.linked {
+        eprintln!("cleared nothing from {quest}'s handover, as it's reached through a link");
     }
     let job = Job {
         handover: handover.join(&id),

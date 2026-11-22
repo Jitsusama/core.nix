@@ -37,9 +37,11 @@ while [ "$1" != -- ]; do shift; done
 shift
 here="$HOME/$SCRATCHES" far="$REALM/far/$SCRATCHES"
 cross() {
-  mkdir -p "$2" && cp -R "$1/." "$2/"
-  find "$2" -mindepth 1 \( -name '.*' -o -name target -o -name node_modules \) \
+  carried=$(mktemp -d)
+  cp -R "$1/." "$carried/"
+  find "$carried" -mindepth 1 \( -name '.*' -o -name target -o -name node_modules \) \
     -prune -exec rm -rf {} +
+  mkdir -p "$2" && cp -R "$carried/." "$2/" && rm -rf "$carried"
 }
 cross "$here" "$far"
 echo "a login shell's welcome"
@@ -316,6 +318,10 @@ fn a_job_clears_what_runs_here_left_but_never_a_folder_a_run_holds() {
         "the folder a killed run left wasn't cleared"
     );
     assert!(running.exists(), "a folder a run still holds was cleared");
+    assert!(
+        owner.exists(),
+        "a crossing took away the owner file a run holds"
+    );
     assert!(
         err.contains(&format!(
             "cleared 1 spent job folder from {QUEST}'s handover"

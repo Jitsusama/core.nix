@@ -22,7 +22,7 @@
 //! once it has lain untouched a day.
 
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
@@ -40,12 +40,17 @@ const SPENT: &str = ".spent-";
 /// past any job's run, so another machine's job is never cut short.
 pub const UNTOUCHED_A_DAY: Duration = Duration::from_hours(24);
 
-/// What a clearing did: how many spent folders went, and each that
-/// wouldn't, by name, with why.
+/// The most of an owner file read: a machine's name and a process id.
+const OWNER_AT_MOST: u64 = 256;
+
+/// What a clearing did: how many spent folders went, each that wouldn't,
+/// by name, with why, and whether it refused a handover reached through a
+/// link.
 #[derive(Debug, Default)]
 pub struct Cleared {
     pub gone: usize,
     pub kept: Vec<(String, io::Error)>,
+    pub linked: bool,
 }
 
 /// Makes the job's folder `job`, names in it this `machine` and process as
@@ -55,19 +60,23 @@ pub fn owned(job: &Path, machine: &str) -> io::Result<File> {
     fs::create_dir_all(job)?;
     let mut owner = File::create(job.join(OWNER))?;
     // Locked before it names anyone, so a run that finds this machine
-    // named finds it held; one that finds it empty leaves it a day.
-    owner.lock()?;
-    writeln!(owner, "{machine}\t{}", std::process::id())?;
+    // named finds it held; one that finds it empty leaves it a day. Where
+    // the filesystem takes no locks, it names nobody, and is left a day.
+    if owner.lock().is_ok() {
+        writeln!(owner, "{machine}\t{}", std::process::id())?;
+    }
     Ok(owner)
 }
 
 /// Removes each spent job's folder in `handover`, as this `machine` finds
 /// it `now`. Every folder from `scratches` down to the handover must be a
 /// folder, not a link, so that nothing outside the quest is ever removed.
-/// A folder that won't go is left for the next run, and said.
+/// A folder that won't go is left for the next run, and said; one another
+/// run took first is neither.
 pub fn clear(scratches: &Path, handover: &Path, machine: &str, now: SystemTime) -> Cleared {
     let mut cleared = Cleared::default();
-    if !plain(scratches, handover) {
+    if linked(scratches, handover) {
+        cleared.linked = true;
         return cleared;
     }
     let Ok(entries) = fs::read_dir(handover) else {
@@ -91,42 +100,53 @@ pub fn clear(scratches: &Path, handover: &Path, machine: &str, now: SystemTime) 
         };
         match removed {
             Ok(()) => cleared.gone += 1,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => cleared.kept.push((name, error)),
         }
     }
     cleared
 }
 
-/// Whether `handover` lies under `scratches` and it and every folder
-/// between them is a folder, not a link.
-fn plain(scratches: &Path, handover: &Path) -> bool {
-    handover.strip_prefix(scratches).is_ok_and(|below| {
+/// Whether `handover` lies outside `scratches`, or something between them,
+/// it included, is there but not a folder, as a link isn't.
+fn linked(scratches: &Path, handover: &Path) -> bool {
+    handover.strip_prefix(scratches).map_or(true, |below| {
         let mut at = scratches.to_path_buf();
-        below.components().all(|part| {
+        below.components().any(|part| {
             at.push(part);
-            fs::symlink_metadata(&at).is_ok_and(|meta| meta.is_dir())
+            fs::symlink_metadata(&at).is_ok_and(|meta| !meta.is_dir())
         })
     })
 }
 
 /// Whether the job's folder `job` is spent: this `machine`'s once no run
-/// holds it, any other once it has lain untouched a day by `now`.
+/// holds it, any other once it has lain untouched a day by `now`. One
+/// whose lock can't be asked after falls to the day, as another's does.
 fn spent(job: &Path, machine: &str, now: SystemTime) -> bool {
-    let owner = job.join(OWNER);
-    match fs::read_to_string(&owner) {
-        Ok(said) if said.split('\t').next() == Some(machine) => !held(&owner),
-        _ => fs::metadata(job)
+    let untouched = || {
+        fs::metadata(job)
             .and_then(|meta| meta.modified())
             .ok()
             .and_then(|modified| now.duration_since(modified).ok())
-            .is_some_and(|since| since >= UNTOUCHED_A_DAY),
+            .is_some_and(|since| since >= UNTOUCHED_A_DAY)
+    };
+    // Only a plain file, opened without blocking, so a link or a pipe
+    // put there can't lead a run astray or hold it.
+    let Ok(owner) = super::landing::opened_plain(&job.join(OWNER)) else {
+        return untouched();
+    };
+    let mut said = String::new();
+    let read = (&owner).take(OWNER_AT_MOST).read_to_string(&mut said);
+    if read.is_err() || said.split('\t').next() != Some(machine) {
+        return untouched();
     }
-}
-
-/// Whether a run holds the `owner` file: held unless its lock is had, so
-/// a file that won't open or lock is never taken for spent.
-fn held(owner: &Path) -> bool {
-    File::open(owner).map_or(true, |file| file.try_lock().is_err())
+    // A shared lock, which a file opened only to read can take; a live
+    // run's own lock refuses it.
+    match owner.try_lock_shared() {
+        Ok(()) => true,
+        Err(fs::TryLockError::WouldBlock) => false,
+        Err(fs::TryLockError::Error(_)) => untouched(),
+    }
 }
 
 #[cfg(test)]
@@ -210,7 +230,11 @@ mod tests {
         let unowned = handover.unowned("2-2");
         let running = handover.path.join("3-3");
         let _held = owned(&running, "kestrel").unwrap();
-        let a_day_on = touched(&osprey).max(touched(&unowned)) + UNTOUCHED_A_DAY;
+        let last = touched(&osprey)
+            .max(touched(&unowned))
+            .max(touched(&running));
+        // A day on for every folder, this machine's held one too.
+        let a_day_on = last + UNTOUCHED_A_DAY;
         assert_eq!(
             handover.clear(a_day_on).gone,
             2,
@@ -261,17 +285,19 @@ mod tests {
     }
 
     #[test]
-    fn a_handover_that_is_a_link_clears_nothing_it_leads_to() {
+    fn a_handover_reached_through_a_link_clears_nothing_it_leads_to() {
         let handover = Handover::new("link");
+        // The folder above the handover, not the handover itself.
+        let above = handover.path.parent().unwrap().to_path_buf();
         let elsewhere = handover.scratches.join("elsewhere-else");
-        std::fs::create_dir_all(elsewhere.join(format!("{SPENT}7-7"))).unwrap();
-        std::fs::remove_dir(&handover.path).unwrap();
-        std::os::unix::fs::symlink(&elsewhere, &handover.path).unwrap();
-        assert_eq!(handover.clear(SystemTime::now()).gone, 0, "it's a link");
-        assert!(
-            elsewhere.join(format!("{SPENT}7-7")).exists(),
-            "what the link leads to was cleared"
-        );
+        let spent = elsewhere.join(format!("elsewhere/{SPENT}7-7"));
+        std::fs::create_dir_all(&spent).unwrap();
+        std::fs::remove_dir_all(&above).unwrap();
+        std::os::unix::fs::symlink(&elsewhere, &above).unwrap();
+        let cleared = handover.clear(SystemTime::now());
+        assert!(cleared.linked, "it didn't say it met a link");
+        assert_eq!(cleared.gone, 0, "it's reached through a link");
+        assert!(spent.exists(), "what the link leads to was cleared");
     }
 
     #[test]
@@ -286,12 +312,10 @@ mod tests {
         let cleared = handover.clear(SystemTime::now());
         let open = std::fs::Permissions::from_mode(0o700);
         std::fs::set_permissions(stuck.join("tree"), open).unwrap();
-        // Whoever may remove what they can't write, as root may, sees it go.
-        if stuck.exists() {
-            assert_eq!(cleared.gone, 0, "it didn't go");
-            let names: Vec<&str> = cleared.kept.iter().map(|(name, _)| name.as_str()).collect();
-            assert_eq!(names, [format!("{SPENT}8-8")], "it wasn't said by name");
-        }
+        assert!(stuck.exists(), "a folder it couldn't write went");
+        assert_eq!(cleared.gone, 0, "it didn't go");
+        let names: Vec<&str> = cleared.kept.iter().map(|(name, _)| name.as_str()).collect();
+        assert_eq!(names, [format!("{SPENT}8-8")], "it wasn't said by name");
     }
 
     #[test]
@@ -304,5 +328,6 @@ mod tests {
             SystemTime::now(),
         );
         assert_eq!((cleared.gone, cleared.kept.len()), (0, 0));
+        assert!(!cleared.linked, "a handover not there yet is no link");
     }
 }
