@@ -171,6 +171,15 @@ in
     shell.reports = lib.mkForce false;
   };
 
+  # With reports off, a slow key's line says an arrow whole and a step by
+  # its arrow and its row's letters, as each of keyTimed's callers in
+  # Launcher.qml says its key is (modules/quickshell/tests/slow-keys-on-niri-test.py).
+  the-launcher-says-a-slow-keys-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-a-slow-keys-kind-on-niri";
+    tests = ../tests/slow-keys-on-niri-test.py;
+    shell.reports = lib.mkForce false;
+  };
+
   # Each of Super+E's groups has its emoji centred on its name as niri shows
   # the launcher, at 1.5 and 2 (modules/quickshell/tests/emoji-marks-on-niri-test.py).
   # It reads the launcher's own rows, which kept each emoji's measure with no

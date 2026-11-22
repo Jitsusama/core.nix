@@ -703,6 +703,17 @@ def placed(said: str) -> Json | None:
     return None if at == "nowhere" else cast("Json", json.loads(at))
 
 
+def logged_since(shell: Shell, mark: int) -> str:
+    """Give what the shell's log says since the mark, whole lines only.
+
+    Its own lines, as a journal's are, which `said_since` leaves out for the reports alone.
+    """
+    with shell.log.open("rb") as log:
+        log.seek(mark)
+        written = log.read()
+    return written[: written.rfind(b"\n") + 1].decode(errors="replace")
+
+
 def niri_pid(socket: str) -> int:
     """Give the pid of the niri listening at `socket`, which niri names niri.<display>.<pid>.sock.
 

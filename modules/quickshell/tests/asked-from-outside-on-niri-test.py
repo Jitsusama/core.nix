@@ -34,14 +34,6 @@ LINK_QUIET = 0.8
 shell = launcher_on_niri.shell
 
 
-def logged_since(shell: Shell, mark: int) -> str:
-    """Give what the shell's log says since the mark, whole lines only."""
-    with shell.log.open("rb") as log:
-        log.seek(mark)
-        written = log.read()
-    return written[: written.rfind(b"\n") + 1].decode(errors="replace")
-
-
 def asked(shell: Shell, start: str, *words: str) -> tuple[str, str]:
     """Call the launcher's IPC with these words, and give its answer and the log it left.
 
@@ -51,10 +43,10 @@ def asked(shell: Shell, start: str, *words: str) -> tuple[str, str]:
     mark = shell.mark()
     answer = shell.as_account(shell.ipc(*(shlex.quote(word) for word in words)))
     deadline = time.monotonic() + WRITTEN_WITHIN
-    said = logged_since(shell, mark)
+    said = launcher_on_niri.logged_since(shell, mark)
     while f"launcher: {start}" not in said and time.monotonic() < deadline:
         time.sleep(0.1)
-        said = logged_since(shell, mark)
+        said = launcher_on_niri.logged_since(shell, mark)
     return answer, said
 
 

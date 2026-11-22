@@ -1,0 +1,124 @@
+"""What the launcher's journal says of a slow key while reports are off, on niri.
+
+modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
+shell's reports off. A key slower to its frame than launcher/Trials.js's FELT_MS is said in the
+journal by what it was (Presented.timedShown): words typed by how many letters, a step by its
+arrow and the letters of the row it named, and a key the launcher names itself, an arrow, whole,
+since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
+no case in Qt's engine reaches, so these press each kind and read its line.
+"""
+
+from __future__ import annotations
+
+import re
+import time
+from typing import TYPE_CHECKING
+
+import launcher_on_niri
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from launcher_on_niri import Shell
+
+# How many times a kind of key is pressed for one of them to be slow enough to be said: the
+# nested niri's software frames take longer than FELT_MS for nearly every key.
+TRIES = 6
+# How long a key's line has to reach the shell's log after its frame, in seconds.
+WRITTEN_WITHIN = 2.0
+# A slow key's line, holding what it said of the key.
+TOOK = re.compile(r"launcher: (.+?) took \d+ ms to its frame")
+# An arrow as its line says it whole, quoted as Presented.typedShown quotes.
+ARROWS = {'"\u2193"', '"\u2191"'}
+# A step as its line says it with reports off: its arrow and the letters of the row it named.
+STEP = re.compile(r"[\u2192\u2190] \d+ letters?")
+# How a step in and a step out begin.
+STEPS = {"\u2192 ", "\u2190 "}
+
+# The shell, started once for the file's cases.
+shell = launcher_on_niri.shell
+
+
+def keys_said(shell: Shell, mark: int) -> list[str]:
+    """Give what each slow key's line since the mark said of its key, oldest first."""
+    return [found.group(1) for found in TOOK.finditer(launcher_on_niri.logged_since(shell, mark))]
+
+
+def said_by(
+    shell: Shell, press: Callable[[], None], enough: Callable[[list[str]], bool]
+) -> list[str]:
+    """Press as `press` does, TRIES times at most, until the keys said are `enough`.
+
+    Give every key said since the first press, which a case reads whole, so a key said wrongly
+    fails it whichever try said it.
+    """
+    mark = shell.mark()
+    said: list[str] = []
+    for _ in range(TRIES):
+        press()
+        deadline = time.monotonic() + WRITTEN_WITHIN
+        while time.monotonic() < deadline:
+            said = keys_said(shell, mark)
+            if enough(said):
+                return said
+            time.sleep(launcher_on_niri.POLL)
+    return said
+
+
+def test_an_arrow_is_said_whole(shell: Shell) -> None:
+    """An arrow is said as itself, since the launcher names it and nobody typed it."""
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+
+    def down_and_up() -> None:
+        shell.send_key("down")
+        shell.send_key("up")
+
+    said = said_by(shell, down_and_up, lambda keys: bool(ARROWS & set(keys)))
+    shell.close_launcher()
+    assert ARROWS & set(said), f"no arrow was said as itself: {said}"
+    assert "1 letter" not in said, f"an arrow was counted as typed: {said}"
+
+
+def test_a_step_in_and_out_says_its_arrow_and_counts_the_row(shell: Shell) -> None:
+    """Return into a row and - out of it say their arrow and count the row's name.
+
+    Either said as typed would count the arrow among the letters, and said whole would say a
+    row's name, which a source may have written.
+    """
+
+    def in_and_out() -> None:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.type_in("programs", selecting="Programs")
+        shell.step_in()
+        shell.normal()
+        shell.send_chars("-")
+        shell.launcher_until(lambda shown: not shown["held"])
+        shell.close_launcher()
+
+    said = said_by(shell, in_and_out, lambda keys: {key[:2] for key in keys} >= STEPS)
+    steps = [key for key in said if key[:2] in STEPS]
+    assert {key[:2] for key in steps} == STEPS, f"a step wasn't said: {said}"
+    assert all(STEP.fullmatch(key) for key in steps), f"a step said more than letters: {said}"
+    assert not any("rograms" in key for key in said), f"a key said the row's name: {said}"
+
+
+def test_a_word_and_a_space_says_the_step_it_took(shell: Shell) -> None:
+    """A word and a space that step into a place say the step, its row counted, as Return's does.
+
+    The space's key is timed as the step it took rather than as the letters typed.
+    """
+
+    def stepped_in() -> None:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        shell.send_chars("network ")
+        shell.launcher_until(lambda shown: shown["path"][-1:] == ["Network"])
+        shell.close_launcher()
+
+    said = said_by(shell, stepped_in, lambda keys: any(key[:2] == "\u2192 " for key in keys))
+    steps = [key for key in said if key.startswith("\u2192 ")]
+    assert steps, f"the step a space took wasn't said: {said}"
+    assert all(STEP.fullmatch(key) for key in steps), f"the step said more than letters: {said}"
+    assert not any("etwork" in key for key in said), f"a key said the row's name: {said}"
