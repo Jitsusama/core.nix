@@ -65,8 +65,10 @@ pub fn needs_point(step: &str) -> bool {
 /// one in a handshake or done (`needs_point`) has unless it's on `from`.
 /// Where its point can't be named (`None`), one in a handshake is taken as
 /// having left, as the move it was asked is likelier than a rekey in the
-/// same moment, and carried on it costs at worst a way back to where it
-/// is, where taken as never begun it has its networks on mid-join. One
+/// same moment, where taken as never begun it has its networks on
+/// mid-join. Carried on, a rekey after all is found done where it is as
+/// the move's time runs out, taken as the move's (`reached`), and its
+/// network kept held to `to` until it comes off. One
 /// done isn't: with no step of leaving heard in its time, it's likelier
 /// never to have left than to have joined another point wholly unheard,
 /// as `reached` takes it too.

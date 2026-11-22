@@ -1914,8 +1914,9 @@ impl Wifid<'_> {
     /// Each is turned on alone, so one that won't doesn't leave the rest
     /// off. One that won't is said and not tried again: one forgotten
     /// meanwhile needn't be, and every one is turned on again as the card
-    /// comes off the network it's on (`free`) or is handed its networks
-    /// at a change to what's saved (`give_networks`).
+    /// comes off the network it's on (`free`), or is handed its networks
+    /// (`give_networks`) at a change to what's saved or by a stall's nudge
+    /// 20 s into looking off every network.
     async fn turn_on_networks(&self, card: &str) {
         let listed = async {
             let at = self.supplicant.get_interface(card).await?;
@@ -1934,7 +1935,7 @@ impl Wifid<'_> {
                 let network = network.as_str();
                 eprintln!(
                     "<4>can't turn {card}'s {network} on again, so it may join only what's \
-                     on until it comes off its network or one is saved: {error}"
+                     on until it's handed its networks again: {error}"
                 );
             }
         }
@@ -3044,8 +3045,8 @@ impl Wifid<'_> {
             // (`under_way`).
             if on.is_none() && left {
                 println!(
-                    "<7>{card} is done on a point wifid can't name on another network, so isn't \
-                     taken as at {to}"
+                    "<7>{card} is done on a point wifid can't name, not on the network its move \
+                     holds, so isn't taken as at {to}"
                 );
             }
             return false;
