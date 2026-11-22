@@ -3,7 +3,10 @@
 //! 19:05 miss, the background pi host's crash, was fixed on core #5800's
 //! merge, while the last switch predated it and the host still loaded the
 //! older runtime's pi. Whatever cadence can't read counts as not running,
-//! so a blind hour never tells him fixed.
+//! so a blind hour never tells him fixed. Long because each repository's
+//! running revision is read its own way, from the switches, core's lock,
+//! the harness's install and the hosts' patches, and a change's verdict
+//! weighs them together, each with the reason it gives when it can't read.
 
 mod conversations;
 mod hosts;
