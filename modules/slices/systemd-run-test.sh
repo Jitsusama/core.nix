@@ -1,8 +1,9 @@
 # shellcheck shell=bash
 # Proves systemd-run.sh adds --slice-inherit for an agent's --user call
-# alone. Usage: systemd-run-test <wrapper>, where the wrapper was built in
-# front of a stand-in that echoes what it's given and reads its caller's
-# cgroup from ./cgroup.
+# alone, and jobs-work.slice for one from directly inside jobs. Usage:
+# systemd-run-test <wrapper>, where the wrapper was built in front of a
+# stand-in that echoes what it's given and reads its caller's cgroup from
+# ./cgroup.
 set -euo pipefail
 run=$1
 manager=0::/user.slice/user-1000.slice/user@1000.service
@@ -20,7 +21,18 @@ says() {
   fi
 }
 
-says "${manager}/jobs.slice/jobs.service" "--slice-inherit --user -q true" --user -q true
+# A call from a unit sitting in jobs itself, as pi's commands and a host's
+# spawners do, goes in jobs-work.slice: jobs.slice holds no cores, so the
+# slice it would inherit lets the unit onto every one.
+says "${manager}/jobs.slice/jobs.service" "--slice=jobs-work.slice --user -q true" --user -q true
+says "${manager}/jobs.slice/pi-spawner-9-a1.scope" "--slice=jobs-work.slice --user --scope true" \
+  --user --scope true
+# One from a slice inside jobs keeps that slice: Joel's terminal work and
+# timed work stay free, and pi's sorted work stays where it was sorted.
+for slice in jobs-awaited.slice/awaited.service jobs-timed.slice/timed.service \
+  jobs-work.slice/jobs-work-unranked.slice/work-1.scope; do
+  says "${manager}/jobs.slice/${slice}" "--slice-inherit --user true" --user true
+done
 says "${manager}/agents.slice/kitty-1-3.scope" "--slice-inherit --user --scope true" \
   --user --scope true
 says "${manager}/app.slice/kitty-1-0.scope" "--user -u run-u1 true" --user -u run-u1 true

@@ -11,6 +11,15 @@
 # its caller runs in. Calls from Joel's own programs, the system manager's
 # and those naming a slice or another machine pass through unchanged.
 #
+# A call from a unit sitting in jobs.slice itself goes in jobs-work.slice
+# instead. pi writes each command it starts into jobs.service, which holds
+# the efficient cores, but the slice it would inherit is jobs.slice, which
+# holds none, since Joel's terminal work and timed work sit under it
+# (efficient-work.nix). On 22 November 92 units agents started that way,
+# and the 54 scopes hosts start their commands' spawners in, ran on every
+# core, and 17 of 37 threads in five samples of the performance cores sat
+# in jobs.slice. A call from a slice inside jobs keeps inheriting it.
+#
 # A slice named as a property, -p Slice=, is named too: systemd keeps the
 # last Slice= a unit is given, so an added --slice-inherit put the units
 # of a night's runs back in agents.slice, made for jobs.slice that way.
@@ -25,8 +34,9 @@ systemd-run  run a unit, an agent's kept in its own slice
 
   A --user call naming no slice, from anywhere but
   app.slice or session.slice, runs in its caller's slice
-  rather than among the apps. Every other call reaches
-  systemd's own systemd-run unchanged.
+  rather than among the apps, or in jobs-work.slice when
+  its caller sits in jobs.slice itself. Every other call
+  reaches systemd's own systemd-run unchanged.
 
 EXAMPLES
   systemd-run --user --scope true  in the caller's slice
@@ -59,6 +69,8 @@ case "${user}:${cgroup}" in
   false:* | *:*/app.slice | *:*/app.slice/* | *:*/session.slice | *:*/session.slice/*)
     exec "${real}" "$@"
     ;;
+  *:*/user@*.service/jobs.slice/*.slice/*) exec "${real}" --slice-inherit "$@" ;;
+  *:*/user@*.service/jobs.slice/*) exec "${real}" --slice=jobs-work.slice "$@" ;;
   *:*/user@*.service/*) exec "${real}" --slice-inherit "$@" ;;
   *) exec "${real}" "$@" ;;
 esac
