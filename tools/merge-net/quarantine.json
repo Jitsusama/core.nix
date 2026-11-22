@@ -77,5 +77,15 @@
       "test_a_fenced_command_reads_no_secret_copy_through_x11"
     ],
     "test": "vm-desktop-keeps-copies"
+  },
+  {
+    "at": 1795361620,
+    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
+    "due": "2026-11-23",
+    "due_why": "Its owner, the still windows check's, by 2026-11-23 18:00 local merges the fix that ends each of the case's starts on what its windows drew rather than on a 600 ms clock, and takes this entry off with it. It failed twice at 0e420d94fa78 on 22 Nov, once with a moving window drawing no frame in starts 2, 4, 6 and 10 and once past the script's 120 s, and once at 9a896961 on 20 Nov, which passed on a rerun, so it flaked before the PR the net first named. That late frames fall past the clock is a hypothesis the fix's red and green runs test. While it stands, nothing catches a still window drawing as other windows' animations start",
+    "owner_pr": 5921,
+    "owner_session": "XY9H5C",
+    "reason": "failed twice at 0e420d94fa78, and once at 9a896961 before it",
+    "test": "still-windows-draw-nothing-as-animations-start-on-niri"
   }
 ]
