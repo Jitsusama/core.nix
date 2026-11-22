@@ -1110,6 +1110,40 @@ QtObject {
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
             Search.found("\u2060\u200b", "a-\u2060b"), []);
+        searchKeepsPace(holds);
+    }
+
+    // A search over a drawer of hyphenated names, as Emoji's every part
+    // is, reads each line by its code rather than a letter at a time,
+    // which took a median 56 ms a key against 10 (2026-11-20). It's held
+    // to a multiple of the same lines with no joiners, which need no map,
+    // the fastest of five batches of ten, since a slower one is the
+    // builder's other work or the collector. By code took 3.2 times as
+    // long as with no joiners on a builder, and a letter at a time 9.8
+    // (2026-11-22), so six holds one and refuses the other.
+    function searchKeepsPace(holds) {
+        const fastest = work => {
+            let least = Infinity;
+            for (let batch = 0; batch < 5; batch += 1) {
+                const began = Date.now();
+                for (let round = 0; round < 10; round += 1) {
+                    work();
+                }
+                least = Math.min(least, (Date.now() - began) / 10);
+            }
+            return least;
+        };
+        const joined = Array.from({ length: 1833 }, (_, at) =>
+            `Face-\u2060with-\u2060tears ${at} \u00b7 t-\u2060shirt \u00b7 wi-\u2060fi`);
+        const plain = joined.map(line => line.replace(/\u2060/g, ""));
+        const searchOf = lines => () => {
+            const find = Search.finder("shirt");
+            return lines.filter(line => find(line).length > 0).length;
+        };
+        const byCode = fastest(searchOf(joined));
+        const bare = fastest(searchOf(plain));
+        holds(`a search over joined words takes ${byCode} ms, at most six of ${bare} ms`,
+            byCode <= 6 * bare + 1, true);
     }
 
     function drawerSearch(holds) {
