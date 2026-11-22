@@ -1869,12 +1869,14 @@
     once it is
   '';
   local-name-comes-back = ''
-    a Mac macOS renamed gets its declared local name back, said once with what it was, and a name
-    already right is left unwritten
+    a Mac macOS renamed gets its declared local name back, said once with what it was, at most
+    once in five minutes; a name already right is left unwritten, an unset one is set, and one
+    that can't be read is said and left alone
   '';
   local-name-is-kept-by-a-job = ''
-    a Mac with a local name runs a root job that sets it back whenever macOS writes its network
-    settings and once a minute, and a Mac with none runs nothing
+    a Mac with a local name runs a root job that sets it back, by that name and not the host
+    name, whenever macOS writes its network settings and once a minute, and a Mac with none runs
+    nothing
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a

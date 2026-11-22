@@ -6,7 +6,9 @@
 # loses it until someone sets the name back by hand. nix-darwin sets the
 # name only when the system switches, so a job here sets it back whenever
 # macOS writes its network settings, and once a minute in case a change
-# lands elsewhere. A Mac that declares no local name is left as it is.
+# lands elsewhere, but at most once in five minutes, so a conflict that
+# lasts can't have it and macOS trading the name (keep.sh says why). A Mac
+# that declares no local name is left as it is.
 {
   config,
   lib,
@@ -23,17 +25,16 @@ in
         (lib.getExe pkgs.bash)
         "${./keep.sh}"
         name
+        "/var/db/local-name.last"
       ];
       # scutil, date and what bash needs, from macOS itself.
       EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
       WatchPaths = [ "/Library/Preferences/SystemConfiguration/preferences.plist" ];
       StartInterval = 60;
       RunAtLoad = true;
-      # Setting the name writes the same settings it watches; this keeps
-      # that from starting it again at once.
-      ThrottleInterval = 10;
       # Each rename it undoes, with when, so a Mac that keeps renaming
-      # itself is seen.
+      # itself is seen: at most twelve lines an hour, since it sets the
+      # name back at most once in five minutes.
       StandardErrorPath = "/var/log/local-name.log";
     };
   };
