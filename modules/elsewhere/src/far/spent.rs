@@ -7,145 +7,208 @@
 //! files, and stopped near half. So each run clears what's spent before
 //! it leaves its own.
 //!
+//! A run holds a lock on its folder's owner file for as long as it lives,
+//! and the system lets the lock go when the process ends, however it
+//! ends. A process id would not do: under an agent's fence a run's id is
+//! its fence's own, so another fence's live run can look gone, and an id
+//! is used again once its process ends.
+//!
 //! The handover crosses to every machine the quest is shared with, so a
-//! folder here may be another machine's job, its process somewhere else.
-//! Each job's folder names the machine and the process that left it, and
-//! a folder is spent when this machine left it and its process is gone,
-//! or when it has lain untouched a day, whoever left it.
+//! folder here may be another machine's job, its lock held somewhere
+//! else. So a folder this machine left is spent once no run holds it, and
+//! any other, another machine's or one that says nothing of who left it,
+//! once it has lain untouched a day.
 
-use std::fs;
-use std::io;
+use std::fs::{self, File};
+use std::io::{self, Write};
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
 /// The file naming the machine and process that left a job's folder,
-/// `MACHINE<TAB>PID`, written before anything else in it.
+/// `MACHINE<TAB>PID`, locked while that process lives.
 const OWNER: &str = "elsewhere-owner";
 
-/// How long a folder may lie untouched before it's spent whoever left
-/// it: past any job's run, so another machine's job is never cut short.
+/// The owner file while it's being written and locked, hidden so that no
+/// crossing carries it.
+const OWNING: &str = ".elsewhere-owner";
+
+/// What a spent folder is renamed with before it's removed, so one whose
+/// removal was cut short is still known for spent, its owner file gone or
+/// not. Hidden, so that no crossing carries it.
+const SPENT: &str = ".spent-";
+
+/// How long another machine's folder may lie untouched before it's spent:
+/// past any job's run, so another machine's job is never cut short.
 pub const UNTOUCHED_A_DAY: Duration = Duration::from_hours(24);
 
-/// Makes the job's folder `job` and names in it this `machine` and
-/// process as what left it.
-pub fn owned(job: &Path, machine: &str) -> io::Result<()> {
+/// Makes the job's folder `job`, names in it this `machine` and process as
+/// what left it, and holds it: until the file answered is closed, as it is
+/// when the process ends, no run takes the folder for spent.
+pub fn owned(job: &Path, machine: &str) -> io::Result<File> {
     fs::create_dir_all(job)?;
-    fs::write(
-        job.join(OWNER),
-        format!("{machine}\t{}\n", std::process::id()),
-    )
+    // Locked before it's named, so no run finds it named and not held.
+    let owning = job.join(OWNING);
+    let mut owner = File::create(&owning)?;
+    owner.lock()?;
+    writeln!(owner, "{machine}\t{}", std::process::id())?;
+    fs::rename(&owning, job.join(OWNER))?;
+    Ok(owner)
 }
 
-/// Removes each spent job's folder in `handover`, as `now` and this
-/// `machine` find it, whether a process is `alive` telling which of this
-/// machine's are gone, and says how many went. A folder that won't go is
-/// left for the next run, since none of this is the job's own business.
-pub fn clear(
-    handover: &Path,
-    machine: &str,
-    alive: impl Fn(u32) -> bool,
-    now: SystemTime,
-) -> usize {
+/// Removes each spent job's folder in `handover`, as this `machine` finds
+/// it `now`, and says how many went. A folder that won't go is left for
+/// the next run, since none of this is the job's own business.
+pub fn clear(handover: &Path, machine: &str, now: SystemTime) -> usize {
     let Ok(entries) = fs::read_dir(handover) else {
         return 0;
     };
     entries
         .flatten()
         .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_dir()))
-        .filter(|entry| spent(&entry.path(), machine, &alive, now))
-        .filter(|entry| fs::remove_dir_all(entry.path()).is_ok())
+        .filter(|entry| {
+            let (job, name) = (entry.path(), entry.file_name());
+            let name = name.to_string_lossy();
+            if name.starts_with(SPENT) {
+                return fs::remove_dir_all(&job).is_ok();
+            }
+            if !spent(&job, machine, now) {
+                return false;
+            }
+            let taken = handover.join(format!("{SPENT}{name}"));
+            fs::rename(&job, &taken).is_ok() && fs::remove_dir_all(&taken).is_ok()
+        })
         .count()
 }
 
-/// Whether the job's folder `job` is spent.
-fn spent(job: &Path, machine: &str, alive: &impl Fn(u32) -> bool, now: SystemTime) -> bool {
-    let untouched = fs::metadata(job)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|modified| now.duration_since(modified).ok())
-        .is_some_and(|since| since >= UNTOUCHED_A_DAY);
-    if untouched {
-        return true;
+/// Whether the job's folder `job` is spent: this `machine`'s once no run
+/// holds it, any other once it has lain untouched a day by `now`.
+fn spent(job: &Path, machine: &str, now: SystemTime) -> bool {
+    let owner = job.join(OWNER);
+    match fs::read_to_string(&owner) {
+        Ok(said) if said.split('\t').next() == Some(machine) => !held(&owner),
+        _ => fs::metadata(job)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|since| since >= UNTOUCHED_A_DAY),
     }
-    let Ok(owner) = fs::read_to_string(job.join(OWNER)) else {
-        return false;
-    };
-    let mut words = owner.trim_end().split('\t');
-    let (Some(left_by), Some(pid)) = (words.next(), words.next()) else {
-        return false;
-    };
-    left_by == machine && pid.parse().is_ok_and(|pid| !alive(pid))
+}
+
+/// Whether a run holds the `owner` file: held unless its lock is had, so
+/// a file that won't open or lock is never taken for spent.
+fn held(owner: &Path) -> bool {
+    File::open(owner).map_or(true, |file| file.try_lock().is_err())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{UNTOUCHED_A_DAY, clear, owned};
+    use super::{SPENT, UNTOUCHED_A_DAY, clear, owned};
     use std::path::{Path, PathBuf};
-    use std::time::SystemTime;
+    use std::time::{Duration, SystemTime};
 
-    /// A handover of the test's own, emptied.
-    fn handover(what: &str) -> PathBuf {
-        let root =
-            std::env::temp_dir().join(format!("elsewhere-spent-{what}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
-        root
+    /// A handover of the test's own, emptied, and removed once the test
+    /// is done.
+    struct Handover(PathBuf);
+
+    impl Handover {
+        fn new(what: &str) -> Self {
+            let root =
+                std::env::temp_dir().join(format!("elsewhere-spent-{what}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&root);
+            std::fs::create_dir_all(&root).unwrap();
+            Self(root)
+        }
+
+        /// A job's folder, left by `machine`'s run that ended.
+        fn left(&self, id: &str, machine: &str) -> PathBuf {
+            let job = self.0.join(id);
+            std::fs::create_dir_all(job.join("tree")).unwrap();
+            std::fs::write(job.join("tree/Spec.tla"), "spec").unwrap();
+            std::fs::write(job.join(super::OWNER), format!("{machine}\t1\n")).unwrap();
+            job
+        }
+
+        /// A job's folder that says nothing of who left it.
+        fn unowned(&self, id: &str) -> PathBuf {
+            let job = self.0.join(id);
+            std::fs::create_dir_all(&job).unwrap();
+            job
+        }
+
+        fn clear(&self, now: SystemTime) -> usize {
+            clear(&self.0, "kestrel", now)
+        }
     }
 
-    /// A job's folder in `handover`, left by `machine`'s process `pid`.
-    fn left(handover: &Path, id: &str, machine: &str, pid: u32) -> PathBuf {
-        let job = handover.join(id);
-        std::fs::create_dir_all(job.join("tree")).unwrap();
-        std::fs::write(job.join("tree/Spec.tla"), "spec").unwrap();
-        std::fs::write(job.join(super::OWNER), format!("{machine}\t{pid}\n")).unwrap();
-        job
+    impl Drop for Handover {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 
     #[test]
-    fn only_this_machines_jobs_whose_process_is_gone_are_cleared() {
-        let handover = handover("gone");
-        let gone = left(&handover, "1-1", "kestrel", 1);
-        let running = left(&handover, "2-2", "kestrel", 2);
-        let osprey = left(&handover, "1-3", "osprey", 1);
-        let unowned = handover.join("4-4");
-        std::fs::create_dir_all(&unowned).unwrap();
-        let cleared = clear(&handover, "kestrel", |pid| pid == 2, SystemTime::now());
-        assert_eq!(cleared, 1);
-        assert!(!gone.exists(), "its process is gone");
-        assert!(running.exists(), "its process still runs");
-        assert!(osprey.exists(), "osprey's process may run there");
+    fn only_this_machines_folders_no_run_holds_are_cleared() {
+        let handover = Handover::new("gone");
+        let gone = handover.left("1-1", "kestrel");
+        let running = handover.0.join("2-2");
+        let _held = owned(&running, "kestrel").unwrap();
+        let osprey = handover.left("1-3", "osprey");
+        let unowned = handover.unowned("4-4");
+        assert_eq!(handover.clear(SystemTime::now()), 1, "only the one gone");
+        assert!(!gone.exists(), "no run holds it");
+        assert!(running.exists(), "its run still holds it");
+        assert!(osprey.exists(), "osprey's run may hold it there");
         assert!(unowned.exists(), "nothing says who left it");
     }
 
     #[test]
-    fn a_folder_untouched_a_day_is_cleared_whoever_left_it() {
-        let handover = handover("day");
-        let osprey = left(&handover, "1-1", "osprey", 1);
-        let unowned = handover.join("2-2");
-        std::fs::create_dir_all(&unowned).unwrap();
+    fn a_folder_untouched_a_day_is_cleared_unless_a_run_here_holds_it() {
+        let handover = Handover::new("day");
+        let osprey = handover.left("1-1", "osprey");
+        let unowned = handover.unowned("2-2");
+        let running = handover.0.join("3-3");
+        let _held = owned(&running, "kestrel").unwrap();
         let a_day_on = SystemTime::now() + UNTOUCHED_A_DAY;
-        assert_eq!(clear(&handover, "kestrel", |_| true, a_day_on), 2);
+        assert_eq!(handover.clear(a_day_on), 2, "the two no run here holds");
         assert!(!osprey.exists(), "osprey's, a day old, is cleared");
         assert!(!unowned.exists(), "one nothing owns, a day old, is cleared");
+        assert!(running.exists(), "a run here holding it keeps it, a day on");
     }
 
     #[test]
-    fn a_job_names_this_machine_and_process_as_what_left_it() {
-        let handover = handover("owned");
-        let job = handover.join("5-5");
-        owned(&job, "kestrel").unwrap();
-        let here = std::process::id();
-        assert_eq!(
-            clear(&handover, "kestrel", |pid| pid == here, SystemTime::now()),
-            0
-        );
-        assert_eq!(clear(&handover, "kestrel", |_| false, SystemTime::now()), 1);
-        assert!(!job.exists(), "its process gone, the job is cleared");
+    fn a_folder_untouched_less_than_a_day_is_kept() {
+        let handover = Handover::new("hours");
+        let osprey = handover.left("1-1", "osprey");
+        let unowned = handover.unowned("2-2");
+        let nearly = SystemTime::now() + UNTOUCHED_A_DAY - Duration::from_mins(1);
+        assert_eq!(handover.clear(nearly), 0, "neither is a day old");
+        assert!(osprey.exists() && unowned.exists(), "both are kept");
+    }
+
+    #[test]
+    fn a_jobs_folder_is_held_until_its_owner_file_closes() {
+        let handover = Handover::new("owned");
+        let job = handover.0.join("5-5");
+        let held = owned(&job, "kestrel").unwrap();
+        let said = std::fs::read_to_string(job.join(super::OWNER)).unwrap();
+        assert_eq!(said, format!("kestrel\t{}\n", std::process::id()));
+        assert_eq!(handover.clear(SystemTime::now()), 0, "its run holds it");
+        drop(held);
+        assert_eq!(handover.clear(SystemTime::now()), 1, "no run holds it");
+        assert!(!job.exists(), "its run gone, the job is cleared");
+    }
+
+    #[test]
+    fn a_folder_whose_clearing_was_cut_short_goes_next_time() {
+        let handover = Handover::new("cut");
+        let cut = handover.unowned(&format!("{SPENT}6-6"));
+        assert_eq!(handover.clear(SystemTime::now()), 1, "it was spent");
+        assert!(!cut.exists(), "what was left of it is gone");
     }
 
     #[test]
     fn a_handover_not_there_yet_clears_nothing() {
-        let missing = handover("missing").join("none");
-        assert_eq!(clear(&missing, "kestrel", |_| false, SystemTime::now()), 0);
+        let missing = Path::new("/nonexistent/handover");
+        assert_eq!(clear(missing, "kestrel", SystemTime::now()), 0);
     }
 }

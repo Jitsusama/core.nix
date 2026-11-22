@@ -264,6 +264,10 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
         asked.contains(&format!("share {QUEST}")) && asked.contains("run --need machine=far"),
         "the job didn't go by the quest's handover and mycelium's run: {asked}"
     );
+    assert!(
+        asked.contains(&format!("share {QUEST} --to far --wait --within 120\n")),
+        "the share wasn't waited for at the far machine as long as its files take: {asked}"
+    );
     assert_eq!(realm.never(), "", "ssh or rsync was called");
     assert_eq!(
         fs::read_to_string(realm.folder().join("out/n"))
@@ -275,6 +279,38 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
     assert!(
         emptied(&far) && emptied(&realm.handover()),
         "the far copy or the handover was left behind"
+    );
+}
+
+#[test]
+fn a_job_clears_what_runs_here_left_but_never_a_folder_a_run_holds() {
+    let realm = Realm::new(true);
+    realm.tracked("Spec.tla", "spec\n");
+    let handover = realm.handover();
+    let left = handover.join("1-1");
+    fs::create_dir_all(left.join("tree")).unwrap();
+    fs::write(left.join("tree/Spec.tla"), "spec\n").unwrap();
+    fs::write(left.join("elsewhere-owner"), format!("{}\t1\n", here())).unwrap();
+    let running = handover.join("2-2");
+    fs::create_dir_all(&running).unwrap();
+    let owner = running.join("elsewhere-owner");
+    fs::write(&owner, format!("{}\t2\n", here())).unwrap();
+    let held = fs::File::open(&owner).unwrap();
+    held.lock().unwrap();
+    let output = realm.check(&[], "cat Spec.tla");
+    let (out, err) = said(&output);
+    assert!(output.status.success(), "the far job failed: {err}");
+    assert_eq!(out, "spec\n", "the job didn't see its tree");
+    assert!(
+        !left.exists(),
+        "the folder a killed run left was carried again"
+    );
+    assert!(running.exists(), "a folder a run still holds was cleared");
+    assert!(
+        err.contains(&format!(
+            "cleared 1 spent job folder from {QUEST}'s handover"
+        )),
+        "it didn't say what it cleared: {err}"
     );
 }
 

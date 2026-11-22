@@ -415,7 +415,11 @@ fn there(settings: &Settings, kind: &Kind, asked: &Asked, machine: &str) -> Resu
             .map_or(0, |since| since.as_nanos())
     );
     let handover = far::scratches().join(&quest).join(far::HANDOVER);
-    far::spent::clear(&handover, &here(), alive, std::time::SystemTime::now());
+    let cleared = far::spent::clear(&handover, &here(), std::time::SystemTime::now());
+    if cleared > 0 {
+        let folders = if cleared == 1 { "folder" } else { "folders" };
+        eprintln!("cleared {cleared} spent job {folders} from {quest}'s handover");
+    }
     let job = Job {
         handover: handover.join(&id),
         quest,
@@ -456,8 +460,9 @@ fn send(
 ) -> Result<Sent, Failure> {
     let (quest, id) = (job.quest.as_str(), job.id.as_str());
     let paths = job.files.iter().map(|(path, _)| path.as_str());
-    far::spent::owned(&job.handover, &here())
-        .and_then(|()| far::left(&job.root, paths, &job.handover))
+    // Held until the job ends here, so no other run takes it for spent.
+    let _held = far::spent::owned(&job.handover, &here())
+        .and_then(|held| far::left(&job.root, paths, &job.handover).map(|()| held))
         .map_err(|error| {
             Failure::new(
                 Exit::Failed,
@@ -560,21 +565,6 @@ fn crosses_within(files: usize) -> u64 {
     u64::try_from(files / 16).map_or(u64::MAX, |more| (60 + more).max(120))
 }
 
-/// Whether this machine's process `pid` still runs: kill's signal 0 finds
-/// it, or finds it someone else's, which still runs.
-fn alive(pid: u32) -> bool {
-    // std links libc, so this comes from it.
-    unsafe extern "C" {
-        fn kill(pid: i32, signal: i32) -> i32;
-    }
-    let Ok(pid) = i32::try_from(pid) else {
-        return false;
-    };
-    // SAFETY: signal 0 sends nothing; it only asks whether the process is.
-    let found = unsafe { kill(pid, 0) } == 0;
-    found || std::io::Error::last_os_error().kind() == std::io::ErrorKind::PermissionDenied
-}
-
 /// Whether mycelium, asked `words`, says yes.
 fn mycelium(settings: &Settings, words: &[&str]) -> bool {
     let mut ask = Command::new(&settings.mycelium);
@@ -602,22 +592,12 @@ fn ended(status: std::process::ExitStatus) -> u8 {
 
 #[cfg(test)]
 mod tests {
-    use super::{alive, crosses_within};
+    use super::crosses_within;
 
     #[test]
     fn the_wait_for_files_to_cross_grows_with_them() {
         assert_eq!(crosses_within(10), 120, "never less than mycelium's own");
         assert_eq!(crosses_within(3_876), 302, "a test suite's tree");
         assert_eq!(crosses_within(10_000), 685, "the most a share carries");
-    }
-
-    #[test]
-    fn this_process_runs_and_one_past_any_pid_doesnt() {
-        assert!(alive(std::process::id()), "this test's own process runs");
-        assert!(
-            !alive(i32::MAX.unsigned_abs()),
-            "past any pid a system gives"
-        );
-        assert!(!alive(u32::MAX), "past what a pid can be");
     }
 }
