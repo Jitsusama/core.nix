@@ -54,30 +54,35 @@ function matchesIn(lines, pattern) {
     const find = Search.finder(pattern);
     const matches = [];
     for (let first = 0; first < lines.length;) {
-        const { run, text } = runFrom(lines, first);
+        const { wrap, text } = wrappedFrom(lines, first);
         let along = 0;
         for (const [start] of find(text)) {
-            while (along + 1 < run.length && run[along + 1].from <= start) {
+            while (along + 1 < wrap.length && wrap[along + 1].from <= start) {
                 along += 1;
             }
-            // One begun at the space a line wrapped at lands on the next.
-            const { line, from, length } = run[along];
-            matches.push(start - from < length || along + 1 === run.length
-                ? { line, letter: start - from } : { line: run[along + 1].line, letter: 0 });
+            // One begun at the spaces a line wrapped at lands on the next,
+            // and so do all the others begun there, one place to the eye.
+            const { line, from, length } = wrap[along];
+            const match = start - from < length || along + 1 === wrap.length
+                ? { line, letter: start - from } : { line: wrap[along + 1].line, letter: 0 };
+            const before = matches[matches.length - 1];
+            if (before?.line !== match.line || before?.letter !== match.letter) {
+                matches.push(match);
+            }
         }
-        first = run[run.length - 1].line + 1;
+        first = wrap[wrap.length - 1].line + 1;
     }
     return matches;
 }
 
-// The lines from `first` as one runs on into the next, each with where
-// its letters start in their text.
-function runFrom(lines, first) {
-    const run = [];
+// The lines from `first` as each Qt wrapped runs on into the next, each
+// with where its letters start in their text.
+function wrappedFrom(lines, first) {
+    const wrap = [];
     let text = "";
     for (let line = first; line < lines.length; line += 1) {
         const said = lines[line].text ?? "";
-        run.push({ line, from: text.length, length: said.length });
+        wrap.push({ line, from: text.length, length: said.length });
         text += said;
         const on = lines[line].on ?? null;
         if (on === null) {
@@ -85,7 +90,7 @@ function runFrom(lines, first) {
         }
         text += on;
     }
-    return { run, text };
+    return { wrap, text };
 }
 
 // Which match the cursor stands on, of how many, as { at, of } counting

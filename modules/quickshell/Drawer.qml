@@ -873,7 +873,10 @@ Floating {
             const box = words.positionToRectangle(from);
             const place = words.mapToItem(into, box.x, box.y);
             // All it holds to the next line, the space it wrapped at too,
-            // so a search runs on across a wrap (DrawerLines.runsOn).
+            // so a search runs on across a wrap (DrawerLines.runsOn). The
+            // next line of another paragraph begins past the break, which
+            // getText gives as Qt's selection does: a \n in a plain text,
+            // a paragraph or line separator in a styled one.
             const raw = words.getText(from, next);
             const length = raw.replace(/\s+$/, "").length;
             pieces.push({ text, words, from, y, length,

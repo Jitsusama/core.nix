@@ -1115,35 +1115,41 @@ QtObject {
 
     // A search over a drawer of hyphenated names, as Emoji's every part
     // is, reads each line by its code rather than a letter at a time,
-    // which took a median 56 ms a key against 10 (2026-11-20). It's held
-    // to a multiple of the same lines with no joiners, which need no map,
-    // the fastest of five batches of ten, since a slower one is the
-    // builder's other work or the collector. By code took 3.2 times as
-    // long as with no joiners on a builder, and a letter at a time 9.8
-    // (2026-11-22), so six holds one and refuses the other.
+    // which took a median 56 ms a key against 10 (2026-11-20). It's held to
+    // a multiple of the same lines with no joiners, which need no map: the
+    // fastest of five batches of ten each, a batch of one timed beside one
+    // of the other so both see the same machine, since a slower one is the
+    // builder's other work or the collector. A batch is long beside the
+    // clock's millisecond, so the bound needs no slack, and every search
+    // must find every line, so one quick from finding nothing passes none.
+    // By code took 2.8 times as long as with no joiners on a builder, and a
+    // letter at a time 12 (2026-11-22), so six holds one and refuses the
+    // other, twice over each way. It times the finder alone, as DrawerPage's
+    // walk over lines, the same with joiners or none, made it 3.0 and 6.4.
     function searchKeepsPace(holds) {
-        const fastest = work => {
-            let least = Infinity;
-            for (let batch = 0; batch < 5; batch += 1) {
-                const began = Date.now();
-                for (let round = 0; round < 10; round += 1) {
-                    work();
-                }
-                least = Math.min(least, (Date.now() - began) / 10);
+        const linesWith = joiner => Array.from({ length: 400 }, (_, at) =>
+            `Face-${joiner}with-${joiner}tears-${joiner}of-${joiner}joy ${at} \u00b7 `
+                + `t-${joiner}shirt \u00b7 wi-${joiner}fi \u00b7 pirate-${joiner}flag`);
+        const joined = linesWith("\u2060");
+        const plain = linesWith("");
+        const counts = new Set();
+        const batch = lines => {
+            const began = Date.now();
+            for (let round = 0; round < 10; round += 1) {
+                const find = Search.finder("shirt");
+                counts.add(lines.filter(line => find(line).length > 0).length);
             }
-            return least;
+            return Date.now() - began;
         };
-        const joined = Array.from({ length: 1833 }, (_, at) =>
-            `Face-\u2060with-\u2060tears ${at} \u00b7 t-\u2060shirt \u00b7 wi-\u2060fi`);
-        const plain = joined.map(line => line.replace(/\u2060/g, ""));
-        const searchOf = lines => () => {
-            const find = Search.finder("shirt");
-            return lines.filter(line => find(line).length > 0).length;
-        };
-        const byCode = fastest(searchOf(joined));
-        const bare = fastest(searchOf(plain));
-        holds(`a search over joined words takes ${byCode} ms, at most six of ${bare} ms`,
-            byCode <= 6 * bare + 1, true);
+        let byCode = Infinity;
+        let bare = Infinity;
+        for (let pass = 0; pass < 5; pass += 1) {
+            byCode = Math.min(byCode, batch(joined));
+            bare = Math.min(bare, batch(plain));
+        }
+        holds("a search over joined words finds every line", [...counts], [400]);
+        holds(`and a batch of them takes ${byCode} ms, at most six of ${bare} ms`,
+            byCode <= 6 * bare, true);
     }
 
     function drawerSearch(holds) {
@@ -1268,9 +1274,16 @@ QtObject {
         const wrapped = [
             { text: "Server time.\u200b", on: "" }, { text: "harbour.\u200btest", on: null },
             { text: "Sparkling", on: " " }, { text: "heart", on: null },
-            { text: "plain", on: null }, { text: "end" }
+            { text: "plain", on: null }, { text: "end" },
+            { text: "aa x", on: " " }, { text: "bb", on: " " }, { text: "x cc", on: "  " },
+            { text: "dd", on: null }
         ];
         const runningOn = [
+            ["across every line of a wrap", "aa x bb x cc  dd", [[6, 0]]],
+            ["from a wrap's middle line into the next", "bb x c", [[7, 0]]],
+            ["to each match, however many lines on", "c", [[8, 2], [8, 3]]],
+            ["landing once from the spaces a line wrapped at", " ",
+                [[0, 6], [3, 0], [6, 2], [7, 0], [8, 0], [8, 1], [9, 0]]],
             ["across a wrap at a zero-width space", "time.harbour", [[0, 7]]],
             ["across a wrap at a space", "g h", [[2, 8]]],
             ["landing on the next line from the space it wrapped at", " heart", [[3, 0]]],
@@ -1940,8 +1953,14 @@ QtObject {
         holds("but not into another text's",
             onOf([piece(story, 8, 0, " "), piece(label, 32, 0, null)]), [null, null]);
         holds("nor past the last line", onOf([piece(story, 8, 0, "")]), [null]);
-        holds("nor from a line two texts share",
-            onOf([piece(story, 8, 0, " "), piece(label, 8, 40, null), piece(story, 32, 0, null)]),
+        holds("nor from a line another text ends",
+            onOf([piece(story, 8, 0, " "), piece(label, 8, 40, " "), piece(story, 32, 0, null)]),
+            [null, null]);
+        holds("but from one it shares, as a fact's value does with its name, into its own",
+            onOf([piece(label, 8, 0, null), piece(story, 8, 40, " "), piece(story, 32, 0, null)]),
+            [" ", null]);
+        holds("nor into a line another text shares",
+            onOf([piece(story, 8, 0, " "), piece(story, 32, 0, null), piece(label, 32, 40, null)]),
             [null, null]);
 
         // What visual takes (DrawerPage.chosen), from where it began to the
@@ -2154,12 +2173,18 @@ QtObject {
         // quietly, for a move landing where `landing` says from the laid end:
         // the steps it took, and the line it lands on. Its cost shows nowhere
         // else but as time.
-        function walked(left, unshown, landing) {
-            const run = { last: 40, left, unshown, steps: [] };
+        function walked(left, unshown, landing, last = 40) {
+            const run = { last, left, unshown, steps: [] };
             const landed = Run.walk(() => landing(run.last), {
                 laying: () => run.unshown || run.left > 0,
                 end: () => run.last,
-                edge: end => ({ off: 5, height: 300, top: end * 20 }),
+                // The drawer reads a laid line's top here, so it's asked
+                // of none but a line laid.
+                edge: end => {
+                    if (end < 0)
+                        run.steps.push("edge of none");
+                    return { off: 5, height: 300, top: end * 20 };
+                },
                 quiet: () => run.unshown,
                 whole: () => {
                     run.steps.push("whole");
@@ -2188,6 +2213,8 @@ QtObject {
             walked(3, true, onEnd), [["show", "part", "whole"], 70]);
         holds("a move clear of the run lays none of it",
             walked(45, false, () => ({ line: 10, top: 0 })), [[], 10]);
+        holds("nor does one before any of it's laid", walked(45, false, onEnd, -1), [[], -1]);
+        holds("nor one once it's laid whole", walked(0, false, onEnd), [[], 40]);
         // A page shown anew while the drawer holds the keys: said at once, as
         // its key is held, and laid a turn later, however many are shown in
         // that turn, and never once its keys have gone.

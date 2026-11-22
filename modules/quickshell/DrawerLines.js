@@ -17,16 +17,19 @@ function paragraphs(text) {
 // What a line Qt wrapped breaks at, which a search runs on across, from
 // all it holds up to the next line, `raw`, past its `kept` letters: the
 // space it broke at, or "" at a zero-width space or inside a word, or
-// null where it ends a paragraph or a line another program broke.
+// null where it ends a paragraph or a line another program broke. A line
+// the drawer broke itself, as it lays a run, an identifier or an item's
+// value, ends at a break too, so a search stops there as the wash does.
 function runsOn(raw, kept) {
     const rest = raw.slice(kept);
     return PARAGRAPH_BREAK.test(rest) ? null : rest;
 }
 
 // Pieces as lines, top to bottom, those sharing a baseline one line. A
-// line runs on into the next, as its piece's `on` says, only where it's
-// one piece and the next begins with the same words, so a search never
-// runs from one text into another.
+// line runs on into the next, as its last piece's `on` says, only where
+// the next is one piece of the same words: a fact's value runs on from
+// the line it shares with its name, but never into a line another text
+// shares, nor a search from one text into another but along a line.
 function linesOf(pieces) {
     pieces.sort((one, other) => one.base - other.base || one.x - other.x);
     const found = [];
@@ -56,9 +59,9 @@ function linesOf(pieces) {
     }
     found.forEach((line, at) => {
         const next = found[at + 1];
-        if (line.parts.length > 1 || !next || next.parts[0].words !== line.parts[0].words) {
-            line.on = null;
-        }
+        const last = line.parts[line.parts.length - 1];
+        const into = next && next.parts.length === 1 && next.parts[0].words === last.words;
+        line.on = into ? last.on ?? null : null;
     });
     return found;
 }
