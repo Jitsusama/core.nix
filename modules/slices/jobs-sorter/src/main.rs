@@ -831,22 +831,48 @@ struct Ranks {
 }
 
 /// The windows a sorter before this one held, to give back those not
-/// wanted now; none while focus isn't followed, as nothing would give
-/// them back ([`holds::Holding::left`]).
+/// wanted now, and which of them it held with a hard floor, as their
+/// memory.min says; none while focus isn't followed, as nothing would
+/// give them back ([`holds::Holding::left`]).
 fn left_held(
     following: Option<&focus::Following>,
     under: &[PathBuf],
     prefixes: &[String],
+    pis: &[String],
 ) -> holds::Holding {
     if following.is_none() {
         return holds::Holding::default();
     }
+    held_before(under, prefixes, pis)
+}
+
+/// The holds a sorter before this one left on the window scopes under
+/// `under`, as their memory.low and memory.min read, said once, so a
+/// count of hard floors after a restart can be checked against the
+/// journal.
+fn held_before(under: &[PathBuf], prefixes: &[String], pis: &[String]) -> holds::Holding {
     let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
-    holds::Holding::left(scopes, |scope| {
-        fs::read_to_string(scope.join("memory.low"))
+    let read = |scope: &Path, file: &str| -> Option<u64> {
+        fs::read_to_string(scope.join(file))
             .ok()
-            .and_then(|low| low.trim().parse().ok())
-    })
+            .and_then(|value| value.trim().parse().ok())
+    };
+    let holding = holds::Holding::left(
+        scopes,
+        |scope| read(scope, "memory.low"),
+        |scope| read(scope, "memory.min"),
+        pis,
+    );
+    if holding.held() > 0 {
+        eprintln!(
+            // A held window holds two scopes, its own and its pi's, so these
+            // count scopes, and a hard one may be one whose floor can't be read.
+            "Took up {} scopes' holds from the sorter before, {} of them hard.",
+            holding.held(),
+            holding.hard()
+        );
+    }
+    holding
 }
 
 /// The windows a sorter before this one kept in memory, as their
@@ -2531,7 +2557,7 @@ fn run(settings: &Settings) -> Result<(), String> {
     let mut watch = settings.background.as_deref().and_then(watch_marks);
     let following = follow_focus(settings.niri.as_deref(), watch.as_mut());
     let mut ranks = Ranks {
-        holding: left_held(following.as_ref(), &under, &windows),
+        holding: left_held(following.as_ref(), &under, &windows, &settings.weigh),
         in_memory: left_in_memory(following.as_ref(), &under, &windows),
         ..Ranks::default()
     };
@@ -3477,6 +3503,44 @@ mod tests {
             "/jobs.slice",
         );
         assert_eq!(back.as_deref(), Some("/jobs.slice/jobs.service"));
+    }
+
+    #[test]
+    fn a_restart_counts_the_hard_floors_memory_min_shows_on_pis_alone() {
+        let slice = std::env::temp_dir()
+            .join(format!("held-before-{}", std::process::id()))
+            .join("agents.slice");
+        let hard = (holds::HARD).to_string();
+        // Each scope a sorter before held, with its memory.min, or none where it can't be read.
+        for (scope, min) in [
+            ("kitty-1-9.scope", Some("0")),
+            ("mycelium-pi-1.scope", Some(hard.as_str())),
+            ("kitty-2-9.scope", Some(hard.as_str())),
+            ("mycelium-pi-2.scope", Some("0")),
+            ("kitty-3-9.scope", Some(hard.as_str())),
+            ("mycelium-pi-3.scope", None),
+        ] {
+            let dir = slice.join(scope);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("memory.low"), focus::FLOOR.to_string()).unwrap();
+            if let Some(min) = min {
+                fs::write(dir.join("memory.min"), min).unwrap();
+            }
+        }
+        let prefixes = ["kitty-".to_owned(), "mycelium-pi-".to_owned()];
+        let holding = held_before(
+            std::slice::from_ref(&slice),
+            &prefixes,
+            &["mycelium-pi-".to_owned()],
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(holding.held(), 6, "every scope with the floor is taken up");
+        assert_eq!(
+            holding.hard(),
+            2,
+            "the pi whose memory.min shows a floor and the one whose can't be read, not the \
+             windows' own scopes or the pi held soft"
+        );
     }
 
     #[test]

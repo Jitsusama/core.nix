@@ -20,6 +20,11 @@
     "erasableSyntaxOnly": true,
     "rewriteRelativeImportExtensions": true,
     "isolatedModules": true,
+    // The comments stay in the tree for whoever reads it; a browser has no
+    // use for them, and each first visit would be sent them. Here, so the
+    // kit's own build and each site's, which extends this, emit alike. A
+    // script written by hand, as the map's view.js, is sent as it is.
+    "removeComments": true,
     "noEmit": true
   },
   "include": ["*.ts"]
