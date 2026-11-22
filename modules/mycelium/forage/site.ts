@@ -15,8 +15,7 @@ import type { Held } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { command, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
-import { stepsOffFloor } from "./floor.ts";
+import { command, floorOf, forageRow, onMap, panelOf, stepsOffFloor } from "./draw.ts";
 import { escaped } from "./lineage.ts";
 import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
 

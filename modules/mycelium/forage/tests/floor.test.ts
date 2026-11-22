@@ -6,8 +6,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { floorOf } from "../draw.ts";
-import { stepsOffFloor } from "../floor.ts";
+import { floorOf, stepsOffFloor } from "../draw.ts";
 import type { Forage } from "../model.ts";
 
 /** A forage for `cell` with `more` over its fields, its documents none. */
