@@ -165,9 +165,13 @@ rec {
       # A carry lands only where no door is wider than here's, but the
       # person may allow one machine a wider door for sessions carried
       # from here. The machine there still declares every door it opens,
-      # so the gain is said beside the allowance, never hidden.
+      # so the gain is said beside the allowance, never hidden. Each
+      # machine is named as the realm names it, so a misspelt one fails
+      # here rather than leaving the carry refused with nothing said.
       accepts = lib.mkOption {
-        type = lib.types.attrsOf accepted;
+        type = lib.types.addCheck (lib.types.attrsOf accepted) (
+          machines: lib.all name.check (lib.attrNames machines)
+        );
         default = { };
         example.other-machine.secrets = [ "tokens" ];
         description = "The doors each other machine, by name, may open beyond these for a session carried from here.";
