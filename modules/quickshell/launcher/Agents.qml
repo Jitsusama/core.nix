@@ -874,20 +874,23 @@ Provider {
                 provider.elsewhere("unopened", session), Theme.alert]]);
         }
 
-        // A refused Wake whose row was becoming woken is taken back at once,
-        // said as not done, rather than reading done for as long as
-        // Becoming waits (a refused Wake read listening for 30 s). Only a
-        // Wake: another steer refused meanwhile, a talk say, is said as
-        // itself and leaves the Wake's row be.
+        // A Wake refused or never answered whose row was becoming woken is
+        // taken back at once, said as not done, rather than reading done for
+        // as long as Becoming waits (a refused Wake read listening for
+        // 30 s). Only a Wake: another steer refused meanwhile, a talk say, is
+        // said as itself and leaves the Wake's row be (SessionRow.takesBack).
         function onUnsteered(session, why, act) {
             const key = `agent:${session.address}`;
             const called = provider.footName(session);
-            if (act === "wake" && why !== "" && provider.launcher?.becoming?.[key]) {
-                provider.refused(key, SessionRow.reasonOf(why, session.address,
-                    called === session.address ? "" : called));
+            const machine = Words.of("agents:machine").said ?? {};
+            const back = SessionRow.takesBack(machine, { act, why, address: session.address,
+                name: called === session.address ? "" : called,
+                held: Boolean(provider.launcher?.becoming?.[key]) });
+            if (back !== null) {
+                provider.launcher.becameNot(key, back);
                 return;
             }
-            const [name, said] = SessionRow.refusal(Words.of("agents:machine").said ?? {}, {
+            const [name, said] = SessionRow.refusal(machine, {
                 act: SessionRow.actName(act, Words.name), why, address: session.address,
                 name: called
             });

@@ -481,6 +481,26 @@ QtObject {
         if (JSON.stringify(unnamed) !== JSON.stringify(["Parked Quest", "not told, is busy"]))
             failures.push(`refusal, an unnamed act said act-less: ${JSON.stringify(unnamed)}`);
 
+        // A row drawn as woken is taken back only for a Wake, refused or never
+        // answered, while it's still becoming woken; any other act refused
+        // meanwhile leaves it be, and is said by refusal as itself.
+        const takings = [
+            ["a refused Wake, by the node's reason, its address said by name", "wake",
+                "so PARKED went", true, "so Parked Quest went"],
+            ["a Wake never answered, saying no answer came", "wake", "", true,
+                "the node didn't answer, so it may not have been told"],
+            ["never for a Pause refused meanwhile", "pause", "PARKED is busy", true, null],
+            ["nor a Pause never answered", "pause", "", true, null],
+            ["nor words talked to it", "", "PARKED is busy", true, null],
+            ["nor a Wake whose row isn't becoming woken", "wake", "PARKED is busy", false, null]
+        ];
+        for (const [what, act, why, held, want] of takings) {
+            const back = SessionRow.takesBack(machineSaid,
+                { act, why, address: "PARKED", name: "Parked Quest", held });
+            if (back !== want)
+                failures.push(`takesBack, ${what}: ${JSON.stringify(back)}`);
+        }
+
         const names = [
             ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
             ["its quest's title with no row served", undefined, "Its Quest", "PARKED", "Its Quest"],
