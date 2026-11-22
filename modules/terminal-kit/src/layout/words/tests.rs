@@ -130,13 +130,31 @@ fn a_hanging_paragraph_keeps_its_first_line_s_room_and_hangs_the_rest() {
         ("aa bb cccc dddd", 0),
     ];
     for (said, inset) in cases {
+        let longest = said.split_whitespace().map(width).max().unwrap_or(0);
         for room in 0..30 {
             let most = room.max(inset + GAP + 1);
-            for line in hanging(said, inset, Room::Cells(room)) {
-                assert!(width(&line) <= most, "{line:?} passed {most} cells");
+            let lines = hanging(said, inset, Room::Cells(room));
+            for line in &lines {
+                assert!(width(line) <= most, "{line:?} passed {most} cells");
                 assert!(
                     !line.trim().is_empty(),
                     "{said:?} drew an empty line at {room}"
+                );
+            }
+            // Where every word fits a hung line, none is cut, lost or
+            // said twice. The dot between two items is left out where a
+            // line breaks between them, so it isn't counted.
+            let words = |text: &str| -> Vec<String> {
+                text.split_whitespace()
+                    .filter(|word| *word != "·")
+                    .map(str::to_owned)
+                    .collect()
+            };
+            if room >= inset + GAP + longest {
+                assert_eq!(
+                    words(&lines.join(" ")),
+                    words(said),
+                    "{said:?} lost or changed a word at {room}"
                 );
             }
         }

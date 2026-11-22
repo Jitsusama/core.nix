@@ -290,7 +290,9 @@ pub fn hung(words: &str, lead: usize, room: Room) -> String {
 /// held to one line first, as the module says; into a pipe that one line
 /// is the paragraph. A room too narrow for the hang still draws a cell
 /// of words a line, so below `inset + GAP + 1` cells the lines under the
-/// first run past it, as nothing narrower could read.
+/// first run past it, and at `inset` cells or fewer the first does too,
+/// each word wider than its cell drawn as its ellipsis alone, as nothing
+/// narrower could read.
 pub fn hanging(words: &str, inset: usize, room: Room) -> Vec<String> {
     let lines = match room.cells() {
         None => vec![one_line(words).trim().to_owned()],
@@ -365,7 +367,10 @@ fn measured(words: &str, first: usize, rest: usize) -> Vec<String> {
                 let own = measure_of(lines.len() + usize::from(!line.is_empty()));
                 let left = here.saturating_sub(width(&line) + width(between));
                 // A piece that fits whole where it is stays whole, however
-                // narrow the line it would have gone on.
+                // narrow the line it would have gone on. Neither `hanging`
+                // nor `wrapped` gives a pair of measures that reaches this
+                // with a piece wider than its own line's; it keeps
+                // `measured` true for any pair.
                 let piece = if !line.is_empty() && width(&parted(&line, &piece, between)) <= here {
                     piece
                 } else if width(&piece) > own && !line.is_empty() && left >= SHARES {

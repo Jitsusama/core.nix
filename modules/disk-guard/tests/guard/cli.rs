@@ -459,12 +459,16 @@ fn status_fits_a_narrow_terminal_without_folding() {
                 "at {cells} columns, {line:?} hangs other than two cells under the first in\n{out}"
             );
         }
-        // Its path is shortened to the room left, so a first line given
-        // only the hung lines' room would end two cells short.
+        // The first line keeps the cells only the lines under it hang by,
+        // so the next line's first word wouldn't have fit on it.
+        let word = hung[0]
+            .split_whitespace()
+            .next()
+            .unwrap_or_else(|| panic!("the hung line has words at {cells} columns:\n{out}"));
         assert!(
-            layout::width(lines[first]) > cells.min(layout::MEASURE) - layout::GAP,
-            "at {cells} columns, the holder's first line gave up the cells only the lines \
-             under it hang by:\n{out}"
+            layout::width(lines[first]) + 1 + layout::width(word) > cells.min(layout::MEASURE),
+            "at {cells} columns, the holder's first line left room for {word:?}, giving up \
+             the cells only the lines under it hang by:\n{out}"
         );
     }
 }
