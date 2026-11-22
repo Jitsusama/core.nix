@@ -470,8 +470,63 @@ fn one_with_no_place_now_leaves_the_restored_boots_place_to_stand() {
     let after = kept.kept("this", "last", now, Vec::new(), &Windowless::default(), 0);
     assert_eq!(
         after.boots["this"],
-        json!({"s-new": {"unplaced": true}}),
-        "one the boot being restored placed keeps going back there, rather than home"
+        json!({"s-float": {"column": 2}, "s-new": {"unplaced": true}}),
+        "one the boot being restored placed keeps going back there, rather than home, and \
+             this boot keeps that place, so the boot after it still has one"
+    );
+}
+
+#[test]
+fn a_crash_mark_outlives_parking() {
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-reef": {"column": 1}, "s-kelp": {"column": 2}}}}));
+    let both = HashSet::from(["s-reef".to_owned(), "s-kelp".to_owned()]);
+    let crashed = Windowless {
+        unsure: both.clone(),
+        heard: both.clone(),
+        ..Windowless::default()
+    };
+    let parked = Windowless {
+        heard: both.clone(),
+        ..Windowless::default()
+    };
+    let kelp_back = Windowless {
+        closed: HashSet::from(["s-reef".to_owned()]),
+        heard: both,
+        ..Windowless::default()
+    };
+    let kelp = Map::from_iter([("s-kelp".to_owned(), json!({"column": 3}))]);
+    let after = kept
+        .kept("this", "", Map::new(), Vec::new(), &crashed, 1_000)
+        .kept("this", "", Map::new(), Vec::new(), &parked, 1_500)
+        .kept("this", "", kelp, Vec::new(), &kelp_back, 2_000);
+    assert_eq!(
+        after.boots["this"]["s-reef"],
+        json!({"column": 1, "orphaned": true}),
+        "one whose window a crash took, parked while short of memory, isn't taken as \
+             closed by hand once it wakes windowless beside another opened again"
+    );
+}
+
+#[test]
+fn a_held_pi_whose_window_closed_is_closed_by_hand_while_its_kitty_shows_another() {
+    let (windows, workspaces, screens) = desk_parts();
+    let desk = Desk {
+        windows: &windows,
+        workspaces: &workspaces,
+        screens: &screens,
+    };
+    let mut shown = session("SHOWN", "s-shown", "running", "");
+    shown["window"] = json!({"app_id": "pi-session.7"});
+    let mut shut = session("SHUT", "s-shut", "running", "");
+    shut["held"] = json!("hold-s");
+    shut["window"] = Value::Null;
+    let paired = [json!({"address": "SHOWN", "window": "window:7"})];
+    let seen = unwindowed([shown, shut].iter().map(Session), &paired, &desk);
+    assert_eq!(
+        (seen.closed, seen.unsure),
+        (HashSet::from(["s-shut".to_owned()]), HashSet::new()),
+        "a held pi draws in the sessions kitty, its app id gone with its window"
     );
 }
 

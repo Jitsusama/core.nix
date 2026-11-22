@@ -160,6 +160,8 @@ ShellRoot {
                 naming();
             else if (stage === "named")
                 named();
+            else if (stage === "cornered")
+                cornered();
             else if (stage === "renamed")
                 renamed();
         } catch (error) {
@@ -694,6 +696,35 @@ ShellRoot {
             && naming[0].workspace?.Id === opens[0].reference?.Id
             && Niri.workspaces[opens[0].reference?.Id]?.active_window_id === null,
             `${JSON.stringify(naming)} ${JSON.stringify(opens)}`);
+        const reef = opens[0].reference?.Id;
+        const window = { id: 94, pid: 940, workspace_id: reef, session: true,
+            opened: "pi-hosted.s-reef", layout: { pos_in_scrolling_layout: [1, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "94": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(94, "pi-hosted.s-reef", reef)] });
+        Niri.windowOpenedOrChanged(window);
+        // Joel goes to the screen's empty workspace, niri's last, so there's
+        // nowhere quiet for a viewer kept as unplaced, with no home or kin.
+        const its = Object.values(Niri.workspaces).filter(one => one.output === "DP-4")
+            .sort((a, b) => a.idx - b.idx);
+        cornerOn = its[its.length - 1].id;
+        joelOn(cornerOn);
+        stage = "cornered";
+        Sessions.reopenAll([waitingEntry("s-cornered")], root.never,
+            kept({ "s-cornered": { unplaced: true } }), "");
+    }
+    property int cornerOn: -1
+
+    // Its viewer waits for Joel to leave, as one bound for his workspace
+    // does, rather than being dropped from the walk.
+    function cornered() {
+        if (Sessions.reopening !== null)
+            return;
+        const place = Sessions.keptPlaces["s-cornered"];
+        Expect.expect("one kept as unplaced, with nowhere quiet, waits for Joel to leave",
+            place?.workspace === cornerOn && place?.there === true
+            && viewerSpawns("s-cornered").length === 0,
+            `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
         console.log("a hosted viewer reopens where it was");
         Qt.exit(0);
     }
