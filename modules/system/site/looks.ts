@@ -65,12 +65,21 @@ function siteOf(part: Part): string {
  * The machines' looks: each machine's side, a look a word, or why the
  * machines couldn't be read. A machine drawn whole on the page leads to its
  * section, its position among them told by `drawn`; one past those leads
- * to the map.
+ * to the map. With no machine's own, the part's side, as when the machines
+ * were read from their owner's last answer, which says so there.
  */
 function machineLooks(part: Part, drawn: number): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
+  const looks = thingLooks(part, drawn);
+  return looks.length > 0
+    ? looks
+    : keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
+}
+
+/** Each machine's side, a look a word, leading to its section or the map. */
+function thingLooks(part: Part, drawn: number): readonly Look[] {
   return part.things.flatMap((thing, at) =>
     keyed(thing.side).map(({ words, key }) => ({
       health: thing.health,

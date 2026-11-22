@@ -73,6 +73,36 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
   assert.equal(network?.machine, false, "a part's name is the page's, to translate");
 });
 
+it("lists what the machines part has worth a look that no machine does", () => {
+  const note = "as read at 11:54; just now mycelium machines gave no answer in 20 s";
+  const [machines] = system([machine("heron", "good")]).parts;
+  assert.ok(machines, "the machines part is there");
+  const kept: System = {
+    ...system([]),
+    parts: [{ ...machines, health: "good", side: [note] }],
+  };
+  assert.deepEqual(
+    looksOf(kept, 8).looks.map((look) => [look.health, look.whose, look.words]),
+    [["good", "Machines", `A${note.slice(1)}`]],
+    "machines read from a kept answer say so in the list",
+  );
+  const repeated: System = {
+    ...system([]),
+    parts: [
+      {
+        ...machines,
+        things: [machine("kestrel", "watch", ["on battery at 9%"])],
+        side: ["kestrel on battery at 9%"],
+      },
+    ],
+  };
+  assert.deepEqual(
+    looksOf(repeated, 8).looks.map((look) => [look.whose, look.words]),
+    [["kestrel", "On battery at 9%"]],
+    "what a machine says isn't said again for the part that lists it",
+  );
+});
+
 it("keys each row by whose it is and its own words, apart from any other", () => {
   const rowsOf = (side: string[]): string[] =>
     looksOf(
