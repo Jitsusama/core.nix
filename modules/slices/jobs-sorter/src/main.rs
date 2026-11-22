@@ -827,6 +827,9 @@ struct Ranks {
     /// The slices whose floor couldn't be read to fit their units' floors
     /// into, so each is said once.
     unfitted: HashSet<String>,
+    /// The sessions said to be in no slot of their host's live
+    /// conversation units, so each is said once while it lasts.
+    unslotted: HashSet<String>,
     /// The orchestrators each pid holds, as the presences last said.
     orchestrating: HashMap<u32, usize>,
     /// The windows Joel was at within [`keep::SPARED_FOR`], by unit, which
@@ -1368,7 +1371,12 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             found
         })
         .collect();
-    let (viewers, shown) = viewers_and_shown(windows, prefix, held, &units);
+    let Joined {
+        viewers,
+        shown,
+        unslotted,
+    } = viewers_and_shown(windows, prefix, held, &units, &command_lines);
+    say_unslotted(&mut ranks.unslotted, unslotted);
     let shares = shares(ranks.holding.hard(), &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
@@ -1663,16 +1671,29 @@ fn shares(pis: usize, units: &[PathBuf], viewers: &[String]) -> HashMap<String, 
     holds::shares(pis, &in_agents)
 }
 
+/// The units windows' viewers join ([`viewers_and_shown`]).
+struct Joined {
+    /// One for each viewer in a window held, in the order they're held.
+    viewers: Vec<String>,
+    /// One for each viewer in any window.
+    shown: Vec<String>,
+    /// Each session a viewer attaches to that its host's live conversation
+    /// units hold in no slot, so its host is joined in its place.
+    unslotted: Vec<String>,
+}
+
 /// The units among `units` each window `held` shows, and each window
 /// shows at all, one for each viewer in it, in the order the windows are
-/// held. A window showing a conversation that runs in a unit of its own
-/// gives that unit what it gives, and its host nothing.
+/// held, as `cmdlines` gives each scope's processes' words. A window
+/// showing a conversation that runs in a unit of its own gives that unit
+/// what it gives, and its host nothing.
 fn viewers_and_shown(
     windows: &Windows,
     prefix: &str,
     held: &[String],
     units: &[PathBuf],
-) -> (Vec<String>, Vec<String>) {
+    cmdlines: &impl Fn(&Path) -> Vec<Vec<String>>,
+) -> Joined {
     let names: HashSet<&str> = units
         .iter()
         .filter_map(|path| path.file_name()?.to_str())
@@ -1686,9 +1707,11 @@ fn viewers_and_shown(
     let viewers = viewing
         .iter()
         .flat_map(|unit| windows.under.iter().map(move |slice| slice.join(unit)))
-        .flat_map(|scope| joined(&scope, &joins))
+        .flat_map(|scope| cmdlines(&scope))
+        .filter_map(|words| joins(&words))
         .collect();
-    let shown = windows
+    // Every window's viewers, a held one's among them.
+    let showing: Vec<(Vec<String>, String)> = windows
         .under
         .iter()
         .flat_map(|slice| homes(slice, windows.prefixes))
@@ -1698,23 +1721,72 @@ fn viewers_and_shown(
                 .and_then(|name| name.to_str())
                 .is_some_and(|unit| !focus::runs_a_pi(unit, windows.pis))
         })
-        .flat_map(|scope| joined(&scope, &joins))
+        .flat_map(|scope| cmdlines(&scope))
+        .filter_map(|words| {
+            let unit = joins(&words)?;
+            Some((words, unit))
+        })
         .collect();
-    (viewers, shown)
+    let mut unslotted: Vec<String> = showing
+        .iter()
+        .filter_map(|(words, unit)| unslotted(words, unit, windows.conversations, &names))
+        .collect();
+    let shown = showing.into_iter().map(|(_, unit)| unit).collect();
+    unslotted.sort();
+    unslotted.dedup();
+    Joined {
+        viewers,
+        shown,
+        unslotted,
+    }
 }
 
-/// The units the viewers in `scope` join, as `joins` names each from a
-/// process's command line.
-fn joined(scope: &Path, joins: &impl Fn(&[String]) -> Option<String>) -> Vec<String> {
+/// The session a viewer's `words` attach to, said as one, when it joined
+/// its host's `unit` though some of `names` are that host's live
+/// conversation units: none of their slots holds the session, so the
+/// conversation Joel views goes unranked.
+fn unslotted(
+    words: &[String],
+    unit: &str,
+    conversations: Option<(&str, &Path)>,
+    names: &HashSet<&str>,
+) -> Option<String> {
+    let (conversations, _) = conversations?;
+    if joins::keeps_its_work(unit, Some(conversations)) {
+        return None;
+    }
+    let (key, session) = joins::session(words)?;
+    let theirs = format!("{conversations}{key}@");
+    names
+        .iter()
+        .any(|name| name.starts_with(&theirs))
+        .then(|| format!("session {session} on host {key}"))
+}
+
+/// Says each of the sessions `now` unslotted that `said` hasn't, and
+/// keeps only those, so one that clears and comes back is said again.
+fn say_unslotted(said: &mut HashSet<String>, now: Vec<String>) {
+    for missed in &now {
+        if !said.contains(missed) {
+            eprintln!(
+                "Ranking the host in place of {missed}'s conversation: no slot of its live \
+                 conversation units holds the session."
+            );
+        }
+    }
+    *said = now.into_iter().collect();
+}
+
+/// The words of each process in `scope`, from its command line.
+fn command_lines(scope: &Path) -> Vec<Vec<String>> {
     samples(scope)
         .into_iter()
-        .filter_map(|proc| {
-            let words = fs::read(format!("/proc/{}/cmdline", proc.pid)).ok()?;
-            let words: Vec<String> = words
+        .filter_map(|proc| fs::read(format!("/proc/{}/cmdline", proc.pid)).ok())
+        .map(|words| {
+            words
                 .split(|byte| *byte == 0)
                 .map(|word| String::from_utf8_lossy(word).into_owned())
-                .collect();
-            joins(&words)
+                .collect()
         })
         .collect()
 }
@@ -2982,6 +3054,82 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn viewers_join_in_the_order_their_windows_are_held_and_an_unslotted_session_is_said() {
+        let root = std::env::temp_dir().join(format!("viewers-{}", std::process::id()));
+        let slice = root.join("agents.slice");
+        for scope in [
+            "kitty-1-1.scope",
+            "kitty-1-2.scope",
+            "kitty-1-3.scope",
+            "mycelium-pi-x.scope",
+        ] {
+            fs::create_dir_all(slice.join(scope)).unwrap();
+        }
+        let slots = root.join("slots");
+        fs::create_dir_all(slots.join("a.d")).unwrap();
+        let attach = |host: &str, session: &str| {
+            ["mycelium", "attach", "--host", host, "--session", session]
+                .map(str::to_owned)
+                .to_vec()
+        };
+        // A pi's scope holds its agents' commands, which may spell themselves as a viewer.
+        let cmdlines = |scope: &Path| match scope.file_name().and_then(|name| name.to_str()) {
+            Some("kitty-1-1.scope") => vec![attach("a", "s2")],
+            Some("kitty-1-2.scope") => vec![attach("c", "s3")],
+            Some("kitty-1-3.scope") => vec![attach("b", "s4")],
+            Some("mycelium-pi-x.scope") => vec![attach("d", "s5")],
+            _ => Vec::new(),
+        };
+        let units: Vec<PathBuf> = [
+            "pi-host-a.service",
+            "pi-host-b.service",
+            "pi-host-c.service",
+            "pi-host-d.service",
+            "pi-conversation-a@s1.service",
+        ]
+        .map(|unit| slice.join(unit))
+        .to_vec();
+        let under = [slice.clone()];
+        let prefixes = ["kitty-", "mycelium-pi-"].map(str::to_owned);
+        let pis = ["mycelium-pi-".to_owned()];
+        let windows = Windows {
+            under: &under,
+            prefixes: &prefixes,
+            dir: &root,
+            weight: 100,
+            focus: None,
+            hosts: Some("pi-host-"),
+            conversations: Some(("pi-conversation-", &slots)),
+            pis: &pis,
+        };
+        let held = ["kitty-1-3.scope", "mycelium-pi-x.scope", "kitty-1-1.scope"].map(str::to_owned);
+        let joined = viewers_and_shown(&windows, "pi-host-", &held, &units, &cmdlines);
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            joined.viewers,
+            ["pi-host-b.service", "pi-host-a.service"],
+            "the held windows' viewers join in the order they're held, the pi's scope passed over"
+        );
+        let mut shown = joined.shown;
+        shown.sort();
+        assert_eq!(
+            shown,
+            [
+                "pi-host-a.service",
+                "pi-host-b.service",
+                "pi-host-c.service"
+            ],
+            "every window shows the host its viewer joins, and the pi's scope none"
+        );
+        assert_eq!(
+            joined.unslotted,
+            ["session s2 on host a"],
+            "a session none of its host's live conversation units holds is said once, though \
+             its window is both held and shown"
+        );
+    }
 
     #[test]
     fn only_units_in_agents_slice_take_a_hard_floors_share() {
