@@ -34,7 +34,8 @@ which leaves this note behind.
 | `tests/`       | the making of the map from the records, and the page, tried |
 
 `view.js`, `index.html` and `site.css` are the drawing as it was written
-by hand, served unchanged but for its seams: site.ts hands it each reading,
+by hand, served unchanged but for view.js's comments, which the build
+drops as it does the TypeScript's, and its seams: site.ts hands it each reading,
 layout.ts says where everything stands, canvas.ts what the ground layer
 touches and says, shape.ts when a reading draws the whole map again,
 keys.ts what each key it hears asks, outline.ts which rows the tree shows

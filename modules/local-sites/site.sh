@@ -33,12 +33,39 @@ fi
 mkdir -p "${out}"
 cp "${work}/emitted/${name}/site/"*.js "${out}/"
 # The files the browser reads as they are: the page, its styles, its icon,
-# any script written by hand rather than in TypeScript, and its Markdown and
-# plain-text twins. A README.md is the folder's note for whoever reads the
-# tree, not a page, so it stays behind.
+# any script written by hand rather than in TypeScript (laid over below
+# without its comments), and its Markdown and plain-text twins. A README.md
+# is the folder's note for whoever reads the tree, not a page, so it stays
+# behind.
 find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.svg' \
   -o -name '*.js' -o -name '*.md' -o -name '*.txt' \) -not -name README.md \
   -exec cp -t "${out}/" {} +
+# A script written by hand goes through the same compiler, so it reaches the
+# browser without its comments as the TypeScript does. The compiler is the
+# tokenizer because a pattern can't tell a comment from a string, a template
+# or a regular expression holding two slashes. It reads the script alone,
+# neither checking it nor following its imports, which name TypeScript
+# siblings, and keeps its syntax as written. Its own config, since the
+# compiler refuses files named beside the site's tsconfig.json.
+if compgen -G './*.js' > /dev/null; then
+  cat > "${work}/plain.json" <<EOF
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "removeComments": true,
+    "noCheck": true,
+    "noResolve": true,
+    "target": "esnext",
+    "module": "preserve",
+    "rootDir": "modules/${name}/site",
+    "outDir": "plain"
+  },
+  "include": ["modules/${name}/site/*.js"]
+}
+EOF
+  "${tsc}" -p "${work}/plain.json"
+  cp "${work}/plain/"*.js "${out}/"
+fi
 for page in "${out}"/*.html "${out}"/*.svg; do
   [[ -f ${page} ]] || continue
   sed -i -e "s|@dark-ground@|${dark_ground}|g" -e "s|@light-ground@|${light_ground}|g" \
