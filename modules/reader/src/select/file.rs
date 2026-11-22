@@ -133,9 +133,14 @@ impl Layout {
     /// holds, so a blank at its end, which may be the line break the page
     /// joined, decides nothing, at any width. A selection over the file's
     /// lines, as Vim's, or of blanks alone names none; words the file
-    /// doesn't hold, the eyebrow, are a line each.
+    /// doesn't hold, the eyebrow or an alert's kind, are a line each, so
+    /// one taken with the next row's names none either.
     pub fn named(&self, selection: &Selection) -> Option<String> {
         let (from, to) = selection.ends();
+        let unheld = |pos| self.file_line_at(pos).is_none();
+        if from.line != to.line && (unheld(from) || unheld(to)) {
+            return None;
+        }
         let (first, last) = match selection.kind {
             Kind::Chars => self.matched_within(from, to).unwrap_or((from, to)),
             Kind::Pieces => (from, to),
@@ -146,7 +151,6 @@ impl Layout {
                 self.file_line_shown(to, line)?
             }
             (Some(_), Some(_)) => self.page_text(from, to),
-            _ if from.line != to.line => return None,
             _ if selection.kind == Kind::Pieces => {
                 let end = self.chars[to.line].len().saturating_sub(1);
                 self.page_text(Pos { ch: 0, ..to }, Pos { ch: end, ..to })

@@ -490,6 +490,15 @@ fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
             "v with the blanks {what} it"
         );
     }
+    // V on a blank: the line break the page set it for ends the line
+    // before it, as the blank before the name ends "See the file".
+    for (on, line) in [(name + 8, "notes.md"), (name - 1, "See the file")] {
+        assert_eq!(
+            named(&page, Kind::Pieces, at(row, on), at(row, on)).as_deref(),
+            Some(line),
+            "V on the blank at {on}"
+        );
+    }
     let eyebrow = (page.lines.iter())
         .position(|line| line.text.starts_with("READER-SELECT-"))
         .expect("an eyebrow");
@@ -500,10 +509,11 @@ fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
             .is_some_and(|it| it.starts_with("READER-SELECT-")),
         "V on the eyebrow, which the file doesn't hold, gives its words: {eyebrowed:?}"
     );
+    assert_ne!(eyebrow, row, "the eyebrow is a line of its own");
     assert_eq!(
-        named(&page, Kind::Chars, at(eyebrow, 0), at(eyebrow + 1, 0)),
+        named(&page, Kind::Chars, at(eyebrow, 0), at(row, 0)),
         None,
-        "v from the eyebrow onto the line after it"
+        "v from the eyebrow onto the file's first word"
     );
     let words = "Words that run on past the measure. ".repeat(12);
     let page = set("named-wrapped", &format!("{words}\n"));
@@ -766,14 +776,17 @@ fn a_file_it_cant_read_gives_no_lines_rather_than_empty_ones() {
         .set()
         .expect("set");
     std::fs::remove_file(&file).expect("gone");
+    let gone = Layout::read_file(&page.frame, &file, 0);
+    std::fs::write(&file, "Words.\n").expect("back");
+    let back = Layout::read_file(&page.frame, &file, 0);
+    // The folder goes before the asserts, so a failing run leaves none.
+    std::fs::remove_dir_all(&dir).expect("cleaned");
     assert!(
-        Layout::read_file(&page.frame, &file, 0).is_none(),
+        gone.is_none(),
         "none for a file gone since the page was set"
     );
-    std::fs::write(&file, "Words.\n").expect("back");
-    let layout = Layout::read_file(&page.frame, &file, 0).expect("lines for one it reads");
+    let layout = back.expect("lines for one it reads");
     assert_eq!(layout.source(), "Words.\n", "read as it is now");
-    std::fs::remove_dir_all(&dir).expect("cleaned");
 }
 
 #[test]

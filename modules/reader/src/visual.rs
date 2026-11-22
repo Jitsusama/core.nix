@@ -61,14 +61,16 @@ impl App {
         let file = self.file.clone();
         let to = self.layout_to.clone();
         // Without its lines a standing character's keys say they're still
-        // reading, so a thread that can't start says why.
+        // reading, so a thread that can't start says why, and one that
+        // fails sends none, so its keys act as before the first read
+        // rather than wait for lines that never come.
         let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
-                let _ = to.send((
-                    version,
-                    select::Layout::read_file(&page.frame, &file, version),
-                ));
+                let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    select::Layout::read_file(&page.frame, &file, version)
+                }));
+                let _ = to.send((version, read.unwrap_or(None)));
             });
         if let Err(error) = started {
             eprintln!("reader: can't read the page's lines: {error}");
@@ -510,8 +512,6 @@ impl App {
         }
     }
 
-    /// Copies a selection as the file's markdown, on a thread, through
-    /// wl-copy, and flashes what it took for a moment.
     /// Visual y: it ends the selection and leaves the cursor at its start,
     /// as Vim's does, once the page's own lines are read.
     fn copy_selection(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
@@ -526,6 +526,8 @@ impl App {
         self.copy(layout, taken);
     }
 
+    /// Copies a selection as the file's markdown, on a thread, through
+    /// wl-copy, and flashes what it took for a moment.
     fn copy(&mut self, layout: &Arc<select::Layout>, taken: Selection) {
         self.flash(layout.pieces(&taken));
         clip(layout, taken);
