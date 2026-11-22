@@ -115,16 +115,16 @@ fn heard(far: &[Value]) -> (Option<f64>, Option<f64>, Option<f64>) {
         .filter_map(|row| row["aud"]["jitter"].as_f64())
         .map(|s| s * 1000.0)
         .collect();
-    let (Some(first), Some(last)) = (sound.first(), sound.last()) else {
+    let (Some(first), Some(end)) = (sound.first(), sound.last()) else {
         return (None, percentile(&jitter, 99), None);
     };
     // Every sample the far end played counts, its quiet between beeps
     // too, since that quiet stands in for Joel talking.
-    let concealed = grew(first, last, "concealedSamples")
-        .zip(grew(first, last, "totalSamplesReceived"))
+    let concealed = grew(first, end, "concealedSamples")
+        .zip(grew(first, end, "totalSamplesReceived"))
         .and_then(|(made_up, played)| share(made_up, played));
-    let lost = grew(first, last, "packetsLost")
-        .zip(grew(first, last, "packetsReceived"))
+    let lost = grew(first, end, "packetsLost")
+        .zip(grew(first, end, "packetsReceived"))
         .and_then(|(lost, got)| share(lost, lost + got));
     (concealed, percentile(&jitter, 99), lost)
 }
