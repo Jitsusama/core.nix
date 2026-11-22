@@ -195,6 +195,13 @@ impl App {
                 self.end_selection();
                 return true;
             }
+            // gf and Ctrl+] end the selection, as Vim's leave visual mode,
+            // and take what's under or after the character its cursor
+            // leaves standing, rather than the line's first name.
+            (None, Act::FollowFile | Act::FollowLink) => {
+                self.end_selection();
+                return false;
+            }
             // A mark made while selecting is the cursor's line, as his
             // Neovim's is, and the selection holds.
             (None, Act::SetMark(letter)) => {

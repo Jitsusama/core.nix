@@ -105,9 +105,11 @@ fn in_notes<'a>(there: &'a [&str]) -> impl Fn(&Path) -> bool + 'a {
     }
 }
 
-/// Where gf goes, as it reads: a heading here, or a file, at a heading.
+/// Where gf goes, as it reads: a heading here, or a file, at a heading,
+/// or nowhere, staying on the page.
 fn read(going: &Going) -> String {
     match going {
+        Going::Here => "stays".to_string(),
         Going::Heading(anchor) => format!("#{anchor} here"),
         Going::File(file, None) => file.display().to_string(),
         Going::File(file, Some(heading)) => format!("{} at {heading}", file.display()),
@@ -136,6 +138,25 @@ fn followed(lines: &[crate::text::Line], pieces: &[Link], words: &str, at: usize
     let (line, x_pt) = character(lines, words, at);
     link_here(pieces, line, x_pt)
         .map_or_else(|| format!("nothing at {words:?}"), |link| link.href.clone())
+}
+
+#[test]
+fn gf_on_the_pages_own_name_stays_where_it_is() {
+    let page = Path::new("/notes/page.md");
+    let there = in_notes(&["page.md", "other.md"]);
+    let gone = |name: Name| going(&name, page, &there).map_or_else(|| "none".into(), |g| read(&g));
+    assert_eq!(gone(Name::Written("page.md".into())), "stays", "written");
+    assert_eq!(gone(Name::Link("page.md".into())), "stays", "linked");
+    assert_eq!(
+        gone(Name::Link("page.md#part".into())),
+        "#part here",
+        "linked at a heading, the heading here"
+    );
+    assert_eq!(
+        gone(Name::Written("other.md".into())),
+        "/notes/other.md",
+        "another file still opens"
+    );
 }
 
 #[test]

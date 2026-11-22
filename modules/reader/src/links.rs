@@ -129,27 +129,34 @@ pub fn name_here(
 
 /// Where gf goes for the name it took: a heading on the page shown, which
 /// the page's own words say is there or not, or a file `is_file` found, at
-/// the heading its link names, if any, as Ctrl+] goes.
+/// the heading its link names, if any, as Ctrl+] goes; or the page shown
+/// itself, named with no heading, where gf stays, as Vim's does on the
+/// file it's editing.
 #[derive(Debug, PartialEq)]
 pub enum Going {
     Heading(String),
     File(PathBuf, Option<String>),
+    Here,
 }
 
 /// Where gf goes for `name` from `page`, when it names a heading here or
 /// a file on this machine that `is_file` finds.
 pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Option<Going> {
-    if let Name::Link(href) = name {
-        match target(href, page) {
+    let (file, heading) = match name {
+        Name::Link(href) => match target(href, page) {
             Target::Here(anchor) => return Some(Going::Heading(anchor)),
-            Target::Page(file, heading) => {
-                return is_file(&file).then_some(Going::File(file, heading));
-            }
-            Target::Elsewhere(_) => {}
-        }
+            Target::Page(file, heading) => (Some(file), heading),
+            Target::Elsewhere(_) => (file_of(name, page), None),
+        },
+        Name::Written(_) => (file_of(name, page), None),
+    };
+    let file = file.filter(|file| is_file(file))?;
+    // The page shown, named again, is where he is: reopening it would
+    // jump to where it was last left.
+    if same(&file, page) {
+        return Some(heading.map_or(Going::Here, Going::Heading));
     }
-    let file = file_of(name, page).filter(|file| is_file(file))?;
-    Some(Going::File(file, None))
+    Some(Going::File(file, heading))
 }
 
 /// Where gf goes with a character `x_pt` across `line` on the page `page`:

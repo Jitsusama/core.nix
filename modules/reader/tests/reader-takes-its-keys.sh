@@ -725,9 +725,18 @@ logged '^key Last None' $((lasts + 1))
 press mz
 logged '^key SetMark\(.z.\)' 1
 
-# gf opens the file the top's link names, and Ctrl+] follows it.
+# Selecting, Ctrl+] ends the selection and takes what's under or after
+# its cursor, here past the lede's link, so nothing, never the link from
+# the line down.
 press gg
 logged '^key First None' $((tops + 6))
+press '2jv$'
+press -M ctrl ']' -m ctrl
+logged '^said: No link under or after the cursor' 1
+
+# gf opens the file the top's link names, and Ctrl+] follows it.
+press gg
+logged '^key First None' $((tops + 7))
 press gf
 logged '^file: (.*/)?second.md' 3
 logged '^opened: (.*/)?second.md, ' 5
