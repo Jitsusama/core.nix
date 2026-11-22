@@ -6458,11 +6458,13 @@ Scope {
         // it stood, holds Return until another key (Held.whileLeaving).
         const standing = guessed;
         guessed = Held.whileLeaving(prompt.keysTaken, open, standing);
-        // A leave Joel's own key caused, as Release It ends its ask, is one
-        // he watched, so it guesses nothing: the source's change is the
-        // key's (refreshed's keyedActs). A share's change heard within
-        // keyedWithin of a key is taken for the key's too, the one way it
-        // goes unheld.
+        // A leave whose source changed within keyedWithin of Joel's last
+        // key is one his key caused and he watched, so it guesses nothing
+        // new (refreshed's keyedActs). A change a daemon answers later,
+        // as Release It's may be, isn't counted, and holds one Return
+        // should it land off its row; any source's change heard that soon
+        // after a key, a share's too, is counted, the one way it goes
+        // unheld.
         const byKey = keyedActs.some(one => one.source === source && one.heard === keyHeardAt);
         try {
             held = steps;
@@ -6482,13 +6484,12 @@ Scope {
             // hides, so the selection stands on another row (leftAt), one
             // Joel never chose: a Return pressed next, meant for the step
             // that left, waits rather than run it. The selection is read
-            // as here() records a step's, so a leave back onto the
-            // headline stepped in from is a landing on its row.
+            // by key, as here() records a step's.
             guessed = Held.landedAfter(standing, from, selected ? steadyId(selected) : "",
-                { keys: prompt.keysTaken, current, open, depth: held.length, byKey });
+                { keys: prompt.keysTaken, open, depth: held.length, byKey });
         } else {
             guessed = Held.landedAfter(standing, from, null,
-                { keys: prompt.keysTaken, current, open, depth: held.length, byKey });
+                { keys: prompt.keysTaken, open, depth: held.length, byKey });
         }
         return "left";
     }

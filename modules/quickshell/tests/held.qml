@@ -293,27 +293,25 @@ QtObject {
     // selection was left on instead. Each told to `check`.
     function guessing(check) {
         const ask = { key: "ask:7", at: 2 };
-        const onIt = (from, landed, current) => Held.onItsRow(from, landed, current);
+        const onIt = (from, landed) => Held.onItsRow(from, landed);
         check("a leave that lands on the row stepped in from, by its key, is on it",
-            onIt(ask, "ask:7", 2), true);
+            onIt(ask, "ask:7"), true);
         check("one that lands on another row, as one hidden leaves it, is not",
-            onIt(ask, "copies", 2), false);
-        check("and one that lands on no row at all", onIt(ask, "", 0), false);
+            onIt(ask, "copies"), false);
+        check("and one that lands on no row at all", onIt(ask, ""), false);
         check("a row stepped in from with no key is never known to be landed on",
-            [onIt({ key: "", at: 0 }, "", 0), onIt({ at: 0 }, "", 0),
-                onIt(undefined, "x", 0)].join(" "),
+            [onIt({ key: "", at: 0 }, ""), onIt({ at: 0 }, ""), onIt(undefined, "x")].join(" "),
             "false false false");
-        // The headline's key is its words, which a re-answer changes, so
-        // it's landed on by where it stands, as leftAt puts it back.
-        check("the headline stepped in from is landed on by where it stands",
-            [onIt({ key: "named:old", at: -1 }, "named:new", -1),
-                onIt({ key: "named:old", at: -1 }, "copies", 0)].join(" "),
-            "true false");
+        // A row clicked into isn't selected, so a step's record stands on
+        // the headline under the clicked row's key: where the selection
+        // lands back says nothing.
+        check("a landing on the headline under another row's key is not on it",
+            onIt({ key: "ask:7", at: -1 }, "named:answer"), false);
         // The guess a leave makes, as heldAgain asks for it: a leave at 5
-        // keys, landing 2 deep with the selection on the third row.
+        // keys, landing 2 deep.
         const shown = g => `${g.keys}@${g.at} d${g.depth}${g.broken ? " broken" : ""}`;
         const landing = (before, landed, more) => Held.landedAfter(before, ask, landed,
-            Object.assign({ keys: 5, current: 2, open: true, depth: 2, byKey: false }, more));
+            Object.assign({ keys: 5, open: true, depth: 2, byKey: false }, more));
         const after = (before, landed, more) => shown(landing(before, landed, more));
         const none = Held.unguessed();
         const left = landing(none, "copies");
@@ -323,10 +321,12 @@ QtObject {
             "-1@0 d-1");
         check("a shut launcher guesses nothing", after(none, "copies", { open: false }),
             "-1@0 d-1");
-        // Release It ends its ask, so its step leaves under Joel's own key,
-        // which he watched.
+        // A change within keyedWithin of Joel's key is his key's, so its
+        // leave is one he watched.
         check("a leave Joel's key caused guesses nothing",
             after(none, "copies", { byKey: true }), "-1@0 d-1");
+        check("but keeps a guess an earlier leave left pending",
+            after(left, "copies", { byKey: true, depth: 1 }), "5@0 d1");
         // A second leave before any key, landing by its key a step up,
         // leaves the Return still meant for the first step's ask.
         check("a leave by key keeps a guess no key has answered, at its own depth",

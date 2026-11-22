@@ -2273,11 +2273,12 @@ QtObject {
         // a step closed by itself passes over; a key typing into the find,
         // é or Delete among those the table can't name, chooses.
         holds("the keys that choose nothing alone",
-            [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Super_L, Qt.Key_AltGr,
-                Qt.Key_CapsLock, Qt.Key_Multi_key, Qt.Key_Hyper_L, Qt.Key_Eacute,
-                Qt.Key_Delete, Qt.Key_Return, Qt.Key_J]
+            [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_Super_L,
+                Qt.Key_Super_R, Qt.Key_AltGr, Qt.Key_Hyper_L, Qt.Key_Hyper_R, Qt.Key_Multi_key,
+                Qt.Key_Mode_switch, Qt.Key_CapsLock, Qt.Key_NumLock, Qt.Key_ScrollLock,
+                Qt.Key_Eacute, Qt.Key_Delete, Qt.Key_Return, Qt.Key_J]
                 .map(key => KeyNames.alone(key, Qt) ? "alone" : "chooses").join(" "),
-            "alone alone alone alone alone alone alone alone chooses chooses chooses chooses");
+            `${Array(14).fill("alone").join(" ")} chooses chooses chooses chooses`);
 
         // [what, the keys typed from the opening, each act with its count]
         const counting = [

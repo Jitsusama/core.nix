@@ -159,18 +159,18 @@ function forgets(made, leaving, held, steps) {
     };
 }
 
-// Whether a step left by itself landed on the row Joel stepped in from:
-// `from` is the step's own record of that row (its key, or "" for none,
-// and where it stood, -1 for the headline), `landed` the key of the row
-// selected once it landed ("" for none) and `current` where that stands.
-// The headline is landed on by where it stands, as the launcher's leftAt
-// puts it back, since its key is its words, which a re-answer changes. A
-// row gone from the rows the leave searched again, as an ask a share
-// hides, leaves the selection where it stood, on a row Joel never chose
-// (returnUnder).
-function onItsRow(from, landed, current) {
+// Whether a step left by itself landed on the row Joel stepped in from,
+// by its key alone: `from` is the step's own record of that row (its key,
+// or "" for none) and `landed` the key of the row selected once it landed
+// ("" for none). Where the selection stands says nothing, since a row
+// clicked into is stepped into without being selected, so a step's record
+// can stand on the headline under another row's key; a headline a
+// re-answer renamed is then guessed, and holds one Return. A row gone
+// from the rows the leave searched again, as an ask a share hides, leaves
+// the selection where it stood, on a row Joel never chose (returnUnder).
+function onItsRow(from, landed) {
     const key = from?.key ?? "";
-    return (key !== "" && key === landed) || (from?.at === -1 && current === -1);
+    return key !== "" && key === landed;
 }
 
 // A landing a step that left by itself had to guess: the keys the field
@@ -208,18 +208,18 @@ function whileLeaving(keys, open, before) {
 // before the leave; `from`, the step's record of the row Joel stepped in
 // from; `landed`, the key of the row selected once it landed ("" for
 // none, null where nothing was left); and `now`, the field's `keys`,
-// where the selection stands (`current`), whether the launcher is
-// `open`, its `depth`, and whether Joel's last key changed what left
-// (`byKey`), as Release It ends its ask. A leave his key caused is one he
-// watched, so it guesses nothing. A landing on its row keeps only a guess
-// still pending from an earlier leave, unbroken, since this one closed
-// whole.
+// whether the launcher is `open`, its `depth`, and whether what left
+// changed within keyedWithin of Joel's last key (`byKey`), as the
+// launcher counts a change his key's own. A leave his key caused is one
+// he watched, so it guesses nothing new, though a guess still pending
+// from an earlier leave stands. A landing on its row keeps only such a
+// pending guess, unbroken, since this one closed whole.
 function landedAfter(before, from, landed, now) {
     const kept = pending(before, now.keys);
-    if (!now.open || now.byKey) {
+    if (!now.open) {
         return unguessed();
     }
-    if (landed !== null && !onItsRow(from, landed, now.current)) {
+    if (!now.byKey && landed !== null && !onItsRow(from, landed)) {
         return { keys: now.keys, at: 0, depth: now.depth, broken: false };
     }
     return kept ? Object.assign({}, before, { depth: now.depth, broken: false }) : unguessed();
