@@ -36,6 +36,10 @@
 //!     write down each meeting in SET as a call and print the share of
 //!     its words each side got wrong, written down and heard alone
 //!     (score.rs); fail when the set's, written down, is above CEILING
+//! call-transcripts mark TRANSCRIPT.md REFERENCE MINE
+//!     print the share of its words each side of a call's file got wrong
+//!     against REFERENCE, a reference as a meeting's is, whose speaker
+//!     MINE is Joel's side, counted as score counts them (mark.rs)
 //! call-transcripts voices SPEAKER_MODEL SET [RIGHT HANDLED]
 //!     tell the voices of each meeting's far end in SET apart, and print
 //!     how much of what was named was named right, and how much of the
@@ -79,6 +83,7 @@ mod book;
 mod filed;
 mod follow;
 mod hear;
+mod mark;
 mod meet;
 mod meeting;
 mod naming;
@@ -157,6 +162,20 @@ fn help() -> Help {
                     Exit::Failed,
                     "a file can't be read, or it's above the ceiling",
                 ),
+        )
+        .subcommand(
+            Help::new("mark", "how many words of a call's file are wrong")
+                .argument("<transcript>", "the call's transcript.md")
+                .argument(
+                    "<reference>",
+                    "what was said on it, as a meeting's reference",
+                )
+                .argument("<mine>", "the reference's speaker on Joel's side")
+                .example(
+                    "call-transcripts mark transcript.md ES2004a.ref B",
+                    "B's lines are Joel's",
+                )
+                .exit(Exit::Failed, "a file can't be read"),
         )
         .subcommand(
             Help::new("voices", "how well it tells meetings' voices apart")
@@ -249,6 +268,7 @@ fn act(args: &[String]) -> Result<(), Failure> {
                 .try_this(format!("call-transcripts score {model} {set} 19")));
             }
         },
+        ["mark", file, reference, mine] => mark::mark(Path::new(file), Path::new(reference), mine),
         ["voices", model, set] => apart::apart(Path::new(model), Path::new(set), None),
         ["voices", model, set, right, handled] => {
             match (score::ceiling(right), score::ceiling(handled)) {
