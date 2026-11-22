@@ -118,46 +118,6 @@ function sought(page, pattern, forward, count) {
     };
 }
 
-// What a move needs laid of a run whose rest is still to come, so it never
-// lands on what follows the run while that rest would come between:
-// "whole" for one past the line the laid run ends on (`last`), as G's;
-// "more" for one that comes within `off` lines of it, or whose view, a
-// `height` tall from the move's top, reaches past that line's `top`; or
-// "" for one that stays clear of it.
-function runReach(landed, last, edge) {
-    if (landed.line > last) {
-        return "whole";
-    }
-    if (landed.line + edge.off >= last || landed.top + edge.height > edge.top) {
-        return "more";
-    }
-    return "";
-}
-
-// What a move does next while its run's rest is still to come, from what
-// runReach says the move (`landed`) needs of the run laid to `last`, in
-// its view's `edge`: "whole" lays the rest at once, read once; "show"
-// shows the parts laid quietly; "part" lays one part more, each read as
-// it's laid; "" stops. `so` says how many parts it has laid already
-// (`parts`) and whether the parts laid are still unshown (`quiet`). One
-// that lands on the laid end again after a part, as G does each time,
-// lays the rest whole, read once rather than some 45 times on Emoji's; a
-// page move that needs a second part lays only that, since the rest laid
-// whole in its key's turn would cost some 850 ms there.
-function runStep(landed, last, edge, so) {
-    const reach = runReach(landed, last, edge);
-    if (reach === "whole") {
-        return "whole";
-    }
-    if (reach !== "more") {
-        return "";
-    }
-    if (so.quiet) {
-        return "show";
-    }
-    return so.parts > 0 && landed.line >= last ? "whole" : "part";
-}
-
 // A part's pieces as last read, moved by what moved above the part since:
 // each one's left, top and baseline, so its lines, wash and view follow it.
 function shifted(pieces, dx, dy) {

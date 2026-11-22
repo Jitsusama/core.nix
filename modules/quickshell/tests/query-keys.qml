@@ -20,6 +20,7 @@ import "Confirm.js" as Confirm
 import "DrawerPage.js" as Page
 import "DrawerFigure.js" as Figure
 import "DrawerProse.js" as Prose
+import "DrawerRun.js" as Run
 import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 import "Changes.js" as Changes
@@ -2040,31 +2041,110 @@ QtObject {
         // on the acts under the run while its rest is still to come.
         const edge = { off: 5, height: 300, top: 900 };
         holds("a move past a run's laid end lays its rest whole",
-            Page.runReach({ line: 41, top: 0 }, 40, edge), "whole");
+            Run.reach({ line: 41, top: 0 }, 40, edge), "whole");
         holds("one landing on that line lays more, not the rest",
-            Page.runReach({ line: 40, top: 0 }, 40, edge), "more");
+            Run.reach({ line: 40, top: 0 }, 40, edge), "more");
         holds("one within scrolloff of it lays more",
-            Page.runReach({ line: 35, top: 0 }, 40, edge), "more");
+            Run.reach({ line: 35, top: 0 }, 40, edge), "more");
         holds("as does one whose view reaches past it",
-            Page.runReach({ line: 10, top: 601 }, 40, edge), "more");
+            Run.reach({ line: 10, top: 601 }, 40, edge), "more");
         holds("and one clear of it lays nothing",
-            Page.runReach({ line: 34, top: 600 }, 40, edge), "");
+            Run.reach({ line: 34, top: 600 }, 40, edge), "");
         // What go() does with it: G lands on the laid end each time, so
         // once a part hasn't cleared it the rest is laid whole, read once;
         // a page move that needs a second part lays only that.
         const shown = { parts: 1, quiet: false };
         holds("a move needing more lays a part first",
-            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: false }), "part");
+            Run.step({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: false }), "part");
         holds("and one on the laid end again after it lays the rest whole",
-            Page.runStep({ line: 40, top: 0 }, 40, edge, shown), "whole");
+            Run.step({ line: 40, top: 0 }, 40, edge, shown), "whole");
         holds("but one a line short of that end lays another part",
-            Page.runStep({ line: 39, top: 0 }, 40, edge, shown), "part");
+            Run.step({ line: 39, top: 0 }, 40, edge, shown), "part");
         holds("parts laid quietly are shown before any more is laid",
-            Page.runStep({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: true }), "show");
+            Run.step({ line: 40, top: 0 }, 40, edge, { parts: 0, quiet: true }), "show");
         holds("a move past the laid end lays the rest whole at once",
-            Page.runStep({ line: 41, top: 0 }, 40, edge, { parts: 0, quiet: true }), "whole");
+            Run.step({ line: 41, top: 0 }, 40, edge, { parts: 0, quiet: true }), "whole");
         holds("and one clear of it stops",
-            Page.runStep({ line: 34, top: 600 }, 40, edge, { parts: 2, quiet: false }), "");
+            Run.step({ line: 34, top: 600 }, 40, edge, { parts: 2, quiet: false }), "");
+        // The walk go() takes over a run of `left` parts of ten lines laid on
+        // from line 40, each line 20 pixels down, `unshown` while laid
+        // quietly, for a move landing where `landing` says from the laid end:
+        // the steps it took, and the line it lands on. Its cost shows nowhere
+        // else but as time.
+        function walked(left, unshown, landing) {
+            const run = { last: 40, left, unshown, steps: [] };
+            const landed = Run.walk(() => landing(run.last), {
+                laying: () => run.unshown || run.left > 0,
+                end: () => run.last,
+                edge: end => ({ off: 5, height: 300, top: end * 20 }),
+                quiet: () => run.unshown,
+                whole: () => {
+                    run.steps.push("whole");
+                    run.last += 10 * run.left;
+                    run.left = 0;
+                    run.unshown = false;
+                },
+                show: () => {
+                    run.steps.push("show");
+                    run.unshown = false;
+                },
+                part: () => {
+                    run.steps.push("part");
+                    run.last += 10;
+                    run.left -= 1;
+                }
+            });
+            return [run.steps, landed.line];
+        }
+        const onEnd = last => ({ line: last, top: 0 });
+        holds("G on a run with nothing under it lays a part, then the rest whole",
+            walked(45, false, onEnd), [["part", "whole"], 490]);
+        holds("a move whose view reaches past the laid end lays only the parts it needs",
+            walked(45, false, () => ({ line: 38, top: 760 })), [["part", "part"], 38]);
+        holds("parts laid quietly are shown before one is laid and the rest",
+            walked(3, true, onEnd), [["show", "part", "whole"], 70]);
+        holds("a move clear of the run lays none of it",
+            walked(45, false, () => ({ line: 10, top: 0 })), [[], 10]);
+        // A page shown anew while the drawer holds the keys: said at once, as
+        // its key is held, and laid a turn later, however many are shown in
+        // that turn, and never once its keys have gone.
+        function shownAnew() {
+            const seen = [];
+            const turns = [];
+            const waiting = { lay: false };
+            const keys = { held: true };
+            const hooks = {
+                coming: () => seen.push("coming"),
+                later: laid => turns.push(laid),
+                held: () => keys.held,
+                lay: () => seen.push("lay")
+            };
+            return {
+                seen,
+                keys,
+                shown: () => Run.anew(waiting, hooks),
+                turn: () => turns.splice(0).forEach(laid => laid())
+            };
+        }
+        const once = shownAnew();
+        once.shown();
+        holds("a page shown anew is said while its key is held", once.seen, ["coming"]);
+        once.shown();
+        once.turn();
+        holds("and two in one turn are said and laid once", once.seen, ["coming", "lay"]);
+        once.shown();
+        once.turn();
+        holds("and one shown after that lay is laid again", once.seen,
+            ["coming", "lay", "coming", "lay"]);
+        const gone = shownAnew();
+        gone.shown();
+        gone.keys.held = false;
+        gone.turn();
+        holds("one whose keys have gone before its turn is never laid", gone.seen, ["coming"]);
+        gone.keys.held = true;
+        gone.shown();
+        gone.turn();
+        holds("but the next page shown is", gone.seen, ["coming", "coming", "lay"]);
         // The parts read before the going-in frame keep their pieces, moved
         // by what moved above them, rather than read every line again.
         holds("a part's pieces move right and down by what moved above them",

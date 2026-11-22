@@ -44,7 +44,8 @@
 // visual to start from. Its words are laid out by Qt as read-only
 // TextEdits (PageText, below), which can say which letters each line
 // holds and where, so the cursor stands on the letters drawn;
-// DrawerPage.js says where each key takes it and the view.
+// DrawerPage.js says where each key takes it and the view, and
+// DrawerRun.js what a key and a page shown lay of a long run.
 pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
@@ -53,6 +54,7 @@ import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
 import "DrawerPage.js" as Page
 import "DrawerProse.js" as Prose
+import "DrawerRun.js" as Run
 import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 import "Measures.js" as Measures
@@ -1156,36 +1158,29 @@ Floating {
         }
         return -1;
     }
-    // Whether a page shown anew waits on its deferred lay (anew).
-    property bool anewWaits: false
+    // Whether a page shown anew waits on its lay (DrawerRun.anew).
+    property var anewWaiting: ({
+            lay: false
+        })
     // Another page shown while it holds the keys, as its list of keys is:
     // read from its top once Qt has laid it out, as a window opened on it,
-    // and timed as going in is. A run is laid as going into it lays it.
+    // and timed as going in is, from the key that asked it. A run is laid
+    // as going into it lays it. Not once the keys have gone meanwhile,
+    // which would lay the run at rest.
     function anew() {
         if (keys) {
             // At once, so the new page's first frame draws none of it.
             unflash();
             runCut();
-            // A second page shown before the first is laid is laid in its
-            // place, by the going-in the first began: both deferred lays
-            // would lay the page shown last, and the launcher keeps one
-            // going-in at a time, so a second would take the first's.
-            if (anewWaits)
-                return;
-            anewWaits = true;
-            // Said now, while the key that asked it is still held, so the
-            // launcher times it from that key rather than from this turn's
-            // end, which would leave out the new page's own lay.
-            keysComing();
-            Qt.callLater(() => {
-                anewWaits = false;
-                // Not once the keys have gone meanwhile, which would
-                // lay the run at rest.
-                if (!keys)
-                    return;
-                scrolled = 0;
-                enter();
-                keysIn();
+            Run.anew(anewWaiting, {
+                coming: () => keysComing(),
+                later: laid => Qt.callLater(laid),
+                held: () => keys,
+                lay: () => {
+                    scrolled = 0;
+                    enter();
+                    keysIn();
+                }
             });
         }
     }
@@ -1223,30 +1218,26 @@ Floating {
             fold();
             return;
         }
-        let moved = movedBy(act, count);
         // While its run is still being laid, a move past what's laid of it
         // lays it all first, as G's does, and one that comes near its end,
         // or shows what's under it, shows the parts laid quietly or lays a
         // part more, and moves again, so it never lands on what follows the
-        // run while the run's rest is still to come (DrawerPage.runReach),
-        // and one landing on the end of what's laid again once a part is
-        // laid, as G does each time, lays the rest whole (DrawerPage.runStep).
-        let parts = 0;
-        for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
-            const step = Page.runStep(moved, end,
-                { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top },
-                { parts, quiet: runQuiet });
-            if (step === "whole")
-                layWhole();
-            else if (step === "show")
-                runShow();
-            else if (step === "part") {
-                layPart(runPart, true);
-                parts += 1;
-            } else
-                break;
-            moved = movedBy(act, count);
-        }
+        // run while the run's rest is still to come; and one landing on the
+        // end of what's laid again once a part is laid, as G does each
+        // time, lays the rest whole (DrawerRun.walk).
+        const moved = Run.walk(() => movedBy(act, count), {
+            laying: () => runQuiet || runNext >= 0,
+            end: () => runEnd(),
+            edge: end => ({
+                    off: drawer.scrolloff,
+                    height: drawer.viewRoom,
+                    top: laid[end].top
+                }),
+            quiet: () => runQuiet,
+            whole: () => layWhole(),
+            show: () => runShow(),
+            part: () => layPart(runPart, true)
+        });
         cursor = { line: moved.line, letter: moved.letter, want: moved.want };
         scrollTo(moved.top);
     }
