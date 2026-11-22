@@ -169,15 +169,36 @@ rec {
       # machine is named as the realm names it, so a misspelt one fails
       # here rather than leaving the carry refused with nothing said.
       accepts = lib.mkOption {
-        type = lib.types.addCheck (lib.types.attrsOf accepted) (
-          machines: lib.all name.check (lib.attrNames machines)
-        );
+        type = byMachine accepted;
         default = { };
         example.other-machine.secrets = [ "tokens" ];
         description = "The doors each other machine, by name, may open beyond these for a session carried from here.";
       };
     };
   };
+  # An attribute set of `type`, keyed by machines as the realm names them.
+  byMachine = type: namingMachines (lib.types.attrsOf type);
+  # `machines`, whose merge refuses a key no realm could name a machine,
+  # saying which. `addCheck` can't: the module system rebuilds a set of
+  # submodules from its functor to give them their file, dropping any
+  # check added beside it, so the rebuilt set is wrapped again too.
+  namingMachines =
+    machines:
+    machines
+    // {
+      merge =
+        loc: defs:
+        let
+          misnamed = lib.filter (machine: !name.check machine) (
+            lib.concatMap (def: lib.attrNames def.value) defs
+          );
+        in
+        if misnamed == [ ] then
+          machines.merge loc defs
+        else
+          throw "${lib.showOption loc} names ${lib.concatStringsSep ", " misnamed}, which no realm could name a machine: ${name.description}.";
+      substSubModules = modules: namingMachines (machines.substSubModules modules);
+    };
   # The doors of each kind a session carried from here may gain there.
   accepted = lib.types.submodule {
     options = lib.genAttrs [ "builders" "forges" "secrets" ] (
