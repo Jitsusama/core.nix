@@ -633,10 +633,13 @@ mod tests {
     fn a_share_is_rounded_up_to_the_tenth_the_hour_files() {
         assert_eq!(share(104.0, 10_000.0), Some(1.1), "1.04% is past 1%");
         assert_eq!(share(100.0, 10_000.0), Some(1.0), "1% is on 1%");
+        // No share under a whole has shown the float error in three million
+        // tries, but 403 over 100 multiplies out to 4030.0000000000005, so
+        // the guard against it is pinned there.
         assert_eq!(
-            share(9_120.0, 912_000.0),
-            Some(1.0),
-            "a whole tenth's float error doesn't round it up"
+            share(403.0, 100.0),
+            Some(403.0),
+            "a whole tenth's float error rounded it up"
         );
         let none = share(0.0, 48_000.0).unwrap_or(f64::NAN);
         assert!(
@@ -714,6 +717,37 @@ mod tests {
                 figures.sound_why
             );
         }
+    }
+
+    #[test]
+    fn a_restart_without_jitter_says_jitter_went_unreported_too() {
+        let far: Vec<Value> = (0..30_u32)
+            .map(|t| {
+                let since = f64::from(if t < 20 { t } else { t - 20 });
+                playing(
+                    t,
+                    &json!({
+                        "totalSamplesReceived": 48_000.0 * f64::from(t),
+                        "concealedSamples": 4_800.0 * since,
+                        "packetsReceived": 49.0 * since,
+                        "packetsLost": since,
+                    }),
+                )
+            })
+            .collect();
+        let figures = call(&[], &far, &[]);
+        assert_eq!(
+            (figures.heard, figures.jitter_p99),
+            (true, None),
+            "a restart without jitter gave a jitter"
+        );
+        assert!(
+            figures.sound_why.as_deref().is_some_and(|why| {
+                why.contains("started again partway") && why.contains("didn't report jitter")
+            }),
+            "the unreported jitter isn't said beside the restart: {:?}",
+            figures.sound_why
+        );
     }
 
     #[test]
