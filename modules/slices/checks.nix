@@ -174,13 +174,20 @@
   # sessions it holds, on the processor and in memory, inside their slice:
   # starved and swapped out beside them, it stopped drawing and lost Joel's
   # keys whenever a session opened (2026-11-09). Its hard floor holds only
-  # as far as agents.slice keeps one as large, and the rest of that slice's
-  # stays soft.
+  # as far as agents.slice keeps one as large beside the 1.5 GiB jobs-sorter
+  # holds hard for three windows Joel is at, 512M on the pi or conversation
+  # of each (src/holds.rs), and the rest of that slice's stays soft.
   the-sessions-kitty-comes-before-its-sessions =
     let
       inherit (graphical.config) home-manager systemd;
       kitty = home-manager.users.someone.systemd.user.services.sessions-kitty.Service;
       agents = systemd.user.slices.agents.sliceConfig;
+      mib =
+        size:
+        if lib.hasSuffix "G" size then
+          lib.toInt (lib.removeSuffix "G" size) * 1024
+        else
+          lib.toInt (lib.removeSuffix "M" size);
     in
     holds "the-sessions-kitty-comes-before-its-sessions"
       "The sessions' kitty isn't in agents.slice ahead of its sessions' scopes, or its hard floor isn't one agents.slice keeps."
@@ -188,7 +195,8 @@
         kitty.Slice == "agents.slice"
         && (kitty.CPUWeight or 100) > 100
         && kitty ? MemoryMin
-        && (agents.MemoryMin or null) == kitty.MemoryMin
+        && agents ? MemoryMin
+        && mib agents.MemoryMin == mib kitty.MemoryMin + 3 * 512
       );
 
   # Work other sessions wait on ranks with them on the disk, where nothing

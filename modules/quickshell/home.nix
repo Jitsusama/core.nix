@@ -2354,9 +2354,10 @@ in
         # missing. Its scopes take its slice, not its weight or its floor,
         # so the sessions themselves stay where they were. Its floor is
         # hard, since a soft one was taken back 285,154 times in 40 minutes
-        # of swapping, and agents.slice keeps a hard floor the same size for
-        # it (modules/slices). It covers what it held resident and hot, not
-        # the scrollback swapped out cold.
+        # of swapping, and agents.slice keeps a hard floor as large for it,
+        # beside jobs-sorter's for the windows Joel is at (modules/slices). It
+        # covers what it held resident and hot, not the scrollback swapped out
+        # cold.
         CPUWeight = 1000;
         MemoryMin = "512M";
         # What it swaps out stays compressed in memory rather than going to

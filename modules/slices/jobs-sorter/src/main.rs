@@ -902,9 +902,9 @@ fn started_with(scopes: &[PathBuf]) -> Vec<(String, Vec<String>)> {
 /// niri's focus says, keeps in memory each he was at within
 /// [`focus::KEEP`], gives back each that aged out, and says which units
 /// are held. A failure is said once, and tried again on the next look.
-fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
+fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> Vec<String> {
     let Some(following) = windows.focus else {
-        return HashSet::new();
+        return Vec::new();
     };
     let now = std::time::Instant::now();
     let wanted = following.held(now);
@@ -979,7 +979,7 @@ fn hold_windows(windows: &Windows, ranks: &mut Ranks) -> HashSet<String> {
         .filter_map(|scope| unit_of(scope).map(str::to_owned))
         .collect();
     ranks.spared = spared;
-    set_holds(&held, &kept, ranks);
+    set_holds(&held, &kept, windows.pis, ranks);
     set_in_memory(&kept, ranks);
     read_back(following.at(), ranks);
     held.iter()
@@ -1053,38 +1053,55 @@ fn children(pid: u32) -> Vec<u32> {
 
 /// Holds each of `held` not held yet and gives back each held no longer,
 /// keeping writeback off on one given back that's among `kept`.
-fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
+fn set_holds(held: &[PathBuf], kept: &[PathBuf], pis: &[String], ranks: &mut Ranks) {
     ranks.holding.keep_only(Path::exists);
-    for (scope, hold) in ranks.holding.changes(held) {
+    for (scope, hold) in ranks.holding.changes(held, pis) {
         let unit = scope
             .file_name()
             .unwrap_or_default()
             .to_string_lossy()
             .into_owned();
+        let hard = hold.then(|| ranks.holding.hard_floor(&scope, pis));
         let result = Command::new("busctl")
-            .args(holds::hold_call(&unit, hold, kept.contains(&scope)))
+            .args(holds::hold_call(&unit, hard, kept.contains(&scope)))
             .stdout(Stdio::null())
             .output();
         match result {
             Ok(output) if output.status.success() => {
-                ranks.holding.done(&scope, hold);
+                // A failure after this one is said again, so a give-back that keeps failing, as
+                // it would leave a hard floor behind, isn't silent.
+                ranks.holding.failed = false;
+                ranks.holding.done(&scope, hard);
                 // An orchestrator's window gave its floor up to this one,
                 // so it's kept again from nothing once given back.
                 ranks.keeping.done(&unit, keep::Floor::Nothing);
-                let says = if hold { "Held" } else { "Gave back" };
-                eprintln!("{says} {unit}, a window Joel is or was just at.");
+                match hard {
+                    Some(0) if holds::hard_for(&scope, pis) > 0 => eprintln!(
+                        "Held {unit}, a window Joel is or was just at, with no hard floor while {} \
+                         others keep theirs.",
+                        focus::MOST
+                    ),
+                    Some(0) => eprintln!("Held {unit}, a window Joel is or was just at."),
+                    Some(hard) => eprintln!(
+                        "Held {unit}, a window Joel is or was just at, {} MiB of it hard.",
+                        hard >> 20
+                    ),
+                    None => eprintln!("Gave back {unit}, a window Joel was just at."),
+                }
             }
             Ok(output) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
                     eprintln!(
-                        "Couldn't hold {unit}: {}",
+                        "Couldn't {} {unit}: {}",
+                        if hold { "hold" } else { "give back" },
                         String::from_utf8_lossy(&output.stderr).trim()
                     );
                 }
             }
             Err(error) => {
                 if !std::mem::replace(&mut ranks.holding.failed, true) {
-                    eprintln!("Couldn't run busctl to hold {unit}: {error}");
+                    let what = if hold { "hold" } else { "give back" };
+                    eprintln!("Couldn't run busctl to {what} {unit}: {error}");
                 }
             }
         }
@@ -1095,7 +1112,8 @@ fn set_holds(held: &[PathBuf], kept: &[PathBuf], ranks: &mut Ranks) {
 /// and back on for each kept no longer ([`focus::KEEP`]).
 fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
     ranks.in_memory.keep_only(Path::exists);
-    for (scope, keep) in ranks.in_memory.changes(kept) {
+    // Keeping a scope in memory holds no floor, so no pi counts here.
+    for (scope, keep) in ranks.in_memory.changes(kept, &[]) {
         let unit = scope
             .file_name()
             .unwrap_or_default()
@@ -1107,7 +1125,7 @@ fn set_in_memory(kept: &[PathBuf], ranks: &mut Ranks) {
             .output();
         match result {
             Ok(output) if output.status.success() => {
-                ranks.in_memory.done(&scope, keep);
+                ranks.in_memory.done(&scope, keep.then_some(0));
                 let says = if keep {
                     "Keeping in memory"
                 } else {
@@ -1312,7 +1330,7 @@ fn weigh_windows(windows: &Windows, ranks: &mut Ranks) {
 /// windows `held` as ones Joel is at, the windows showing each, and the
 /// orchestrators last counted. A failure is said once, and tried again on
 /// the next look.
-fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &mut Ranks) {
+fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Ranks) {
     let units: Vec<PathBuf> = windows
         .under
         .iter()
@@ -1325,6 +1343,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         })
         .collect();
     let (viewers, shown) = viewers_and_shown(windows, prefix, held, &units);
+    let shares = shares(ranks.holding.hard(), &units, &viewers);
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
@@ -1355,16 +1374,17 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         });
         let signs = hosts::Signs {
             viewed: viewers.iter().filter(|viewed| *viewed == unit).count(),
+            held: shares.get(unit).copied().unwrap_or(0),
             shown: shown.iter().filter(|viewed| *viewed == unit).count(),
             orchestrators,
             marked,
-            current: fs::read_to_string(path.join("memory.current"))
-                .ok()
-                .and_then(|text| text.trim().parse().ok()),
-            // Busy commands are moved out of hosts' units alone (`looked_at`).
-            keeps_its_work: windows
-                .conversations
-                .is_some_and(|(conversations, _)| unit.starts_with(conversations)),
+            current: holds::current(&path),
+            keeps_its_work: joins::keeps_its_work(
+                unit,
+                windows
+                    .conversations
+                    .map(|(conversations, _)| conversations),
+            ),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
         if !ranks.hosts.changed(unit, &rank) {
@@ -1377,10 +1397,18 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &HashSet<String>, ranks: &m
         {
             Ok(output) if output.status.success() => {
                 eprintln!(
-                    "Ranked {unit} at weight {}, floor {}: {} windows Joel's at of {} showing it, \
-                     {} orchestrators.",
-                    rank.weight, rank.floor, signs.viewed, signs.shown, signs.orchestrators
+                    "Ranked {unit} at weight {}, floor {}, hard {}: {} windows Joel's at of {} \
+                     showing it, {} orchestrators.",
+                    rank.weight,
+                    rank.floor,
+                    rank.hard,
+                    signs.viewed,
+                    signs.shown,
+                    signs.orchestrators
                 );
+                // A failure after this one is said again, as a hard floor that can't be given
+                // back would otherwise stay silent.
+                ranks.hosts.failed = false;
                 ranks.hosts.done(unit, rank);
             }
             Ok(output) => {
@@ -1433,14 +1461,32 @@ fn own_of(
     })
 }
 
+/// How many hard floors each of `units` keeps for the `viewers` in the
+/// windows Joel is at: the held windows' are shared out across every
+/// unit, after the `pis` held hard (`set_holds`), to units in agents.slice
+/// alone, whose own hard floor backs them.
+fn shares(pis: usize, units: &[PathBuf], viewers: &[String]) -> HashMap<String, usize> {
+    let in_agents: Vec<String> = viewers
+        .iter()
+        .filter(|unit| {
+            units.iter().any(|path| {
+                path.file_name().and_then(|name| name.to_str()) == Some(unit.as_str())
+                    && holds::in_agents(path)
+            })
+        })
+        .cloned()
+        .collect();
+    holds::shares(pis, &in_agents)
+}
+
 /// The units among `units` each window `held` shows, and each window
-/// shows at all, one for each viewer in it. A window showing a
-/// conversation that runs in a unit of its own gives that unit what it
-/// gives, and its host nothing.
+/// shows at all, one for each viewer in it, in the order the windows are
+/// held. A window showing a conversation that runs in a unit of its own
+/// gives that unit what it gives, and its host nothing.
 fn viewers_and_shown(
     windows: &Windows,
     prefix: &str,
-    held: &HashSet<String>,
+    held: &[String],
     units: &[PathBuf],
 ) -> (Vec<String>, Vec<String>) {
     let names: HashSet<&str> = units
@@ -1453,10 +1499,9 @@ fn viewers_and_shown(
         })
     };
     let viewing = focus::viewing(held.iter().map(String::as_str), windows.pis);
-    let viewers = windows
-        .under
+    let viewers = viewing
         .iter()
-        .flat_map(|slice| viewing.iter().map(|unit| slice.join(unit)))
+        .flat_map(|unit| windows.under.iter().map(move |slice| slice.join(unit)))
         .flat_map(|scope| joined(&scope, &joins))
         .collect();
     let shown = windows
@@ -2753,6 +2798,17 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_units_in_agents_slice_take_a_hard_floors_share() {
+        let units = ["/cg/agents.slice/a.service", "/cg/app.slice/b.service"].map(PathBuf::from);
+        let viewers = ["b.service", "a.service"].map(str::to_owned);
+        assert_eq!(
+            shares(2, &units, &viewers),
+            HashMap::from([("a.service".to_owned(), 1)]),
+            "the unit in app.slice takes no share, nor the one floor left"
+        );
+    }
 
     fn settings() -> Settings {
         Settings {

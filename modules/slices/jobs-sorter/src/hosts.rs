@@ -23,6 +23,8 @@
 //!   for each orchestrator among them, as each would have in a window.
 //!   With neither, a window that only shows one adds [`keep::PI_FLOOR`],
 //!   once, as a window running a pi of its own keeps.
+//! - While any hold it, it keeps a hard floor of [`holds::HARD`] for each
+//!   viewer [`holds::shares`] gives it, beside the unit's own.
 //! - While any but the last hold it, nothing of it is written to the
 //!   disk's swap and systemd-oomd ends it last, as a held window's.
 //!
@@ -53,7 +55,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use crate::own::{Own, template};
-use crate::{focus, keep, low};
+use crate::{focus, holds, keep, low};
 
 /// How long a unit's own settings are trusted before they're read again,
 /// so a switch that changes them reaches a host that keeps running.
@@ -64,6 +66,7 @@ pub const OWN_FOR: Duration = Duration::from_secs(60);
 pub struct Rank {
     pub weight: u64,
     pub floor: u64,
+    pub hard: u64,
     pub writeback: bool,
     pub preference: String,
 }
@@ -73,6 +76,8 @@ pub struct Rank {
 pub struct Signs {
     /// Windows Joel is at that show one of its conversations.
     pub viewed: usize,
+    /// Of those, how many it keeps a hard floor for ([`holds::shares`]).
+    pub held: usize,
     /// Windows that show one of its conversations, whether he's at them
     /// or not.
     pub shown: usize,
@@ -125,9 +130,15 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     // would hold every conversation in memory, which #3070 kept windows from by holding at
     // most three. Unread, it might not fit, so writeback stays.
     let fits = signs.current.is_some_and(|current| current <= floor);
+    // A window held keeps a hard floor too, whole whatever the unit holds now, so a unit just
+    // started or reclaimed grows into it, for as many as `holds::shares` leaves it.
+    let held = u64::try_from(signs.held)
+        .unwrap_or(u64::MAX)
+        .saturating_mul(holds::HARD);
     Rank {
         weight,
         floor,
+        hard: own.hard.saturating_add(held),
         writeback: own.writeback && (signs.viewed == 0 || !fits),
         preference,
     }
@@ -227,6 +238,7 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
     let weight = rank.weight.to_string();
     let floor = rank.floor.to_string();
     let writeback = rank.writeback.to_string();
+    let hard = rank.hard.to_string();
     [
         "--user",
         "--quiet",
@@ -238,7 +250,7 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
         "sba(sv)",
         unit,
         "true",
-        "4",
+        "5",
         "CPUWeight",
         "t",
         &weight,
@@ -251,6 +263,9 @@ pub fn rank_call(unit: &str, rank: &Rank) -> Vec<String> {
         "ManagedOOMPreference",
         "s",
         &rank.preference,
+        "MemoryMin",
+        "t",
+        &hard,
     ]
     .iter()
     .map(|arg| (*arg).to_string())
@@ -298,7 +313,7 @@ impl Hosts {
     /// Whether `unit` should be set to `rank`: it changed, or this sorter
     /// never set it, as one before it may have left it held.
     pub fn changed(&self, unit: &str, rank: &Rank) -> bool {
-        self.set.get(unit) != Some(rank)
+        self.set.get(unit).is_none_or(|set| set != rank)
     }
 
     /// Notes a unit as set to `rank`.
@@ -326,6 +341,7 @@ mod tests {
     fn attended() -> Own {
         Own {
             floor: 512 << 20,
+            hard: 0,
             writeback: true,
             preference: "avoid".to_owned(),
         }
@@ -339,6 +355,7 @@ mod tests {
             Rank {
                 weight: low::AT,
                 floor: 512 << 20,
+                hard: 0,
                 writeback: true,
                 preference: "avoid".to_owned(),
             },
@@ -392,6 +409,80 @@ mod tests {
         assert_eq!(
             rank.preference, "avoid",
             "systemd-oomd ends a held host last"
+        );
+    }
+
+    #[test]
+    fn each_window_joel_is_at_holds_its_unit_hard_whatever_it_holds_now() {
+        let own = Own {
+            hard: 64 << 20,
+            ..Own::default()
+        };
+        let held = |viewed, current| {
+            wanted(
+                &own,
+                Signs {
+                    viewed: 3,
+                    held: viewed,
+                    current,
+                    ..Signs::default()
+                },
+                10,
+            )
+            .hard
+        };
+        assert_eq!(
+            held(1, Some(30 << 20)),
+            (64 << 20) + holds::HARD,
+            "a unit just started or reclaimed keeps a whole held window's hard floor, to grow into"
+        );
+        assert_eq!(
+            held(1, None),
+            (64 << 20) + holds::HARD,
+            "so does one whose memory can't be read"
+        );
+        assert_eq!(
+            held(2, Some(3 * GIB)),
+            (64 << 20) + 2 * holds::HARD,
+            "each window it's given keeps one, whatever the unit holds"
+        );
+        assert_eq!(
+            held(0, Some(GIB)),
+            64 << 20,
+            "none given keeps the unit's own, however many windows Joel is at show it"
+        );
+    }
+
+    #[test]
+    fn a_held_unit_is_set_again_only_as_its_rank_changes() {
+        let mut hosts = Hosts::default();
+        let viewed = |hard, current| {
+            wanted(
+                &Own {
+                    hard,
+                    ..Own::default()
+                },
+                Signs {
+                    viewed: 1,
+                    held: 1,
+                    current: Some(current),
+                    ..Signs::default()
+                },
+                10,
+            )
+        };
+        hosts.done("u", viewed(0, 300 << 20));
+        assert!(
+            !hosts.changed("u", &viewed(0, 310 << 20)),
+            "what a held unit holds moving isn't asked for again"
+        );
+        assert!(
+            hosts.changed("u", &viewed(64 << 20, 300 << 20)),
+            "a switch changing the unit's own hard floor reaches it"
+        );
+        assert!(
+            hosts.changed("u", &wanted(&Own::default(), Signs::default(), 10)),
+            "giving the hold back is"
         );
     }
 
@@ -668,7 +759,7 @@ mod tests {
     }
 
     #[test]
-    fn the_call_sets_all_four_properties() {
+    fn the_call_sets_all_five_properties() {
         let call = rank_call(
             "pi-host-work-attended.service",
             &wanted(&attended(), Signs::default(), 10),
@@ -678,7 +769,7 @@ mod tests {
             tail,
             [
                 "true",
-                "4",
+                "5",
                 "CPUWeight",
                 "t",
                 "100",
@@ -690,9 +781,12 @@ mod tests {
                 "true",
                 "ManagedOOMPreference",
                 "s",
-                "avoid"
+                "avoid",
+                "MemoryMin",
+                "t",
+                "0"
             ],
-            "the call gives back the unit's own floor and preference"
+            "the call gives back the unit's own floors and preference"
         );
     }
 }

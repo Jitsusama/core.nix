@@ -29,11 +29,12 @@ MIB = 2**20
 # them, soft, and for every slice above both, one of each, the soft one covering all three.
 APPS_SHARE = 0.13
 AGENTS_SHARE = 0.10
-ABOVE_SHARE = 0.21
+ABOVE_SHARE = 0.24
 ABOVE_SOFT_SHARE = 0.31
 SESSION_FLOOR = 4608 * MIB
-# The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself.
-AGENTS_FLOOR = 512 * MIB
+# The one hard part of agents.slice's floor: what the sessions' kitty keeps for itself, and
+# what jobs-sorter's hard floors on at most three windows' pi or conversation claim.
+AGENTS_FLOOR = 2048 * MIB
 # The journal's soft floor, which every machine's system.slice claims.
 JOURNAL_FLOOR = 64 * MIB
 # The share of memory past which work in jobs is slowed.
@@ -230,7 +231,8 @@ def test_every_account_has_it_and_machines_none(account: Account, drive: str) ->
 def test_apps_keep_a_hard_share_of_memory(account: Account) -> None:
     """Apps keep a hard share of memory, agents' sessions and system services a soft one.
 
-    Agents' sessions keep a hard floor only as large as the sessions' kitty's own.
+    Agents' sessions keep a hard floor as large as the sessions' kitty's own and jobs-sorter's
+    three 512M hard floors on the windows Joel is at.
     Every slice above both claims them too. system.slice claims what its
     services' floors add up to, at least those running now, so theirs hold.
     The remount that turns favordynmods on keeps memory_recursiveprot, without
