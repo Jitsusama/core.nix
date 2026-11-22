@@ -376,11 +376,10 @@ fn judge(
     // A fix to how core builds its runtime can't be seen in a runtime built
     // elsewhere, which copies only its patches, so it isn't told fixed;
     // `changed` leaves the build out where it only listed the patches. What
-    // the hosts are seen to lack beside it is still its owner's to mend.
+    // the hosts lack beside it, or an hour can't read of them, speaks
+    // first, as a reason a passing failure gives must never last.
     if files.lines().any(|file| file == HOSTED_PI) {
-        return lacking
-            .filter(|why| !why.starts_with(UNSEEN))
-            .or(Some(LOADS_UNSEEN));
+        return lacking.or(Some(LOADS_UNSEEN));
     }
     lacking
 }

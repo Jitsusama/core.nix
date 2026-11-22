@@ -142,21 +142,32 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         Some("runtime"),
         "a host seen lacking a patch beside core's runtime build was held for good"
     );
-    for (seen, hosts) in [
-        (None, "lacking nothing"),
-        (Some("cadence can't list the pi hosts"), "unlisted"),
+    // Hosts an hour can't list say so, as a reason a passing failure gives
+    // must never last; only hosts lacking nothing leave the build unseen.
+    for (seen, hosts, why) in [
+        (
+            None,
+            "lacking nothing",
+            "cadence can't tell what a pi host loads",
+        ),
+        (
+            Some("cadence can't list the pi hosts"),
+            "unlisted",
+            "cadence can't list the pi hosts",
+        ),
     ] {
+        let judged = judge(
+            "core",
+            at,
+            Some("f00d"),
+            all,
+            beside,
+            move |_: &str, _: Reaches| seen,
+        );
         assert_eq!(
-            judge(
-                "core",
-                at,
-                Some("f00d"),
-                all,
-                beside,
-                move |_: &str, _: Reaches| seen
-            ),
-            Some("cadence can't tell what a pi host loads"),
-            "a patch beside core's runtime build, its hosts {hosts}, was judged by the patch alone"
+            judged,
+            Some(why),
+            "a patch beside core's runtime build, its hosts {hosts}, was judged wrongly"
         );
     }
     // A fix to how core builds its runtime, with no patch, can't be seen in

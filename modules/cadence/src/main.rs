@@ -725,16 +725,19 @@ fn fetch_or_keep(fetch: impl Fn() -> io::Result<String>) -> bool {
 }
 
 fn write_whole(path: &Path, text: &str) -> io::Result<()> {
-    // Staged under this process's own name, so an hour run by hand beside
-    // the timer's can't write into the one the other renames, and synced
-    // before the rename, so a crash leaves the old file or the new one
-    // whole: a kept reading that won't parse holds the hour's findings
-    // unjudged.
+    // Staged under this process's name, so an hour run by hand can't write
+    // into the one the timer's renames, removed if it fails, as no later
+    // hour shares it, and synced first, so a crash leaves a file whole: a
+    // kept reading that won't parse holds the hour's findings unjudged.
     let staged = path.with_extension(format!("new.{}", std::process::id()));
-    let mut file = fs::File::create(&staged)?;
-    io::Write::write_all(&mut file, text.as_bytes())?;
-    file.sync_all()?;
-    fs::rename(staged, path)
+    let written = fs::File::create(&staged).and_then(|mut file| {
+        io::Write::write_all(&mut file, text.as_bytes())?;
+        file.sync_all()
+    });
+    if written.is_err() {
+        let _ = fs::remove_file(&staged);
+    }
+    written.and_then(|()| fs::rename(staged, path))
 }
 
 #[cfg(test)]

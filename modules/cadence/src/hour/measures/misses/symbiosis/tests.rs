@@ -1077,24 +1077,30 @@ fn a_regression_beneath_a_fix_no_reading_shows_running_counts() {
     };
     let merged = BTreeSet::from([fix.clone()]);
     let unrun = BTreeMap::from([(fix, "cadence can't tell what a pi host loads")]);
-    let judged = Judged {
-        merged: &merged,
-        unread: &BTreeSet::new(),
-        unrun: &unrun,
-        here: "here",
-    };
     let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
-    let measure = findings.measured(&repos, &judged, NOW);
-    assert!(
-        (measure.now - 1.0).abs() < 1e-9
-            && measure
-                .behind
-                .iter()
-                .any(|line| line.contains("it's back · OSPHT4") && !held_unseen(line)),
-        "a regression beneath a fix no reading will show running went unseen: {} {:?}",
-        measure.says,
-        measure.behind
-    );
+    // Core's main unread this hour, as another line's walk failing leaves
+    // it, hides nothing of a fix already known merged.
+    for unread in [BTreeSet::new(), BTreeSet::from(["core".to_owned()])] {
+        let judged = Judged {
+            merged: &merged,
+            unread: &unread,
+            unrun: &unrun,
+            here: "here",
+        };
+        let measure = findings.measured(&repos, &judged, NOW);
+        assert!(
+            (measure.now - 1.0).abs() < 1e-9
+                && measure
+                    .behind
+                    .iter()
+                    .any(|line| line.contains("it's back · OSPHT4") && !held_unseen(line)),
+            "a regression beneath a fix no reading will show running went unseen, its main \
+             unread {}: {} {:?}",
+            !unread.is_empty(),
+            measure.says,
+            measure.behind
+        );
+    }
 }
 
 #[test]
@@ -1167,6 +1173,25 @@ fn a_lasting_part_holds_no_finding_while_the_rest_of_its_fix_waits() {
             measure.behind
         );
     }
+    // Both merged, one held for good and one for the hour: the hour's
+    // speaks, so one failed listing closes no drag.
+    let merged = BTreeSet::from([core(6000), core(6001)]);
+    let unrun = BTreeMap::from([(core(6000), lasting), (core(6001), blind)]);
+    let judged = Judged {
+        merged: &merged,
+        unread: &BTreeSet::new(),
+        unrun: &unrun,
+        here: "here",
+    };
+    let measure = findings.measured(&repos, &judged, NOW);
+    assert!(
+        measure
+            .behind
+            .iter()
+            .any(|line| held_unseen(line) && !held_for_good(line)),
+        "a lasting part spoke over one an hour mends: {:?}",
+        measure.behind
+    );
 }
 
 #[test]
