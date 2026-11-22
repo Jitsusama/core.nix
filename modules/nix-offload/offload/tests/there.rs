@@ -191,7 +191,7 @@ fn executable(path: &Path, script: &str) {
 /// `loses-copy` file is there, the first loses its builder, saying what
 /// the file holds or, where it's empty, what ssh says as its keepalives
 /// give up, and takes the file away. Every copy, up or back, adds the
-/// `SSH_ASKPASS` it was given (`unset` for none) and its
+/// `SSH_ASKPASS` it was given in brackets (`unset` for none) and its
 /// `SSH_ASKPASS_REQUIRE` to `nix-askpass`, which an ssh with no tty asks
 /// through.
 const NIX: &str = r#"#!/bin/sh
@@ -200,7 +200,8 @@ echo "$@" > "$here/nix-was-given"
 echo "$@" >> "$here/nix-calls"
 echo "${WORK_RUNS_ELSEWHERE:-}" > "$here/nix-marked"
 case "$*" in
-  "copy "*) echo "${SSH_ASKPASS-unset} ${SSH_ASKPASS_REQUIRE-}" >> "$here/nix-askpass" ;;
+  "copy "*) echo "${SSH_ASKPASS+[}${SSH_ASKPASS-unset}${SSH_ASKPASS+]} ${SSH_ASKPASS_REQUIRE-}" \
+    >> "$here/nix-askpass" ;;
 esac
 case "$*" in
   "copy "*"--to "*)
@@ -1852,12 +1853,12 @@ fn a_copys_ssh_is_told_never_to_ask_and_given_no_askpass() {
         .unwrap();
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     // Each guard is checked on its own: BatchMode for the ssh Nix
-    // starts, and no askpass for any ssh that never reads NIX_SSHOPTS,
-    // which falls back to its own askpass while one is unset unless
-    // SSH_ASKPASS_REQUIRE says never.
+    // starts, and an empty askpass for any ssh that never reads
+    // NIX_SSHOPTS: SSH_ASKPASS_REQUIRE says never for its questions, and
+    // an empty SSH_ASKPASS keeps its notices off the built-in askpass.
     let askpass = fs::read_to_string(folder.path().join("nix-askpass")).unwrap();
     assert!(
-        !askpass.is_empty() && askpass.lines().all(|line| line == "unset never"),
+        !askpass.is_empty() && askpass.lines().all(|line| line == "[] never"),
         "a copy's ssh could ask Joel through an askpass: {askpass}"
     );
     let sshopts = fs::read_to_string(folder.path().join("nix-sshopts")).unwrap();

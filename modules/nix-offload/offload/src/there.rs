@@ -2904,11 +2904,15 @@ const ROOM_SAID: &str = "(said=0; while kill -0 $$ 2>/dev/null; do sleep 1; \
 
 /// ssh to `host`, never asking anything, logging where `said` names, whose
 /// verbose log ends with what it sent, which is what a build put on the
-/// connection.
+/// connection. It trusts only a host key it already holds, as every Nix
+/// copy's ssh does ([`crate::asking::NEVER_ASKS`]), so a nearby machine
+/// whose key isn't held is refused here, before anything is built on it,
+/// not at the copy back.
 pub fn reaching(ssh: &str, said: &Path) -> Command {
     let mut command = Command::new(ssh);
     command
-        .args(["-o", "BatchMode=yes", "-o", "LogLevel=VERBOSE"])
+        .args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"])
+        .args(["-o", "LogLevel=VERBOSE"])
         // A tunnel's connection can die with nothing on either end
         // closing it, and then ssh waits on it forever: on 30 October it
         // waited 30 minutes under a build, saying nothing. Unanswered for
