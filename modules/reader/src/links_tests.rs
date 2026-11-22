@@ -290,7 +290,10 @@ fn gf_follows_a_link_to_a_heading_here_and_reads_a_path_from_home_as_homes() {
         !names_another_file("#the-keys", page) && !names_another_file("page.md#a", page),
         "from a whole line, gf leaves a heading here to Ctrl+]"
     );
-    assert!(names_another_file("other.md#part", page));
+    assert!(
+        names_another_file("other.md#part", page),
+        "a heading in another file is gf's from a whole line"
+    );
     let home = std::env::var_os("HOME").map_or_else(
         || PathBuf::from("/notes/~/notes.md"),
         |home| PathBuf::from(home).join("notes.md"),
