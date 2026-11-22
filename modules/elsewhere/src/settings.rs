@@ -182,10 +182,7 @@ fn plain(path: &str) -> bool {
 /// the handover: a job's copy is emptied before it's made, so it must
 /// never land on the files that crossed for the job, or outside the quest.
 fn one_folder(name: &str) -> bool {
-    let handover = crate::far::HANDOVER
-        .split('/')
-        .next()
-        .unwrap_or_default();
+    let handover = crate::far::HANDOVER.split('/').next().unwrap_or_default();
     !name.is_empty()
         && !name.contains('/')
         && !name.starts_with('-')
@@ -257,7 +254,17 @@ mod tests {
 
     #[test]
     fn a_scratch_that_isn_t_one_folder_of_the_quest_s_own_is_refused() {
-        for scratch in ["", ".", "..", "../x", "a/b", "/runs/", "-x", "handover", "handover/elsewhere"] {
+        for scratch in [
+            "",
+            ".",
+            "..",
+            "../x",
+            "a/b",
+            "/runs/",
+            "-x",
+            "handover",
+            "handover/elsewhere",
+        ] {
             let text = serde_json::json!({ "scratch": scratch }).to_string();
             let problem = read(&text).expect_err(&format!("the scratch {scratch:?} was taken"));
             assert!(
