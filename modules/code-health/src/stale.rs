@@ -69,11 +69,9 @@ pub fn stale(paths: &[String], files: &[File]) -> Vec<String> {
                     .match_indices('/')
                     .nth(1)
                     .map_or(named, |(at, _)| &named[..at]);
-                let here = if prefix {
-                    begun(&file.path, named)
-                } else {
-                    found(&file.path, named)
-                };
+                // A path there whole passes even when a dash follows it
+                // as punctuation.
+                let here = found(&file.path, named) || (prefix && begun(&file.path, named));
                 if there.contains(below) && !here {
                     gone.push(format!("{}:{number}: {named}", file.path));
                 }
@@ -251,8 +249,10 @@ mod tests {
             file("tests/vm/gone.nix", "{ }\n"),
             file(
                 "modules/b/src/c.rs",
-                "// Beside its tests/kept/one- cases.\n",
+                "// Beside its tests/kept/one- cases, not its tests/kept/two- ones.\n\
+                 // Read by tests/kept/x.nix- which is there.\n",
             ),
+            file("modules/b/tests/kept/two.nix", "{ }\n"),
             file("modules/b/tests/kept/one-way.nix", "{ }\n"),
             file("tests/kept/x.nix", "{ }\n"),
             file("tests/vm/screens-come-vm-test.py", "\n"),
@@ -261,7 +261,8 @@ mod tests {
             stale(&paths(&files), &files),
             [
                 "tools/a.rs:1: tests/vm/gone",
-                "tools/a.rs:2: tests/vm/screens"
+                "tools/a.rs:2: tests/vm/screens",
+                "modules/b/src/c.rs:1: tests/kept/two"
             ],
             "a beginning some path has was taken for gone, one only its letters begin, \
              or a whole name some path merely begins with, was missed"
