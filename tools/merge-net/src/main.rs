@@ -307,9 +307,8 @@ fn ready(commit: &str) -> Result<ExitCode, String> {
         eprintln!(
             "merge-net: {} doesn't sit on origin's main as it is now, {}, and its base \
              lacks main's newest rules for which VM tests run (must-run.txt, lock-after.txt), \
-             so what \
-             needs said of it can't speak for them; rebase onto origin/main, push, and \
-             merge again",
+             so what needs said of it can't speak for them; rebase onto origin/main, push, \
+             and merge again",
             short(&commit),
             short(&main)
         );
@@ -367,9 +366,8 @@ fn may_merge(commit: &str, main: &str, passes: &[&str], files: &[String], said: 
     eprintln!(
         "merge-net: merge-net needs wasn't asked at {}, nor at an earlier commit of the same \
          change on a base holding main's rules for it (must-run.txt, lock-after.txt), so no \
-         one has heard \
-         which VM tests run before it merges; run merge-net needs there, run what it names, \
-         and merge again",
+         one has heard which VM tests run before it merges; run merge-net needs there, run \
+         what it names, and merge again",
         short(commit)
     );
     ExitCode::FAILURE
