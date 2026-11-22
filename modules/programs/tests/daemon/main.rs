@@ -18,7 +18,9 @@
 //! every repository's row (code.rs), a checkout's branches and the
 //! switch between them (switch.rs), a checkout's gone trees and store
 //! tended (tend.rs), and a page's list read again while it's refused
-//! (refused.rs).
+//! (refused.rs). Long because it also holds the daemon those modules
+//! start, `Running`, and the fixture each one's data folder is made
+//! from, so every module reaches them through the one crate root.
 
 mod agents;
 mod chrome;
