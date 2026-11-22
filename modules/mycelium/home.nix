@@ -186,7 +186,7 @@ let
   socket = lib.types.strMatching "/?([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
   # Folders any account may make a socket in, where the first to bind one
   # would be handed every lent machine's requests and answer them.
-  shared = [
+  openFolders = [
     "/tmp/"
     "/var/tmp/"
     "/dev/shm/"
@@ -789,7 +789,7 @@ in
           # one in a folder any account may bind a socket in.
           assertion =
             cfg.lend != null
-            -> lib.all (budget: !lib.any (folder: lib.hasPrefix folder budget.upstream) shared) (
+            -> lib.all (budget: !lib.any (folder: lib.hasPrefix folder budget.upstream) openFolders) (
               lib.attrValues cfg.lend.budgets
             );
           message = "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp, /var/tmp or /dev/shm, where any account may bind it first and read and answer every lent machine's requests.";
