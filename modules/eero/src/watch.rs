@@ -35,7 +35,7 @@ const RESIZED: Duration = if cfg!(test) {
 };
 
 /// Where the daemon listens.
-fn socket() -> Result<PathBuf, String> {
+pub fn socket() -> Result<PathBuf, String> {
     std::env::var_os("XDG_RUNTIME_DIR")
         .map(|run| PathBuf::from(run).join("eero/socket"))
         .ok_or_else(|| "XDG_RUNTIME_DIR isn't set".into())

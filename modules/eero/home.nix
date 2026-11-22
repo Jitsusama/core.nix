@@ -34,7 +34,7 @@ in
 
   systemd.user.services.eero-daemon = {
     Unit = {
-      Description = "Keeps the home network's eero for the shell";
+      Description = "Keeps the home network's eero for the desktop";
       # %S is the account's state folder, where `eero sign-in` seals the
       # session.
       ConditionPathExists = "%S/eero/session.cred";

@@ -54,12 +54,33 @@ pub enum Call {
 }
 
 /// An act a listener asked for: who asked, the ask's id its answer is
-/// said under, and the act.
+/// said under, the act, and the process that asked, so each act is logged
+/// by who did it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asked {
     pub listener: u64,
     pub id: Value,
     pub act: Act,
+    pub peer: Option<Peer>,
+}
+
+/// The process at the other end of a listener's connection, as the kernel
+/// says it, which no listener can tell otherwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Peer {
+    pub pid: i32,
+    pub uid: u32,
+}
+
+impl Peer {
+    /// Who connected on `stream`, or none where the kernel won't say.
+    fn of(stream: &UnixStream) -> Option<Peer> {
+        let said = rustix::net::sockopt::socket_peercred(stream).ok()?;
+        Some(Peer {
+            pid: said.pid.as_raw_nonzero().get(),
+            uid: said.uid.as_raw(),
+        })
+    }
 }
 
 /// The kind of the one record, and its key.
@@ -104,6 +125,8 @@ impl RowWatch {
 struct Listener {
     id: u64,
     stream: UnixStream,
+    /// Who connected, read once as it joined.
+    peer: Option<Peer>,
     /// Whether it watches the record, so it's told each change.
     watching: bool,
     /// Whether it watches the record ahead, which is looking at it.
@@ -265,6 +288,7 @@ impl Listeners {
             hub.next_id += 1;
             hub.listeners.push(Listener {
                 id,
+                peer: Peer::of(&stream),
                 stream,
                 watching: false,
                 looking: false,
@@ -357,6 +381,7 @@ impl Listeners {
                         listener: id,
                         id: said,
                         act,
+                        peer: listener.peer,
                     }));
                 }
                 Err(why) => (

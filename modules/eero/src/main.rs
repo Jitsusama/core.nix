@@ -2,8 +2,9 @@
 //!
 //! The eero has no local API, so everything goes through eero's cloud
 //! (cloud.rs), under a session Joel makes once by typing the code eero sends
-//! him (session.rs). It reads, and changes one setting: "Optimize for
-//! conferencing and gaming".
+//! him (session.rs). It reads, and changes three things: "Optimize for
+//! conferencing and gaming", eero's speed test, and the address kept for a
+//! device, which goes only through the daemon (asking.rs).
 //!
 //! The views read the record the daemon keeps of the home network
 //! (live.rs, views/), and never eero's cloud themselves, so a view is
@@ -17,8 +18,9 @@
 //! eero nodes <name> devices       what one holds, as radios, and a profile's devices
 //! eero internet sqm [on|off]      optimize for conferencing and gaming, or say it
 //! eero speeds run                 start the eero's own speed test
+//! eero devices <MAC> reserve <ip> keep an address for a device; unreserve to stop
 //! eero sign-in <email or phone>   sign in once, typing the code eero sends
-//! eero daemon                     keep the home network for the shell
+//! eero daemon                     keep the home network for the desktop
 //! ```
 //!
 //! The views: status, nodes [name], mesh, devices [name], profiles [name],
@@ -40,7 +42,9 @@
 
 mod acts;
 mod api;
+mod asking;
 mod called;
+mod changes;
 mod cloud;
 mod commands;
 mod completing;
@@ -119,6 +123,13 @@ fn run(context: &Context) -> Result<(), Failure> {
         ["sqm", ..] | ["internet", "sqm", ..] => {
             Err(Failure::new(Exit::Usage, "sqm takes on or off").try_this("eero internet sqm on"))
         }
+        ["devices" | "device", mac, "reserve", address] => reserve(context, mac, Some(address)),
+        ["devices" | "device", mac, "unreserve"] => reserve(context, mac, None),
+        ["devices" | "device", _, "reserve" | "unreserve", ..] => Err(Failure::new(
+            Exit::Usage,
+            "reserve takes the address to keep, and unreserve nothing more",
+        )
+        .try_this("eero devices 02:00:00:00:00:01 reserve 192.168.4.20")),
         ["daemon"] => daemon::run().map_err(|why| Failure::new(Exit::Failed, why)),
         _ if watching => watch(context, &view_words(&words)),
         _ => view(context, &view_words(&words)),
@@ -284,6 +295,61 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
     said(context.say(&each_said(&networks)))
 }
 
+/// Keeps `address` for the device `mac`, or with none stops keeping one,
+/// by asking the daemon (asking.rs). It says what it changes and how to
+/// undo it before asking, since the change is to the whole house.
+fn reserve(context: &Context, mac: &str, address: Option<&str>) -> Result<(), Failure> {
+    let mac = acts::Mac::parse(mac).ok_or_else(|| {
+        Failure::new(Exit::Usage, "a reservation names a device by its MAC")
+            .try_this("eero devices 02:00:00:00:00:01 reserve 192.168.4.20")
+    })?;
+    let address: Option<std::net::Ipv4Addr> = address
+        .map(|address| {
+            address.parse().map_err(|_| {
+                Failure::new(Exit::Usage, "a reservation keeps an IPv4 address")
+                    .try_this(format!("eero devices {mac} reserve 192.168.4.20"))
+            })
+        })
+        .transpose()?;
+    let (asked, doing, undo) = match address {
+        Some(address) => (
+            json!({"act": "reserve", "mac": mac.to_string(), "address": address.to_string()}),
+            format!("Keeping {address} for {mac}"),
+            Some(format!("eero devices {mac} unreserve")),
+        ),
+        None => (
+            json!({"act": "unreserve", "mac": mac.to_string()}),
+            format!("No longer keeping an address for {mac}"),
+            None,
+        ),
+    };
+    eprintln!(
+        "{doing}{}.",
+        undo.as_ref()
+            .map_or_else(String::new, |undo| format!("; undo with {undo}"))
+    );
+    asking::act(&asked).map_err(|undone| match undone {
+        asking::Undone::Absent(why) => {
+            Failure::new(Exit::Unavailable, "eero-daemon isn't answering")
+                .because(why)
+                .try_this("systemctl --user status eero-daemon")
+        }
+        asking::Undone::Refused(why) => Failure::new(Exit::Failed, "eero refused").because(why),
+    })?;
+    if context.format().is_json() {
+        return said(context.answer(&json!({
+            "schema": "eero.reservation/1",
+            "mac": mac.to_string(),
+            "address": address.map(|address| address.to_string()),
+            "undo": undo,
+        })));
+    }
+    said(context.say(&match address {
+        Some(address) => format!("eero keeps {address} for {mac}.\n"),
+        None => format!("eero keeps no address for {mac}.\n"),
+    }))
+}
+
 /// Each network's status a line, for a person. A network's name is
 /// anyone's to set, so each line is drawn without what the terminal kit
 /// keeps from the terminal, as a page is.
@@ -378,6 +444,14 @@ mod tests {
             ("internet sqm --help", "eero internet sqm"),
             ("speeds run --help", "eero speeds run"),
             ("sqm --help", "eero sqm"),
+            (
+                "devices 02:00:00:00:00:01 reserve --help",
+                "eero devices <name> reserve",
+            ),
+            (
+                "devices 02:00:00:00:00:01 unreserve --help",
+                "eero devices <name> unreserve",
+            ),
         ] {
             let args: Vec<String> = line.split(' ').map(str::to_owned).collect();
             let shown = tree::walk(&help, &args).map(|walked| walked.shown().name);

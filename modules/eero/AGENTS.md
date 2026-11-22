@@ -2,8 +2,8 @@
 
 The home network's eero, read from eero's cloud, since the eero has no
 local API. A Rust program, `eero`, signs in once (`src/session.rs` seals
-the session), reads, and changes one setting, Optimize for Conferencing
-and Gaming. Joel's bar for it (2026-11-07): "i want insanely nerdy
+the session), reads, and makes the few changes What It Changes lists.
+Joel's bar for it (2026-11-07): "i want insanely nerdy
 integration with the eero": every figure eero knows that is true and
 useful, shown where he looks, never a summary that hides them.
 
@@ -138,6 +138,32 @@ The model's `cloud.state` says whether the figures are current:
 - `signed-out`: the session aged past refreshing; `reason` says to run
   `eero sign-in`, and the next read opens the newly sealed session.
 
+## What It Changes
+
+The daemon makes four changes, and only these ([`src/acts.rs`][acts]):
+start eero's speed test, turn Optimize for Conferencing and Gaming on or
+off, keep an address for a device, and stop keeping one. Each is an ask
+`act` on its socket; an act it doesn't name is refused as `bad-act`, so
+no DNS, port forward, firewall, admin or account change goes through
+that door. `eero devices <MAC> reserve <address>` and
+`eero devices <MAC> unreserve` ask the daemon ([`src/asking.rs`][asking])
+rather than opening the session, so the session is opened by the daemon
+and by `eero sign-in`, `eero internet sqm on|off` and `eero speeds run`
+alone. A reservation refuses rather than replaces one already kept for
+that device or that address, and every change is read back, since eero
+takes a change it then ignores.
+
+Each act the daemon is asked is logged before it answers, a JSON line in
+`$XDG_STATE_HOME/eero/changes.jsonl` ([`src/changes.rs`][changes]): when,
+what, the asking process's pid and uid from the socket's peer
+credentials, the unit or scope it runs in, how to undo a reservation,
+and whether eero took it or why not. It holds no session.
+
+The session sealed in `session.cred` is the account's alone: the file is
+made mode 600 from the start and its folder 700, never narrowed after
+writing. Every change to the home network still waits on Joel's yes,
+with what it changes and its undo.
+
 ## What It Tells
 
 The daemon tells Joel what changed on the home network as desktop
@@ -244,6 +270,9 @@ the views and for the nodes, devices and profiles the record holds now,
 each by the name its view finds it by: a device two share a name with is
 offered by its hardware address.
 
+[acts]: src/acts.rs
+[asking]: src/asking.rs
+[changes]: src/changes.rs
 [contract]: contract/README.md
 [model]: home-network.json
 [read]: src/read/mod.rs

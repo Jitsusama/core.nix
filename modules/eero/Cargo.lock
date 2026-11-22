@@ -290,6 +290,7 @@ dependencies = [
  "jiff",
  "ready-rows",
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "terminal-kit",

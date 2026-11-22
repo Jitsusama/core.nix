@@ -70,6 +70,13 @@ impl Cloud {
         self.call(Method::Put, path, Some(body))
     }
 
+    /// An answer to a DELETE, which is how a reservation goes. eero may
+    /// answer one with no data, so its data is null then rather than a
+    /// refusal.
+    pub fn delete(&mut self, path: &str) -> Result<Value, Failure> {
+        self.call(Method::Delete, path, None)
+    }
+
     /// Asks, and once more after refreshing the session if eero says it
     /// aged, as it does every so often.
     fn call(&mut self, method: Method, path: &str, body: Option<&Value>) -> Result<Value, Failure> {
@@ -114,6 +121,13 @@ impl Cloud {
                     None => request.call(),
                 }
             }
+            Method::Delete => {
+                let request = self.agent.delete(&url);
+                match &cookie {
+                    Some(cookie) => request.header("Cookie", cookie).call(),
+                    None => request.call(),
+                }
+            }
             Method::Post | Method::Put => {
                 let request = if matches!(method, Method::Put) {
                     self.agent.put(&url)
@@ -135,7 +149,14 @@ impl Cloud {
         })?;
         let status = answer.status().as_u16();
         let read: Value = answer.body_mut().read_json().unwrap_or(Value::Null);
-        judge(path, status, &read)
+        match judge(path, status, &read) {
+            Err(Refused::Failed(Failure::Refused(_)))
+                if matches!(method, Method::Delete) && (200..300).contains(&status) =>
+            {
+                Ok(Value::Null)
+            }
+            judged => judged,
+        }
     }
 
     fn keep(&self) -> Result<(), String> {
@@ -168,12 +189,13 @@ fn judge(path: &str, status: u16, read: &Value) -> Result<Value, Refused> {
 }
 
 /// How a request asks: eero's reads are GETs, a setting changes by PUT,
-/// and everything else POSTs.
+/// a reservation goes by DELETE, and everything else POSTs.
 #[derive(Clone, Copy)]
 enum Method {
     Get,
     Post,
     Put,
+    Delete,
 }
 
 /// What's said when a session has aged past refreshing.

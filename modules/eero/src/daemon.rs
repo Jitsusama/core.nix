@@ -1,4 +1,4 @@
-//! `eero daemon`: the home network kept current for the shell and the CLI.
+//! `eero daemon`: the home network kept current for the desktop and the CLI.
 //!
 //! It keeps `$XDG_RUNTIME_DIR/eero/home-network.json`, written whole and
 //! only when it changes, for the CLI, and tells its socket's listeners
@@ -32,6 +32,7 @@ use serde_json::Value;
 
 use crate::acts::{self, Act};
 use crate::api;
+use crate::changes;
 use crate::cloud::{self, Failure};
 use crate::day;
 use crate::desktop::Notifier;
@@ -96,6 +97,11 @@ pub fn run() -> Result<(), String> {
             // Done before the next cycle, which reads what it changed.
             Ok(Call::Act(asked)) => {
                 let done = daemon.act(asked.act);
+                // Logged before it's answered, while the process that
+                // asked still waits, so its unit can be read.
+                if let Err(error) = changes::log(&asked, &done, now_unix()) {
+                    eprintln!("eero: couldn't log {:?}: {error}", asked.act);
+                }
                 listeners.answer_act(&asked, done);
             }
             Ok(Call::Joined | Call::Left | Call::Looked) | Err(RecvTimeoutError::Timeout) => {}

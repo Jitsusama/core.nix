@@ -8,6 +8,7 @@
 
 use std::fs;
 use std::io::{self, Write};
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -65,12 +66,31 @@ pub fn open() -> io::Result<String> {
 pub fn keep(token: &str) -> io::Result<()> {
     let file = file()?;
     let folder = file.parent().ok_or_else(|| io::Error::other("no folder"))?;
-    fs::create_dir_all(folder)?;
+    // The folder and the sealed file are the account's alone from the
+    // moment they exist, never opened up and narrowed after, so no other
+    // account ever has a moment to read the session.
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(folder)?;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))?;
     let fresh = file.with_extension("cred.new");
+    let _ = fs::remove_file(&fresh);
+    let sealed = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&fresh)?;
     let mut seal = Command::new("systemd-creds")
-        .args(["--user", "encrypt", &format!("--name={SEALED_AS}"), "-"])
-        .arg(&fresh)
+        .args([
+            "--user",
+            "encrypt",
+            &format!("--name={SEALED_AS}"),
+            "-",
+            "-",
+        ])
         .stdin(Stdio::piped())
+        .stdout(sealed)
         .stderr(Stdio::inherit())
         .spawn()?;
     seal.stdin
