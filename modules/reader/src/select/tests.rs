@@ -515,6 +515,20 @@ fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
         None,
         "v from the eyebrow onto the file's first word"
     );
+    // vip takes the paragraph's three lines of the file, so it names
+    // none, as Vim's gf over three lines, though its ends are on one.
+    let mut paragraph = Selection::new(Kind::Chars, at(row, name));
+    page.object(&mut paragraph, Object::InParagraph);
+    assert_eq!(page.named(&paragraph), None, "vip over three lines");
+    // An alert's kind is a line the file doesn't hold, below a selection
+    // as above it.
+    let page = set("named-noted", "The lede.\n\n> [!NOTE]\n> Noted here.\n");
+    let (lede, kind) = (holding(&page, "lede"), holding(&page, "NOTE"));
+    assert_eq!(
+        named(&page, Kind::Chars, at(lede, 0), at(kind, 0)),
+        None,
+        "v from the lede down onto the alert's kind"
+    );
     let words = "Words that run on past the measure. ".repeat(12);
     let page = set("named-wrapped", &format!("{words}\n"));
     let first = holding(&page, "Words");
@@ -529,9 +543,11 @@ fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
         "V on its second line gives the file's line whole"
     );
     let end = page.lines[first].text.chars().count() - 1;
+    let over = named(&page, Kind::Chars, at(first, end), at(first + 1, 0));
     assert!(
-        named(&page, Kind::Chars, at(first, end), at(first + 1, 0)).is_some(),
-        "v over the page's wrap is on one line of the file"
+        over.as_deref()
+            .is_some_and(|it| !it.contains('\n') && it.ends_with('W')),
+        "v over the page's wrap is on one line of the file, joined: {over:?}"
     );
 }
 
@@ -777,7 +793,7 @@ fn a_file_it_cant_read_gives_no_lines_rather_than_empty_ones() {
         .expect("set");
     std::fs::remove_file(&file).expect("gone");
     let gone = Layout::read_file(&page.frame, &file, 0);
-    std::fs::write(&file, "Words.\n").expect("back");
+    std::fs::write(&file, "Words, changed.\n").expect("back");
     let back = Layout::read_file(&page.frame, &file, 0);
     // The folder goes before the asserts, so a failing run leaves none.
     std::fs::remove_dir_all(&dir).expect("cleaned");
@@ -786,7 +802,20 @@ fn a_file_it_cant_read_gives_no_lines_rather_than_empty_ones() {
         "none for a file gone since the page was set"
     );
     let layout = back.expect("lines for one it reads");
-    assert_eq!(layout.source(), "Words.\n", "read as it is now");
+    assert_eq!(layout.source(), "Words, changed.\n", "read as it is now");
+}
+
+#[test]
+fn a_read_that_panics_gives_no_lines_rather_than_none_ever() {
+    assert!(
+        Layout::guarded(|| panic!("a read that fails")).is_none(),
+        "none, so the last lines go"
+    );
+    assert!(
+        Layout::guarded(|| Some(set_as("guarded", "Words.\n", 3)))
+            .is_some_and(|it| it.of(3).is_some()),
+        "a read that holds gives its lines"
+    );
 }
 
 #[test]
