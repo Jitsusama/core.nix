@@ -125,7 +125,12 @@ filled them was runs that told nobody anything new.
   46 minutes across 14 lent builders, though no unit before sign-in waits
   on the node. A broken node can hold off sleep, and a reboot or poweroff
   the account asks for until it is stopped, but not boot, unlocking or
-  sign-in. The list is read from the change's merge base. Every other
+  sign-in. The list is read from the change's merge base. The tests
+  move rather than go: the net builds them itself after the merge, about
+  an hour of its round at the rate below. A second bump of the same input
+  that lands before that round ends rewrites the same lock lines, so the
+  first won't revert, and a test it breaks goes on the quarantine list
+  with its PR as owner instead. Every other
   flake.lock change runs `changed-checks` and the VM tests `merge-net
   needs` names, whole, first.
 

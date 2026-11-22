@@ -98,7 +98,7 @@ run-subtests vm-desktop-<area> <words> # a VM test's subtests named, in seconds
 shell-preview --type <words>           # the shell from the working copy, in a niri window
 changed-checks                         # names and builds what the change touched, VM tests aside
 merge-net needs                        # whether the change runs VM tests before merging
-nix flake check --keep-going           # everything, only for a change every check reads
+nix flake check --keep-going           # every check at once; no merge needs it
 ```
 
 A check built as you go goes to a builder, with the working tree's changes,

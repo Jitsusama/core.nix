@@ -30,5 +30,8 @@
 # It can't stop a machine booting, unlocking or signing in, and a revert's
 # switch needs no reboot.
 # Each of its bumps ran 51 VM tests first, 46 minutes on 14 lent builders,
-# because every test machine carries the node.
+# because every test machine carries the node. The net now builds them
+# after the merge, about an hour of its round at twelve at once. A second
+# bump landing before that round ends rewrites the same lock lines, so the
+# first won't revert, and a test it broke is quarantined, owned by its PR.
 mycelium
