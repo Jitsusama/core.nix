@@ -13,6 +13,7 @@ sites' kit by [`site.nix`][site], which leaves this note behind.
 | `model.ts`   | the forage records read as cells, and the sentence saying them  |
 | `joins.ts`   | how forages join: needs shared, cells split and starts booked   |
 | `draw.ts`    | the floor cut through, the rows, and the cell open as its panel |
+| `floor.ts`   | which cells a long list's floor draws, and when a step redraws  |
 | `lineage.ts` | the panel's cells grown from and into, hedged when claimed, and |
 |              | text made safe for the page's markup                            |
 | `index.html` | the page, and `site.css` and `panel.css` its styles             |

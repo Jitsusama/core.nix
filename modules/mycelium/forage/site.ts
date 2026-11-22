@@ -16,6 +16,7 @@ import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { command, floorOf, forageRow, onMap, panelOf } from "./draw.ts";
+import { stepsOffFloor } from "./floor.ts";
 import { escaped } from "./lineage.ts";
 import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
 
@@ -101,6 +102,10 @@ function sayWhen(): void {
 
 const current = (): Forage | undefined => forages.find((each) => each.cell === cursor);
 
+// The cell a long list's floor is drawn around. A live record or a find keeps
+// it, so the drawing holds still until a step leaves the floor.
+let floorAround: string | null = null;
+
 function select(): void {
   // Only the row leaving the cursor and the row taking it change, so a step
   // costs the same whether the list holds five cells or ten thousand.
@@ -115,14 +120,14 @@ function select(): void {
     list.setAttribute("aria-activedescendant", row.id);
     row.scrollIntoView({ block: "nearest" });
   }
-  let onFloor = false;
+  const marked = new Set<string>();
   for (const mark of floor.querySelectorAll<SVGRectElement>("rect[data-cell]")) {
     mark.classList.toggle("on", mark.dataset["cell"] === cursor);
-    onFloor ||= mark.dataset["cell"] === cursor;
+    marked.add(mark.dataset["cell"] ?? "");
   }
-  // A step off the floor, down a list longer than it holds, draws it again
-  // around the cell stepped to; every other step only moves its ring.
-  if (!onFloor && cursor !== null && forages.length > 0) {
+  // A step off the floor draws it again around the cell stepped to.
+  if (stepsOffFloor(forages, cursor, marked)) {
+    floorAround = cursor;
     floor.innerHTML = floorOf(forages, cursor, machine());
   }
   if (cursor !== null && location.hash !== `#cell=${encodeURIComponent(cursor)}`) {
@@ -236,7 +241,8 @@ function draw(): void {
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
   if (forages.length > 0) {
-    floor.innerHTML = floorOf(forages, cursor, machine());
+    floorAround ??= cursor;
+    floor.innerHTML = floorOf(forages, cursor, machine(), floorAround);
   }
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();
