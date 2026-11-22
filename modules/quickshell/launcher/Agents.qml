@@ -874,24 +874,19 @@ Provider {
                 provider.elsewhere("unopened", session), Theme.alert]]);
         }
 
-        // A refused Wake whose row was becoming woken is taken back at once,
-        // said as not done, rather than reading done for as long as
-        // Becoming waits (a refused Wake read listening for 30 s). Only a
-        // Wake: another steer refused meanwhile, a talk say, is said as
-        // itself and leaves the Wake's row be.
+        // A Wake refused or never answered whose row was becoming woken is
+        // taken back at once, said as not done, rather than reading done for
+        // as long as Becoming waits (a refused Wake read listening for
+        // 30 s). Only a Wake: another steer refused meanwhile, a talk say, is
+        // said as itself and leaves the Wake's row be (SessionRow.takesBack,
+        // SessionRow.unsteered).
         function onUnsteered(session, why, act) {
-            const key = `agent:${session.address}`;
             const called = provider.footName(session);
-            if (act === "wake" && why !== "" && provider.launcher?.becoming?.[key]) {
-                provider.refused(key, SessionRow.reasonOf(why, session.address,
-                    called === session.address ? "" : called));
-                return;
-            }
-            const [name, said] = SessionRow.refusal(Words.of("agents:machine").said ?? {}, {
-                act: SessionRow.actName(act, Words.name), why, address: session.address,
-                name: called
-            });
-            provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+            SessionRow.unsteered(provider.launcher, Words.of("agents:machine").said ?? {}, {
+                act, actName: SessionRow.actName(act, Words.name), why,
+                address: session.address, name: called === session.address ? "" : called,
+                called, held: Boolean(provider.launcher?.becoming?.[`agent:${session.address}`])
+            }, Theme.alert);
         }
 
         // A parked session Wake would reopen with no fence it can say,

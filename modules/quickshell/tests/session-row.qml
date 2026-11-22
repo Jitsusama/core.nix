@@ -481,6 +481,51 @@ QtObject {
         if (JSON.stringify(unnamed) !== JSON.stringify(["Parked Quest", "not told, is busy"]))
             failures.push(`refusal, an unnamed act said act-less: ${JSON.stringify(unnamed)}`);
 
+        // A row drawn as woken is taken back only for a Wake, refused or never
+        // answered, while it's still becoming woken; any other act refused
+        // meanwhile leaves it be, and is said by refusal as itself.
+        const takings = [
+            ["a refused Wake, by the node's reason, its address said by name", "wake",
+                "so PARKED went", true, "so Parked Quest went"],
+            ["a Wake never answered, as no reason, said not woken yet", "wake", "", true, ""],
+            ["never for a Pause refused meanwhile", "pause", "PARKED is busy", true, null],
+            ["nor a Pause never answered", "pause", "", true, null],
+            ["nor words talked to it", "", "PARKED is busy", true, null],
+            ["nor a Wake whose row isn't becoming woken", "wake", "PARKED is busy", false, null],
+            ["nor a Wake never answered whose row isn't becoming woken", "wake", "", false, null]
+        ];
+        for (const [what, act, why, held, want] of takings) {
+            const back = SessionRow.takesBack(
+                { act, why, address: "PARKED", name: "Parked Quest", held });
+            if (back !== want)
+                failures.push(`takesBack, ${what}: ${JSON.stringify(back)}`);
+        }
+
+        // What Agents does with each: a Wake taken back goes to becameNot as
+        // itself, "" too, and anything else is said on the foot.
+        const toldLauncher = [];
+        const launcherStandIn = {
+            becameNot: (key, why) => toldLauncher.push(["becameNot", key, why]),
+            tellOnOpen: lines => toldLauncher.push(["tellOnOpen", lines])
+        };
+        const steers = [
+            ["a Wake never answered, let go at once as no answer", "wake", "Wake", "",
+                [["becameNot", "agent:PARKED", ""]]],
+            ["a refused Wake, let go by the node's reason", "wake", "Wake", "so PARKED went",
+                [["becameNot", "agent:PARKED", "so Parked Quest went"]]],
+            ["a Pause never answered, said on the foot", "pause", "Pause", "",
+                [["tellOnOpen", [["Parked Quest",
+                    "Pause had no answer from the node, so it may not be done", "alert"]]]]]
+        ];
+        for (const [what, act, actName, why, want] of steers) {
+            toldLauncher.length = 0;
+            SessionRow.unsteered(launcherStandIn, machineSaid, { act, actName, why,
+                address: "PARKED", name: "Parked Quest", called: "Parked Quest", held: true },
+                "alert");
+            if (JSON.stringify(toldLauncher) !== JSON.stringify(want))
+                failures.push(`unsteered, ${what}: ${JSON.stringify(toldLauncher)}`);
+        }
+
         const names = [
             ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
             ["its quest's title with no row served", undefined, "Its Quest", "PARKED", "Its Quest"],
