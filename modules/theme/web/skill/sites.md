@@ -180,6 +180,7 @@ a page still loading its own `kit/`:
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="site.css">
 <link rel="preload" href="../local-sites/web/fonts/fraunces.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="../local-sites/web/fonts/fraunces-italic.woff2" as="font" type="font/woff2" crossorigin>
@@ -190,7 +191,52 @@ The server holds two folders there that sound alike. `/local-sites/web/`
 is the theme's web kit: `theme.css`, `base.css` and the fonts.
 `/local-sites/kit/` is the sites' own scripts and switch: `feed.js`,
 `keys.js`, `document.js`, the rest built from the kit's TypeScript, and
-`switch.css`. Neither holds the other's files.
+`switch.css` and `head.css`. Neither holds the other's files.
+
+**The head every live page opens with** is the kit's, so the pages read
+as one family; before it each drew its own, five eyebrows in five faces.
+Its parts come in this order, each said once:
+
+```html
+<header class="page-head">
+  <p class="eyebrow">your sites<span class="sep">·</span>on this machine</p>
+  <h1>Every Site, <em>Here</em></h1>
+  <p class="lede">Seven sites, each live, and two asking something of you.</p>
+  <p class="standing"><span class="glyph" aria-hidden="true"></span>
+    <span id="status" role="status">Reaching its daemon.</span></p>
+  <div class="quiet">
+    <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step from site to site, and
+      <kbd>?</kbd> lists every key</p>
+    <!-- the three-way switch, centred under the key line -->
+  </div>
+</header>
+```
+
+- **The eyebrow** is two short phrases, what this is · whose or where,
+  never a sentence or three clauses.
+- **The title** is Title Case, Joel's word (`rulings.md`), with one italic
+  turn in the tint at most.
+- **The lede** says what stands now in his terms: never a session's
+  address, a sha or a command's name.
+- **The standing line** is `status.ts`'s, which writes its words only when
+  they change, so a screen reader hears a change and never a repeat. Only
+  it is a live region; a lede rewritten as the feed moves is not one.
+- **The quiet row** holds the key line and the switch under it, as Joel's
+  Crossing has them.
+
+An interface (`data-kind="interface"` on the root) starts the same parts on
+its gutter's edge rather than the centre.
+
+**A long list folds** with `fold.ts`: at most seven rows, ranked by the
+page, then a button saying how many more ("And 117 more snapshots"). The
+page keeps the rows that must show wherever they rank, such as the
+cursor's own, and owns whether the fold is open. What Joel never acts on
+one by one, a repository's snapshots, is counted, never listed.
+
+**An empty place says what will fill it**, as a `.empty` sentence where
+the rows would be ("Murmurs land here as sessions talk to each other"),
+and is no listbox or grid until it holds a row: an empty listbox is read
+out as a broken control.
 
 Preload the faces the first screen draws: the heading's italic turn and a
 label put all three on most of them.

@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { type Actions, chosen, type Press } from "../keys.ts";
+import { type Actions, chosen, listen, type Press } from "../keys.ts";
 
 const down = (): void => undefined;
 const actions: Actions = { j: down, ArrowDown: down };
@@ -33,6 +33,35 @@ it("a key held with a modifier is the browser's", () => {
 it("a key pressed where Joel types is the field's", () => {
   assert.equal(chosen(press("j", { typing: true }), actions), undefined);
   assert.equal(chosen(press("?", { typing: true }), actions), undefined);
+});
+
+it("any key pressed marks the page as having keys, so its key line shows on touch", () => {
+  const root = { dataset: {} as Record<string, string> };
+  let heard: ((event: unknown) => void) | undefined;
+  const page = globalThis as unknown as Record<string, unknown>;
+  const before = { ...page };
+  Object.assign(page, {
+    Element: class {},
+    document: { documentElement: root, body: { closest: () => null } },
+    addEventListener: (_: string, then: (event: unknown) => void) => {
+      heard = then;
+    },
+    removeEventListener: () => undefined,
+  });
+  try {
+    listen({ actions: {} });
+    assert.equal(root.dataset["keyed"], undefined, "marked before any key was pressed");
+    heard?.({ key: "x", altKey: false, ctrlKey: false, metaKey: false, target: null });
+    assert.equal(root.dataset["keyed"], "", "a key pressed didn't mark the page");
+  } finally {
+    for (const name of ["Element", "document", "addEventListener", "removeEventListener"]) {
+      if (Object.hasOwn(before, name)) {
+        page[name] = before[name];
+      } else {
+        delete page[name];
+      }
+    }
+  }
 });
 
 it("a key the page doesn't name is nothing, even one every object answers to", () => {

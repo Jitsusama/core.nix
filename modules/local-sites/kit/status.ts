@@ -31,10 +31,26 @@ function said(standing: Standing): string {
   }
 }
 
-/** Says `standing` in `element`, and marks it with the state. */
-function show(element: HTMLElement, standing: Standing): void {
-  element.textContent = said(standing);
+/** Where `show` writes: the element's words and its data, as a test can stand in for. */
+interface Shown {
+  textContent: string | null;
+  readonly dataset: { [name: string]: string | undefined };
+}
+
+/**
+ * Says `standing` in `element`, and marks it with the state. The words are
+ * written only when they differ from what's there: the element is a live
+ * region, and a screen reader says it again each time its words are
+ * replaced, even by the same words, so a feed that tells the same state
+ * every few seconds would be heard every few seconds.
+ */
+function show(element: Shown, standing: Standing): void {
+  const words = said(standing);
+  if (element.textContent !== words) {
+    element.textContent = words;
+  }
   element.dataset["state"] = standing.state;
 }
 
+export type { Shown };
 export { clockTime, said, show };

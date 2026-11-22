@@ -3,6 +3,10 @@
 // where Joel types, whose keys are the field's. `?` and F1 open and close the
 // page's list of its keys wherever focus is. The rest are the page's own,
 // looked up in its table, and give way on a control with keys of its own.
+//
+// The first key pressed marks the page's root data-keyed, which head.css
+// reads: a phone has no keys, so the line saying how to move waits there
+// until something shows a keyboard is at hand.
 
 /**
  * What a page does for a key, by its `KeyboardEvent.key`. Returning `false`
@@ -92,6 +96,7 @@ function toggle(dialog: HTMLDialogElement): void {
 function listen(listening: Listening): () => void {
   const answersAt = listening.answersAt ?? ((target: Element) => !hasOwnKeys(target));
   const pressed = (event: KeyboardEvent): void => {
+    document.documentElement.dataset["keyed"] = "";
     const target = event.target instanceof Element ? event.target : document.body;
     const { key, altKey, ctrlKey, metaKey } = event;
     const choice = chosen(

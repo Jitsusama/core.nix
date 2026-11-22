@@ -9,6 +9,7 @@ a site's compiled imports land.
 | `cell.ts`     | a cell's link to the launcher, and the cell a link names      |
 | `document.ts` | a document's parts, its keys and its switch, wired on load    |
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
+| `fold.ts`     | a long list folded to seven rows and how many more there are  |
 | `home.ts`     | the home's cursor over the sites, its keys and its switch     |
 | `keys.ts`     | the keys a page answers, and its list of them on `?` and F1   |
 | `records.ts`  | a daemon's records, held as its watch tells them              |
@@ -16,6 +17,7 @@ a site's compiled imports land.
 | `steps.ts`    | stepping a cursor, gg's two presses and keys pressed by tap   |
 | `theme.ts`    | the theme switch, on real radios, and the look it keeps       |
 | `switch.css`  | the switch's styles                                           |
+| `head.css`    | the head every page opens with, and an empty place's sentence |
 | `tests/`      | each of them tried against a stand-in socket and clock        |
 
 The `tests/` folder holds a test for each script but `theme.ts` and
