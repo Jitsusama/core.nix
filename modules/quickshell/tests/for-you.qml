@@ -796,17 +796,30 @@ QtObject {
             Looks.cellFor({ cell: "GGGGGG", session: "s-0" },
                 { "agent-cell:agents:GGGGGG": { goes: "LLLLLL" } }, [{ address: "LLLLLL",
                     presence: { session: "s-8", quest: "Q-2" } }], []), null);
-        expect("a look on no quest, the daemon naming the one that left it, followed",
+        expect("a look on no quest, the one that left it by its id, not the one the daemon names",
             Looks.cellFor({ cell: "GGGGGG", session: "s-8" },
-                { "agent-cell:agents:GGGGGG": { goes: "LLLLLL" } }, [{ address: "LLLLLL",
+                { "agent-cell:agents:GGGGGG": { goes: "MMMMMM" } }, [{ address: "MMMMMM",
+                    presence: { session: "s-5", quest: "Q-2" } }, { address: "LLLLLL",
                     presence: { session: "s-8", quest: "Q-2" } }], []).address, "LLLLLL");
+        expect("a look on no quest naming no session, the daemon naming a move, not followed",
+            Looks.cellFor({ cell: "GGGGGG" }, { "agent-cell:agents:GGGGGG": { goes: "LLLLLL" } },
+                [{ address: "LLLLLL", presence: { session: "s-8", quest: "Q-2" } }], []),
+            null);
         const moved = { address: "NNNNNN", presence: { session: "s-1", quest: "Q-1" } };
-        expect("said to go nowhere, the one that left it under a new address, by its id",
+        expect("said to go nowhere, the one that left it under a new address, on its quest",
             Looks.cellFor(naming("GGGGGG"), cells, [heir, moved], []).address, "NNNNNN");
-        expect("the one that left it, by its id, on another quest now",
-            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "NNNNNN",
-                presence: { session: "s-1", quest: "Q-9" } }], []).address, "NNNNNN");
-        // Its quest as the daemon reads it (session.rs): the first it owns.
+        const movedAway = { address: "NNNNNN", presence: { session: "s-1", quest: "Q-9" } };
+        expect("the one that left it, on another quest now, not followed",
+            Looks.cellFor(naming("GGGGGG"), cells, [movedAway], []), null);
+        expect("the one that left it on another quest now, the look's quest's session instead",
+            Looks.cellFor(naming("GGGGGG"), cells, [movedAway, heir], []).address, "BBBBBB");
+        expect("the daemon away, the look's quest's session still, never the one moved away",
+            Looks.cellFor(naming("GGGGGG"), {}, [movedAway, heir], []).address, "BBBBBB");
+        expect("the daemon's answer on its quest before the one that left it there",
+            Looks.cellFor(naming("AAAAAA"), { "agent-cell:agents:AAAAAA": { goes: "BBBBBB" } },
+                [moved, heir], []).address, "BBBBBB");
+        // Its quest as the daemon reads it to place a cell (cells.rs
+        // quest_of): the first it owns, else its questInfo's, else its quest.
         expect("a session owning the look's quest only, found on it",
             Looks.cellFor({ cell: "GGGGGG", quest: "QEST-1-ABCDEF" }, cells, [{ address: "OOOOOO",
                 presence: { owns: ["PLAN-1-AAAAAA", "QEST-1-ABCDEF"] } }], []).address, "OOOOOO");
@@ -814,6 +827,32 @@ QtObject {
             Looks.cellFor({ cell: "GGGGGG", quest: "QEST-1-ABCDEF" }, cells, [{ address: "OOOOOO",
                 presence: { owns: ["QEST-2-BBBBBB"], questInfo: { id: "QEST-1-ABCDEF" } } }],
                 []), null);
+        expect("owning no quest, its questInfo's",
+            Looks.questOf({ presence: { owns: ["PLAN-1-AAAAAA"], questInfo: { id: "Q-1" } } }),
+            "Q-1");
+        expect("owns not a list, its questInfo's",
+            Looks.questOf({ presence: { owns: "QEST-2-BBBBBB", questInfo: { id: "Q-1" } } }),
+            "Q-1");
+        expect("past what isn't words in owns, the quest it owns",
+            Looks.questOf({ presence: { owns: [7, null, "QEST-2-BBBBBB"] } }), "QEST-2-BBBBBB");
+        expect("a quest's id spelled otherwise owns nothing",
+            Looks.questOf({ presence: { owns: ["qest-2-bbbbbb", "QESTX-2"], quest: "Q-1" } }),
+            "Q-1");
+        expect("the daemon's answer followed onto a session owning the look's quest",
+            Looks.cellFor({ cell: "OLDOLD", quest: "QEST-1-ABCDEF" },
+                { "agent-cell:agents:OLDOLD": { goes: "OOOOOO" } }, [own, { address: "OOOOOO",
+                    presence: { owns: ["QEST-1-ABCDEF"], quest: "Q-2" } }], []).address,
+            "OOOOOO");
+        // A served look the shell holds no file of is settled by the daemon
+        // once opened, never where its session was gone and nothing opened.
+        expect("a served quiet look opened, settled",
+            Looks.servedSettles({ file: "", state: "quiet" }, true), true);
+        expect("a served waiting look that opened nothing, left as it was",
+            Looks.servedSettles({ file: "", state: "waiting" }, false), false);
+        expect("one the shell holds a file of, settled by the shell",
+            Looks.servedSettles({ file: "q.json", state: "quiet" }, true), false);
+        expect("one opened before, left as it was",
+            Looks.servedSettles({ file: "", state: "opened" }, true), false);
         // A lent cell is the shell's own mark, never read from a file.
         const lentRead = Looks.look(JSON.stringify({ v: 1, id: "l-1", title: "A look",
             target: "/x", kind: "file", state: "cleared", cell: "BBBBBB", cellLent: true }));

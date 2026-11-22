@@ -1166,16 +1166,18 @@ Provider {
     // by what opens its link or its file. Opened, it no longer needs Joel,
     // so a waiting one is written so and moves to History, as does one
     // gone quiet there, whose file still says it waits. A terminal whose
-    // session is gone opened nothing, so it stays as it was.
+    // session is gone opened nothing, so it stays as it was. Whether it
+    // opened, so a caller settling it elsewhere settles only what opened.
     function openLook(one) {
         if (one.kind === "terminal") {
             if (!goToCell(one))
-                return;
+                return false;
         } else {
             Niri.spawn(["xdg-open", one.target]);
         }
         if (one.state === "waiting" || one.state === "quiet")
             settleLook(one, "opened", waitingSaid("openedHow", {}));
+        return true;
     }
 
     // Which live session each cell is now, as the agents daemon serves it
@@ -1205,14 +1207,18 @@ Provider {
 
     // Goes to the window of the cell a look leads to, as it stands when
     // pressed, waking it first where it's parked, as a want's Go To does.
-    // Where none is held it says so, in a notice's Go To's own words, so
-    // a press never goes nowhere unsaid. Whether it went.
+    // Where none is held it says so, in a notice's Go To's own words, and
+    // opens the launcher on Agents to say it, as a Go To from outside does,
+    // since a press runs once the launcher has shut and a press never goes
+    // nowhere unsaid. Whether a session was held to go to: a parked one
+    // whose wake is refused says why on the foot, and still counts.
     function goToCell(one) {
         const cell = lookCell(one);
         if (cell === null) {
             const gone = Words.of("verb:notice:goTo").said ?? {};
             console.warn(`Now: no session held for look ${one.id} to go to`);
             provider.launcher?.toldThat?.(gone.gone ?? "", gone.why ?? "");
+            provider.launcher?.into?.("agents");
             return false;
         }
         Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
@@ -1608,10 +1614,10 @@ Provider {
     }
     // Opening a served look: as the shell opens its own, and one the shell
     // holds no file of, still waiting or gone quiet, settled by the daemon
-    // by its id (FEH1HE, 2026-11-14).
+    // by its id (FEH1HE, 2026-11-14), once it opened: a terminal whose
+    // session is gone stays as it was there too.
     function openServed(one) {
-        openLook(one);
-        if (one.file === "" && (one.state === "waiting" || one.state === "quiet"))
+        if (Looks.servedSettles(one, openLook(one)))
             lookStream.ask({ ask: "settle-look", look: one.id, state: "opened",
                 how: waitingSaid("openedHow", {}) }, () => {});
     }

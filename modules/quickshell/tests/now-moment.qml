@@ -238,6 +238,17 @@ ShellRoot {
         function say(keys) {
             said = keys;
         }
+        // What it was told failed, as toldThat's what and why, and the
+        // place it was last asked to open into.
+        property var told: []
+        property string intoAsked: ""
+
+        function toldThat(what, why) {
+            told = told.concat([{ what: what, why: why }]);
+        }
+        function into(name) {
+            intoAsked = name;
+        }
         // Set without one only by a case that asks what's left without it.
         property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
         property int placed: 0
@@ -2154,6 +2165,39 @@ ShellRoot {
             cell: null } }, "row:looks-history:t").run();
         expect("a terminal look done with naming no cell opens no session listing it",
             Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
+        Sessions.wentTo = null;
+        // Go on a terminal look whose session is gone opens nothing, settles
+        // nothing and says so, opening the launcher on Agents to say it.
+        const gone = Words.of("verb:notice:goTo").said ?? {};
+        const textsGone = now.lookTexts;
+        const goneLook = { id: "g", file: "g.json", kind: "terminal", title: "Read G",
+            target: "", state: "waiting", session: "s-gone", address: "GONEGG",
+            quest: "QEST-G", cell: "GONEGG" };
+        now.lookTexts = Object.assign({}, textsGone, { "g.json": JSON.stringify(goneLook) });
+        const textGone = now.lookTexts["g.json"];
+        theLauncher.told = [];
+        theLauncher.intoAsked = "";
+        const openedGone = now.openLook(goneLook);
+        expect("Go on a gone session opens nothing",
+            openedGone === false && Sessions.wentTo === null,
+            JSON.stringify([openedGone, Sessions.wentTo?.address ?? null]));
+        expect("and leaves its look waiting as it was",
+            now.lookTexts["g.json"] === textGone && now.looksSettling["g.json"] === undefined,
+            JSON.stringify([now.lookTexts["g.json"], now.looksSettling["g.json"] ?? null]));
+        expect("and says so in Go To's own words, the launcher opened on Agents",
+            JSON.stringify(theLauncher.told) === JSON.stringify([{ what: gone.gone ?? "",
+                why: gone.why ?? "" }]) && theLauncher.intoAsked === "agents",
+            JSON.stringify([theLauncher.told, theLauncher.intoAsked]));
+        now.lookTexts = textsGone;
+        theLauncher.told = [];
+        now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
+            state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
+            cell: "GONEQQ" } }, "row:looks-history:q").run();
+        expect("a served quiet terminal look whose session is gone opens nothing and says so",
+            Sessions.wentTo === null && theLauncher.told.length === 1,
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.told]));
+        theLauncher.told = [];
+        theLauncher.intoAsked = "";
         Sessions.wentTo = null;
         // As the shell makes one itself, the daemon not serving it.
         const textsBefore = now.lookTexts;
