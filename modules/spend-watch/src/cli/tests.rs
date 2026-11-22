@@ -247,6 +247,31 @@ fn a_read_beside_a_running_daemon_reads() {
     assert_eq!(read.exit, Exit::Done, "{}", read.stderr);
 }
 
+// With no daemon, a read of a history of the ninth shape moves it itself,
+// under the lock, and then reads, rather than waiting on a daemon that
+// isn't there to move it.
+#[test]
+fn a_read_with_no_daemon_moves_the_history_itself() {
+    let dir = tempfile::tempdir().expect("a folder");
+    let path = config_in(dir.path()).history();
+    History::open(&path)
+        .expect("a history is made")
+        .db
+        .execute_batch(
+            "DROP INDEX turns_once; DROP INDEX refusals_once; DROP INDEX unresolved_once;
+             ALTER TABLE sessions DROP COLUMN machine;
+             UPDATE meta SET value = '9' WHERE key = 'schema';",
+        )
+        .expect("the history is set back to the ninth shape");
+    let read = ran(dir.path(), &["findings"]);
+    assert_eq!(read.exit, Exit::Done, "{}", read.stderr);
+    assert_eq!(
+        History::older(&path),
+        None,
+        "the read left the history in its old shape"
+    );
+}
+
 fn long_finding() -> crate::findings::Finding {
     serde_json::from_value(json!({
         "key": "burn:2026-11-14", "detector": "burn", "severity": "note",

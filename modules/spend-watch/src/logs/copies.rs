@@ -3,10 +3,11 @@
 //! header are its parent's, so they're counted once, by the parent, when
 //! the parent's log is found where this machine would read it or the
 //! history already holds the parent's turns from before the fork, read
-//! from any machine's logs; a header alone naming the parent isn't
-//! enough, since it says nothing was spent. Which is decided for the session, not for one log of it: two
-//! copies of a session, or one gone on elsewhere without its parent, would
-//! otherwise each count the parent's turns again.
+//! from any machine's logs; a parent the history knows only by its
+//! header isn't enough, since that says nothing was spent. Which is
+//! decided for the session, not for one log of it: two copies of a
+//! session, or one gone on elsewhere without its parent, would otherwise
+//! each count the parent's turns again.
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
