@@ -528,15 +528,18 @@ mod tests {
             "{next:?} doesn't hang two cells in from {:?}",
             lines[at]
         );
-        // The first line keeps the cells only the lines under it hang by,
-        // so the next line's first word wouldn't have fit on it.
+        // The first line keeps the cells only the lines under it hang by.
+        // This why sets no item apart and leaves no widow, so with the
+        // first line's whole room the next line's first word wouldn't
+        // have fit on it; given the hung measure, as `hung` gave it, it
+        // would have.
         let word = next
             .split_whitespace()
             .next()
             .expect("the next line has words");
         assert!(
             layout::width(&lines[at]) + 1 + layout::width(word) > 80,
-            "{:?} left room for {word:?}, giving up the cells only the lines under it hang by",
+            "{:?} left room for {word:?}, as it does when wrapped to the hung measure",
             lines[at]
         );
         let why = held().heard.and_then(|heard| heard.why).expect("a why");
