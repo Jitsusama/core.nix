@@ -41,9 +41,10 @@ pub const LEAST_SHARE: f64 = 0.1;
 /// distance from every other, 36 MB at this many, and a far end with
 /// chatter on it can cut a take a second for hours. The shortest, saying
 /// least of how a voice sounds, are left out first, from anywhere in the
-/// call: short takes and the last pieces of long ones, then of the 3 s
-/// pieces the latest. About 2.5 hours of their speech in pieces fills it,
-/// and a take whose pieces are all left out stays under Others.
+/// call: takes and last pieces under 3 s, then the 3 s pieces, the latest
+/// first, and last pieces of 3 to 4.5 s last. About 2.5 hours of their
+/// speech fills it; a take with all its pieces left out stays under
+/// Others, and one left a single piece takes its voice whole, unsplit.
 pub const MOST_TAKES: usize = 3000;
 
 /// A window's samples, 25 ms, and how far each is from the last, 10 ms.

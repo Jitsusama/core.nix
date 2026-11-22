@@ -98,8 +98,9 @@ impl Writing {
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
-    /// one of the line's `words` was said in it, as the voices check has
-    /// a piece worded when the reference has speech in it.
+    /// one of the line's `words` starts in it. The voices check has one
+    /// worded when the reference has any speech in it, so a piece holding
+    /// only the end of a word is worded there and not here.
     fn heard(
         &mut self,
         line: Option<usize>,
@@ -211,11 +212,25 @@ pub fn hear(
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
                     let mut embedded = Vec::new();
-                    for (from, to) in pieces::pieces(samples.len()) {
+                    let cut = pieces::pieces(samples.len());
+                    let mut failed = (0, None);
+                    for &(from, to) in &cut {
                         let piece = &samples[from..to];
-                        if let Some(embedding) = embed(settings, &mut speakers, piece) {
-                            embedded.push((embedding, start + from, piece.len()));
+                        match embed(settings, &mut speakers, piece) {
+                            Ok(Some(embedding)) => {
+                                embedded.push((embedding, start + from, piece.len()));
+                            }
+                            Ok(None) => {}
+                            Err(why) => failed = (failed.0 + 1, Some(why)),
                         }
+                    }
+                    // Once a take, so a model failing on every piece
+                    // doesn't bury the journal.
+                    if let (over, Some(why)) = failed {
+                        let of = cut.len();
+                        eprintln!(
+                            "call-transcripts: {over} of {of} pieces' voice not heard: {why}"
+                        );
                     }
                     let line = text.is_some().then_some(writing.lines.len());
                     writing.heard(line, &words, embedded);
@@ -345,18 +360,20 @@ fn loaded<'a>(
 }
 
 /// How a piece of a take of theirs sounds, from the speaker model, loaded
-/// first if it isn't; none when there's no model, it won't load, which is
-/// logged once, or it fails, which is logged, and the piece is left out.
-fn embed(settings: &Settings, speakers: &mut Speakers, samples: &[f32]) -> Option<Vec<f32>> {
-    let model = settings.voices.as_deref()?;
-    let voices = speakers.get(|| Voices::load(model, settings.cache.as_deref()))?;
-    match voices.embed(samples) {
-        Ok(embedding) => embedding,
-        Err(why) => {
-            eprintln!("call-transcripts: a piece of a take's voice wasn't heard: {why}");
-            None
-        }
-    }
+/// first if it isn't; none when there's no model or it won't load, which
+/// is logged once, or the piece is too short, and why when it fails.
+fn embed(
+    settings: &Settings,
+    speakers: &mut Speakers,
+    samples: &[f32],
+) -> Result<Option<Vec<f32>>, String> {
+    let Some(model) = settings.voices.as_deref() else {
+        return Ok(None);
+    };
+    let Some(voices) = speakers.get(|| Voices::load(model, settings.cache.as_deref())) else {
+        return Ok(None);
+    };
+    voices.embed(samples)
 }
 
 /// Gives each of their lines the voice its take was grouped into, unless
@@ -505,8 +522,9 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
         return false;
     }
     if writing.heard.len() > voices::MOST_TAKES {
-        // Past the cap the shortest pieces go ungrouped, so a transcript
-        // whose end falls under Others says why here.
+        // Past the cap the shortest pieces go ungrouped and take their
+        // take's nearest voice; a take with none left stays under Others,
+        // so a transcript whose end does says why here.
         let over = writing.heard.len() - voices::MOST_TAKES;
         let of = writing.heard.len();
         eprintln!("call-transcripts: {over} of {of} pieces left out of telling voices apart");
@@ -520,7 +538,9 @@ fn give_voices(writing: &mut Writing, people: Option<usize>) -> bool {
         words: &mut writing.words,
     };
     let split::Splits { of, split, into } = split::by_voice(&mut call, &voiced);
-    eprintln!("call-transcripts: {split} of {of} lines of theirs split by voice, into {into}");
+    if of > 0 {
+        eprintln!("call-transcripts: {split} of {of} takes of theirs split by voice, into {into}");
+    }
     true
 }
 

@@ -50,8 +50,8 @@ pub struct Call<'a> {
     pub words: &'a mut HashMap<usize, Vec<Word>>,
 }
 
-/// How many lines of theirs with pieces there were, as heard, how many
-/// were split where the voice changes, and into how many parts.
+/// How many takes of theirs with pieces there were, how many were split
+/// where the voice changes, and into how many lines.
 #[derive(Debug, Default, PartialEq)]
 pub struct Splits {
     pub of: usize,
@@ -437,7 +437,16 @@ mod tests {
             pieces: &mut pieces,
             words: &mut words,
         };
-        by_voice(&mut call, &[Some(1), Some(1)]);
+        let splits = by_voice(&mut call, &[Some(1), Some(1)]);
+        assert_eq!(
+            splits,
+            Splits {
+                of: 1,
+                split: 0,
+                into: 0
+            },
+            "a take left whole was counted as split"
+        );
         assert_eq!(
             said(&lines),
             [("Fine (laughs).", Some(1), 0, 6), ("Okay.", Some(4), 7, 9)],
@@ -503,6 +512,11 @@ mod tests {
             unechoed(&lines, &[], 0).len(),
             1,
             "Joel's answer, judged against Bo's part alone, wasn't taken for its echo"
+        );
+        assert_eq!(
+            unechoed(&lines, &[], 1).len(),
+            1,
+            "Joel's line, heard after the one read back, wasn't judged"
         );
         assert_eq!(
             unechoed(&lines, &[], 2),

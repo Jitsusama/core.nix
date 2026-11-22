@@ -22,12 +22,14 @@ const ADA: [f32; 2] = [1.0, 0.0];
 const BO: [f32; 2] = [0.0, 1.0];
 
 /// Hears each take into `writing`, one piece of 5 s, a line of theirs
-/// with a word at its start for each said.
+/// with a word at its start for each said, each 5 s on by how many lines
+/// there are, and never before the last line ends.
 fn hear_takes(writing: &mut Writing, takes: &[([f32; 2], bool)]) {
     for &(voice, said) in takes {
         let at = writing.lines.len();
         let line_at = said.then_some(at);
-        let start = (20 + 5 * at) * SECOND;
+        let after = writing.lines.iter().map(|line| line.end).max().unwrap_or(0);
+        let start = ((20 + 5 * at) * SECOND).max(after);
         let words = if said {
             vec![word("Said.", start)]
         } else {
@@ -35,7 +37,11 @@ fn hear_takes(writing: &mut Writing, takes: &[([f32; 2], bool)]) {
         };
         writing.heard(line_at, &words, vec![(voice.to_vec(), start, 5 * SECOND)]);
         if said {
-            writing.lines.push(line(Side::Theirs, 20 + 5 * at, None));
+            writing.lines.push(Line {
+                start,
+                end: start + 5 * SECOND,
+                ..line(Side::Theirs, 0, None)
+            });
             writing.words.insert(at, words);
         }
     }
@@ -288,13 +294,47 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     book.lock().put(call);
     // Taken up from the file, Bo's part is a line of its own, with no
     // pieces to join it to Ada's again; then Ada says more.
+    // Ada says more, which Joel's microphone hears too.
     let mut writing = resumed(&book, "call:e1", "Joel");
     hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
+    writing.lines.push(joels(80, 81, "Right."));
     give_voices(&mut writing, None);
     assert_eq!(
         joels_written(&writing),
         ["Not yet."],
-        "Joel's answer, written before the restart, was judged again against Bo's part alone"
+        "Joel's answer, written before the restart, was judged again against Bo's part alone, \
+         or his echo of Ada heard since wasn't"
+    );
+}
+
+#[test]
+fn joels_lines_read_back_stay_kept_when_a_take_since_is_split() {
+    // Read back before any was told apart: Joel saying what they said
+    // beside him, kept when it was written.
+    let earlier = vec![
+        line(Side::Theirs, 0, None),
+        line(Side::Mine, 5, None),
+        line(Side::Theirs, 10, None),
+    ];
+    let mut writing = sitting(earlier, false);
+    writing.read = 3;
+    hear_take(
+        &mut writing,
+        80,
+        &[ADA, BO],
+        &[("Done.", 1), ("Not", 4), ("yet.", 5)],
+    );
+    give_voices(&mut writing, None);
+    let bo = writing.lines[4].voice;
+    assert!(
+        said_by(&writing).contains(&("Not yet.", bo)),
+        "the take heard since the restart wasn't split, so the lines read back never moved"
+    );
+    assert_eq!(
+        joels_written(&writing),
+        ["Said."],
+        "Joel's line read back was judged again once a take was split, or his echo heard since \
+         wasn't"
     );
 }
 
@@ -307,6 +347,22 @@ fn a_piece_is_worded_only_where_a_word_was_said_in_it() {
         worded,
         [true, false, false],
         "a piece no word was said in counted as speech"
+    );
+}
+
+#[test]
+fn a_piece_of_a_take_with_no_line_is_never_worded() {
+    // A take of only hesitation: its words tidied to none, so no line.
+    let mut writing = Writing::default();
+    let start = 40 * SECOND;
+    writing.heard(
+        None,
+        &[word("Um.", start)],
+        vec![(ADA.to_vec(), start, 3 * SECOND)],
+    );
+    assert!(
+        !writing.heard[0].worded,
+        "a take of only hesitation counted as speech"
     );
 }
 
