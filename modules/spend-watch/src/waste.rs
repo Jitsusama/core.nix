@@ -462,7 +462,7 @@ mod tests {
                 by_session.into_iter().collect::<HashMap<_, _>>(),
                 "the span from {from} to {to} gave other sessions' rebuilding"
             );
-            let cuts: [(&str, fn(&Kept) -> String); 4] = [
+            let cuts: [Cut; 4] = [
                 ("model", |turn| turn.model.into()),
                 ("quest", |turn| turn.quest.clone().unwrap_or_default()),
                 ("session", |turn| turn.session.clone()),
@@ -486,6 +486,9 @@ mod tests {
             );
         }
     }
+
+    /// A key `rebuilt_by` cuts by, and what it reads of a turn.
+    type Cut = (&'static str, fn(&Kept) -> String);
 
     /// The rebuilt dollars among `within` that `waste` counts, summed by
     /// `by`, in its order.

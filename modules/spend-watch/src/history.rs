@@ -1442,6 +1442,7 @@ mod tests {
     /// all at once.
     fn waste_hours_hold(history: &History) {
         type Key = (i64, String, Option<String>, String, String, Option<String>);
+        const KEY: &str = "hour, session, quest, model, kind, cause";
         let read = |sql: &str| -> Vec<(Key, [f64; 6])> {
             let mut statement = history.db.prepare(sql).unwrap();
             statement
@@ -1464,7 +1465,6 @@ mod tests {
                 .map(Result::unwrap)
                 .collect()
         };
-        const KEY: &str = "hour, session, quest, model, kind, cause";
         let kept = read(&format!(
             "SELECT {KEY}, turns, cost, cost_cache_write, rebuilt_cost, cache_read, prompt
              FROM waste_hours ORDER BY {KEY}"
