@@ -1255,6 +1255,92 @@ bool leavesTheSweepsAlone() {
     return held;
 }
 
+// How many objects of one file the chain test links, each reached only
+// through the one before it, and how many objects each holds under each of
+// two properties.
+constexpr int LINKED = 12;
+constexpr int LINK_LOAD = 2000;
+
+// Whether freedBy() follows a chain of objects of the holder's own file,
+// each reached only through the one before it, whatever order it finds
+// their storage in: letting go of every node's `load` frees the loads
+// alone, each node's `extra` kept by the chain, and letting go of every
+// `next` frees every node past the first, with all each holds, each about
+// what letting them go frees.
+bool followsAChain() {
+    QTemporaryDir shell;
+    QDir files(shell.path());
+    const bool wrote =
+        files.mkdir(QStringLiteral("pieces")) && files.cd(QStringLiteral("pieces")) &&
+        written(files, QStringLiteral("Node.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    property var next: null\n"
+                               "    property var load: []\n    property var extra: []\n}\n")) &&
+        written(files, QStringLiteral("Chain.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    property var head: null\n"
+                               "    property Component node: Component { Node {} }\n"
+                               "    function build() {\n"
+                               "        let last = null;\n"
+                               "        for (let i = 0; i < %1; i++) {\n"
+                               "            const one = node.createObject(null);\n"
+                               "            for (let j = 0; j < %2; j++) {\n"
+                               "                one.load.push({ n: j, s: 'l' + i + '.' + j });\n"
+                               "                one.extra.push({ n: j, s: 'x' + i + '.' + j });\n"
+                               "            }\n"
+                               "            if (last === null) head = one; else last.next = one;\n"
+                               "            last = one;\n"
+                               "        }\n    }\n"
+                               "    function letLoadsGo() {\n"
+                               "        for (let one = head; one !== null; one = one.next)\n"
+                               "            one.load = [];\n    }\n"
+                               "    function letRestGo() { head.next = null; }\n}\n")
+                    .arg(LINKED)
+                    .arg(LINK_LOAD));
+    if (!wrote) {
+        std::fprintf(stderr, "FAIL the chain test's files weren't written in %s\n",
+                     qPrintable(shell.path()));
+        return false;
+    }
+    QQmlEngine engine;
+    Heap heap(&engine);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(files.filePath(QStringLiteral("Chain.qml"))));
+    const std::unique_ptr<QObject> made(component.create());
+    if (!made) {
+        std::fprintf(stderr, "FAIL the chain test's object wasn't made: %s\n",
+                     qPrintable(component.errorString()));
+        return false;
+    }
+    QMetaObject::invokeMethod(made.get(), "build");
+    const double before = weighed(engine, heap).live;
+    const QVariantMap loads = heap.freedBy(QStringLiteral("pieces/Node.qml load"));
+    QMetaObject::invokeMethod(made.get(), "letLoadsGo");
+    const double loadsFreed = before - weighed(engine, heap).live;
+    // A chain made again, its first let go, so the next weighing finds it whole.
+    QMetaObject::invokeMethod(made.get(), "build");
+    const double rebuilt = weighed(engine, heap).live;
+    const QVariantMap rest = heap.freedBy(QStringLiteral("pieces/Node.qml next"));
+    QMetaObject::invokeMethod(made.get(), "letRestGo");
+    const double restFreed = rebuilt - weighed(engine, heap).live;
+    const double loadsMB = loads.value(QStringLiteral("freed")).toDouble();
+    const double restMB = rest.value(QStringLiteral("freed")).toDouble();
+    const bool loadsHeld = loads.value(QStringLiteral("held")).toBool() &&
+                           loads.value(QStringLiteral("count")).toDouble() >=
+                               2.0 * LINKED * LINK_LOAD &&
+                           std::abs(loadsMB - loadsFreed) <= loadsFreed / 5;
+    const bool restHeld = rest.value(QStringLiteral("held")).toBool() &&
+                          rest.value(QStringLiteral("count")).toDouble() >=
+                              4.0 * (LINKED - 1) * LINK_LOAD &&
+                          std::abs(restMB - restFreed) <= restFreed / 5;
+    if (!(loadsHeld && restHeld))
+        std::fprintf(stderr,
+                     "FAIL freedBy() follows a chain of one file's objects: every load %.2f MB "
+                     "(%.0f) against %.2f freed, every next %.2f MB (%.0f) against %.2f "
+                     "freed\n",
+                     loadsMB, loads.value(QStringLiteral("count")).toDouble(), loadsFreed,
+                     restMB, rest.value(QStringLiteral("count")).toDouble(), restFreed);
+    return loadsHeld && restHeld;
+}
+
 // Whether holders() and freedBy() count nothing while a collection is under
 // way between its slices, saying only that they're busy, rather than
 // clearing the marks the collection has set: what the collection keeps
@@ -1436,11 +1522,12 @@ int main(int argc, char **argv) {
     const bool stray = leavesAStrayMark();
     const bool alone = freesWhatItAloneHolds();
     const bool swept = leavesTheSweepsAlone();
+    const bool chained = followsAChain();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && fits && whole && census &&
                    placed && stands && underWay && holdsIt && waitsItOut && stray && alone &&
-                   swept
+                   swept && chained
                ? 0
                : 1;
 }

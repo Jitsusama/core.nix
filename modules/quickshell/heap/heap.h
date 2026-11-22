@@ -121,7 +121,9 @@ public:
     // that other. What an object nothing reaches holds, the sweep's
     // anyway, isn't counted. It counts the heap's own items: the text a
     // string keeps outside the heap, and what C++ keeps for an object the
-    // collector would delete, aren't counted. `held`, whether any property
+    // collector would delete, aren't counted, nor is the storage of an
+    // object of the holder's own file that only the holder keeps, a few
+    // bytes each, though all its values reach is. `held`, whether any property
     // so named holds a value the heap keeps; `freed`, its megabytes;
     // `count`; `ms`; `said`, one line naming it, or saying no property
     // holds anything so named; and, only when one holds something,

@@ -934,19 +934,25 @@ QVariantMap Heap::freedBy(const QString &holder) const {
     // in the engine's heap or run JavaScript.
     QElapsedTimer clock;
     clock.start();
-    // Where the holder's values sit, by the storage holding them, and the
-    // wrapper of the object each storage is for, which eachHolder() finds
-    // just before the object's storage.
+    // Where the holder's values sit, by the storage holding them; the
+    // object each storage is for, whose wrapper eachHolder() finds just
+    // before the storage; and every wrapper of each object, since Qt can
+    // wrap one twice in an engine (a const wrapper beside the usual one),
+    // and marking either marks its storage.
     QHash<QV4::Heap::MemberData *, QSet<uint>> own;
-    QHash<QV4::Heap::MemberData *, QV4::Heap::Base *> wrapperOf;
-    QV4::Heap::Base *lastWrapper = nullptr;
+    QHash<QV4::Heap::MemberData *, const QObject *> objectOf;
+    QMultiHash<const QObject *, QV4::Heap::Base *> wrappersOf;
+    const QObject *lastObject = nullptr;
     eachHolder(
         v4,
-        [&wrapperOf, &lastWrapper](QV4::Heap::Base *item, Found found) {
-            if (found == Found::Object)
-                lastWrapper = item;
-            else if (found == Found::Storage)
-                wrapperOf.insert(static_cast<QV4::Heap::MemberData *>(item), lastWrapper);
+        [&objectOf, &wrappersOf, &lastObject](QV4::Heap::Base *item, Found found) {
+            if (found == Found::Object) {
+                lastObject = static_cast<QV4::Heap::QObjectWrapper *>(item)->object();
+                if (lastObject != nullptr)
+                    wrappersOf.insert(lastObject, item);
+            } else if (found == Found::Storage) {
+                objectOf.insert(static_cast<QV4::Heap::MemberData *>(item), lastObject);
+            }
         },
         [&own, &holder](const Held &each) {
             if (each.key == holder)
@@ -977,12 +983,20 @@ QVariantMap Heap::freedBy(const QString &holder) const {
     // reaches no other; an object reached only through another's storage
     // is kept or freed with it.
     QSet<QV4::Heap::MemberData *> reached;
+    const auto isReached = [&objectOf, &wrappersOf](QV4::Heap::MemberData *storage) {
+        const QObject *object = objectOf.value(storage);
+        for (auto at = wrappersOf.constFind(object);
+             object != nullptr && at != wrappersOf.cend() && at.key() == object; ++at) {
+            if (at.value()->isMarked())
+                return true;
+        }
+        return false;
+    };
     const auto takeIn = [&](bool holderToo) {
         for (bool more = true; more;) {
             more = false;
             for (auto at = own.cbegin(); at != own.cend(); ++at) {
-                QV4::Heap::Base *wrapper = wrapperOf.value(at.key());
-                if (reached.contains(at.key()) || wrapper == nullptr || !wrapper->isMarked())
+                if (reached.contains(at.key()) || !isReached(at.key()))
                     continue;
                 reached.insert(at.key());
                 more = true;

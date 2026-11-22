@@ -92,6 +92,7 @@ import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
 import "launcher/SystemPart.js" as SystemPart
+import "launcher/Weighing.js" as Weighing
 import "launcher/CommandRow.js" as CommandRow
 import "launcher/KeysHeld.js" as KeysHeld
 import "launcher/Awaited.js" as Awaited
@@ -12532,7 +12533,9 @@ Scope {
     function collectClosed() {
         // A count or a weighing already due would land within a second of
         // this closing, so it waits for the resume below instead; what it
-        // was to do stays owed in holdersOwed and freeingNext.
+        // was to do stays owed in heapWeighed, as does a resume an earlier
+        // closing left.
+        resumeLater.stop();
         holdersLater.stop();
         freedLater.stop();
         if (open || opening || parting !== "")
@@ -12566,9 +12569,10 @@ Scope {
                 : `; jemalloc ${Math.round(allocator.used)} MB in use of`
                 + ` ${Math.round(allocator.resident)} MB resident,`
                 + ` ${Math.round(allocator.kept)} MB freed and kept`));
-        if (KeyTimes.now() >= censusDue)
+        const next = Weighing.afterClosing(heapWeighed, KeyTimes.now() >= censusDue);
+        if (next === "census")
             censusLater.restart();
-        else if (holdersOwed || freeingNext.length > 0)
+        else if (next === "resume")
             resumeLater.restart();
     }
 
@@ -12592,7 +12596,7 @@ Scope {
     // the property holding it too, since the counts by class, shape and
     // place can't say who keeps the 273,000 strings and 71,000 shapes live
     // in his shell, and only cutting what the shell keeps has cut what the
-    // heap holds. It marks the whole heap again, up to about 100 ms naming
+    // heap holds. It marks the whole heap again, up to about 300 ms naming
     // and then the rest, so it runs a second later in a turn of its own,
     // only if the launcher is still shut, once a shell, and says how long
     // it took.
@@ -12620,12 +12624,13 @@ Scope {
                 + (lines.said || "none"));
             console.info(`launcher: what's live once collected in ${took} ms, `
                 + (live.busy ? "not counted, a collection under way" : live.said));
-            root.holdersOwed = !root.holdersCounted;
+            root.heapWeighed = Weighing.afterCensus(root.heapWeighed);
             holdersLater.restart();
         }
     }
-    // Which holders letting go of is still to be weighed, the largest first.
-    // The holders are counted once a shell, since each count stalls its one
+    // Whether the holders are counted and which letting go of is still to be
+    // weighed, the largest first (launcher/Weighing.js, which says how many
+    // and which). The holders are counted once a shell, since each count stalls its one
     // thread about 180 ms on Joel's heap (2026-11-21) beside the margin cat,
     // and a switch starts a new shell after each change worth counting.
     // Each holder counted first takes all it shares with those after it,
@@ -12635,12 +12640,11 @@ Scope {
     // collection put off, the count or a weighing, the next closing takes
     // up 5 s later, as the census waits, and a turn or two on, so none stalls an
     // opening in the seconds after a closing when Joel most often reopens;
-    // a closing stops any already due. A name holding `~` is every property
-    // the journal's filter folded into it, which no one cut could free, so
-    // it isn't weighed.
-    property bool holdersCounted: false
-    property bool holdersOwed: false
-    property var freeingNext: []
+    // a closing stops any already due. The count names holders for up to
+    // 300 ms rather than holders()' usual 100, which named 1118 of Joel's
+    // 2120 (2026-11-21): those it leaves unnamed can't be weighed, and the
+    // longer stall is paid once a shell, while shut.
+    property var heapWeighed: Weighing.begun()
     Timer {
         id: resumeLater
         interval: 5000
@@ -12652,22 +12656,18 @@ Scope {
         onTriggered: {
             if (root.open || root.opening || root.parting !== "")
                 return;
-            if (root.holdersCounted) {
-                if (root.freeingNext.length > 0)
-                    freedLater.restart();
+            const turn = Weighing.countsTurn(root.heapWeighed);
+            if (turn === "weigh")
+                freedLater.restart();
+            if (turn !== "count")
                 return;
-            }
-            const holders = Heap.holders(12);
+            const holders = Heap.holders(12, 300);
             console.info("launcher: what holds what's live, " + (!holders.busy ? holders.said
                 : holders.marked ? "not counted, marks were left set outside a collection"
                 : "not counted, a collection under way"));
-            if (holders.busy)
-                return;
-            root.holdersCounted = true;
-            root.holdersOwed = false;
-            root.freeingNext = holders.holders.map(row => row[0])
-                .filter(name => !name.split(" ").includes("~")).slice(0, 3);
-            freedLater.restart();
+            root.heapWeighed = Weighing.counted(root.heapWeighed, holders);
+            if (Weighing.countsTurn(root.heapWeighed) === "weigh")
+                freedLater.restart();
         }
     }
     Timer {
@@ -12675,11 +12675,13 @@ Scope {
         interval: 1000
         onTriggered: {
             if (root.open || root.opening || root.parting !== ""
-                || root.freeingNext.length === 0)
+                || Weighing.countsTurn(root.heapWeighed) !== "weigh")
                 return;
-            const freed = Heap.freedBy(root.freeingNext[0]);
+            const name = root.heapWeighed.queue[0];
+            const freed = Heap.freedBy(name);
+            root.heapWeighed = Weighing.weighed(root.heapWeighed, freed);
             if (freed.busy) {
-                console.info("launcher: what letting go of " + root.freeingNext[0]
+                console.info("launcher: what letting go of " + name
                     + " frees, not counted yet, "
                     + (freed.marked ? "marks were left set outside a collection"
                     : "a collection under way"));
@@ -12688,9 +12690,8 @@ Scope {
             // A name from holders() is filtered for the journal, so it's
             // safe to say when freedBy() won't say it, its holder emptied.
             console.info("launcher: " + (freed.held ? freed.said
-                : root.freeingNext[0] + " holds nothing now"));
-            root.freeingNext = root.freeingNext.slice(1);
-            if (root.freeingNext.length > 0)
+                : name + " holds nothing now"));
+            if (Weighing.countsTurn(root.heapWeighed) === "weigh")
                 freedLater.restart();
         }
     }
