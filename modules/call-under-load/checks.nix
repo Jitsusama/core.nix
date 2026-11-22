@@ -9,7 +9,9 @@
 # call-under-load drives Chrome on Linux, and builds only there.
 onLinux {
   # call-under-load's tests run as it builds: the call's frame rates are
-  # counted by frame slots, its freezes per ten minutes, the calendar
+  # counted by frame slots, its freezes per ten minutes, whether its
+  # sound was heard, the share made up, its jitter and packets lost, and
+  # why any is missing, and that only Chromium's fake devices are taken, the calendar
   # keeps a run ten minutes from a meeting and refuses a stale read, the
   # apps' waits come from lag-watch's last hour, the launcher's openings
   # during the run are set against the span before on their medians, or

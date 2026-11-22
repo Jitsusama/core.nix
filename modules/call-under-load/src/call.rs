@@ -2,7 +2,8 @@
 //! while it carries whatever load it carries: the near end is a Chromium
 //! with a profile like Joel's, drawing on a headless Weston, never his
 //! screen, and the far end a headless Chromium. Both use Chromium's fake
-//! camera; no real one is ever opened. Chromium, not Google Chrome, for
+//! camera and microphone; no real one is ever opened, and the far end
+//! plays what it hears into a fake output, never a speaker. Chromium, not Google Chrome, for
 //! the reason `managed` gives; the Chromes named below are these. A call of Joel's stops it within
 //! fifteen seconds, from its first step to its last: the watch asks every
 //! five, an ask has five to answer, and a step still going five more on
@@ -545,21 +546,31 @@ impl From<Enrolled> for Step {
     }
 }
 
-/// Refuses a camera that isn't Chromium's fake one, as `end`'s page named it.
-/// It's an alarm, not the gate: the label is read once the camera's open,
-/// and what keeps a real one shut is `--use-fake-device-for-media-stream`,
-/// with which Chrome lists only its fake devices.
+/// Refuses a camera or microphone that isn't Chromium's fake one, as
+/// `end`'s page named them: `fake_device_0` and `Fake Default Audio Input`.
+/// It's an alarm, not the gate: the labels are read once the devices are
+/// open, and what keeps a real one shut is
+/// `--use-fake-device-for-media-stream`, with which Chrome lists only its
+/// fake devices.
 fn fake(said: &Value, end: &str) -> Result<(), Step> {
-    let label = said["label"].as_str().unwrap_or("");
-    if label.contains("fake") {
-        return Ok(());
+    // Matched on how Chromium names its own fakes rather than on the word
+    // anywhere, so a virtual source someone named "Fake Webcam" is refused.
+    for (key, device, named) in [
+        ("label", "camera", "fake_device_"),
+        ("voice", "microphone", "Fake Default Audio Input"),
+    ] {
+        let label = said[key].as_str().unwrap_or("");
+        if !label.starts_with(named) {
+            return Err(Step::Refused(format!(
+                "the {end} end's {device} was {label:?}, not Chromium's fake one"
+            )));
+        }
     }
-    Err(Step::Refused(format!(
-        "the {end} end's camera was {label:?}, not Chromium's fake one"
-    )))
+    Ok(())
 }
 
-/// A Chrome with `profile`, Chrome's fake camera, and the TPM kept out of
+/// A Chrome with `profile`, Chrome's fake camera and microphone, a fake
+/// sound output, and the TPM kept out of
 /// reach: agents never touch it, and Chrome's NSS loads every PKCS#11
 /// module p11-kit knows, the TPM's among them. A user config turning it
 /// off isn't honoured on its own, so FAPI is given no config and the
@@ -577,6 +588,8 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
             "--no-default-browser-check",
             "--use-fake-device-for-media-stream=fps=30",
             "--use-fake-ui-for-media-stream",
+            // What the far end plays goes to a fake output, never a speaker.
+            "--disable-audio-output",
             "--autoplay-policy=no-user-gesture-required",
             "--password-store=basic",
             "--disable-background-networking",
@@ -587,6 +600,14 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
         // Joel's session bus is named by an absolute path, which a runtime
         // folder of its own doesn't hide, so the browser isn't told it.
         .env_remove("DBUS_SESSION_BUS_ADDRESS")
+        // The same holds for Joel's sound servers' addresses, so none is
+        // told, and Pulse is named a closed one, so it can't start its own.
+        // These stand behind --disable-audio-output, which is what keeps
+        // the beep off a speaker: without it, Chromium falls back to ALSA.
+        .env_remove("PULSE_RUNTIME_PATH")
+        .env_remove("PIPEWIRE_REMOTE")
+        .env_remove("PIPEWIRE_RUNTIME_DIR")
+        .env("PULSE_SERVER", "unix:/nonexistent/pulse")
         .env("XDG_CONFIG_HOME", config)
         .env("TSS2_FAPICONF", "/nonexistent/fapi-config.json")
         .env("TPM2_PKCS11_TCTI", "mssim:host=127.0.0.1,port=9")
