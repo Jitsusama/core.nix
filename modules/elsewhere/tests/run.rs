@@ -290,10 +290,10 @@ fn a_job_clears_what_runs_here_left_but_never_a_folder_a_run_holds() {
     let left = handover.join("1-1");
     fs::create_dir_all(left.join("tree")).unwrap();
     fs::write(left.join("tree/Spec.tla"), "spec\n").unwrap();
-    fs::write(left.join("elsewhere-owner"), format!("{}\t1\n", here())).unwrap();
+    fs::write(left.join(".elsewhere-owner"), format!("{}\t1\n", here())).unwrap();
     let running = handover.join("2-2");
     fs::create_dir_all(&running).unwrap();
-    let owner = running.join("elsewhere-owner");
+    let owner = running.join(".elsewhere-owner");
     fs::write(&owner, format!("{}\t2\n", here())).unwrap();
     let held = fs::File::open(&owner).unwrap();
     held.lock().unwrap();
@@ -301,9 +301,19 @@ fn a_job_clears_what_runs_here_left_but_never_a_folder_a_run_holds() {
     let (out, err) = said(&output);
     assert!(output.status.success(), "the far job failed: {err}");
     assert_eq!(out, "spec\n", "the job didn't see its tree");
+    let far_handover = realm
+        .root
+        .join("far")
+        .join(SCRATCHES)
+        .join(QUEST)
+        .join("handover/elsewhere");
+    assert!(
+        !far_handover.join("1-1").exists(),
+        "the folder a killed run left was carried again"
+    );
     assert!(
         !left.exists(),
-        "the folder a killed run left was carried again"
+        "the folder a killed run left wasn't cleared"
     );
     assert!(running.exists(), "a folder a run still holds was cleared");
     assert!(
