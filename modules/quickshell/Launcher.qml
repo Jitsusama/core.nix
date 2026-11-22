@@ -3095,7 +3095,7 @@ Scope {
     property real landedAt: 0
 
     // A landing a step left by itself had to guess, on a row other than
-    // the one Joel stepped in from (Held.guessedAt), or none: the next
+    // the one Joel stepped in from (Held.onItsRow), or none: the next
     // key, if it's Return, does nothing (the field's onAccepted, as
     // Held.returnUnder says).
     property var guessed: Held.unguessed()
@@ -6457,7 +6457,13 @@ Scope {
         // that throws partway, its rows unsearched and the selection where
         // it stood, holds Return until another key (Held.whileLeaving).
         const standing = guessed;
-        guessed = Held.whileLeaving(prompt.keysTaken, Date.now(), open);
+        guessed = Held.whileLeaving(prompt.keysTaken, open, standing);
+        // A leave Joel's own key caused, as Release It ends its ask, is one
+        // he watched, so it guesses nothing: the source's change is the
+        // key's (refreshed's keyedActs). A share's change heard within
+        // keyedWithin of a key is taken for the key's too, the one way it
+        // goes unheld.
+        const byKey = keyedActs.some(one => one.source === source && one.heard === keyHeardAt);
         try {
             held = steps;
             back(false, held.length - leaving.keep);
@@ -6479,10 +6485,10 @@ Scope {
             // as here() records a step's, so a leave back onto the
             // headline stepped in from is a landing on its row.
             guessed = Held.landedAfter(standing, from, selected ? steadyId(selected) : "",
-                { keys: prompt.keysTaken, at: Date.now(), open, depth: held.length });
+                { keys: prompt.keysTaken, current, open, depth: held.length, byKey });
         } else {
             guessed = Held.landedAfter(standing, from, null,
-                { keys: prompt.keysTaken, at: Date.now(), open, depth: held.length });
+                { keys: prompt.keysTaken, current, open, depth: held.length, byKey });
         }
         return "left";
     }
@@ -14028,8 +14034,12 @@ Scope {
                             // its row, and another key, as r or an act's
                             // chord, is one Joel pressed with the row
                             // before him, so it acts on it.
+                            // Timed from the press, on its own clock, so
+                            // a doubled Return is told by when it was
+                            // pressed, not when the shell got to it.
                             const under = Held.returnUnder(root.guessed, {
-                                keys: prompt.keysTaken, at: Date.now(),
+                                keys: prompt.keysTaken,
+                                at: pressed > 0 ? pressed : KeyTimes.now(),
                                 depth: root.held.length, asking: !!root.asking
                             }, Options.keyTiming.wait);
                             const broken = root.guessed.broken;

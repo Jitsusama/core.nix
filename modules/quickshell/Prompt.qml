@@ -290,13 +290,9 @@ Item {
         if (returning)
             return true;
         // A modifier pressed alone is no key typed.
-        if (!modifierAlone(event))
+        if (!KeyNames.alone(event.key, Qt))
             returnWaits = false;
         return false;
-    }
-    function modifierAlone(event: KeyEvent): bool {
-        return [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta, Qt.Key_Super_L,
-            Qt.Key_Super_R, Qt.Key_AltGr].includes(event.key);
     }
     // Says how far an aside may run, so a long one never crowds what's typed
     // or where Joel is: the path's steps and room to type come first, and
@@ -639,9 +635,9 @@ Item {
     property int keysTaken: 0
     // The last of them, by name, as Vim writes it.
     property string keyTaken: ""
-    // Whether the last of them was a modifier pressed alone, which chose
-    // nothing, as a key the names don't know ("", as é or Delete) may
-    // have typed.
+    // Whether the last of them was a modifier or lock pressed alone
+    // (KeyNames.alone), which chose nothing, as a key the names don't know
+    // ("", as é or Delete) may have typed.
     property bool keyAlone: false
     // Whether the last key only moved through the rows, as j and Down do,
     // which changes nothing a source holds, so the launcher never takes a
@@ -681,7 +677,7 @@ Item {
         prompt.pressing();
         const key = named(event);
         keyMoved = false;
-        keyAlone = modifierAlone(event);
+        keyAlone = KeyNames.alone(event.key, Qt);
         keyTaken = key;
         // A press is a key taken as it comes; a repeat only once it's
         // known to do something (QueryKeys.heldDoes, below).

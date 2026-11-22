@@ -2269,6 +2269,15 @@ QtObject {
         ];
         for (const [what, pressed, want] of names)
             holds(`${what} is named ${want}`, KeyNames.nameOf(pressed), want);
+        // A key pressed alone that chooses nothing, as a held Return after
+        // a step closed by itself passes over; a key typing into the find,
+        // é or Delete among those the table can't name, chooses.
+        holds("the keys that choose nothing alone",
+            [Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Super_L, Qt.Key_AltGr,
+                Qt.Key_CapsLock, Qt.Key_Multi_key, Qt.Key_Hyper_L, Qt.Key_Eacute,
+                Qt.Key_Delete, Qt.Key_Return, Qt.Key_J]
+                .map(key => KeyNames.alone(key, Qt) ? "alone" : "chooses").join(" "),
+            "alone alone alone alone alone alone alone alone chooses chooses chooses chooses");
 
         // [what, the keys typed from the opening, each act with its count]
         const counting = [
