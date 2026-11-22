@@ -181,16 +181,9 @@ let
   # A provider's program by its absolute path, for the reason a via's is;
   # it takes no words of its own, since the node adds what it asks.
   provider = lib.types.strMatching "/[^:[:space:]%$]+";
-  # A lend's upstream socket, whole or relative: no part of it starts with
-  # a dot, so `..` can't climb out of the folder it is named in.
-  socket = lib.types.strMatching "/?([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
-  # Folders any account may make a socket in, where the first to bind one
-  # would be handed every lent machine's requests and answer them.
-  openFolders = [
-    "/tmp/"
-    "/var/tmp/"
-    "/dev/shm/"
-  ];
+  # A lend's upstream socket, relative to the node's runtime folder: no
+  # part of it starts with a dot, so `..` can't climb out of it.
+  socket = lib.types.strMatching "([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
   providersDescription = ''
     The programs of providers that may make this realm's machines, each by
     its absolute path. The node asks each what it offers, and makes a
@@ -232,17 +225,22 @@ let
           lib.types.submodule {
             options = {
               upstream = lib.mkOption {
-                # A path relative to the node's runtime folder, since a
-                # module doesn't know the account's uid, or a whole one.
-                # On a Mac with no XDG_RUNTIME_DIR, mycelium takes the
-                # account's temporary folder as the system names it for
-                # that runtime folder, so a relative path holds there too;
-                # with no runtime folder at all it refuses the request.
+                # Whatever answers at the upstream reads every lent
+                # machine's requests, its sessions' prompts, is handed
+                # the key, and is taken as the model; and mycelium
+                # doesn't ask who owns the socket. So it is only ever
+                # within the node's runtime folder, the account's own at
+                # 0700, never a whole path, which could lie in a folder
+                # another account binds first (/tmp, a Mac's
+                # /private/tmp). mycelium's place::login_runtime finds
+                # that folder: XDG_RUNTIME_DIR, else on a Mac what
+                # `getconf DARWIN_USER_TEMP_DIR` says, else none, when
+                # it refuses the request.
                 type = socket;
                 example = "model-relay/agents.sock";
                 description = ''
-                  The socket each request goes on to, whole or relative to the
-                  node's runtime folder, and nowhere else.
+                  The socket each request goes on to, relative to the node's
+                  runtime folder, and nowhere else.
                 '';
               };
               host = lib.mkOption {
@@ -274,11 +272,13 @@ let
               };
               key = lib.mkOption {
                 # Its program in the Nix store, with no `.` or `..` part
-                # that could climb out of it, and named by the package it
-                # comes from, so the lend file keeps it from the garbage
-                # collector. Only the program word is held: the words
-                # after it may still name a script the account writes,
-                # which the account, trusted as lendArgs says, may do.
+                # that could climb out of it, and carrying the context of
+                # the package it comes from, so the lend file keeps it
+                # from the garbage collector and a bare string is refused.
+                # That shows the word came from a derivation, not that the
+                # program can't be a link to a file the account writes, or
+                # that the words after it don't name one: the account,
+                # trusted as lendArgs says, may do either.
                 type = lib.types.nullOr (
                   lib.types.addCheck (lib.types.nonEmptyListOf lib.types.str) (
                     words:
@@ -769,30 +769,6 @@ in
         {
           assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;
           message = "jitsusama.mycelium.lend.vms names a budget jitsusama.mycelium.lend.budgets doesn't hold.";
-        }
-        {
-          # The node adds a budget's key to whatever answers at its
-          # upstream, and mycelium doesn't ask who owns a whole path's
-          # socket, so another account binding one there would be handed
-          # the key. The runtime folder is the account's own, at 0700.
-          assertion =
-            cfg.lend != null
-            -> lib.all (budget: budget.key == null || !lib.hasPrefix "/" budget.upstream) (
-              lib.attrValues cfg.lend.budgets
-            );
-          message = "jitsusama.mycelium.lend.budgets has a budget with a key whose upstream is a whole path: name it within the node's runtime folder, which only the account reaches, since the key goes to whatever answers there.";
-        }
-        {
-          # Keyed or not, whatever answers at a budget's upstream reads every
-          # lent machine's requests, which are its sessions' prompts, and
-          # its answers are taken as the model's. So a whole path is never
-          # one in a folder any account may bind a socket in.
-          assertion =
-            cfg.lend != null
-            -> lib.all (budget: !lib.any (folder: lib.hasPrefix folder budget.upstream) openFolders) (
-              lib.attrValues cfg.lend.budgets
-            );
-          message = "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp, /var/tmp or /dev/shm, where any account may bind it first and read and answer every lent machine's requests.";
         }
         {
           # mycelium refuses a machine whose name starts as two prefixes do,

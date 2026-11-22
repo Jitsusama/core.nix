@@ -2262,15 +2262,15 @@
   mycelium-lends-from-the-store = ''
     a machine that lends evaluates, and its home realm mycelium node, on NixOS and nix-darwin, is
     given what it lends the worker machines it made as that file in the Nix store, rather than one
-    in the account's config folder, its names exactly the fields the locked mycelium's lender
-    reads, none renamed, its key optional there and its daily cap a u64; a budget with no key is
-    written with none, a further realm's node and a machine lending nothing are given no lend,
-    plain prefixes and dotted paths and key packages are taken, and a lend with no realm, naming a
-    budget it lacks, with a prefix that starts another, either way round, or is named twice, a key
-    program outside the store, climbing out of it with .., or named as text no package keeps
-    alive, a keyed upstream outside the runtime folder, any upstream in /tmp or /dev/shm, an
-    upstream that climbs out with .., or a path of / or /* alone or holding .. is refused, each by
-    its own message or the option's type
+    in the account's config folder, its fields exactly those the locked mycelium's lender reads, by
+    name and type, from structs that derive Deserialize with only deny_unknown_fields, nothing
+    renamed and none read by hand; a budget with no key is written with none, a further realm's
+    node and a machine lending nothing are given no lend, plain prefixes and dotted paths and key
+    packages are taken on NixOS and nix-darwin, and a lend with no realm, naming a budget it lacks,
+    with a prefix that starts another, either way round, or is named twice, a key program outside
+    the store, climbing out of it with .., or named as text no package keeps alive, any whole
+    upstream, on NixOS or a Mac's /private/tmp, an upstream that climbs out with .., or a path of /
+    or /* alone or holding .. is refused, each by its own message or the option's type
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a

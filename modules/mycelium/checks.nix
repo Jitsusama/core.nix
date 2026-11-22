@@ -76,7 +76,7 @@ let
         key = [ "${modelsKey}" ];
       };
       keyless = {
-        upstream = "/run/relay/agents.sock";
+        upstream = "other-relay/agents.sock";
         host = "other.example";
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
@@ -1059,7 +1059,7 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it, the lend's names aren't the locked mycelium's own, or its key isn't optional or its cap a u64 there, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store, climbing out of it or named as text, a keyed upstream outside the runtime folder, any upstream in /tmp or /dev/shm, an upstream climbing out with .., or a path lending everything or nothing is taken."
+      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it, the lend's fields aren't the locked mycelium's own by name and type, read from structs serde reads plainly, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a lend with plain prefixes, dotted paths or a key package is refused on either system, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store, climbing out of it or named as text, a whole upstream, on NixOS or nix-darwin, an upstream climbing out with .., or a path lending everything or nothing is taken."
       (
         let
           # Each machine whole, for its own pkgs, and its account.
@@ -1092,31 +1092,55 @@ in
           holding =
             system: "${machine.${system}.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
           # The fields of the locked mycelium's struct NAME, as its lender
-          # reads the file, each by its name to its type. serde reads a
-          # field by its name unless an attribute renames or flattens it,
-          # so one doing so in or just above the struct fails here, as a
-          # struct no longer found does, rather than passing unread.
+          # reads the file, each by its name to its type. serde reads them
+          # so only while the struct derives Deserialize with nothing but
+          # deny_unknown_fields over it, no field says more than default,
+          # and nothing deserialises it by hand. So the scan reads every
+          # attribute and doc line above the struct, back to a blank line
+          # or the end of another item, and throws on anything else there
+          # or in the body, as on a struct no longer found, rather than
+          # passing what it didn't read.
           source = lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/lend/lender/mod.rs");
           fields =
             struct:
             let
               from = lib.lists.findFirstIndex (line: line == "struct ${struct} {") null source;
-              body = lib.drop (from + 1) source;
-              to = lib.lists.findFirstIndex (line: line == "}") (lib.length body) body;
-              read = lib.take to body ++ lib.sublist (from - 3) 3 source;
-              renaming = line: builtins.match ".*(rename|flatten|alias).*" line != null;
-              renamed = lib.any renaming read;
+              body = lib.take to (lib.drop (from + 1) source);
+              to = lib.lists.findFirstIndex (line: line == "}") null (lib.drop (from + 1) source);
+              marked = line: lib.hasPrefix "#[" line || lib.hasPrefix "///" line;
+              before = lib.reverseList (lib.take from source);
+              reach = lib.lists.findFirstIndex (line: !marked line) (lib.length before) before;
+              above = lib.take reach before;
+              bound = lib.elemAt before reach;
+              serde = lib.filter (lib.hasPrefix "#[serde") above;
+              deriving = builtins.match "#\\[derive\\(.*Deserialize.*\\)]";
+              derives = lib.any (line: deriving line != null) above;
+              # Each body line a doc line, the one field attribute serde
+              # may carry, or a field of one line.
+              field = builtins.match "    ([a-z_][a-z0-9_]*): (.*),";
+              defaulted = "    #[serde(default)]";
+              plain = line: lib.hasPrefix "    ///" line || line == defaulted || field line != null;
+              byHand = lib.any (
+                line: builtins.match ".*impl.*Deserialize.* for ${struct}( .*)?" line != null
+              ) source;
+              fail = why: throw "mycelium's struct ${struct} ${why}, which this check can't read";
             in
-            if from == null then
-              throw "mycelium's src/lend/lender/mod.rs has no line 'struct ${struct} {'"
-            else if renamed then
-              throw "mycelium's struct ${struct} renames or flattens a field, which the lend doesn't follow"
+            if from == null || to == null then
+              throw "mycelium's lender has no lines 'struct ${struct} {' to '}'"
+            else if reach < lib.length before && bound != "" && bound != "}" then
+              fail "has a line over its attributes that is neither blank nor an item's end"
+            else if !derives || serde != [ "#[serde(deny_unknown_fields)]" ] then
+              fail "doesn't derive Deserialize with only deny_unknown_fields over it"
+            else if !lib.all plain body then
+              fail "has a line in its body other than a doc line, a field or #[serde(default)]"
+            else if byHand then
+              fail "is deserialised by hand"
             else
               lib.listToAttrs (
                 lib.concatMap (
                   line:
                   let
-                    matched = builtins.match "    ([a-z_][a-z0-9_]*): (.*)," line;
+                    matched = field line;
                   in
                   if matched == null then
                     [ ]
@@ -1127,9 +1151,31 @@ in
                         value = lib.last matched;
                       }
                     ]
-                ) (lib.take to body)
+                ) body
               );
           named = struct: lib.attrNames (fields struct);
+          # Each field's JSON shape as the module writes it: a keyless
+          # budget with no key, read as none only while the key is
+          # optional, a key and paths as lists of words, and a daily cap
+          # any positive Nix integer fits.
+          shapes = {
+            Written = {
+              vms = "Vec<Vm>";
+              budgets = "BTreeMap<String, Budget>";
+            };
+            Vm = {
+              prefix = "String";
+              budget = "String";
+              requests_a_day = "u64";
+            };
+            Budget = {
+              upstream = "PathBuf";
+              host = "String";
+              paths = "Vec<String>";
+              auth_header = "String";
+              key = "Option<Vec<String>>";
+            };
+          };
           # Refused by the assertion whose message starts so, and by it.
           assertsAgainst =
             settings: start:
@@ -1144,6 +1190,22 @@ in
                   (linux (both // { inherit lend; })).systemd.user.services.mycelium.Service.ExecStart;
             in
             !(builtins.tryEval (builtins.deepSeq words words)).success;
+          # The same on a Mac, which fails its agent's words.
+          macRefuses =
+            lend:
+            let
+              agent = (mac (both // { inherit lend; })).launchd.agents.mycelium;
+              words = agent.config.ProgramArguments;
+            in
+            !(builtins.tryEval (builtins.deepSeq words words)).success;
+          withKeyless =
+            change:
+            lending
+            // {
+              budgets = lending.budgets // {
+                keyless = lending.budgets.keyless // change;
+              };
+            };
           withModels =
             change:
             lending
@@ -1169,11 +1231,7 @@ in
         && named "Written" == lib.attrNames lending
         && named "Vm" == lib.attrNames vm
         && named "Budget" == lib.attrNames lending.budgets.models
-        # A keyless budget is written with no key, which mycelium reads as
-        # none only while its key is optional; and any positive count a Nix
-        # integer holds fits its daily cap.
-        && lib.hasPrefix "Option<" (fields "Budget").key
-        && (fields "Vm").requests_a_day == "u64"
+        && lib.all (struct: fields struct == shapes.${struct}) (lib.attrNames shapes)
         && takes (
           lending
           // {
@@ -1221,9 +1279,18 @@ in
             ];
           }
         ) "jitsusama.mycelium.lend.vms has two prefixes"
-        && refuses (withModels {
+        # Any whole upstream, keyed or not, on either system: /tmp's,
+        # and a Mac's /private/tmp, which /tmp links to.
+        && typeRefuses (withModels {
           upstream = "/run/relay/agents.sock";
-        }) "jitsusama.mycelium.lend.budgets has a budget with a key"
+        })
+        && typeRefuses (withKeyless {
+          upstream = "/tmp/relay/agents.sock";
+        })
+        && macRefuses (withKeyless {
+          upstream = "/private/tmp/relay.sock";
+        })
+        && !macRefuses lending
         && typeRefuses (withModels {
           key = [ "/tmp/models-key" ];
         })
@@ -1234,26 +1301,6 @@ in
         && typeRefuses (withModels {
           key = [ "${builtins.storeDir}/00000000000000000000000000000000-models-key-1.0" ];
         })
-        && refuses (
-          lending
-          // {
-            budgets = lending.budgets // {
-              keyless = lending.budgets.keyless // {
-                upstream = "/tmp/relay/agents.sock";
-              };
-            };
-          }
-        ) "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp"
-        && refuses (
-          lending
-          // {
-            budgets = lending.budgets // {
-              keyless = lending.budgets.keyless // {
-                upstream = "/dev/shm/agents.sock";
-              };
-            };
-          }
-        ) "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp"
         && typeRefuses (withModels {
           paths = [ "/*" ];
         })
