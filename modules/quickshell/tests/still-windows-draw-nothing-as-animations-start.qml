@@ -185,17 +185,40 @@ ShellRoot {
         }
     }
 
-    // Each animation ends well before the next starts, so every start is
-    // one the animation driver hears as animations starting again. Each
-    // says so before it starts them, so the script can tell which of Qt's
-    // timer starts came in which of the case's starts; the script matches
-    // that line's wording and the count's, "Over N starts".
+    // When the latest start began, so a start that never draws still ends.
+    property real startedAt: 0
+    // How long a start may wait for its frames: a start on a clock of
+    // 600 ms lost frames that came late on a loaded builder, drawing none
+    // in one start (22 November), so a start ends on what the windows did.
+    readonly property int startWaitsFor: 3000
+
+    // Whether the latest start is over: both animations have stopped,
+    // both moving windows have drawn twice since it began, and none has
+    // drawn for 300 ms, or it has waited its longest.
+    function startOver(): bool {
+        const waited = Date.now() - root.startedAt;
+        if (waited >= root.startWaitsFor)
+            return true;
+        const drawnTwice = root.movingDrawn - root.movingBefore >= 2
+            && root.slidingDrawn - root.slidingBefore >= 2;
+        return !moving.running && !sliding.running && drawnTwice
+            && Date.now() - root.lastDrawn >= 300;
+    }
+
+    // Each animation ends, and its windows go quiet, before the next
+    // starts, so every start is one the animation driver hears as
+    // animations starting again. Each says so before it starts them, so
+    // the script can tell which of Qt's timer starts came in which of the
+    // case's starts; the script matches that line's wording and the
+    // count's, "Over N starts".
     Timer {
         id: started
 
-        interval: 600
+        interval: 100
         repeat: true
         onTriggered: {
+            if (root.starts > 0 && !root.startOver())
+                return;
             if (root.starts > 0)
                 root.startEnded();
             if (root.starts === root.startsAsked) {
@@ -207,6 +230,7 @@ ShellRoot {
             console.log(`The case starts its squares moving, start ${root.starts}.`);
             root.movingBefore = root.movingDrawn;
             root.slidingBefore = root.slidingDrawn;
+            root.startedAt = Date.now();
             moving.restart();
             sliding.to = slider.x < 90 ? 180 : 0;
             sliding.restart();
