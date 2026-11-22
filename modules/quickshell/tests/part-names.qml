@@ -44,7 +44,8 @@ ShellRoot {
     }
 
     // The launcher as a showing of Date reads it, for the cases followed
-    // turn by turn (asShowing): open or shut, with Date as its answer.
+    // turn by turn (asShowing): open or shut, with Date as its answer or
+    // a step held in it.
     QtObject {
         id: showing
 
@@ -134,8 +135,12 @@ ShellRoot {
             steps[0]();
         } catch (error) {
             console.warn(`FAIL ${error.message ?? error}`);
-            steps[steps.length - 1]();
             Qt.callLater(() => Qt.exit(1));
+            try {
+                steps[steps.length - 1]();
+            } catch (again) {
+                console.warn(`FAIL putting back: ${again.message ?? again}`);
+            }
             return;
         }
         Qt.callLater(() => turns(steps.slice(1)));
@@ -326,10 +331,9 @@ ShellRoot {
             Calendars.reading = null;
             Calendars.refused = true;
             today.askedThisShowing = false;
-            const earlier = calendarsOf(date());
-            expect("a refusal from before this showing asked reads as asking, stepping in",
-                earlier?.side === "\u2026" && earlier?.verb === "more",
-                `${earlier?.side} ${earlier?.verb}`);
+            const standing = calendarsOf(date());
+            expect("shut, as a terminal reads it, a refusal standing is said, and only closes",
+                standing?.verb === "close", `${standing?.side} ${standing?.verb}`);
             today.askedThisShowing = true;
             Calendars.refused = false;
             const unrefused = calendarsOf(date());
@@ -358,7 +362,8 @@ ShellRoot {
     // on, clearing that, and answers Date again; a refusal then is its own,
     // whose Return closes. Shut, the next showing starts unasked, and with
     // nothing refused still answers Date again once it asks, since what it
-    // opens on can be older than it.
+    // opens on can be older than it. Held as a step, as Now holds it, it
+    // reads and asks the same.
     function asShowing() {
         const stoodIn = Calendars.reading;
         const wasRefused = Calendars.refused;
@@ -384,7 +389,8 @@ ShellRoot {
             () => {
                 expect("a turn on, it has asked", shownToday.askedThisShowing, "it hadn't");
                 expect("which cleared the earlier refusal", !Calendars.refused, "still refused");
-                expect("and Date was answered again", root.answeredAgain > before, told());
+                expect("and Date was answered again, here as the refusal cleared",
+                    root.answeredAgain > before, told());
                 Calendars.refused = true;
                 const refused = calendarsNow();
                 expect("a refusal once it has asked is its own, and Return only closes",
@@ -400,10 +406,24 @@ ShellRoot {
             () => {
                 expect("shown again with nothing refused, it asks and answers Date again",
                     shownToday.askedThisShowing && root.answeredAgain > before, told());
+                showing.open = false;
+                showing.answer = null;
+                Calendars.refused = true;
+                showing.held = [{ row: shownToday.answer("date") }];
+                showing.open = true;
+                const held = calendarsNow();
+                expect("held, as from Now, its first frame after a refusal reads as asking",
+                    held?.verb === "more", `${held?.side} ${held?.verb}`);
+            },
+            aTurn,
+            () => {
+                expect("held, a turn on, it has asked, clearing the refusal",
+                    shownToday.askedThisShowing && !Calendars.refused, told());
             },
             () => {
                 showing.open = false;
                 showing.answer = null;
+                showing.held = [];
                 Calendars.refused = wasRefused;
                 Calendars.reading = stoodIn;
             }
