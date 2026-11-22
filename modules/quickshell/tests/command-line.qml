@@ -563,10 +563,13 @@ QtObject {
         const refused = "1.3\u00d7 not set \u00b7 HP offers 1\u00d7 to 3\u00d7";
         holds("a late refusal is said while the keys are still the line's",
             SetWords.later("scale", refused, true), { say: refused });
-        holds("a late refusal after Joel typed on goes to the journal alone",
-            SetWords.later("scale", refused, false, "unread, 33 letters"),
+        holds("a late refusal after Joel typed on goes to the journal alone, its code whole",
+            SetWords.later("scale", refused, false, { code: "unread", whole: false }),
             { journal: "launcher: scale refused after Joel typed on: unread, 33 letters" });
-        holds("and by how many letters its words held where it's given no form for them",
+        holds("its words quoted only while reports are on",
+            SetWords.later("scale", refused, false, { code: "unread", whole: true }),
+            { journal: `launcher: scale refused after Joel typed on: "${refused}"` });
+        holds("and by how many letters its words held where it's given no code",
             SetWords.later("scale", refused, false),
             { journal: "launcher: scale refused after Joel typed on: 33 letters" });
         holds("a late refusal of one letter says so",

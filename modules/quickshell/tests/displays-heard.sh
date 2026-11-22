@@ -6,8 +6,11 @@ set -euo pipefail
 said=$1
 failed=0
 
+# A line ending in what's wanted, so one saying more after the count doesn't pass for it.
 wanted="launcher: brightness 33 refused: unread, 25 letters"
-if ! grep -aqF -- "$wanted" "$said"; then
+if ! WANTED=$wanted awk 'BEGIN { w = ENVIRON["WANTED"] }
+  substr($0, length($0) - length(w) + 1) == w { found = 1 }
+  END { exit !found }' "$said"; then
   echo "a refused share isn't said by its code and how many letters, wanted: $wanted"
   failed=1
 fi

@@ -221,6 +221,9 @@ ShellRoot {
                             root.scale("DP-1", "1.5\u00d7", 2050),
                             root.answering("DP-1", "Dell Inc. U2723QE", "1.5\u00d7", 4000),
                             root.answering("eDP-1", "Built-in Screen", "2\u00d7", 4001)] };
+                    } else if (ask.ask === "screen" && ask.option === root.refusedOption) {
+                        answer = { id: ask.id, error: { code: "unknown-option",
+                            said: "DP-1 Harbour takes no such" } };
                     } else if (ask.ask === "screen") {
                         root.acted = root.acted.concat([ask]);
                         answer = { id: ask.id, done: true };
@@ -297,6 +300,8 @@ ShellRoot {
         else if (waiting === "the refusal read"
             && displays.servedBrightness?.share === refusedShare)
             refused();
+        else if (waiting === "the late refusals" && laterHeard.length === 2)
+            laterRefused();
     }
 
     // Each row is drawn as it's served, the panel first, and Turn Every
@@ -450,6 +455,27 @@ ShellRoot {
 
     function refused() {
         Expect.expect("the refusal came on the watch's own connection", refusedOnWatch, "");
+        waiting = "the late refusals";
+        const heard = (why, failed, code) => {
+            laterHeard = laterHeard.concat([{ why, failed, code }]);
+        };
+        displays.brighten(refusedShare, heard);
+        displays.lineAsk({ name: "DP-1" }, refusedOption, "on", heard);
+    }
+
+    // A refusal the : line takes, a share or a screen's option, goes to its
+    // `later` with the daemon's words and its code, so the launcher's line
+    // can say the code whatever the reports setting (Launcher.qml's
+    // commandSetSteps, SetWords.later).
+    readonly property string refusedOption: "refused-here"
+    property var laterHeard: []
+
+    function laterRefused() {
+        const said = laterHeard.map(one => `${one.why} ${one.failed} ${one.code}`).sort();
+        Expect.expect("each refusal reaches the line's later with its words and its code",
+            JSON.stringify(said) === JSON.stringify(["DP-1 Harbour takes no such true "
+                + "unknown-option", "couldn't dim DP-1 Harbour true unread"]),
+            JSON.stringify(said));
         waiting = "done";
         Qt.exit(0);
     }

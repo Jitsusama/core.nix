@@ -1178,6 +1178,9 @@ QtObject {
             Presented.actShown("row:wifi:network:eduroam", false), "wifi");
         check(failures, "and a daemon's own act no further than its act",
             Presented.actShown("displays:sleep:eduroam", false), "displays:sleep");
+        check(failures, "and a key of one word, which may be a record's name, as a row",
+            Presented.actShown("eduroam", false), "row");
+        check(failures, "as is an act with no key", Presented.actShown(undefined, false), "row");
         check(failures, "and a verb no further than keyShown says it",
             Presented.actShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
         check(failures, "and the launcher's own whole",

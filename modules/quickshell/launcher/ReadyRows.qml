@@ -991,11 +991,11 @@ Scope {
     // (Presented.typedShown), since a daemon's words can name a row (Y2YBTS,
     // 2026-11-20, 41ca61c4). With them off, a refusal's `answer` gives its code, or
     // that none came, beside the count (Presented.codeShown), so the line still
-    // tells a daemon refusing from one gone. A code, no one's words, is said whole.
+    // tells a daemon refusing from one gone. A code, no one's words, is said whole,
+    // by the rule the : line's late refusals are said by (Presented.refusalShown).
     function whySaid(why, answer) {
-        const words = Presented.typedShown(why, Options.reports);
-        return Options.reports || answer === undefined ? words
-            : `${Presented.codeShown(answer)}, ${words}`;
+        const code = answer === undefined ? "" : Presented.codeShown(answer);
+        return Presented.refusalShown(why, code, Options.reports);
     }
 
     // An open whose program went between its rows being listed and Return opens nothing and says

@@ -349,8 +349,9 @@ function typedInSaid(typed, within, whole) {
 // quoting escapes escaped, so a line break can't forge another line.
 function actShown(key, whole) {
     const said = rowShown({ key }, whole);
-    const kinds = whole || keysSaidByKind.test(String(key)) ? ""
-        : kindsLed(String(key).split(":").slice(0, 2)).join(":");
+    const led = whole || keysSaidByKind.test(String(key)) ? []
+        : kindsLed(String(key).split(":").slice(0, 2));
+    const kinds = led.length === 2 ? led.join(":") : "";
     return quoted(kinds.length > said.length ? kinds : said).slice(1, -1);
 }
 

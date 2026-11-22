@@ -81,7 +81,10 @@
     "TalkLine.js"
     "Told.js"
   ];
-  "SetWords.js" = [ "Commands.js" ];
+  "SetWords.js" = [
+    "Commands.js"
+    "launcher/Presented.js"
+  ];
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];
   "TalkLine.js" = [

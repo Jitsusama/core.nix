@@ -4163,8 +4163,8 @@
     command's start, then the act's words; Tab and the arrows choose and write a line in, round to
     what was typed; Return runs exactly what's typed, a short form or more, saying E492, E477 or
     E488 otherwise, each key's work over 400 commands within three times a bare copy of them or a
-    pass over them, timed in turn; and a late refusal after Joel typed on is journalled as the
-    launcher gives its words
+    pass over them, timed in turn; and a late refusal after Joel typed on is journalled by the
+    daemon's code, its words quoted only with reports on and otherwise by how many letters
   '';
   the-console-greets-the-account = ''
     a console greets the account by its description's first word, or its name, with the keys back to
@@ -4829,11 +4829,10 @@
     only the row a change names, offers Windows the screens laid out by what their rows hold, asks
     the daemon to look again once it's changed a screen, and says the Brightness's share, or that
     it isn't read yet, as the place's line serves it; with reports off, a share the daemon refuses
-    is journalled by its code and how many letters, not its words; and as the launcher opens
-    Screens feels a
-    span by its name, while work a source feels through its span runs from before it to after
-    it, is named shutting while the launcher is shut, and gives what the work gives and throws
-    what it throws
+    is journalled by its code and how many letters, not its words, and one the : line takes goes
+    to it with the daemon's words and code; and as the launcher opens Screens feels a span by its
+    name, while work a source feels through its span runs from before it to after it, is named
+    shutting while the launcher is shut, and gives what the work gives and throws what it throws
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows, as the windows daemon tells of them, list This Window, then the rest
