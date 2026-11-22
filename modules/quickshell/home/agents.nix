@@ -26,6 +26,7 @@
   "Waiting.js"
   "launcher/SessionRow.js"
   "launcher/Landed.js"
+  "launcher/ReopenTally.js"
   "launcher/SessionDrawer.js"
   "launcher/Holders.js"
   "launcher/TalkTo.js"
