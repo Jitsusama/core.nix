@@ -2784,7 +2784,7 @@ impl Wifid<'_> {
     /// carry on unfollowed with the card's networks on. A card further on,
     /// in a handshake or done, is asked which point it's on too, as a
     /// rekey on its own point passes through the same steps; one whose
-    /// point can't be named is said so and taken as having left
+    /// point can't be named is said so and judged by its step alone
     /// (`arrive::has_left_for`). One whose step can't be read is said so
     /// and taken as never having left.
     async fn under_way(&self, card: &str, from: &str) -> bool {
@@ -2811,14 +2811,10 @@ impl Wifid<'_> {
             };
             match point.await {
                 Ok(Some(heard)) => on = Some(heard.bssid),
-                Ok(None) => println!(
-                    "<7>{card} is at {step} on a point with no name, so is taken as having \
-                     left {from}"
-                ),
-                Err(error) => println!(
-                    "<7>{card} is at {step} on a point that couldn't be read, so is taken as \
-                     having left {from}: {error}"
-                ),
+                Ok(None) => println!("<7>{card} is at {step} on a point wifid can't name"),
+                Err(error) => {
+                    println!("<7>{card} is at {step} on a point that couldn't be read: {error}");
+                }
             }
         }
         arrive::has_left_for(&step, on.as_deref(), from)
@@ -2993,7 +2989,8 @@ impl Wifid<'_> {
     /// moving to after all, asked of wpa_supplicant: its reply comes after
     /// every signal it sent before, so a join completed as the time ran
     /// out, its signal not yet read, is seen. One that is ends its move as
-    /// any arrival does. Where wpa_supplicant can't say, it isn't. A way
+    /// any arrival does. Where wpa_supplicant can't say, it isn't, said so
+    /// that a verdict from a failed read is told from a miss. A way
     /// back already handed back as stranded is said found there as its
     /// time, `going`, ran out, since when it got there isn't known.
     async fn arrived(&self, card: &str, to: &str, free: bool, going: Option<Duration>) -> bool {
@@ -3006,8 +3003,13 @@ impl Wifid<'_> {
             let heard = AccessPoint::new(described(self.bus, &point).await?).heard();
             Ok(heard.is_some_and(|heard| heard.bssid.eq_ignore_ascii_case(to)))
         };
-        if !there.await.unwrap_or(false) {
-            return false;
+        match there.await {
+            Ok(true) => {}
+            Ok(false) => return false,
+            Err(error) => {
+                println!("<7>{card}'s step or point couldn't be read, so isn't at {to}: {error}");
+                return false;
+            }
         }
         let arrived = self
             .arrivals
