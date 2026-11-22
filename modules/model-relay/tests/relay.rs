@@ -654,6 +654,17 @@ impl Relay {
         None
     }
 
+    /// Asks the relay to stop as systemd does, with SIGTERM, leaving it
+    /// to end as it will.
+    fn stop(&self) {
+        let sent = Command::new("kill")
+            .arg("-TERM")
+            .arg(self.child.id().to_string())
+            .status()
+            .expect("kill runs");
+        assert!(sent.success(), "the relay couldn't be sent SIGTERM");
+    }
+
     /// Stops the relay and gives back all it said.
     fn said(mut self) -> String {
         let _ = self.child.kill();
@@ -3036,6 +3047,90 @@ async fn a_relay_leaves_once_idle_but_never_mid_answer() {
     );
     let said = relay.said();
     assert!(said.contains("idle"), "it left without saying why: {said}");
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_relay_stopped_mid_answer_ends_it_whole_and_sends_the_rest_direct() {
+    let origin = origin().await;
+    let host = origin.address.to_string();
+    let mut relay = Relay::start(&format!("https://{host}"), &origin.roots, 1);
+    // A connection kept open and asking nothing is closed the moment the
+    // relay starts leaving, which is how the test knows it has. Connected
+    // first, it's taken before the one below, so before the stop.
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (kept_sender, kept) =
+        hyper::client::conn::http1::handshake::<_, Full<Bytes>>(TokioIo::new(stream))
+            .await
+            .expect("an HTTP/1.1 connection");
+    let stream = UnixStream::connect(&relay.socket)
+        .await
+        .expect("the socket answers");
+    let (mut sender, connection) = hyper::client::conn::http1::handshake(TokioIo::new(stream))
+        .await
+        .expect("an HTTP/1.1 connection");
+    tokio::spawn(connection);
+    let response = sender
+        .send_request(request(&host, "/long", b""))
+        .await
+        .expect("an answer");
+    let mut body = response.into_body();
+    let first = loop {
+        let frame = body.frame().await.expect("a frame").expect("a good frame");
+        if let Ok(data) = frame.into_data() {
+            break data;
+        }
+    };
+
+    // Stopped between the answer's halves, which come LONG_GAP apart.
+    relay.stop();
+    let closed = tokio::time::timeout(Duration::from_secs(2), kept).await;
+    assert!(
+        relay.left().is_none(),
+        "the relay left at once when stopped, mid-answer"
+    );
+    assert!(
+        closed.is_ok(),
+        "the relay never closed a kept connection, so never began to leave; the relay \
+         said:\n{}",
+        relay.said()
+    );
+    drop(kept_sender);
+    let got = ask(&relay.socket, request(&host, "/echo", b"")).await;
+    let rest = body.collect().await.expect("the rest").to_bytes();
+
+    assert_eq!(
+        &first[..],
+        b"first\n",
+        "the answer's first half didn't pass"
+    );
+    assert_eq!(
+        &rest[..],
+        b"second\n",
+        "an answer in hand when the relay was stopped didn't end whole"
+    );
+    assert_eq!(
+        (got.status, got.body.as_slice()),
+        (StatusCode::MISDIRECTED_REQUEST, LEAVING_WORDS),
+        "a request taken after the relay was stopped wasn't sent direct in the words pi goes \
+         direct on"
+    );
+    assert_eq!(
+        origin.handed.lock().expect("the record").len(),
+        1,
+        "a request taken after the relay was stopped reached the origin"
+    );
+    let left = relay.left_within(Duration::from_secs(5));
+    assert!(
+        left.is_some_and(|status| status.success()),
+        "the relay didn't leave cleanly once its answer ended: {left:?}"
+    );
+    let said = relay.said();
+    assert!(
+        said.contains("stopped"),
+        "it left without saying why: {said}"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

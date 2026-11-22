@@ -87,8 +87,7 @@
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
-//! every ten minutes and as it leaves once idle; stopped by systemd, it
-//! says nothing of the stretch since the last.
+//! every ten minutes and as it leaves, idle or stopped.
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
@@ -97,8 +96,15 @@
 //! body over 64 MiB is a 413, one pi leaves unfinished a 400 and one
 //! still coming after a minute a 408, both counted as pi's cancel.
 //!
-//! A switch leaves a running relay be, since a restart would end every
-//! answer still streaming. So it leaves on its own once nothing has been
+//! Stopped by systemd, with SIGTERM, it leaves the same way at once: it
+//! closes each connection as its answer ends, and sends every request
+//! taken meanwhile direct with a 421 until the last has, since nothing
+//! else can answer them before it's gone. systemd's stop timeout cuts an
+//! answer longer than that.
+//!
+//! A switch leaves a running relay be, since a restart would send every
+//! request direct until each answer still streaming ended, and cut those
+//! that outlast the stop timeout. So it leaves on its own once nothing has been
 //! forwarded for a while, with no answer in flight: it stops taking
 //! connections, gives one it took just then a moment to say its request,
 //! then closes each as its answer ends. systemd keeps the socket, so
@@ -229,6 +235,10 @@ const OPEN_BEHIND_AGAIN_AFTER: Duration = Duration::from_secs(30);
 /// How long a leaving relay still takes connections, to send each direct,
 /// when its idle time is longer.
 const TAKES_LATE_CONNECTIONS_FOR: Duration = Duration::from_secs(10);
+/// How long a stopped relay, its answers ended, gives the connections it
+/// was sending direct to finish their 421: a few lines each, so a few
+/// seconds is plenty on a loaded machine.
+const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
 /// How long a connection taken just as the relay leaves has to say its
 /// request, which pi sends as it connects.
 const LEAVING_GRACE: Duration = Duration::from_millis(500);
@@ -1049,6 +1059,9 @@ pub struct Relay {
     /// Whether it has begun to leave, when a request is sent direct.
     leaving: AtomicBool,
     connections: Arc<Connections>,
+    /// Those of `connections` taken before it began to leave, whose
+    /// answers a stopped relay waits on.
+    kept: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
     /// Whether it takes requests, judged by those it finished lately.
@@ -1130,6 +1143,7 @@ impl Relay {
             asked_at: Held::new((Instant::now(), SystemTime::now())),
             leaving: AtomicBool::new(false),
             connections: Arc::new(Connections::default()),
+            kept: Arc::new(Connections::default()),
             counts: Arc::new(Counts::default()),
             busy: Arc::new(Busy {
                 now: AtomicUsize::new(0),
@@ -1141,12 +1155,21 @@ impl Relay {
         })
     }
 
-    /// Answers `listener` until the process is stopped, or until it has
-    /// sat idle as long as its clocks say. Then it leaves: each connection
-    /// it holds is closed as its answer ends, and while any is open, a
-    /// request on a connection taken since is sent direct with a 421, so
-    /// no pi waits on a relay that's going.
+    /// Answers `listener` until it has sat idle as long as its clocks say.
+    /// Then it leaves: each connection it holds is closed as its answer
+    /// ends, and while any is open, a request on a connection taken since
+    /// is sent direct with a 421, so no pi waits on a relay that's going.
     pub async fn serve(self, listener: UnixListener) {
+        self.serve_until(listener, std::future::pending()).await;
+    }
+
+    /// Answers `listener` as `serve` does, and leaves as well once
+    /// `stopped` ends, as systemd's stop does: it closes each connection
+    /// it holds as its answer ends, and sends every request taken
+    /// meanwhile direct with a 421 until the last has, however long they
+    /// keep coming, since a restart's new relay can't answer them until
+    /// this one is gone. systemd's stop timeout bounds the wait.
+    pub async fn serve_until(self, listener: UnixListener, stopped: impl Future<Output = ()>) {
         eprintln!(
             "model-relay: forwarding to {} over at most {} connections",
             self.origin.authority,
@@ -1168,20 +1191,26 @@ impl Relay {
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
         tokio::spawn(Arc::clone(&relay).tries_its_path());
         let (leave, leaving) = watch::channel(false);
-        loop {
-            tokio::select! {
-                () = relay.accept(&listener, &leaving) => {}
-                () = relay.idle() => {}
-            }
+        tokio::pin!(stopped);
+        let was_stopped = loop {
+            let stopping = tokio::select! {
+                () = relay.accept(&listener, &leaving) => false,
+                () = relay.idle() => false,
+                () = &mut stopped => true,
+            };
             // Taking no more, it gives a connection it took just now the
             // moment pi needs to say its request, which then holds it here.
             tokio::time::sleep(LEAVING_GRACE).await;
-            if relay.is_idle() {
-                break;
+            if stopping || relay.is_idle() {
+                break stopping;
             }
-        }
+        };
         // Said as it leaves too, or the last stretch's would go unsaid.
         relay.counts.say();
+        if was_stopped {
+            relay.leave_as_stopped(&listener, &leave, &leaving).await;
+            return;
+        }
         let idle_for = relay.clocks.idle_exit.unwrap_or_default().as_secs();
         eprintln!("model-relay: idle for {idle_for} s, so it leaves; its socket starts it again");
         relay.leaving.store(true, Ordering::SeqCst);
@@ -1207,6 +1236,31 @@ impl Relay {
         relay.counts.say();
     }
 
+    /// Leaves as `serve_until` says once stopped, its counts said.
+    async fn leave_as_stopped(
+        self: &Arc<Relay>,
+        listener: &UnixListener,
+        leave: &watch::Sender<bool>,
+        leaving: &watch::Receiver<bool>,
+    ) {
+        eprintln!(
+            "model-relay: stopped, so it sends what it's asked direct until the answers it holds \
+             have ended"
+        );
+        self.leaving.store(true, Ordering::SeqCst);
+        // Nobody is left to tell when every connection has gone already.
+        let _ = leave.send(true);
+        tokio::select! {
+            () = self.accept(listener, leaving) => {}
+            () = self.kept.none_held() => {}
+        }
+        // Taking no more, it gives those it was sending direct the moment
+        // they need to finish saying so; one taking longer is cut.
+        let _ = tokio::time::timeout(SAYS_GO_DIRECT_WITHIN, self.connections.none_held()).await;
+        // Once more for those refused while it left.
+        self.counts.say();
+    }
+
     /// Answers each connection `listener` takes. One taken before `leaving`
     /// says so is closed as its answer ends once it does; one taken after
     /// answers a request and closes.
@@ -1220,6 +1274,7 @@ impl Relay {
                     tokio::spawn(async move {
                         let _holding = holding;
                         let late = *leaving.borrow_and_update();
+                        let _kept = (!late).then(|| relay.kept.one());
                         let service = hyper::service::service_fn(move |request| {
                             let relay = Arc::clone(&relay);
                             async move { Ok::<_, Infallible>(relay.forward(request).await) }

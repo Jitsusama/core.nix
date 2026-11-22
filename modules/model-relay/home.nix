@@ -98,8 +98,11 @@ in
         Description = "Relays the agents' model requests over a few shared connections";
         Requires = [ "model-relay-agents.socket" ];
         After = [ "model-relay-agents.socket" ];
-        # A restart ends every answer the relay is streaming, each a turn
-        # some agent is taking, so a switch leaves a running relay be. It
+        # A restart lets each answer the relay is streaming, each a turn
+        # some agent is taking, end first, sending every new request direct
+        # meanwhile, and cuts one still going at the stop timeout, 90 s by
+        # default. That sends a busy machine's agents past the relay for
+        # as long as its longest answer, so a switch leaves it be. It
         # leaves on its own once it has forwarded nothing for two minutes,
         # and isn't standing down nor stood down within them,
         # and its socket starts the new build and origin at the next

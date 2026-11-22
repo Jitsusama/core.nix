@@ -18,6 +18,7 @@ use model_relay::{
     STANDS_DOWN_FOR_AT_MOST, TRIES_ITS_PATH_EVERY,
 };
 use terminal_kit::{Exit, Failure, Help, flags};
+use tokio::signal::unix::SignalKind;
 
 /// The named flags it reads, every one taking a value.
 const FLAGS: [&str; 8] = [
@@ -87,7 +88,7 @@ fn help() -> Help {
     )
     .exit(
         Exit::Failed,
-        "it couldn't listen, or its roots couldn't be read",
+        "it couldn't listen or hear its stop, or its roots couldn't be read",
     )
 }
 
@@ -286,7 +287,17 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         let listener = tokio::net::UnixListener::from_std(listener).map_err(|why| {
             Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
         })?;
-        relay.serve(listener).await;
+        // systemd stops it with SIGTERM, which it takes as its word to
+        // leave once its answers end rather than at once.
+        let mut terminate =
+            tokio::signal::unix::signal(SignalKind::terminate()).map_err(|why| {
+                Failure::new(Exit::Failed, "it couldn't hear its stop").because(why.to_string())
+            })?;
+        relay
+            .serve_until(listener, async move {
+                terminate.recv().await;
+            })
+            .await;
         Ok(())
     })
 }
