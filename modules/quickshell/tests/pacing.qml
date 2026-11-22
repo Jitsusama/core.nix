@@ -298,6 +298,21 @@ QtObject {
             { thread }), Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
         check(failures, "the stall counts its thread's major page faults",
             pagedStall.stallThread.faulted, 1203);
+        const unreadStall = [[16, { ran: 5, waited: 1, faulted: 3 }],
+            [132, { ran: 20, waited: 2, faulted: -1 }]].reduce((was, [at, thread]) =>
+            Pacing.feltTicked(was, at, pace, { thread }),
+            Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
+        check(failures, "a stall whose count wasn't read takes none",
+            unreadStall.stallThread.faulted, undefined);
+        check(failures, "and says nothing of them",
+            Thread.said(unreadStall.stall, unreadStall.stallThread, "the stall"),
+            "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 100");
+        const fellStall = [[16, { ran: 5, waited: 1, faulted: 9 }],
+            [132, { ran: 20, waited: 2, faulted: 4 }]].reduce((was, [at, thread]) =>
+            Pacing.feltTicked(was, at, pace, { thread }),
+            Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
+        check(failures, "nor one whose count went back", fellStall.stallThread.faulted,
+            undefined);
         keyThreaded(failures);
     }
 
@@ -343,7 +358,7 @@ QtObject {
             Thread.said(20, { ran: 15, waited: 1, faulted: 1 }, "the stall"),
             "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4"
                 + ", with 1 major page fault");
-        check(failures, "none read is said as none",
+        check(failures, "a count of none is said as none",
             Thread.said(20, { ran: 15, waited: 1, faulted: 0 }, "the stall"),
             "; its thread ran 15 ms of the stall, waited 1 for a CPU and slept 4"
                 + ", with no major page faults");
@@ -375,6 +390,15 @@ QtObject {
             Pacing.stallSpent(nested, 0, 100), "filling 50, the drawer 10, 40 unnamed");
         check(failures, "one all named says nothing unnamed",
             Pacing.stallSpent(nested, 10, 70), "filling 50, the drawer 10");
+        // The open handler's laps beside the slices after its frame, which
+        // say "waking" for their own work (2026-11-21).
+        const laps = [{ name: "opening", from: 0, to: 40 },
+            { name: Pacing.lapName("beginning"), from: 0, to: 5 },
+            { name: Pacing.lapName("waking"), from: 5, to: 25 },
+            { name: "waking", from: 60, to: 80 }];
+        check(failures, "an opening's laps are said apart from the slices after it",
+            Pacing.stallSpent(laps, 0, 100),
+            "opening's waking 20, waking 20, opening 15, opening's beginning 5, 40 unnamed");
     }
 
     // Each frame's own work, as spans: the rows it laid out and its sync,

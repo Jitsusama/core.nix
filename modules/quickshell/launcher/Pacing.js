@@ -455,6 +455,12 @@ function feltFramed(frame, what, from, to) {
     return { frame: { rows: frame.rows, syncFrom: -1 }, spans };
 }
 
+// An open handler's lap's name (Launcher.qml's lap), the opening's own, as slices after
+// its frame say "waking" and "joining" for theirs and stallSpent adds up by name.
+function lapName(name) {
+    return `opening's ${name}`;
+}
+
 // What of `from` to `to` each named span of work ran into, most first,
 // then what none did: Joel's kept openings drew in a median 48 ms and
 // then stalled a median 73 ms, over a fill, a frame and more the journal

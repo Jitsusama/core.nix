@@ -14,17 +14,21 @@
 // behind the shell's other work, neither saying which of the three it was
 // (2026-11-16).
 // Beside them, `faulted`, its major page faults (KeyTimes.faulted), each
-// a wait on the disk for a page, though one may read in several around
-// it, so a sleep says how often it waited on its own memory: Joel's "s"
-// slept 448 ms of 566 searching, in work that never waits on its event
-// loop, with memory short (2026-11-21). None doesn't clear memory: a
-// thread reclaiming pages to allocate, or waiting on a page another
-// thread is reading in, takes no major fault of its own.
+// a page read back in from swap or a file, though one may read several
+// around it, so a sleep says how often it waited on its own memory: Joel's
+// "s" slept 448 ms of 566 searching, in work that never waits on its
+// event loop, with memory short (2026-11-21). A count isn't a time: one
+// read from zswap's compressed pool (modules/memory) costs microseconds,
+// one from the disk milliseconds. Nor does none clear memory: a thread
+// reclaiming pages to allocate, or waiting on a page another thread is
+// reading in, takes no major fault of its own.
 
 // The thread's clocks across a span, from `from` to `to`; null where
 // either end wasn't read, or its wait read 0, as KeyTimes.waited gives a
 // failed read and one taken from it would be the thread's whole life's,
-// or the clocks went back, which the thread's own never do.
+// or the clocks went back, which the thread's own never do. Its faults go
+// with them, though getrusage may still have answered: a key's line then
+// says neither, rather than a count beside clocks it couldn't read.
 function spent(from, to) {
     if (!from || !to || !(from.waited > 0) || !(to.waited > 0) || to.ran < from.ran
         || to.waited < from.waited) {

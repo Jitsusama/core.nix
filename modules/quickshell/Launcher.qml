@@ -11009,13 +11009,11 @@ Scope {
         // `open` turning runs besides: in a day of Joel's journal, 1259 ms
         // of 42 openings' longest stalls were "opening", while these laps
         // came to 371 ms over the day's 40 fills (2026-11-21). Each is
-        // felt as the opening's, since the slices after it say "waking"
-        // and "joining" for their own work, and a stall adds its time up
-        // by name.
+        // felt by the opening's name for it (Pacing.lapName).
         const lap = name => {
             const now = KeyTimes.now();
             parts[name] = (parts[name] ?? 0) + now - lapped;
-            feltSpan(`opening's ${name}`, lapped);
+            feltSpan(Pacing.lapName(name), lapped);
             lapped = now;
         };
         // Opened from what it kept, it was shown already, holding the keys
@@ -13154,7 +13152,8 @@ Scope {
         return { collected: Heap.collected(), thread: threadNow() };
     }
     // The shell thread's clocks now: what it has run and waited for a CPU,
-    // a few microseconds to read (key-times/keytimes.cpp).
+    // and its major page faults, a few microseconds to read
+    // (key-times/keytimes.cpp).
     function threadNow() {
         return { ran: KeyTimes.ran(), waited: KeyTimes.waited(), faulted: KeyTimes.faulted() };
     }
