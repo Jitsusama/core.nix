@@ -606,10 +606,10 @@ mod tests {
     }
 
     #[test]
-    fn an_outage_collected_carries_at_the_minute_the_daemon_keeps() {
-        // The daemon carries each minute over at the record's own time, so
-        // a source this minute stamps as down since now takes the earlier
-        // minute's since only if the two clocks agree.
+    fn an_outage_collected_twice_keeps_its_first_start() {
+        // Each minute is kept at the record's own time, the one its sources
+        // stamp a new outage with, so the next minute's outage takes the
+        // first one's start.
         let mut kept = Vec::new();
         let mut down = |now| {
             let said = Said {
@@ -629,6 +629,10 @@ mod tests {
             modem.since,
             Some(NOW - 60),
             "the modem's outage began again at the minute it was collected"
+        );
+        assert!(
+            kept.iter().all(|(at, _)| *at == second.collected_at),
+            "a minute was kept at another time than its record's"
         );
     }
 }

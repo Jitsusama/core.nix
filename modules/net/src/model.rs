@@ -609,11 +609,11 @@ mod tests {
         carry_over(&mut now, &mut kept, 220);
         let mut next = [source(SourceState::Unreachable, None, Some(280))];
         carry_over(&mut next, &mut kept, 280);
-        // Over five minutes after the outage began but within five of the
-        // last minute kept, so it carries only if each minute replaced the
-        // one before.
-        let mut later = [source(SourceState::Unreachable, None, Some(520))];
-        carry_over(&mut later, &mut kept, 520);
+        // Over five minutes after the first two minutes but within five of
+        // the last minute kept, so it carries only if each minute replaced
+        // the one before.
+        let mut later = [source(SourceState::Unreachable, None, Some(521))];
+        carry_over(&mut later, &mut kept, 521);
         assert_eq!(
             (now[0].read_at, now[0].since, next[0].read_at, next[0].since),
             (Some(100), Some(160), Some(100), Some(160)),

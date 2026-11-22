@@ -232,8 +232,8 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 /// restart the older lines still outvote now's new start, and only the
 /// counts show it, while a misread now costs at most a minute with no
 /// count lately, in which a channel far above the rest is a concern. A
-/// minute the modem didn't answer says nothing of it,
-/// so the walk passes it by.
+/// minute the modem didn't answer says nothing of it, so the walk passes
+/// it by.
 fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
     let lines: Vec<&Moment> = day
         .iter()
@@ -653,21 +653,28 @@ mod tests {
             assert_eq!(
                 modem(&network).lately_s,
                 lately_s,
-                "lately read wrongly where every count fell to 0 is {restarted}"
+                "lately read wrongly {}",
+                if restarted {
+                    "after every count fell to 0"
+                } else {
+                    "with counts still climbing"
+                }
             );
         }
     }
 
     #[test]
     fn a_misread_now_costs_one_minute_with_no_count_lately() {
-        // Now misreads every count as 0, so the newest line falls against
-        // now alone and nothing is counted lately. A minute on, the misread
-        // is a line that now outvotes, and the day reads on.
+        // Channel 16 lost nothing all day. Now misreads every count that
+        // counted one lower, so the newest line falls against now alone,
+        // nothing is counted lately, and channel 16's old count is a
+        // concern. A minute on, the misread is a line that now outvotes,
+        // and the day reads on, calm again.
         let now = network();
         let day = |now: &Network| {
             [
-                earlier(now, 5 * HOUR, 800, 41),
-                earlier(now, 3 * HOUR, 840, 41),
+                earlier(now, 5 * HOUR, 878, 41),
+                earlier(now, 3 * HOUR, 878, 41),
             ]
         };
         let mut misread_now = now.clone();
@@ -679,7 +686,7 @@ mod tests {
             .expect("the record has the modem's channels")
             .downstream
         {
-            channel.uncorrectable = Some(0);
+            channel.uncorrectable = channel.uncorrectable.map(|count| count.saturating_sub(1));
         }
         let mut misread = Moment::of(&misread_now);
         misread.at = now.collected_at - 60;
@@ -693,6 +700,18 @@ mod tests {
             ),
             (None, Some(5 * HOUR)),
             "a misread now cost other than its own minute's count lately"
+        );
+        assert!(
+            says(&misread_minute, ConcernKind::Lost).contains("if that keeps climbing"),
+            "the misread minute raised no concern over channel 16's old count"
+        );
+        assert!(
+            next_minute
+                .concerns
+                .iter()
+                .all(|concern| concern.kind != ConcernKind::Lost),
+            "the concern outlived the misread minute: {:?}",
+            next_minute.concerns
         );
     }
 
