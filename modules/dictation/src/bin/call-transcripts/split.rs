@@ -13,10 +13,11 @@
 //! cut, so tidying each part leaves it out as tidying the whole did. A
 //! take split when the call was last told apart is joined again before
 //! it's split, so a rejoin's grouping decides its parts afresh. A piece
-//! the speaker model failed on is missing, and its words go by time to
-//! the run before it: where it's the piece the voice changes in, the next
-//! voice's first words are written under the voice before, since nothing
-//! says where in it the change came.
+//! the speaker model failed on or found too short to embed is missing,
+//! and its words go by time to the run before it, or to the first run
+//! when it opens the take: where it's the piece the voice changes in, the
+//! next voice's first words are written under the voice before, since
+//! nothing says where in it the change came.
 //!
 //! Joel's microphone hearing their take is told against the take whole,
 //! as it was heard, never against its parts: an echo of a take that runs
@@ -28,6 +29,9 @@
 //! read back from the call's file after a restart was told when it was
 //! first written, and its take's parts can't be joined again, so it's
 //! kept as it is.
+//!
+//! Long because two thirds of it is its cases, each a take cut a
+//! different way; the splitting itself is under 300 lines.
 
 use std::collections::HashMap;
 
@@ -415,6 +419,37 @@ mod tests {
                 ("Not yet.", Some(1), 16, 19)
             ],
             "the words before the first piece were lost, or the first part lost the line's start"
+        );
+    }
+
+    #[test]
+    fn a_missing_piece_where_the_voice_changes_leaves_its_words_to_the_voice_before() {
+        // The speaker model failed on the piece Bo starts in, so his
+        // first word, said in it, is written under Ada's voice.
+        let mut lines = vec![theirs(10, 19, "We could. Not yet.")];
+        let mut pieces = pieces_of(0, 0, &[10, 16]);
+        let mut words = HashMap::from([(
+            0,
+            vec![
+                word("We", 11),
+                word("could.", 12),
+                word("Not", 14),
+                word("yet.", 17),
+            ],
+        )]);
+        let mut call = Call {
+            lines: &mut lines,
+            pieces: &mut pieces,
+            words: &mut words,
+        };
+        by_voice(&mut call, &[Some(0), Some(1)]);
+        assert_eq!(
+            said(&lines),
+            [
+                ("We could. Not", Some(0), 10, 16),
+                ("yet.", Some(1), 16, 19)
+            ],
+            "a missing piece's words didn't go to the run before it"
         );
     }
 
