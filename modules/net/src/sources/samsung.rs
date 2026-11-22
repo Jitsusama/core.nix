@@ -129,8 +129,10 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
 /// null, empty or not a list was written before eero's device list was
 /// first read, not by a home with nothing on it, so it is taken the same
 /// way. A TV is forgotten only once eero knows it neither on nor off:
-/// one eero lists as off, or lists this minute without the address,
-/// maker or kind it's asked by, keeps its name for the minute it's back.
+/// one eero lists as off keeps its name for the minute it's back, and one
+/// eero lists on this minute without the address, maker or kind it's
+/// asked by isn't asked but is said silent, so it keeps its name and role
+/// that minute too.
 /// Through an outage of eero's cloud, its daemon keeps the last list it
 /// read, so the TVs on it are still asked.
 pub fn ask<E>(
@@ -149,13 +151,36 @@ pub fn ask<E>(
         return Vec::new();
     }
     forget_unknown(tvs, eero);
-    listed(eero)
+    let listed = listed(eero);
+    let unaskable: Vec<Asked> = on(eero)
+        .filter(|mac| !listed.iter().any(|(asked, _)| asked == mac))
+        .filter_map(|mac| {
+            Some(Asked {
+                earlier: Some(tvs.get(mac)?.clone()),
+                mac: mac.to_owned(),
+                reply: Reply::Silent(
+                    "eero lists it without the address, maker or kind it's asked by".to_owned(),
+                ),
+            })
+        })
+        .collect();
+    listed
         .into_iter()
         .map(|(mac, address)| {
             let reply = read(&address);
             remember(tvs, mac, reply)
         })
+        .chain(unaskable)
         .collect()
+}
+
+/// The hardware address of each device eero lists on.
+fn on(eero: &Value) -> impl Iterator<Item = &str> {
+    eero.get("devices")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|device| device.get("mac").and_then(Value::as_str))
 }
 
 /// What `mac` answered this minute, beside its last answer as a TV; an
@@ -607,16 +632,32 @@ pub mod tests {
             let mut tvs = Heard::new();
             let on = Ok::<Value, String>(json!({"devices": [listing()]}));
             ask(&mut tvs, &on, |_| Reply::Page(answer()));
-            let asked = ask(&mut tvs, &Ok::<Value, String>(eero), |_| silent());
-            assert!(asked.is_empty(), "a TV {case} was asked");
-            let (_, found) = read(ask(&mut tvs, &on, |_| silent()), NOW);
+            let names = |asked| {
+                let (_, found) = read(asked, NOW);
+                found.into_iter().map(|tv| tv.name).collect::<Vec<_>>()
+            };
+            let mut reached = false;
+            let asked = ask(&mut tvs, &Ok::<Value, String>(eero), |_| {
+                reached = true;
+                silent()
+            });
+            assert!(!reached, "a TV {case} was asked");
+            // Net shows only what eero lists on, so that minute a TV listed
+            // on keeps its name and role, and one listed off isn't shown.
+            let that_minute: &[Option<String>] = if case == "listed as off" {
+                &[]
+            } else {
+                &[Some("Living Room".to_owned())]
+            };
             assert_eq!(
-                found
-                    .iter()
-                    .map(|tv| tv.name.as_deref())
-                    .collect::<Vec<_>>(),
-                [Some("Living Room")],
-                "a TV {case} for a minute lost its name"
+                names(asked),
+                that_minute,
+                "a TV {case} lost its name that minute"
+            );
+            assert_eq!(
+                names(ask(&mut tvs, &on, |_| silent())),
+                [Some("Living Room".to_owned())],
+                "a TV {case} for a minute lost its name once back"
             );
         }
     }
