@@ -1,13 +1,15 @@
 # shellcheck shell=bash
 # Checks the job that keeps a Mac's local name, with a stand-in scutil that
 # keeps LocalHostName in a file, fails as the real one does when it isn't
-# set or configd is busy, can be made to refuse a set, and records each
-# set it's asked for: a Mac macOS renamed a-mac-2 gets a-mac back and says
-# so once; one already named a-mac is left unwritten, however old its last
-# set-back; one renamed again four minutes after being set back is left,
+# set or configd is busy, can be made to warn beside a name it reads or to
+# refuse a set, and records each set it's asked for: a Mac macOS renamed
+# a-mac-2 gets a-mac back and says so once; one already named a-mac is left
+# unwritten, its last set-back's time kept, however old, and a warning
+# beside it isn't read as part of it; one renamed again four minutes after being set back is left,
 # its time kept, until five have passed; a time still to come counts as
 # old; an unset name is set; a name that can't be read is said once in five
-# minutes and left alone; and a set that's refused is said and tried once
+# minutes, by a time of its own, and left alone; one that can be read again
+# a moment on isn't said; and a set that's refused is said and tried once
 # in five minutes.
 # usage: local-name-comes-back.sh <keep.sh> <bash>
 set -euo pipefail
@@ -22,7 +24,9 @@ cat > "$work/bin/scutil" <<EOF
 case "\$1 \$2" in
   "--get LocalHostName")
     if [[ -e "$work/busy" ]]; then echo "SCPreferences: busy"; exit 1; fi
+    if [[ -e "$work/busy-once" ]]; then rm "$work/busy-once"; echo "SCPreferences: busy"; exit 1; fi
     if [[ ! -e "$work/name" ]]; then echo "LocalHostName: not set"; exit 1; fi
+    if [[ -e "$work/noisy" ]]; then echo "SCPreferences: a warning" >&2; fi
     cat "$work/name" ;;
   "--set LocalHostName")
     echo set >> "$work/sets"
@@ -74,8 +78,16 @@ set_back_once a-mac-2 "setting a renamed Mac's name back"
 [[ ${ended} -eq 0 ]] || fail "setting a renamed Mac's name back ended ${ended}"
 
 set_back_ago 360
+kept=$(<"$work/stamp")
 keeps
 left_quietly "a name already right, last set back six minutes ago"
+[[ $(<"$work/stamp") == "${kept}" ]] ||
+  fail "a name already right had its last set-back's time moved, holding a later rename off"
+
+touch "$work/noisy"
+keeps
+left_quietly "a name already right, read beside a warning"
+rm "$work/noisy"
 
 echo a-mac-2 > "$work/name"
 set_back_ago 240
@@ -109,6 +121,7 @@ set_back_once unset "setting an unset name"
 echo a-mac-2 > "$work/name"
 touch "$work/busy"
 set_back_ago 360
+kept=$(<"$work/stamp")
 keeps
 [[ ${ended} -ne 0 ]] || fail "a name that couldn't be read ended as if it had been kept"
 [[ $(<"$work/name") == a-mac-2 ]] || fail "a name that couldn't be read was written over"
@@ -119,7 +132,20 @@ keeps
 [[ ${ended} -ne 0 ]] || fail "a name still unreadable ended as if it had been kept"
 [[ ! -s "$work/said" ]] ||
   fail "a name still unreadable a moment later was said again: $(<"$work/said")"
-rm "$work/busy"
+[[ $(<"$work/stamp") == "${kept}" ]] ||
+  fail "a name that couldn't be read moved the last set-back's time, holding the name off"
+said_at=$(date +%s)
+echo "$((said_at - 300))" > "$work/stamp.unread"
+keeps
+grep -q "couldn't read the local name: SCPreferences: busy" "$work/said" ||
+  fail "a name still unreadable five minutes on wasn't said again: $(<"$work/said")"
+rm "$work/busy" "$work/stamp.unread"
+
+touch "$work/busy-once"
+keeps
+[[ ${sets} -eq 0 ]] || fail "a name readable again a moment on was set ${sets} times"
+[[ ! -s "$work/said" ]] ||
+  fail "a name readable again a moment on was said as unreadable: $(<"$work/said")"
 
 touch "$work/refuse"
 set_back_ago 360

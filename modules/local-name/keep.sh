@@ -44,9 +44,14 @@ ago() {
 # other failure, as when configd isn't answering yet, is said and left for
 # the next run, rather than read as no name: that would only write the name
 # given, but would say a rename that never was. Only what it prints on
-# success is the name, so a warning beside it isn't read as part of it.
+# success is the name, so a warning beside it isn't read as part of it. A
+# second read, for what the failure said, that succeeds means configd
+# answered in between, so the next run reads the name rather than this one
+# saying the name itself as why it couldn't.
 if ! now=$(scutil --get LocalHostName 2> /dev/null); then
-  why=$(scutil --get LocalHostName 2>&1) || true
+  if why=$(scutil --get LocalHostName 2>&1); then
+    exit 1
+  fi
   if [[ ${why} != "LocalHostName: not set" ]]; then
     ago "${stamp}.unread"
     if [[ -z ${age} ]] || ((age >= 300)); then

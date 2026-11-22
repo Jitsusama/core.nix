@@ -1871,8 +1871,10 @@
   local-name-comes-back = ''
     a Mac macOS renamed gets its declared local name back, said once with what it was, at most
     once in five minutes by the time its stamp holds, a time still to come counting as old; a
-    name already right is left unwritten, an unset one is set, one that can't be read is left
-    alone, and a name it couldn't read or set is said, and a set tried, once in five minutes
+    name already right is left unwritten with its stamp kept, a warning beside it not read as
+    part of it, an unset one is set, one that can't be read is left alone, its stamp kept, and
+    is said again five minutes on, one read again a moment on isn't said, and a name it
+    couldn't read or set is said, and a set tried, once in five minutes
   '';
   local-name-is-kept-by-a-job = ''
     a Mac with a local name runs a root job under bash that sets it back, by that name and not
