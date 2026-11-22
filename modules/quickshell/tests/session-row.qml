@@ -539,25 +539,56 @@ QtObject {
                 failures.push(`footName, ${what}: "${said}", not "${want}"`);
         }
 
-        // Reopen Them All counts what it finds gone as it goes, and a second
-        // run over the same kept row counts afresh rather than adding to the
-        // first's (core.nix#6037's F39).
-        const tally = ReopenTally.begun(3);
-        const heard = [];
-        const findingGone = count => gone => {
-            for (let found = 0; found < count; found += 1)
-                gone();
+        // Reopen Them All counts what it finds gone as Sessions finds it,
+        // after the run began, each run on its own: a second over the same
+        // kept row says only its own finds (core.nix#6037's F39), and one
+        // pressed while the first still walks, which Sessions joins to the
+        // first's walk and so finds nothing itself, leaves the first's
+        // count whole as the first's finds keep coming.
+        const reopens = (heard, finds) => {
+            const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
+            return run => ReopenTally.run(3, gone => {
+                finds[run] = gone;
+            }, hear);
         };
-        const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
-        ReopenTally.run(tally, findingGone(2), hear);
-        ReopenTally.run(tally, findingGone(1), hear);
-        const runs = heard.join("; ");
-        if (runs !== "1 gone, 2 reopened; 2 gone, 1 reopened; 1 gone, 2 reopened")
-            failures.push(`a second Reopen Them All counts afresh: "${runs}"`);
-        const none = ReopenTally.begun(3);
-        ReopenTally.run(none, findingGone(0), hear);
-        if (JSON.stringify(ReopenTally.said(none)) !== '{"gone":0,"reopened":3}')
-            failures.push(`none gone, all reopened: ${JSON.stringify(ReopenTally.said(none))}`);
+        const inTurn = [];
+        const turnFinds = {};
+        const turn = reopens(inTurn, turnFinds);
+        turn("first");
+        turnFinds.first();
+        turnFinds.first();
+        turn("second");
+        turnFinds.second();
+        const turns = inTurn.join("; ");
+        if (turns !== "1 gone, 2 reopened; 2 gone, 1 reopened; 1 gone, 2 reopened")
+            failures.push(`a second Reopen Them All counts afresh: "${turns}"`);
+        const overlapping = [];
+        const overlapFinds = {};
+        const overlap = reopens(overlapping, overlapFinds);
+        overlap("first");
+        overlapFinds.first();
+        overlap("second");
+        overlapFinds.first();
+        const overlaps = overlapping.join("; ");
+        if (overlaps !== "1 gone, 2 reopened; 2 gone, 1 reopened")
+            failures.push(`one pressed mid-walk leaves the first's count: "${overlaps}"`);
+
+        // What Joel hears of a run: one folder gone or many, then how many
+        // reopened, in Agents' words, and nothing where a word is missing.
+        const words = { folderGone: "folder gone", foldersGone: "folders gone",
+            reopened: "reopened" };
+        const toldOf = [
+            ["one folder gone", { gone: 1, reopened: 2 }, words,
+                '[["1","folder gone"],["2","reopened"]]'],
+            ["many folders gone", { gone: 2, reopened: 1 }, words,
+                '[["2","folders gone"],["1","reopened"]]'],
+            ["no words", { gone: 1, reopened: 0 }, {}, '[["1",""],["0",""]]']
+        ];
+        for (const [what, now, said, want] of toldOf) {
+            const got = JSON.stringify(ReopenTally.told(now, said));
+            if (got !== want)
+                failures.push(`told, ${what}: ${got}, not ${want}`);
+        }
 
         for (const failure of failures)
             console.warn(`FAIL ${failure}`);
