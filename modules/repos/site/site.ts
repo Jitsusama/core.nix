@@ -10,6 +10,7 @@ import { themeSwitch } from "../../local-sites/kit/theme.ts";
 import { addressed, forgotten, landing, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
+import { Listing } from "./listed.ts";
 import { drawMap } from "./mapview.ts";
 import {
   type Feed,
@@ -65,7 +66,7 @@ let cellsHeard = false;
 const repos = (): boolean => KINDS.every((kind) => arrived.has(kind));
 // A reload draws again only what the address says, so what it won't keeps no room.
 const roomDrawn = keepRoom(() =>
-  forgotten(location.hash, grove, { query, place, cursor, unfolded }),
+  forgotten(location.hash, grove, { query, place, cursor, unfolded, whole }),
 );
 let mycelium = UNHEARD;
 
@@ -75,7 +76,8 @@ let grove: Grove | undefined;
 let cursor: string | null = null;
 // The tree the cursor is on once Joel has stepped into the repository.
 let inner: string | null = null;
-const unfolded = new Map<string, Set<Season>>();
+const listing = new Listing();
+const { unfolded, whole } = listing;
 
 /** The repositories the list shows: the place's, narrowed by what's found. */
 function shown(): readonly Repository[] {
@@ -126,7 +128,9 @@ function drawOpen(): void {
     write(opened, '<p class="quiet">Step onto a repository to open it here.</p>');
     return;
   }
-  const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes, keep: inner };
+  const { home, homes } = mycelium;
+  const keep = listing.kept(open.key, inner);
+  const at = { now: Date.now(), home, homes, keep, whole: whole.has(open.key) };
   write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
   if (!markInner(false) && inner !== null) {
     inner = null;
@@ -357,16 +361,7 @@ function fold(): void {
   if (open === undefined) {
     return;
   }
-  const seasons = unfolded.get(open.key) ?? new Set<Season>();
-  const shut = !seasons.has("resting");
-  for (const season of ["resting", "gone"] as const) {
-    if (shut) {
-      seasons.add(season);
-    } else {
-      seasons.delete(season);
-    }
-  }
-  unfolded.set(open.key, seasons);
+  listing.listWhole(open.key, !whole.has(open.key));
   // Redrawing the drawer replaces the tree that held focus, so focus goes back to it, or to
   // the list when the cursor stood on a tree that has just folded away.
   const inside = opened.contains(document.activeElement);
@@ -446,9 +441,13 @@ for (const region of [stand, list]) {
 }
 
 opened.addEventListener("click", (event) => {
-  // The button under a folded or shortened season opens every tree, as z does, from a tap.
-  if (event.target instanceof Element && event.target.closest(".unfold") !== null) {
-    fold();
+  // The button under a folded or shortened season lists every tree, as z does, from a tap; it
+  // only opens, and the tree the cursor is on stays listed, so focus goes to it or the drawer.
+  const open = current();
+  const unfold = event.target instanceof Element ? event.target.closest(".unfold") : null;
+  if (unfold !== null && open !== undefined) {
+    listing.listWhole(open.key, true);
+    drawOpen();
     keepIn(opened, inner);
     return;
   }

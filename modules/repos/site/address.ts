@@ -4,6 +4,7 @@
 // as the sites' homes say; #every and #growing are the list's places. Where
 // another site is home to a thing is homes.ts's.
 
+import { listedOf } from "./listed.ts";
 import { type Grove, type Repository, type Season, treeAddress } from "./model.ts";
 
 /** The list's places: every repository, or those growing today. */
@@ -78,12 +79,15 @@ interface Drawn {
   readonly cursor: string | null;
   /** Each repository's seasons unfolded, beyond those open from the start. */
   readonly unfolded: ReadonlyMap<string, ReadonlySet<Season>>;
+  /** The repositories listing every tree, which no address asks for again. */
+  readonly whole: ReadonlySet<string>;
 }
 
 /**
  * The parts a reload at `hash` won't draw as they're drawn now, so they keep no room: the list,
  * when it was narrowed by a name found or by a place the address doesn't name, and the drawer,
- * when it shows a folding season's trees that the address doesn't open again by naming one.
+ * when it shows a folding season's trees that the address doesn't open again by naming one, or
+ * lists every tree of a season it shortens otherwise.
  */
 function forgotten(hash: string, grove: Grove | undefined, drawn: Drawn): ("list" | "open")[] {
   const said = grove === undefined ? undefined : landing(hash, grove);
@@ -96,7 +100,14 @@ function forgotten(hash: string, grove: Grove | undefined, drawn: Drawn): ("list
     (season === "resting" || season === "gone") &&
     season !== reopens &&
     open?.trees.some((each) => each.season === season) === true;
-  const drawer = [...(drawn.unfolded.get(drawn.cursor ?? "") ?? [])].some(shows);
+  // Listing every tree draws more only in a season the drawer shortens otherwise.
+  const shortens = (season: Season): boolean => {
+    const trees = open?.trees.filter((each) => each.season === season) ?? [];
+    return listedOf(trees, undefined).length < trees.length;
+  };
+  const seasons = ["today", "week", "resting", "gone"] as const;
+  const whole = drawn.whole.has(drawn.cursor ?? "") && seasons.some(shortens);
+  const drawer = whole || [...(drawn.unfolded.get(drawn.cursor ?? "") ?? [])].some(shows);
   return [...(list ? (["list"] as const) : []), ...(drawer ? (["open"] as const) : [])];
 }
 

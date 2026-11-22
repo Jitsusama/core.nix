@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { IDLE_PER_DRAW, UNDRAWN, waitBeforeDrawing } from "../pace.ts";
+import { IDLE_PER_DRAW, MOST_IDLE_MS, UNDRAWN, waitBeforeDrawing } from "../pace.ts";
 
 const GAP = 500;
 
@@ -29,6 +29,12 @@ it("leaves a few times a slow draw's cost idle, paced or not", () => {
     300 * IDLE_PER_DRAW,
     "the gap won over a slow draw's own rest",
   );
+});
+
+it("holds the next draw back no longer than the most, however long one draw took", () => {
+  const stalled = { end: 1000, cost: 30_000 };
+  assert.equal(waitBeforeDrawing(stalled, 1000, GAP, false), MOST_IDLE_MS, "a stall held it on");
+  assert.equal(waitBeforeDrawing(stalled, 1000, GAP, true), MOST_IDLE_MS, "a stall held it on");
 });
 
 it("draws on the next frame before the feeds arrive when the last draw was cheap", () => {

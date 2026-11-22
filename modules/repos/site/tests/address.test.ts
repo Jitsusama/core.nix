@@ -111,7 +111,13 @@ const felled: Repository = {
 };
 const cleared: Grove = { ...grove, repositories: [felled] };
 
-const untouched = { query: "", place: "every", cursor: core.key, unfolded: new Map() } as const;
+const untouched = {
+  query: "",
+  place: "every",
+  cursor: core.key,
+  unfolded: new Map(),
+  whole: new Set<string>(),
+} as const;
 
 /** What's drawn with `seasons` unfolded in core. */
 function unfolding(
@@ -151,4 +157,14 @@ it("forgets the list a name or a place narrowed, and seasons only a key unfolded
   const old = addressed(felled, "/home/ada/trees/old");
   assert.deepEqual(forgotten(old, cleared, folded), ["open"], "gone stays folded on a reload");
   assert.deepEqual(forgotten(here, undefined, { ...untouched, place: "growing" }), ["list"]);
+});
+
+it("forgets every tree listed only where a season shortens without it", () => {
+  const here = "#repo=owl%2Fcore";
+  const whole = { ...untouched, whole: new Set([core.key]) };
+  assert.deepEqual(forgotten(here, grove, whole), [], "core's one tree today is listed anyway");
+  const busy = Array.from({ length: 13 }, (_, index) => tree(`/home/ada/trees/w${index}`, "week"));
+  const crowded: Grove = { ...grove, repositories: [{ ...core, trees: busy }] };
+  assert.deepEqual(forgotten(here, crowded, whole), ["open"], "a reload lists twelve again");
+  assert.deepEqual(forgotten(here, crowded, untouched), [], "twelve listed are twelve again");
 });

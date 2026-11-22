@@ -39,7 +39,7 @@ const reading = {
   roots: ["/home/ada/src"],
   sources: [
     { name: "git", what: "the disk", unread: [] },
-    { name: "github", what: "changes", unread: ["owl/nest: not found"] },
+    { name: "github", what: "changes", unread: ["github:owl/nest: not found"] },
   ],
 };
 
@@ -377,6 +377,33 @@ it("says each reason a source couldn't read once, with every key it holds for, n
     groveOf(told([many]), [], NOW)?.unread,
     [`owl/a, owl/c and owl/d on github, ${hidden}`, "owl/b on github, not found"],
     "a reason was said for each key, or a key kept its source's name",
+  );
+});
+
+it("says what a source said of itself as it said it, after the source's name", () => {
+  const down = {
+    ...reading,
+    sources: [
+      {
+        name: "github",
+        unread: [
+          "GitHub: Bad credentials",
+          "github.json couldn't be read: denied",
+          "github.json isn't a refresh's record",
+          "github:owl/a: not found",
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(
+    groveOf(told([down]), [], NOW)?.unread,
+    [
+      "github: GitHub: Bad credentials",
+      "github: github.json couldn't be read: denied",
+      "github: github.json isn't a refresh's record",
+      "owl/a on github, not found",
+    ],
+    "a sentence the source said of itself was read as a key",
   );
 });
 

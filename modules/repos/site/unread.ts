@@ -9,16 +9,21 @@ const SPOKEN = new Intl.ListFormat("en-GB", { type: "conjunction" });
 
 /**
  * What one source couldn't read, each reason said once with every key it holds for, as "a and b
- * on github, not found": a source says each key as `key: reason`, and its keys may begin with
- * its own name, which the sentence says once rather than before each.
+ * on github, not found": a source says a key it couldn't read as `<its name>:key: reason`, which
+ * the sentence names once. Anything else it says (the whole source down, its kept file unread)
+ * is a sentence of its own, said as it is after the source's name.
  */
 function unreadBy(name: string, unread: readonly string[]): readonly string[] {
   const keys = new Map<string, string[]>();
+  const said: string[] = [];
   for (const each of unread) {
     const split = each.indexOf(": ");
-    const whole = split < 0 ? each : each.slice(0, split);
-    const key = whole.startsWith(`${name}:`) ? whole.slice(name.length + 1) : whole;
-    const why = split < 0 ? "" : each.slice(split + 2);
+    if (split < 0 || !each.startsWith(`${name}:`)) {
+      said.push(`${name}: ${each}`);
+      continue;
+    }
+    const key = each.slice(name.length + 1, split);
+    const why = each.slice(split + 2);
     const held = keys.get(why);
     if (held === undefined) {
       keys.set(why, [key]);
@@ -26,9 +31,8 @@ function unreadBy(name: string, unread: readonly string[]): readonly string[] {
       held.push(key);
     }
   }
-  return [...keys].map(
-    ([why, named]) => `${SPOKEN.format(named)} on ${name}${why === "" ? "" : `, ${why}`}`,
-  );
+  const grouped = [...keys].map(([why, named]) => `${SPOKEN.format(named)} on ${name}, ${why}`);
+  return [...said, ...grouped];
 }
 
 /** What the reading's sources couldn't read, each a sentence's part. */

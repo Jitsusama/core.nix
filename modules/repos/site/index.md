@@ -40,8 +40,10 @@ something to do.
   checks and reviews stand, and its trees by season: Written Today, This
   Week, Resting and Gone, the last two folded until asked for. The
   others list at most twelve, those cells work in or a change names
-  first, then the newest, and count the rest, snapshots always among
-  them, until asked for; the tree the cursor is on is always listed.
+  first, then the newest, and count the rest, snapshots no cell works
+  in always among them, until z or a season's button lists every tree;
+  a link to one tree opens only its season, and the trees the cursor
+  has stood on stay listed while the repository is open.
   Within a season they go by branch, so a tree keeps its place while
   it's written in. Under each tree or checkout are the cells at work in it, each
   linked home and followed by the other repositories it works across,

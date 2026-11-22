@@ -212,9 +212,19 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
       requestAnimationFrame(() => {
         asked = false;
         const start = performance.now();
-        act();
-        const end = performance.now();
-        drawn = { end, cost: end - start };
+        try {
+          act();
+        } finally {
+          // A draw that throws still cost what it took, so the next waits for it all the same.
+          const end = performance.now();
+          drawn = { end, cost: end - start };
+          // The style, layout and paint the markup asks for follow this frame's callbacks, so
+          // the cost runs to the next frame once it comes, a page out of sight keeping the first.
+          requestAnimationFrame(() => {
+            const painted = performance.now();
+            drawn = { end: painted, cost: painted - start };
+          });
+        }
       });
     }, wait);
   };

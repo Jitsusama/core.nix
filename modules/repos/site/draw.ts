@@ -27,8 +27,10 @@ interface Context {
   readonly now: number;
   readonly home: string | undefined;
   readonly homes: Homes;
-  /** The tree the cursor is on, which the drawer lists however its season is shortened. */
-  readonly keep?: string | null;
+  /** The trees the cursor has stood on, which the drawer lists however a season is shortened. */
+  readonly keep?: ReadonlySet<string>;
+  /** Whether every tree is listed, as z or a season's button asks, rather than the twelve. */
+  readonly whole?: boolean;
 }
 
 /** What the open repository's drawer reads besides: the other repositories each cell works
@@ -429,8 +431,9 @@ function treeGroups(repository: Repository, drawing: Drawing, open: ReadonlySet<
       const folded = `<p class="folded">Folded: ${counted(plural(trees.length, "tree"))}. <button type="button" class="unfold">Open them</button></p>`;
       return `<section class="season ${season}" data-season="${season}">${head}${folded}</section>`;
     }
-    const listed = open.has("resting") ? trees : listedOf(trees, drawing.keep);
-    const left = trees.filter((each) => !listed.includes(each));
+    const listed = drawing.whole === true ? trees : listedOf(trees, drawing.keep);
+    const shown = new Set(listed);
+    const left = trees.filter((each) => !shown.has(each));
     const list = `<ul class="trees">${listed.map((each) => treeRow(each, repository.cutIn, drawing)).join("")}</ul>${unlisted(left)}`;
     return `<section class="season ${season}" data-season="${season}">${head}${list}</section>`;
   }).join("");
