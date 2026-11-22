@@ -225,6 +225,9 @@ let
                 # A path relative to the node's runtime folder, since a
                 # module doesn't know the account's uid, or a whole one;
                 # no part of it starts with a dot, so `..` can't climb out.
+                # On a Mac with no XDG_RUNTIME_DIR, mycelium takes the
+                # account's temporary folder as the system names it for
+                # that runtime folder, so a relative path holds there too.
                 type = lib.types.strMatching "/?([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
                 example = "model-relay/agents.sock";
                 description = ''
@@ -237,9 +240,20 @@ let
                 description = "The host the requests are for, with no scheme.";
               };
               paths = lib.mkOption {
-                # Never `/` alone, which would lend every path the host has.
-                type = lib.types.nonEmptyListOf (lib.types.strMatching "/[^[:space:]]+");
-                description = "The paths a request may ask for; any other is refused.";
+                # mycelium matches each exactly, or everything below it
+                # when it ends `/*`, and only over plain bytes, refusing
+                # a `.` or `..` part. So each names at least one plain
+                # part: never `/` or `/*` alone, which would lend every
+                # path the host has, nor a path no request could match.
+                type = lib.types.nonEmptyListOf (
+                  lib.types.addCheck (lib.types.strMatching "(/[A-Za-z0-9_.-]+)+(/[*])?") (
+                    path: !lib.any (part: part == "." || part == "..") (lib.splitString "/" path)
+                  )
+                );
+                description = ''
+                  The paths a request may ask for, each exactly, or with all
+                  below it where it ends `/*`; any other is refused.
+                '';
               };
               auth_header = lib.mkOption {
                 type = lib.types.strMatching "[A-Za-z0-9-]+";
@@ -250,10 +264,16 @@ let
               };
               key = lib.mkOption {
                 # Its program in the Nix store, where the account can't
-                # swap it for one printing the key somewhere else too.
+                # swap it for one printing the key somewhere else too,
+                # and with no `.` or `..` part that could climb out of it.
                 type = lib.types.nullOr (
                   lib.types.addCheck (lib.types.nonEmptyListOf lib.types.str) (
-                    words: lib.hasPrefix "${builtins.storeDir}/" (lib.head words)
+                    words:
+                    let
+                      program = lib.head words;
+                    in
+                    lib.hasPrefix "${builtins.storeDir}/" program
+                    && !lib.any (part: part == "." || part == "..") (lib.splitString "/" program)
                   )
                 );
                 default = null;
@@ -735,6 +755,18 @@ in
         {
           assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;
           message = "jitsusama.mycelium.lend.vms names a budget jitsusama.mycelium.lend.budgets doesn't hold.";
+        }
+        {
+          # The node adds a budget's key to whatever answers at its
+          # upstream, and mycelium doesn't ask who owns a whole path's
+          # socket, so another account binding one there would be handed
+          # the key. The runtime folder is the account's own, at 0700.
+          assertion =
+            cfg.lend != null
+            -> lib.all (budget: budget.key == null || !lib.hasPrefix "/" budget.upstream) (
+              lib.attrValues cfg.lend.budgets
+            );
+          message = "jitsusama.mycelium.lend.budgets has a budget with a key whose upstream is a whole path: name it within the node's runtime folder, which only the account reaches, since the key goes to whatever answers there.";
         }
         {
           # mycelium refuses a machine whose name starts as two prefixes do,

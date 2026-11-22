@@ -2261,12 +2261,14 @@
   '';
   mycelium-lends-from-the-store = ''
     a machine that lends evaluates, and its home realm mycelium node, on NixOS and nix-darwin, is
-    given what it lends the worker machines it made as a file in the Nix store, in the names
-    mycelium reads, rather than one in the account's config folder; a budget with no key is written
-    with none, a further realm's node and a machine lending nothing are given no lend, and a lend
-    with no realm, naming a budget it lacks, with a prefix that starts another or is named twice,
-    a key program outside the store, an upstream that climbs out with .., or a bare / path is
-    refused, each by its own message or the option's type
+    given what it lends the worker machines it made as that file in the Nix store, rather than one
+    in the account's config folder, its names exactly the fields the locked mycelium's lender
+    reads; a budget with no key is written with none, a further realm's node and a machine lending
+    nothing are given no lend, plain prefixes and paths are taken, and a lend with no realm, naming
+    a budget it lacks, with a prefix that starts another, either way round, or is named twice, a
+    key program outside the store or climbing out of it with .., a keyed upstream outside the
+    runtime folder, an upstream that climbs out with .., or a path of / or /* alone or holding ..
+    is refused, each by its own message or the option's type
   '';
   mycelium-node-reads-its-declaration-from-the-store = ''
     each realm's mycelium node, on NixOS and nix-darwin, is given what its machine declares as a

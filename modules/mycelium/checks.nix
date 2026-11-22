@@ -1050,33 +1050,67 @@ in
 
   # What a machine lends reaches its home realm's node from the store, as the
   # declaration does: an agent runs as the account, so a file in its config
-  # folder could raise a machine's cap or send its requests elsewhere. A
-  # budget with no key says none, a further realm's node lends nothing, and
-  # a machine naming a budget the lend lacks is refused.
+  # folder could raise a machine's cap or send its requests elsewhere. Its
+  # names are the locked mycelium's own, read from its source, since the
+  # node refuses a file with a name it doesn't know. A budget with no key
+  # says none, a further realm's node lends nothing, and what mycelium
+  # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it in mycelium's names, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store, an upstream climbing out with .., or a bare / path is taken."
+      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it, the lend's names aren't the locked mycelium's own, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a lend with plain prefixes and paths is refused, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store or climbing out of it, a keyed upstream outside the runtime folder, an upstream climbing out with .., or a path lending everything or nothing is taken."
       (
         let
-          machine = bareNixos [
-            self.nixosModules.workstation
-            {
-              home-manager.users.someone.jitsusama.mycelium = both // {
-                lend = lending;
-              };
-            }
-          ];
-          home = account machine;
-          given =
-            node:
+          # Each machine whole, for its own pkgs, and its account.
+          machine = {
+            linux = lendingOn bareNixos self.nixosModules.workstation;
+            mac = lendingOn bareDarwin self.darwinModules.workstation;
+          };
+          lendingOn =
+            bare: role:
+            bare [
+              role
+              {
+                home-manager.users.someone.jitsusama.mycelium = both // {
+                  lend = lending;
+                };
+              }
+            ];
+          home = account machine.linux;
+          onMac = (account machine.mac).launchd.agents;
+          # The word after --lend, of the unit's words.
+          after =
+            words:
             let
-              words = lib.splitString " " (toString node.Service.ExecStart);
               at = lib.lists.findFirstIndex (word: word == "--lend") null words;
             in
             if at == null then null else builtins.elemAt words (at + 1);
-          # The store file, built as the machine's own, in mycelium's names:
-          # the budget with no key is written with none.
-          holding = "${machine.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
+          given = node: after (lib.splitString " " (toString node.Service.ExecStart));
+          # The store file, built as each machine's own: the budget with no
+          # key is written with none.
+          holding =
+            system: "${machine.${system}.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
+          # The fields of the locked mycelium's struct NAME, as its lender
+          # reads the file; none where it has no such struct.
+          source = lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/lend/lender/mod.rs");
+          fields =
+            struct:
+            let
+              from = lib.lists.findFirstIndex (line: line == "struct ${struct} {") null source;
+              body = lib.drop (from + 1) source;
+              to = lib.lists.findFirstIndex (line: line == "}") (lib.length body) body;
+            in
+            if from == null then
+              [ ]
+            else
+              lib.sort lib.lessThan (
+                lib.concatMap (
+                  line:
+                  let
+                    matched = builtins.match "    ([a-z_]+): .*" line;
+                  in
+                  if matched == null then [ ] else matched
+                ) (lib.take to body)
+              );
           # Refused by the assertion whose message starts so, and by it.
           assertsAgainst =
             settings: start:
@@ -1099,15 +1133,37 @@ in
                 models = lending.budgets.models // change;
               };
             };
+          # Taken by the option's type and every assertion.
+          takes =
+            lend:
+            !typeRefuses lend
+            && lib.all (check: check.assertion) (linux (both // { inherit lend; })).assertions;
           vm = lib.head lending.vms;
-          onMac = (mac (both // { lend = lending; })).launchd.agents;
         in
         evaluates home
-        && given home.systemd.user.services.mycelium == holding
+        && given home.systemd.user.services.mycelium == holding "linux"
         && given home.systemd.user.services.mycelium-other == null
         && given bothLinux.mycelium == null
-        && lib.elem "--lend" onMac.mycelium.config.ProgramArguments
-        && !(lib.elem "--lend" onMac.mycelium-other.config.ProgramArguments)
+        && after onMac.mycelium.config.ProgramArguments == holding "mac"
+        && after onMac.mycelium-other.config.ProgramArguments == null
+        && fields "Written" == lib.attrNames lending
+        && fields "Vm" == lib.attrNames vm
+        && fields "Budget" == lib.attrNames lending.budgets.models
+        && takes (
+          lending
+          // {
+            vms = [
+              vm
+              (vm // { prefix = "builders-"; })
+            ];
+          }
+        )
+        && takes (withModels {
+          paths = [
+            "/v1"
+            "/v1/files/*"
+          ];
+        })
         && assertsAgainst { lend = lending; } "jitsusama.mycelium.lend needs jitsusama.mycelium.realm"
         && refuses (
           lending // { vms = [ (vm // { budget = "none"; }) ]; }
@@ -1125,13 +1181,34 @@ in
           lending
           // {
             vms = [
+              (vm // { prefix = "agents-big-"; })
+              vm
+            ];
+          }
+        ) "jitsusama.mycelium.lend.vms has two prefixes"
+        && refuses (
+          lending
+          // {
+            vms = [
               vm
               vm
             ];
           }
         ) "jitsusama.mycelium.lend.vms has two prefixes"
+        && refuses (withModels {
+          upstream = "/run/relay/agents.sock";
+        }) "jitsusama.mycelium.lend.budgets has a budget with a key"
         && typeRefuses (withModels {
           key = [ "/tmp/models-key" ];
+        })
+        && typeRefuses (withModels {
+          key = [ "${builtins.storeDir}/../tmp/models-key" ];
+        })
+        && typeRefuses (withModels {
+          paths = [ "/*" ];
+        })
+        && typeRefuses (withModels {
+          paths = [ "/v1/../admin" ];
         })
         && typeRefuses (withModels {
           upstream = "model-relay/../../agents.sock";
