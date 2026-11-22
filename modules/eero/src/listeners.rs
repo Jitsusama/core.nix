@@ -133,10 +133,14 @@ pub const KIND: &str = "home-network";
 /// that stopped reading can't hold up the others or the daemon.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// How many asks that are no act one listener may make before it's let
+/// How many asks that are no act one connection may make before it's let
 /// go, each logged: they're answered without the daemon's loop, so one
 /// asking in a loop would otherwise grow the change log as fast as it
 /// wrote, and a full disk refuses every act, since each must be logged.
+/// Nothing it sent after is answered or logged, even what was already
+/// read. A process connecting again starts again; any process of the
+/// account could fill its disk anyway, so this bounds a mistake, not an
+/// attack.
 const UNASKED_KEPT: u32 = 8;
 
 /// Everyone connected, and the record each newcomer is answered with.
@@ -155,6 +159,8 @@ struct Hub {
     next_id: u64,
     /// The change log an ask refused as no act is written to, if any.
     log: Option<PathBuf>,
+    /// The account answered (`admits`): the daemon's own but in tests.
+    ours: u32,
 }
 
 /// A watch of the rows: its id, the vocabulary they're said in, and the
@@ -200,17 +206,21 @@ impl Listeners {
         let log = changes::file()
             .inspect_err(|error| eprintln!("eero: asks refused as no act won't be logged: {error}"))
             .ok();
-        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map), log)
+        // SAFETY: getuid has no failure and touches no memory.
+        let ours = unsafe { libc::getuid() };
+        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map), log, ours)
     }
 
     /// Listens as `listen` does, reading vocabularies as `vocabularies`
-    /// allows, from the Nix store but in tests, and logging an ask refused
-    /// as no act to `log`, the account's change log but in tests.
+    /// allows, from the Nix store but in tests, logging an ask refused as
+    /// no act to `log`, the account's change log but in tests, and
+    /// answering only account `ours`, the daemon's own but in tests.
     fn listen_within(
         path: &Path,
         wake: Sender<Call>,
         vocabularies: Vocabularies,
         log: Option<PathBuf>,
+        ours: u32,
     ) -> io::Result<Listeners> {
         match fs::remove_file(path) {
             Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
@@ -221,6 +231,7 @@ impl Listeners {
             hub: Arc::new(Mutex::new(Hub {
                 vocabularies,
                 log,
+                ours,
                 ..Hub::default()
             })),
         };
@@ -379,8 +390,8 @@ impl Listeners {
             return;
         }
         let peer = Peer::of(&stream);
-        // SAFETY: getuid has no failure and touches no memory.
-        if !admits(peer.as_ref(), unsafe { libc::getuid() }) {
+        let ours = self.hub().ours;
+        if !admits(peer.as_ref(), ours) {
             eprintln!(
                 "eero: refused a listener of uid {:?}, which isn't the daemon's",
                 peer.map(|peer| peer.uid)
@@ -449,6 +460,11 @@ impl Listeners {
         } = &mut *hub;
         let records: Vec<Value> = record.iter().cloned().collect();
         let listener = listeners.iter_mut().find(|listener| listener.id == id)?;
+        // Let go: what it sent before the stream shut is still read, and
+        // is neither answered, nor logged, nor done.
+        if listener.unasked >= UNASKED_KEPT {
+            return None;
+        }
         let ask = asked["ask"].as_str();
         let (answer, call) = match ask {
             Some("get" | "list" | "watch") if served::asks_rows(&asked) => (

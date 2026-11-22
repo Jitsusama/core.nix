@@ -164,11 +164,16 @@ impl Cloud {
 /// from eero refusing, since only the first may answer if asked again.
 /// A change eero took may come back with no data, which is null then
 /// rather than a refusal, since only a status eero refused with says it
-/// was refused, and each change is judged by what eero reads after it
-/// (or, signing in, by the token it must carry). A read with no data is
-/// one eero couldn't answer, never an empty one.
+/// was refused, and each change is judged by what eero reads after it.
+/// Signing in is no change: verifying a code carries no token to judge
+/// it by, so an answer to a login path with no data is refused, as a
+/// read's is. A read with no data is one eero couldn't answer, never an
+/// empty one.
 fn judge(method: Method, path: &str, status: u16, read: &Value) -> Result<Value, Refused> {
-    if !matches!(method, Method::Get) && (200..300).contains(&status) {
+    if !matches!(method, Method::Get)
+        && !path.starts_with("/2.2/login")
+        && (200..300).contains(&status)
+    {
         return Ok(api::data(read).cloned().unwrap_or(Value::Null));
     }
     if api::session_expired(status, read) {
@@ -377,6 +382,20 @@ mod tests {
                 Err(Failure::Refused(_))
             ),
             "a read answered with no data read as an empty one"
+        );
+    }
+
+    #[test]
+    fn a_code_verified_with_no_data_is_refused_rather_than_kept() {
+        let verified = judge(
+            Method::Post,
+            "/2.2/login/verify",
+            200,
+            &json!({"meta": {"code": 200, "error": "error.verification.invalid"}}),
+        );
+        assert!(
+            matches!(verified, Err(Refused::Failed(Failure::Refused(_)))),
+            "a sign-in answered with no data read as taken, so its session would be kept"
         );
     }
 }

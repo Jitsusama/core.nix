@@ -189,28 +189,33 @@ The CLI's six minutes of patience leave room for a reservation behind
 the daemon's longest read; a slow cloud through every read falling due
 at once can take longer, and the act is then said unknown and let go,
 logged `gone`, unless the daemon had begun it. The daemon reads its
-reservations again at once after one, so reading the device settles an
-unknown outcome.
+reservations again as it answers, so reading the device once that read
+ends, a few seconds on, settles an unknown outcome.
 
 Each act the daemon is asked is logged as asked before it's done and
 with its result after, as JSON lines in
 `$XDG_STATE_HOME/eero/changes.jsonl` ([`src/acts/changes.rs`][changes]), and
 one whose ask can't be logged isn't done ([`src/acts/carried.rs`][carried]).
-That holds for all four acts, the speed test and conferencing too, so
-every act is to be found in the log. It's answered `unlogged`, which the
+That holds for all four acts asked of it, the speed test and
+conferencing too. `eero internet sqm on|off` and `eero speeds run` open
+the session themselves rather than ask the daemon, so what they change
+leaves no line. One unlogged is answered `unlogged`, which the
 CLI says as the daemon's own fault, exit 69, never as eero's refusal. A
 line holds when, the act and the MAC and address it names, the asking
 process's pid and uid from the socket's peer credentials, the unit or
 scope it ran in as it connected, and its result by kind alone. An
 unreservation's last line names the address eero kept for it, its undo,
-whatever it came to. An act let go because its asker left is logged as
+whatever it came to, unless the daemon stopped between sending it and
+logging its end. An act let go because its asker left is logged as
 `gone`, and an ask refused as no act is logged too, its act's name cut
 short: `bad-act` for an act the daemon doesn't know, which the CLI says
 as a daemon older than itself, exit 69, and `bad-ask` for one it knows
 asked with fields it can't read, which the CLI checks first, so it says
-that as a bug, exit 70. A listener asking no act eight times is let go,
-so one asking in a loop can't fill the disk the log, and so every act,
-needs. Each line is written whole in one write, on the disk before the
+that as a bug, exit 70. A connection asking no act eight times is let
+go, and nothing more it sent is answered, logged or done, so one asking
+in a loop writes eight lines at most. One connecting again starts
+again; any process of the account could fill the disk anyway, so this
+bounds a mistake, not an attack. Each line is written whole in one write, on the disk before the
 act goes ahead. The log holds no session and nothing eero answered, whose refusals
 can carry their whole body. Nothing trims it, since it grows by a line
 or two an act. It's a record the daemon keeps, not an audit: any
@@ -219,7 +224,8 @@ ask through another.
 
 The session sealed in `session.cred` is the account's alone: the file is
 made mode 600 from the start and its folder 700, never narrowed after
-writing. Nothing in the code waits on Joel: an agent asks for a speed
+writing, and one an older eero sealed open is narrowed as the daemon
+starts. Nothing in the code waits on Joel: an agent asks for a speed
 test or conferencing and gaming on its own, and asks for a reservation
 or an unreservation only after Joel's yes on that one change, with what
 it changes and its undo.

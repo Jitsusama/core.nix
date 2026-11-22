@@ -128,18 +128,38 @@ fn forget_unfinished(file: &Path) -> io::Result<()> {
 /// older eero left open is narrowed, and a file a failed seal left is
 /// replaced rather than written through.
 fn private(path: &Path) -> io::Result<fs::File> {
-    let folder = path.parent().ok_or_else(|| io::Error::other("no folder"))?;
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(folder)?;
-    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))?;
+    own_folder(path.parent().ok_or_else(|| io::Error::other("no folder"))?)?;
     let _ = fs::remove_file(path);
     fs::OpenOptions::new()
         .write(true)
         .create_new(true)
         .mode(0o600)
         .open(path)
+}
+
+/// Makes `folder` the account's alone from the moment it exists, and
+/// narrows one an older eero left open.
+pub fn own_folder(folder: &Path) -> io::Result<()> {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(folder)?;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
+}
+
+/// Narrows a session an older eero sealed open, and its folder, to the
+/// account alone, so it isn't left readable until eero next ages it.
+pub fn narrow() -> io::Result<()> {
+    narrow_at(&file()?)
+}
+
+/// Narrows the session sealed at `file`, if there's one, and its folder.
+fn narrow_at(file: &Path) -> io::Result<()> {
+    own_folder(file.parent().ok_or_else(|| io::Error::other("no folder"))?)?;
+    match fs::set_permissions(file, fs::Permissions::from_mode(0o600)) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        narrowed => narrowed,
+    }
 }
 
 #[cfg(test)]
@@ -176,6 +196,50 @@ mod tests {
             ),
             (0o700, 0o600, 0),
             "an open folder wasn't narrowed, or a stale file was written through"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_session_an_older_eero_sealed_open_is_narrowed_and_none_is_no_failure() {
+        let root = std::env::temp_dir().join(format!("eero-session-narrow-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let open = root.join("eero");
+        fs::create_dir_all(&open).expect("an open folder");
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).expect("it opens");
+        let file = open.join("session.cred");
+        fs::write(&file, "a session").expect("a session");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).expect("it opens");
+        narrow_at(&file).expect("it narrows");
+        assert_eq!(
+            (mode(&open), mode(&file), fs::read(&file).expect("it reads")),
+            (0o700, 0o600, b"a session".to_vec()),
+            "an open session or its folder wasn't narrowed, or the session changed"
+        );
+        let none = root.join("none").join("session.cred");
+        narrow_at(&none).expect("no session is no failure");
+        assert_eq!(
+            (mode(none.parent().expect("its folder")), none.exists()),
+            (0o700, false),
+            "a folder with no session was left open, or a session was made"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_daemons_folder_is_the_accounts_alone_and_an_open_one_is_narrowed() {
+        let root = std::env::temp_dir().join(format!("eero-session-own-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let new = root.join("new");
+        own_folder(&new).expect("a new folder");
+        let open = root.join("open");
+        fs::create_dir_all(&open).expect("an open folder");
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o777)).expect("it opens");
+        own_folder(&open).expect("it narrows");
+        assert_eq!(
+            (mode(&new), mode(&open)),
+            (0o700, 0o700),
+            "the socket's folder is open to other accounts"
         );
         let _ = fs::remove_dir_all(&root);
     }

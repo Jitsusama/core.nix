@@ -23,7 +23,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
-use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
@@ -64,12 +63,13 @@ pub fn run() -> Result<(), String> {
     // The socket that changes the home network lives here, so no other
     // account may reach it even by a path, and a folder an older daemon
     // left open is closed before the socket is made.
-    fs::DirBuilder::new()
-        .recursive(true)
-        .mode(0o700)
-        .create(&folder)
-        .and_then(|()| fs::set_permissions(&folder, fs::Permissions::from_mode(0o700)))
-        .map_err(|e| format!("{}: {e}", folder.display()))?;
+    session::own_folder(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    // A session an older eero sealed open is narrowed now, not when eero
+    // next ages it; failing that leaves it as it was, which is no reason
+    // to stop keeping the network.
+    if let Err(error) = session::narrow() {
+        eprintln!("eero: couldn't narrow the sealed session: {error}");
+    }
     let file = folder.join("home-network.json");
     let (wake, woken) = mpsc::channel();
     // net writes its record beside eero's (modules/net), which the map is

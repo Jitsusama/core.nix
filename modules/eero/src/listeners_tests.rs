@@ -12,18 +12,43 @@ fn folder(name: &str) -> std::path::PathBuf {
     folder
 }
 
+/// The test's own account, which a daemon it starts answers.
+fn ours() -> u32 {
+    // SAFETY: getuid has no failure and touches no memory.
+    unsafe { libc::getuid() }
+}
+
 /// A socket in a folder of the test's own, and what wakes the daemon.
 fn listening(name: &str) -> (Listeners, mpsc::Receiver<Call>, std::path::PathBuf) {
+    listening_for(name, ours())
+}
+
+/// The same, answering only account `ours`.
+fn listening_for(name: &str, ours: u32) -> (Listeners, mpsc::Receiver<Call>, std::path::PathBuf) {
     let folder = folder(name);
     let path = folder.join("socket");
     let log = folder.join("changes.jsonl");
     let _ = fs::remove_file(&log);
     let (wake, woken) = mpsc::channel();
     // Logging to the test's own folder, never the account's change log.
-    let listeners =
-        Listeners::listen_within(&path, wake, Vocabularies::default().mapped(None), Some(log))
-            .expect("the socket listens");
+    let listeners = Listeners::listen_within(
+        &path,
+        wake,
+        Vocabularies::default().mapped(None),
+        Some(log),
+        ours,
+    )
+    .expect("the socket listens");
     (listeners, woken, path)
+}
+
+/// The lines of the change log of the socket at `path`.
+fn logged(path: &Path) -> Vec<Value> {
+    fs::read_to_string(path.with_file_name("changes.jsonl"))
+        .unwrap_or_default()
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("each line is JSON"))
+        .collect()
 }
 
 /// A socket that serves rows in vocabularies read from a store of the
@@ -52,8 +77,8 @@ fn serving_mapped(
         record,
     });
     let vocabularies = Vocabularies::within(store).mapped(map);
-    let listeners =
-        Listeners::listen_within(&path, wake, vocabularies, None).expect("the socket listens");
+    let listeners = Listeners::listen_within(&path, wake, vocabularies, None, ours())
+        .expect("the socket listens");
     let (stream, reader) = connected(&path);
     (listeners, words.display().to_string(), stream, reader)
 }
@@ -310,6 +335,82 @@ fn only_the_daemons_own_account_is_answered() {
         ],
         [true, false, false],
         "another account, or one the kernel wouldn't say, was answered, or ours refused"
+    );
+}
+
+#[test]
+fn a_connection_from_another_account_is_told_so_and_shut_before_anything_is_read() {
+    let (_listeners, woken, path) = listening_for("not-ours", ours().wrapping_add(1));
+    let (mut stream, mut reader) = connected(&path);
+    ask(
+        &mut stream,
+        &json!({"id": "act-1", "ask": "act", "act": "reboot"}),
+    );
+
+    let mut first = String::new();
+    reader.read_line(&mut first).expect("the daemon answers");
+    assert_eq!(
+        first.trim_end(),
+        NOT_OURS,
+        "a connection from another account wasn't told it isn't answered"
+    );
+    // Closed with the ask still unread, so the kernel may reset it rather
+    // than end it; either way nothing more comes.
+    let mut rest = String::new();
+    assert!(
+        matches!(
+            reader.read_line(&mut rest).map_err(|e| e.kind()),
+            Ok(0) | Err(ErrorKind::ConnectionReset)
+        ),
+        "a connection from another account was kept: {rest:?}"
+    );
+    assert!(
+        woken.recv_timeout(Duration::from_millis(300)).is_err(),
+        "a connection from another account joined"
+    );
+    assert!(
+        logged(&path).is_empty(),
+        "what another account sent was read and logged"
+    );
+}
+
+#[test]
+fn a_listener_let_go_has_nothing_more_it_sent_answered_logged_or_done() {
+    let (_listeners, woken, path) = listening("unasked-at-once");
+    let (mut stream, mut reader) = connected(&path);
+    assert_eq!(woken.recv(), Ok(Call::Joined), "joining wakes the daemon");
+
+    // Twelve asks that are no act, then one that is, in one write, so
+    // every one is read before the eighth's answer shuts the stream.
+    let mut asks: Vec<String> = (1..=12)
+        .map(|n| json!({"id": n, "ask": "act", "act": "reboot"}).to_string())
+        .collect();
+    asks.push(json!({"id": 13, "ask": "act", "act": "speedtest"}).to_string());
+    asks.push(String::new());
+    stream
+        .write_all(asks.join("\n").as_bytes())
+        .expect("the asks are written");
+
+    let mut answers = 0;
+    let mut line = String::new();
+    // A stream shut with anything unread may end in a reset, not EOF.
+    loop {
+        match reader.read_line(&mut line).map_err(|e| e.kind()) {
+            Ok(0) | Err(ErrorKind::ConnectionReset) => break,
+            Ok(_) => answers += 1,
+            Err(other) => panic!("the answers weren't read: {other:?}"),
+        }
+        line.clear();
+    }
+    assert_eq!(
+        woken.recv_timeout(Duration::from_secs(10)),
+        Ok(Call::Left),
+        "an ask after the listener was let go woke the daemon, or it never left"
+    );
+    assert_eq!(
+        (answers, logged(&path).len()),
+        (8, 8),
+        "asks after the eighth were answered or logged"
     );
 }
 

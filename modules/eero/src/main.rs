@@ -391,7 +391,12 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
                 .because(why)
                 .try_this("systemctl --user status eero-daemon")
         }
-        asking::Undone::Refused(why) => Failure::new(Exit::Failed, "eero refused").because(why),
+        // Eero's own refusal and the daemon's guards, which send nothing,
+        // both come here; nothing changed either way, and the reason says
+        // which held it back.
+        asking::Undone::Refused(why) => {
+            Failure::new(Exit::Failed, "refused, so nothing changed").because(why)
+        }
         asking::Undone::Unreachable(why) => {
             Failure::new(Exit::TryAgain, "eero couldn't be reached").because(why)
         }
@@ -399,9 +404,15 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
             .because(why)
             .try_this("eero sign-in <email or phone>"),
         asking::Undone::Unknown(why) => {
-            Failure::new(Exit::TryAgain, "whether eero took it isn't known")
-                .because(why)
-                .try_this(format!("eero devices {mac}"))
+            // The device's record is rewritten only once the daemon's next
+            // read ends, which it starts as it answers, so read now it
+            // still shows the reservation as it was before the act.
+            Failure::new(
+                Exit::TryAgain,
+                "whether eero took it isn't known until the daemon's next read, a few seconds on",
+            )
+            .because(why)
+            .try_this(format!("eero devices {mac}"))
         }
         asking::Undone::Unlogged(why) => Failure::new(
             Exit::Unavailable,
