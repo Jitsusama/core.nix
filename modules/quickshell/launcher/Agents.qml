@@ -847,7 +847,8 @@ Provider {
 
     // A session elsewhere that couldn't be joined, a hosted one with no
     // window to go to, or any the node couldn't tell, is said in the foot,
-    // by its name (footName) in the alert colour, where the act was pressed: at
+    // by its name (footName) in the alert colour, but for a viewer asked for
+    // a moment ago, which nothing refused, where the act was pressed: at
     // once while the launcher's open, or else once it opens next, never as
     // a notice (VKCF3Z, 2026-11-07 [4a00987e]).
     Connections {
@@ -864,12 +865,10 @@ Provider {
                 Theme.alert]]);
         }
 
-        // Said by why it held (Sessions' unhosted): one still coming isn't
-        // refused, so it isn't in the alert colour.
+        // Said by why it held, in words of its own (Sessions' unhosted).
         function onUnhosted(session, why) {
-            const key = why === "" ? "hosted" : why;
             provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere(key, session), key === "opening" ? Theme.text : Theme.alert]]);
+                provider.elsewhere(why, session), why === "opening" ? Theme.text : Theme.alert]]);
         }
 
         function onUnopened(session) {
