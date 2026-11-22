@@ -6,8 +6,10 @@ pragma ComponentBehavior: Bound
 // opens told why, the one it says nothing of in three seconds opens once
 // it's ended, and the one it fails on opens as before; a saved one opens
 // at once, never asked. Then, with the harness's config saying sessions start
-// in its host, three are started on quests: the one hosted opens only a
-// viewer, the ones kept out open their windows; and once the config says
+// in its host, four are started on quests: the one hosted opens only a
+// viewer, the ones kept out open their windows, and one hosted under an
+// id no viewer's app id could carry opens neither, and is said; and once
+// the config says
 // nothing, one opens its window never asked. It exits 0 once that holds,
 // and otherwise 1, saying what didn't.
 import qs
@@ -22,6 +24,8 @@ ShellRoot {
     property string stage: "handing"
     property real handedAt: 0
     property var opened: ({})
+    property string unhosted: ""
+    property string unhostedWhy: ""
     readonly property string folder: Quickshell.env("HOME")
 
     function spawned(id) {
@@ -114,6 +118,7 @@ ShellRoot {
         Sessions.start("QEST-HOSTED", root.folder, true);
         Sessions.start("QEST-AWAY", root.folder, false);
         Sessions.start("QEST-PLAIN", root.folder, false);
+        Sessions.start("QEST-DOTTED", root.folder, false);
         stage = "starting";
     }
 
@@ -127,6 +132,16 @@ ShellRoot {
     function starting() {
         Expect.expect("one started in pi's host opens no window",
             startedOn("QEST-HOSTED").length === 0, Niri.spawns.join("\n"));
+        // Hosted under an id no viewer's app id could carry, it has no
+        // viewer to open, nor a window, which would begin a second pi on
+        // its quest: it's said instead.
+        Expect.expect("one hosted under an id no viewer can carry opens no viewer, nor a pi",
+            !Niri.spawns.some(command => command.includes("--session s.dotted"))
+            && startedOn("QEST-DOTTED").length === 0, Niri.spawns.join("\n"));
+        if (root.unhosted !== "QEST-DOTTED")
+            return;
+        Expect.expect("and is said as one no viewer can be named for",
+            root.unhostedWhy === "unnamed", root.unhostedWhy);
         const viewer = Niri.spawns.filter(command => command.includes(
             " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
@@ -139,7 +154,8 @@ ShellRoot {
         // Titled for its quest before its words run, not "mycelium".
         Expect.expect("and titled for its quest before its words run",
             viewer[0].includes('sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" '
-                + "\u03c0 - QEST-HOSTED"), viewer[0]);
+                + `\u03c0 - QEST-HOSTED - ${root.folder.slice(root.folder.lastIndexOf("/") + 1)}`
+                + " mycelium "), viewer[0]);
         decided.reload();
         const lines = decided.text().split("\n");
         const started = (quest, orchestrates) => `started ${quest} in ${root.folder}`
@@ -170,6 +186,15 @@ ShellRoot {
             decided.text());
         console.log("a spawn kept in the background opens no window");
         Qt.exit(0);
+    }
+
+    Connections {
+        target: Sessions
+
+        function onUnhosted(session, why) {
+            root.unhosted = session.address;
+            root.unhostedWhy = why ?? "";
+        }
     }
 
     FileView {

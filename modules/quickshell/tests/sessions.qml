@@ -353,13 +353,40 @@ ShellRoot {
         expect("a row's Reopen with no host views it by its entry's words, to wait",
             Niri.spawns.length === before + 2 && rowAsk !== null
             && rowAsk.classed === "pi-hosted.s-row-waiting"
-            && rowAsk.words.endsWith(view.join(" ")),
+            && rowAsk.words === "mycelium --realm harbour holds add -- "
+                + 'sh -c printf "\\033]2;%s\\007" "$0"; exec "$@" \u03c0 - Reef - tmp '
+                + view.join(" "),
             Niri.spawns.slice(before).join("\n"));
         Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
         Sessions.reopen({ id: "s-row-wordless", cwd: "/tmp", hosted: true });
         expect("viewed once while it comes, and one with no words is said",
-            Niri.spawns.length === before + 2 && root.unhosted === "s-row-wordless",
-            `${root.unhosted} ${Niri.spawns.slice(before).join("\n")}`);
+            Niri.spawns.length === before + 2 && root.unhosted === "s-row-wordless"
+            && root.unhostedWhy === "hostless",
+            `${root.unhosted} ${root.unhostedWhy} ${Niri.spawns.slice(before).join("\n")}`);
+        // A press must never do nothing: asked again while its viewer
+        // comes, it says so.
+        Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
+        expect("asked again while its viewer comes, it says it's opening",
+            Niri.spawns.length === before + 2 && root.unhosted === "s-row-waiting"
+            && root.unhostedWhy === "opening", `${root.unhosted} ${root.unhostedWhy}`);
+        // One with words but an id no app id could carry has no viewer to
+        // open, and is said so, not as one with no words.
+        Sessions.reopen({ id: "s row spaced", cwd: "/tmp", hosted: true, view });
+        expect("one whose id can't name a viewer is said so, never opened",
+            Niri.spawns.length === before + 2 && root.unhosted === "s row spaced"
+            && root.unhostedWhy === "unnamed", `${root.unhosted} ${root.unhostedWhy}`);
+        // A viewer the windows daemon lists, though niri's own list hasn't
+        // it yet, is raised, never a press that does nothing.
+        const index = Sessions.niriWindows;
+        Sessions.niriWindows = { pids: index.pids, opened: Object.assign({}, index.opened,
+            { "pi-hosted.s-row-listed": [{ id: 78, opened: "pi-hosted.s-row-listed" }] }) };
+        Niri.acted = null;
+        Sessions.reopen({ id: "s-row-listed", cwd: "/tmp", hosted: true, view });
+        Sessions.niriWindows = index;
+        expect("a viewer only the windows daemon lists is raised, not opened again",
+            JSON.stringify(Niri.acted) === '{"FocusWindow":{"id":78}}'
+            && Niri.spawns.length === before + 2,
+            `${JSON.stringify(Niri.acted)} ${Niri.spawns.slice(before).join("\n")}`);
         holdsAlone();
     }
 
@@ -893,6 +920,7 @@ ShellRoot {
 
     property string unjoined: ""
     property string unhosted: ""
+    property string unhostedWhy: ""
     // The last that Go To couldn't open, in a terminal it can't reach.
     property string unreached: ""
     property bool steered: false
@@ -917,8 +945,9 @@ ShellRoot {
             root.unjoined = session.address;
         }
 
-        function onUnhosted(session) {
+        function onUnhosted(session, why) {
             root.unhosted = session.address;
+            root.unhostedWhy = why ?? "";
         }
 
         function onUnopened(session) {

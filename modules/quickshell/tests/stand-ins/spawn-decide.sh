@@ -29,6 +29,10 @@ if [ -n "$start" ]; then
 		echo "opening harbour-attended"
 		echo "hosted harbour-attended s-begun"
 		;;
+	QEST-DOTTED)
+		# An id no viewer's app id could carry.
+		echo "hosted harbour-attended s.dotted"
+		;;
 	QEST-AWAY)
 		echo "quest-workflow.startHost is attended, but the host isn't listening"
 		exit 3
