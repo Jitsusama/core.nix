@@ -665,8 +665,8 @@ mod tests {
 
     #[test]
     fn a_misread_now_costs_one_minute_with_no_count_lately() {
-        // Channel 16 lost nothing all day. Now misreads every count that
-        // counted one lower, so the newest line falls against now alone,
+        // Channel 16 lost nothing all day. Now reads each channel that had
+        // counted any one lower, so the newest line falls against now alone,
         // nothing is counted lately, and channel 16's old count is a
         // concern. A minute on, the misread is a line that now outvotes,
         // and the day reads on, calm again.
