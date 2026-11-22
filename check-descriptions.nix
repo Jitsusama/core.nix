@@ -3891,7 +3891,8 @@
     headless Chromium: every cell drawn in order, a started or split cell under the one it grew
     from, what waits on its person and the plan furthest to go said in its lede, each cell's plans,
     quest, needs and split in its panel and a need as a dotted arc, its keys stepping the cursor, a
-    purpose written followed and drawn as words though it holds markup, a wait answered no longer
+    purpose written followed and drawn as words though it holds markup, a cell a purpose takes out
+    of the view of cells without purpose taking the cursor with it, a wait answered no longer
     said, a cell going, broken while the node is away with its cells kept and live with them read
     again once it's back, stale once the server goes with its cells kept, a first visit within its
     budget and a second answered unchanged, the web-design skill's page checks passing at a phone's

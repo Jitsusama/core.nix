@@ -54,8 +54,10 @@ headless browser through the sites' server beside a stand-in node holding
 `node.json`, four cells' forage on one machine with a wait, a plan, a
 need served, a start the node's book holds and a split. It steps the
 cursor by keys, follows the records as they change, stop and come back,
-and keeps the page within its budget and passing the web-design skill's
-page checks. Beside a second stand-in holding 60 cells, more than the
+lets a cell a purpose takes out of the view of cells without purpose
+take the cursor with it, find or not, and keeps the page within its
+budget and passing the web-design skill's page checks. Beside a second
+stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn
 solid. A step on the floor leaves the floor drawn as it is, and a find
 narrowing the list to the cell the cursor is on keeps it on the same

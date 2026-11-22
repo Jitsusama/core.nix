@@ -22,7 +22,8 @@ cursor to a booked start past the floor's 48th, drawn solid, and hold still as
 the cursor steps on it, a find narrows the list and a record arrives, until a
 step leaves it. A find matching nothing keeps the cursor and the floor, a link
 naming its cell in another form ends that find, and that cell ending meanwhile
-leaves a floor drawn around another cell where it was.
+leaves a floor drawn around another cell where it was. A cell a record takes out
+of the view of cells without purpose takes the cursor with it, a find or not.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -415,6 +416,26 @@ def test_a_purpose_written_and_a_cell_gone_are_followed(
     expect(headline, "the count didn't follow the cell going").to_have_text(
         "3 cells, each with its purpose."
     )
+
+
+def test_a_cell_leaving_the_view_without_purpose_takes_the_cursor(
+    forage_page: Page, mycelium_node: StandIn
+) -> None:
+    says_it_stands(forage_page, "live")
+    every_cell_drawn(forage_page)
+    forage_page.locator('#headline a[data-show="without"]').click()
+    expect(forage_page.locator("#cells [role=option]"), "the view held more").to_have_count(1)
+    opened_on(forage_page, "OSPREY")
+    # A find matching the cell keeps it, so only the view can drop it.
+    forage_page.keyboard.press("/")
+    forage_page.locator("#find").fill("OSP")
+    selected(forage_page, "OSPREY", "a find matching OSPREY moved the cursor")
+    mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": WRITTEN}])
+    expect(cell(forage_page, "OSPREY"), "the view kept a cell with purpose").to_have_count(
+        0, timeout=PACE_MS
+    )
+    expect(forage_page.locator("#panel-body"), "the cursor stayed on a cell dropped").to_be_empty()
+    expect(forage_page.locator("#floor rect.on"), "a dropped cell stayed ringed").to_have_count(0)
 
 
 def test_a_wait_answered_is_no_longer_said(forage_page: Page, mycelium_node: StandIn) -> None:

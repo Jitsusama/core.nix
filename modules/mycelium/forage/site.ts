@@ -242,11 +242,14 @@ function openCell(cell: string): void {
 
 function draw(): void {
   const rows = shown();
-  // A find that matches nothing keeps the cursor while its cell lasts, so
-  // ending the find finds it again; a cell that ends takes the cursor with it,
-  // and so does a view of cells without purpose that a record empties.
+  // A find that matches nothing keeps the cursor while its cell lasts and the
+  // view still lists it, so ending the find finds it again; a cell that ends,
+  // or that a record takes out of the view of cells without purpose, takes the
+  // cursor with it. Only a find can then be what hides the cursor's cell.
   if (!rows.some((each) => each.cell === cursor)) {
-    cursor = rows[0]?.cell ?? (sought === "" || current() === undefined ? null : cursor);
+    const open = current();
+    const listed = open !== undefined && (!hollowOnly || open.purpose === "");
+    cursor = rows[0]?.cell ?? (listed ? cursor : null);
   }
   list.innerHTML =
     rows.length === 0 && forages.length > 0
