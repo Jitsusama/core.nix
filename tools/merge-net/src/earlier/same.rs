@@ -247,7 +247,7 @@ mod tests {
     fn a_head_unread_here_is_read_from_the_mirrors() {
         let found = here_or_mirrored(
             HashSet::new(),
-            || mirror(&["bbb"], &["equilibrius"], &[]),
+            || mirror(&["bbb"], &["peer"], &[]),
             asks("bbb"),
         );
         assert_eq!(found, Ok(()), "a head a mirrored round read was refused");
@@ -256,8 +256,8 @@ mod tests {
             || {
                 mirror(
                     &["bbb"],
-                    &["equilibrius"],
-                    &["the mirror from penelope can't be read"],
+                    &["peer"],
+                    &["the mirror from spare can't be read"],
                 )
             },
             asks("ccc"),
@@ -265,8 +265,8 @@ mod tests {
         .unwrap_err();
         assert!(
             said.starts_with("unread ccc")
-                && said.contains("mirrored from equilibrius were asked too")
-                && said.contains("penelope can't be read"),
+                && said.contains("mirrored from peer were asked too")
+                && said.contains("spare can't be read"),
             "the refusal didn't say what was asked: {said}"
         );
     }
@@ -302,7 +302,7 @@ mod tests {
         let mut again = 0;
         let said = here_or_mirrored(
             HashSet::from([round("aaa", None)]),
-            || mirror(&["aaa"], &["equilibrius"], &[]),
+            || mirror(&["aaa"], &["peer"], &[]),
             |rounds| {
                 again += 1;
                 asks("ccc")(rounds)
@@ -314,7 +314,7 @@ mod tests {
             "a mirror adding no round had the head asked after again"
         );
         assert!(
-            said.contains("from equilibrius were asked too")
+            said.contains("from peer were asked too")
                 && said.contains("counts here once its mirror holds it"),
             "the refusal didn't say a round run there counts once mirrored: {said}"
         );

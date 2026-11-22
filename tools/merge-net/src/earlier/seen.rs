@@ -96,6 +96,7 @@ pub fn mirrored(root: &Path) -> Mirrored {
                             "the mirror from {name} holds a runs folder and no rounds, as if \
                              mirrored one folder too high"
                         ));
+                        continue;
                     }
                     mirrored.rounds.extend(rounds);
                     mirrored.asked.push(name);
@@ -138,7 +139,7 @@ pub fn unread_with_mirrors(why: String, mirrored: &Mirrored) -> String {
         let _ = write!(
             said,
             "; the rounds mirrored from {} were asked too, and a round run there counts \
-             here once its mirror holds it, a minute or two after it's collected",
+             here once its mirror holds it",
             mirrored.asked.join(", ")
         );
     }
@@ -568,7 +569,11 @@ mod tests {
         }
         let mirrored = mirrored(&root);
         fs::remove_dir_all(&root).unwrap();
-        assert_eq!(mirrored.asked, ["good", "high"], "the nodes asked");
+        assert_eq!(
+            mirrored.asked,
+            ["good"],
+            "the nodes asked, one mirrored too high left out"
+        );
         assert_eq!(
             mirrored.rounds,
             HashSet::from([change_read('a')]),
