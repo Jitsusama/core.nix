@@ -218,21 +218,25 @@ Provider {
     // A row as it reads now, for those who show it while these rows aren't
     // wanted: Now's Spend and Tokens borrowing its drawer, and Agents'
     // Budgets, made then as it was served. While they're wanted, when
-    // `all` is as it reads now, it's looked for where it's shown. None
-    // while spend-watch isn't answering, when Spend lists only its down
-    // row, or once the place it reads has served and holds no such record,
-    // as the quiet place holds no Budgets while the screen is shared: said
-    // as can't say, these were looked for among the rows last made while
-    // wanted, and Agents' Budgets said the amounts those held (core.nix#6073).
+    // `all` is as it reads now, it's looked for where it's shown. While
+    // spend-watch isn't answering, Spend lists only its down row, so that
+    // reads as it is, held while Start runs, and every other as none. None
+    // too for a record the place doesn't hold once it has answered, even
+    // with no rows at all, and while the screen is shared, when the quiet
+    // place holds no Budgets. Said as can't say, these were looked for
+    // among the rows last made while wanted, and Agents' Budgets said the
+    // amounts those held, on a shared screen too (core.nix#6073). It can't
+    // say only before the place's first answer on this connection.
     function rowNow(key) {
         if (provider.wanted || !key.startsWith("spend:"))
             return undefined;
         if (down)
-            return null;
+            return key === "spend:start" ? downRow() : null;
         const record = `row:${place.place}:${key.slice("spend:".length)}`;
         if (place.served(record))
             return place.rowAt(record);
-        return place.keys.length > 0 ? null : undefined;
+        const answered = place.keys.length > 0 || place.link?.answeredThisWatch === true;
+        return sharing || answered ? null : undefined;
     }
 
     function everything() {
