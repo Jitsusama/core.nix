@@ -209,11 +209,11 @@ function whileLeaving(keys, open, before) {
 // from; `landed`, the key of the row selected once it landed ("" for
 // none, null where nothing was left); and `now`, the field's `keys`,
 // whether the launcher is `open`, its `depth`, and whether what left
-// changed within keyedWithin of Joel's last key (`byKey`), as the
-// launcher counts a change his key's own. A leave his key caused is one
-// he watched, so it guesses nothing new, though a guess still pending
-// from an earlier leave stands. A landing on its row keeps only such a
-// pending guess, unbroken, since this one closed whole.
+// was Joel's last key's act (`byKey`), as keyed says. A leave his key
+// caused is one he watched, so it guesses nothing new, though a guess
+// still pending from an earlier leave stands. A landing back on its row
+// keeps only such a pending guess, unbroken, since this one closed
+// whole.
 function landedAfter(before, from, landed, now) {
     const kept = pending(before, now.keys);
     if (!now.open) {
@@ -223,6 +223,37 @@ function landedAfter(before, from, landed, now) {
         return { keys: now.keys, at: 0, depth: now.depth, broken: false };
     }
     return kept ? Object.assign({}, before, { depth: now.depth, broken: false }) : unguessed();
+}
+
+// Whether a leave of `source` was the act of Joel's last key, the one
+// heard at `heard`: one of `acts`, the launcher's keyedActs, is that
+// key's change to that source, still waiting on the refresh that shows
+// it, and nothing else the source said has joined it since (mixIn), so
+// no change the key doesn't own rides on its refresh.
+function keyed(acts, source, heard) {
+    return acts.some(one => one.source === source && one.heard === heard && !one.mixed);
+}
+
+// Marks each of `acts` waiting on a refresh of `source` as joined by a
+// change its key doesn't own, as a share's or a daemon's answer heard
+// past keyedWithin, so the leave that refresh makes is guessed (keyed).
+// Marked in place, as the launcher times each act by the very record.
+function mixIn(acts, source) {
+    for (const one of acts) {
+        if (one.source === source) {
+            one.mixed = true;
+        }
+    }
+}
+
+// What the journal says of a leave once landedAfter has judged it:
+// whether it was a key's act (`byKey`), and whether `guess`, the guess
+// standing after it, holds the Return pressed next, since a key's act
+// may still leave one an earlier leave left pending, and one by no key
+// that lands back on its row holds nothing.
+function leaveSaid(byKey, guess) {
+    return `${byKey ? "by a key's act" : "by no key's act"}; `
+        + (guess.keys >= 0 ? "a Return next holds" : "nothing holds");
 }
 
 // A modifier pressed `alone`, as Shift or Ctrl, chose nothing, so the

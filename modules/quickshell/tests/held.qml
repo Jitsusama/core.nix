@@ -294,7 +294,7 @@ QtObject {
     function guessing(check) {
         const ask = { key: "ask:7", at: 2 };
         const onIt = (from, landed) => Held.onItsRow(from, landed);
-        check("a leave that lands on the row stepped in from, by its key, is on it",
+        check("a leave that lands back on the row stepped in from, as its key says, is on it",
             onIt(ask, "ask:7"), true);
         check("one that lands on another row, as one hidden leaves it, is not",
             onIt(ask, "copies"), false);
@@ -317,19 +317,19 @@ QtObject {
         const left = landing(none, "copies");
         check("a landing on another row is guessed at its keys and depth", shown(left),
             "5@0 d2");
-        check("a landing on its own row by key guesses nothing", after(none, "ask:7"),
+        check("a landing back on its own row guesses nothing", after(none, "ask:7"),
             "-1@0 d-1");
         check("a shut launcher guesses nothing", after(none, "copies", { open: false }),
             "-1@0 d-1");
-        // A change within keyedWithin of Joel's key is his key's, so its
-        // leave is one he watched.
+        // A leave made by the refresh of Joel's last key's act (Held.keyed)
+        // is one he watched.
         check("a leave Joel's key caused guesses nothing",
             after(none, "copies", { byKey: true }), "-1@0 d-1");
         check("but keeps a guess an earlier leave left pending",
             after(left, "copies", { byKey: true, depth: 1 }), "5@0 d1");
-        // A second leave before any key, landing by its key a step up,
-        // leaves the Return still meant for the first step's ask.
-        check("a leave back on its row keeps a guess no key has answered, at its depth",
+        // A second leave before any key, landing back on its row a step
+        // up, leaves the Return still meant for the first step's ask.
+        check("a leave back on its row keeps a guess no key has answered, at the new depth",
             after(left, "ask:7", { depth: 1 }), "5@0 d1");
         // A first leave threw, and a second closed whole before any key: the
         // Return is still meant for the first step, but the selection is
@@ -354,6 +354,34 @@ QtObject {
             "5@0 d-1 broken, 5@0 d-1 broken");
         check("and a throw once Joel has pressed more is a new one",
             shown(Held.whileLeaving(7, true, threw)), "7@0 d-1 broken");
+        // What the journal says once the leave is judged: a key's act can
+        // still leave a pending guess, and no key's act landing back on its
+        // row holds nothing.
+        check("a leave is journalled by its act and whether a Return next holds",
+            [Held.leaveSaid(true, landing(left, "copies", { byKey: true })),
+                Held.leaveSaid(false, landing(none, "ask:7")),
+                Held.leaveSaid(false, left)].join(" | "),
+            "by a key's act; a Return next holds | by no key's act; nothing holds"
+                + " | by no key's act; a Return next holds");
+
+        // Held.keyed and Held.mixIn, as the launcher's keyedActs hold a
+        // key's act until the refresh that shows it.
+        const share = { name: "share" };
+        const asks = { name: "asks" };
+        const acts = [{ source: asks, heard: 40 }];
+        check("a leave of the act's own source, under its key, is the key's",
+            Held.keyed(acts, asks, 40), true);
+        check("but not another source's, nor once another key was heard",
+            [Held.keyed(acts, share, 40), Held.keyed(acts, asks, 90)].join(" "),
+            "false false");
+        Held.mixIn(acts, share);
+        check("another source's change joins none of this one's acts",
+            Held.keyed(acts, asks, 40), true);
+        // A share's change heard past keyedWithin, waiting on the refresh a
+        // fill holds, would otherwise leave the step as if Joel's key had.
+        Held.mixIn(acts, asks);
+        check("a change the key doesn't own, joining its act, makes the leave no key's",
+            Held.keyed(acts, asks, 40), false);
 
         // Held.returnUnder, as the field's Return asks it: 2 deep, no words
         // asked for, and the key-timing wait 300 ms.

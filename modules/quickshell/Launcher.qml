@@ -599,8 +599,12 @@ Scope {
         // nothing new is let go untimed, as a refresh's is.
         const place = source.settings.name;
         updatedFrom(source);
-        // Asked again at once, so it waits on no pace.
+        // Asked again at once, so it waits on no pace. An answer heard
+        // past keyedWithin of Joel's key isn't the key's, so joins none
+        // of its acts (Held.mixIn), and a step it leaves is guessed.
         const refreshedAt = KeyTimes.now();
+        if (Pacing.sinceKey(refreshedAt, keyHeardAt, keyDoneAt) >= keyedWithin)
+            Held.mixIn(keyedActs, source);
         Report.say(`asked again by ${place}`);
         if (held.length > 0) {
             updateDrawn(place, relive(source), refreshedAt);
@@ -5864,6 +5868,11 @@ Scope {
         const unseen = source.changedUnseen === true;
         const byKey = near
             && Pacing.keyed(ago, prompt.keyMoved, keyedWithin, !unseen && onScreen(source));
+        // One the key doesn't own, joining a key's act still waiting on
+        // its refresh, makes the leave that refresh makes no longer his
+        // (Held.keyed), so a share's change never rides on his key.
+        if (!byKey)
+            Held.mixIn(keyedActs, source);
         // One just past it is said, so a key's change left to the pace is
         // seen for what it was, and one drawn nowhere says so.
         if (open && !byKey && !prompt.keyMoved && ago < 1000)
@@ -5966,7 +5975,9 @@ Scope {
         // arriving while Joel types are.
         function onKeysTakenChanged() {
             root.guessed = Held.passedOver(root.guessed, prompt.keyAlone);
-            if (prompt.typingNow && prompt.keyTaken.length === 1)
+            // A modifier alone, as the Shift before a capital, acted on
+            // nothing, so a change beside it is no key's.
+            if (prompt.keyAlone || (prompt.typingNow && prompt.keyTaken.length === 1))
                 return;
             const heard = KeyTimes.now();
             root.keyHeardAt = heard;
@@ -6499,17 +6510,20 @@ Scope {
         // it stood, holds Return until another key (Held.whileLeaving).
         const standing = guessed;
         guessed = Held.whileLeaving(prompt.keysTaken, open, standing);
-        // A leave whose source changed as Joel's last key's act, as
-        // refreshed counts one in keyedActs (Pacing.keyed: within
-        // keyedWithin of a key that acted, not a move or a letter typed
-        // into the find, to a place on screen), is one he watched, so it
-        // guesses nothing new. Any change heard that soon is counted, a
-        // share's too, and so is a later one the same refresh takes while
-        // an opening's find holds it (refreshDue): the two ways a leave
-        // goes unheld. A change a daemon answers later, as Release It's
-        // may be, isn't counted, and holds one Return should it land off
-        // its row.
-        const byKey = keyedActs.some(one => one.source === source && one.heard === keyHeardAt);
+        // A leave made by the refresh of Joel's last key's act is one he
+        // watched, so it guesses nothing new (Held.keyed). refreshed
+        // records an act for a source's change to a place on screen heard
+        // within keyedWithin of when that key's work was done (Pacing.
+        // sinceKey and Pacing.keyed), the key neither a move nor a
+        // modifier alone; a letter typed into the find isn't a key there
+        // (onKeysTakenChanged). Another key before the refresh, or a
+        // change or an answer past keyedWithin joining it (Held.mixIn),
+        // makes it his no longer. A change heard that soon is counted
+        // whoever made it, a share's too: the one way a leave off its row
+        // goes unheld. An answer alone never records an act, so a
+        // daemon's, as Release It's may be, holds one Return should it
+        // land off its row.
+        const byKey = Held.keyed(keyedActs, source, keyHeardAt);
         try {
             held = steps;
             back(false, held.length - leaving.keep);
@@ -6517,16 +6531,7 @@ Scope {
             jumping = false;
             forgetLeft(forgetting, last);
         }
-        // Said in the journal, so a step that closes under Joel by itself
-        // can be told from one his key left: what changed, and from how
-        // deep to how deep, never the row's name, which a source served;
-        // and whether it counted as his key's, so a slow answer, as
-        // Release It's may be, is seen to hold where a quick one doesn't.
         if (held.length < before) {
-            console.info(`launcher: left ${before - held.length} of ${before} steps to `
-                + `${held.length} by itself, as what ${source?.settings.name ?? "a place"} `
-                + "offered there offers nothing now"
-                + (byKey ? ", beside a key's act" : ", with no key's act beside it"));
             // Its row may be gone from what's shown, as an ask a share
             // hides, so the selection stands on another row (leftAt), one
             // Joel never chose: a Return pressed next, meant for the step
@@ -6534,6 +6539,14 @@ Scope {
             // by key, as here() records a step's.
             guessed = Held.landedAfter(standing, from, selected ? steadyId(selected) : "",
                 { keys: prompt.keysTaken, open, depth: held.length, byKey });
+            // Said in the journal, so a step that closes under Joel by
+            // itself can be told from one his key left: what changed,
+            // from how deep to how deep, never the row's name, which a
+            // source served; whether it was his key's act; and whether a
+            // Return next now holds (Held.leaveSaid).
+            console.info(`launcher: left ${before - held.length} of ${before} steps to `
+                + `${held.length} by itself, as what ${source?.settings.name ?? "a place"} `
+                + `offered there offers nothing now, ${Held.leaveSaid(byKey, guessed)}`);
         } else {
             guessed = Held.landedAfter(standing, from, null,
                 { keys: prompt.keysTaken, open, depth: held.length, byKey });
