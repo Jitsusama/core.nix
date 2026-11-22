@@ -62,11 +62,15 @@ fn findings_filed(m: &Measure) -> Vec<Filed> {
             let short = what.split(' ').next().unwrap_or_default();
             // A landing note counts only in its finding's thread, so the
             // ask names the id to answer, as the mesh shows it, since a
-            // reply to this ask lands on nothing.
+            // reply to this ask lands on nothing. A first line holding
+            // a doubt word reads as doubting its fix, so the ask says to
+            // keep what was fixed off that line.
             let closes = format!(
                 "It closes by itself once the changes a landing note answering {short} names \
                  run here, the note opening as \"Landed core #6000.\" does; a note naming no \
-                 change, or answering this ask, closes nothing."
+                 change, or answering this ask, closes nothing, nor does one whose first line \
+                 says still, but, though, although, however, yet, broken, fails, failing or \
+                 failed, so say what it fixed on the lines after."
             );
             // One whose fix merged and waits to run has its cause and fix
             // said already, so only when it runs is asked, as for a miss.
@@ -560,9 +564,10 @@ mod tests {
                 .1
                 .contains("is yours: ab12 from IKQ63G: the slots. Please reply")
                 && told[1].1.contains("\"Landed core #6000.\"")
-                && told[1].1.contains("a landing note answering ab12"),
-            "a finding was put to its owner as a cell, or without what closes it and the id \
-             to answer: {}",
+                && told[1].1.contains("a landing note answering ab12")
+                && told[1].1.contains("say what it fixed on the lines after"),
+            "a finding was put to its owner as a cell, or without what closes it, the id \
+             to answer and the doubt words its note's first line can't hold: {}",
             told[1].1
         );
         // Its fix merged and waiting to run, only when it runs is asked.
