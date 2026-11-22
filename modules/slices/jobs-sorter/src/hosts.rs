@@ -125,11 +125,6 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
     } else {
         low::AT
     };
-    // One process holds every conversation a host runs, so a window Joel is at keeps them all
-    // out of the disk's swap only while they fit under the floor given: past it, writeback off
-    // would hold every conversation in memory, which #3070 kept windows from by holding at
-    // most three. Unread, it might not fit, so writeback stays.
-    let fits = signs.current.is_some_and(|current| current <= floor);
     // A window held keeps a hard floor too, whole whatever the unit holds now, so a unit just
     // started or reclaimed grows into it, for as many as `holds::shares` leaves it.
     let held = u64::try_from(signs.held)
@@ -139,9 +134,16 @@ pub fn wanted(own: &Own, signs: Signs, low: u64) -> Rank {
         weight,
         floor,
         hard: own.hard.saturating_add(held),
-        writeback: own.writeback && (signs.viewed == 0 || !fits),
+        writeback: writeback(own.writeback, &signs, floor),
         preference,
     }
+}
+
+/// Whether a unit keeps writeback to the disk's swap at `floor`, as `own`
+/// says, but while Joel is at it and it's read to fit: one process holds
+/// every conversation a host runs, and #3070 kept windows from holding all.
+pub fn writeback(own: bool, signs: &Signs, floor: u64) -> bool {
+    own && (signs.viewed == 0 || signs.current.is_none_or(|current| current > floor))
 }
 
 /// The orchestrators a unit's `roots` run, as `orchestrating` counts them
@@ -308,6 +310,11 @@ impl Hosts {
                 own
             }
         }
+    }
+
+    /// The floor last set on `unit`, if any was.
+    pub fn floor_set(&self, unit: &str) -> Option<u64> {
+        self.set.get(unit).map(|rank| rank.floor)
     }
 
     /// Whether `unit` should be set to `rank`: it changed, or this sorter
