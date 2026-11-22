@@ -4911,10 +4911,12 @@
     counting from the oldest of three, and not after two or one recent start of three, saying
     that removing its record of starts ends the wait, which then ends within ten seconds,
     says why and fails on a missing harness or a temporary or cache folder that isn't there, is
-    a link, is another's or others may read, and otherwise becomes the realm's node in its own
-    place with its words, its output in its log, every environment value whole, the realm's LANG
-    and no LC_ALL to outrank it, the account's home realm, TMPDIR the account's temporary folder
-    and XDG_RUNTIME_DIR its cache folder, which macOS doesn't empty after three days, the probes
+    a link even named with two slashes, is named by a relative path, is another's, the cache
+    folder alone included, or others may read, naming the folder, and otherwise becomes the
+    realm's node in its own place with its words, its output in its log, every environment value
+    whole, the realm's LANG and no LC_ALL to outrank it, the account's home realm, TMPDIR the
+    account's temporary folder, AGENTS_RUNTIME_DIR its cache folder, which macOS doesn't empty
+    after three days, and no XDG_RUNTIME_DIR, which disk-guard reads for its own, the probes
     its own restart waits on with their % single, and none of the eight variables that would run
     code as node starts
   '';

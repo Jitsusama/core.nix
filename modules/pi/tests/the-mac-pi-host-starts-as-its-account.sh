@@ -1,16 +1,16 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2310 # run is a step, read in a condition to say which start failed.
 # Runs a Mac's pi host start (modules/pi/darwin.nix) on Linux, under each
-# POSIX shell given, with the Mac's own programs stood in for: getconf, id
-# and sleep by stand-ins the test steers or that say they ran, the rest by
-# Linux's, and the host's node by one that writes down its pid, its words
-# and its environment. The start has to pass shellcheck as sh, move only a
-# log past 10 MB aside, wait before a fourth start in ten minutes, say why
-# and fail when the harness is missing or the temporary or cache folder
-# isn't the account's alone, and otherwise become the node in its own place, with the
-# words it was given and every value of the realm's environment whole,
-# whatever the shell would read in it, and none of the variables that would
-# run code as node starts.
+# POSIX shell given, with the Mac's own programs stood in for: getconf, id,
+# stat's owner and sleep by stand-ins the test steers or that say they ran,
+# the rest by Linux's, and the host's node by one that writes down its pid,
+# its words and its environment. The start has to pass shellcheck as sh,
+# move only a log past 10 MB aside, wait before a fourth start in ten
+# minutes, say why and fail when the harness is missing or the temporary or
+# cache folder isn't the account's alone, naming that folder, and otherwise
+# become the node in its own place, with the words it was given and every
+# value of the realm's environment whole, whatever the shell would read in
+# it, and none of the variables that would run code as node starts.
 # usage: the-mac-pi-host-starts-as-its-account.sh <start> <entry> <shell>...
 set -euo pipefail
 
@@ -61,6 +61,15 @@ cat >"${stand}/id" <<EOF
 printf '%s\n' "\${GIVEN_UID:-\$(${id_program} -u)}"
 EOF
 
+# A folder's owner and mode, as the Mac's stat prints them, but another
+# account's uid for the folder GIVEN_FOREIGN names.
+cat >"${stand}/owner" <<EOF
+#!${BASH}
+read -r uid mode < <(${stat_program} -c '%u %a' "\$1")
+[ "\$1" != "\${GIVEN_FOREIGN:-}" ] || uid=99999
+printf '%s %s\n' "\${uid}" "\${mode}"
+EOF
+
 # Says it slept rather than sleeping, and removes the file RELEASE names,
 # as the person would while the start waits.
 cat >"${stand}/sleep" <<EOF
@@ -89,7 +98,7 @@ touch "${present}"
 sed \
   -e "s|/usr/bin/getconf|${stand}/getconf|g" \
   -e "s|/usr/bin/stat -f %z|${stat_program} -c %s|g" \
-  -e "s|/usr/bin/stat -f '%u %Lp'|${stat_program} -c '%u %a'|g" \
+  -e "s|/usr/bin/stat -f '%u %Lp'|${stand}/owner|g" \
   -e "s|/usr/bin/id|${stand}/id|g" \
   -e "s|/bin/sleep|${stand}/sleep|g" \
   -e "s|/bin/mv|${mv_program}|g" \
@@ -157,16 +166,17 @@ run() {
 }
 
 # Fails unless the start, given a temporary or cache folder, refuses it,
-# says so in a log of its own and never runs node.
+# says so in a log of its own, naming the folder it refused as shown, and
+# never runs node.
 refused() {
-  local what=$1
-  shift
+  local what=$1 shown=$2
+  shift 2
   fresh
   if run "$@"; then
     fail "under ${name} started in ${what}"
   fi
-  grep -q "temporary or cache folder wasn't found, or isn't its alone" "${log}" ||
-    fail "under ${name} didn't say why it refused ${what}"
+  grep -qF "temporary or cache folder wasn't found, or isn't its alone: '${shown}'" "${log}" ||
+    fail "under ${name} didn't say why it refused ${what}, naming '${shown}'"
   [[ ! -e "${work}/words" ]] || fail "under ${name} ran node in ${what}"
 }
 
@@ -196,23 +206,36 @@ for shell in "$@"; do
 
   # A temporary folder that isn't the account's alone is refused, rather
   # than putting the host's socket where another may reach it.
-  refused "no temporary folder"
-  refused "a temporary folder that isn't there" GIVEN_TEMPORARY="${work}/not-there/"
+  refused "no temporary folder" ""
+  refused "a temporary folder that isn't there" "${work}/not-there/" \
+    GIVEN_TEMPORARY="${work}/not-there/"
   ln -sfn "${temporary}" "${work}/link"
-  refused "a temporary folder that is a link" GIVEN_TEMPORARY="${work}/link/"
+  refused "a temporary folder that is a link" "${work}/link/" GIVEN_TEMPORARY="${work}/link/"
   mkdir -p "${work}/open"
   chmod 755 "${work}/open"
-  refused "a temporary folder others may read" GIVEN_TEMPORARY="${work}/open/"
-  refused "another account's temporary folder" GIVEN_TEMPORARY="${given}" GIVEN_UID=99999
+  refused "a temporary folder others may read" "${work}/open/" GIVEN_TEMPORARY="${work}/open/"
+  refused "another account's temporary folder" "${given}" GIVEN_TEMPORARY="${given}" \
+    GIVEN_UID=99999
   # The cache folder, which holds the host's socket, is held to the same.
-  refused "no cache folder" GIVEN_TEMPORARY="${given}" GIVEN_CACHE=
-  refused "a cache folder that isn't there" GIVEN_TEMPORARY="${given}" \
+  refused "no cache folder" "" GIVEN_TEMPORARY="${given}" GIVEN_CACHE=
+  refused "a cache folder that isn't there" "${work}/not-there/" GIVEN_TEMPORARY="${given}" \
     GIVEN_CACHE="${work}/not-there/"
   ln -sfn "${work}/cache" "${work}/cache-link"
-  refused "a cache folder that is a link" GIVEN_TEMPORARY="${given}" \
+  refused "a cache folder that is a link" "${work}/cache-link/" GIVEN_TEMPORARY="${given}" \
     GIVEN_CACHE="${work}/cache-link/"
-  refused "a cache folder others may read" GIVEN_TEMPORARY="${given}" \
+  # Named with two slashes, a link still has one left after the last is cut.
+  refused "a cache folder that is a link named with two slashes" "${work}/cache-link//" \
+    GIVEN_TEMPORARY="${given}" GIVEN_CACHE="${work}/cache-link//"
+  refused "a cache folder others may read" "${work}/open/" GIVEN_TEMPORARY="${given}" \
     GIVEN_CACHE="${work}/open/"
+  # Only the cache folder is another account's, which the uid alone can't
+  # tell, since the temporary folder, checked first, would refuse too.
+  refused "another account's cache folder" "${work}/cache/" GIVEN_TEMPORARY="${given}" \
+    GIVEN_FOREIGN="${work}/cache/"
+  # A relative path is read from wherever launchd starts the host, so one
+  # is refused even where it names the account's own folder.
+  (cd "${work}" && refused "a cache folder named by a relative path" "cache/" \
+    GIVEN_TEMPORARY="${given}" GIVEN_CACHE="cache/")
 
   # Everything in place: the start becomes node in its own place, so the
   # pid launchd signals is node's, and a short log stays where it is.
@@ -240,7 +263,10 @@ for shell in "$@"; do
   expect TMPDIR "${given}"
   # The socket goes in the cache folder, which macOS doesn't empty of what
   # sits untouched for three days, as it does the temporary folder.
-  expect XDG_RUNTIME_DIR "${work}/cache/"
+  expect AGENTS_RUNTIME_DIR "${work}/cache/"
+  if grep -qz "^XDG_RUNTIME_DIR=" "${work}/environment"; then
+    fail "under ${name} set XDG_RUNTIME_DIR, which disk-guard reads for a folder of its own"
+  fi
   # shellcheck disable=SC2016 # the dollar and backquotes are the value, unexpanded
   expect GREETING 'it'"'"'s $HOME, `here`'
   expect HOME /Users/someone

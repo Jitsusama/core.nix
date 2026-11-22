@@ -379,12 +379,12 @@ in
 
   # A Mac's host's start, run on Linux with the Mac's programs stood in for:
   # it passes shellcheck, moves only a log past 10 MB aside, waits before a
-  # fourth start in ten minutes, says and fails on a missing harness or a
-  # temporary or cache folder that isn't the account's alone, and otherwise
-  # becomes the realm's node in its own place, with its words, every value
-  # of its environment whole, TMPDIR the temporary folder and
-  # XDG_RUNTIME_DIR the cache folder the system gave, the call probe its
-  # own restart waits on, and none of loadsCode though each was set.
+  # fourth start in ten minutes, fails on a missing harness or a temporary
+  # or cache folder that isn't a whole path, the account's alone, naming it,
+  # and otherwise becomes the realm's node in its own place, with its words,
+  # its environment's values whole, TMPDIR the temporary folder,
+  # AGENTS_RUNTIME_DIR the cache folder and no XDG_RUNTIME_DIR, the call
+  # probe its own restart waits on, and none of loadsCode though each set.
   the-mac-pi-host-starts-as-its-account =
     let
       start = builtins.unsafeDiscardStringContext (
