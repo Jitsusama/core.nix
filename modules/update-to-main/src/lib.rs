@@ -55,3 +55,36 @@ pub mod session;
 pub mod system;
 pub mod tell;
 pub mod update;
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// The time now in UTC, as RFC 3339 says it, that the daemon and the
+/// follower stamp their log lines with: a Mac's launchd writes them
+/// with no time of their own, unlike the journal.
+pub fn stamp() -> String {
+    stamp_at(SystemTime::now())
+}
+
+/// `at` as a log stamp says it; a time before 1970, which only a clock set
+/// wrong gives, as 1970's start.
+pub fn stamp_at(at: SystemTime) -> String {
+    let secs = at
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_secs());
+    terminal_kit::time::rfc3339(i64::try_from(secs).unwrap_or(i64::MAX))
+}
+
+/// `line` as the log should have it: stamped on a Mac, and as it is
+/// elsewhere, where the journal keeps the time and its readers, such as
+/// cadence's and merge-net's, read the line as it comes.
+pub fn stamped(line: &str) -> String {
+    stamped_with(cfg!(target_os = "macos").then(stamp).as_deref(), line)
+}
+
+/// `line` with `stamp` before it, when there's one.
+pub fn stamped_with(stamp: Option<&str>, line: &str) -> String {
+    match stamp {
+        Some(stamp) => format!("{stamp} {line}"),
+        None => line.to_owned(),
+    }
+}

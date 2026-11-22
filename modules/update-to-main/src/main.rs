@@ -225,6 +225,26 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
     }
 }
 
+/// Keeps what the machine `runs` in `file` for the next follower, when it
+/// changed since what was `kept`. Not keeping it costs the next follower
+/// only a minute's asks while the machine is loaded, so a write that fails
+/// is told once and tried again only when what it runs changes, rather
+/// than told at every look while the fault lasts.
+fn keep_runs(file: Option<&Path>, runs: Option<&follow::Runs>, kept: &mut Option<follow::Runs>) {
+    if let Some(file) = file
+        && let Some(runs) = runs
+        && kept.as_ref() != Some(runs)
+    {
+        match follow::keep_runs(file, runs) {
+            Ok(()) => *kept = Some(runs.clone()),
+            Err(why) => {
+                eprintln!("update-to-main: couldn't keep what the machine runs: {why}");
+                *kept = Some(runs.clone());
+            }
+        }
+    }
+}
+
 /// Follows main until the system's path holds another update-to-main,
 /// which it then starts in its place. The config is read again each time,
 /// since a switch may change it, and one it can't read is waited out
@@ -234,7 +254,18 @@ fn follow_args(mut rest: &[&str]) -> Option<(PathBuf, u64)> {
 /// it for good (switch 1036 on 18 November).
 fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
     let started = std::env::current_exe().and_then(fs::canonicalize).ok();
-    let mut follower = Follower::default();
+    // What the machine runs carries over from the follower before, so a
+    // switch, a login or a boot doesn't bring back a minute's asks a
+    // loaded machine refuses for what it runs.
+    let runs_file = follow::runs_file();
+    if runs_file.is_none() {
+        eprintln!(
+            "update-to-main: no home to keep what the machine runs in, so a follower started \
+             again asks a loaded machine each minute until an ask ends"
+        );
+    }
+    let mut kept = runs_file.as_deref().and_then(follow::kept_runs);
+    let mut follower = Follower::knowing(kept.clone());
     let mut unreadable = None;
     let mut unread = None;
     let mut unanswered = None;
@@ -264,11 +295,14 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
         if let Some(program) = follow::newer(config.program.as_deref(), started.as_deref()) {
             return started_in_place(&program);
         }
+        follower.hosted(config.hosted.is_some());
+        follower.saw_system(follow::system(&config.profile));
         match follow::heads(&config, seen.as_ref()) {
             Ok(heads) => {
                 unread = None;
                 seen = Some(heads.clone());
                 let ended = fs::read_to_string(&config.ended).unwrap_or_default();
+                follower.saw_ended(&heads, &ended);
                 if let Some(at) = follow::profile_changed(&config.profile, Instant::now()) {
                     follower.saw_switch(at);
                 }
@@ -278,7 +312,11 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                         .iter()
                         .map(|(name, commit)| format!("{name}@{}", &commit[..commit.len().min(12)]))
                         .collect();
-                    println!("asking at {}", at.join(" "));
+                    // Stamped, since a Mac's log has no time of its own.
+                    println!(
+                        "{}",
+                        update_to_main::stamped(&format!("asking at {}", at.join(" ")))
+                    );
                     // Said like an answer's own ending, since otherwise an
                     // ask that never reached the daemon leaves no trace;
                     // once until it changes, since it's asked every minute.
@@ -297,13 +335,19 @@ fn followed(file: &Path, every: Duration) -> Result<(), Failure> {
                         }
                     };
                     let ended = fs::read_to_string(&config.ended).unwrap_or_default();
-                    if let Some(why) = follower.asked(heads, &ending, &ended, Instant::now()) {
+                    let system = follow::system(&config.profile);
+                    if let Some(why) =
+                        follower.asked(heads, &ending, &ended, system, Instant::now())
+                    {
                         println!("stopped until someone asks by hand: {why}");
                     }
                     if let Some(why) = follower.to_tell() {
                         told(&config, &why);
                     }
                 }
+                // Kept after any look, since someone else's update changes
+                // what the machine runs too.
+                keep_runs(runs_file.as_deref(), follower.runs(), &mut kept);
             }
             // Said once until it changes, since the host may be away a while.
             Err(why) if unread.as_ref() != Some(&why) => {
