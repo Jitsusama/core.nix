@@ -6,9 +6,10 @@
 # two strips, or one saying more than the kind, is what this replaces. And
 # that the page reads the theme's web kit from the one copy the sites share,
 # with none of its own, and a page still reading its own kit/ fails too.
-# And that the sheets and scripts a site, the kit and the theme build reach
-# a page without their comments, and a sheet esbuild refuses, warns on or
-# crashes on, or a sheet or a script keeping a comment, fails, saying which.
+# And that the sheets a site, the kit and the theme build reach a page
+# without their comments, and its scripts without one marked to stay; and a
+# sheet esbuild refuses, warns on or crashes on, or a sheet or a script
+# keeping a comment, fails, saying which.
 # usage: each-live-page-opens-with-the-strip.sh <built site> <site.sh> <tsc>
 #   <node> <esbuild> <bare-sheet.sh> <kept-comments.sh> <kit> <site source>
 #   <name> <built kit> <web kit>
@@ -99,15 +100,17 @@ refused "${work}/themeless" "index.html doesn't read the theme from the sites' o
   "a page reading no theme"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
-# and nor do the kit's sheet and scripts or the theme's base.css, so their
-# builds still send each through the same scripts: those builds take no
-# source but their own, so a comment arriving in one is what shows it.
-compgen -G "${built}/*.css" >/dev/null || {
+# and nor do the kit's sheet or the theme's base.css, so their builds still
+# send each through the same script: those builds take no source but their
+# own, so a comment arriving in one is what shows it. The kit's scripts are
+# checked by the kit's own build.
+sheets=("${built}"/*.css)
+[[ -e ${sheets[0]} ]] || {
   echo "the built site has no sheet to read" >&2
   exit 1
 }
 status=0
-commented=$(grep -l '/\*' "${built}"/*.css "${built_kit}/switch.css" "${web_kit}/base.css") ||
+commented=$(grep -l '/\*' "${sheets[@]}" "${built_kit}/switch.css" "${web_kit}/base.css") ||
   status=$?
 ((status <= 1)) || {
   echo "a built sheet couldn't be read" >&2
@@ -117,8 +120,6 @@ commented=$(grep -l '/\*' "${built}"/*.css "${built_kit}/switch.css" "${web_kit}
   echo "a built sheet still holds a comment: ${commented}" >&2
   exit 1
 }
-mapfile -t kit_scripts < <(find "${built_kit}" -name '*.js')
-bash "${kept_comments}" "${kit_scripts[@]}"
 
 # bare-sheet.sh on one sheet: a sheet esbuild refuses is refused, saying
 # which and what esbuild said, and so is one it only warns on, and one it
@@ -233,6 +234,10 @@ while IFS= read -r kept; do
     exit 1
   }
 done <"${work}/kept"
+grep -qF 'export const n = 1;' "${work}/out/extra.js" || {
+  echo "a script written by hand lost the code before a comment ending its line" >&2
+  exit 1
+}
 if grep -q 'gone' "${work}/out/extra.js"; then
   echo "a script written by hand reached the page with its comments" >&2
   exit 1

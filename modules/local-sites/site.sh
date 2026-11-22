@@ -53,8 +53,11 @@ find . -maxdepth 1 -type f \( -name '*.html' -o -name '*.css' -o -name '*.svg' \
 # or a regular expression holding two slashes. It reads the script alone,
 # neither checking it nor following its imports, which name TypeScript
 # siblings, and keeps its syntax as written. Its own config, since the
-# compiler refuses files named beside the site's tsconfig.json.
-if compgen -G './*.js' > /dev/null; then
+# compiler refuses files named beside the site's tsconfig.json. A glob rather
+# than compgen, which the builder's bash leaves out, and which then said no
+# script was there.
+hand_written=(./*.js)
+if [[ -e ${hand_written[0]} ]]; then
   cat > "${work}/plain.json" <<EOF
 {
   "compilerOptions": {

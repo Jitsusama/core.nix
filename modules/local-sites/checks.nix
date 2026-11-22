@@ -79,8 +79,9 @@ in
   # strip, reads no theme from that copy, or whose styles read a kit/ of
   # their own, fails its build, saying so; and so does a sheet esbuild
   # refuses, warns on or crashes on, or a sheet or a script keeping a
-  # comment, saying which; and the sheets and scripts a site, the kit and
-  # the theme build reach a page without their comments
+  # comment, saying which; and the sheets a site, the kit and the theme
+  # build reach a page without their comments, and a site's scripts without
+  # one marked to stay
   # (tests/each-live-page-opens-with-the-strip.sh).
   each-live-page-opens-with-the-strip =
     pkgs.runCommandLocal "each-live-page-opens-with-the-strip" { }
