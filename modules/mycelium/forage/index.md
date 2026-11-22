@@ -29,8 +29,8 @@ a terminal, `mycelium forage` gathers the realm's.
   and those nearest it in the list, each with every cell it grew from, so
   no branch is left hanging; only a line deeper than 48 is cut at its
   top. A list that grows past 48 is drawn around the cell you're on. As
-  records arrive it stays drawn around the same cell, though a cell added
-  or ended near it shifts the cells beside it. It draws again around
+  records arrive over a list past 48 it stays drawn around the same
+  cell, though a cell added or ended near it shifts the cells beside it. It draws again around
   the cell you're on when it leaves that cell off, or a cell that grew
   from it, unless it's drawn around that cell already, and when the cell
   it's drawn around leaves the list.

@@ -262,6 +262,17 @@ it("draws the floor around the cursor once a list that fit grows past it", () =>
   shown = floorAfter(LONG, shown, "C39");
   assert.equal(shown.around, "C39");
   assert.equal(shown.of, LONG);
+  // Forty-eight cells still fit, so a floor over them keeps no cell either.
+  shown = floorStepped(floorAfter(LONG.slice(0, 48), UNDRAWN, "C00"), "C40");
+  assert.equal(floorAfter(LONG.slice(0, 49), shown, "C40").around, "C40");
+  // Records end twelve cells of a floor kept around C55, then bring them back.
+  const shrunk = floorAfter(
+    LONG.filter((_, at) => at < 36 || at >= 48),
+    floorFor(LONG, "C55"),
+    "C30",
+  );
+  assert.equal(shrunk.around, "C55");
+  assert.equal(floorAfter(LONG, shrunk, "C30").around, "C30");
 });
 
 it("keeps the floor on its cell when a record adds one near it, shifting the cells beside it", () => {
