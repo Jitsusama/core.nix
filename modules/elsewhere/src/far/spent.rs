@@ -62,7 +62,9 @@ pub fn owned(job: &Path, machine: &str) -> io::Result<File> {
     // Locked before it names anyone, so a run that finds this machine
     // named finds it held; one that finds it empty leaves it a day. Where
     // the filesystem takes no locks, it names nobody, and is left a day.
-    if owner.lock().is_ok() {
+    // Tried, never waited on, as a landing's is, so no stalled lock
+    // server holds the run.
+    if owner.try_lock().is_ok() {
         writeln!(owner, "{machine}\t{}", std::process::id())?;
     }
     Ok(owner)
@@ -90,11 +92,19 @@ pub fn clear(scratches: &Path, handover: &Path, machine: &str, now: SystemTime) 
             entry.path(),
             entry.file_name().to_string_lossy().into_owned(),
         );
-        let removed = if name.starts_with(SPENT) {
-            fs::remove_dir_all(&job)
+        // Said, if it won't go, by the name it has then.
+        let (name, removed) = if name.starts_with(SPENT) {
+            let removed = fs::remove_dir_all(&job);
+            (name, removed)
         } else if spent(&job, machine, now) {
-            let taken = handover.join(format!("{SPENT}{name}"));
-            fs::rename(&job, &taken).and_then(|()| fs::remove_dir_all(&taken))
+            let taken = format!("{SPENT}{name}");
+            match fs::rename(&job, handover.join(&taken)) {
+                Ok(()) => {
+                    let removed = fs::remove_dir_all(handover.join(&taken));
+                    (taken, removed)
+                }
+                Err(error) => (name, Err(error)),
+            }
         } else {
             continue;
         };
@@ -137,7 +147,8 @@ fn spent(job: &Path, machine: &str, now: SystemTime) -> bool {
     };
     let mut said = String::new();
     let read = (&owner).take(OWNER_AT_MOST).read_to_string(&mut said);
-    if read.is_err() || said.split('\t').next() != Some(machine) {
+    // A machine with no name is no match for an owner file naming nobody.
+    if read.is_err() || machine.is_empty() || said.split('\t').next() != Some(machine) {
         return untouched();
     }
     // A shared lock, which a file opened only to read can take; a live
@@ -316,6 +327,33 @@ mod tests {
         assert_eq!(cleared.gone, 0, "it didn't go");
         let names: Vec<&str> = cleared.kept.iter().map(|(name, _)| name.as_str()).collect();
         assert_eq!(names, [format!("{SPENT}8-8")], "it wasn't said by name");
+    }
+
+    #[test]
+    fn an_owner_file_that_is_a_link_is_never_trusted() {
+        let handover = Handover::new("linked-owner");
+        let job = handover.unowned("9-9");
+        let named = handover.scratches.join("named");
+        std::fs::write(&named, "kestrel\t1\n").unwrap();
+        std::os::unix::fs::symlink(&named, job.join(super::OWNER)).unwrap();
+        assert_eq!(handover.clear(SystemTime::now()).gone, 0, "a link named it");
+        assert!(
+            job.exists(),
+            "a folder named only through a link was cleared"
+        );
+    }
+
+    #[test]
+    fn a_machine_with_no_name_owns_no_folder_that_names_nobody() {
+        let handover = Handover::new("nameless");
+        let job = handover.unowned("10-10");
+        std::fs::write(job.join(super::OWNER), "").unwrap();
+        let cleared = clear(&handover.scratches, &handover.path, "", SystemTime::now());
+        assert_eq!(
+            cleared.gone, 0,
+            "a folder naming nobody was taken for its own"
+        );
+        assert!(job.exists(), "a folder naming nobody was cleared");
     }
 
     #[test]

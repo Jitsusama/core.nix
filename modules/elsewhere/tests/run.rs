@@ -37,7 +37,7 @@ while [ "$1" != -- ]; do shift; done
 shift
 here="$HOME/$SCRATCHES" far="$REALM/far/$SCRATCHES"
 cross() {
-  carried=$(mktemp -d)
+  carried=$(mktemp -d "$REALM/carried.XXXXXX")
   cp -R "$1/." "$carried/"
   find "$carried" -mindepth 1 \( -name '.*' -o -name target -o -name node_modules \) \
     -prune -exec rm -rf {} +
