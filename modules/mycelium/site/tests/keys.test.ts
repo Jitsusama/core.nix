@@ -35,6 +35,7 @@ const standing = (then: Partial<Standing> = {}): Standing => ({
   keysOpen: false,
   onMap: true,
   findOpen: false,
+  sproutOpen: false,
   finding: false,
   chosen: false,
   nowOpen: false,
@@ -73,7 +74,7 @@ it("leaves every chord to the browser, on the map, the tree and the page", () =>
   const asked = {
     map: ["j", "ArrowUp", "Enter", " "],
     tree: ["j", "Home", "Enter"],
-    page: ["?", "F1", "/", "Escape", "-", "m", "n", "a", "t"],
+    page: ["?", "F1", "/", "s", "Escape", "-", "m", "n", "a", "t"],
   };
   const everything = standing({ findOpen: true, finding: true, chosen: true, nowOpen: true });
   for (const held of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
@@ -109,7 +110,9 @@ it("lists every act it can ask, so the drawing can say it does each", () => {
   const page = [
     pageKey(press("?"), standing()),
     pageKey(press("/"), standing()),
+    pageKey(press("s"), standing()),
     pageKey(press("Escape"), all),
+    pageKey(press("Escape"), standing({ sproutOpen: true, chosen: true })),
     pageKey(press("Escape"), standing({ chosen: true })),
     pageKey(press("Escape"), standing({ nowOpen: true })),
     pageKey(press("n"), all),
@@ -151,6 +154,7 @@ it("says what each of the page's letters asks, with nothing open", () => {
     "?": "keys",
     F1: "keys",
     "/": "find",
+    s: "sprout",
     ".": "now",
     a: "needs-you",
     t: "talk",
@@ -168,7 +172,7 @@ it("says what each of the page's letters asks, with nothing open", () => {
 });
 
 it("lets a field keep every key typed into it, the keys dialog's too", () => {
-  for (const key of ["?", "/", "m", "Escape"]) {
+  for (const key of ["?", "/", "s", "m", "Escape"]) {
     assert.equal(pageKey(press(key), standing({ typing: true })), null, `${key} acted on a field`);
   }
 });
@@ -176,7 +180,7 @@ it("lets a field keep every key typed into it, the keys dialog's too", () => {
 it("answers only ? while the keys dialog is open, so it can close", () => {
   const open = standing({ keysOpen: true });
   assert.equal(pageKey(press("?"), open), "keys", "? didn't close the dialog");
-  for (const key of ["/", "m", "0"]) {
+  for (const key of ["/", "s", "m", "0"]) {
     assert.equal(pageKey(press(key), open), null, `${key} acted behind the dialog`);
   }
 });
@@ -185,14 +189,20 @@ it("answers find and the keys anywhere, and the map's own letters only on the ma
   const away = standing({ onMap: false });
   assert.equal(pageKey(press("/"), away), "find", "find didn't open from off the map");
   assert.equal(pageKey(press("?"), away), "keys", "the keys didn't open from off the map");
-  for (const key of ["m", ".", "0", "-", "Escape"]) {
+  for (const key of ["m", "s", ".", "0", "-", "Escape"]) {
     assert.equal(pageKey(press(key), away), null, `${key} acted from off the map`);
   }
 });
 
-it("closes with Escape what a mode opened: the find line, then what's chosen, then the now", () => {
+it("closes with Escape what a mode opened: a line, then what's chosen, then the now", () => {
   const all = standing({ findOpen: true, chosen: true, nowOpen: true });
   assert.equal(pageKey(press("Escape"), all), "close-find", "the find line didn't close first");
+  const sprouting = standing({ sproutOpen: true, chosen: true, nowOpen: true });
+  assert.equal(
+    pageKey(press("Escape"), sprouting),
+    "close-sprout",
+    "new work's line didn't close first",
+  );
   const chosen = standing({ chosen: true, nowOpen: true });
   assert.equal(pageKey(press("Escape"), chosen), "let-go", "what's chosen didn't go next");
   assert.equal(pageKey(press("Escape"), standing({ nowOpen: true })), "close-now", "now stayed");

@@ -800,7 +800,14 @@ Scope {
         if (open && !waking)
             Qt.callLater(freshen);
     }
+    // Takes nothing, as it's queued bare (afterFrame hands its frame's
+    // times to what it calls).
     function freshen() {
+        freshenAs("joining");
+    }
+    // A join felt as `felt`: the open handler names its own as its lap
+    // (Pacing.lapName), so it isn't added up with a slice's "joining".
+    function freshenAs(felt) {
         if (!choicesStale)
             return;
         const began = KeyTimes.now();
@@ -828,7 +835,7 @@ Scope {
             out.push(withSynonyms(row));
         choicesJoined += 1;
         choices = out;
-        feltSpan("joining", began);
+        feltSpan(felt, began);
     }
 
     // Where a collection that's no place of its own leads, as one found row,
@@ -1173,6 +1180,8 @@ Scope {
     // when - climbs back onto it. Listing Landed's 2,600 landings on the
     // way to one took about 40 of To Try's 84 ms Return (2026-11-14).
     function walkTo(spot) {
+        // Put somewhere from outside, it's no landing a leave guessed.
+        guessed = Held.unguessed();
         const came = placeLeft();
         const begun = stepBegun();
         held = [];
@@ -3080,7 +3089,8 @@ Scope {
     }
 
     // What the last Return did ("ran", "armed", "landed", "entered", "gave", "lined", "held"
-    // on a row held still, or "" for one doubled), and when it was pressed, heard and done, in
+    // on a row held still, "waited" when it was taken for one meant for a step that left by
+    // itself (guessed), or "" for one doubled), and when it was pressed, heard and done, in
     // milliseconds of the monotonic clock, so a test sees that a name and
     // one Return opens with no wait between.
     property var returned: ({})
@@ -3090,6 +3100,23 @@ Scope {
     property string landedKey: ""
     property int landedKeys: -1
     property real landedAt: 0
+
+    // A landing a step left by itself had to guess, on a row other than
+    // the one Joel stepped in from (Held.onItsRow), or none: the next
+    // key, if it's Return, does nothing (the field's onAccepted, as
+    // Held.returnUnder says).
+    property var guessed: Held.unguessed()
+
+    // A Return held under a guessed landing says so, and what another
+    // does, so it never reads as the key lost; after a leave that threw,
+    // that another key comes first, as Returns hold until one.
+    function heldUnder(broken) {
+        console.info(broken
+            ? "launcher: Return held, as the step couldn't close by itself"
+            : "launcher: Return held, as the step closed by itself under it");
+        const hints = Words.field.hints ?? {};
+        say([["\u21b5", (broken ? hints.closedBroken : hints.closedUnder) ?? ""]]);
+    }
 
     function land(choice) {
         prompt.toNormal();
@@ -5904,6 +5931,7 @@ Scope {
         // changing beside one is left to the pacing, as Slack's answers
         // arriving while Joel types are.
         function onKeysTakenChanged() {
+            root.guessed = Held.passedOver(root.guessed, prompt.keyAlone);
             if (prompt.typingNow && prompt.keyTaken.length === 1)
                 return;
             const heard = KeyTimes.now();
@@ -6429,8 +6457,22 @@ Scope {
         // Held.forgets and Held.afterLeave say, even where the leave throws
         // partway. Both are read first, as onHeldChanged moves lastPlace.
         const last = lastPlace;
+        const from = steps[leaving.keep];
         jumping = true;
         const before = steps.length;
+        // Guessed until the landing is known to be on its row, so a leave
+        // that throws partway, its rows unsearched and the selection where
+        // it stood, holds Return until another key (Held.whileLeaving).
+        const standing = guessed;
+        guessed = Held.whileLeaving(prompt.keysTaken, open, standing);
+        // A leave whose source changed within keyedWithin of Joel's last
+        // key is one his key caused and he watched, so it guesses nothing
+        // new (refreshed's keyedActs). A change a daemon answers later,
+        // as Release It's may be, isn't counted, and holds one Return
+        // should it land off its row; any source's change heard that soon
+        // after a key, a share's too, is counted, the one way it goes
+        // unheld.
+        const byKey = keyedActs.some(one => one.source === source && one.heard === keyHeardAt);
         try {
             held = steps;
             back(false, held.length - leaving.keep);
@@ -6441,10 +6483,21 @@ Scope {
         // Said in the journal, so a step that closes under Joel by itself
         // can be told from one his key left: what changed, and from how
         // deep to how deep, never the row's name, which a source served.
-        if (held.length < before)
+        if (held.length < before) {
             console.info(`launcher: left ${before - held.length} of ${before} steps to `
                 + `${held.length} by itself, as what ${source?.settings.name ?? "a place"} `
                 + "offered there offers nothing now");
+            // Its row may be gone from what's shown, as an ask a share
+            // hides, so the selection stands on another row (leftAt), one
+            // Joel never chose: a Return pressed next, meant for the step
+            // that left, waits rather than run it. The selection is read
+            // by key, as here() records a step's.
+            guessed = Held.landedAfter(standing, from, selected ? steadyId(selected) : "",
+                { keys: prompt.keysTaken, open, depth: held.length, byKey });
+        } else {
+            guessed = Held.landedAfter(standing, from, null,
+                { keys: prompt.keysTaken, open, depth: held.length, byKey });
+        }
         return "left";
     }
 
@@ -9988,6 +10041,9 @@ Scope {
             // ending row's line, so a test waits it out before running it.
             linedFresh: Date.now() - root.linedAt < Options.keyTiming.wait,
             returned: root.returned,
+            // The landing a step that left by itself guessed, so a test can
+            // tell a Return held under it ("waited") from one lost.
+            guessed: root.guessed,
             // What the foot says for a key in place of the keys, as q's words
             // or "not here", in the foot's order, until the next key.
             saying: root.sayingNow ? root.saying.slice(1).concat([root.saying[0]])
@@ -10500,6 +10556,9 @@ Scope {
     // Joel's file chooser said no opening line, its keys 100 ms each
     // (2026-11-13, 03:45).
     function into(name) {
+        // Put in a place from outside, as a chord does while the launcher
+        // is open, it's no landing a leave guessed (walkTo).
+        guessed = Held.unguessed();
         // A chord as home's fill is still to be found steps in over the
         // choices joined, as a key would (fillFound).
         fillFound("chord");
@@ -10991,6 +11050,12 @@ Scope {
     }
 
     onOpenChanged: {
+        // Each part of an opening's own work, timed as it's done from the
+        // handler's start, so the line its frame says names what an opening
+        // slow to draw spent its time on (Joel, 2026-11-10: the launcher
+        // takes forever to load).
+        let lapped = KeyTimes.now();
+        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
         // A link's hold on the first keys lasts only the opening it made.
         if (!open)
             prompt.unlinked();
@@ -10998,14 +11063,17 @@ Scope {
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;
         selectionMoved();
-        // Each part of an opening's own work, timed as it's done, so the
-        // line its frame says names what an opening slow to draw spent its
-        // time on (Joel, 2026-11-10: the launcher takes forever to load).
-        let lapped = KeyTimes.now();
-        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
+        // Each lap is felt as a span of its own too, so an opening's longest
+        // stall names this handler's parts rather than calling them all
+        // "opening", with what's left of it the bindings and handlers
+        // `open` turning runs besides: in a day of Joel's journal, 1259 ms
+        // of 42 openings' longest stalls were "opening", while these laps
+        // came to 371 ms over the day's 40 fills (2026-11-21). Each is
+        // felt by the opening's name for it (Pacing.lapName).
         const lap = name => {
             const now = KeyTimes.now();
             parts[name] = (parts[name] ?? 0) + now - lapped;
+            feltSpan(Pacing.lapName(name), lapped);
             lapped = now;
         };
         // Opened from what it kept, it was shown already, holding the keys
@@ -11072,6 +11140,7 @@ Scope {
             // Reboot was armed and the launcher shut, a click rebooted).
             armed = Arming.rest();
             landedKey = "";
+            guessed = Held.unguessed();
             // Shut in the mode it opens in, so what it keeps is weighed for
             // that mode while shut, and the opening's take() changes no
             // mode. Closed by :q from normal, each reopening weighed its
@@ -11088,6 +11157,12 @@ Scope {
         else
             traces.closed({ depth: held.length, rows: matches.length });
         if (open) {
+            // All the handler did before the sources wake (the selection
+            // resting anew, marking it open, its spots, what's made since,
+            // the traces) is a lap of its own, so waking is the waking
+            // alone: less than the waking said before 2026-11-22, which
+            // held all of this.
+            lap("beginning");
             openWoke = wakeEach();
             lap("waking");
             // Joined whole each time it opens, stale or not: a
@@ -11113,7 +11188,7 @@ Scope {
             fillFoundJoined = 0;
             fillFoundAfter = null;
             if (!fillFinding)
-                freshen();
+                freshenAs(Pacing.lapName("joining"));
             lap("joining");
             trials.opened(KeyTimes.now());
             lap("trials");
@@ -13141,9 +13216,10 @@ Scope {
         return { collected: Heap.collected(), thread: threadNow() };
     }
     // The shell thread's clocks now: what it has run and waited for a CPU,
-    // a few microseconds to read (key-times/keytimes.cpp).
+    // and its major page faults, a few microseconds to read
+    // (key-times/keytimes.cpp).
     function threadNow() {
-        return { ran: KeyTimes.ran(), waited: KeyTimes.waited() };
+        return { ran: KeyTimes.ran(), waited: KeyTimes.waited(), faulted: KeyTimes.faulted() };
     }
     function feltTicked() {
         const now = KeyTimes.now();
@@ -13971,6 +14047,34 @@ Scope {
                             // arms first, and a second Return does it
                             // (pressArming).
                             const one = root.selected;
+                            // The first key after a step left by itself
+                            // under a row it had to guess, as an ask a
+                            // share hides, is a Return meant for that
+                            // step: it does nothing to the row, whatever
+                            // that row's Return would do, arming Power
+                            // Off included. Words asked for are still
+                            // given. Only Return is held here, as the
+                            // key that step's own act took: a click chose
+                            // its row, and another key, as r or an act's
+                            // chord, is one Joel pressed with the row
+                            // before him, so it acts on it.
+                            // Timed from the press, on its own clock, so
+                            // a doubled Return is told by when it was
+                            // pressed, not when the shell got to it.
+                            const under = Held.returnUnder(root.guessed, {
+                                keys: prompt.keysTaken,
+                                at: pressed > 0 ? pressed : KeyTimes.now(),
+                                depth: root.held.length, asking: !!root.asking
+                            }, Options.keyTiming.wait);
+                            const broken = root.guessed.broken;
+                            root.guessed = under.next;
+                            if (under.holds) {
+                                root.heldUnder(broken);
+                                root.returned = { act: "waited",
+                                    pressed: pressed > 0 ? pressed : null, heard: heard,
+                                    done: KeyTimes.now() };
+                                return;
+                            }
                             const chosen = Arming.returnAct({
                                 asking: !!root.asking,
                                 landed: root.landedJustNow(),
@@ -15459,9 +15563,15 @@ Scope {
                                     // A miss is said as quietly as nothing found.
                                     quiet: !!entry.modelData.gone
                                         || !!entry.modelData.answered && !!entry.modelData.missed
-                                    onClicked: root.arms(entry.modelData)
-                                        ? root.pressArming(entry.modelData, 0)
-                                        : root.run(entry.modelData, false)
+                                    // A click chose its row, so no Return
+                                    // after it is one a leave guessed.
+                                    onClicked: {
+                                        root.guessed = Held.unguessed();
+                                        if (root.arms(entry.modelData))
+                                            root.pressArming(entry.modelData, 0);
+                                        else
+                                            root.run(entry.modelData, false);
+                                    }
                                 }
                             }
                         }

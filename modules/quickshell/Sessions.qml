@@ -3341,6 +3341,10 @@ Singleton {
     // unwokenPatience, far past the slowest pi to load its log.
     property var unwokenReopening: ({})
     readonly property int unwokenPatience: 300000
+    // One nothing holds whose record names no fence it can come back under
+    // is left asleep and said by this, not as the node's refusal, which
+    // blames only its missing holder (#5901's F16).
+    signal unfenced(var session)
     function reopensUnwoken(session, answer) {
         const id = String(session?.presence?.session ?? "");
         const why = String(answer?.error?.message ?? "");
@@ -3349,18 +3353,22 @@ Singleton {
         // the reopened pi's own environment alone, so it never comes back
         // looser than it ran; a stage's listing by id keeps it fenced too
         // (the harness's fence-stage.ts). The word is the session's own, so
-        // it only ever tightens; any other is refused, said as the node
-        // said it (ISXEG8, 20 Nov [0d92dfe3]). And only an id that's a
-        // plain word, as handedOver holds it, since it's said in a shell's
-        // words.
+        // it only ever tightens; any other is left asleep (ISXEG8, 20 Nov
+        // [0d92dfe3]) and said as one it might bring back unfenced. And
+        // only an id that's a plain word, as handedOver holds it, since
+        // it's said in a shell's words.
         const fence = session.presence?.fence;
         const fenced = fence === "fence" || fence === "strict";
-        if (!/^[A-Za-z0-9._-]+$/.test(id) || session.here === false
-            || (fence !== "none" && !fenced) || !why.endsWith(unheld))
+        if (!/^[A-Za-z0-9._-]+$/.test(id) || session.here === false || !why.endsWith(unheld))
             return false;
         const upper = String(session.address).toUpperCase();
         if (running.some(one => one.here && one.presence?.session === id)) {
             Report.say(`left ${upper} alone, which runs here already`);
+            return true;
+        }
+        if (fence !== "none" && !fenced) {
+            Report.say(`left ${upper} asleep, whose record names no fence it can come back under`);
+            unfenced(session);
             return true;
         }
         const asked = unwokenReopening[id];
@@ -3378,7 +3386,8 @@ Singleton {
             unwokenReopening = left;
             Report.say(`couldn't reopen ${upper}: no session file or folder of its own`);
             unsteered(session, why, "wake");
-        }, { done: cwd => Report.say(`reopened ${upper}, which nothing held, in ${cwd}`),
+        }, { done: cwd => Report.say(`reopened ${upper}, which nothing held, in ${cwd}`
+                + (fenced ? `, under its fence, ${fence}` : "")),
             env: fenced ? { PI_SANDBOX: fence } : null });
         return true;
     }

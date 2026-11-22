@@ -12,7 +12,7 @@ description: >
 # spend-watch
 
 spend-watch keeps a history of every dollar the account's AI use cost, by
-hour, session, quest, model, agent, repo and budget: the money a request
+hour, session, quest, model, agent, repo, machine and budget: the money a request
 draws on, such as a proxy's cap, a team's token or a Claude plan. Its figures are the bill where a
 feed gives one (a provider's warehouse, then its live meter), an estimate from
 pi's logs times each model's learned ratio of bill to list where the bill
@@ -42,13 +42,15 @@ spend-watch report quests                  # spend beside status and PRs
 spend-watch report outliers                # sessions costly per turn
 spend-watch report forecast                # the week ahead, with ranges
 spend-watch report this month by budget    # each budget's spend
+spend-watch report this week by machine    # each machine's, this one's and others'
 spend-watch budgets                        # each budget against its allowances
 spend-watch budgets --session <id> --json  # and one session's, under its own
 spend-watch findings                       # what holds now
 ```
 
 Periods: today, yesterday, this week, last week, this month, last month, 30
-days. Cuts: quest, model, agent, repo, session, tool, day, source, budget.
+days. Cuts: quest, model, agent, repo, session, tool, day, source, budget,
+machine.
 
 ## Reading the Answers
 

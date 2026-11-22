@@ -8,7 +8,7 @@ use terminal_kit::layout::{self, Align, ITEMS, Room};
 use terminal_kit::{Pen, time};
 
 use super::{ago, count, roles_of, said, touching};
-use crate::model::{Channel, Device, End, LinkState, LogEntry, Network};
+use crate::model::{self, Channel, Device, End, LinkState, LogEntry, Network};
 
 /// `net devices NAME`: what every device can say, then its role's own
 /// figures, then what each source says that those didn't.
@@ -318,13 +318,7 @@ fn channels(way: &str, channels: &[Channel], active: &str, pen: &Pen, room: Room
         ("uncorrectable", Align::Right),
         (active, Align::Left),
     ];
-    let megahertz = |hertz: Option<u64>| {
-        #[expect(
-            clippy::cast_precision_loss,
-            reason = "a cable line's hertz are far under f64's whole numbers"
-        )]
-        hertz.map(|hertz| format!("{:.1}", hertz as f64 / 1e6))
-    };
+    let megahertz = |hertz: Option<u64>| hertz.map(model::megahertz);
     let tenths = |value: Option<f64>| value.map(|value| format!("{value:.1}"));
     // Each kind together, in the order the modem first lists it, then by
     // the number it gives each, the ones it numbers none last; the modem
@@ -672,16 +666,17 @@ mod tests {
         else {
             panic!("the record has no television");
         };
+        // An old answer's power is still on the record, and isn't shown.
         tv.television = Some(crate::model::Television {
-            power: None,
+            power: Some("on".into()),
             answering: false,
         });
         let tv = find(&network, "Living Room").expect("the television");
         let text = device(&network, tv, now(), &Pen::plain(), ROOMS[0]);
         let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
         assert!(
-            words.contains("power not answering as a TV"),
-            "its silence isn't said: {text}"
+            words.contains("power not answering as a TV") && !words.contains("power on"),
+            "its silence isn't said, or an old answer's power is: {text}"
         );
     }
 }

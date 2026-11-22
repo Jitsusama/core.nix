@@ -8,7 +8,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::figures;
 use crate::model::{
-    Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
+    self, Chokepoint, Concern, ConcernKind, Device, Internet, Link, Medium, Network, Path, Role,
 };
 use crate::sources::modem;
 
@@ -284,10 +284,17 @@ fn lost(network: &Network) -> Option<Concern> {
         return None;
     }
     let channel = &channels[worst];
-    let which = channel.channel.map_or_else(
-        || format!("downstream {} channel", channel.kind),
-        |number| format!("downstream channel {number}"),
-    );
+    // An OFDM channel has no number and a modem locks to more than one,
+    // so its frequency is what tells the provider which.
+    let which = match (channel.channel, channel.frequency_hz) {
+        (Some(number), _) => format!("downstream channel {number}"),
+        (None, Some(hertz)) => format!(
+            "downstream {} channel at {} MHz",
+            channel.kind,
+            model::megahertz(hertz)
+        ),
+        (None, None) => format!("downstream {} channel", channel.kind),
+    };
     let provider = network
         .internet
         .as_ref()

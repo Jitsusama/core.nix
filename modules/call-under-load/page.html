@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>call under load</title>
+<script>
+// Both ends of the hour's test call, as a Meet call sends: VP9 SVC both ways, each end's stats
+// sampled each second. The near end offers with Chromium's fake camera; the far end, a second
+// Chromium, answers with its own and sends its samples back over a data channel. call-under-load
+// drives both over DevTools. Nothing here writes a frame anywhere.
+'use strict';
+
+// How often each end samples its stats, in ms.
+const SAMPLE_MS = 1000;
+// What the far end sends back, as a second person's camera in a Meet call does.
+const FAR = { width: 1280, height: 720, fps: 30 };
+// Meet's layers: three spatial, three temporal, each keyframe its own.
+const LAYERS = 'L3T3_KEY';
+const BITS_A_BYTE = 8;
+const VP9_PROFILE_0 = /profile-id=0/u;
+const REPAIR = /rtx|red|ulpfec/iu;
+
+globalThis.samples = [];
+globalThis.remote = [];
+globalThis.taps = [];
+let pc;
+let dc;
+const last = {};
+let tapped = 0;
+
+const b64 = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
+const unb64 = (s) => JSON.parse(decodeURIComponent(escape(atob(s))));
+
+function preferVp9(transceiver) {
+  const { codecs } = RTCRtpReceiver.getCapabilities('video');
+  const vp9 = codecs.filter(
+    (c) => c.mimeType === 'video/VP9' && VP9_PROFILE_0.test(c.sdpFmtpLine || 'profile-id=0'),
+  );
+  const rest = codecs.filter((c) => REPAIR.test(c.mimeType));
+  transceiver.setCodecPreferences([...vp9, ...rest]);
+}
+
+function gathered() {
+  return new Promise((done) => {
+    if (pc.iceGatheringState === 'complete') {
+      done();
+      return;
+    }
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') {
+        done();
+      }
+    });
+  });
+}
+
+function camera({ width, height, fps }) {
+  return navigator.mediaDevices.getUserMedia({
+    video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } },
+  });
+}
+
+const pick = (r, keys) =>
+  Object.fromEntries(keys.filter((k) => r[k] !== undefined).map((k) => [k, r[k]]));
+
+function rate(id, bytes, ts) {
+  const was = last[id];
+  last[id] = { bytes, ts };
+  if (!was || ts <= was.ts) {
+    return null;
+  }
+  return Math.round(((bytes - was.bytes) * BITS_A_BYTE) / (ts - was.ts));
+}
+
+async function sample() {
+  const asked = Date.now();
+  const stats = await pc.getStats();
+  const video = [...stats.values()].filter((r) => !r.kind || r.kind === 'video');
+  // Timed by when the stats were gathered, which their counts are as of; a loaded machine
+  // can take a while between the ask and the gathering.
+  const timed = video.find((r) => r.type === 'media-source' || r.type === 'outbound-rtp');
+  const s = { t: Math.round(timed?.timestamp ?? asked), state: pc.connectionState };
+  for (const r of video) {
+    if (r.type === 'outbound-rtp') {
+      s.out = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'qualityLimitationReason',
+        'scalabilityMode', 'targetBitrate', 'framesEncoded']);
+      s.out.kbps = rate('out', r.bytesSent, r.timestamp);
+    } else if (r.type === 'inbound-rtp') {
+      s.in = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'framesDecoded',
+        'framesDropped', 'freezeCount', 'totalFreezesDuration', 'packetsLost', 'jitter']);
+      s.in.kbps = rate('in', r.bytesReceived, r.timestamp);
+    } else if (r.type === 'media-source') {
+      s.src = pick(r, ['width', 'height', 'framesPerSecond', 'frames']);
+    }
+  }
+  globalThis.samples.push(s);
+  if (dc && dc.readyState === 'open') {
+    dc.send(JSON.stringify(s));
+  }
+}
+
+// The near end: open the camera, send it as Meet does, and offer. The call names what it
+// sends, { width, height, fps, maxBitrate, scaleDown }.
+globalThis.offer = async (sends) => {
+  pc = new RTCPeerConnection();
+  dc = pc.createDataChannel('stats');
+  dc.onmessage = (m) => globalThis.remote.push(JSON.parse(m.data));
+  const stream = await camera(sends);
+  const [track] = stream.getVideoTracks();
+  track.contentHint = 'motion';
+  const t = pc.addTransceiver(track, {
+    direction: 'sendrecv',
+    streams: [stream],
+    sendEncodings: [{
+      scalabilityMode: LAYERS,
+      maxBitrate: sends.maxBitrate,
+      scaleResolutionDownBy: sends.scaleDown,
+    }],
+  });
+  preferVp9(t);
+  await pc.setLocalDescription(await pc.createOffer());
+  await gathered();
+  return { offer: b64(pc.localDescription), label: track.label };
+};
+
+globalThis.accept = async (answer) => {
+  await pc.setRemoteDescription(unb64(answer));
+  setInterval(sample, SAMPLE_MS);
+  return 'accepted';
+};
+
+// The far end: answer with its own camera, and send each second's sample back.
+globalThis.answer = async (offer, maxBitrate) => {
+  pc = new RTCPeerConnection();
+  pc.ondatachannel = (e) => {
+    dc = e.channel;
+  };
+  await pc.setRemoteDescription(unb64(offer));
+  const stream = await camera(FAR);
+  const [track] = stream.getVideoTracks();
+  const t = pc.getTransceivers().find((x) => x.receiver.track.kind === 'video');
+  t.direction = 'sendrecv';
+  await t.sender.replaceTrack(track);
+  preferVp9(t);
+  await pc.setLocalDescription(await pc.createAnswer());
+  const p = t.sender.getParameters();
+  p.encodings = [{ ...(p.encodings[0] || {}), maxBitrate, scalabilityMode: LAYERS }];
+  // A Chrome that refuses the layers sends as it would anyway, which the samples show.
+  await t.sender.setParameters(p).catch(() => null);
+  await gathered();
+  setInterval(sample, SAMPLE_MS);
+  return { answer: b64(pc.localDescription), label: track.label };
+};
+
+// A stand-in for how quickly Chrome answers Joel's input while a call runs: the near end is
+// clicked through DevTools every 5 s, and each click records its wait for the handler and its
+// time to the frame after the change it makes.
+document.addEventListener('pointerdown', (e) => {
+  const start = performance.now();
+  const at = e.timeStamp;
+  tapped += 1;
+  document.title = `call under load ${tapped}`;
+  requestAnimationFrame(() => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = () => {
+      globalThis.taps.push({ at, delay: start - at, frame: performance.now() - at });
+    };
+    ch.port2.postMessage(0);
+  });
+});
+</script>

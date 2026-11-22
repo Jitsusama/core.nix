@@ -15,21 +15,63 @@ pub struct Reached {
     pub machine: String,
     /// The realm it was found in.
     pub realm: Option<String>,
+    /// Whether the stop was asked of it and may have run there, so its
+    /// resume has something to undo; false while it is yet to be asked.
+    pub asked: bool,
 }
 
 impl Reached {
     /// As what a stop paused keeps it.
     pub fn kept(&self) -> Value {
-        json!({ "machine": self.machine, "realm": self.realm })
+        json!({ "machine": self.machine, "realm": self.realm, "asked": self.asked })
     }
 
-    /// From what a stop paused kept, as [`Reached::kept`] writes it.
+    /// From what a stop paused kept, as [`Reached::kept`] writes it; one
+    /// kept before it was asked reads as not asked.
     pub fn from_kept(kept: &Value) -> Option<Reached> {
         Some(Reached {
             machine: kept["machine"].as_str()?.to_owned(),
             realm: kept["realm"].as_str().map(str::to_owned),
+            asked: kept["asked"].as_bool().unwrap_or(false),
         })
     }
+}
+
+/// The status `mycelium run` ends with when it couldn't run the command
+/// at all, as SSH's does, such as on a machine out of reach, one whose
+/// mycelium is too old to run commands, or one whose link isn't proven.
+/// It ends so too when the node hangs up on a run under way, which
+/// [`BEGUN`] tells apart.
+const DIDNT_RUN: &str = "(exit status: 255)";
+
+/// What the script says on its error output before anything else, so a
+/// run that failed after it began, as one whose link dropped, isn't taken
+/// for one that never ran.
+const BEGUN: &str = "pineapple: begun there";
+
+/// What the script ends with when the mycelium it asks there fails, so a
+/// 255 of that mycelium's own can't read as the script never running.
+const OWN_FAILURE: u8 = 70;
+
+/// Whether `why` a run failed is mycelium saying the command never ran.
+/// The script's word may share its line with the status, when nothing
+/// was said after it.
+fn didnt_run(why: &str) -> bool {
+    why.trim_end().ends_with(DIDNT_RUN)
+        && !why.lines().any(|line| line.trim_start().starts_with(BEGUN))
+}
+
+/// `why` a run failed, without the script's word that it began.
+fn without_begun(why: &str) -> String {
+    why.lines()
+        .map(|line| {
+            line.trim_start()
+                .strip_prefix(BEGUN)
+                .map_or(line, str::trim_start)
+        })
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The realms the plan names, or mycelium's own default when it names
@@ -157,6 +199,7 @@ pub fn others(
         .map(|machine| Reached {
             machine: machine.clone(),
             realm: realms(plan).into_iter().next().flatten(),
+            asked: false,
         })
         .collect();
     let (sessions, unlisted) = listed(plan, runs);
@@ -172,6 +215,7 @@ pub fn others(
         let reached = Reached {
             machine: machine.to_owned(),
             realm,
+            asked: false,
         };
         if machine != host && !machines.contains(&reached) {
             machines.push(reached);
@@ -221,33 +265,58 @@ pub fn script(said: &Value, act: &str, realm: Option<&str>) -> String {
     // A resume whose answer came too late is tried again, so the first
     // that finishes says so, and one after it lets nothing go: the starts
     // Joel refused before the stop stay refused.
+    // A resume of a stop that never reached this machine has nothing to
+    // undo here, and letting its starts go would undo Joel's own refusal.
+    // So too for a realm whose starts the stop never refused, though it
+    // reached another: only a stop made before each noted its realms says
+    // nothing of which it refused, and is let go whole. Its note comes
+    // before its record, so no stop cut off between them reads as older.
+    // A resume looks for mycelium only once it has starts to let go, so
+    // a machine with none, which the stop refused nothing on, ends well.
+    let (unreached, note) = if act == "resume" {
+        (
+            format!("[ -e \"$d/{}.json\" ] || exit 0\n", file_of(id)),
+            "",
+        )
+    } else {
+        (String::new(), ": > \"$noted\"\n")
+    };
     let starts = if act == "resume" {
         format!(
             "resumed=\"$d/{file}.resumed{mark}\"\n\
-             if [ -e \"$resumed\" ] || [ -e \"$kept\" ]; then : > \"$resumed\"; \
-             else \"$m\" starts resume{flag} >/dev/null; : > \"$resumed\"; fi\n",
+             if [ -e \"$resumed\" ] || [ -e \"$kept\" ] || \
+             {{ [ -e \"$noted\" ] && [ ! -e \"$stopped\" ]; }}; then : > \"$resumed\"; \
+             else found; \"$m\" starts resume{flag} >/dev/null || exit {OWN_FAILURE}; \
+             : > \"$resumed\"; fi\n",
             file = file_of(id),
         )
     } else {
         format!(
-            "if \"$m\" starts list{flag} | grep -q '\"stopped\":true'; then : > \"$kept\"; \
-             else \"$m\" starts stop{flag} >/dev/null; fi\n"
+            "found\n\
+             if \"$m\" starts list{flag} | grep -q '\"stopped\":true'; then : > \"$kept\"; \
+             else : > \"$stopped\"; \
+             \"$m\" starts stop{flag} >/dev/null || exit {OWN_FAILURE}; fi\n"
         )
     };
     format!(
         "set -e\n\
+         echo '{BEGUN}' >&2\n\
          d=\"${{XDG_STATE_HOME:-$HOME/.local/state}}/pineapple/stops\"\n\
          mkdir -p \"$d\"\n\
+         kept=\"$d/{file}.starts-kept{mark}\"\n\
+         stopped=\"$d/{file}.stopped{mark}\"\n\
+         noted=\"$d/{file}.realms-noted\"\n\
+         {unreached}\
+         {note}\
          printf '%s\\n' {record} > \"$d/{file}.new\"\n\
          mv \"$d/{file}.new\" \"$d/{file}.json\"\n\
-         kept=\"$d/{file}.starts-kept{mark}\"\n\
          m=\n\
          for c in \"$(command -v mycelium || true)\" \
          \"/etc/profiles/per-user/$(id -un)/bin/mycelium\" \
          \"$HOME/.nix-profile/bin/mycelium\"; do\n\
          if [ -n \"$c\" ] && [ -x \"$c\" ]; then m=$c; break; fi\n\
          done\n\
-         [ -n \"$m\" ] || {{ echo 'no mycelium here' >&2; exit 127; }}\n\
+         found() {{ [ -n \"$m\" ] || {{ echo 'no mycelium here' >&2; exit 127; }}; }}\n\
          {starts}",
         record = quoted(&said.to_string()),
         file = file_of(id),
@@ -261,6 +330,8 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
             machine: at.machine.clone(),
             failed: vec!["this machine names no mycelium to reach it".to_owned()],
             recorded: false,
+            reached: false,
+            realm: at.realm.clone(),
         };
     };
     let mut args = asked(&["run"], at.realm.as_deref());
@@ -272,11 +343,71 @@ pub fn elsewhere(plan: &Plan, runs: &mut dyn Runs, at: &Reached, said: &Value, a
         "-c".to_owned(),
         script(said, act, at.realm.as_deref()),
     ]);
-    let mut failed = Vec::new();
-    let done = step(runs, mycelium, &args, &format!("{act} there"), &mut failed);
+    let (failed, reached) = match runs.run(mycelium, &args) {
+        Ok(_) => (Vec::new(), true),
+        Err(why) => (
+            vec![couldnt(&format!("{act} there"), &without_begun(&why))],
+            !didnt_run(&why),
+        ),
+    };
     Took {
         machine: at.machine.clone(),
+        recorded: failed.is_empty(),
         failed,
-        recorded: done,
+        reached,
+        realm: at.realm.clone(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::time::Duration;
+
+    use super::{BEGUN, didnt_run, without_begun};
+    use crate::pause::{Runs, System};
+
+    /// How a program ending as `line` says ends, run as the stop runs
+    /// mycelium, fails.
+    fn failed(line: &str) -> String {
+        let mut system = System {
+            limit: Duration::from_secs(10),
+        };
+        system
+            .run(Path::new("sh"), &["-c".to_owned(), line.to_owned()])
+            .expect_err("the program fails")
+    }
+
+    #[test]
+    fn only_a_run_mycelium_never_began_reads_as_never_run() {
+        let never = failed("echo 'mycelium: too old to run commands' >&2; exit 255");
+        assert!(didnt_run(&never), "a 255 before the script began: {never}");
+        let dropped = failed(&format!(
+            "echo '{BEGUN}' >&2; echo 'mycelium: the node hung up' >&2; exit 255"
+        ));
+        assert!(
+            !didnt_run(&dropped),
+            "a 255 after the script began may have stopped it: {dropped}"
+        );
+        assert_eq!(
+            without_begun(&dropped),
+            "mycelium: the node hung up (exit status: 255)",
+            "Joel is told why, not that it began"
+        );
+        let quiet = failed(&format!("echo '{BEGUN}' >&2; exit 255"));
+        assert!(
+            !didnt_run(&quiet),
+            "a 255 after the script began reads so with nothing said after it: {quiet}"
+        );
+        assert_eq!(
+            without_begun(&quiet),
+            "(exit status: 255)",
+            "and its status is kept"
+        );
+        let refused = failed("echo 'refused' >&2; exit 1");
+        assert!(
+            !didnt_run(&refused),
+            "any other end may have run: {refused}"
+        );
     }
 }

@@ -554,6 +554,7 @@ gather {
     ./modules/btrfs/checks.nix
     ./modules/cadence/checks.nix
     ./modules/call-transcripts/checks.nix
+    ./modules/call-under-load/checks.nix
     ./modules/calls/checks.nix
     ./modules/camera/checks.nix
     ./modules/cargo/checks.nix
@@ -666,6 +667,7 @@ gather {
     ./modules/receptor-say/checks.nix
     ./modules/repos/checks.nix
     ./modules/rhythm/checks.nix
+    ./modules/ripgrep/checks.nix
     ./modules/sccache/checks.nix
     ./modules/screen-text/checks.nix
     ./modules/sd-switch/checks.nix

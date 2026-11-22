@@ -96,8 +96,8 @@ in
 
   # An opening draws home as the closed launcher kept it, each row as it stood,
   # then fills it in where its rows stand with nothing flashing; and keys typed
-  # as it opens all land, and a way forward into a copy left before a share is
-  # let go as it's pressed (tests/opening-on-niri-test.py); and chords said by
+  # as it opens all land, and each way into a copy left before a share is let
+  # go as it's pressed (tests/opening-on-niri-test.py); and chords said by
   # launcher-say as the shell restarts open it once it listens, and open it at
   # once all through a handover (../shell-hands-over.sh). Its `lab` times each
   # chord's opening, the one way every launcher change quotes (docs/testing.md's

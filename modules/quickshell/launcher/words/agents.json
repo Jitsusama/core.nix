@@ -119,7 +119,10 @@
         "yesterday": "yesterday",
         "selection": "selection",
         "clipboard": "clipboard",
-        "lines": "{count} lines"
+        "lines": "{count} lines",
+        "picks": "picks a line",
+        "opens": "opens it",
+        "back": "back to the lines"
       },
       "states": {
         "thread": {
@@ -315,7 +318,11 @@
         "hosted": "not opened \u00b7 its host gave no way to view it",
         "unopened": "not opened \u00b7 it runs in a terminal the launcher can't reach",
         "untold": "not told, {why}",
-        "unanswered": "not told, the node didn't answer"
+        "refused": "{act} refused, {why}",
+        "unanswered": "the node didn't answer, so it may not have been told",
+        "unansweredTo": "{act} had no answer from the node, so it may not be done",
+        "unfenced": "not woken, it might come back outside its sandbox",
+        "unfencedWhy": "it might come back outside its sandbox"
       }
     },
     {

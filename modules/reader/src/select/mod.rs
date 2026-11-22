@@ -209,6 +209,9 @@ pub struct Layout {
     /// Each span of code: its words, and the bytes it takes with its
     /// backticks.
     code: Vec<(Range<usize>, Range<usize>)>,
+    /// Which of the page's settings its lines were read from, so a key
+    /// reading a line with the page's links knows both are of one setting.
+    pub version: u32,
 }
 
 /// Lines this close to a mark are under it: the mark sits on its first
@@ -349,14 +352,24 @@ pub fn units(frame: &Frame) -> Vec<Unit> {
 }
 
 impl Layout {
-    /// The page's words, read off its frame, with the file it was set from.
-    pub fn read(frame: &Frame, source: String) -> Self {
+    /// The page's words, read off its frame, with the file it was set from,
+    /// for the page's `version`.
+    pub fn read(frame: &Frame, source: String, version: u32) -> Self {
         let lines = crate::text::lines(crate::text::runs(frame));
         let starts: Vec<f64> = crate::place::starts(frame)
             .into_iter()
             .map(|(_, top)| top)
             .collect();
-        Self::new(lines, units(frame), &starts, source)
+        Self {
+            version,
+            ..Self::new(lines, units(frame), &starts, source)
+        }
+    }
+
+    /// These lines, when they were read from the page's setting `version`:
+    /// read from another, they no longer say where the page's links are.
+    pub fn of(&self, version: u32) -> Option<&Self> {
+        (self.version == version).then_some(self)
     }
 
     /// The page's lines and the pieces' marks, each block's start, in
@@ -472,6 +485,7 @@ impl Layout {
             words,
             spans,
             code,
+            version: 0,
         }
     }
 

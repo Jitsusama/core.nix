@@ -202,6 +202,18 @@ let
         # every ssh from a hosted conversation was refused.
         SSH_AUTH_SOCK = "%t/pi-agent.sock";
       }
+      // {
+        # The harness's browser tool starts each browser on a profile of its
+        # own, made fresh. On Linux a fresh Google Chrome profile enrols
+        # itself as a new browser with whatever cloud management a policy
+        # in /etc/opt/chrome names, and takes that policy's forced
+        # extensions, so every agent's look at a page added one more browser
+        # to an organisation's books. Chromium reads only /etc/chromium's
+        # policies. A machine names its own browser once, in the account's
+        # CHROME_PATH (home.nix sets Chromium as its default), and its hosts
+        # follow it; a realm's environment still wins over both.
+        CHROME_PATH = config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium);
+      }
       // host.environment
       // {
         MYCELIUM_REALM = realm;

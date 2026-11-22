@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 
-use crate::model::{Device, LinkState, Medium, Network, SCHEMA};
+use crate::model::{self, Device, Kept, LinkState, Medium, Network, SCHEMA};
 use crate::room;
 use crate::sources::{airplay, eero, hp, modem, samsung, sony, switch};
 
@@ -25,6 +25,16 @@ pub struct Said {
     /// What each Samsung box eero lists that could be a TV answered, and
     /// its last answer as a TV.
     pub televisions: Vec<samsung::Asked>,
+}
+
+/// One minute's record, each source carried over from the minutes `kept`
+/// before it. They're carried at the record's own time, the clock each
+/// source stamps a new outage with, since an outage carries only from a
+/// source whose since is that minute.
+pub fn carried(said: Said, now: u64, kept: &mut Vec<Kept>) -> Network {
+    let mut network = network(said, now);
+    model::carry_over(&mut network.sources, kept, network.collected_at);
+    network
 }
 
 pub fn network(said: Said, now: u64) -> Network {
@@ -592,6 +602,37 @@ mod tests {
         assert!(
             !network.devices.is_empty(),
             "eero's devices went with the modem"
+        );
+    }
+
+    #[test]
+    fn an_outage_collected_twice_keeps_its_first_start() {
+        // Each minute is kept at the record's own time, the one its sources
+        // stamp a new outage with, so the next minute's outage takes the
+        // first one's start.
+        let mut kept = Vec::new();
+        let mut down = |now| {
+            let said = Said {
+                modem: Err("timed out".into()),
+                ..contract()
+            };
+            carried(said, now, &mut kept)
+        };
+        down(NOW - 60);
+        let second = down(NOW);
+        let modem = second
+            .sources
+            .iter()
+            .find(|source| source.name == "modem")
+            .expect("the record names the modem's source");
+        assert_eq!(
+            modem.since,
+            Some(NOW - 60),
+            "the modem's outage began again at the minute it was collected"
+        );
+        assert!(
+            kept.iter().all(|(at, _)| *at == second.collected_at),
+            "a minute was kept at another time than its record's"
         );
     }
 }

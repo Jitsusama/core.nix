@@ -263,6 +263,37 @@ fn a_channel_losing_far_more_than_the_rest_is_a_concern() {
 }
 
 #[test]
+fn an_ofdm_channel_losing_most_is_named_by_its_frequency() {
+    // Neither OFDM channel has a number, so only the frequency says which
+    // one the provider should look at.
+    let mut network = network();
+    lost(&mut network, 16, 0);
+    let modem = network
+        .devices
+        .iter_mut()
+        .find(|device| device.id == "modem")
+        .and_then(|device| device.modem.as_mut())
+        .expect("the record has the modem's channels");
+    modem
+        .downstream
+        .iter_mut()
+        .find(|each| each.frequency_hz == Some(635_600_000))
+        .expect("the modem has the 635.6 MHz channel")
+        .uncorrectable = Some(900);
+    work_out(&mut network);
+    let lost = network
+        .concerns
+        .iter()
+        .find(|concern| concern.kind == ConcernKind::Lost)
+        .unwrap_or_else(|| panic!("a Lost concern: {:?}", network.concerns));
+    assert_eq!(
+        lost.on.as_deref(),
+        Some("downstream ofdm channel at 635.6 MHz"),
+        "the OFDM channel wasn't named by its frequency"
+    );
+}
+
+#[test]
 fn channels_losing_alike_are_no_concern() {
     // 878 against 100 is under ten times, so it's the line, not one
     // frequency; and a channel that's lost few is never a concern.

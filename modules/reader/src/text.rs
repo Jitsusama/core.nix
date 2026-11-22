@@ -39,6 +39,24 @@ pub struct Line {
     pub goes_on_x_pt: Option<f64>,
 }
 
+/// The middle across the page of a line's character, by its place among
+/// them: what's under the cursor on it, clear of the edges a kerned or
+/// raised neighbour may share.
+pub fn middle_of(line: &Line, ch: usize) -> Option<f64> {
+    line.spans
+        .get(ch)
+        .map(|&(from, to)| f64::midpoint(from, to))
+}
+
+/// Where a line runs across the page, from its first character's start
+/// to its last's end.
+pub fn across(line: &Line) -> (f64, f64) {
+    (
+        line.x_pt,
+        line.spans.last().map_or(line.x_pt, |span| span.1),
+    )
+}
+
 /// A line for a test that reads only its words and its baseline: at the
 /// page's left edge, set at 10 pt, each character spanning the first point.
 #[cfg(test)]
@@ -91,7 +109,7 @@ pub struct Found {
 
 /// Runs this close in baseline are one line: a superscript's or a mark's
 /// nudge is less than this.
-const SAME_LINE_PT: f64 = 2.0;
+pub(crate) const SAME_LINE_PT: f64 = 2.0;
 
 /// A gap wider than a word space, in ems: a space is set between runs
 /// this far apart that neither spells one.

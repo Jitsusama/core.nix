@@ -37,6 +37,7 @@
 {
   config,
   lib,
+  options,
   pkgs,
   ...
 }:
@@ -46,6 +47,42 @@ let
   awake = "/usr/bin/caffeinate -s";
   # Whether the guest is changed from the one nixpkgs caches.
   changed = cfg.features != [ ] || cfg.authorizedKeys != [ ] || cfg.collectableBy != [ ];
+
+  # The network option's address, and its prefix written as the mask vmnet
+  # takes, octet by octet.
+  networkParts = lib.splitString "/" cfg.network;
+  networkAddress = lib.head networkParts;
+  networkPrefix = lib.toInt (lib.last networkParts);
+  octetMasks = [
+    0
+    128
+    192
+    224
+    240
+    248
+    252
+    254
+    255
+  ];
+  maskOctets = map (
+    octet: lib.elemAt octetMasks (lib.max 0 (lib.min 8 (networkPrefix - 8 * octet)))
+  ) (lib.range 0 3);
+  networkMask = lib.concatMapStringsSep "." toString maskOctets;
+  # vmnet refuses an address past 255 or with bits set past its prefix only
+  # once the VM starts, where launchd restarts it without end, so the Mac's
+  # configuration refuses them first. It must be private too: a public or
+  # loopback network would hide the real addresses it covers from the Mac.
+  addressOctets = map lib.toInt (lib.splitString "." networkAddress);
+  first = lib.elemAt addressOctets 0;
+  second = lib.elemAt addressOctets 1;
+  networkIsPrivate =
+    first == 10 || first == 172 && second >= 16 && second <= 31 || first == 192 && second == 168;
+  networkHolds =
+    networkIsPrivate
+    && lib.all (octet: octet <= 255) addressOctets
+    && lib.all (
+      octet: lib.bitAnd (lib.elemAt addressOctets octet) (255 - lib.elemAt maskOctets octet) == 0
+    ) (lib.range 0 3);
 
   # Sizing it changes only the Mac's side of it, which the Mac builds in
   # seconds; the guest's system still comes from the cache. A key from
@@ -102,10 +139,21 @@ let
       (lib.mkIf changed {
         # The network it asks for is in macOS 26's SDK, not nixpkgs' default.
         virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
-          patches = (old.patches or [ ]) ++ [ ./vzvm-without-dns-proxy.patch ];
+          patches = (old.patches or [ ]) ++ [
+            ./vzvm-without-dns-proxy.patch
+            ./vzvm-own-subnet.patch
+          ];
           buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.apple-sdk_26 ];
         });
-        virtualisation.vz.extraConfig.dnsProxy = false;
+        virtualisation.vz.extraConfig = {
+          dnsProxy = false;
+          # Left to pick, vmnet put the guest on 192.168.5.0/24 and then
+          # 192.168.7.0/24 on 21 November, inside a home network's
+          # 192.168.4.0/22. mDNSResponder heard the Mac's name at a second
+          # address, renamed it twice and spun a core. So the network is set.
+          ipv4Subnet = networkAddress;
+          ipv4Mask = networkMask;
+        };
         networking.nameservers = [
           "1.1.1.1"
           "1.0.0.1"
@@ -237,6 +285,20 @@ in
         default, which keeps the guest's system the cached one.
       '';
     };
+    network = lib.mkOption {
+      type = lib.types.strMatching "((0|[1-9][0-9]{0,2})\\.){3}(0|[1-9][0-9]{0,2})/(1[6-9]|2[0-9]|30)";
+      default = "192.168.239.0/24";
+      example = "172.31.250.0/24";
+      description = ''
+        The IPv4 network a VM given keys or features is put on, between the
+        Mac and it. It must sit outside every network the Mac joins, or the
+        Mac hears its own name twice and renames itself, and apart from
+        other VMs' networks on the Mac, in 10.0.0.0/8, 172.16.0.0/12 or
+        192.168.0.0/16. By default it's clear of the low 192.168 networks
+        home routers hand out, and of 192.168.64.0/24 and the few above it,
+        where macOS's own NAT starts its VMs.
+      '';
+    };
     builder = lib.mkOption {
       type = lib.types.package;
       readOnly = true;
@@ -276,6 +338,19 @@ in
   };
 
   config = {
+    assertions = [
+      {
+        # A guest that keeps macOS's NAT never uses the network, so it's
+        # only warned of below.
+        assertion = !changed || networkHolds;
+        message = "jitsusama.linux-builder.network ${cfg.network} isn't a private network, has an octet past 255, or has an address bit set past its prefix.";
+      }
+    ];
+    # Only a changed guest is put on its own network; one given nothing
+    # keeps the cached guest, on macOS's NAT.
+    warnings =
+      lib.optional (!changed && options.jitsusama.linux-builder.network.highestPrio < 1500)
+        "jitsusama.linux-builder.network is set, but a VM given no keys or features keeps macOS's own NAT, so it's not used.";
     system.activationScripts.preActivation.text = lib.mkAfter ''
       mkdir -p ${home}
     '';

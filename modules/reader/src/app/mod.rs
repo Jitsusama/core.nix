@@ -17,6 +17,7 @@ mod searching;
 mod view;
 mod wayland;
 
+use crate::links::folder_of;
 use crate::painter::{Band, Key};
 use crate::{gl, page, prompt, reading, text, theme};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -83,6 +84,10 @@ const FIRST_FRAME_AT_MOST: Duration = Duration::from_millis(250);
 /// How soon a texture the GPU is still filling is looked at again before
 /// the first frame: uploading a band takes about a millisecond.
 const LOOKS_AGAIN_AFTER: Duration = Duration::from_millis(1);
+
+/// What gf and Ctrl+] say in the moment between a page set again and its
+/// lines read, when what the cursor's character is under can't be said.
+const STILL_READING: &str = "Still reading the page";
 
 /// The file as last saved, set and drawing while the page before it still
 /// shows. It takes the page's place at once, whole, when its bands cover
@@ -305,12 +310,4 @@ fn desktop_open(to: &str) {
         }
         Err(error) => eprintln!("reader: can't open {to}: {error}"),
     }
-}
-
-/// The folder a file is in, a bare name's being the one the reader runs
-/// in.
-fn folder_of(file: &std::path::Path) -> &std::path::Path {
-    file.parent()
-        .filter(|folder| !folder.as_os_str().is_empty())
-        .unwrap_or(std::path::Path::new("."))
 }

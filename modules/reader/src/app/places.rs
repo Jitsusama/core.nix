@@ -57,7 +57,11 @@ impl App {
         let screen_pt = self.screen_px() / px_per_pt;
         let new_most_pt = (page.frame.size().y.to_pt() - screen_pt).max(0.0);
         let offset_pt = if opens {
-            self.landing(&file, &page, &lines, new_most_pt)
+            let (pt, missing) = self.landing(&file, &page, &lines, new_most_pt);
+            if let Some(anchor) = missing {
+                self.say(&format!("E426: Tag not found: #{anchor}"));
+            }
+            pt
         } else {
             let at_end = self.at_end();
             let top_pt = self.heading() / px_per_pt;
@@ -89,33 +93,36 @@ impl App {
 
     /// Where the view lands on a file opened in this one's place, in
     /// points: the heading a link names, the place a jump left, or where
-    /// he last left the file, and otherwise its top.
+    /// he last left the file, and otherwise its top. A heading the file
+    /// doesn't have is given back to be said, and the file opens where he
+    /// left it, as it would with none named.
     pub(crate) fn landing(
         &self,
         file: &std::path::Path,
         page: &typst_layout::Page,
         lines: &[text::Line],
         most_pt: f64,
-    ) -> f64 {
+    ) -> (f64, Option<String>) {
         let Some(following) = self.following.as_ref() else {
-            return 0.0;
+            return (0.0, None);
         };
-        let pt = match &following.landing {
-            Landing::Heading(anchor) => links::heading_at(lines, anchor).unwrap_or_else(|| {
-                eprintln!("reader: no heading in {} is #{anchor}", file.display());
-                0.0
-            }),
-            Landing::At(pt, _) => *pt,
-            Landing::Kept => match place::read(file) {
-                Some(kept) if kept.at_end => most_pt,
-                Some(kept) => {
-                    let starts = place::starts(&page.frame);
-                    place::pt_of(&starts, kept.block, kept.into_pt, kept.block_pt).unwrap_or(0.0)
-                }
-                None => 0.0,
+        let kept = || match place::read(file) {
+            Some(kept) if kept.at_end => most_pt,
+            Some(kept) => {
+                let starts = place::starts(&page.frame);
+                place::pt_of(&starts, kept.block, kept.into_pt, kept.block_pt).unwrap_or(0.0)
+            }
+            None => 0.0,
+        };
+        let (pt, missing) = match &following.landing {
+            Landing::Heading(anchor) => match links::heading_at(lines, anchor) {
+                Some(pt) => (pt, None),
+                None => (kept(), Some(anchor.clone())),
             },
+            Landing::At(pt, _) => (*pt, None),
+            Landing::Kept => (kept(), None),
         };
-        pt.clamp(0.0, most_pt)
+        (pt.clamp(0.0, most_pt), missing)
     }
 
     /// The bands the saved page needs to cover the view where it will show,

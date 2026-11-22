@@ -579,6 +579,14 @@
     only clicks, breathes, coughs, rings, chimes, plays a chord and hums, give no turn and no
     bracketed sound
   '';
+  call-under-load-passes-clippy = ''
+    clippy finds nothing in call-under-load or its tests
+  '';
+  call-under-load-tells-the-hour = ''
+    call-under-load counts a call's frame rates by frame slots and its freezes per ten minutes,
+    keeps a run ten minutes from any meeting and refuses a stale calendar, takes Chrome's and
+    Slack's waits from lag-watch's last hour, and writes the hour in the shape cadence reads
+  '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine
     whose hardware names no device for it gives none, so never fetches the model
@@ -1811,6 +1819,12 @@
     a changed Linux builder guest's network serves it no DNS from the Mac, through a vzvm patched
     to leave the NAT's DNS proxy out, and the guest asks resolvers of its own
   '';
+  linux-builder-keeps-its-network-where-it-is-set = ''
+    a changed Linux builder guest's network is the one its option sets, 192.168.239.0/24 unless
+    given another, through a vzvm patched to hand it to vmnet, a network that isn't private, has an
+    octet past 255 or a host bit set is refused at build, one set on an unchanged guest is warned
+    of, and a guest given nothing keeps its own
+  '';
   linux-builder-keeps-a-changed-guests-time = ''
     a Mac's Linux VM given keys or features steps its clock with chrony at any time, past a second,
     in place of timesyncd, and one given nothing keeps the cached guest's clock
@@ -2849,6 +2863,10 @@
     question waits on one start of it rather than several, and asks again while it isn't
     logged in
   '';
+  pi-browses-in-chromium = ''
+    a pi started from a shell on Linux is told to browse in Chromium, which no Chrome policy
+    enrols, unless the machine names its own browser, which wins; a Mac is told of none
+  '';
   pi-claude-keeps-to-the-plan = ''
     pi-claude starts pi with Claude Code's provider, on Sonnet unless a model is asked for, off the
     mesh, signed in to the plan's own folder and with nothing that would bill an API instead
@@ -2929,6 +2947,12 @@
     clippy finds nothing in pi-packages or its tests, which hold a live process's version unchanged
     through an update, keep the version before current and the one a live pi says it loaded, and
     never swap in a build that fails or leaves a native module unbuilt
+  '';
+  pi-packages-keeps-its-own-store = ''
+    pi's packages install their dependencies into a pnpm store of their own, and keep pnpm's
+    metadata cache and node-gyp's headers, under the folder the agent fence holds read-only,
+    never the account's one store or ~/.cache, which fenced commands write, as pnpm itself says of
+    its store and cache
   '';
   pi-packages-swap-in-the-background = ''
     pi's git packages are updated at a switch before pi's settings name their links, and every
@@ -3028,7 +3052,8 @@
     each realm-kind pi host gets the template pi-conversation-KEY@.service its conversations'
     own processes start from, run by the host's program with --child for the host's key, its
     socket in the slot systemd names under the host's runtime folder, with the host's
-    environment, proof, node, frame flag and SSH agent but a plain pi's pools, its realm's
+    environment, proof, node, frame flag and SSH agent, the browser its account names in
+    place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
     agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
@@ -3047,7 +3072,7 @@
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
     with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers for its
-    conversations to share, node's heap limit set to its realm's heapMb,
+    conversations to share, Chromium as its browser, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
     frame, and pi's SSH agent proxy as their agent wherever the proxy runs, never given the TPM agent's own variable,
     started at most three times in ten minutes and said to be down once left down, never at a
@@ -3452,6 +3477,13 @@
   '';
   se-keys-builds-for-any-name = ''
     the Mac's key maker builds, shellcheck and all, for a name with an apostrophe
+  '';
+  searches-leave-other-programs-data-alone = ''
+    a Mac's home folder holds an ignore file, and ripgrep and fd searching from it or from Library,
+    run there or given its path, never open other programs' data, the cloud's folders or the
+    Desktop, Documents and Downloads folders macOS asked about, while still finding the rest, a
+    project's folder named like a guarded one included, and searching a guarded folder named or
+    started in; Linux holds no such file
   '';
   secret-asks-keeps-the-item-to-its-yes = ''
     a yes releases the one item to the checker alone, which says its length and never the value;
@@ -4172,8 +4204,8 @@
   '';
   the-sessions-kitty-comes-before-its-sessions = ''
     the kitty every session's window is drawn by sits in agents.slice above its sessions' weight,
-    with a hard memory floor agents.slice keeps as large, so a session opening never starves the
-    window Joel types in
+    with a hard memory floor agents.slice keeps beside the 1.5 GiB jobs-sorter holds for the
+    windows Joel is at, so a session opening never starves the window Joel types in
   '';
   a-paste-lands-while-the-shell-is-busy-on-niri = ''
     on niri, Return on a copy in the launcher pastes it into the terminal under, though the
@@ -4390,8 +4422,9 @@
     main process and the old one ended; while niri is yet to say its casts, a chord into On and
     home each open afresh, the journal saying why, and a share begun as home, On or the
     clipboard is drawn from what was kept fills it in at once, the kept copy's text gone from
-    the card; and with a clipboard showing a copy left on the way forward before a share began,
-    Ctrl+I during the share stays where it is, the key forgetting that place and saying so
+    the card; and with a clipboard showing a copy left on the way forward, as the last place
+    and on the tags' way back before a share began, each of Ctrl+I, Space Tab and Ctrl+T during
+    the share stays where it is, the key forgetting that place and saying so
   '';
   the-rows-hear-only-a-new-place = ''
     the rows drawn wear the last step's glyph and hue and say whether they're home's, and are told
@@ -5595,7 +5628,7 @@
     through the kernel, and no slice inside the account, machine or system does; every slice's
     io.weight follows its CPU weight;
     app.slice holds a hard and a soft 13% of memory and session.slice a hard and a soft 4.5 GiB,
-    agents.slice a soft 10% and a hard 512 MiB, every slice above them a hard 21% and a soft 31%,
+    agents.slice a soft 10% and a hard 2 GiB, every slice above them a hard 24% and a soft 31%,
     and jobs is slowed past 26%; timed work sits at 10000 inside idle jobs, and work in jobs can move
     itself there; a unit work in jobs starts with systemd-run, naming no slice, lands in jobs; a
     scope it starts through systemd's own systemd-run goes back to the scope of the work that

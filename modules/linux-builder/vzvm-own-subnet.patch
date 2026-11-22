@@ -1,0 +1,87 @@
+--- a/Sources/vzvm/Config.swift
++++ b/Sources/vzvm/Config.swift
+@@ -23,12 +23,17 @@
+   /// proxy is disabled (macOS 26+), so the host's port 53 stays free for its own
+   /// resolvers, and the guest must be given a resolver of its own.
+   var dnsProxy: Bool = true
++  /// The IPv4 subnet and mask of that NAT, as dotted addresses. Left out, vmnet picks a
++  /// /24 under 192.168/16, which can sit inside the host's own network, and then the
++  /// host's mDNSResponder hears its name at two addresses and renames the host.
++  var ipv4Subnet: String?
++  var ipv4Mask: String?
+   static let maxIdleTimeoutSeconds = 7 * 24 * 60 * 60
+ 
+   enum CodingKeys: String, CodingKey, CaseIterable {
+     case cpuCount, memorySizeMiB, kernel, initrd, cmdline
+     case disks, shares, rosetta, nestedVirtualization, vsock, console, idleTimeoutSeconds
+-    case dnsProxy
++    case dnsProxy, ipv4Subnet, ipv4Mask
+   }
+ 
+   init(from decoder: Decoder) throws {
+@@ -48,6 +53,8 @@
+     console = try container.decodeIfPresent(Console.self, forKey: .console) ?? Console()
+     idleTimeoutSeconds = try container.decodeIfPresent(Int.self, forKey: .idleTimeoutSeconds)
+     dnsProxy = try container.decodeIfPresent(Bool.self, forKey: .dnsProxy) ?? true
++    ipv4Subnet = try container.decodeIfPresent(String.self, forKey: .ipv4Subnet)
++    ipv4Mask = try container.decodeIfPresent(String.self, forKey: .ipv4Mask)
+   }
+ 
+   struct Disk: Decodable {
+--- a/Sources/vzvm/VirtualMachineBuilder.swift
++++ b/Sources/vzvm/VirtualMachineBuilder.swift
+@@ -180,7 +180,8 @@
+ 
+     // NAT is the one attachment that needs no special entitlement.
+     let network = VZVirtioNetworkDeviceConfiguration()
+-    network.attachment = try networkAttachment(dnsProxy: config.dnsProxy)
++    network.attachment = try networkAttachment(
++      dnsProxy: config.dnsProxy, subnet: config.ipv4Subnet, mask: config.ipv4Mask)
+     vmc.networkDevices = [network]
+ 
+     if !config.vsock.forwards.isEmpty {
+@@ -201,8 +202,17 @@
+   /// The host's NAT. With its DNS proxy, macOS's Internet Sharing has mDNSResponder
+   /// answer on the host's port 53, where a VPN's own resolver can then no longer bind,
+   /// so without it the guest is put on a vmnet network of its own that serves none.
+-  private static func networkAttachment(dnsProxy: Bool) throws -> VZNetworkDeviceAttachment {
++  /// A subnet given puts that network there, rather than where vmnet would pick.
++  private static func networkAttachment(
++    dnsProxy: Bool, subnet: String?, mask: String?
++  ) throws -> VZNetworkDeviceAttachment {
++    if (subnet == nil) != (mask == nil) {
++      throw VZVMError.config("ipv4Subnet and ipv4Mask are given together or not at all")
++    }
+     if dnsProxy {
++      if subnet != nil {
++        throw VZVMError.config("ipv4Subnet needs dnsProxy: false: Internet Sharing picks its own")
++      }
+       return VZNATNetworkDeviceAttachment()
+     }
+     guard #available(macOS 26.0, *) else {
+@@ -213,11 +223,24 @@
+       throw VZVMError.runtime("vmnet network configuration failed: status \(status.rawValue)")
+     }
+     vmnet_network_configuration_disable_dns_proxy(shared)
++    if let subnet, let mask {
++      var address = in_addr()
++      var netmask = in_addr()
++      guard inet_pton(AF_INET, subnet, &address) == 1, inet_pton(AF_INET, mask, &netmask) == 1
++      else {
++        throw VZVMError.config("ipv4Subnet \(subnet) and ipv4Mask \(mask) aren't IPv4 addresses")
++      }
++      status = vmnet_network_configuration_set_ipv4_subnet(shared, &address, &netmask)
++      guard status == .VMNET_SUCCESS else {
++        throw VZVMError.runtime(
++          "vmnet refused subnet \(subnet) mask \(mask): status \(status.rawValue)")
++      }
++    }
+     guard let created = vmnet_network_create(shared, &status) else {
+       throw VZVMError.runtime("vmnet network failed: status \(status.rawValue)")
+     }
+     network = created
+-    Log.info("guest network: shared vmnet, no DNS proxy")
++    Log.info("guest network: shared vmnet, no DNS proxy, subnet \(subnet ?? "vmnet's own")")
+     return VZVmnetNetworkDeviceAttachment(network: created)
+   }
+ 

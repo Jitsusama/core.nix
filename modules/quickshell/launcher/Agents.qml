@@ -373,10 +373,11 @@ Provider {
     }
 
     // Whether its own rows after its sessions' are read now: at home, which
-    // shows them, walked from outside, or held in Agents or Now, which reads
-    // Sessions to Reopen. A stopgap until the agents daemon makes them
-    // ready (Fri 13 Nov), so a chord into another place makes none.
-    function readable() {
+    // shows them, walked from outside, or held in Agents, or in one of the
+    // `others` places that read them. A stopgap until the agents daemon
+    // makes them ready (Fri 13 Nov), so a chord into another place makes
+    // none.
+    function readable(others) {
         const launcher = provider.launcher;
         if (!launcher || typeof launcher.wants !== "function")
             return opened();
@@ -384,13 +385,19 @@ Provider {
             held: launcher.held, becoming: Object.values(launcher.becoming ?? {}),
             typing: launcher.typing, entering: launcher.entering ?? null,
             viewing: launcher.viewing ?? false },
-            [provider, source("now")]);
+            [provider].concat(others));
     }
     // Held as a bool, so a step made again while it stays readable remakes
     // none of them: each change to Agents remakes the steps held
     // (Launcher.qml's relive), and read as the function, every new step
     // made Landed, Recent and Start again (LR3WMN, 2026-11-12).
-    readonly property bool readNow: readable()
+    readonly property bool readNow: readable([])
+    // Sessions to Reopen is read in Now too, whose For You draws it; the
+    // rest aren't, since Now shows none of them. Now is the source named
+    // "on" (home.nix): asked for as "now", it was never found, so held in
+    // Now none were read, and each step out to home made all of them
+    // again, 47 to 72 ms of Joel's (2026-11-21, 13:13).
+    readonly property bool reopenRead: readable([source("on")])
     // Asleep in a kept opening's waking until its turn, like any source
     // home's rows read (Launcher.qml's wakingOrder), so its own are read
     // as it wakes, after the open's turn: in a slice of its own when Now's
@@ -399,25 +406,35 @@ Provider {
 
     // Agents' own rows after its sessions' (toReopen, landed, recent, start
     // and budgets), as each was last made while anything could read it
-    // (readable): at home, in Agents or Now, or its catalogue walked. Shut,
+    // (readable): at home, in Agents, or its catalogue walked, and Sessions
+    // to Reopen in Now too (reopenRead). Shut,
     // or opened into another place, nothing does, so
     // each gives what it last made and reads nothing else, and a change
-    // nobody sees makes none of them; each is made again as the launcher
-    // opens, three or four rows (keeps-pace). Joel's shut launcher made 312
-    // of Agents' rows in 240 s (YQZGPC, 2026-11-10). For You's (forYou)
+    // nobody sees makes none of them. Joel's shut launcher made 312
+    // of Agents' rows in 240 s (YQZGPC, 2026-11-10). Read again, each is
+    // kept while everything it's made from is as it was (keptAlike), so
+    // an opening or a step out of Now makes one again only if that changed
+    // while nothing read it: each - out of Now made 4 to 6 of them anew as
+    // home was held, 47 to 72 ms of Joel's (2026-11-21, 13:13). Budgets
+    // and Spec are made of rows other sources hold, found through calls
+    // that name nothing a list of parts could hold, so they're made again
+    // each time. For You's (forYou)
     // are made shut too, since the tray counts what waits there, but only
-    // as a landing comes, goes or changes. A plain object, so keeping one
-    // notifies nothing.
-    readonly property var lastMade: ({})
-    function madeBefore(name, none) {
-        return name in lastMade ? lastMade[name] : none;
+    // as a landing comes, goes or changes. A keeper (Provider.qml's), so
+    // keeping one notifies nothing.
+    readonly property var ownMade: keeper()
+    function madeBefore(name) {
+        return ownMade.rows[name]?.row ?? null;
     }
-    onToReopenChanged: lastMade.toReopen = toReopen
-    onLandedChanged: lastMade.landed = landed
-    onRecentChanged: lastMade.recent = recent
-    onStartChanged: lastMade.start = start
-    onStartNewWorkChanged: lastMade.startNewWork = startNewWork
-    onBudgetsChanged: lastMade.budgets = budgets
+    // Made here and kept by its name while `parts` are as they were.
+    function ownKept(name, parts, make) {
+        return keptAlike(ownMade, name, parts, make);
+    }
+    // Made anew, and kept by its name for while nothing reads it.
+    function ownAnew(name, row) {
+        ownMade.rows[name] = { from: null, row: row };
+        return row;
+    }
 
     // The daemon's rows of Agents, each record held by its key, its fields
     // under `row` (Y2YBTS's ready-rows.md), watched whether or not the
@@ -825,9 +842,17 @@ Provider {
             .replace("{machine}", session.machine).replace("{why}", why ?? "");
     }
 
+    // What the foot names a session by (SessionRow.footName): its row's
+    // name, else its quest's title, its address only when neither is known.
+    function footName(session) {
+        return SessionRow.footName(provider.standingOf(session.address)?.name,
+            session.presence ? Sessions.named(session.presence).title : "",
+            session.address);
+    }
+
     // A session elsewhere that couldn't be joined, a hosted one with no
     // window to go to, or any the node couldn't tell, is said in the foot,
-    // by its address in the alert colour, where the act was pressed: at
+    // by its name (footName) in the alert colour, where the act was pressed: at
     // once while the launcher's open, or else once it opens next, never as
     // a notice (VKCF3Z, 2026-11-07 [4a00987e]).
     Connections {
@@ -839,18 +864,18 @@ Provider {
         }
 
         function onUnjoined(session) {
-            provider.launcher?.tellOnOpen([[session.address,
+            provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere(session.reachable ? "unheld" : "unreached", session),
                 Theme.alert]]);
         }
 
         function onUnhosted(session) {
-            provider.launcher?.tellOnOpen([[session.address,
+            provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("hosted", session), Theme.alert]]);
         }
 
         function onUnopened(session) {
-            provider.launcher?.tellOnOpen([[session.address,
+            provider.launcher?.tellOnOpen([[provider.footName(session),
                 provider.elsewhere("unopened", session), Theme.alert]]);
         }
 
@@ -861,13 +886,33 @@ Provider {
         // itself and leaves the Wake's row be.
         function onUnsteered(session, why, act) {
             const key = `agent:${session.address}`;
+            const called = provider.footName(session);
             if (act === "wake" && why !== "" && provider.launcher?.becoming?.[key]) {
-                provider.refused(key, why);
+                provider.refused(key, SessionRow.reasonOf(why, session.address,
+                    called === session.address ? "" : called));
                 return;
             }
-            provider.launcher?.tellOnOpen([[session.address,
-                provider.elsewhere(why !== "" ? "untold" : "unanswered", session, why),
-                Theme.alert]]);
+            const [name, said] = SessionRow.refusal(Words.of("agents:machine").said ?? {}, {
+                act: SessionRow.actName(act, Words.name), why, address: session.address,
+                name: called
+            });
+            provider.launcher?.tellOnOpen([[name, said, Theme.alert]]);
+        }
+
+        // A parked session Wake would reopen with no fence it can say,
+        // which might bring it back looser than it ran, is left asleep and
+        // said so, rather than as the node's refusal, which blames its
+        // missing holder (#5901's F16). A Wake pressed here, whose row was
+        // becoming woken, is taken back at once, as a refused Wake is, so
+        // the row doesn't read listening until Becoming gives up on it.
+        function onUnfenced(session) {
+            const key = `agent:${session.address}`;
+            if (provider.launcher?.becoming?.[key]) {
+                provider.refused(key, provider.elsewhere("unfencedWhy", session));
+                return;
+            }
+            provider.launcher?.tellOnOpen([[provider.footName(session),
+                provider.elsewhere("unfenced", session), Theme.alert]]);
         }
     }
 
@@ -1363,7 +1408,7 @@ Provider {
             // Woken, one waiting on Joel still waits on him, so his mark
             // keeps the alert's hue rather than a program's.
             hue: SessionRow.hue(now?.waitsOnJoel ? "needs" : "listening", full !== "")
-        }, session.title, "wake", {
+        }, provider.footName(session), "wake", {
             done: () => !Sessions.parked.some(one => String(one.presence?.session ?? "") === id),
             within: Sessions.startsWithin
         });
@@ -1580,9 +1625,10 @@ Provider {
         return (provider.launcher?.sources ?? []).find(one => one.settings.name === name) ?? null;
     }
 
-    readonly property var start: {
-        if (!readNow)
-            return madeBefore("start", null);
+    // Made of its words alone, what it holds read as it's stepped into.
+    readonly property var start: readNow ? ownKept("start", [Words.all, provider.weight],
+        startMade) : madeBefore("start")
+    function startMade() {
         const quests = () => (source("quests")?.everything() ?? [])
             .filter(row => row.unfinished && row.verb !== "go to");
         // Its drawer says what it holds, as every row's does (Joel,
@@ -1613,9 +1659,9 @@ Provider {
     // once it's up (openSprouted). Folded, found by its name, as Start a Session is.
     // Its rows are made only when it's stepped into (inside), so it costs
     // the first letter typed at home one folded row.
-    readonly property var startNewWork: {
-        if (!readNow)
-            return madeBefore("startNewWork", null);
+    readonly property var startNewWork: readNow ? ownKept("startNewWork",
+        [Words.all, provider.weight], startNewWorkMade) : madeBefore("startNewWork")
+    function startNewWorkMade() {
         const words = Words.of("agents:start-new-work");
         const inside = () => [newWorkAct("link", "",
             Words.name("verb:agents:start-new-work:link"))]
@@ -2019,9 +2065,12 @@ Provider {
     // there only while any are. Its count is at its side, never in its
     // name, which would change as he reopens them, and its note says where
     // they came from.
-    readonly property var toReopen: {
-        if (!readNow)
-            return madeBefore("toReopen", null);
+    // Made of what Sessions offers and how it words each, Not Now's last
+    // boot read as it's stepped into.
+    readonly property var toReopen: reopenRead ? ownKept("toReopen", [Words.all, provider.weight,
+        Sessions.toReopen, Sessions.reopenRows, Sessions.reopenPlace], toReopenMade)
+        : madeBefore("toReopen")
+    function toReopenMade() {
         const lost = Sessions.toReopen;
         if (lost.length === 0)
             return null;
@@ -2103,11 +2152,17 @@ Provider {
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to
             // carry on as it opens, so none waits to be poked; one reopened
-            // alone from its own row isn't, since Joel is there.
-            run: () => Sessions.reopenThemAll(reopenable, () => {
-                outcome.gone += 1;
-                tellAll();
-            })
+            // alone from its own row isn't, since Joel is there. Counted
+            // afresh each time, since the row is kept while what's to
+            // reopen stands (ownKept), and a second run would add to the
+            // first's.
+            run: () => {
+                outcome.gone = 0;
+                Sessions.reopenThemAll(reopenable, () => {
+                    outcome.gone += 1;
+                    tellAll();
+                });
+            }
         });
         return thingRow({
             key: "agents:to-reopen",
@@ -2592,11 +2647,12 @@ Provider {
         };
     }
 
-    readonly property var landed: {
-        if (!readNow)
-            return madeBefore("landed", null);
-        // Made again as the day Joel is in is told, so its step is too.
-        void landedDayMoves;
+    // Made again as the day Joel is in is told, so its step is too, and as
+    // the day turns, which renames the days before.
+    readonly property var landed: readNow ? ownKept("landed", [Words.all, provider.weight,
+        landedDayMoves, landedDays, Calendars.today, landings, landedEarlier], landedMade)
+        : madeBefore("landed")
+    function landedMade() {
         const words = Words.of("agents:landed");
         return thingRow({
             key: "agents:landed",
@@ -2799,11 +2855,11 @@ Provider {
     // or the day turns, which rewords when each closed: Sessions had made
     // every closed session anew as any one changed, and compared nine of
     // Joel's, about 30,000 characters, each time (2026-11-10).
-    readonly property var recent: {
-        if (!readNow)
-            return madeBefore("recent", null);
-        void recentMoves;
-        void Calendars.today;
+    // What it holds changes in place, which recentMoves counts; rowsKind's
+    // held is a part too since a reload of rowsLink gives another.
+    readonly property var recent: readNow ? ownKept("recent", [Words.all, provider.weight,
+        recentMoves, Calendars.today, rowsKind?.held], recentMade) : madeBefore("recent")
+    function recentMade() {
         const held = Object.values(rowsKind?.held ?? {})
             .filter(one => one?.kind === "recent" && one.recent);
         const listed = Order.sorted(held, Order.smaller(one => one.order))
@@ -2868,9 +2924,9 @@ Provider {
     // lists no budgets: with one budget, which its periods already say,
     // with no spend-watch, or while the screen is shared, when AI spend
     // lists only what holds no amount (KP0L6A, 2026-11-08 [f566a31a]).
-    readonly property var budgets: {
-        if (!readNow)
-            return madeBefore("budgets", null);
+    readonly property var budgets: readNow ? ownAnew("budgets", budgetsMade())
+        : madeBefore("budgets")
+    function budgetsMade() {
         // AI spend's row as it reads now, since AI spend makes its rows
         // only while it's wanted, which it isn't while Agents is held;
         // found among them where it can't say (1KZFHC, 2026-11-10).
@@ -2900,9 +2956,8 @@ Provider {
     // cadence-spec hasn't answered or isn't on this machine. Listed as its
     // part, as Budgets is, and never among Agents' own rows as well, where
     // its key twice over moved the cursor between them (2026-11-18).
-    readonly property var spec: {
-        if (!readNow)
-            return madeBefore("spec", null);
+    readonly property var spec: readNow ? ownAnew("spec", specMade()) : madeBefore("spec")
+    function specMade() {
         const place = source("spec");
         const head = place?.head() ?? null;
         if (head === null)
@@ -2915,7 +2970,6 @@ Provider {
             hue: head.hue || "agent"
         }, () => place.axes());
     }
-    onSpecChanged: lastMade.spec = spec
 
     things: [toReopen, landed, budgets, spec, recent, start, startNewWork]
         .filter(row => row !== null)

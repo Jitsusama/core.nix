@@ -188,7 +188,7 @@ impl App {
             }
         }
         if let Some(link) = chosen {
-            self.follow(&link);
+            self.follow(&link.href);
         }
         if !self.frame_pending {
             self.draw();
@@ -197,11 +197,11 @@ impl App {
 
     /// Goes where a link points: to a heading here, as a jump Ctrl+O comes
     /// back from, or anywhere else as the desktop opens it.
-    pub(crate) fn follow(&mut self, link: &links::Link) {
+    pub(crate) fn follow(&mut self, href: &str) {
         if keys_logged() {
-            eprintln!("link: {}", link.href);
+            eprintln!("link: {href}");
         }
-        match links::target(&link.href, &self.file) {
+        match links::target(href, &self.file) {
             // A link to the page itself, with no heading, goes to its top,
             // and one to a heading puts the cursor on it, as gg and ]] do.
             links::Target::Here(anchor) if anchor.is_empty() => {
@@ -209,22 +209,35 @@ impl App {
                 self.aim = None;
             }
             links::Target::Here(anchor) => {
+                // The search's words lag the page set again, and the first
+                // screen's page ends short of the file, but the keys' lines
+                // say which setting they're of.
+                let read = self
+                    .layout
+                    .as_ref()
+                    .and_then(|layout| layout.of(self.painter.version));
                 let heading = self
                     .words
                     .as_ref()
-                    .and_then(|lines| links::heading_at(lines, &anchor));
+                    .and_then(|lines| links::heading_at(lines, &anchor))
+                    .or_else(|| read.and_then(|layout| links::heading_at(&layout.lines, &anchor)));
+                let unread = !self.whole || read.is_none();
+                // A miss is said where the keys' other misses are, as
+                // Vim's E426 says a tag isn't there, once the whole page's
+                // lines are read to say so.
                 match heading {
                     Some(pt) => {
                         self.remember(self.heading() / self.px_per_pt());
                         self.land(pt.max(0.0));
                     }
-                    None => eprintln!("reader: no heading here is #{anchor}"),
+                    None if unread => self.say(super::STILL_READING),
+                    None => self.say(&format!("E426: Tag not found: #{anchor}")),
                 }
             }
             links::Target::Page(file, heading) => {
+                // Said by the name as the link wrote it, as gf says it.
                 if !file.is_file() {
-                    eprintln!("reader: there's no {}", file.display());
-                    return;
+                    return self.say(&format!("E447: Can't find file \"{href}\" in path"));
                 }
                 self.remember(self.heading() / self.px_per_pt());
                 self.open(file, heading.map_or(Landing::Kept, Landing::Heading));

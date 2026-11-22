@@ -14,6 +14,7 @@
 
 use last_seconds::record::Record;
 use last_seconds::ring::{self, Header};
+use last_seconds::table::{self, clock};
 use last_seconds::{RING, STATE, STATE_VARIABLE};
 use serde_json::{Value, json};
 use std::env;
@@ -28,8 +29,6 @@ use terminal_kit::{Context, Exit, Failure, Help, Row};
 const BOOT_ID: usize = 32;
 /// How many seconds one boot shows in text, unless asked otherwise.
 const SHOWN: usize = 20;
-/// The microseconds in a second.
-const SECOND_US: u64 = 1_000_000;
 /// How old the boot running now's newest record may be, in milliseconds,
 /// before its recorder is said to have stopped writing.
 const QUIET_MS: u64 = 10_000;
@@ -183,15 +182,6 @@ fn minute(seconds: i64) -> String {
     )
 }
 
-/// A moment as the machine's clock reads it, to the second.
-fn clock(at_ms: i64) -> String {
-    let seconds = at_ms.div_euclid(1_000);
-    terminal_kit::local::at(seconds).map_or_else(
-        || seconds.to_string(),
-        |at| format!("{:02}:{:02}:{:02}", at.hour, at.minute, at.second),
-    )
-}
-
 /// A moment as the machine's clock reads it, to the second, with its day.
 fn moment(at_ms: i64) -> String {
     let seconds = at_ms.div_euclid(1_000);
@@ -199,35 +189,6 @@ fn moment(at_ms: i64) -> String {
         || seconds.to_string(),
         |at| format!("{} {}", at.date(), clock(at_ms)),
     )
-}
-
-/// Tenths of a whole, from thousandths, as 14.2 or -14.2.
-fn tenths(thousandths: i64) -> String {
-    let sign = if thousandths <= -50 { "-" } else { "" };
-    let tenths = (thousandths.unsigned_abs() + 50) / 100;
-    format!("{sign}{}.{}", tenths / 10, tenths % 10)
-}
-
-/// A share of a second, from microseconds, in whole percent.
-fn share(us: Option<u32>) -> String {
-    us.map_or_else(String::new, |us| {
-        format!("{}%", (u64::from(us) * 100 + SECOND_US / 2) / SECOND_US)
-    })
-}
-
-/// What the battery takes, in milliwatts, where it says: less than none
-/// where it gives.
-fn battery_mw(record: &Record) -> Option<i64> {
-    Some(i64::from(record.battery_mv?) * i64::from(record.battery_ma?) / 1_000)
-}
-
-/// The share of their time the processors spent in the deepest rest
-/// state over the second.
-fn deepest(record: &Record, header: &Header) -> Option<u32> {
-    let at = header.rests.len().checked_sub(1)?;
-    let rested = u64::from(record.rests.get(at).copied()??);
-    let processors = u64::from(header.processors).max(1);
-    u32::try_from(rested / processors).ok()
 }
 
 fn record_json(record: &Record) -> Value {
@@ -309,61 +270,6 @@ fn rows(kept: &[Kept], current: &str) -> Vec<Row> {
             }
         })
         .collect()
-}
-
-/// The table's columns, with the deepest rest state's name in its label.
-fn columns(header: Option<&Header>) -> Vec<(String, Align)> {
-    let deepest = header
-        .and_then(|header| header.rests.last())
-        .map_or_else(|| "DEEPEST REST".to_owned(), |name| format!("IN {name}"));
-    [
-        ("TIME", Align::Left),
-        ("PACKAGE W", Align::Right),
-        ("PLATFORM W", Align::Right),
-        ("HEAT °C", Align::Right),
-        ("FANS", Align::Right),
-        ("LOAD", Align::Right),
-        ("CPU WAIT", Align::Right),
-        ("MEMORY WAIT", Align::Right),
-        ("DISK WAIT", Align::Right),
-        ("FREE GIB", Align::Right),
-        ("BATTERY W", Align::Right),
-        (deepest.as_str(), Align::Right),
-    ]
-    .into_iter()
-    .map(|(label, align)| (label.to_owned(), align))
-    .collect()
-}
-
-/// The columns that give way first where the room is too narrow, least
-/// useful first: the time, the package's draw and its heat stay longest.
-const GIVES_WAY: [usize; 11] = [10, 11, 9, 8, 6, 4, 5, 2, 7, 3, 1];
-
-fn cells(record: &Record, header: Option<&Header>) -> Vec<String> {
-    let watts = |mw: Option<u32>| mw.map_or_else(String::new, |mw| tenths(i64::from(mw)));
-    let fans: Vec<String> = record.fans.iter().flatten().map(u16::to_string).collect();
-    vec![
-        clock(record.at_ms),
-        watts(record.package_mw),
-        watts(record.platform_mw),
-        record
-            .package_mc
-            .map_or_else(String::new, |mc| tenths(i64::from(mc))),
-        fans.join(" "),
-        record.load.map_or_else(String::new, |load| {
-            format!("{}.{:02}", load / 100, load % 100)
-        }),
-        share(record.stalls.cpu_some),
-        share(record.stalls.memory_some),
-        share(record.stalls.io_some),
-        record.available_kib.map_or_else(String::new, |kib| {
-            tenths(i64::from(kib) * 1_000 / (1 << 20))
-        }),
-        battery_mw(record).map_or_else(String::new, tenths),
-        header
-            .and_then(|header| deepest(record, header))
-            .map_or_else(String::new, |us| share(Some(us))),
-    ]
 }
 
 /// What it says of itself, set as help and read by the check.
@@ -569,18 +475,21 @@ fn one(
     let shown = seconds.unwrap_or(SHOWN);
     let records = &boot.records[boot.records.len().saturating_sub(shown)..];
     if !records.is_empty() {
-        let columns = columns(header);
+        let columns = table::columns(header);
         let columns: Vec<(&str, Align)> = columns
             .iter()
             .map(|(label, align)| (label.as_str(), *align))
             .collect();
-        let rows: Vec<Vec<String>> = records.iter().map(|record| cells(record, header)).collect();
+        let rows: Vec<Vec<String>> = records
+            .iter()
+            .map(|record| table::cells(record, header))
+            .collect();
         blocks.push(layout::table_in(
             &columns,
             &rows,
             &context.out,
             context.room,
-            &GIVES_WAY,
+            &table::GIVES_WAY,
         ));
     }
     said(context.say(&layout::joined(blocks)))
@@ -611,6 +520,7 @@ fn main() -> ExitCode {
 mod tests {
     use super::*;
     use last_seconds::ring::Ring;
+    use last_seconds::scratch::Folder;
 
     fn ring_in(state: &Path, boot: &str, records: &[Record]) {
         ring_begun(state, boot, 1_795_241_514, records);
@@ -631,12 +541,8 @@ mod tests {
         }
     }
 
-    fn state(name: &str) -> PathBuf {
-        let state =
-            env::temp_dir().join(format!("last-seconds-reader-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&state);
-        fs::create_dir_all(&state).expect("a state folder");
-        state
+    fn state(name: &str) -> Folder {
+        Folder::make(&format!("reader-{name}")).expect("a state folder")
     }
 
     #[test]
@@ -690,7 +596,6 @@ mod tests {
             ("6bcc".to_owned(), "quiet"),
             "a recorder that stopped writing was said to be recording"
         );
-        let _ = fs::remove_dir_all(&state);
     }
 
     #[test]
@@ -703,7 +608,6 @@ mod tests {
         };
         ring_in(&state, "949a397ceafb4b789dd6b3d0e50c92e9", &[asleep]);
         let kept = kept_in(&state, "6bccd85d80714583afd805c687f0cdb6", 0, None).expect("the boots");
-        let _ = fs::remove_dir_all(&state);
         assert_eq!(kept[0].end, End::Asleep);
         let said = kept[0].end.words(Some("22:10:00"));
         assert!(
@@ -739,41 +643,6 @@ mod tests {
                 .any(|boot| matches!(boot.end, End::Unreadable(_))),
             "a ring that couldn't be read wasn't said unreadable"
         );
-        let _ = fs::remove_dir_all(&state);
-    }
-
-    #[test]
-    fn the_deepest_rest_is_a_share_of_every_processors_second() {
-        let header = Header {
-            slots: 8,
-            began: 0,
-            processors: 2,
-            rests: vec!["C1".to_owned(), "C10".to_owned()],
-        };
-        let record = Record {
-            rests: [Some(0), Some(1_500_000), None, None, None, None, None, None],
-            ..Record::default()
-        };
-        assert_eq!(share(deepest(&record, &header)), "75%");
-    }
-
-    #[test]
-    fn figures_are_said_in_tenths() {
-        assert_eq!(tenths(14_250), "14.3");
-        assert_eq!(tenths(71_000), "71.0");
-        assert_eq!(tenths(40), "0.0");
-        assert_eq!(tenths(-14_250), "-14.3");
-        assert_eq!(tenths(-40), "0.0");
-    }
-
-    #[test]
-    fn a_battery_giving_power_is_said_below_none() {
-        let giving = Record {
-            battery_mv: Some(16_000),
-            battery_ma: Some(-1_000),
-            ..Record::default()
-        };
-        assert_eq!(battery_mw(&giving), Some(-16_000));
     }
 
     #[test]

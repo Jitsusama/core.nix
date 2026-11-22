@@ -186,8 +186,8 @@ fn single_carrier_down(row: &Value) -> Channel {
         modulation: None,
         power_dbmv: real(row, "signalStrength"),
         snr_db: real(row, "snr"),
-        corrected: whole(row, "correcteds"),
-        uncorrectable: whole(row, "uncorrect"),
+        corrected: count(row, "correcteds"),
+        uncorrectable: count(row, "uncorrect"),
         active: true,
         lost_lately: None,
     }
@@ -204,8 +204,8 @@ fn ofdm_down(row: &Value) -> Channel {
         modulation: None,
         power_dbmv: real(row, "plcpower"),
         snr_db: real(row, "SNR"),
-        corrected: whole(row, "correcteds"),
-        uncorrectable: whole(row, "uncorrect"),
+        corrected: count(row, "correcteds"),
+        uncorrectable: count(row, "uncorrect"),
         active: text(row, "plclock").map(str::trim) == Some("YES"),
         lost_lately: None,
     }
@@ -278,7 +278,12 @@ fn clean(message: &str) -> String {
 fn uptime(said: &str) -> Option<u64> {
     let mut parts = said.split(':');
     let mut part = |unit| parts.next()?.trim().strip_suffix(unit)?.parse::<u64>().ok();
-    Some(part('h')? * 3600 + part('m')? * 60 + part('s')?)
+    // Checked, since a misread hours field would otherwise wrap, and the
+    // uptime now says when the modem started.
+    part('h')?
+        .checked_mul(3600)?
+        .checked_add(part('m')?.checked_mul(60)?)?
+        .checked_add(part('s')?)
 }
 
 /// A dotted netmask's prefix length.
@@ -329,6 +334,16 @@ fn whole<T: std::str::FromStr>(row: &Value, key: &str) -> Option<T> {
     text(row, key)?.trim().parse().ok()
 }
 
+/// A channel's count of pieces of data, which the modem keeps in 32 bits:
+/// one climbing tens of thousands a second reads only hundreds of millions
+/// after weeks up, so it wraps. Now and then a page gives one past 32 bits,
+/// 64 to 72 in its high half, which is a misread and so none. Its low half
+/// is no real count either, and a misread with nothing in its high half,
+/// often a zero, can't be told from one: src/history.rs allows for that.
+fn count(row: &Value, key: &str) -> Option<u64> {
+    whole::<u32>(row, key).map(u64::from)
+}
+
 fn real(row: &Value, key: &str) -> Option<f64> {
     whole::<f64>(row, key).filter(|figure| figure.is_finite())
 }
@@ -344,6 +359,26 @@ mod tests {
     #[test]
     fn uptime_reads_as_seconds() {
         assert_eq!(uptime("226h:33m:39s"), Some(815_619), "the uptime misread");
+        let hours = u64::MAX / 3600;
+        assert_eq!(
+            uptime(&format!("{hours}h:0m:0s")),
+            Some(hours * 3600),
+            "the most hours seconds can hold weren't read"
+        );
+        // Each step that could pass what seconds can hold: the hours, the
+        // minutes, then adding the minutes, then the seconds.
+        for said in [
+            format!("{}h:0m:0s", hours + 1),
+            format!("0h:{}m:0s", u64::MAX / 60 + 1),
+            format!("{hours}h:60m:0s"),
+            format!("{hours}h:0m:3600s"),
+        ] {
+            assert_eq!(
+                uptime(&said),
+                None,
+                "{said} is past what seconds can hold, yet read as an uptime"
+            );
+        }
     }
 
     #[test]
@@ -370,6 +405,41 @@ mod tests {
             Some("3.1"),
             "the DOCSIS version wasn't found"
         );
+    }
+
+    #[test]
+    fn a_count_past_what_the_modem_keeps_is_a_misread() {
+        let row = serde_json::json!({
+            "Subcarr0freqFreq": " 635600000",
+            "correcteds": "528562409",
+            "uncorrect": "309237645385",
+        });
+        let channel = ofdm_down(&row);
+        assert_eq!(
+            (channel.corrected, channel.uncorrectable),
+            (Some(528_562_409), None),
+            "a count the modem can't hold was taken as real, or a real one lost"
+        );
+    }
+
+    #[test]
+    fn a_count_is_kept_up_to_32_bits_on_either_kind_of_channel() {
+        // A wrapping counter reaches the last 32-bit count, so that one is
+        // real and only the next is a misread, on either kind of channel.
+        let row = serde_json::json!({
+            "channelId": "16",
+            "Subcarr0freqFreq": " 635600000",
+            "correcteds": "4294967295",
+            "uncorrect": "4294967296",
+        });
+        for channel in [single_carrier_down(&row), ofdm_down(&row)] {
+            assert_eq!(
+                (channel.corrected, channel.uncorrectable),
+                (Some(4_294_967_295), None),
+                "the {} channel drew the line in the wrong place",
+                channel.kind
+            );
+        }
     }
 
     #[test]

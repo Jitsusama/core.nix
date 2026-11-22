@@ -2743,6 +2743,14 @@ def sessions_sought(shell: Shell) -> int:
     return int(json.loads(shell.as_account(shell.ipc("made")))["sought"]["agents"])
 
 
+def made_since(shell: Shell, before: int) -> list[str]:
+    """Give the keys of the rows Agents made after it had made `before`, oldest first."""
+    made = made_by_agents(shell) - before
+    assert made <= LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
+    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
+    return [key.split(" ")[0] for key in (lately[-made:] if made else [])]
+
+
 def made_lately(shell: Shell) -> str:
     """Say the last rows Agents made, each marked shut or walked as the launcher was then."""
     lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
@@ -2918,6 +2926,130 @@ def test_the_first_letter_typed_at_home_makes_no_rows_after_one_arrived_while_sh
     shell.type_in("tidepool", selecting="Tidepool Quest")
     made = made_by_agents(shell) - opened
     assert made == 0, f"typing at home made {made} of Agents' rows: {made_lately(shell)}"
+
+
+def test_a_step_out_of_now_makes_none_of_agents_rows_as_home_is_held(shell: Shell) -> None:
+    """- out of Now, opened by its chord, makes none of Agents' rows as home is held.
+
+    Joel's - out of Now held 72, 53 and 47 ms, Agents making 6 rows within each, where every
+    other step out held 2 to 4 ms with none (his journal, 2026-11-21 13:13). Home names what
+    Agents holds from the daemon's rows, never from rows made of them, so a row made as it's held
+    is made for nobody (Y2YBTS, 2026-11-21 [8c306245]). The step's line counts them, as
+    stepHolding says.
+    """
+    shell.launcher_closed()
+    # Home read first, as Joel's had been, so what's counted is the step's alone, whichever
+    # cases ran before this one.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    made_settled(shell)
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
+    made_settled(shell)
+    before = made_by_agents(shell)
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    holding = json.loads(shell.as_account(shell.ipc("laidOut")))["stepHolding"]
+    made_settled(shell)
+    after = made_by_agents(shell) - before
+    lately = made_lately(shell)
+    shell.close_launcher()
+    assert holding is not None, "- out of Now counted nothing as it held"
+    made = holding["rows"].get("agents", 0)
+    assert made == 0, f"- out of Now made {made} of Agents' rows as it held: {lately}"
+    # Nor in the turns after, where a remake put off from the step's hold would land.
+    assert after == 0, f"- out of Now made {after} of Agents' rows after it held: {lately}"
+
+
+def test_sessions_to_reopen_in_for_you_follows_what_is_to_reopen_as_now_is_held(
+    shell: Shell,
+) -> None:
+    """For You's Sessions to Reopen changes as what's to reopen does, while Now is held.
+
+    Now is the source named "on" (home.nix), and Agents reads Sessions to Reopen there. Asked
+    for as "now", it was never found, and the row For You drew stood as it was last made at
+    home or in Agents.
+    """
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "Sessions to Reopen" in shown["rows"])
+    shell.down_to("Sessions to Reopen")
+    before = shell.showing()["selected"]["side"]
+    kept = RESTORE.read_text()
+    said = json.loads(kept)
+    said["sessions"].append(
+        {
+            "id": "01b4-tide",
+            "address": "TIDERN",
+            "title": "Tide Return",
+            "cwd": str(KEPT),
+            "lostAt": 1,
+        }
+    )
+    try:
+        RESTORE.write_text(json.dumps(said))
+        shell.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "For You"]
+                and (shown["selected"] or {}).get("name") == "Sessions to Reopen"
+                and (shown["selected"] or {}).get("side") != before
+            )
+        )
+    finally:
+        RESTORE.write_text(kept)
+        shell.close_launcher()
+
+
+def test_a_session_landing_while_now_is_held_is_counted_in_landed_once_stepped_out(
+    shell: Shell,
+) -> None:
+    """A landing heard while Now is held makes no Landed there, and - out of Now makes it.
+
+    Agents keeps each of its own rows while what it's made from is as it was, and Now reads
+    only Sessions to Reopen of them, so a part left out of what Landed is kept by would leave
+    its count as it stood before the landing, for as long as nothing else it's made from
+    changed.
+    """
+    # Not by opened(), whose first rows the sessions the cases before this one laid move.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    before = shell.showing()["selected"]["side"]
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"])
+    landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#6037", "what": "Counted"}
+    try:
+        made = made_by_agents(shell)
+        # Heard whole as one arriving shut is, though Now is held.
+        arrived_shut(
+            shell,
+            lambda: lay("NOWLND", "Landed in Now", {"state": "listening", "landings": [landing]}),
+        )
+        in_now = made_since(shell, made)
+        assert "agents:landed" not in in_now, f"Now made Landed as the landing came: {in_now}"
+        made = made_by_agents(shell)
+        shell.normal()
+        shell.send_chars("-")
+        shell.launcher_until(lambda shown: not shown["held"])
+        made_settled(shell)
+        at_home = made_since(shell, made)
+        assert "agents:landed" in at_home, f"- out of Now made no Landed: {at_home}"
+        shell.close_launcher()
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(
+            lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"]
+        )
+        shell.down_to("Landed")
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") != before)
+    finally:
+        shell.close_launcher()
+        (PRESENCE / "nowlnd.json").unlink(missing_ok=True)
 
 
 # How long Agents makes no row before an opening's work is taken as done: many frames.
@@ -3247,7 +3379,10 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     # The answer takes sent's place, where it went first, its undo offered in the foot.
     replied(sent, "\u2192 Delta \u00b7 undo 04:58\nFiled under the cut title's fix.")
     shell.launcher_until(
-        lambda shown: shown["line"]["talk"] == "answered" and shown["line"]["takes"]
+        lambda shown: (
+            shown["line"]["talk"] == "answered"
+            and [":take", "take it back"] in shown["line"]["footKeys"]
+        )
     )
     assert shell.showing()["line"]["standing"].startswith("\u2192 Delta\n"), shell.showing()
     shoot("answered")
@@ -3259,7 +3394,7 @@ def test_super_s_line_says_the_answer_and_takes_it_back_inside_itself(
     shell.launcher_until(lambda shown: shown["line"]["talk"] == "taking")
     replied(steered(lambda text: text == "undo 04:58"), "undone")
     shell.launcher_until(lambda shown: shown["line"]["standing"] == "taken back")
-    assert not shell.showing()["line"]["takes"], shell.showing()["line"]
+    assert [":take", "take it back"] not in shell.showing()["line"]["footKeys"], shell.showing()
     shoot("taken")
     # Put away and opened again, the talk is still there, the field empty.
     shell.as_account(line)
@@ -3650,6 +3785,10 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     Joel wanted to "continue those threads of conversation" (2026-11-13 17:48, [851e94b2]).
     A reply's first line names its thread by its key, which the void sends on to whoever has
     it and writes as `replied` (QCXZEB [5eaea432], 8GYNJ6 [0543317b]).
+
+    Picked by Tab while typing, Return opens the line with no Escape first, the foot saying
+    each key as it's wanted, and the reply stands as sent under it (Joel, 2026-11-21 10:23
+    and 10:27: "I have no clue how to step into a thread", "enter does nothing").
     """
     inbox = STEER / "VOID"
     replies = inbox / "replies"
@@ -3702,13 +3841,18 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
             shown["line"]["keys"] and asked in [one["line"] for one in shown["line"]["talks"]]
         )
     )
-    # A key of another keymap first, as the case before does, so Escape isn't lost.
-    shell.send_key("F24")
-    shell.send_key("esc")
-    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    # Typing, the foot says Tab picks a line; once one is picked, that Return opens it.
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["mode"] == "insert"
+            and shown["line"]["footKeys"][:1] == [["Tab", "picks a line"]]
+        )
+    )
     at_line = [one["line"] for one in shell.showing()["line"]["talks"]].index(asked)
-    shell.send_chars(f"{at_line + 1}j")
-    shell.launcher_until(lambda shown: shown["line"]["picked"] == at_line)
+    # A key of another keymap first, as the cases before do, so the first Tab isn't lost.
+    shell.send_key("F24")
+    pick_by_tab(shell, at_line)
+    typing_lets_the_pick_go(shell, at_line)
     shell.send_key("ret")
     # It opens ready to type, so the reply's first letter is its first letter, no i before.
     shell.launcher_until(
@@ -3720,19 +3864,72 @@ def test_super_s_line_sends_what_is_typed_in_an_open_thread_as_its_reply(shell: 
     shell.send_chars(words)
     shell.launcher_until(lambda shown: shown["line"]["typed"] == words)
     shell.send_key("ret")
-    # It shows in the thread as his at once, before the void has written it.
+    # It shows in the thread as his at once, before the void has written it, sent under it,
+    # and the foot says how to come back.
     shell.launcher_until(
         lambda shown: (
-            [[step["text"], step["mine"]] for step in (shown["line"]["thread"] or {})["steps"]][-1:]
-            == [[words, True]]
+            [[step["text"], step["mine"]] for step in (shown["line"]["thread"] or {})["steps"]][-2:]
+            == [[words, True], ["sent", False]]
+            and shown["line"]["footKeys"][:1] == [["Esc -", "back to the lines"]]
         )
     )
     sent = steered(words)
     assert sent["text"] == f"reply {key}\n{words}", sent
     # Said now, so the void reads it into the run under way rather than after it.
     assert sent.get("now") is True, sent
+    comes_back_picked(shell, asked)
     shell.as_account(line)
     shell.launcher_until(lambda shown: not shown["line"]["up"])
+
+
+def pick_by_tab(shell: Shell, at_line: int) -> None:
+    """Pick Super+S's line at `at_line` by Tab, typing, till the foot says Return opens it."""
+    for _ in range(at_line + 1):
+        shell.send_key("tab")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["picked"] == at_line
+            and shown["line"]["mode"] == "insert"
+            and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
+        )
+    )
+
+
+def typing_lets_the_pick_go(shell: Shell, at_line: int) -> None:
+    """Type a letter, which lets a pick go so Return would send it, then pick again."""
+    shell.send_chars("x")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["picked"] == -1
+            and shown["line"]["footKeys"][:1] == [["Tab", "picks a line"]]
+        )
+    )
+    shell.send_key("backspace")
+    shell.launcher_until(lambda shown: shown["line"]["typed"] == "")
+    pick_by_tab(shell, at_line)
+
+
+def comes_back_picked(shell: Shell, asked: str) -> None:
+    """Come back from a thread by Esc -, its line still picked, a reply's clearing aside.
+
+    The line is told by its words, not where it stood, since the list may move it while its
+    thread is open.
+    """
+
+    def picked(shown: dict[str, Any]) -> str:
+        at, talks = shown["line"]["picked"], shown["line"]["talks"]
+        return talks[at]["line"] if 0 <= at < len(talks) else ""
+
+    shell.send_key("esc")
+    shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
+    shell.send_chars("-")
+    shell.launcher_until(
+        lambda shown: (
+            shown["line"]["thread"] is None
+            and picked(shown) == asked
+            and shown["line"]["footKeys"][:1] == [["\u21b5", "opens it"]]
+        )
+    )
 
 
 @pytest.mark.usefixtures("said_over")
@@ -3801,7 +3998,14 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shell.launcher_until(lambda shown: shown["line"]["picked"] == talks.index(asked))
     shell.send_key("ret")
     fold = "replied \u00b7 msg w3 \u00b7 re w2 \u00b7 to WCJQSG"
-    shell.launcher_until(lambda shown: mine(shown) == [[words, True, fold]])
+    # Written, it waits on whoever has the thread, by name and never the owner's address.
+    shell.launcher_until(
+        lambda shown: (
+            mine(shown) == [[words, True, fold]]
+            and [step["text"] for step in shown["line"]["thread"]["steps"]][-1:]
+            == ["waiting on your orchestrator"]
+        )
+    )
     shell.send_key("esc")
     shell.launcher_until(lambda shown: shown["line"]["mode"] == "normal")
     shell.send_chars("za")
@@ -3811,18 +4015,36 @@ def test_super_s_line_shows_a_reply_the_void_wrote_once_in_its_thread_and_not_as
     shell.launcher_until(lambda shown: not shown["line"]["up"])
 
 
-# How long before Return the first turn lays a session's work turning, in seconds: a turn took
-# about 0.85 s from the file to the shell on a builder (2026-11-18), and the same lead was heard
-# anywhere from 14 to 345 ms after Return's work from one turn to the next (2026-11-19), so a
-# fixed walk of leads could miss Pacing.keyed's 50 ms. Each turn heard after Return moves the
-# next one's laying earlier by as much as it was late, and each heard before moves it later by
-# LEAD_BACK, so the turns close in on the race on a builder fast or slow. A turn heard a second
-# or more after Return's work is said no more than one heard before it, so the lead never drops
-# below LEAST_LEAD, from which a turn would have to take 1.3 s or more to reach the shell to read
-# as early.
-FIRST_LEAD = 0.8
-LEAD_BACK = 0.04
-LEAST_LEAD = 0.3
+# How long before Return a session's work turns, in seconds, is how long the nudge's line took
+# from its file to what the launcher shows that very turn, the same way through the node and
+# Now, and AHEAD more. A fixed lead couldn't follow the builders: a turn took about 0.85 s to the
+# shell on 18 November and under 0.3 s on 21 November, when every turn of one run was heard
+# before Return, and the same lead was heard 14 to 345 ms after Return's work from one turn to
+# the next (2026-11-19). Return's own key takes a while to be worked, so AHEAD starts half of
+# Pacing.keyed's 50 ms early and is steered: each turn heard after Return moves it earlier by as
+# much as it was late, and each heard before moves it later by AHEAD_BACK, twice as far for
+# each such turn in a row, within AHEAD_MOST, so the turns close in on the race on a builder
+# fast or slow. The way's time counts the poll that sees it too, which only steering earns
+# back, so the steps back grow rather than leave a slow poll beyond their reach. The launcher
+# says a turn only within a second of Return's work, so one heard a second or more after reads
+# as one heard before; AHEAD_LEAST keeps the lead within half a second of the way, from which a
+# turn would need half a second longer than the nudge took to read so, past the 331 ms the same
+# lead's turns spread over on 19 November.
+FIRST_AHEAD = -0.025
+AHEAD_BACK = 0.04
+AHEAD_LEAST = -0.5
+AHEAD_MOST = 1.0
+
+
+def steered(ahead: float, back: float, late: int | None) -> tuple[float, float]:
+    """AHEAD and the next step back after a turn heard `late` ms after Return, or None."""
+    if late is None:
+        ahead, back = ahead - back, back * 2
+    else:
+        ahead, back = ahead + (late - KEYED_WITHIN / 2) / 1000, AHEAD_BACK
+    return min(max(ahead, AHEAD_LEAST), AHEAD_MOST), back
+
+
 # How many turns the case lays at most, and how many heard beside Return are enough.
 TURNS = 36
 ENOUGH_BESIDE = 3
@@ -3847,7 +4069,8 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
     after Return asked again with For You held, read its rows too, and so said Now changed though
     no row had. The launcher made the very rows again, drew them and timed them as Return's act.
     Now comparing what For You shows is tests/now-moment.qml's; this is the path, the realm's
-    node to Now to the launcher, a line laid earlier each turn until one lands beside Return.
+    node to Now to the launcher, a line laid each turn as long before Return as that way takes
+    until one lands beside it.
     """
     # A session asking Joel a question is a row in For You, and its work turns each time.
     asking = {
@@ -3865,14 +4088,20 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
         shell.launcher_ready()
         shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
         shell.normal()
-        lead = FIRST_LEAD
+        ahead = FIRST_AHEAD
+        back = AHEAD_BACK
         for turn in range(TURNS):
             # Another session asking, or done asking, moves For You's own row, so Now says what
             # it shows with nothing held below it, as Joel's home rows had before each step in.
             ask = asking if turn % 2 == 0 else {"state": "busy", "busy": True}
             was = shell.showing()["seen"]["sides"][0]
+            laid = time.monotonic()
             lay("NUDGER", "Nudging Quest", ask)
             shell.launcher_until(partial(moved, was))
+            way = time.monotonic() - laid
+            # No lead is laid after Return, so one AHEAD would put after it is laid as none.
+            lead = max(0.0, way + ahead)
+            key = f"turn {turn}, {lead:.3f} s before ({way:.3f} s way, {ahead:+.3f} s ahead)"
             shell.down_to("For You")
             step = {
                 "kind": "tool",
@@ -3895,8 +4124,8 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             # with it, so a failure says what was drawn: the one on 16 November said only that
             # something was. The launcher's whole state is left out.
             heard = [report for report in said if report.startswith(("act ", "heard "))]
-            assert not shown, f"a turn {lead} s before Return was drawn as its act: {heard}"
-            told[f"turn {turn}, {lead:.3f} s before"] = heard
+            assert not shown, f"{key} was drawn as Return's act: {heard}"
+            told[key] = heard
             after = [int(found[1]) for report in said if (found := HEARD_AFTER.match(report))]
             if any(ago < KEYED_WITHIN for ago in after):
                 beside.append(lead)
@@ -3904,15 +4133,12 @@ def test_a_session_turning_beside_return_into_for_you_draws_nothing(shell: Shell
             shell.launcher_until(lambda shown: shown["held"] == ["now"])
             if len(beside) >= ENOUGH_BESIDE:
                 break
-            # Only a turn that moves a row is heard, every other one, so only those steer.
+            # Only a turn that moves a row is heard, every other one, so only those steer. Each
+            # steers from no further back than its own way: below it, steps would move AHEAD
+            # but not the lead, spending turns climbing back. Floored on a turn that doesn't
+            # steer, a way shorter than most would put AHEAD later with nothing to bring it back.
             if turn % 2 == 0:
-                late = min(after, default=None)
-                lead = (
-                    lead + (late - KEYED_WITHIN / 2) / 1000
-                    if late is not None
-                    else lead - LEAD_BACK
-                )
-                lead = min(max(lead, LEAST_LEAD), 2.0)
+                ahead, back = steered(max(ahead, -way), back, min(after, default=None))
         print(f"turns heard within {KEYED_WITHIN} ms of Return, by their leads: {beside}")
         assert beside, (
             f"no turn was heard within {KEYED_WITHIN} ms of Return (one heard before it, or a "
@@ -4191,7 +4417,9 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         landed, second = shell.said_since(first)
         assert not [one for one in landed if one.startswith("becoming agent:PARKED")], landed
         shell.send_key("ret")
-        unheld = "PARKED isn't parked with a holder to wake it this boot"
+        # Said without the address the node's refusal opens with, which means nothing to Joel
+        # and which the row already stands for (SessionRow.reasonOf).
+        unheld = "isn't parked with a holder to wake it this boot"
         # Fenced, with no holder, it's reopened by its own id under its fence instead, and
         # with no session file of its own that's refused too (Sessions' reopensUnwoken).
         shell.reported(
@@ -4210,6 +4438,7 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         shell.launcher_until(
             lambda shown: (
                 any(unheld in said.replace("\u00a0", " ") for said in shown["saying"])
+                and not any("PARKED" in said for said in shown["saying"])
                 and (shown["selected"] or {}).get("side") == asleep
             )
         )
@@ -4222,6 +4451,66 @@ def test_a_parked_sessions_return_lands_on_wake_and_a_second_asks_the_wake(shell
         (PARKS / "s-parked.json").unlink(missing_ok=True)
         shell.close_launcher()
         left_the_node("s-parked")
+
+
+def test_a_wake_left_asleep_for_its_fence_is_taken_back_at_once_by_its_name(
+    shell: Shell,
+) -> None:
+    """A Wake the shell won't do, since the session names no fence, is taken back at once.
+
+    Its record names no fence it could come back under, so reopening it might bring it back
+    looser than it ran, and the shell leaves it asleep (Sessions' reopensUnwoken). The row
+    drawn as woken from Joel's Return is taken back as a refused Wake's is, rather than
+    reading listening for the half minute a wake is waited for, and the foot says why by the
+    session's name, never its address.
+    """
+    PARKS.mkdir(parents=True, exist_ok=True)
+    (PARKS / "s-unsaid.json").write_text("{}")
+    lay("UNSAID", "Unsaid Quest", {"state": "parked"}, closed=True)
+    try:
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: "Unsaid Quest" in shown["rows"])
+        shell.type_in("unsaid quest", selecting="Unsaid Quest")
+        row = cast("Json", shell.showing()["selected"])
+        assert row["verb"] == "wake", row
+        asleep = row["side"]
+        shell.launcher_until(rested_on("Unsaid Quest"))
+        first = shell.mark()
+        shell.send_key("ret")
+        shell.launcher_until(
+            lambda shown: (
+                shown["mode"] == "normal"
+                and (shown["selected"] or {}).get("told", [])[:1] == ["\u21b5 wake"]
+                and not shown["landedFresh"]
+            )
+        )
+        shell.send_key("ret")
+        shell.reported(
+            "left UNSAID asleep, ",
+            lambda why: why == "whose record names no fence it can come back under",
+            first,
+        )
+        sandbox = "it might come back outside its sandbox"
+        shell.reported(
+            "not become agent:UNSAID: ",
+            lambda why: why == sandbox,
+            first,
+            timeout=timedelta(seconds=5),
+        )
+        shell.launcher_until(
+            lambda shown: (
+                any("Unsaid Quest" in said.replace("\u00a0", " ") for said in shown["saying"])
+                and any(sandbox in said.replace("\u00a0", " ") for said in shown["saying"])
+                and not any("UNSAID" in said for said in shown["saying"])
+                and (shown["selected"] or {}).get("side") == asleep
+            )
+        )
+    finally:
+        (PRESENCE / "unsaid.json").unlink(missing_ok=True)
+        (PARKS / "s-unsaid.json").unlink(missing_ok=True)
+        shell.close_launcher()
+        left_the_node("s-unsaid")
 
 
 def left_the_node(session: str) -> None:
@@ -4270,8 +4559,15 @@ def test_an_asking_sessions_return_goes_to_it_with_its_question_in_sight(shell: 
         shell.launcher_until(lambda shown: not shown["open"])
         shell.as_account(shell.ipc("collection", "agents"))
         shell.launcher_ready()
+        # Named by its row's name, not its address, which means nothing to Joel.
         shell.launcher_until(
-            lambda shown: any("ASKING not opened" in said for said in shown["saying"])
+            lambda shown: (
+                any(
+                    "Asking Quest not opened" in said.replace("\xa0", " ")
+                    for said in shown["saying"]
+                )
+                and not any("ASKING" in said for said in shown["saying"])
+            )
         )
     finally:
         (PRESENCE / "asking.json").unlink(missing_ok=True)

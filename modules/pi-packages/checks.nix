@@ -52,6 +52,31 @@
       );
 }
 // onLinux {
+  # pi loads its packages' dependencies from the store pnpm installs them
+  # into, so that store lies under the folder the agent fence holds
+  # read-only (the harness's fence-home.ts), never in the account's one
+  # store, which fenced commands write; so do pnpm's metadata cache and
+  # node-gyp's headers, which a build reads. pnpm is asked where they lie.
+  pi-packages-keeps-its-own-store =
+    let
+      home = account workstation;
+      inherit (home.jitsusama.pi-packages) root;
+      held = "${home.home.homeDirectory}/.local/share/pi-packages";
+      start = lib.concatStringsSep " " (
+        lib.toList home.systemd.user.services.pi-packages.Service.ExecStart
+      );
+    in
+    pkgs.runCommandLocal "pi-packages-keeps-its-own-store" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      bash ${./tests/keeps-its-own-store.sh} ${
+        lib.escapeShellArgs [
+          root
+          held
+          start
+        ]
+      }
+      touch $out
+    '';
+
   # clippy finds nothing in pi-packages, its tests included. This check only
   # lints; the tests run when the package itself builds (package.nix), and
   # prove a live process keeps its version, files unchanged, through an

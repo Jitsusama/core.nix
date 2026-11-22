@@ -6,6 +6,17 @@
 // A key typing one of the letters, digits and marks the table names keys by.
 const printable = /^[!-~]$/;
 
+// Whether a key pressed, by its Qt key code (`key`), is one that types
+// nothing and chooses nothing pressed alone: a modifier, Compose or a lock.
+// `qt` is Qt's own namespace, which a library script is given rather than
+// reaching for, so a test passes it as Prompt.qml does. A key left off
+// counts as one Joel chose with, which lets a held Return act.
+function alone(key, qt) {
+    return [qt.Key_Shift, qt.Key_Control, qt.Key_Alt, qt.Key_Meta, qt.Key_Super_L,
+        qt.Key_Super_R, qt.Key_AltGr, qt.Key_Hyper_L, qt.Key_Hyper_R, qt.Key_Multi_key,
+        qt.Key_Mode_switch, qt.Key_CapsLock, qt.Key_NumLock, qt.Key_ScrollLock].includes(key);
+}
+
 // A key pressed as the table names it, from what the press says
 // (`pressed`): whether Ctrl, Shift and Alt were held, the text it typed,
 // the letter its key is on the layout ("" for a key that isn't a letter's)

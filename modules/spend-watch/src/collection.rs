@@ -27,6 +27,9 @@ pub const VERSION: u32 = 2;
 /// How many of a cut's rows are shown before the rest are one row.
 const TOP: usize = 12;
 
+/// The least a cut shows as a row of its own, as the reports round it.
+const SHOWN: f64 = 0.005;
+
 /// The periods before today, most recent first, each a row of the first
 /// screen after the caps, so none is more than a step from it.
 const EARLIER: [Period; 6] = [
@@ -356,12 +359,28 @@ fn shown(id: &str, words: &str, report: &Report) -> Shown {
 }
 
 /// A period's day reports cut by day say nothing a period of a day
-/// doesn't.
-fn cuts_for(period: Period) -> impl Iterator<Item = Cut> {
+/// doesn't, and its machines say nothing until another machine spent in
+/// it: this one's work beside elsewhere and other tools' bills would
+/// otherwise read as machines on a machine that brings no logs.
+fn cuts_for(picture: &Picture, period: Period) -> impl Iterator<Item = Cut> {
     let one_day = matches!(period, Period::Today | Period::Yesterday);
-    Cut::ALL
-        .into_iter()
-        .filter(move |cut| !(one_day && *cut == Cut::Day))
+    let (from, to) = period.days(&picture.zone, picture.now);
+    // Spend another machine made, not just a turn of its: a turn on a plan
+    // costs nothing here, and a cut drops a row too small to show, which
+    // would leave this machine's work alone dressed as one of several. A
+    // row is a machine's whole spend in the period, so that's what's told.
+    let mut spent: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+    for piece in picture.between(from, to) {
+        if !piece.machine.is_empty() {
+            *spent.entry(piece.machine.as_str()).or_default() += piece.dollars;
+        }
+    }
+    let others = spent.values().any(|dollars| *dollars >= SHOWN);
+    Cut::ALL.into_iter().filter(move |cut| match cut {
+        Cut::Day => !one_day,
+        Cut::Machine => others,
+        _ => true,
+    })
 }
 
 /// The row standing for a period's spend cut one way: how many it's cut
@@ -403,7 +422,7 @@ fn period_line(
     if matches!(period, Period::Today | Period::Yesterday) {
         "date".clone_into(&mut made.mark);
     }
-    made.rows = cuts_for(period)
+    made.rows = cuts_for(picture, period)
         .filter_map(|cut| {
             let id = format!("{}/{}", period.id(), cut.id());
             cut_line(&id, cut, &reports.get(&id)?.0)
@@ -457,7 +476,7 @@ fn period_drawn(
         };
         facts.push(Fact::of("rebuilding", said, false));
     }
-    facts.extend(cuts_for(period).filter_map(|cut| {
+    facts.extend(cuts_for(picture, period).filter_map(|cut| {
         let (report, _) = reports.get(&format!("{}/{}", period.id(), cut.id()))?;
         most(cut, report)
     }));
@@ -2136,6 +2155,107 @@ mod tests {
         picture.rebuilt.insert("this-week", 0.05);
         let found = crate::detect::all(&picture, &history, &config).unwrap();
         collection(&picture, &found, &config)
+    }
+
+    // A machine that brings no other machine's logs has no machines to
+    // tell apart, so its periods say none; once another machine spent in
+    // a period, that period's row and drawer cut by machine.
+    #[test]
+    fn a_period_cuts_by_machine_only_once_another_spent() {
+        let (history, config) = (busy(), config());
+        let mut picture = Picture::read(&history, &config, NOW).unwrap();
+        let machine_lines = |picture: &Picture, period: Period| {
+            let found = crate::detect::all(picture, &history, &config).unwrap();
+            let made = collection(picture, &found, &config);
+            let key = format!("period:{}", period.id());
+            let Some(line) = made.now.iter().find(|line| line.key == key) else {
+                return (false, false);
+            };
+            let cut = format!("{}/machine", period.id());
+            let row = line.rows.iter().any(|row| row.key == cut);
+            let fact = line
+                .drawn
+                .as_ref()
+                .is_some_and(|drawn| drawn.facts.iter().any(|fact| fact.id == "most-machine"));
+            (row, fact)
+        };
+        assert_eq!(
+            machine_lines(&picture, Period::Today),
+            (false, false),
+            "a machine bringing no logs cut its day by machine"
+        );
+        let (from, to) = Period::Today.days(&picture.zone, picture.now);
+        let first = picture.between(from, to)[0].hour;
+        let piece = picture
+            .pieces
+            .iter_mut()
+            .find(|piece| piece.hour == first && piece.dollars >= 1.0)
+            .unwrap();
+        "teal".clone_into(&mut piece.machine);
+        let dollars = std::mem::replace(&mut piece.dollars, 0.0);
+        assert_eq!(
+            machine_lines(&picture, Period::Today),
+            (false, false),
+            "a day another machine only took turns on a plan in was cut by machine"
+        );
+        // Two pieces of a machine's, each too small to show alone, sum to
+        // a row that shows, and the cut is that row's.
+        let (start, count) = {
+            let today = picture.between(from, to);
+            let start = picture
+                .pieces
+                .iter()
+                .position(|piece| std::ptr::eq(piece, &raw const today[0]))
+                .unwrap();
+            (start, today.len())
+        };
+        let small: Vec<usize> = (start..start + count)
+            .filter(|&at| picture.pieces[at].machine.is_empty())
+            .take(2)
+            .collect();
+        assert_eq!(
+            small.len(),
+            2,
+            "the fixture's day has no two pieces to share"
+        );
+        let before: Vec<(String, f64)> = small
+            .iter()
+            .map(|&at| {
+                (
+                    picture.pieces[at].machine.clone(),
+                    picture.pieces[at].dollars,
+                )
+            })
+            .collect();
+        for &at in &small {
+            "ochre".clone_into(&mut picture.pieces[at].machine);
+            picture.pieces[at].dollars = SHOWN * 0.6;
+        }
+        assert_eq!(
+            machine_lines(&picture, Period::Today),
+            (true, true),
+            "a machine whose pieces sum past what shows wasn't cut by machine"
+        );
+        for (&at, (machine, dollars)) in small.iter().zip(before) {
+            picture.pieces[at].machine = machine;
+            picture.pieces[at].dollars = dollars;
+        }
+        let piece = picture
+            .pieces
+            .iter_mut()
+            .find(|piece| piece.machine == "teal")
+            .unwrap();
+        piece.dollars = dollars;
+        assert_eq!(
+            machine_lines(&picture, Period::Today),
+            (true, true),
+            "a day another machine spent in wasn't cut by machine"
+        );
+        assert_eq!(
+            machine_lines(&picture, Period::Yesterday),
+            (false, false),
+            "a day before another machine spent was cut by machine"
+        );
     }
 
     // The largest of a cut is said with its share, or "all" when it's the

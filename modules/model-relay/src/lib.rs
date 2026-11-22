@@ -183,6 +183,36 @@ const PING_ANSWERED_WITHIN: Duration = Duration::from_secs(40);
 /// about six seconds at that rate, besides what is already in flight,
 /// which the connection's window bounds and a lossy uplink keeps small.
 const HELD_AHEAD_AT_MOST: usize = 16 * 1024;
+/// How much of one answer the origin may send ahead of the relay reading
+/// it. As of h2 0.4.20 (`Counts::record_data_frame`), each DATA frame
+/// shorter than 256 bytes, but for a stream's last, is charged 256 less its
+/// length against an allowance for the whole connection, half the
+/// connection's window. The charge comes back as the relay reads the frame,
+/// or drops its stream, and once the allowance is spent h2 ends the
+/// connection with every request on it (`too_many_data_frames`, which 40
+/// connections were retired on from 19 to 21 November). A streamed answer
+/// is mostly such frames, and a pi too busy to read leaves them unread, so
+/// this window bounds what one stalled answer costs: 192 KiB in 64-byte
+/// frames. Shorter frames cost more, up to 255 bytes for each byte of
+/// window, so an answer in frames of a few bytes could spend 16 MiB alone;
+/// most of a model's streamed events are longer than 64 bytes. Empty frames
+/// take no window and fall under h2's other limit, 100 over a connection's
+/// life, which no setting reaches. The window still carries about two and
+/// a half megabits a stream over a 200 ms round trip, far past a model's
+/// streamed answer.
+const STREAM_WINDOW: u32 = 64 * 1024;
+/// How much of every answer on a connection the origin may send ahead of
+/// the relay reading it. Past the stream windows of the answers it carries
+/// it buffers nothing more, so what it sets is h2's allowance, its half:
+/// 32 MiB, about 170 stalled answers in 64-byte frames. That is past the
+/// ninety or so requests sixty sessions hold, even when retired connections
+/// leave them all on one, all stalled at once on a machine under load.
+/// Unread payload stays at most 64 KiB an answer, about 6 MiB for ninety;
+/// h2 adds a record for each frame held, and small frames can keep the
+/// buffers they were read into alive, so the memory held is more than that.
+/// hyper's adaptive window started it at 64 KiB, an allowance of 32 KiB,
+/// which about 300 unread frames of 150 bytes spent.
+const CONNECTION_WINDOW: u32 = 64 * 1024 * 1024;
 /// The most of an error's account the journal keeps for one line, since
 /// the origin's goodbye carries debug data of its choosing.
 const SAID_AT_MOST: usize = 300;
@@ -2010,7 +2040,8 @@ impl Relay {
                 .keep_alive_interval(PING_EVERY)
                 .keep_alive_timeout(PING_ANSWERED_WITHIN)
                 .keep_alive_while_idle(true)
-                .adaptive_window(true)
+                .initial_stream_window_size(STREAM_WINDOW)
+                .initial_connection_window_size(CONNECTION_WINDOW)
                 .handshake(TokioIo::new(tls))
                 .await
                 .map_err(|why| (io::Error::other(why), Unreachable::Refused))

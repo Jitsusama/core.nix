@@ -102,6 +102,12 @@ pub struct Took {
     pub failed: Vec<String>,
     /// Whether the stop's record stands there, so its sessions park.
     pub recorded: bool,
+    /// Whether what was asked reached the machine, or may have: false only
+    /// when it never ran there, so nothing of it is there to undo.
+    pub reached: bool,
+    /// The realm it was asked in, when the plan names realms, so a machine
+    /// in two that took one and not the other says which; none for here.
+    pub realm: Option<String>,
 }
 
 /// What [`tend`] did: the work it froze, and how each machine took a
@@ -184,7 +190,16 @@ pub fn stop(
     let machines = reach::others(plan, host, runs, &mut failed);
     paused["timers"] = json!(timers);
     paused["froze"] = json!(work);
-    paused["machines"] = json!(machines.iter().map(Reached::kept).collect::<Vec<_>>());
+    // Kept as asked before each is asked, so a stop cut off part way
+    // still has each resumed that it may have reached.
+    let asked: Vec<Reached> = machines
+        .iter()
+        .map(|machine| Reached {
+            asked: true,
+            ..machine.clone()
+        })
+        .collect();
+    paused["machines"] = json!(asked.iter().map(Reached::kept).collect::<Vec<_>>());
     write_paused(state, id, &paused)?;
     paused["starts"] = json!(reach::stop_starts(plan, runs, &mut failed));
     write_paused(state, id, &paused)?;
@@ -206,9 +221,32 @@ pub fn stop(
         machine: host.to_owned(),
         failed,
         recorded: true,
+        reached: true,
+        realm: None,
     }];
-    for machine in &machines {
-        took.push(reach::elsewhere(plan, runs, machine, &said, "stop"));
+    let mut kept = Vec::new();
+    for machine in &asked {
+        let one = reach::elsewhere(plan, runs, machine, &said, "stop");
+        // A machine mycelium never ran the stop on is kept as not asked:
+        // its resume is tried once, which does nothing there if the stop
+        // never landed, and is let go if mycelium never runs that either,
+        // rather than tried each minute.
+        kept.push(
+            Reached {
+                asked: one.reached,
+                ..machine.clone()
+            }
+            .kept(),
+        );
+        took.push(one);
+    }
+    paused["machines"] = json!(kept);
+    // The stop is done by now, so failing to note this keeps the record
+    // above, where every machine is resumed until it can be.
+    if let Err(why) = write_paused(state, id, &paused) {
+        took[0].failed.push(format!(
+            "couldn't note which machines it reached, so each is resumed until it can be: {why}"
+        ));
     }
     Ok(took)
 }
@@ -255,6 +293,8 @@ fn undo(
         machine: host.to_owned(),
         failed,
         recorded: true,
+        reached: true,
+        realm: None,
     }];
     let said = fs::read_to_string(state.join("stops").join(format!("{}.json", file_of(&id))))
         .ok()
@@ -267,12 +307,19 @@ fn undo(
                 machine: machine.machine.clone(),
                 failed: vec!["its stop's record here can't be read".to_owned()],
                 recorded: false,
+                reached: true,
+                realm: machine.realm.clone(),
             },
         };
-        if !one.failed.is_empty() {
+        if one.failed.is_empty() {
+            took.push(one);
+        } else if one.reached || machine.asked {
             machines_left.push(machine.kept());
+            took.push(one);
         }
-        took.push(one);
+        // Otherwise the resume never ran there, and nothing says the stop
+        // did, as a stop kept before it was asked can't: there is nothing
+        // to undo, so it isn't tried again.
     }
     if took.iter().all(|one| one.failed.is_empty()) {
         paused["undone"] = json!(at);
@@ -480,10 +527,16 @@ pub fn said(act: &str, took: &[Took], sessions: Option<usize>) -> String {
     for one in took.iter().filter(|one| !one.failed.is_empty()) {
         let so = if one.recorded || act == "resuming" {
             after
+        } else if !one.reached {
+            ", so its agents run on"
         } else {
             ", so its agents may run on"
         };
-        line = format!("{line}; {} {}{so}", one.machine, one.failed.join(", "));
+        let at = one.realm.as_ref().map_or_else(
+            || one.machine.clone(),
+            |realm| format!("{} in {realm}", one.machine),
+        );
+        line = format!("{line}; {at} {}{so}", one.failed.join(", "));
     }
     line
 }

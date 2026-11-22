@@ -228,8 +228,9 @@ const TAKING = ["taking", "taken", "told"];
 // The events that carry an answer's words: answered, landed once it's done, and taken where
 // whoever took it up said something (QCXZEB [203d9e2c]); one with no words is dropped.
 const ANSWERING = ["answered", "landed", "taken"];
-// The events after which someone has the line and it waits on them.
-const HOLDING = ["routed", "taken"];
+// The events after which someone has the line and it waits on them; his reply, which the
+// void sends on to whoever has it and writes under their name (8GYNJ6 [0543317b]), too.
+const HOLDING = ["routed", "taken", "replied"];
 
 // Whether a line is still open: it has an answer he hasn't seen, nobody has answered it yet,
 // or he's taking it back and the void hasn't said; `seen` holds how many of each line's
@@ -251,8 +252,8 @@ function open(talk, events, seen) {
 // The lines a talk line shows, each once: those the void keeps, and those said in this
 // shell it hasn't yet, or that are being taken back here. Lines still waiting, and lines
 // with answers he hasn't seen, come first and all of them, newest first; then the newest
-// KEPT_TALKS of the rest (WCJQSG [a2eb9575]).
-function gathered(here, served, events, seen) {
+// KEPT_TALKS of the rest (WCJQSG [a2eb9575]), and the one `keep` names, whose thread is open.
+function gathered(here, served, events, { seen, keep } = {}) {
     const lines = (served ?? []).filter(one => Number.isFinite(one.since));
     for (const one of here ?? []) {
         const kept = lines.findIndex(line => same(one, line));
@@ -265,7 +266,8 @@ function gathered(here, served, events, seen) {
     lines.sort((one, other) => other.since - one.since);
     const lined = keyed(lines, events);
     const opened = lined.filter(line => open(line, events, seen));
-    return opened.concat(lined.filter(line => !opened.includes(line)).slice(0, KEPT_TALKS));
+    const rest = lined.filter(line => !opened.includes(line));
+    return opened.concat(rest.filter((line, at) => at < KEPT_TALKS || line.since === keep));
 }
 
 // Each line's key from the void's own routings: a talk carries only its latest reply, and
@@ -371,8 +373,11 @@ function answersIn(own) {
 function past(events, key) {
     const own = key === "" ? [] : (events ?? []).filter(event => event.line === key);
     const last = own.length > 0 ? own[own.length - 1] : { event: "", who: "" };
-    return { answers: answersIn(own), last: last.event,
-        waiting: HOLDING.includes(last.event) ? midSentence(last.who) : "",
+    const answers = answersIn(own);
+    // A reply after its answers waits in its thread, never here: a thanks nobody answers
+    // would read as work left for good (Joel, 2026-11-13 23:39).
+    const waits = HOLDING.includes(last.event) && !(last.event === "replied" && answers.length > 0);
+    return { answers, last: last.event, waiting: waits ? midSentence(last.who) : "",
         lastWho: midSentence(last.who) };
 }
 
@@ -393,7 +398,8 @@ function holderIn(reply) {
 }
 
 function worded(words, name, who) {
-    return String(words?.[name] ?? "").replace("{who}", who);
+    // By a function, so a name holding $& or $' goes in as written.
+    return String(words?.[name] ?? "").replace("{who}", () => who);
 }
 
 function clockOf(at) {

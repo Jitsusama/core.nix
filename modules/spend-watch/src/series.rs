@@ -79,6 +79,9 @@ pub struct Piece {
     pub persona: String,
     /// The budget it drew on, by name, declared or not.
     pub budget: String,
+    /// The machine its session ran on where that's another than this
+    /// one; empty for this one's, or for spend no log here knows.
+    pub machine: String,
     pub dollars: f64,
     pub list: f64,
     pub source: Source,
@@ -128,6 +131,9 @@ pub struct Inputs {
     settled: HashMap<String, (i64, i64)>,
     /// Sessions a log here knows.
     logged: HashSet<String>,
+    /// The machine each session ran on, by its id, for those that ran on
+    /// another than this one.
+    machines: HashMap<String, String>,
     /// A subagent's session, by id, to the run it was part of.
     subagents: HashMap<String, Known>,
     /// Whether any feed has ever billed anything.
@@ -162,6 +168,7 @@ impl Inputs {
             billed: BTreeMap::new(),
             settled: HashMap::new(),
             logged: HashSet::new(),
+            machines: HashMap::new(),
             subagents: HashMap::new(),
             fed: false,
             fed_budgets: HashSet::new(),
@@ -186,13 +193,13 @@ impl Inputs {
         Ok(inputs)
     }
 
-    /// Every session a log here knows, with its repo, and an agent's kind
-    /// and name, by where its log was found.
+    /// Every session a log here knows, with its repo, an agent's kind and
+    /// name, by where its log was found, and the machine it ran on.
     fn read_sessions(&mut self, db: &Connection) -> Result<(Repos, Agents), String> {
         let mut repos = Repos::new();
         let mut agents = Agents::new();
         let mut statement = db
-            .prepare("SELECT id, repo, kind, name FROM sessions")
+            .prepare("SELECT id, repo, kind, name, machine FROM sessions")
             .map_err(fail)?;
         let rows = statement
             .query_map([], |row| {
@@ -201,12 +208,16 @@ impl Inputs {
                     row.get::<_, String>(1)?,
                     row.get::<_, Option<String>>(2)?,
                     row.get::<_, Option<String>>(3)?,
+                    row.get::<_, Option<String>>(4)?,
                 ))
             })
             .map_err(fail)?;
         for row in rows {
-            let (id, repo, kind, name) = row.map_err(fail)?;
+            let (id, repo, kind, name, machine) = row.map_err(fail)?;
             self.logged.insert(id.clone());
+            if let Some(machine) = machine {
+                self.machines.insert(id.clone(), machine);
+            }
             if let Some(kind) = kind {
                 agents.insert(id.clone(), (kind, name.unwrap_or_default()));
             }
@@ -569,6 +580,21 @@ impl Inputs {
         for hour in hours {
             self.hour_pieces(hour, ratios, &mut out);
         }
+        // A piece is shown under the session that spent it or started its
+        // run, which ran where its log was written, so its machine is
+        // that session's, whichever way the piece was priced. Spend no
+        // session claims, under no id or elsewhere, is no machine's, even
+        // should a brought log name itself so.
+        if !self.machines.is_empty() {
+            for piece in &mut out {
+                if piece.session.is_empty() || piece.session == crate::config::ELSEWHERE {
+                    continue;
+                }
+                if let Some(machine) = self.machines.get(&piece.session) {
+                    piece.machine.clone_from(machine);
+                }
+            }
+        }
         out
     }
 
@@ -583,6 +609,7 @@ impl Inputs {
             kind: known.kind.clone(),
             persona: known.persona.clone(),
             budget: known.budget.clone(),
+            machine: String::new(),
             dollars,
             list: known.list,
             source,
@@ -610,6 +637,7 @@ impl Inputs {
             kind: tool.into(),
             persona: String::new(),
             budget: budget.into(),
+            machine: String::new(),
             dollars,
             list: 0.0,
             source,
@@ -889,14 +917,20 @@ impl Inputs {
     }
 }
 
-/// The run of `items`, sorted by budget, that are `budget`'s.
 /// What each session a run names spent by its own log, all of it, asked
 /// once: asked of each session apart, 12,784 of them on 16 November, it
 /// was most of what reading the inputs took on every pass.
+///
+/// It's summed from the turns' hours, which their triggers keep in step
+/// with every turn added or taken, to within float rounding, rather than
+/// from the turns: on 21 November the 28,016 sessions runs
+/// named took 399 seconds and 412 MB of scattered reads from 41 million
+/// turns once the history fell out of memory, and the pass behind each
+/// figure took half an hour.
 fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
     let mut statement = db
         .prepare(
-            "SELECT session, SUM(cost) FROM turns WHERE session IN
+            "SELECT session, SUM(cost) FROM turn_hours WHERE session IN
              (SELECT ids.value FROM runs, json_each(CASE WHEN json_valid(runs.sessions)
               THEN runs.sessions ELSE '[]' END) ids) GROUP BY session",
         )
@@ -909,6 +943,7 @@ fn run_sessions_cost(db: &Connection) -> Result<HashMap<String, f64>, String> {
     rows.collect::<Result<_, _>>().map_err(fail)
 }
 
+/// The run of `items`, sorted by budget, that are `budget`'s.
 fn of_budget<'a, T>(items: &'a [T], budget: &str, of: impl Fn(&T) -> &String) -> &'a [T] {
     let first = items.partition_point(|item| of(item).as_str() < budget);
     let last = items.partition_point(|item| of(item).as_str() <= budget);
@@ -1132,6 +1167,31 @@ mod tests {
         assert_eq!(at(H + 2), [("proxy".into(), 12.0)]);
     }
 
+    // A run's agents and its total beyond their logs are shown under the
+    // session that started it, so they ran on that session's machine,
+    // though no agent's own log was brought from there.
+    #[test]
+    fn a_run_s_agents_take_their_session_s_machine() {
+        let history = history();
+        budgeted(&history, "me", H, "anthropic", None, 10.0);
+        budgeted(&history, "r1", H + 1, "anthropic", None, 4.0);
+        budgeted(&history, "here", H + 1, "anthropic", None, 1.0);
+        run(&history, "council", "me", H, 9.0, &["r1"]);
+        history
+            .db
+            .execute("UPDATE sessions SET machine = 'teal' WHERE id = 'me'", [])
+            .unwrap();
+        let pieces = Inputs::read(&history, &declared(), H, H + 2)
+            .unwrap()
+            .pieces(&Ratios::default());
+        let machines = by(&pieces, |piece| piece.machine.clone());
+        assert_eq!(
+            machines,
+            vec![("teal".into(), 19.0), (String::new(), 1.0)],
+            "a run's agents weren't counted on their session's machine"
+        );
+    }
+
     fn turn(
         history: &History,
         session: &str,
@@ -1295,6 +1355,29 @@ mod tests {
             .map(|p| p.dollars)
             .sum();
         assert!((lump - 1.0).abs() < 1e-9, "{pieces:?}");
+    }
+
+    // An agent whose turns fall in several hours and models counts all of
+    // them against its run, not only one hour's.
+    #[test]
+    fn a_council_agent_over_several_hours_is_taken_from_its_run_whole() {
+        let history = history();
+        turn(&history, "me", H, "opus", 10.0, Some("Q1"));
+        turn(&history, "r1", H + 1, "opus", 3.0, None);
+        turn(&history, "r1", H + 2, "opus", 0.5, None);
+        turn(&history, "r1", H + 2, "haiku", 0.5, None);
+        run(&history, "council", "me", H, 5.0, &["r1"]);
+        let pieces = read(&history, H, H + 3).unwrap().pieces(&Ratios::default());
+        assert!((total(&pieces) - 15.0).abs() < 1e-9, "{pieces:?}");
+        let lump: f64 = pieces
+            .iter()
+            .filter(|p| p.hour == H && p.kind == "subagent:council")
+            .map(|p| p.dollars)
+            .sum();
+        assert!(
+            (lump - 1.0).abs() < 1e-9,
+            "the run's lump should be its total less all its agent's hours: {pieces:?}"
+        );
     }
 
     // A fleet keeps no logs, so its total stands where it started.

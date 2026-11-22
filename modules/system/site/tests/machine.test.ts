@@ -1,7 +1,7 @@
 // What the page says of each machine and its ties to the other parts, read
 // from a machine record's ties as the daemon writes them
-// (modules/system/src/parts/ties.rs): the headline and lede over all of
-// them, and each tie's words, every one of them without a browser.
+// (modules/system/src/parts/ties.rs): the headline over all of them, and
+// each tie's words, every one of them without a browser.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
@@ -11,7 +11,6 @@ import {
   itselfSaid,
   kindOf,
   machineHeadline,
-  machineLede,
   networkSaid,
   whenSaid,
 } from "../machine.ts";
@@ -65,6 +64,7 @@ function system(things: Thing[], others: Part[] = []): System {
     side: [],
     holds: undefined,
     things,
+    named: things.map((thing) => thing.name),
     untold: 0,
     deeper,
   };
@@ -76,10 +76,6 @@ function system(things: Thing[], others: Part[] = []): System {
     unread: [],
     untold: [],
   };
-}
-
-function part(name: string, health: Part["health"], side: string[]): Part {
-  return { part: name, health, says: "", side, holds: undefined, things: [], untold: 0, deeper };
 }
 
 it("the headline counts the machines, then how they stand", () => {
@@ -105,58 +101,6 @@ it("the headline counts the machines, then how they stand", () => {
   });
   assert.equal(machineHeadline(system([machine("kestrel", "good")])).machines, "One machine");
   assert.equal(machineHeadline(system([])).stand, "none known");
-});
-
-it("the lede says what each machine worth a look has, then the worst of the rest", () => {
-  const two = [
-    machine("kestrel", "watch", ["on battery at 12%", "code wants a look"]),
-    machine("osprey", "watch", ["on battery at 9%"]),
-    machine("heron", "good"),
-  ];
-  assert.equal(
-    machineLede(system(two)),
-    "kestrel: on battery at 12%; code wants a look. osprey: on battery at 9%.",
-  );
-  const network = part("network", "watch", ["the attic's radio is busy 53% of the time"]);
-  assert.equal(
-    machineLede(system([machine("heron", "good")], [network])),
-    "And on the network: the attic's radio is busy 53% of the time.",
-  );
-  assert.equal(machineLede(system([machine("heron", "good")])), undefined);
-});
-
-it("the lede names three machines worth a look at most, however many there are", () => {
-  const many = Array.from({ length: 1000 }, (_, at) =>
-    machine(`m${at}`, "watch", ["code wants a look"]),
-  );
-  assert.equal(
-    machineLede(system(many)),
-    "m0: code wants a look. m1: code wants a look. m2: code wants a look.",
-  );
-});
-
-it("the lede ends each sentence once, keeping an owner's own mark", () => {
-  const stopped = [machine("kestrel", "watch", ["out of reach, 20 hours ago."])];
-  assert.equal(machineLede(system(stopped)), "kestrel: out of reach, 20 hours ago.");
-  const asked = part("network", "bad", ["is the modem on?"]);
-  assert.equal(
-    machineLede(system([machine("heron", "good")], [asked])),
-    "And on the network: is the modem on?",
-  );
-});
-
-it("the lede says why a part wasn't read when nothing else wants a look", () => {
-  const unread = { ...part("code", "unread", []), says: "repos timed out." };
-  assert.equal(
-    machineLede(system([machine("heron", "good")], [unread])),
-    "And your code couldn't be read: repos timed out.",
-  );
-  const network = part("network", "watch", ["the attic's radio is busy"]);
-  assert.equal(
-    machineLede(system([machine("heron", "good")], [unread, network])),
-    "And on the network: the attic's radio is busy.",
-    "a look comes before what wasn't read",
-  );
 });
 
 it("a machine's kind is its model and its system, and says which is this one", () => {
@@ -187,6 +131,49 @@ it("its cells are counted busy and idle, with those ended aside", () => {
     aside: "And 1 that has ended.",
   });
   assert.equal(cellsSaid(tiesOf({ cells: null })).said, "Not read");
+});
+
+it("a tie read from an owner's last good answer says when and why", () => {
+  const note = "as read at 11:54; just now mycelium health gave no answer in 20 s";
+  const told = "As read at 11:54; just now mycelium health gave no answer in 20 s.";
+  const kept = tiesOf({ ...ties, kept: { cells: note } });
+  assert.deepEqual(
+    cellsSaid(kept),
+    {
+      said: "45 busy and 27 idle",
+      aside: `And 50 that have ended. ${told}`,
+    },
+    "cells read from a kept health say when it was read",
+  );
+
+  assert.deepEqual(
+    networkSaid(kept),
+    networkSaid(tiesOf(ties)),
+    "a tie read from its own answer says nothing of another's",
+  );
+});
+
+it("each tie says its own owner's note, stopped once", () => {
+  const net = "as read at 11:54; just now net --json ended with 1: no route.";
+  const repos = "as read at 11:55; just now repos --json gave no answer in 20 s";
+  const kept = tiesOf({ ...ties, kept: { network: net, code: repos } });
+  const netTold = "As read at 11:54; just now net --json ended with 1: no route.";
+  const reposTold = "As read at 11:55; just now repos --json gave no answer in 20 s.";
+  assert.equal(
+    networkSaid(kept).aside,
+    `A strong signal, with 184 Mb/s of room. ${netTold}`,
+    "the network read from a kept net says so, its owner's stop kept once",
+  );
+  assert.equal(
+    codeSaid(kept, "kestrel", true).aside,
+    `2,174 trees; 8 checkouts behind their upstreams; 127 open changes. ${reposTold}`,
+    "the code read from a kept repos says so",
+  );
+  assert.deepEqual(
+    cellsSaid(kept),
+    cellsSaid(tiesOf(ties)),
+    "cells read from their own answer say nothing of the others",
+  );
 });
 
 it("its network says where it meets it, by band or by wire, and how well", () => {
@@ -310,7 +297,7 @@ it("itself says its disk, then its processor, memory, power and update", () => {
   );
 });
 
-it("a machines part that wasn't read says so, over the machines and in the lede", () => {
+it("a machines part that wasn't read says so over the machines", () => {
   const read = system([]);
   const unread: System = {
     ...read,
@@ -325,10 +312,6 @@ it("a machines part that wasn't read says so, over the machines and in the lede"
     stand: "not read",
     health: "unread",
   });
-  assert.equal(
-    machineLede(unread),
-    "The machines couldn't be read: the mycelium couldn't be reached.",
-  );
 });
 
 it("machines not told yet are said not read, never none known", () => {
@@ -354,13 +337,6 @@ it("counts machines whose records haven't come, and says them not read", () => {
     stand: "one not read",
     health: "unread",
   });
-});
-
-it("places a part of any name in its own words, whatever the name", () => {
-  const odd = system([], [part("constructor", "watch", ["one look"])]);
-  assert.equal(machineLede(odd), "And in constructor: one look.");
-  const unread = system([], [part("toString", "unread", [])]);
-  assert.ok((machineLede(unread) ?? "").startsWith("And toString couldn't be read"));
 });
 
 it("offers only commands that hold no shell's punctuation", () => {

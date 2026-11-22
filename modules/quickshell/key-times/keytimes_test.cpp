@@ -5,7 +5,8 @@
 // the launcher reads it. And how long the thread ran and waited for a
 // CPU, read while it spins alone and then beside another thread held to
 // the same CPU. And that a WallTimer ends on its time, once a start, from
-// its latest start, and not at all once stopped. It exits 0
+// its latest start, and not at all once stopped. And that the thread's
+// major page faults are read, leaving out its minor ones. It exits 0
 // once all hold, and otherwise 1, saying which didn't.
 #include "keytimes.h"
 #include "walltimer.h"
@@ -20,7 +21,10 @@
 #include <ctime>
 #include <pthread.h>
 #include <sched.h>
+#include <sys/mman.h>
+#include <sys/resource.h>
 #include <thread>
+#include <unistd.h>
 
 namespace {
 
@@ -103,6 +107,68 @@ bool threadTimed(const KeyTimes &times) {
                                  waitedBeside > SPUN_MS / 4 && waitedBeside < SPUN_MS,
                                  waitedBeside);
     return ran && waited;
+}
+
+// How many fresh pages the thread touches, each a minor fault: a page
+// never touched is handed out zeroed, with nothing to read in.
+constexpr long TOUCHED_PAGES = 1024;
+
+// The calling thread's minor faults so far, or -1 where they can't be read.
+long minorFaults() {
+    rusage usage{};
+    if (getrusage(RUSAGE_THREAD, &usage) != 0)
+        return -1;
+    return usage.ru_minflt;
+}
+
+// Touches TOUCHED_PAGES fresh pages, and gives the minor faults the thread
+// took doing it, or -1 where the pages couldn't be had. Huge pages are
+// refused for them, as a kernel giving every program huge pages (core's
+// own, modules/kernel/settings.nix) would fault them in 2 MiB at a time,
+// a few faults for all of them.
+long touchedFresh() {
+    const long page = sysconf(_SC_PAGESIZE);
+    const auto length = static_cast<std::size_t>(page * TOUCHED_PAGES);
+    void *mapped = mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS,
+                        -1, 0);
+    if (mapped == MAP_FAILED)
+        return -1;
+    madvise(mapped, length, MADV_NOHUGEPAGE);
+    const long before = minorFaults();
+    auto *bytes = static_cast<volatile char *>(mapped);
+    for (long at = 0; at < TOUCHED_PAGES; at++)
+        bytes[at * page] = 1;
+    const long after = minorFaults();
+    munmap(mapped, length);
+    return before < 0 || after < 0 ? -1 : after - before;
+}
+
+// The thread's faults are read, are never fewer later, and are the major
+// ones alone: the touches take at least a thousand minor faults, which is
+// checked rather than assumed, and don't raise the count a thousand, as a
+// count of every fault would. That they're the calling thread's alone, and
+// that a major one is counted at all, rests on getrusage's RUSAGE_THREAD
+// and ru_majflt and isn't shown here: a major fault comes to order only
+// from a file whose pages can be dropped, which a build's own folder may
+// not hold, so a case for it could only skip. Where the build can't show
+// the touches faulting a page at a time, it says so rather than blaming
+// faulted().
+bool faultsCounted(const KeyTimes &times) {
+    const double before = times.faulted();
+    const long minor = touchedFresh();
+    const double after = times.faulted();
+    if (minor < TOUCHED_PAGES) {
+        std::fprintf(stderr, "FAIL the build shows fresh pages faulting a page at a time: %ld"
+                     " minor faults over %ld pages, -1 where they couldn't be had\n", minor,
+                     TOUCHED_PAGES);
+        return false;
+    }
+    const bool holds = before >= 0 && after >= before && after - before < TOUCHED_PAGES;
+    if (!holds)
+        std::fprintf(stderr, "FAIL a thread's major faults are read: %.0f, then %.0f over %ld"
+                     " fresh pages taking %ld minor faults\n", before, after, TOUCHED_PAGES,
+                     minor);
+    return holds;
 }
 
 // The launcher's bound on a key's hold for its answers (Launcher.qml's
@@ -267,5 +333,6 @@ int main(int argc, char **argv) {
     // Before the thread's clocks, which hold it to one CPU.
     const bool walled = wallTimed();
     const bool timed = threadTimed(times);
-    return fromPress && fromRepeat && timed && walled ? 0 : 1;
+    const bool faults = faultsCounted(times);
+    return fromPress && fromRepeat && timed && walled && faults ? 0 : 1;
 }

@@ -485,6 +485,17 @@ QtObject {
         expect("nor one with a word more", Looks.settledAlike(shown, written({ ask: "Why?" })),
             false);
         expect("nor what can't be read", Looks.settledAlike(shown, "{"), false);
+        // A cell History lends a look is never written, as the daemon writes none.
+        const unnamed = Object.assign({}, read.waiting[1], { cell: undefined, address: "AAAAAA" });
+        const lentShown = Looks.rewritten(Looks.doneWith(unnamed), "cleared", "cleared", now);
+        expect("a cell lent to a look done with is not written as its own",
+            JSON.parse(lentShown).cell, undefined);
+        expect("nor is the lending", "cellLent" in JSON.parse(lentShown), false);
+        expect("so what the daemon writes of it is alike", Looks.settledAlike(lentShown,
+            Looks.rewritten(unnamed, "cleared", "cleared", now)), true);
+        expect("a cell the look names is written as its own",
+            JSON.parse(Looks.rewritten(Looks.doneWith(Object.assign({}, unnamed,
+                { cell: "BBBBBB" })), "cleared", "cleared", now)).cell, "BBBBBB");
         const offered = Looks.rewritten(choosing, "cleared", "cleared", now);
         const reordered = JSON.parse(offered);
         // Qt's engine has no Object.fromEntries, so each is turned by hand.
@@ -764,6 +775,13 @@ QtObject {
             Looks.cellFor(naming("GGGGGG"), {}, [listing], []), null);
         expect("naming no cell, cellOf's search over every quest",
             Looks.cellFor(lookLeft, {}, [listing], []).address, "TTTTTT");
+        expect("done with, naming no cell, never one on another quest listing its address",
+            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing], []), null);
+        expect("done with, naming no cell, the session that left it by its address",
+            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing, leaver], []).address,
+            "AAAAAA");
+        expect("done with, naming its cell, that cell kept",
+            Looks.doneWith({ cell: "BBBBBB", address: "AAAAAA" }).cell, "BBBBBB");
         expect("naming no cell, cellOf's search",
             Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
         expect("nothing served, cellOf's search",

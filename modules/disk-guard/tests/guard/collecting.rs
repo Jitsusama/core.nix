@@ -324,6 +324,16 @@ impl Store {
             .collect()
     }
 
+    /// The journal's lines for passes, oldest first.
+    fn passes(&self) -> Vec<serde_json::Value> {
+        let journal = fs::read_to_string(self.root.join("state/journal.jsonl")).unwrap_or_default();
+        journal
+            .lines()
+            .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+            .filter(|line| line["event"] == "pass")
+            .collect()
+    }
+
     /// Has the guard remember a linking run that finished `ago` since.
     fn remember_deduped(&self, ago: f64) {
         let memory = disk_guard::state::Memory {
@@ -1001,6 +1011,12 @@ fn a_filesystem_a_user_daemon_speaks_for_is_collected_when_it_asks() {
     let mut reply = String::new();
     ours.read_to_string(&mut reply).unwrap();
     assert!(reply.contains("collected"), "{reply}");
+    // Journaled as the ask it answered, with no survey, since a collect
+    // walks no source.
+    let passes = store.passes();
+    let collect = passes.last().unwrap();
+    assert_eq!(collect["why"], "collect", "{passes:?}");
+    assert!(collect["surveyed"].is_null(), "{passes:?}");
 }
 
 #[test]
@@ -1496,6 +1512,17 @@ fn on_a_filling_disk_garbage_a_root_left_goes_within_a_minute() {
     unroot(&store, &kept);
     step_later_until(&store, &mut guard, 45.0, &BUSY, |_, _| !kept.exists());
     assert_eq!(lists(&store), 2, "{:?}", store.log());
+    // Taken by garbage's own pass, which needs no survey of the sources.
+    let passes = store.passes();
+    let garbage: Vec<_> = passes
+        .iter()
+        .filter(|pass| pass["why"] == "garbage")
+        .collect();
+    assert!(!garbage.is_empty(), "{passes:?}");
+    assert!(
+        garbage.iter().all(|pass| pass["surveyed"].is_null()),
+        "{passes:?}"
+    );
 }
 
 #[test]

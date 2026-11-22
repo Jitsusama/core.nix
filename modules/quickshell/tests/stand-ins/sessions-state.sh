@@ -29,7 +29,8 @@ printf '{"type":"session","id":"s-orphan","cwd":"%s"}\n' "$state/trees/karst" \
 printf '{"type":"session","id":"s-warded","cwd":"%s"}\n' "$state/trees/karst" \
   >"$sessions/2026-11-17T21-03-40-118Z_s-warded.jsonl"
 # And one fenced by the fence's own word, reopened under it, and one whose
-# presence names no fence, which keeps its file and is still refused.
+# presence names no fence, which keeps its file and Wake leaves asleep,
+# said as one it might bring back outside its sandbox.
 printf '{"type":"session","id":"s-hedged","cwd":"%s"}\n' "$state/trees/karst" \
   >"$sessions/2026-11-17T21-03-41-118Z_s-hedged.jsonl"
 printf '{"type":"session","id":"s-unsaid","cwd":"%s"}\n' "$state/trees/karst" \

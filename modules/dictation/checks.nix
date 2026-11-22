@@ -257,10 +257,11 @@
       dictation = pkgs.callPackage ./package.nix { };
       model = pkgs.callPackage ./parakeet.nix { };
       meetings = pkgs.callPackage ./meetings.nix { };
-      # Waiting a second's quiet before cutting a take took the rate from
-      # 18.8% to 17.7%; the ceiling sits between, so it fails the code
-      # from before it.
-      ceiling = "18.2";
+      # Keeping Joel's short answers that the echo filter took for the far
+      # end's took the rate from 17.7% to 17.5%; the ceiling sits between,
+      # so it fails the code from before it. The meetings hold no echo, so
+      # the check also names each line of Joel's the filter leaves out.
+      ceiling = "17.6";
     in
     pkgs.runCommand "call-transcripts-hears-meetings-as-well-as-it-did" { } ''
       DICTATION_DEVICE=CPU ${dictation}/bin/call-transcripts score ${model} ${meetings} ${lib.escapeShellArg ceiling}

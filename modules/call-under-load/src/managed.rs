@@ -1,0 +1,318 @@
+//! Keeps the test call's browsers out of anyone's management. A managed
+//! machine's Google Chrome enrols every fresh profile with its owner's
+//! browser management and force-installs the extensions it names, so an
+//! hourly test on it would put two more of Joel's browsers on the owner's
+//! books each hour. The call runs on Chromium, which reads its own machine
+//! policy, and that is checked before any browser starts: a call never
+//! starts where Chromium's own policy could enrol it or install anything.
+//! Should a browser enrol all the same, what it was given is kept and the
+//! test stays off until someone has read it, rather than enrolling two
+//! more the next hour.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+/// Where Chromium on Linux reads its machine policy.
+pub const POLICIES: &str = "/etc/chromium/policies";
+
+/// The policies that enrol a browser or install into it, any of which in
+/// Chromium's machine policy keeps the call from starting.
+const ENROLLING: [&str; 4] = [
+    "CloudManagementEnrollmentToken",
+    "ExtensionInstallForcelist",
+    "ExtensionSettings",
+    "WebAppInstallForceList",
+];
+
+/// Why Chromium's machine policy under `root` could enrol a test browser
+/// or install into it, if it could: an enrolment token, or any policy
+/// file naming one of `ENROLLING`. A file that can't be read counts, since
+/// what it holds can't be told.
+pub fn could_enrol(root: &Path) -> Option<String> {
+    let token = root.join("enrollment");
+    if fs::read_dir(&token).is_ok_and(|mut files| files.next().is_some()) {
+        return Some(format!("{} holds an enrolment token", token.display()));
+    }
+    for kind in ["managed", "recommended"] {
+        let Ok(files) = fs::read_dir(root.join(kind)) else {
+            continue;
+        };
+        for file in files.flatten() {
+            let path = file.path();
+            let Ok(text) = fs::read_to_string(&path) else {
+                return Some(format!("{} can't be read", path.display()));
+            };
+            if let Some(policy) = ENROLLING.iter().find(|policy| text.contains(*policy)) {
+                return Some(format!("{} sets {policy}", path.display()));
+            }
+        }
+    }
+    None
+}
+
+/// Where a browser's enrolment is kept once one has enrolled.
+pub fn kept(state: &Path) -> PathBuf {
+    state.join("call-under-load/enrolled")
+}
+
+/// Why the test stays off, if a browser has enrolled: what `keep` wrote.
+pub fn stays_off(state: &Path) -> Option<String> {
+    fs::read_to_string(kept(state).join("why")).ok()
+}
+
+/// Where `keep` puts what `profile` was given: a folder of its own, named
+/// as the profile is, so a near and a far end that both enrolled are both
+/// kept.
+pub fn kept_from(state: &Path, profile: &Path) -> PathBuf {
+    let name = profile.file_name().unwrap_or(profile.as_os_str());
+    kept(state).join(name)
+}
+
+/// Keeps what an enrolled browser's profile was given, its `Policy`
+/// folder, so the evidence outlives the profile the call's end removes,
+/// and notes why the test stays off. Each look copies again, so the last
+/// look, after the browser has stopped, keeps what it last wrote. The
+/// reason is written once the copy is tried, so it says truly where the
+/// evidence is: kept beside it, or still in the profile. It's the
+/// profile's own, written over at each look, so a later look that keeps
+/// what an earlier one couldn't takes the earlier word back. Ok only when
+/// the copy is whole and noted, so a caller removes the profile only then.
+pub fn keep(state: &Path, profile: &Path) -> Result<String, String> {
+    let into = kept_from(state, profile);
+    let whole =
+        fs::create_dir_all(&into).is_ok() && copy(&profile.join("Policy"), &into.join("Policy"));
+    let why = if whole {
+        format!(
+            "a test browser enrolled with a management service; what it was given is kept in {}",
+            into.display()
+        )
+    } else {
+        format!(
+            "a test browser enrolled with a management service and it couldn't be kept, so \
+             its profile stays at {}",
+            profile.display()
+        )
+    };
+    let noted = fs::create_dir_all(&into).is_ok()
+        && fs::write(into.join("why"), format!("{why}\n")).is_ok()
+        && gathered(state).is_ok();
+    if whole && noted { Ok(why) } else { Err(why) }
+}
+
+/// Writes the reasons the test stays off, read by `stays_off`: every kept
+/// profile's own, in the order of their names.
+fn gathered(state: &Path) -> std::io::Result<()> {
+    let mut reasons: Vec<PathBuf> = fs::read_dir(kept(state))?
+        .flatten()
+        .map(|entry| entry.path().join("why"))
+        .collect();
+    reasons.sort();
+    let all: String = reasons
+        .iter()
+        .filter_map(|reason| fs::read_to_string(reason).ok())
+        .collect();
+    fs::write(kept(state).join("why"), all)
+}
+
+/// What to look at for an enrolment `why` names, and what to clear once
+/// it's been read: the kept folder, and each profile `why` says still
+/// holds one, wherever it is, since a killed run's profile may be in the
+/// runtime folder rather than the cache. The command only lists, so
+/// pasting it can't remove the evidence before anyone has read it.
+pub fn look_at(why: &str, state: &Path) -> (String, String) {
+    let mut folders = vec![kept(state).display().to_string()];
+    for after in why.split("stays at ").skip(1) {
+        let profile = after.split(['\n', ';']).next().unwrap_or_default().trim();
+        if !profile.is_empty() && !folders.iter().any(|folder| folder == profile) {
+            folders.push(profile.to_string());
+        }
+    }
+    let folders = folders.join(" ");
+    let clear = format!("Once it's been read, removing {folders} lets the hour's test go on.");
+    (format!("ls -R {folders}"), clear)
+}
+
+/// Copies the folder `from` to `to`, true only when every file was copied.
+fn copy(from: &Path, to: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(from) else {
+        return false;
+    };
+    let mut whole = fs::create_dir_all(to).is_ok();
+    for entry in entries {
+        let Ok(entry) = entry else {
+            whole = false;
+            continue;
+        };
+        let (path, into) = (entry.path(), to.join(entry.file_name()));
+        whole &= if path.is_dir() {
+            copy(&path, &into)
+        } else {
+            // Copied beside it and renamed over it, so an earlier look's
+            // copy that's read-only is still replaced, and one whose
+            // source has gone since stays rather than being lost.
+            let mut name = entry.file_name();
+            name.push(".new");
+            let new = to.join(name);
+            let replaced = fs::copy(&path, &new).is_ok() && fs::rename(&new, &into).is_ok();
+            if !replaced {
+                let _ = fs::remove_file(&new);
+            }
+            replaced
+        };
+    }
+    whole
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn folder(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!("cul-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).expect("the test's folder is made");
+        path
+    }
+
+    #[test]
+    fn only_policy_that_enrols_or_installs_keeps_the_call_off() {
+        let root = folder("policies");
+        assert_eq!(
+            could_enrol(&root),
+            None,
+            "no policy at all kept the call off"
+        );
+        fs::create_dir_all(root.join("managed")).expect("managed is made");
+        fs::write(
+            root.join("managed/extra.json"),
+            r#"{"AutoSelectCertificateForUrls": []}"#,
+        )
+        .expect("a harmless policy is written");
+        assert_eq!(
+            could_enrol(&root),
+            None,
+            "a harmless policy kept the call off"
+        );
+        fs::write(
+            root.join("managed/forced.json"),
+            r#"{"ExtensionInstallForcelist": ["x"]}"#,
+        )
+        .expect("a forced extension is written");
+        let forced = could_enrol(&root);
+        fs::remove_file(root.join("managed/forced.json")).expect("it's removed");
+        fs::create_dir_all(root.join("enrollment")).expect("enrollment is made");
+        assert_eq!(
+            could_enrol(&root),
+            None,
+            "an empty enrolment folder kept the call off"
+        );
+        fs::write(root.join("enrollment/CloudManagementEnrollmentToken"), "t")
+            .expect("a token is written");
+        let token = could_enrol(&root);
+        let _ = fs::remove_dir_all(&root);
+        assert!(
+            forced.is_some_and(|why| why.contains("ExtensionInstallForcelist")),
+            "a forced extension let the call start"
+        );
+        assert!(
+            token.is_some_and(|why| why.contains("enrolment token")),
+            "an enrolment token let the call start"
+        );
+    }
+
+    #[test]
+    fn an_enrolment_keeps_its_evidence_and_the_test_off() {
+        let (state, profile) = (folder("state"), folder("enrolled"));
+        assert_eq!(stays_off(&state), None, "a clean state kept the test off");
+        fs::create_dir_all(profile.join("Policy/Enrollment")).expect("the folder is made");
+        fs::write(profile.join("Policy/Enrollment/token"), "t").expect("the token is written");
+        let far = profile.join("far");
+        fs::create_dir_all(far.join("Policy/Enrollment")).expect("the far folder is made");
+        fs::write(far.join("Policy/Enrollment/token"), "f").expect("the far token is written");
+        let near_kept = keep(&state, &profile).is_ok();
+        let far_kept = keep(&state, &far).is_ok();
+        // A read-only earlier copy doesn't stop a later look keeping it.
+        let copied = kept_from(&state, &profile).join("Policy/Enrollment/token");
+        let mut read_only = fs::metadata(&copied)
+            .expect("the copy is there")
+            .permissions();
+        read_only.set_readonly(true);
+        fs::set_permissions(&copied, read_only).expect("the copy is made read-only");
+        fs::write(profile.join("Policy/Enrollment/token"), "t2").expect("the token changes");
+        let again = keep(&state, &profile).is_ok();
+        // A token that can't be read at a later look leaves the earlier copy.
+        let far_token = far.join("Policy/Enrollment/token");
+        fs::remove_file(&far_token).expect("the far token goes");
+        std::os::unix::fs::symlink("/nonexistent/token", &far_token).expect("a link is made");
+        let _ = keep(&state, &far);
+        let off = stays_off(&state);
+        let token = |of: &Path| {
+            fs::read_to_string(kept_from(&state, of).join("Policy/Enrollment/token")).ok()
+        };
+        let tokens = (token(&profile), token(&far));
+        let _ = (fs::remove_dir_all(&state), fs::remove_dir_all(&profile));
+        assert!(near_kept && far_kept && again, "keeping said it failed");
+        let reasons = off.as_deref().unwrap_or_default().lines().count();
+        assert_eq!(
+            reasons, 2,
+            "each end's reason should be noted once: {off:?}"
+        );
+        assert_eq!(
+            tokens,
+            (Some("t2".into()), Some("f".into())),
+            "an end's enrolment wasn't kept as last read, or an earlier copy was lost"
+        );
+    }
+
+    #[test]
+    fn the_hint_only_lists_so_pasting_it_removes_nothing() {
+        let state = Path::new("/s");
+        let (kept_look, kept_clear) = look_at("what it was given is kept in /s", state);
+        let (stays_look, _) = look_at(
+            "its profile stays at /run/p\nits profile stays at /c/far-1; and more",
+            state,
+        );
+        assert_eq!(
+            kept_look, "ls -R /s/call-under-load/enrolled",
+            "the hint does more than list"
+        );
+        assert_eq!(
+            stays_look, "ls -R /s/call-under-load/enrolled /run/p /c/far-1",
+            "the hint misses the profile that still holds it"
+        );
+        assert!(
+            kept_clear.contains("removing"),
+            "what to clear isn't said: {kept_clear}"
+        );
+    }
+
+    #[test]
+    fn a_copy_that_fails_says_it_wasn_t_kept() {
+        let (state, profile) = (folder("state-unread"), folder("enrolled-unread"));
+        let token = profile.join("Policy/Enrollment/token");
+        // A token that's a dangling link can't be copied.
+        fs::create_dir_all(profile.join("Policy/Enrollment")).expect("the folder is made");
+        std::os::unix::fs::symlink("/nonexistent/token", &token).expect("the link is made");
+        let kept_it = keep(&state, &profile);
+        let off = stays_off(&state);
+        // The token is readable by the next look, which keeps it.
+        fs::remove_file(&token).expect("the link is removed");
+        fs::write(&token, "t").expect("the token is written");
+        let kept_later = keep(&state, &profile);
+        let off_later = stays_off(&state);
+        let _ = (fs::remove_dir_all(&state), fs::remove_dir_all(&profile));
+        assert!(
+            kept_it.is_err_and(|why| why.contains("stays at")),
+            "a failed copy was said to be kept"
+        );
+        assert!(
+            off.is_some_and(|why| why.contains("stays at") && !why.contains("kept in")),
+            "a failed copy let the test go on, or said it was kept"
+        );
+        assert!(kept_later.is_ok(), "a later whole copy wasn't kept");
+        assert!(
+            off_later.is_some_and(|why| why.contains("kept in") && !why.contains("stays at")),
+            "a later look that kept it left the earlier word that it stayed"
+        );
+    }
+}

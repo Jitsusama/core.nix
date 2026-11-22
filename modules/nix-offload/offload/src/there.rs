@@ -552,6 +552,9 @@ pub fn run(
     signatures: Signatures,
 ) -> Ran {
     let mut outage: Option<std::time::Instant> = None;
+    // Whether the last builder tried refused the host key its line pins,
+    // so a run that ends unsent says that rather than that ssh found none.
+    let mut refused_last = false;
     let lent = store.and_then(|store| builder(store.lines().next()?.trim()));
     let Some(mut lent) = lent else {
         return unsent(asked, nix, "no builder is lent");
@@ -586,6 +589,8 @@ pub fn run(
                 Ok(copied) => copied,
             };
             let building = copied.is_ok();
+            let refused = matches!(&copied, Err(uncopied) if uncopied.refused);
+            refused_last = refused;
             let ran = match copied {
                 Ok(()) => {
                     let bring = Bring::asked(asked, nix, signatures);
@@ -612,30 +617,18 @@ pub fn run(
                 _ => lost,
             };
             outage = Some(since);
-            eprintln!(
-                "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
-                 to {} minutes from {}",
-                lent.host,
-                waiting.longest.as_secs().div_ceil(60),
-                if since == lost {
-                    "now"
-                } else {
-                    "its last loss"
-                }
+            say_lost(
+                &lent,
+                waiting,
+                since == lost,
+                building.then(|| asked.alone.lasts()),
+                refused,
             );
-            // A builder that stayed up goes on with what it was building for
-            // `far`'s grace period, and the build sent again waits on that, so
-            // it says how it ends but shows none of its log: a VM test cut off
-            // mid-test on 2 November passed there, and only its exit said so.
-            // One lost while copying up had nothing building.
-            if building {
-                eprintln!(
-                    "nix-offload: if it stands again within {} minutes, what it was building \
-                     goes on there, and this shows only how it ends; `nix log` on the builder \
-                     has the rest",
-                    asked.alone.lasts() / 60
-                );
-            }
+            // A refused key goes to whatever the line names next, the same
+            // key included, until the outage's `longest`: each try pins
+            // only the line's key, so strict checking stands, and the old
+            // builder may still answer for a moment after the line names
+            // its successor.
             match again(since).and_then(|store| builder(store.lines().next()?.trim())) {
                 Some(stood) => lent = stood,
                 None => break ran.map_err(Untaken::Waits),
@@ -658,9 +651,52 @@ pub fn run(
             ),
         ),
         Ok(ran) if ran.status != UNREACHED => ran,
+        Ok(_) if refused_last => unsent(
+            asked,
+            nix,
+            &format!(
+                "ssh refused the host key {} showed, against the one its lender's line pins",
+                lent.host
+            ),
+        ),
         Ok(_) => unsent(asked, nix, &format!("ssh couldn't reach {}", lent.host)),
         Err(Untaken::Waits(why)) => unsent(asked, nix, &why),
         Err(Untaken::Stays(why)) => stays(asked, nix, &why),
+    }
+}
+
+/// Says `lent` was lost, or `refused` the host key its line pins, and how
+/// long this waits for a builder, from now when `fresh` or from the last
+/// loss. A builder that stayed up goes on
+/// with what it was building for `far`'s grace period, `building` seconds,
+/// and the build sent again waits on that, so it says how it ends but shows
+/// none of its log: a VM test cut off mid-test on 2 November passed there,
+/// and only its exit said so. One lost while copying up had nothing
+/// building.
+fn say_lost(lent: &Builder, waiting: Waiting, fresh: bool, building: Option<u32>, refused: bool) {
+    let minutes = waiting.longest.as_secs().div_ceil(60);
+    let from = if fresh { "now" } else { "its last loss" };
+    if refused {
+        eprintln!(
+            "nix-offload: ssh refused the host key {} showed, as when its lender hands its \
+             name to another builder, so this reads the lender's line again and sends it \
+             to the builder that line pins, for up to {minutes} minutes from {from}",
+            lent.host
+        );
+    } else {
+        eprintln!(
+            "nix-offload: ssh lost {}, so this waits for a builder to stand again, for up \
+             to {minutes} minutes from {from}",
+            lent.host
+        );
+    }
+    if let Some(lasts) = building {
+        eprintln!(
+            "nix-offload: if it stands again within {} minutes, what it was building \
+             goes on there, and this shows only how it ends; `nix log` on the builder \
+             has the rest",
+            lasts / 60
+        );
     }
 }
 
@@ -903,6 +939,16 @@ const LOST_SAID: [&str; 5] = [
     "Connection reset",
 ];
 
+/// What ssh says when it refuses the host key a builder shows, most often
+/// one other than the key pinned. A lender hands its name over to a new
+/// builder with a key of its own: at 09:08:59 on 21 November vm-3's did,
+/// and a run that read the old line at 09:08:31 waited its turn to send,
+/// reached the new builder at 09:12 and was refused, building nothing,
+/// since Nix then says only that it couldn't start ssh, which `LOST_SAID`
+/// doesn't hold. Each try pins only its line's key, so strict checking
+/// stands however often it's sent again.
+const REFUSED_SAID: &str = "Host key verification failed";
+
 /// Why a copy up failed, whether ssh lost the builder under it, which a
 /// builder standing again, or the one beside, may take instead, and
 /// whether that was ssh's keepalive going unanswered, after which the
@@ -911,6 +957,7 @@ struct Uncopied {
     why: String,
     lost: bool,
     cut: bool,
+    refused: bool,
 }
 
 impl Uncopied {
@@ -919,17 +966,28 @@ impl Uncopied {
             why,
             lost: false,
             cut: false,
+            refused: false,
         }
     }
 
-    /// `why`, or why and that ssh lost the builder, as `copying` heard.
+    /// `why`, or why and that ssh lost the builder, as `copying` heard. A
+    /// builder that refused its pinned key is lost too, since its lender
+    /// may have handed its name to another.
     fn of(why: String, copying: &Copying) -> Self {
-        let (lost, cut) = copying.heard();
-        if lost {
+        let Heard { lost, cut, refused } = copying.heard();
+        if refused {
+            Self {
+                why: format!("{why}, since ssh refused the host key it showed"),
+                lost: true,
+                cut,
+                refused,
+            }
+        } else if lost {
             Self {
                 why: format!("{why}, since ssh lost it"),
                 lost,
                 cut,
+                refused,
             }
         } else {
             Self::failed(why)
@@ -938,11 +996,21 @@ impl Uncopied {
 }
 
 /// A copy running, whose standard error is passed on as it comes, heard
-/// for whether it says ssh lost the builder, and whether its keepalive
-/// went unanswered.
+/// for whether it says ssh lost the builder, whether its keepalive went
+/// unanswered, and whether the builder refused its pinned key.
 struct Copying {
     child: std::process::Child,
-    heard: std::sync::mpsc::Receiver<(bool, bool)>,
+    heard: std::sync::mpsc::Receiver<Heard>,
+}
+
+/// What a copy's standard error said of ssh: that it lost the builder,
+/// that its keepalive went unanswered, and that the builder's host key
+/// wasn't the one pinned.
+#[derive(Clone, Copy, Default)]
+struct Heard {
+    lost: bool,
+    cut: bool,
+    refused: bool,
 }
 
 /// How many of a run's copies up went unanswered by ssh's keepalive, so
@@ -979,28 +1047,28 @@ impl Copying {
         let (said, heard) = std::sync::mpsc::channel();
         if let Some(errors) = child.stderr.take() {
             std::thread::spawn(move || {
-                let (mut lost, mut cut) = (false, false);
+                let mut heard = Heard::default();
                 for line in std::io::BufReader::new(errors)
                     .split(b'\n')
                     .map_while(Result::ok)
                 {
                     let line = String::from_utf8_lossy(&line);
-                    lost |= LOST_SAID.iter().any(|said| line.contains(said));
-                    cut |= line.contains(CUT_SAID);
+                    heard.lost |= LOST_SAID.iter().any(|said| line.contains(said));
+                    heard.cut |= line.contains(CUT_SAID);
+                    heard.refused |= line.contains(REFUSED_SAID);
                     eprintln!("{line}");
                 }
-                let _ = said.send((lost, cut));
+                let _ = said.send(heard);
             });
         }
         Ok(Self { child, heard })
     }
 
-    /// Whether it said ssh lost the builder, and whether its keepalive
-    /// went unanswered, once it has ended. It's read once.
-    fn heard(&self) -> (bool, bool) {
+    /// What it said of ssh, once it has ended. It's read once.
+    fn heard(&self) -> Heard {
         self.heard
             .recv_timeout(std::time::Duration::from_secs(1))
-            .unwrap_or((false, false))
+            .unwrap_or_default()
     }
 }
 
@@ -5171,6 +5239,39 @@ mod tests {
             ahead_of_alive(None, COPY_ALIVE),
             COPY_ALIVE,
             "with none given, the keepalive was lost"
+        );
+    }
+
+    #[test]
+    fn a_copy_refused_the_pinned_key_lost_the_builder() {
+        // As `nix copy` says it once a lender has handed its name to a
+        // builder with another key: nothing `LOST_SAID` holds, so only the
+        // refusal makes the builder lost.
+        let mut copying = Copying::start(Command::new("sh").args([
+            "-c",
+            "echo 'Host key verification failed.' >&2; \
+             echo \"error: failed to start SSH master connection to 'nix-offload'\" >&2; \
+             exit 1",
+        ]))
+        .unwrap();
+        copying.child.wait().unwrap();
+        let uncopied = Uncopied::of("x went up to nothing".to_owned(), &copying);
+        assert!(uncopied.refused, "the refusal went unheard");
+        assert!(uncopied.lost, "a refused builder wasn't taken for lost");
+        assert!(
+            uncopied
+                .why
+                .ends_with("since ssh refused the host key it showed"),
+            "it doesn't say why: {}",
+            uncopied.why
+        );
+        let mut failed =
+            Copying::start(Command::new("sh").args(["-c", "echo no >&2; exit 1"])).unwrap();
+        failed.child.wait().unwrap();
+        let uncopied = Uncopied::of("x".to_owned(), &failed);
+        assert!(
+            !uncopied.refused && !uncopied.lost,
+            "a copy's own failure read as ssh's"
         );
     }
 

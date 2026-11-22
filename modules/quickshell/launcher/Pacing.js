@@ -1,5 +1,6 @@
 .pragma library
 .import "Order.js" as Order
+.import "Thread.js" as Thread
 
 // When an open launcher next refreshes a source that said it changed. The
 // first change is taken at once, and those after it within the pace
@@ -396,11 +397,12 @@ function openingParts(parts) {
 // how much of the longest stall was the collector's: profiles of Joel's
 // openings found 24 to 64 ms of collecting in each, which the stall's
 // named work didn't say (H6EDLC, 2026-11-14); and `thread`, the shell
-// thread's `{ ran, waited }` (KeyTimes.ran and waited), so
-// `stallThread` is how much of the stall it ran and waited for a CPU:
-// the rest it slept. `asked`, where the heap stood at the opening's ask
-// (Heap.standing), is read only as it begins and kept, so a second ask
-// before its line is said can't lend it its own.
+// thread's `{ ran, waited, faulted }` (KeyTimes.ran, waited and faulted),
+// so `stallThread` is how much of the stall it ran and waited for a CPU,
+// the rest it slept, and its major page faults. `asked`, where
+// the heap stood at the opening's ask (Heap.standing), is read only as it
+// begins and kept, so a second ask before its line is said can't lend it
+// its own.
 function feltBegun(now, clocks = {}) {
     return { last: now, calm: now, stall: 0, stallAt: now, usable: -1,
         asked: clocks.asked ?? null, collected: clocks.collected ?? 0, stallCollected: 0,
@@ -421,7 +423,8 @@ function feltTicked(felt, now, pace, clocks = {}) {
         usable: now - calm >= pace.calmFor ? calm : -1, asked: felt.asked, collected,
         stallCollected: longer ? collected - felt.collected : felt.stallCollected, thread,
         stallThread: longer
-            ? { ran: thread.ran - felt.thread.ran, waited: thread.waited - felt.thread.waited }
+            ? { ran: thread.ran - felt.thread.ran, waited: thread.waited - felt.thread.waited,
+                faulted: Thread.faults(felt.thread, thread) }
             : felt.stallThread };
 }
 
@@ -450,6 +453,12 @@ function feltFramed(frame, what, from, to) {
     }
     const spans = frame.syncFrom < 0 ? [] : [{ name: "syncing", from: frame.syncFrom, to: from }];
     return { frame: { rows: frame.rows, syncFrom: -1 }, spans };
+}
+
+// An open handler's lap's name (Launcher.qml's lap), the opening's own, as slices after
+// its frame say "waking" and "joining" for theirs and stallSpent adds up by name.
+function lapName(name) {
+    return `opening's ${name}`;
 }
 
 // What of `from` to `to` each named span of work ran into, most first,

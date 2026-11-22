@@ -906,7 +906,7 @@ impl Guard {
     pub fn explain(&mut self, tick: &Tick, path: &Path) -> io::Result<Explained> {
         self.memory.awake.observe(tick);
         self.watch();
-        let (mut scan, offers) = self.offers(tick, None)?;
+        let (mut scan, offers, _) = self.offers(tick, None)?;
         let holds = |held: &Path| path.starts_with(held);
         let offered = offers
             .into_iter()
@@ -1484,7 +1484,7 @@ impl Guard {
         self.write_status(tick.wall)?;
         let folders: Vec<PathBuf> = asks.iter().map(|(_, ask)| ask.path.clone()).collect();
         let scoped = crate::survey::within(&self.config, &folders);
-        let (mut scan, offers) = self.offers(tick, Some(&scoped))?;
+        let (mut scan, offers, surveyed) = self.offers(tick, Some(&scoped))?;
         for (file, ask) in asks {
             // A source's root may be named through a link, and an ask's
             // folder never is.
@@ -1497,7 +1497,7 @@ impl Guard {
                 })
                 .cloned()
                 .collect();
-            let cleared = self.clear_on(tick, &inside, &mut scan);
+            let cleared = self.clear_on(tick, &inside, &mut scan, surveyed);
             // Ended whatever the pass did, since one that failed would
             // fail again, each step surveying everything to.
             crate::clears::done(&file)?;
@@ -1519,7 +1519,7 @@ impl Guard {
         let names = std::mem::take(&mut self.produced);
         producers.sources.retain(|name, _| names.contains(name));
         self.write_status(tick.wall)?;
-        let (mut scan, offers) = self.offers(tick, Some(&producers))?;
+        let (mut scan, offers, surveyed) = self.offers(tick, Some(&producers))?;
         let devices: BTreeSet<u64> = offers.iter().map(|offer| offer.device).collect();
         for device in devices {
             let Some(watched) = self.watched.get(&device) else {
@@ -1532,14 +1532,26 @@ impl Guard {
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            let aim = (Band::Healthy, Goal::Produce);
+            let aim = Aim {
+                band: Band::Healthy,
+                goal: Goal::Produce,
+                why: Why::Producers,
+                surveyed: Some(surveyed),
+            };
             self.pass_on(tick, device, &here, aim, thresholds, &mut scan)?;
         }
         Ok(true)
     }
 
-    /// A clear's passes over `inside`, one on each filesystem it spans.
-    fn clear_on(&mut self, tick: &Tick, inside: &[Offer], scan: &mut Scan) -> io::Result<()> {
+    /// A clear's passes over `inside`, one on each filesystem it spans,
+    /// offered by a survey that took `surveyed` seconds.
+    fn clear_on(
+        &mut self,
+        tick: &Tick,
+        inside: &[Offer],
+        scan: &mut Scan,
+        surveyed: f64,
+    ) -> io::Result<()> {
         let devices: BTreeSet<u64> = inside.iter().map(|offer| offer.device).collect();
         for device in devices {
             let Some(watched) = self.watched.get(&device) else {
@@ -1553,7 +1565,13 @@ impl Guard {
                 .filter(|offer| offer.device == device)
                 .cloned()
                 .collect();
-            self.pass_on(tick, device, &here, (band, Goal::Clear), thresholds, scan)?;
+            let aim = Aim {
+                band,
+                goal: Goal::Clear,
+                why: Why::Clear,
+                surveyed: Some(surveyed),
+            };
+            self.pass_on(tick, device, &here, aim, thresholds, scan)?;
         }
         Ok(())
     }
@@ -1598,7 +1616,12 @@ impl Guard {
             tick,
             device,
             &here,
-            (band, Goal::Reach),
+            Aim {
+                band,
+                goal: Goal::Reach,
+                why: Why::Collect,
+                surveyed: None,
+            },
             thresholds,
             &mut scan,
         )
@@ -2307,22 +2330,22 @@ impl Guard {
     fn passes(&mut self, tick: &Tick, due: &[(u64, Decision, Thresholds)]) -> io::Result<()> {
         self.tried.clear();
         // Garbage alone needs no survey, which walks every source.
-        let (mut scan, offers) = if due
+        let (mut scan, offers, surveyed) = if due
             .iter()
             .all(|(_, decision, _)| *decision == Decision::Collect)
         {
             let me = std::process::id();
             let scan = Scan::new(&self.processes, Path::new("/proc/locks"), me, FRESH);
-            (scan, self.garbage_offers(tick))
+            (scan, self.garbage_offers(tick), None)
         } else {
-            let (scan, offers) = self.offers(tick, None)?;
+            let (scan, offers, seconds) = self.offers(tick, None)?;
             // Kept for a plan to read; one that can't be kept only means
             // the next plan surveys for itself.
-            let surveyed = crate::surveyed::Surveyed::new(tick.wall, &offers);
-            if let Err(error) = crate::surveyed::save(self.state(), &surveyed) {
+            let kept = crate::surveyed::Surveyed::new(tick.wall, &offers);
+            if let Err(error) = crate::surveyed::save(self.state(), &kept) {
                 eprintln!("disk-guard: keeping the survey: {error}");
             }
-            (scan, offers)
+            (scan, offers, Some(seconds))
         };
         for &(device, decision, thresholds) in due {
             if !self.watched.contains_key(&device) {
@@ -2346,7 +2369,8 @@ impl Guard {
             } else {
                 Vec::new()
             };
-            let end = self.pass_on(tick, device, &here, aim(decision), thresholds, &mut scan)?;
+            let aimed = aim(decision, surveyed);
+            let end = self.pass_on(tick, device, &here, aimed, thresholds, &mut scan)?;
             if decision == Decision::Collect {
                 self.rest_collect(tick.wall + self.stepped.elapsed().as_secs_f64(), &offered);
             }
@@ -2434,7 +2458,20 @@ impl Guard {
     /// What the sources offer now, or with `part`, only what its sources
     /// offer, for a clear or a producer with news: a survey of that part
     /// leaves what the holders say of the rest as the last whole one did.
-    fn offers(&mut self, tick: &Tick, part: Option<&Config>) -> io::Result<(Scan, Vec<Offer>)> {
+    /// With it, how long the survey took, in seconds, for each pass it
+    /// serves to journal, since a pass's own seconds leave out this walk.
+    fn offers(
+        &mut self,
+        tick: &Tick,
+        part: Option<&Config>,
+    ) -> io::Result<(Scan, Vec<Offer>, f64)> {
+        let surveying = Instant::now();
+        let (scan, offers) = self.survey(tick, part)?;
+        Ok((scan, offers, surveying.elapsed().as_secs_f64()))
+    }
+
+    /// What `offers` answers, untimed.
+    fn survey(&mut self, tick: &Tick, part: Option<&Config>) -> io::Result<(Scan, Vec<Offer>)> {
         let me = std::process::id();
         let mut scan = self.scan(me);
         let processes = scan.processes()?.to_vec();
@@ -2557,8 +2594,6 @@ impl Guard {
         Ok((scan, offers))
     }
 
-    /// Runs a pass over what lies on the watched filesystem `device` and
-    /// journals it.
     /// The watched filesystems but `device`'s, as their last measure left
     /// them, for a pass there to give way to.
     fn elsewhere(&self, device: u64) -> Vec<Elsewhere> {
@@ -2576,12 +2611,34 @@ impl Guard {
             .collect()
     }
 
+    /// Whether a pass, with the system daemon unheard, kept something only
+    /// it could vouch for: kept by the survey before it was offered, or by
+    /// the pass.
+    fn kept_unvouched(&self, scan: &Scan, report: &crate::pass::Report) -> bool {
+        scan.went_unheard()
+            && (self
+                .kept
+                .iter()
+                .any(|(_, used)| matches!(used, crate::activity::Use::Unknown(_)))
+                || report
+                    .actions
+                    .iter()
+                    .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))))
+    }
+
+    /// Runs a pass over what lies on the watched filesystem `device` and
+    /// journals it.
     fn pass_on(
         &mut self,
         tick: &Tick,
         device: u64,
         here: &[Offer],
-        (band, goal): (Band, Goal),
+        Aim {
+            band,
+            goal,
+            why,
+            surveyed,
+        }: Aim,
         thresholds: Thresholds,
         scan: &mut Scan,
     ) -> io::Result<End> {
@@ -2642,17 +2699,7 @@ impl Guard {
         } else if goal == Goal::Upkeep && !matches!(report.end, End::Unfinished | End::Stopped) {
             // Only a pass that got through what was due counts as upkeep:
             // one cut short by its length or a stop leaves the rest due.
-            // Kept by the survey before it was offered, or by the pass.
-            let unvouched = scan.went_unheard()
-                && (self
-                    .kept
-                    .iter()
-                    .any(|(_, used)| matches!(used, crate::activity::Use::Unknown(_)))
-                    || report
-                        .actions
-                        .iter()
-                        .any(|(_, outcome)| matches!(outcome, Outcome::Kept(_))));
-            self.memory.upkept = Some(if unvouched {
+            self.memory.upkept = Some(if self.kept_unvouched(scan, &report) {
                 tick.wall - crate::decide::UPKEEP_EVERY + UNHEARD_AGAIN
             } else {
                 tick.wall
@@ -2668,6 +2715,10 @@ impl Guard {
             end: end.clone(),
             freed: report.freed,
             seconds,
+            why: why.word(),
+            offered: here.len(),
+            judged: report.actions.len(),
+            surveyed,
         })?;
         let last = LastPass {
             at: tick.wall,
@@ -3176,11 +3227,76 @@ fn mark(status: &mut Status, state: &Path, home: Option<&Path>) {
     }
 }
 
-/// The band a decision's pass plans by, and what it's for.
-fn aim(decision: Decision) -> (Band, Goal) {
-    match decision {
-        Decision::Reach(band) => (band, Goal::Reach),
-        _ => (Band::Healthy, Goal::Upkeep),
+/// What set a pass going, for its journal line: a goal alone can't say,
+/// since Nix's garbage passes as upkeep, and a user daemon's collect as a
+/// reach, and in the day to 03:00 on 21 November half the passes freed
+/// nothing with no way to tell which of these each was.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Why {
+    /// Free space short of the target, or forecast to be; a forecast's line
+    /// shows the band it reaches for, not the one the disk is in.
+    Reach,
+    /// A healthy disk's routine: every six hours, and at once when an
+    /// owner ends, a new boot or guard binary starts, a snapshot's build
+    /// goes an hour unused, a builds disk passes its budget, or a garbage
+    /// listing finds some to let go; again ten minutes after one that kept
+    /// what only an unheard system daemon could vouch for, and at the next
+    /// spare step after one left unfinished or stopped. The line can't say
+    /// which of these.
+    Upkeep,
+    /// Nix's garbage, once something let some go: alone, with no survey,
+    /// unless another disk was due in the same step, when the survey's
+    /// offers on the store's disk come too, and the line says how long
+    /// that survey took. It runs as the routine, so it puts off every
+    /// disk's next six-hourly upkeep.
+    Garbage,
+    /// Producers whose watched files said something new.
+    Producers,
+    /// What Joel asked cleared.
+    Clear,
+    /// The system's share of the store, asked for by a user daemon.
+    Collect,
+}
+
+impl Why {
+    fn word(self) -> &'static str {
+        match self {
+            Why::Reach => "reach",
+            Why::Upkeep => "upkeep",
+            Why::Garbage => "garbage",
+            Why::Producers => "producers",
+            Why::Clear => "clear",
+            Why::Collect => "collect",
+        }
+    }
+}
+
+/// What a pass plans by and is for, what set it going, and how long the
+/// survey that offered it its candidates took, in seconds, when one did.
+/// Every pass one survey served says so, the passes of one step sharing
+/// its seconds, so none reads as having needed no walk.
+struct Aim {
+    band: Band,
+    goal: Goal,
+    why: Why,
+    surveyed: Option<f64>,
+}
+
+/// A decision's aim, offered by a survey that took `surveyed` seconds,
+/// when one did.
+fn aim(decision: Decision, surveyed: Option<f64>) -> Aim {
+    let (band, goal, why) = match decision {
+        Decision::Reach(band) => (band, Goal::Reach, Why::Reach),
+        Decision::Collect => (Band::Healthy, Goal::Upkeep, Why::Garbage),
+        // A rest is never due, so never aimed; it reads as the routine only
+        // so that the match needs no arm that can't run.
+        Decision::Upkeep | Decision::Rest => (Band::Healthy, Goal::Upkeep, Why::Upkeep),
+    };
+    Aim {
+        band,
+        goal,
+        why,
+        surveyed,
     }
 }
 
@@ -3437,5 +3553,33 @@ impl Reclaimer for Pretending {
         self.free
             .set(self.free.get().saturating_add(freed).min(self.total));
         Outcome::Reclaimed
+    }
+}
+
+// Pins which why and goal each decision gives its pass. Which survey a
+// garbage pass beside another disk's is handed is chosen in `passes`,
+// which needs two watched disks in one step, and no fixture builds that,
+// so this test doesn't cover it.
+#[cfg(test)]
+mod tests {
+    use super::{Band, Decision, Goal, Why, aim};
+
+    #[test]
+    fn each_decision_aims_its_pass_with_its_why_and_the_survey_it_was_given() {
+        let garbage = aim(Decision::Collect, None);
+        assert_eq!(
+            (garbage.goal, garbage.why, garbage.surveyed),
+            (Goal::Upkeep, Why::Garbage, None)
+        );
+        let beside = aim(Decision::Collect, Some(1.5));
+        assert_eq!((beside.why, beside.surveyed), (Why::Garbage, Some(1.5)));
+        let reach = aim(Decision::Reach(Band::Filling), Some(2.0));
+        assert_eq!(
+            (reach.goal, reach.why, reach.surveyed),
+            (Goal::Reach, Why::Reach, Some(2.0))
+        );
+        assert_eq!(reach.band, Band::Filling);
+        let upkeep = aim(Decision::Upkeep, Some(3.0));
+        assert_eq!((upkeep.why, upkeep.surveyed), (Why::Upkeep, Some(3.0)));
     }
 }

@@ -1742,6 +1742,30 @@ fn a_copy_up_whose_connection_was_reset_is_sent_again_no_more_patiently() {
     );
 }
 
+#[test]
+fn a_copy_up_refused_the_key_its_line_pins_is_sent_again() {
+    // At 09:12 on 21 November a copy reached the builder vm-3's lender
+    // had handed its name to at 09:08:59, and ssh refused its key. Nix
+    // says nothing then that reads as a lost builder, so the run ended
+    // with nothing built. The line here still pins the key refused, as it
+    // does for a moment while the old builder still answers: it goes
+    // again all the same, since each try pins only the line's key.
+    let (ran, sshopts) = copied_after_a_loss(
+        "Host key verification failed.\n\
+         error: failed to start SSH master connection to 'nix-offload'",
+    );
+    assert_eq!(sshopts.len(), 2, "copied again: {sshopts:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("ssh refused the host key nix-offload showed"),
+        "the run didn't say the key was refused: {said}"
+    );
+    assert!(
+        !said.contains("ssh lost nix-offload"),
+        "a refusal was said to be a lost builder: {said}"
+    );
+}
+
 /// A run whose first copy up loses its builder, saying `said` as it does
 /// (ssh's keepalive giving up where it's empty), once it has ended well
 /// and been asked to build only what it was named, with what each copy

@@ -63,7 +63,8 @@ Scope {
     // is keyed, which would give it a line's routing (TalkThread.js's threadKeyOf).
     readonly property var talks: Said.gathered(
         saidHere.filter(one => Thread.threadKeyOf(one.sent) === ""),
-        servedLines.filter(one => Thread.threadKeyOf(one.sent) === ""), events, seen)
+        servedLines.filter(one => Thread.threadKeyOf(one.sent) === ""), events,
+        { seen: seen, keep: openedSince })
     readonly property var servedLines: heard.filter(one => !Said.unanswered(one))
         .map(one => Said.fromServed(hears.to, one))
     // The replies said here and those the void keeps, which their threads show.
@@ -389,13 +390,15 @@ Scope {
     readonly property var thread: opened === null ? null
         : Thread.threadOf(opened, events, said, { dayOf: since => root.dayOf(since), replies })
 
-    // Return: in normal with a line picked, it opens as its thread; else what's typed goes.
-    // The thread opens ready to type, its hint asking for a reply where the first letter
-    // goes, as the empty line opens, so a reply needs no i first (Joel, 2026-11-14 22:2x, on
-    // #4344: "i is not super intuitive"); Escape gives j, k, za and - back.
+    // Return: with a line picked, in insert or normal, it opens as its thread; else what's
+    // typed goes (TalkThread.js's opening). The thread opens ready to type, its hint asking for
+    // a reply where the first letter goes, as the empty line opens, so a reply needs no i
+    // first (Joel, 2026-11-14 22:2x, on #4344: "i is not super intuitive"); Escape gives j, k,
+    // za and - back.
     function returned() {
-        if (prompt.mode === "normal" && opened === null && talks[picked] !== undefined) {
-            openedSince = talks[picked].since;
+        const since = Thread.opening(picked, talks, opened);
+        if (since !== 0) {
+            openedSince = since;
             nerdy = false;
             prompt.typing();
         } else {
@@ -610,8 +613,16 @@ Scope {
                         onRegistered: name => root.attach(name)
                         onAccepted: root.returned()
                         // - back to the list from a thread, its line still picked.
-                        onBackward: root.openedSince = 0
-                        onTextChanged: root.typed()
+                        onBackward: {
+                            const left = root.openedSince;
+                            root.openedSince = 0;
+                            root.picked = Thread.comingBack(root.picked, root.talks, left);
+                        }
+                        // Typing lets a picked line go but in its thread (afterTyping).
+                        onTextChanged: {
+                            root.picked = Thread.afterTyping(root.picked, root.opened !== null);
+                            root.typed();
+                        }
                         onCaretChanged: root.typed()
                         // And as i or I types where it rests (Launcher.qml's talk says why).
                         onTypingNowChanged: root.typed()
@@ -731,29 +742,17 @@ Scope {
                     font.pointSize: Theme.level.note.pointSize
                 }
 
-                Row {
+                // At its right, the keys for what's shown: how to pick a line and open it, how
+                // to come back from its thread, and :take (TalkThread.js's footKeys).
+                KeyHints {
                     id: offer
-                    visible: (root.talk?.undo ?? "") !== ""
+                    visible: keys.length > 0
                     x: parent.width - width
-                    // A Row says no baseline of its own, so it says its words'.
-                    baselineOffset: takeCommand.baselineOffset
                     anchors.baseline: foot.baseline
-                    spacing: Theme.space.rung.mark
-
-                    Text {
-                        id: takeCommand
-                        text: ":take"
-                        color: Theme.text
-                        font.family: Theme.level.note.family
-                        font.pointSize: Theme.level.note.pointSize
-                    }
-
-                    Text {
-                        text: root.takes.toLowerCase()
-                        color: Theme.muted
-                        font.family: Theme.level.note.family
-                        font.pointSize: Theme.level.note.pointSize
-                    }
+                    keys: Thread.footKeys({ listed: root.talks.length > 0,
+                        opens: Thread.opening(root.picked, root.talks, root.opened) !== 0,
+                        threadOpen: root.thread !== null, typing: prompt.mode === "insert",
+                        takes: (root.talk?.undo ?? "") !== "" ? root.takes : "" }, root.said)
                 }
             }
         }
@@ -783,7 +782,8 @@ Scope {
             about: foot.text, attached: root.shownRows.map(row => ({ kind: row.kind,
                 text: row.text, note: row.note })), lines: prompt.typedLines, talk: root.talk?.said ?? "",
             standing: root.standingOf(root.exchanges[0] ?? null), talks: root.exchanges,
-            takes: offer.visible, commanding, command: commandLine.text,
+            takes: (root.talk?.undo ?? "") !== "", footKeys: offer.keys, commanding,
+            command: commandLine.text,
             menu: commandMenu.shown.map(one => commandMenu.named(one)),
             menuDrawn: commandMenu.drawn, menuChosen: commandMenu.chosen,
             menuEnds: commandMenu.y + commandMenu.height, footAt: foot.y,

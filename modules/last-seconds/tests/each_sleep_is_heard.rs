@@ -5,9 +5,9 @@
 //! unrecorded, so a reset asleep would read as a cut.
 
 use last_seconds::record::Record;
+use last_seconds::scratch::Folder;
 use last_seconds::{RING, STATE_VARIABLE, ring};
 use std::fs;
-use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -30,16 +30,14 @@ const SOON: Duration = Duration::from_secs(5);
 /// away when dropped.
 struct Keeping {
     recorder: Child,
-    folder: PathBuf,
+    folder: Folder,
 }
 
 impl Keeping {
     fn start(name: &str) -> Self {
-        let folder =
-            std::env::temp_dir().join(format!("last-seconds-{name}-{}", std::process::id()));
-        // A run killed before it cleared away leaves its folder, whose
-        // records would read as this recorder's before its handlers are set.
-        let _ = fs::remove_dir_all(&folder);
+        // A new folder, so no records a killed run left can read as this
+        // recorder's before its handlers are set.
+        let folder = Folder::make(name).expect("a folder of its own");
         let machine = folder.join("machine");
         let random = machine.join("proc/sys/kernel/random");
         fs::create_dir_all(&random).expect("the stand-in's folders");
@@ -120,7 +118,7 @@ impl Drop for Keeping {
     fn drop(&mut self) {
         let _ = self.recorder.kill();
         let _ = self.recorder.wait();
-        let _ = fs::remove_dir_all(&self.folder);
+        // The folder goes once this ends, after the recorder writing in it.
     }
 }
 

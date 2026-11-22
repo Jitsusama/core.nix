@@ -60,12 +60,17 @@ impl App {
         let version = self.painter.version;
         let file = self.file.clone();
         let to = self.layout_to.clone();
-        let _ = std::thread::Builder::new()
+        // Without its lines a standing character's keys say they're still
+        // reading, so a thread that can't start says why.
+        let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
                 let source = std::fs::read_to_string(&file).unwrap_or_default();
-                let _ = to.send((version, select::Layout::read(&page.frame, source)));
+                let _ = to.send((version, select::Layout::read(&page.frame, source, version)));
             });
+        if let Err(error) = started {
+            eprintln!("reader: can't read the page's lines: {error}");
+        }
     }
 
     /// The page's words for selecting have been read. A selection holds
@@ -295,6 +300,30 @@ impl App {
         let (layout, character) = (self.layout.as_ref()?, self.character.as_ref()?);
         let (top, _) = layout.line_extent(character.cursor.line);
         ((top - self.cursor_pt()).abs() <= 0.5).then_some(character)
+    }
+
+    /// The cursor's character's line, and its middle across the page,
+    /// while it stands, for gf and Ctrl+] to take what's under or after it.
+    /// Between a page set again and its lines read, the lines are the old
+    /// page's and its links the new one's, so there is none until they
+    /// agree.
+    pub(crate) fn character_on(&self) -> Option<(&crate::text::Line, f64)> {
+        let at = self.standing()?.cursor;
+        let layout = self.layout.as_ref()?.of(self.painter.version)?;
+        let line = layout.lines.get(at.line)?;
+        Some((line, crate::text::middle_of(line, at.ch)?))
+    }
+
+    /// Whether a character stands but the page was set again and its lines
+    /// aren't read yet, so what it's under can't be said: gf and Ctrl+]
+    /// say so rather than fall back to the whole line, which may take a
+    /// link behind it.
+    pub(crate) fn character_waits(&self) -> bool {
+        self.standing().is_some()
+            && self
+                .layout
+                .as_ref()
+                .is_some_and(|layout| layout.of(self.painter.version).is_none())
     }
 
     /// Lets the character go once the cursor has left its line, so it

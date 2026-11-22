@@ -554,6 +554,27 @@ import ./host-checks.nix args
 # programs and units, read pipewire, which a Mac has none of, or read a file
 # of a source built for Linux while they evaluate.
 // onLinux {
+  # A pi started from a shell on Linux browses in Chromium, as a hosted one
+  # does (host.nix says why), unless the machine names its own browser; a
+  # Mac, whose Chrome no such policy enrols, is left alone. Linux's alone,
+  # since it names Linux's Chromium.
+  pi-browses-in-chromium =
+    let
+      browser = home: home.home.sessionVariables.CHROME_PATH or null;
+      own = account (
+        workstation.extendModules {
+          modules = [ { home-manager.users.someone.home.sessionVariables.CHROME_PATH = "/own/chrome"; } ];
+        }
+      );
+    in
+    holds "pi-browses-in-chromium"
+      "A pi from a shell on Linux browses in Google Chrome rather than Chromium, a machine can't name its own browser, or a Mac's pi is given one."
+      (
+        browser (account workstation) == lib.getExe pkgs.chromium
+        && browser own == "/own/chrome"
+        && browser (account macWorkstation) == null
+      );
+
   # pi's status line tells a folder and git as the prompt does: by the
   # prompt's root markers, the prompt's git-engine, and the theme's marks,
   # each by the name the harness reads it under.

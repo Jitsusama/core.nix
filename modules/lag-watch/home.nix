@@ -20,7 +20,9 @@ in
       ExecStart = "${lib.getExe package} run";
       # Beside the compositor and sound, so it isn't starved while it
       # measures what starves them; every ten seconds it reads a small
-      # file for each watched thread and each app process, a few dozen.
+      # file for each watched thread and each app process, a few dozen,
+      # and every two seconds two for each watched thread, its state and
+      # its schedstat, to tell a sleep the kernel booked as a wait.
       Slice = "session.slice";
       Restart = "on-failure";
       RestartSec = "5s";

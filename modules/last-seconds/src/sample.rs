@@ -535,6 +535,7 @@ impl Sampler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::scratch::Folder;
 
     #[test]
     fn an_energy_counter_that_wrapped_is_read_across_its_range() {
@@ -623,7 +624,6 @@ mod tests {
                 sampler.read(1_000 * (second + 1)).package_mc
             })
             .collect();
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(reads[9], None, "a source was looked for every second");
         assert_eq!(
             reads[10],
@@ -646,7 +646,6 @@ mod tests {
                 sampler.read(1_000 * (second + 1)).fans[0]
             })
             .collect();
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             fans,
             [Some(0), Some(0), Some(0), Some(0), Some(0), Some(5)],
@@ -665,7 +664,6 @@ mod tests {
         put(&root, "sys/class/hwmon/hwmon4/fan1_input", "3100\n");
         let quick = sampler.read_quickly(11_000);
         let after = sampler.read(12_000);
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             read,
             [
@@ -695,7 +693,6 @@ mod tests {
         slept.woke();
         let woken = slept.read(3_000);
         let unslept = awake.read(3_000);
-        let _ = fs::remove_dir_all(&root);
         assert!(
             unslept.package_mw.is_some() && unslept.stalls.cpu_some.is_some(),
             "a sampler that never slept read no growth, so this proves nothing"
@@ -723,7 +720,6 @@ mod tests {
             }
             sampler.read(1_000 * (second + 1));
         }
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             sampler.machine.fans.first().and_then(|fan| fan.parent()),
             Some(cached.as_path()),
@@ -737,7 +733,6 @@ mod tests {
         let smm = Machine::under(&root).fans;
         fs::remove_dir_all(root.join("sys/class/hwmon/hwmon4")).expect("the other driver gone");
         let only_smm = Machine::under(&root).fans;
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             smm.first().and_then(|fan| fan.parent()),
             Some(root.join("sys/class/hwmon/hwmon4").as_path()),
@@ -766,7 +761,6 @@ mod tests {
             .expect("its current taken away");
         put(&root, "sys/class/power_supply/BAT0/power_now", "16100000\n");
         let charging_in_watts = Sampler::of(Machine::under(&root)).read(1_000).battery_ma;
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             (discharging, charging, charging_in_watts),
             (Some(-900), Some(900), Some(1_000))
@@ -780,7 +774,6 @@ mod tests {
         fs::remove_file(battery.join("current_now")).expect("its current taken away");
         put(&root, "sys/class/power_supply/BAT0/power_now", "16100000\n");
         let record = Sampler::of(Machine::under(&root)).read(1_000);
-        let _ = fs::remove_dir_all(&root);
         assert_eq!(
             record.battery_ma,
             Some(-1_000),
@@ -790,9 +783,7 @@ mod tests {
 
     #[test]
     fn a_pressure_files_totals_are_read_from_its_lines() {
-        let folder =
-            std::env::temp_dir().join(format!("last-seconds-pressure-{}", std::process::id()));
-        fs::create_dir_all(&folder).expect("a folder");
+        let folder = Folder::make("pressure").expect("a folder");
         let file = folder.join("memory");
         fs::write(
             &file,
@@ -800,8 +791,11 @@ mod tests {
              full avg10=0.00 avg60=0.00 avg300=0.00 total=575258820\n",
         )
         .expect("a pressure file");
-        assert_eq!(pressure(&file), [Some(1_149_083_191), Some(575_258_820)]);
-        let _ = fs::remove_dir_all(&folder);
+        assert_eq!(
+            pressure(&file),
+            [Some(1_149_083_191), Some(575_258_820)],
+            "a pressure file's totals weren't read from its lines"
+        );
     }
 
     /// Writes `text` at `path` under `root`, making its folders.
@@ -811,11 +805,10 @@ mod tests {
         fs::write(&path, text).expect("a stand-in file");
     }
 
-    /// A stand-in machine in a folder of its own, named so tests running
-    /// at once don't share one.
-    fn a_machine(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("last-seconds-{name}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+    /// A stand-in machine in a folder of its own, cleared away once the
+    /// test lets it go.
+    fn a_machine(name: &str) -> Folder {
+        let root = Folder::make(name).expect("a stand-in machine's folder");
         // The zones are numbered against their names, so a number can't
         // stand for one.
         put(&root, "sys/class/powercap/intel-rapl:0/name", "psys\n");
@@ -925,7 +918,6 @@ mod tests {
         let first = sampler.read(1_000);
         a_second_later(&root);
         let second = sampler.read(2_000);
-        let _ = fs::remove_dir_all(&root);
         (sampler, first, second)
     }
 

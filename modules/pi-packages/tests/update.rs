@@ -198,6 +198,139 @@ fn a_branch_already_current_is_left_alone() {
     assert!(matches!(again.done, Done::Current { .. }), "{again:?}");
 }
 
+impl Fixture {
+    /// The settings with pnpm's store put under the root, as the module
+    /// now puts it.
+    fn with_store_under_root(&self) -> Config {
+        let mut config = self.alone();
+        let store = config
+            .root
+            .join(".pnpm-store")
+            .to_string_lossy()
+            .into_owned();
+        config
+            .env
+            .push(("npm_config_store_dir".to_owned(), store.clone()));
+        config.env.push(("pnpm_config_store_dir".to_owned(), store));
+        config
+    }
+}
+
+/// Where a version's packed dependency really is.
+fn shared_of(version: &Path) -> std::path::PathBuf {
+    fs::canonicalize(version.join("node_modules/shared")).expect("shared in the version")
+}
+
+#[test]
+fn a_current_version_linked_outside_the_root_is_built_again() {
+    // A version installed while pnpm's store lay outside the root keeps
+    // its links into that store, which an agent's fenced commands may
+    // write, until the branch moves; one package's hadn't in a week.
+    let fixture = Fixture::new();
+    fixture.update();
+    let place = fixture.place();
+    let old = fs::canonicalize(place.current()).expect("the first version");
+    let config = fixture.with_store_under_root();
+    let root = fs::canonicalize(&config.root).expect("the root");
+    assert!(
+        !shared_of(&old).starts_with(&root),
+        "the fixture's store is under the root"
+    );
+
+    let outcome =
+        run::update_one(&config, &config.packages[0], SystemTime::now(), None).expect("an update");
+
+    assert_eq!(
+        outcome.done,
+        Done::Rebuilt {
+            commit: fixture.head()
+        }
+    );
+    assert_eq!(place.current_commit(), Some(fixture.head()));
+    assert!(
+        shared_of(&place.current()).starts_with(&root),
+        "still linked outside the root"
+    );
+    assert_ne!(
+        fs::canonicalize(place.current()).expect("the new version"),
+        old,
+        "built again in place, under a running pi"
+    );
+    assert!(
+        old.is_dir(),
+        "the version a running pi may hold was removed"
+    );
+}
+
+#[test]
+fn a_current_version_whose_links_lead_nowhere_is_built_again() {
+    // A fenced command may empty the old store rather than write it, so
+    // a link that no longer resolves must not count as inside the root.
+    let fixture = Fixture::new();
+    fixture.update();
+    let place = fixture.place();
+    let old = fs::canonicalize(place.current()).expect("the first version");
+    fs::remove_dir_all(shared_of(&old)).expect("the old store's copy");
+    let config = fixture.with_store_under_root();
+
+    let outcome =
+        run::update_one(&config, &config.packages[0], SystemTime::now(), None).expect("an update");
+
+    assert_eq!(
+        outcome.done,
+        Done::Rebuilt {
+            commit: fixture.head()
+        }
+    );
+}
+
+#[test]
+fn a_version_built_again_is_then_current() {
+    let fixture = Fixture::new();
+    fixture.update();
+    let config = fixture.with_store_under_root();
+    let update = || {
+        run::update_one(&config, &config.packages[0], SystemTime::now(), None)
+            .expect("an update")
+            .done
+    };
+    update();
+
+    let again = update();
+
+    assert_eq!(
+        again,
+        Done::Current {
+            commit: fixture.head()
+        }
+    );
+}
+
+#[test]
+fn a_version_linked_outside_the_root_waits_out_a_hold() {
+    let fixture = Fixture::new();
+    fixture.update();
+    let place = fixture.place();
+    let before = fs::read_link(place.current()).expect("current");
+    let config = fixture.with_store_under_root();
+    let now = SystemTime::now();
+    let hold = Hold {
+        until: Some(now + HALF_AN_HOUR),
+        why: "a call".to_owned(),
+    };
+
+    let outcome = run::update_one(
+        &config,
+        &config.packages[0],
+        now,
+        Some(&run::Wait::Hold(hold)),
+    )
+    .expect("an update");
+
+    assert!(matches!(outcome.done, Done::OnHold { .. }), "{outcome:?}");
+    assert_eq!(fs::read_link(place.current()).expect("current"), before);
+}
+
 #[test]
 fn an_update_under_way_is_left_to_finish() {
     let fixture = Fixture::new();

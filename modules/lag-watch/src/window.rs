@@ -9,7 +9,7 @@
 
 use crate::kernel::{CALLERS, Group, Sched, Stall, Thread};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Nanoseconds, microseconds or a tally, as a float. Exact: every one here
 /// is far below 2⁵³.
@@ -57,6 +57,50 @@ pub struct Snapshot {
     /// How many of each app's processes Joel started from his terminal, so
     /// go unwatched, as of the minute's last look (`apps::Apps::unwatched`).
     pub unwatched: BTreeMap<String, usize>,
+    /// What each thread's schedstat gained, since the snapshot before, in
+    /// reads that can't be waits (`book`), left out of its waits.
+    pub booked: BTreeMap<Thread, Sched>,
+}
+
+/// How far past the time between two reads a thread's wait may run and
+/// still be one. The reads are timed from before the first is taken to
+/// after the second is, so they can only seem further apart than they
+/// were; this is room besides for a clock read between files.
+const DRIFT_NS: u64 = 50_000_000;
+
+/// Books into `booked` what each thread's schedstat gained between the
+/// reads `before` and `after`, `seconds` apart, when the thread was asleep
+/// at `before` (`asleep`) and its wait grew by more than that time. The
+/// kernel adds a wait when it ends, so a thread ready at `before` may
+/// truly have waited longer than the time between: that one is kept. One
+/// asleep at `before` began any wait since, so it can't have waited
+/// longer; yet the kernel sometimes books a timer's whole sleep, 4 or
+/// 10 s, as one read's wait, which across a ten-second window would pass
+/// as a wait. A thread with no state read at `before` is kept.
+pub fn book(
+    booked: &mut BTreeMap<Thread, Sched>,
+    before: &BTreeMap<Thread, Sched>,
+    asleep: &BTreeSet<Thread>,
+    after: &BTreeMap<Thread, Sched>,
+    seconds: f64,
+) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "a tick's length in nanoseconds, held at zero or more, is far below 2⁶⁴"
+    )]
+    let passed = (seconds.max(0.0) * 1e9) as u64;
+    for (key, s) in after {
+        let Some(old) = before.get(key).filter(|_| asleep.contains(key)) else {
+            continue;
+        };
+        let wait = s.wait_ns.saturating_sub(old.wait_ns);
+        if wait > passed + DRIFT_NS {
+            let entry = booked.entry(key.clone()).or_default();
+            entry.wait_ns += wait;
+            entry.slices += s.slices.saturating_sub(old.slices);
+        }
+    }
 }
 
 /// A share of the window, in percent, each kind of stall.
@@ -83,6 +127,18 @@ pub struct Memory {
 pub struct Wait {
     pub mean_us: f64,
     pub worst_us: f64,
+    /// How many of its threads had a read left out as booked, not waited
+    /// (`book`), so a gap in what's counted shows.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub doubted: u64,
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if hands the field by reference"
+)]
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 /// The thread of a call's program that waited longest for a CPU each time
@@ -91,6 +147,10 @@ pub struct Wait {
 pub struct Worst {
     pub thread: String,
     pub wait_us: f64,
+    /// How many of the program's call threads had a read left out as
+    /// booked, not waited (`book`).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub doubted: u64,
 }
 
 /// How long niri took to answer, in milliseconds.
@@ -352,23 +412,32 @@ pub fn between(then: &Snapshot, now: &Snapshot, niri: Answers, ended: u64, syste
 
 /// How long the watched threads waited for a CPU each time they were
 /// ready in the window: each kind's, and a call's worst thread in each
-/// program carrying one. A thread that didn't run has no wait a run.
+/// program carrying one. A thread that didn't run has no wait a run, and
+/// what its reads booked rather than waited (`book`) is left out.
 fn turns_waited(
     then: &Snapshot,
     now: &Snapshot,
 ) -> (BTreeMap<String, Wait>, BTreeMap<String, Worst>) {
-    let mut waits: BTreeMap<String, (u64, u64, f64)> = BTreeMap::new();
+    let mut waits: BTreeMap<String, (u64, u64, f64, u64)> = BTreeMap::new();
     let mut call: BTreeMap<String, Worst> = BTreeMap::new();
+    let mut call_doubted: BTreeMap<&str, u64> = BTreeMap::new();
     for (key, s) in &now.threads {
         // A tab shown in the window starts from where it rested hidden.
         let Some(old) = then.threads.get(key).or_else(|| then.resting.get(key)) else {
             continue;
         };
+        let booked = now.booked.get(key).copied().unwrap_or_default();
         let (wait, slices) = (
-            s.wait_ns.saturating_sub(old.wait_ns),
-            s.slices.saturating_sub(old.slices),
+            s.wait_ns
+                .saturating_sub(old.wait_ns)
+                .saturating_sub(booked.wait_ns),
+            s.slices
+                .saturating_sub(old.slices)
+                .saturating_sub(booked.slices),
         );
+        let doubted = u64::from(booked != Sched::default());
         if CALLERS.contains(&key.label) {
+            *call_doubted.entry(key.label).or_default() += doubted;
             let per_run = float(wait) / float(slices.max(1)) / 1000.0;
             let worst = call.get(key.label).map_or(-1.0, |w| w.wait_us);
             if slices > 0 && per_run > worst {
@@ -377,6 +446,7 @@ fn turns_waited(
                     Worst {
                         thread: key.name.clone(),
                         wait_us: per_run,
+                        doubted: 0,
                     },
                 );
             }
@@ -388,10 +458,16 @@ fn turns_waited(
         if slices > 0 {
             entry.2 = entry.2.max(float(wait) / float(slices) / 1000.0);
         }
+        entry.3 += doubted;
+    }
+    for (label, doubted) in call_doubted {
+        if let Some(worst) = call.get_mut(label) {
+            worst.doubted = doubted;
+        }
     }
     let waits: BTreeMap<String, Wait> = waits
         .into_iter()
-        .map(|(label, (wait, slices, worst))| {
+        .map(|(label, (wait, slices, worst, doubted))| {
             let mean_us = if slices > 0 {
                 float(wait) / float(slices) / 1000.0
             } else {
@@ -402,6 +478,7 @@ fn turns_waited(
                 Wait {
                     mean_us,
                     worst_us: worst,
+                    doubted,
                 },
             )
         })

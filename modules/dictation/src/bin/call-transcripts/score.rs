@@ -63,11 +63,15 @@ pub struct Meeting<'a> {
     pub sounds: [Vec<f32>; 2],
 }
 
-/// A meeting's errors: each side's as written down, and as heard alone.
+/// A meeting's errors: each side's as written down, and as heard alone,
+/// and Joel's side's as it would be written with none of his lines taken
+/// for the others' echo. A meeting's sides hold no echo (meetings.nix), so
+/// where that's lower, the echo filter left out words he said.
 #[derive(Default)]
 struct Scored {
     written: [Errors; 2],
     alone: [Errors; 2],
+    unechoed: Errors,
 }
 
 /// Scores every meeting of `set` with the speech model in `model`, says
@@ -112,25 +116,42 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                 scored.alone[index(side)] += Errors::count(&said(&line.text), &words(&text));
             }
         }
-        let written = transcript::read(&markdown(&lines, "Me", None, None), "Me");
-        for side in [Side::Mine, Side::Theirs] {
-            let spoken: Vec<String> = reference
+        let spoken = |side: Side| -> Vec<String> {
+            reference
                 .iter()
                 .filter(|line| whose(line, mine) == side)
                 .flat_map(|line| said(&line.text))
-                .collect();
+                .collect()
+        };
+        let written = transcript::read(&markdown(&lines, "Me", None, None), "Me");
+        for side in [Side::Mine, Side::Theirs] {
             let heard: Vec<String> = written
                 .iter()
                 .filter(|line| line.side == side)
                 .flat_map(|line| words(&line.text))
                 .collect();
-            scored.written[index(side)] = Errors::count(&spoken, &heard);
+            scored.written[index(side)] = Errors::count(&spoken(side), &heard);
         }
+        let mut own: Vec<&Line> = lines
+            .iter()
+            .filter(|line| line.side == Side::Mine)
+            .collect();
+        own.sort_by_key(|line| line.start);
+        for line in own.iter().filter(|line| transcript::echoes(line, &lines)) {
+            let at = transcript::clock(line.start);
+            println!(
+                "{name}: Joel's line at {at} taken for an echo: {}",
+                line.text
+            );
+        }
+        let heard: Vec<String> = own.iter().flat_map(|line| words(&line.text)).collect();
+        scored.unechoed = Errors::count(&spoken(Side::Mine), &heard);
         println!("{}", report(name, &scored));
         for i in 0..2 {
             all.written[i] += scored.written[i];
             all.alone[i] += scored.alone[i];
         }
+        all.unechoed += scored.unechoed;
     }
     println!("{}", report("all", &all));
     let mut total = all.written[0];
@@ -246,7 +267,13 @@ fn report(name: &str, scored: &Scored) -> String {
         );
         out.push('\n');
     }
-    out.trim_end().to_owned()
+    let _ = write!(
+        out,
+        "{name} with none of Joel's lines taken for an echo: Joel's side {} ({})",
+        rate(&scored.unechoed),
+        kinds(&scored.unechoed),
+    );
+    out
 }
 
 fn rate(errors: &Errors) -> String {

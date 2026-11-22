@@ -109,6 +109,35 @@ ShellRoot {
         }]
     }
 
+    // Quests, as Now's What Moved reads it: each workstream that moved, as
+    // its rows, what showing them shows, and what each ask to count them
+    // looked at gave back.
+    QtObject {
+        id: quests
+
+        readonly property var settings: ({ name: "quests" })
+        property int movedRevision: 0
+        property var movedRows: []
+        property var shown: []
+        property var lookedAsked: []
+
+        function moved() {
+            return movedRows;
+        }
+        function movedSeen() {
+            return shown;
+        }
+        function looked(seen) {
+            lookedAsked = lookedAsked.concat([seen]);
+        }
+        function everything() {
+            return [];
+        }
+        function folders() {
+            return [];
+        }
+    }
+
     // Agents, as For You reads it: each session wanting Joel as Agents'
     // row for it, kept as Agents keeps its own, so a session's row For
     // You makes is made again only when For You's own making is; what each
@@ -197,7 +226,7 @@ ShellRoot {
             said = keys;
         }
         // Set without one only by a case that asks what's left without it.
-        property var sources: [weather, calendar, cameras, power, pastNotices, agents]
+        property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
         property int placed: 0
 
         function resolved(id) {
@@ -296,8 +325,10 @@ ShellRoot {
     // wait for it, since Qt runs those queued while it runs them in one
     // pass, so this waits in time: until a tell has stood 250 ms, long
     // enough for a second to be counted, which heldHears refuses, or 5 s
-    // with none. The clock can turn a minute meanwhile, which this waits
-    // past and heldHears tells apart.
+    // with none. A turn of the clock told after the case's change carries
+    // it, since Now reads For You's rows as it tells its own, so the wait
+    // ends on a turn as on For You's ask, and heldHears sets a turn aside
+    // as such.
     Timer {
         id: tellWaited
 
@@ -308,8 +339,7 @@ ShellRoot {
         repeat: true
         onTriggered: {
             const at = Date.now();
-            if (tellWaited.toldAt === 0
-                && root.nowSaid.some(said => said.why !== "" && !said.retimed))
+            if (tellWaited.toldAt === 0 && root.nowSaid.some(said => said.why !== ""))
                 tellWaited.toldAt = at;
             const told = tellWaited.toldAt > 0;
             if ((told && at - tellWaited.toldAt < 250)
@@ -878,8 +908,77 @@ ShellRoot {
                 : Object.assign({}, one, { read: false, readAt: null, left: undefined,
                     leftAt: undefined, withdrawn: undefined }));
             expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
-        }))
+        }) && tried(root.movedCases))
             Qt.exit(0);
+    }
+
+    // What Moved: no row while nothing moved; a workstream that moved is
+    // one row after the moment's, never in For You, stepping into its
+    // quest's row; stepped into, it stays while the launcher's open, and
+    // shut, what it showed as he stepped in is looked at, once, and it
+    // goes once nothing's moved since.
+    function movedCases() {
+        const keys = () => now.everything().map(row => row.key);
+        const moved = () => now.everything().find(row => row.key === "on:moved") ?? null;
+        theLauncher.open = true;
+        expect("nothing moved is no row", moved() === null, JSON.stringify(keys()));
+        const quest = { key: "moved:quests:QEST-A", name: "Bootstrap the laptop",
+            note: "landed: the fix" };
+        const fix = { key: "at\tthe fix", landed: 1, expected: null };
+        quests.movedRows = [quest];
+        quests.shown = [fix];
+        quests.movedRevision += 1;
+        // The moment's answers share the key "", so they're told by name.
+        const all = now.everything();
+        const at = all.findIndex(row => row.key === "on:moved");
+        const ofMoment = row => row !== undefined && names().includes(row.name);
+        expect("a workstream moved is one row, after the moment's",
+            at > 0 && ofMoment(all[at - 1]) && !ofMoment(all[at + 1]),
+            JSON.stringify(all.map(row => row.name)));
+        const row = moved();
+        expect("it says how many moved and names each",
+            row.name === "What Moved" && row.side === "1 moved"
+                && row.note === "Bootstrap the laptop",
+            JSON.stringify([row.name, row.side, row.note]));
+        expect("it steps into each quest's row", row.verbs()[0] === quest,
+            JSON.stringify(row.verbs()));
+        expect("it asks nothing, so it's not in For You",
+            !now.waitingRows().some(one => one.key === "on:moved"),
+            JSON.stringify(now.waitingRows().map(one => one.key)));
+        const asked = () => JSON.stringify(quests.lookedAsked);
+        row.stepped();
+        expect("stepping in looks at nothing yet", quests.lookedAsked.length === 0, asked());
+        // Moved again while he's in: the daemon says it, and goes on
+        // saying it after, since he stepped in before it, as the daemon
+        // would with only the fix given back.
+        quests.shown = [fix, { key: "at\tthe next", landed: 2, expected: null }];
+        quests.movedRows = [Object.assign({}, quest, { note: "landed: the next" })];
+        quests.movedRevision += 1;
+        expect("stepped into, it stays while the launcher's open", moved() !== null,
+            JSON.stringify(keys()));
+        // Looked at from elsewhere meanwhile, so nothing moved: the row
+        // stays under him while he's in, rather than going from beneath.
+        const moving = quests.movedRows;
+        quests.movedRows = [];
+        quests.movedRevision += 1;
+        expect("nothing left moved while he's in, it stays till shut", moved() !== null,
+            JSON.stringify(keys()));
+        quests.movedRows = moving;
+        quests.movedRevision += 1;
+        theLauncher.open = false;
+        expect("shut, what it showed as he stepped in is looked at, once",
+            asked() === JSON.stringify([[fix]]), asked());
+        theLauncher.open = true;
+        expect("what moved after he stepped in is still said", moved() !== null,
+            JSON.stringify(keys()));
+        theLauncher.open = false;
+        expect("shut again unstepped, nothing more is looked at",
+            quests.lookedAsked.length === 1, asked());
+        quests.movedRows = [];
+        quests.movedRevision += 1;
+        theLauncher.open = true;
+        expect("with nothing moved, it's gone", moved() === null, JSON.stringify(keys()));
+        theLauncher.open = false;
     }
     Timer {
         running: root.waiting === "cell notice served"
@@ -956,13 +1055,17 @@ ShellRoot {
     // changedWhy).
     property string nowMoved: ""
     // What it said moved each time, in order, since the case set it going
-    // cleared them: whether Now had placed its time again by then, since
-    // heldHears' change, and whether tellWaited was waiting for it.
+    // cleared them, whether Now had placed its time again by then, since
+    // heldHears' change, and whether the row held read otherwise.
     property var nowSaid: []
     // The time Now had placed as heldHears' change was made, so a turn of
     // the real clock, which places it again, is told from a second change
     // of For You's however late it's heard.
     property var heldTimeRow: null
+    // What the row held and what it holds read as heldHears' change was
+    // made (Provider.qml's lastHeldRow), so a turn is seen to move what's
+    // held or not.
+    property string heldRowWas: ""
     // And whether it said none of what moved is shown (changedUnseen).
     property bool nowUnseen: false
     // How many times what For You lists from moved (Now.qml's forYouHeard).
@@ -978,7 +1081,7 @@ ShellRoot {
         function onChanged() {
             root.nowChanged += 1;
             root.nowSaid.push({ why: now.changedWhy, retimed: now.timeRow !== root.heldTimeRow,
-                waited: tellWaited.running });
+                heldMoved: now.lastHeldRow !== root.heldRowWas });
             root.nowMoved = now.changedWhy;
             root.nowUnseen = now.changedUnseen;
         }
@@ -1236,6 +1339,52 @@ ShellRoot {
         expect("and leads what :filter narrows, as the list does",
             filtered[0]?.forYou?.source === "desktop",
             JSON.stringify(filtered.map(row => [row.key, row.forYou?.source ?? ""])));
+        // And lists what the list does in its order, past the first, as
+        // the list stands with no heading, which :filter draws none of: two
+        // sessions asking are gathered in Agents Asking, so no cell stands
+        // among what needs Joel now, and the asks stand where the heaviest
+        // weighs (ForYou.js's agentAt): after a to-do overdue he can do now
+        // (70), before one that only waits (10), each ask weighing 50 as it
+        // blocks its session. Each kind's row stands for those it holds (our
+        // council on #5916, F7, 2026-11-20).
+        const standsFor = row => String(row.key).startsWith("on:waitingOnYou:kind:")
+            ? Array.from(row.targets()).map(one => one.key) : [row.key];
+        const askingOf = (address, said) => ({ address, title: `Session ${address}`, presence: {
+            session: `s-${address}`, addresses: [], wants: { kind: "question", said } } });
+        const signHeld = { title: "Sign in to the bank", minutes: 2 };
+        const payHeld = { title: "Pay the bill", minutes: 2, ready: true,
+            deadline: new Date(Date.now() - 3600000).toISOString() };
+        let drawn = [];
+        let narrowed = [];
+        try {
+            Sessions.wanting = [askingOf("WANTF", "Which?"), askingOf("WANTG", "Where?")];
+            WaitingOnYou.now = [signHeld, payHeld];
+            WaitingOnYou.foremost = payHeld;
+            drawn = Array.from(now.waitingRows());
+            narrowed = Array.from(now.filterable()).map(row => row.key);
+        } finally {
+            Sessions.wanting = [];
+            WaitingOnYou.now = [];
+            WaitingOnYou.foremost = null;
+        }
+        const wholeList = drawn.reduce((keys, row) => keys.concat(standsFor(row)), []);
+        const seeded = ["on:waiting:desktop", "on:waiting:want:WANTF", "on:waiting:want:WANTG",
+            "on:waiting:Sign in to the bank", "on:waiting:Pay the bill", "on:look:p"];
+        // Each its own, so a failure says which held: the state the order
+        // is judged in, what :filter holds, then the order itself.
+        const placeOf = key => wholeList.indexOf(key);
+        expect("the list it's judged by draws no heading, the asks gathered between the to-dos",
+            !drawn.some(row => row.heading) && drawn.some(row => row.key
+                === "on:waitingOnYou:kind:agent") && placeOf("on:waiting:Pay the bill")
+                < placeOf("on:waiting:want:WANTF") && placeOf("on:waiting:want:WANTG")
+                < placeOf("on:waiting:Sign in to the bank"),
+            JSON.stringify(drawn.map(row => [row.key, row.heading === true])));
+        expect(":filter holds each row the state makes",
+            JSON.stringify([...narrowed].sort()) === JSON.stringify([...seeded].sort()),
+            JSON.stringify(narrowed));
+        expect("and lists the rest of For You in the list's order",
+            JSON.stringify(wholeList) === JSON.stringify(narrowed),
+            JSON.stringify([wholeList, narrowed]));
         now.lookTexts = beforeLook;
         // Ahead of a session's question too, in For You and home alike.
         Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
@@ -1454,7 +1603,8 @@ ShellRoot {
             why: "Each read re-listed an empty folder.", state: "waiting", address: "leftq",
             asker: "The trunk disk incident", ask: "Merge it now, or hold it for review?",
             ifNothing: "It waits, unmerged, and the rescans go on.",
-            choices: [{ value: "merge", label: "Queue It" }, { value: "hold", label: "Hold It" }] });
+            choices: [{ value: "merge", label: "Queue It" },
+                { value: "hold", label: "Hold It" }] });
         const expiring = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
         const expiringText = JSON.stringify({ v: 1, id: "e", kind: "page", at: root.lookedAt,
             target: "https://example.com", title: "Read E", why: "Because.", state: "waiting",
@@ -1798,6 +1948,73 @@ ShellRoot {
                 ["verb:agent:talk", "verb:on:waiting:go:on:look:e"],
                 ["verb:on:waiting:go:on:look:e"]]),
             JSON.stringify([actingLook, askingLook]));
+        // A look done with, as the to-do daemon serves it to History and
+        // held in no file of the shell's, leads to its cell as well, by
+        // the cell its row names alone: Open, then Talk, then Go To. One
+        // written before looks named their cell still leads to the session
+        // that left it, by its address; one whose cell has ended with no
+        // answer for it keeps Open only. What holds an unnamed one to its
+        // address (doneWith) is the two cases with a session on another
+        // quest that merely lists its name: served, and made by the shell.
+        const historyActs = held => now.lookServed({ held: Object.assign({ id: "h",
+            kind: "page", title: "Read H", target: "https://example.com", state: "opened" },
+            held) }, "row:looks-history:h").verbs().map(act => act.key)
+            .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:")
+                || key.startsWith("verb:on:look:open:"));
+        Sessions.running = [windowed(acted)];
+        Sessions.wanting = [windowed(acted)];
+        const servedActs = historyActs({ cell: "ACTED" });
+        expect("a look done with offers Open, then Talk to its cell and Go To, from History",
+            JSON.stringify(servedActs) === JSON.stringify(["verb:on:look:open:h",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
+            JSON.stringify(servedActs));
+        const unnamedActs = historyActs({ session: "s-old", address: "ACTED", quest: "QEST-E" });
+        expect("a look done with naming no cell leads to the session that left it",
+            JSON.stringify(unnamedActs) === JSON.stringify(["verb:on:look:open:h",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:h"]),
+            JSON.stringify(unnamedActs));
+        Sessions.running = [windowed(Object.assign({}, acted, { presence: Object.assign({},
+            acted.presence, { quest: "QEST-2", addresses: ["ACTED", "GONEGO"] }) }))];
+        const listedActs = historyActs({ session: "s-old", address: "GONEGO", quest: "QEST-G",
+            cell: null });
+        expect("a look done with naming no cell, never one on another quest listing it",
+            JSON.stringify(listedActs) === JSON.stringify(["verb:on:look:open:h"]),
+            JSON.stringify(listedActs));
+        // A terminal look's Open is its only way to its cell, so it is held
+        // the same way.
+        Sessions.wentTo = null;
+        now.lookServed({ held: { id: "t", kind: "terminal", title: "Read T", target: "",
+            state: "opened", session: "s-old", address: "GONEGO", quest: "QEST-G",
+            cell: null } }, "row:looks-history:t").run();
+        expect("a terminal look done with naming no cell opens no session listing it",
+            Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
+        Sessions.wentTo = null;
+        // As the shell makes one itself, the daemon not serving it.
+        const textsBefore = now.lookTexts;
+        const apartActs = address => {
+            now.lookTexts = { "o.json": JSON.stringify({ v: 1, id: "o", kind: "page",
+                at: root.lookedAt, resolvedAt: root.lookedAt, target: "https://example.com",
+                title: "Read O", why: "Because.", state: "opened", session: "s-old",
+                address: address, quest: address === "ACTED" ? "QEST-E" : "QEST-G" }) };
+            const row = now.historyRows().find(each => each.key === "on:look:o");
+            return row === undefined ? null : row.verbs().map(act => act.key)
+                .filter(key => key === "verb:agent:talk" || key.startsWith("verb:on:waiting:go:")
+                    || key.startsWith("verb:on:look:open:"));
+        };
+        const apartListed = apartActs("GONEGO");
+        const apartLeft = apartActs("ACTED");
+        now.lookTexts = textsBefore;
+        expect("a look done with the shell makes itself, never one on another quest listing it",
+            JSON.stringify(apartListed) === JSON.stringify(["verb:on:look:open:o"]),
+            JSON.stringify(apartListed));
+        expect("and leads to the session that left it, by its address",
+            JSON.stringify(apartLeft) === JSON.stringify(["verb:on:look:open:o",
+                "verb:agent:talk", "verb:on:waiting:go:on:look:o"]),
+            JSON.stringify(apartLeft));
+        const endedActs = historyActs({ cell: "GONEGO", address: "GONEGO", quest: "QEST-G" });
+        expect("a look done with whose cell has ended offers Open alone, never its lister",
+            JSON.stringify(endedActs) === JSON.stringify(["verb:on:look:open:h"]),
+            JSON.stringify(endedActs));
         Sessions.running = [acted];
         Sessions.wanting = [acted];
         WaitingOnYou.sessionOf = { "Sign The Form": acted };
@@ -2482,6 +2699,7 @@ ShellRoot {
         root.nowChanged = 0;
         root.nowSaid = [];
         root.heldTimeRow = now.timeRow;
+        root.heldRowWas = now.lastHeldRow;
         WaitingOnYou.now = [toDo("Sign In Again")];
         expect("a to-do said otherwise, its count the same, keeps For You's own row",
             now.waiting === waitingRow && root.nowChanged === 0, root.nowChanged);
@@ -2527,21 +2745,25 @@ ShellRoot {
         // answering late is no second telling of For You: counting
         // every change read 2 on loaded builders (train run 23a23e5d and
         // three more, 16 and 17 November), as it does with the notices'
-        // rows changed just after the case. A minute turning while the
-        // cases held the thread places the time again, and told in one with
-        // For You's change, Now tells both as its own rows. While the case waits for the tell the clock can also
-        // turn beside it, a tell of its own as Now's own rows with the time
-        // placed again, which is set aside once. A turn told alone stands
-        // for For You's only when told before the wait began, as the turn
-        // and the ask told in one; told during the wait, it's a turn that
-        // found For You saying nothing.
+        // rows changed just after the case. A turn of the clock places the
+        // time again, a tell as Now's own rows, which is set aside once.
+        // Now compares what's held as it tells its own rows, reading For
+        // You's rows then, so a turn told before For You's ask carries For
+        // You's change and leaves the ask nothing to say (Provider.qml's
+        // changedTo): a turn told alone stands for For You's tell when the
+        // row held read otherwise as it was told. That shows what's held
+        // moved, by the change or by the minute, since some of For You's
+        // rows read by the clock, though not that For You asked. A For You
+        // that never asks, or a change that never reached what's held, is
+        // caught on every run the clock doesn't turn in; on one it does,
+        // the turn draws what's held anew, as Joel would see.
         const moved = root.nowSaid;
         const told = moved.filter(said => said.why !== "");
         const turnedAt = told.findIndex(said => said.why === "its own rows" && said.retimed);
         const turned = turnedAt >= 0;
         const others = told.filter((said, at) => at !== turnedAt);
         const heard = (others.length === 1 && others[0].why === "the rows it holds")
-            || (turned && others.length === 0 && !told[turnedAt].waited);
+            || (turned && others.length === 0 && told[turnedAt].heldMoved);
         expect("and For You held hears it once the change is done", heard,
             `${JSON.stringify(moved)} after ${root.tellWaitedFor} ms`);
         // Said last with nothing held, Now stepped into For You since

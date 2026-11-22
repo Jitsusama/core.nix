@@ -357,6 +357,7 @@ or a copy, can be opened, copied or forgotten.
 | to try | a landing whose line asks Joel to try something, kept in For You until he opens or clears it, or a day from when it landed | | |
 | to read | a look that asks nothing of Joel, only to be seen, kept in For You's last row 24 hours and then put in History as expired | | `for-you:kind:read` |
 | Lately | what came for Joel that asks nothing of him, one row for each place it came from, among Now's own rows after the moment's; a row stands in For You while one of its own notices is critical, unread and off the screen, so Mail's never does, and stays there until the launcher next opens unless it comes to hold nothing | | |
+| What Moved | Now's row, after the location, for each workstream that moved since Joel last looked, one row each named by its quest: what landed, else that a date moved, else what it took on, and the next date it owes; it asks nothing of him, so it's never in For You, and leaving the launcher after stepping in counts what it showed as he stepped in looked at | what's new | `on:moved`, the quests daemon's `moved:quests` |
 | clipboard | what was copied last, and what was copied before it | | |
 | selected text | what Joel has selected in any window, Wayland's primary selection, read only when asked and never kept | | `selection:primary` |
 | On the Selection | the place on Super+X: the selected text at its head, and what an agent can do with it as pi-verbs serves them, Ask last | | `OnSelection.qml`, `pi-verbs` |
@@ -414,6 +415,7 @@ off.
 | memory | what programs run in while the machine is on | RAM | |
 | swap | memory set aside out of the way, compressed first, then in the swap file | swapfile | zswap |
 | memory pressure | how long programs are waiting for memory | | PSI |
+| memory standstill | how much of the busy processors' time stood still because every program on them was waiting for memory | | PSI's `full` |
 | processor pressure | how long programs are waiting for the processor | | PSI's `cpu` |
 | disk pressure | how long programs are waiting for the disk, not how full it is | | PSI's `io` |
 | lag | how long the desktop takes to answer a key or a click, and what made it wait | slow, jank, stutter | `lag-watch` |

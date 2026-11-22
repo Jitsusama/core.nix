@@ -10,9 +10,13 @@ draws them.
   legend's marks and words, each machine's section and its ties, the rows
   the keys step through, what a screen reader hears, and that the page's
   own files wear no weather words.
+- `looks.test.ts` tries what the page lists first as worth a look: worst
+  first across the machines and the parts, whose each is and where it
+  leads, a part not read, eight at most and the rest counted, nothing
+  said until every part has told, and every word escaped.
 - `machine.test.ts` tries the words a machine is said in: the headline
-  over the machines, the lede, its kind, each of its ties, and when it
-  was updated, today, yesterday or on a date.
+  over the machines, its kind, each of its ties, and when it was
+  updated, today, yesterday or on a date.
 - `bridge.test.ts` tries the bridge drawing: a pier for each machine, wide
   and narrow, its name and health over it, a dot for each cell and one
   for several past what a pier holds, on one scale, what lies past its
@@ -23,7 +27,7 @@ draws them.
   name it are still coming, overdue or all in.
 - `page.test.ts` tries that the page preloads every module of its own
   that it reaches only through another, so its first draw comes whole.
-- Node's own test runner runs all five as the local sites build the
+- Node's own test runner runs all six as the local sites build the
   page, so `system-site-holds` fails when one does.
 - `reads-live-test.py` reads the page Nix builds in a headless browser, beside
   a stand-in daemon holding `system.json`: the page as the records change,

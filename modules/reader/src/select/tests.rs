@@ -604,6 +604,22 @@ fn words_the_file_doesnt_hold_copy_as_the_page_sets_them() {
 
 /// The file set as the reader sets it, its words read for selecting.
 fn set(name: &str, markdown: &str) -> Layout {
+    set_as(name, markdown, 0)
+}
+
+#[test]
+fn lines_read_for_one_setting_of_the_page_are_not_taken_for_anothers() {
+    // Between a page set again and its lines read, gf and Ctrl+] wait
+    // rather than read the old lines beside the new links.
+    let layout = set_as("versions", "Words.\n", 7);
+    assert!(layout.of(7).is_some(), "its own setting's");
+    assert!(layout.of(8).is_none(), "not the next's");
+    assert!(layout.of(0).is_none(), "nor the first's");
+}
+
+/// The file set as the reader sets it, its words read for selecting as
+/// the page's setting `version`.
+fn set_as(name: &str, markdown: &str, version: u32) -> Layout {
     let dir = std::env::temp_dir().join(format!("reader-select-{}-{name}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
     let file = dir.join("page.md");
@@ -612,7 +628,7 @@ fn set(name: &str, markdown: &str) -> Layout {
         .set()
         .expect("set");
     std::fs::remove_dir_all(&dir).expect("cleaned");
-    Layout::read(&page.frame, markdown.to_string())
+    Layout::read(&page.frame, markdown.to_string(), version)
 }
 
 /// The page's line holding `words`, past the eyebrow, which names the
