@@ -94,6 +94,10 @@ struct Writing {
     guesses: Option<String>,
 }
 
+/// A piece of a take of theirs as the speaker model heard it: its
+/// embedding, the sample of the call it starts at, and how many it holds.
+type Embedded = (Vec<f32>, usize, usize);
+
 impl Writing {
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
@@ -101,12 +105,7 @@ impl Writing {
     /// one of the line's `words` starts in it. The voices check has one
     /// worded when the reference has any speech in it, so a piece holding
     /// only the end of a word is worded there and not here.
-    fn heard(
-        &mut self,
-        line: Option<usize>,
-        words: &[Word],
-        embedded: Vec<(Vec<f32>, usize, usize)>,
-    ) {
+    fn heard(&mut self, line: Option<usize>, words: &[Word], embedded: Vec<Embedded>) {
         for (embedding, start, samples) in embedded {
             let in_it = |word: &Word| (start..start + samples).contains(&word.at);
             self.heard.push(Heard {
@@ -346,7 +345,7 @@ fn embed_theirs(
     speakers: &mut Speakers,
     start: usize,
     samples: &[f32],
-) -> Vec<(Vec<f32>, usize, usize)> {
+) -> Vec<Embedded> {
     let (embedded, failed) = embed_take(start, samples, |piece| embed(settings, speakers, piece));
     if let Some(failed) = failed {
         eprintln!("call-transcripts: {failed}");
@@ -363,7 +362,7 @@ fn embed_take(
     start: usize,
     samples: &[f32],
     mut embed: impl FnMut(&[f32]) -> Result<Option<Vec<f32>>, String>,
-) -> (Vec<(Vec<f32>, usize, usize)>, Option<String>) {
+) -> (Vec<Embedded>, Option<String>) {
     let cut = pieces::pieces(samples.len());
     let mut embedded = Vec::new();
     let mut failed = (0, None);
