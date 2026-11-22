@@ -237,13 +237,14 @@ words is `said.rs`, and what the line carried over the last day is
   device can say, its ports and radios, the links it's on, a modem's
   channels and log, a receiver's volume and what it's doing, a
   printer's ink, what it's doing and the pages it has printed, a
-  television's power, or that it isn't answering as a TV, then what
-  each source says that those didn't, in the source's words. A list of
-  records or a series of readings is left to `--json`, which keeps every
-  source's detail whole, but for a printer's statuses, read field by
-  field as HP names them; its usage counters and settings are left there
-  too, as is what describes a maker's file rather than the device (HP's
-  versions, schemas and alert counter). A source's section says each
+  television's power, that the TV didn't say it, or that it isn't
+  answering as a TV, then what each source says that those didn't, in
+  the source's words. A list of records or a series of readings is left
+  to `--json`, which keeps every source's detail whole, but for a
+  printer's statuses, read field by field as HP names them; its usage
+  counters and settings are left there too, as is what describes a
+  maker's file rather than the device (HP's versions, schemas and alert
+  counter). A source's section says each
   path once: its lone facts first, then each group of facts under a line
   of the path they share, two cells in, and so again at every depth.
 

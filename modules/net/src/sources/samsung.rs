@@ -120,25 +120,36 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
         .collect()
 }
 
-/// This minute's ask of each TV eero lists, through `read`, which asks
-/// the box at an address. Only a minute eero answered says which TVs have
-/// left, so one it didn't answer asks none and forgets none, and a TV
-/// keeps its name through eero's silence.
+/// This minute's ask of each TV eero's record lists, through `read`,
+/// which asks the box at an address, remembering each TV in `tvs`. Only
+/// a record net read, listing devices, says which TVs have left, so a
+/// minute net couldn't read eero's record asks none and forgets none, and
+/// a TV keeps its name. A record listing no devices was written before
+/// eero's device list was first read, not by a home with nothing on it,
+/// so it is taken the same way. Through an outage of eero's cloud, its
+/// daemon keeps the last list it read, so the TVs on it are still asked.
 pub fn ask<E>(
-    heard: &mut Heard,
+    tvs: &mut Heard,
     eero: &Result<Value, E>,
     mut read: impl FnMut(&str) -> Reply,
 ) -> Vec<Asked> {
     let Ok(eero) = eero else {
         return Vec::new();
     };
+    let lists_devices = eero
+        .get("devices")
+        .and_then(Value::as_array)
+        .is_some_and(|devices| !devices.is_empty());
+    if !lists_devices {
+        return Vec::new();
+    }
     let listed = listed(eero);
-    forget_unlisted(heard, &listed);
+    forget_unlisted(tvs, &listed);
     listed
         .into_iter()
         .map(|(mac, address)| {
             let reply = read(&address);
-            remember(heard, mac, reply)
+            remember(tvs, mac, reply)
         })
         .collect()
 }
@@ -250,7 +261,15 @@ fn television(mac: String, answer: &str) -> Result<Found, String> {
     for key in LEFT_OUT_OF_DEVICE {
         device.remove(key);
     }
-    let said = |key: &str| device.get(key).and_then(Value::as_str).map(str::to_owned);
+    // A word left blank is one the TV didn't say, so it reads as unsaid
+    // rather than as a bare label.
+    let said = |key: &str| {
+        device
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|said| !said.trim().is_empty())
+            .map(str::to_owned)
+    };
     let (name, model, power) = (said("name"), said("modelName"), said("PowerState"));
     detail.insert("device".into(), Value::Object(device));
     Ok(Found {
@@ -520,14 +539,46 @@ pub mod tests {
         );
     }
 
+    /// Another TV, as eero lists it.
+    fn other() -> Value {
+        let mut other = listing();
+        other["mac"] = json!(OTHER);
+        other["address"] = json!("10.0.0.92");
+        other
+    }
+
     #[test]
     fn a_tv_eero_no_longer_lists_is_forgotten() {
-        let mut heard = Heard::new();
-        remember(&mut heard, MAC.into(), Reply::Page(answer()));
-        remember(&mut heard, OTHER.into(), Reply::Page(answer()));
-        forget_unlisted(&mut heard, &[(OTHER.to_owned(), ADDRESS.to_owned())]);
-        let kept = heard.keys().collect::<Vec<_>>();
+        let mut tvs = Heard::new();
+        let both = Ok::<Value, String>(json!({"devices": [listing(), other()]}));
+        ask(&mut tvs, &both, |_| Reply::Page(answer()));
+        let one = Ok::<Value, String>(json!({"devices": [other()]}));
+        ask(&mut tvs, &one, |_| silent());
+        let kept = tvs.keys().collect::<Vec<_>>();
         assert_eq!(kept, [OTHER], "a TV that left is still remembered");
+    }
+
+    #[test]
+    fn a_record_listing_no_devices_forgets_no_tv_and_asks_none() {
+        let mut tvs = Heard::new();
+        let eero = Ok::<Value, String>(json!({"devices": [listing()]}));
+        ask(&mut tvs, &eero, |_| Reply::Page(answer()));
+        for empty in [json!({}), json!({"devices": []}), json!({"devices": null})] {
+            let mut asked_anyway = false;
+            let asked = ask(&mut tvs, &Ok::<Value, String>(empty.clone()), |_| {
+                asked_anyway = true;
+                silent()
+            });
+            assert!(
+                asked.is_empty() && !asked_anyway,
+                "a record listing no devices asked a TV: {empty}"
+            );
+            assert_eq!(
+                tvs.keys().collect::<Vec<_>>(),
+                [MAC],
+                "a record listing no devices forgot the TV: {empty}"
+            );
+        }
     }
 
     #[test]
@@ -545,13 +596,16 @@ pub mod tests {
             "the TV isn't asked at eero's address for it"
         );
         let mut asked_anyway = false;
-        let none = ask(&mut heard, &Err::<Value, _>("timed out".to_owned()), |_| {
+        let unread = Err::<Value, _>(
+            "eero hasn't written what it read; see systemctl --user status eero-daemon".to_owned(),
+        );
+        let none = ask(&mut heard, &unread, |_| {
             asked_anyway = true;
             silent()
         });
         assert!(
             none.is_empty() && !asked_anyway,
-            "a TV is asked in a minute eero didn't say which are on the network"
+            "a TV is asked in a minute net couldn't read eero's record"
         );
         let (source, found) = read(ask(&mut heard, &eero, |_| silent()), NOW);
         let said: Vec<_> = found
@@ -561,12 +615,12 @@ pub mod tests {
         assert_eq!(
             said,
             [(Some("Living Room"), false)],
-            "a minute eero didn't answer forgot the TV"
+            "a minute net couldn't read eero's record forgot the TV"
         );
         assert_eq!(
             source.map(|source| source.state),
             Some(SourceState::Answering),
-            "a TV asleep after eero's silence reads as the source failing"
+            "a TV asleep after an unread minute reads as the source failing"
         );
     }
 
@@ -594,6 +648,25 @@ pub mod tests {
             source.map(|source| source.state),
             Some(SourceState::Answering),
             "a TV without its power reads as the source failing"
+        );
+    }
+
+    #[test]
+    fn a_word_the_tv_leaves_blank_is_unsaid() {
+        let blank = answer()
+            .replace("\"PowerState\": \"on\"", "\"PowerState\": \" \"")
+            .replace("\"name\": \"Living Room\"", "\"name\": \"\"");
+        assert!(
+            !blank.contains("\"on\"") && !blank.contains("Living Room"),
+            "the contract's answer no longer says its power and name as this test expects"
+        );
+        let (_, found) = one(blank);
+        assert_eq!(
+            found
+                .first()
+                .map(|tv| (tv.name.as_deref(), tv.television.power.as_deref())),
+            Some((None, None)),
+            "a blank name or power is said as a word"
         );
     }
 

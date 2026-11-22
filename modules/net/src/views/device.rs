@@ -97,7 +97,7 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
         let power = match (television.answering, television.power.as_deref()) {
             (false, _) => Some("not answering as a TV"),
             (true, None) => Some("not said by the TV"),
-            (true, power) => power,
+            (true, Some(power)) => Some(power),
         };
         let facts = [("power", power)];
         let mut block = vec![pen.label("television")];
