@@ -1030,12 +1030,11 @@ fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
 fn a_hold_no_reading_mends_lasts_and_one_a_reading_mends_passes() {
     let held =
         |reason: &str| format!("ab12 from IKQ63G: y{HELD}core #6000{UNRUN}{reason} · OSPHT4");
-    for lasting in ["cadence can't tell what a pi host loads"] {
-        assert!(
-            held_for_good(&held(lasting)) && held_unseen(&held(lasting)),
-            "a hold no reading mends passed: {lasting}"
-        );
-    }
+    let lasting = held("cadence can't tell what a pi host loads");
+    assert!(
+        held_for_good(&lasting) && held_unseen(&lasting),
+        "a hold no reading mends passed: {lasting}"
+    );
     for passing in [
         "cadence can't tell whether a pi host applied it",
         "cadence can't tell when the harness carrying it was installed",
@@ -1106,7 +1105,7 @@ fn a_lasting_part_holds_no_finding_while_the_rest_of_its_fix_waits() {
         answer(
             3 * DAY - 60,
             "OSPHT4",
-            "Landed core #6000 and #6001.",
+            "Landed core #6000 and core #6001.",
             &root,
         ),
     ];
