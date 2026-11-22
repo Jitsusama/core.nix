@@ -1129,9 +1129,10 @@ ShellRoot {
         WaitingOnYou.now = [];
         WaitingOnYou.foremost = null;
         // The plate's clock says only what timekeeping said: chrony is asked only while home
-        // shows, so a plate read shut, or the moment after opening, has no reading yet, and
-        // said nothing keeps the time while chrony kept it (P9R1KI, 2026-11-15). It's left out
-        // until the reader answers, and said once the reader refused.
+        // shows, so a plate read shut, or the moment after opening, has no reading but one
+        // kept from a minute before, and said nothing keeps the time while chrony kept it
+        // (P9R1KI, 2026-11-15). It's left out until the reader answers, and said once the
+        // reader refused.
         const clockSays = () => Array.from(now.placePlate().groups)
             .reduce((all, group) => all.concat(Array.from(group)), [])
             .filter(fact => fact.label === Words.name("on:plate:clock")).map(fact => fact.value);
@@ -1145,20 +1146,40 @@ ShellRoot {
             JSON.stringify(refusedSays));
         // A step out of home stops chrony being asked, and the reading it
         // left is kept a while rather than dropped there: dropped, the
-        // plate of the row left behind was made again inside the step,
-        // and made again once more as the reader answered a step back
-        // (the keys lab, 2026-11-22). Asked again, it's kept for good.
+        // plate of the row left behind was made again inside the step
+        // (the keys lab, 2026-11-22). A refusal isn't kept, so a step
+        // back asks afresh. Past its time by the wall clock, as after a
+        // suspend, a kept reading is let go.
+        const heard = { synchronised: true };
         Timekeeping.watching += 1;
-        Timekeeping.reading = { synchronised: true };
+        Timekeeping.reading = heard;
+        Timekeeping.heardAt = Date.now();
         Timekeeping.watching -= 1;
-        expect("unwatched, the reading is kept a while",
-            Timekeeping.reading !== null && Timekeeping.dropping,
+        expect("unwatched, the reading is kept", Timekeeping.reading === heard,
             JSON.stringify(Timekeeping.reading));
         Timekeeping.watching += 1;
-        expect("watched again, nothing drops the reading", !Timekeeping.dropping,
-            JSON.stringify(Timekeeping.dropping));
-        Timekeeping.watching -= 1;
+        expect("watched again within its time, the reading is still the one kept",
+            Timekeeping.reading === heard, JSON.stringify(Timekeeping.reading));
         Timekeeping.reading = null;
+        Timekeeping.refused = true;
+        Timekeeping.watching -= 1;
+        Timekeeping.watching += 1;
+        expect("a refusal isn't kept past a step out, so a step back doesn't say it",
+            !Timekeeping.refused && clockSays().length === 0, JSON.stringify(clockSays()));
+        Timekeeping.reading = heard;
+        Timekeeping.heardAt = Date.now() - Timekeeping.keptFor;
+        Timekeeping.watching -= 1;
+        expect("unwatched past its time, the reading is let go",
+            Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
+        Timekeeping.watching += 1;
+        Timekeeping.reading = heard;
+        Timekeeping.heardAt = Date.now();
+        Timekeeping.watching -= 1;
+        Timekeeping.heardAt = Date.now() - Timekeeping.keptFor;
+        Timekeeping.watching += 1;
+        expect("watched again past its time, as after a suspend, it's let go",
+            Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
+        Timekeeping.watching -= 1;
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
