@@ -615,7 +615,7 @@ ShellRoot {
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
             || !("UNSAID" in root.asleep) && !Niri.spawns.some(one => one.includes("s-unsaid"))
-            || !Niri.spawns.some(one => one.includes(" pi --session s-unkept ")))
+            || !Niri.spawns.some(one => one.includes("s-unkept")))
             return;
         expect("one the daemon's boot kept nowhere comes back held, with no window",
             Niri.spawns.filter(one => one.includes(" pi --session s-unkept ")).length === 1
