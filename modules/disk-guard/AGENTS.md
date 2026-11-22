@@ -337,8 +337,9 @@ or launchd, and [`home.nix`][2] the account's.
   garbage pass aims at healthy whatever the disk reads and any account
   may ask. The one exception is the guard's own forecast of nearly full
   or past, which starts a pass only as long before as a pass takes, so a
-  rest would use up its lead: that pass is unspaced. Short of nearly full a pass makes one delete, and the next waits four
-  times as long as the last Nix ran took, refused or timed out included,
+  rest would use up its lead: that pass is unspaced. Short of nearly
+  full a pass makes one delete, and the next waits four
+  times as long as the last Nix run took, refused or timed out included,
   so deleting takes at most a fifth of the store's time, a rest a
   restart forgets at the cost of one delete; a batch temporary roots
   hold whole runs no Nix and earns none. Nor does a delete begin short
