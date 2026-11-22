@@ -158,9 +158,11 @@ takes a change it then ignores.
 
 Each act the daemon is asked is logged before it answers, a JSON line in
 `$XDG_STATE_HOME/eero/changes.jsonl` ([`src/changes.rs`][changes]): when,
-what, the asking process's pid and uid from the socket's peer
-credentials, the unit or scope it runs in, how to undo a reservation,
-and whether eero took it or why not. It holds no session.
+the act and the MAC and address it names, the asking process's pid and
+uid from the socket's peer credentials, the unit or scope it runs in,
+and whether eero took it or, by kind alone, what kept it from doing so.
+It holds no session and nothing eero answered, whose refusals can carry
+their whole body.
 
 The session sealed in `session.cred` is the account's alone: the file is
 made mode 600 from the start and its folder 700, never narrowed after

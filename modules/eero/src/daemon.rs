@@ -111,7 +111,7 @@ pub fn run() -> Result<(), String> {
                 if let Err(error) = changes::log(&asked, &done, now_unix()) {
                     eprintln!("eero: couldn't log {:?}: {error}", asked.act);
                 }
-                listeners.answer_act(&asked, done);
+                listeners.answer_act(&asked, done.map_err(String::from));
             }
             Ok(Call::Joined | Call::Left | Call::Looked) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Err("the socket stopped".into()),
@@ -390,20 +390,18 @@ impl Daemon {
     /// Does an act the shell asked for, and has the network read at once
     /// after, so the row it changed is served as eero now says it. A
     /// session eero refuses is let go, as a read's is.
-    fn act(&mut self, act: Act) -> Result<(), String> {
+    fn act(&mut self, act: Act) -> Result<(), Failure> {
         let done = session(&mut self.cloud, &mut self.network)
             .and_then(|(cloud, network)| acts::done(cloud, &network, act));
         self.schedule.ask();
         if done.is_ok() && act == Act::SpeedTest {
             self.testing = Some(now_unix());
         }
-        done.map_err(|failure| {
-            let said = failure.to_string();
+        done.inspect_err(|failure| {
             if matches!(failure, Failure::SignedOut(_)) {
                 self.cloud = None;
             }
-            eprintln!("eero: {act:?} wasn't done: {said}");
-            said
+            eprintln!("eero: {act:?} wasn't done: {failure}");
         })
     }
 

@@ -1,8 +1,9 @@
 //! Every act done to the home network, kept as a JSON line each in eero's
-//! state folder as `changes.jsonl`: when, what, which process asked and
-//! the unit it ran in, and whether eero took it. It holds no session, so
-//! it can be read anywhere the account can, and it is how a change made
-//! by anyone is found again and undone.
+//! state folder as `changes.jsonl`: when, the act and the MAC and address
+//! it names, which process asked and the unit it ran in, and whether eero
+//! took it. It holds no session and nothing eero answered, so it can be
+//! read anywhere the account can, and it is how a change made by anyone
+//! is found again and undone.
 
 use std::fs::OpenOptions;
 use std::io::{self, Write};
@@ -11,11 +12,12 @@ use std::os::unix::fs::OpenOptionsExt;
 use serde_json::{Value, json};
 
 use crate::acts::Act;
+use crate::cloud::Failure;
 use crate::listeners::Asked;
 use crate::session;
 
 /// Appends what `asked` did, at `at`, to the log.
-pub fn log(asked: &Asked, done: &Result<(), String>, at: i64) -> io::Result<()> {
+pub fn log(asked: &Asked, done: &Result<(), Failure>, at: i64) -> io::Result<()> {
     let unit = asked.peer.and_then(|peer| unit(peer.pid));
     let mut out = OpenOptions::new()
         .create(true)
@@ -27,7 +29,7 @@ pub fn log(asked: &Asked, done: &Result<(), String>, at: i64) -> io::Result<()> 
 
 /// One act's line: what it changed, who asked, in which unit, and how it
 /// went.
-pub fn line(asked: &Asked, unit: Option<&str>, done: &Result<(), String>, at: i64) -> Value {
+pub fn line(asked: &Asked, unit: Option<&str>, done: &Result<(), Failure>, at: i64) -> Value {
     let mut line = json!({
         "at": at,
         "pid": asked.peer.map(|peer| peer.pid),
@@ -44,7 +46,6 @@ pub fn line(asked: &Asked, unit: Option<&str>, done: &Result<(), String>, at: i6
             line["act"] = json!("reserve");
             line["mac"] = json!(mac.to_string());
             line["address"] = json!(address.to_string());
-            line["undo"] = json!(format!("eero devices {mac} unreserve"));
         }
         Act::Unreserve { mac } => {
             line["act"] = json!("unreserve");
@@ -53,9 +54,19 @@ pub fn line(asked: &Asked, unit: Option<&str>, done: &Result<(), String>, at: i6
     }
     match done {
         Ok(()) => line["done"] = json!(true),
-        Err(why) => line["refused"] = json!(why),
+        Err(failure) => line["refused"] = json!(refused(failure)),
     }
     line
+}
+
+/// What kept eero from doing it, by its kind alone: eero's refusal can
+/// carry the whole body it answered, which the log keeps out.
+fn refused(failure: &Failure) -> &'static str {
+    match failure {
+        Failure::SignedOut(_) => "signed-out",
+        Failure::Unreachable(_) => "unreachable",
+        Failure::Refused(_) => "refused",
+    }
 }
 
 /// The unit or scope the process `pid` runs in, the last part of its
@@ -89,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn a_reservation_is_logged_with_who_asked_and_its_undo() {
+    fn a_reservation_is_logged_with_who_asked() {
         let mac = Mac::parse("02:00:00:00:00:01").expect("a MAC");
         let act = Act::Reserve {
             mac,
@@ -100,29 +111,45 @@ mod tests {
             json!({
                 "at": 1_794_702_033, "pid": 4242, "uid": 1000, "unit": "pi-1.scope",
                 "act": "reserve", "mac": "02:00:00:00:00:01", "address": "10.0.0.31",
-                "undo": "eero devices 02:00:00:00:00:01 unreserve", "done": true,
+                "done": true,
             }),
-            "the reservation's line misses what it did, who asked or its undo"
+            "the reservation's line misses what it did or who asked, or keeps more"
         );
     }
 
     #[test]
-    fn a_refused_act_is_logged_with_why() {
+    fn a_refused_act_is_logged_by_its_kind_and_nothing_eero_said() {
         let mac = Mac::parse("02:00:00:00:00:01").expect("a MAC");
         let said = line(
             &asked(Act::Unreserve { mac }),
             None,
-            &Err("eero answered 403".into()),
+            &Err(Failure::Refused(
+                r#"eero answered 403 to /2.2/networks/1001: {"meta":{"code":403}}"#.into(),
+            )),
             1,
         );
         assert_eq!(
-            (
-                said["act"].as_str(),
-                said["refused"].as_str(),
-                said.get("done")
-            ),
-            (Some("unreserve"), Some("eero answered 403"), None),
-            "a refusal was logged as done, or without why"
+            said,
+            json!({
+                "at": 1, "pid": 4242, "uid": 1000, "unit": null,
+                "act": "unreserve", "mac": "02:00:00:00:00:01", "refused": "refused",
+            }),
+            "a refusal was logged as done, or kept what eero answered"
+        );
+    }
+
+    #[test]
+    fn each_refusal_is_logged_by_what_mends_it() {
+        let kinds = [
+            Failure::SignedOut("aged".into()),
+            Failure::Unreachable("eero answered 503".into()),
+            Failure::Refused("eero answered 400".into()),
+        ]
+        .map(|failure| refused(&failure));
+        assert_eq!(
+            kinds,
+            ["signed-out", "unreachable", "refused"],
+            "a refusal's kind was logged under another's name"
         );
     }
 }
