@@ -24,7 +24,7 @@ const OWNER: &str = "elsewhere-owner";
 
 /// How long a folder may lie untouched before it's spent whoever left
 /// it: past any job's run, so another machine's job is never cut short.
-pub const UNTOUCHED_A_DAY: Duration = Duration::from_secs(24 * 60 * 60);
+pub const UNTOUCHED_A_DAY: Duration = Duration::from_hours(24);
 
 /// Makes the job's folder `job` and names in it this `machine` and
 /// process as what left it.
