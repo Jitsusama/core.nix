@@ -800,14 +800,7 @@ Scope {
         if (open && !waking)
             Qt.callLater(freshen);
     }
-    // Takes nothing, as it's queued bare (afterFrame hands its frame's
-    // times to what it calls).
     function freshen() {
-        freshenAs("joining");
-    }
-    // A join felt as `felt`: the open handler names its own as its lap
-    // (Pacing.lapName), so it isn't added up with a slice's "joining".
-    function freshenAs(felt) {
         if (!choicesStale)
             return;
         const began = KeyTimes.now();
@@ -835,7 +828,7 @@ Scope {
             out.push(withSynonyms(row));
         choicesJoined += 1;
         choices = out;
-        feltSpan(felt, began);
+        feltSpan("joining", began);
     }
 
     // Where a collection that's no place of its own leads, as one found row,
@@ -11050,12 +11043,6 @@ Scope {
     }
 
     onOpenChanged: {
-        // Each part of an opening's own work, timed as it's done from the
-        // handler's start, so the line its frame says names what an opening
-        // slow to draw spent its time on (Joel, 2026-11-10: the launcher
-        // takes forever to load).
-        let lapped = KeyTimes.now();
-        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
         // A link's hold on the first keys lasts only the opening it made.
         if (!open)
             prompt.unlinked();
@@ -11063,17 +11050,14 @@ Scope {
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;
         selectionMoved();
-        // Each lap is felt as a span of its own too, so an opening's longest
-        // stall names this handler's parts rather than calling them all
-        // "opening", with what's left of it the bindings and handlers
-        // `open` turning runs besides: in a day of Joel's journal, 1259 ms
-        // of 42 openings' longest stalls were "opening", while these laps
-        // came to 371 ms over the day's 40 fills (2026-11-21). Each is
-        // felt by the opening's name for it (Pacing.lapName).
+        // Each part of an opening's own work, timed as it's done, so the
+        // line its frame says names what an opening slow to draw spent its
+        // time on (Joel, 2026-11-10: the launcher takes forever to load).
+        let lapped = KeyTimes.now();
+        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
         const lap = name => {
             const now = KeyTimes.now();
             parts[name] = (parts[name] ?? 0) + now - lapped;
-            feltSpan(Pacing.lapName(name), lapped);
             lapped = now;
         };
         // Opened from what it kept, it was shown already, holding the keys
@@ -11157,12 +11141,6 @@ Scope {
         else
             traces.closed({ depth: held.length, rows: matches.length });
         if (open) {
-            // All the handler did before the sources wake (the selection
-            // resting anew, marking it open, its spots, what's made since,
-            // the traces) is a lap of its own, so waking is the waking
-            // alone: less than the waking said before 2026-11-22, which
-            // held all of this.
-            lap("beginning");
             openWoke = wakeEach();
             lap("waking");
             // Joined whole each time it opens, stale or not: a
@@ -11188,7 +11166,7 @@ Scope {
             fillFoundJoined = 0;
             fillFoundAfter = null;
             if (!fillFinding)
-                freshenAs(Pacing.lapName("joining"));
+                freshen();
             lap("joining");
             trials.opened(KeyTimes.now());
             lap("trials");
@@ -13216,10 +13194,9 @@ Scope {
         return { collected: Heap.collected(), thread: threadNow() };
     }
     // The shell thread's clocks now: what it has run and waited for a CPU,
-    // and its major page faults, a few microseconds to read
-    // (key-times/keytimes.cpp).
+    // a few microseconds to read (key-times/keytimes.cpp).
     function threadNow() {
-        return { ran: KeyTimes.ran(), waited: KeyTimes.waited(), faulted: KeyTimes.faulted() };
+        return { ran: KeyTimes.ran(), waited: KeyTimes.waited() };
     }
     function feltTicked() {
         const now = KeyTimes.now();

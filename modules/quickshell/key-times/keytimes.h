@@ -37,16 +37,6 @@ public:
     Q_INVOKABLE double ran() const;
     Q_INVOKABLE double waited() const;
 
-    // The calling thread's major page faults since it began, each a page
-    // read back in from swap or a file, zswap's compressed pool among
-    // them, or -1 where they can't be read, so a stall it slept through
-    // says how often it waited on its own memory: Joel's "s" slept 448 ms
-    // of 566 searching, in synchronous work that never waits on the event
-    // loop, with memory short (2026-11-21). Reclaiming pages to allocate,
-    // or waiting on a page another thread is reading in, is no major
-    // fault of its own, so none doesn't clear memory.
-    Q_INVOKABLE double faulted() const;
-
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 

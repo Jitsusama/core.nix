@@ -231,10 +231,7 @@
   "launcher/Orchestrators.qml" = [
     "launcher/Order.js"
   ];
-  "launcher/Pacing.js" = [
-    "launcher/Order.js"
-    "launcher/Thread.js"
-  ];
+  "launcher/Pacing.js" = [ "launcher/Order.js" ];
   "launcher/PastNotices.qml" = [
     "Fuzzy.js"
     "launcher/Notice.js"
