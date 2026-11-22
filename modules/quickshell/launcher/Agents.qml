@@ -2152,11 +2152,17 @@ Provider {
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to
             // carry on as it opens, so none waits to be poked; one reopened
-            // alone from its own row isn't, since Joel is there.
-            run: () => Sessions.reopenThemAll(reopenable, () => {
-                outcome.gone += 1;
-                tellAll();
-            })
+            // alone from its own row isn't, since Joel is there. Counted
+            // afresh each time, since the row is kept while what's to
+            // reopen stands (ownKept), and a second run would add to the
+            // first's.
+            run: () => {
+                outcome.gone = 0;
+                Sessions.reopenThemAll(reopenable, () => {
+                    outcome.gone += 1;
+                    tellAll();
+                });
+            }
         });
         return thingRow({
             key: "agents:to-reopen",

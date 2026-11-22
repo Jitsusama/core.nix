@@ -2993,6 +2993,7 @@ def test_sessions_to_reopen_in_for_you_follows_what_is_to_reopen_as_now_is_held(
         shell.launcher_until(
             lambda shown: (
                 shown["held"] == ["now", "For You"]
+                and (shown["selected"] or {}).get("name") == "Sessions to Reopen"
                 and (shown["selected"] or {}).get("side") != before
             )
         )
