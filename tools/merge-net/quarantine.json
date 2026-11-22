@@ -95,5 +95,14 @@
     "owner_session": "orchestrator",
     "reason": "failed, then passed, at f7ac6f58a508",
     "test": "the-margin-cat-sits-above-its-column"
+  },
+  {
+    "at": 1795371090,
+    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "the-launcher-lists-inkscapes-drawings-lately"
   }
 ]
