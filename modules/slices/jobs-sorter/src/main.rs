@@ -100,6 +100,7 @@
 //! sorter that can't read or sort the cgroups 1.
 
 mod brake;
+mod budget;
 mod calls;
 mod cli;
 mod door;
@@ -1373,6 +1374,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
     let now = std::time::Instant::now();
     let total = memory_total();
     let mut seen = Vec::new();
+    let mut ranked = Vec::new();
     for path in units {
         let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
@@ -1413,7 +1415,30 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
             ),
         };
         let rank = hosts::wanted(&own, signs, windows.weight);
-        if !ranks.hosts.changed(unit, &rank) {
+        ranked.push(Ranked {
+            path: path.clone(),
+            rank,
+            signs,
+            own: own.floor,
+            writeback: own.writeback,
+        });
+    }
+    fit_floors(&mut ranked);
+    give_ranks(ranked, &mut ranks.hosts);
+    ranks.hosts.keep_only(&seen);
+}
+
+/// Gives each of the `ranked` units the rank it was fitted to, when it
+/// differs from the one `hosts` last gave it, saying once when it can't.
+fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
+    for Ranked {
+        path, rank, signs, ..
+    } in ranked
+    {
+        let Some(unit) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !hosts.changed(unit, &rank) {
             continue;
         }
         match Command::new("busctl")
@@ -1434,11 +1459,11 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
                 );
                 // A failure after this one is said again, as a hard floor that can't be given
                 // back would otherwise stay silent.
-                ranks.hosts.failed = false;
-                ranks.hosts.done(unit, rank);
+                hosts.failed = false;
+                hosts.done(unit, rank);
             }
             Ok(output) => {
-                if !std::mem::replace(&mut ranks.hosts.failed, true) {
+                if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!(
                         "Couldn't rank {unit}: {}",
                         String::from_utf8_lossy(&output.stderr).trim()
@@ -1446,13 +1471,87 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
                 }
             }
             Err(error) => {
-                if !std::mem::replace(&mut ranks.hosts.failed, true) {
+                if !std::mem::replace(&mut hosts.failed, true) {
                     eprintln!("Couldn't run busctl to rank {unit}: {error}");
                 }
             }
         }
     }
-    ranks.hosts.keep_only(&seen);
+}
+
+/// A host's or conversation's unit as ranked, before its floor is fitted
+/// into what its slice has left.
+struct Ranked {
+    path: PathBuf,
+    rank: hosts::Rank,
+    signs: hosts::Signs,
+    /// The floor its unit file sets.
+    own: u64,
+    /// Whether its unit file leaves writeback to the disk's swap on.
+    writeback: bool,
+}
+
+/// Fits the floors the `ranked` units would be given into what each one's
+/// slice has left once the windows and others beside them keep theirs
+/// ([`budget`]), so the windows Joel types in keep theirs whole. A slice
+/// whose floor can't be read is left as ranked.
+fn fit_floors(ranked: &mut [Ranked]) {
+    let mut slices: Vec<PathBuf> = ranked
+        .iter()
+        .filter_map(|unit| unit.path.parent().map(Path::to_path_buf))
+        .collect();
+    slices.sort();
+    slices.dedup();
+    for slice in slices {
+        let Some(low) = memory_low(&slice) else {
+            continue;
+        };
+        let mine: Vec<usize> = (0..ranked.len())
+            .filter(|&at| ranked[at].path.parent() == Some(slice.as_path()))
+            .collect();
+        let others = fs::read_dir(&slice)
+            .into_iter()
+            .flatten()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| path.is_dir() && !mine.iter().any(|&at| ranked[at].path == *path))
+            .filter_map(|path| Some((holds::current(&path)?, memory_low(&path)?)));
+        let room = budget::room(low, others);
+        let signs: Vec<hosts::Signs> = mine.iter().map(|&at| ranked[at].signs).collect();
+        let order: Vec<usize> = budget::order(&signs)
+            .into_iter()
+            .map(|at| mine[at])
+            .collect();
+        // A unit whose memory can't be read counts as holding its whole floor.
+        let wanted: Vec<budget::Wanted> = order
+            .iter()
+            .map(|&at| budget::Wanted {
+                own: ranked[at].own,
+                added: ranked[at].rank.floor.saturating_sub(ranked[at].own),
+                current: ranked[at].signs.current.unwrap_or(u64::MAX),
+            })
+            .collect();
+        for (&at, added) in order.iter().zip(budget::fit(&wanted, room)) {
+            let unit = &mut ranked[at];
+            unit.rank.floor = unit.own.saturating_add(added);
+            // Writeback stays off for a unit Joel is at only while it fits under what it keeps.
+            let fits = unit
+                .signs
+                .current
+                .is_some_and(|current| current <= unit.rank.floor);
+            unit.rank.writeback = unit.writeback && (unit.signs.viewed == 0 || !fits);
+        }
+    }
+}
+
+/// The soft floor the cgroup at `path` keeps, as its memory.low says, with
+/// `max` read as the most there is; none when it can't be read.
+fn memory_low(path: &Path) -> Option<u64> {
+    let text = fs::read_to_string(path.join("memory.low")).ok()?;
+    match text.trim() {
+        "max" => Some(u64::MAX),
+        number => number.parse().ok(),
+    }
 }
 
 /// The settings `unit`, started by `pid` when one process did, holds of
