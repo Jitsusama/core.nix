@@ -32,7 +32,7 @@ use std::time::UNIX_EPOCH;
 
 use serde::{Deserialize, Serialize};
 
-use super::super::{Class, DAY, Measure, count};
+use super::super::{Class, DAY, Measure, count, first_owner};
 use super::running::RUN_HERE;
 use super::{Checkouts, HELD, Judged, UNRUN, UNSEEN, named, open_misses};
 use crate::write_whole;
@@ -81,12 +81,18 @@ const FILE_AT_MOST: u64 = 1 << 20;
 /// of the mesh each time.
 const KEPT_FRESH: i64 = 2 * 3_600;
 
-/// How far back a finding's landing notes have each main walked, at most:
-/// a change merged before is one an earlier hour found and kept.
-const WALKED_BACK: i64 = 2 * DAY;
-
-/// The shape of what a reading keeps: one of another shape is read again.
+/// The shape of what a reading keeps: one of another version keeps its
+/// messages and reads the week again.
 const VERSION: u32 = 2;
+
+/// Words before a `#N` that name no repository, as in "Landed #6000" or
+/// "PR #6000": a note naming a change only so names none cadence could
+/// follow, so it is no fix the hour can't see, and its finding still
+/// counts.
+const NOT_REPOS: &[&str] = &[
+    "landed", "pr", "and", "the", "fix", "change", "issue", "as", "in", "of", "with", "its", "for",
+    "by", "merged", "on", "to",
+];
 
 /// What the measure says.
 const SAYS: &str = "work-system findings in #v2-symbiosis open past a day, with no fix running \
@@ -125,6 +131,11 @@ struct Posted {
     supersedes: Option<String>,
     #[serde(default)]
     text: String,
+    /// When its sender stamped it, by the sender's clock: a message relayed
+    /// here late was sent before it was written here, and a fix it names
+    /// may have merged before that.
+    #[serde(default)]
+    at: Option<String>,
     /// When this machine wrote its file, in ms, by its own clock, never
     /// past the reading's now: what ages and orders a message, since a
     /// sender's clock may run hours fast or slow.
@@ -142,8 +153,11 @@ struct Posted {
 /// only files written since rather than a week's thousands. The harness
 /// writes each message whole and renames it into place at once, and moves
 /// it into its day's folder only by a rename, which keeps that time; so a
-/// sender's clock, or a message relayed late, hides nothing.
+/// sender's clock, or a message relayed late, hides nothing. Each field
+/// defaults, so a reading of an older version still parses and keeps its
+/// messages, which only it holds past the mesh's week.
 #[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
 struct Kept {
     v: u32,
     through_ms: i64,
@@ -152,7 +166,8 @@ struct Kept {
 }
 
 /// A finding counted, its owner, the first line of each landing note
-/// counted as its fix, when the earliest of those came, in ms, the first
+/// counted as its fix, the earliest a fix those name could have merged, in
+/// ms, from when they were written here or sent, the first
 /// finding of its thread, and the one it follows up after that one's
 /// landing note, if it does.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -208,7 +223,7 @@ pub fn findings(
         Ok(read) => {
             let found = open_findings(&read.posted, &orchestrator, &read.known);
             Findings {
-                text: as_misses(&found, now),
+                text: as_misses(&found),
                 found,
                 unread: (read.unread > 0)
                     .then(|| format!("{} of the mesh's messages unreadable", read.unread)),
@@ -263,7 +278,9 @@ impl Findings {
         let mut open = vec![false; self.found.len()];
         for (index, finding) in self.found.iter().enumerate() {
             let name = named_as(&finding.posted);
-            let opens = format!("{name} · {}", finding.owner);
+            // The ledger's open lines name an owner by its first word, as
+            // "the orchestrator" by "the".
+            let opens = format!("{name} · {}", first_owner(&finding.owner));
             // Each open line is one finding's, taken once, its note after
             // its owner opening with a comma, so neither a finding named
             // alike nor an owner's longer name can take another's.
@@ -271,11 +288,23 @@ impl Findings {
                 line.strip_prefix(opens.as_str())
                     .is_some_and(|note| note.is_empty() || note.starts_with(','))
             });
-            let line = at.map(|at| lines.remove(at));
+            let line = at.map(|at| &lines.remove(at)[opens.len()..]);
+            // One with no landing note has nothing that could close it, so
+            // a line not found for it is open as it stands, never fixed.
+            let line = line.or_else(|| finding.landed.is_empty().then_some(""));
+            // A note naming a change in a repository cadence can't read
+            // holds the finding, as the hour's blindness, only once every
+            // change it can read has run, or where none is named: a fix
+            // still merging stays its owner's.
+            let readable = finding
+                .landed
+                .iter()
+                .any(|note| !named(note, repos).is_empty());
             let unnamed = finding
                 .landed
                 .iter()
-                .any(|note| named(note, repos).is_empty());
+                .any(|note| names_unreadable(note, repos))
+                && (line.is_none() || !readable);
             open[index] = line.is_some() || unnamed;
             if finding.follows.is_some_and(|it| open[it]) {
                 continue;
@@ -283,7 +312,7 @@ impl Findings {
             let note = if unnamed {
                 UNNAMED
             } else if let Some(line) = line {
-                &line[opens.len()..]
+                line
             } else {
                 unseen += usize::from(merged_unseen(finding, repos));
                 continue;
@@ -331,9 +360,11 @@ impl Findings {
 /// a main unread, a change a landing note names unread, or what runs here
 /// unseen. Such a line stays on the card, never counted or put to its
 /// owner.
+/// Each mark opens with a comma, which a finding's own words never carry,
+/// so its text can't read as the hour's.
 #[must_use]
 pub fn held_unseen(line: &str) -> bool {
-    line.contains("cadence couldn't read")
+    line.contains(", though cadence couldn't read")
         || line.contains(UNNAMED)
         || line.split_once(HELD).is_some_and(|(_, why)| {
             why.split_once(UNRUN)
@@ -349,6 +380,26 @@ fn merged_unseen(finding: &Finding, repos: &Checkouts) -> bool {
         .iter()
         .flat_map(|line| named(line, repos))
         .any(|change| !RUN_HERE.contains(&change.repo.as_str()))
+}
+
+/// Whether `note` names a change by a `#N` after a word naming a repository
+/// cadence can't read, as `mycelial-node #12`, and not after a word naming
+/// none, as `Landed #6000`.
+fn names_unreadable(note: &str, repos: &Checkouts) -> bool {
+    note.match_indices('#').any(|(at, _)| {
+        let numbered = note[at + 1..].starts_with(|c: char| c.is_ascii_digit());
+        let word = note[..at]
+            .trim_end()
+            .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
+            .next()
+            .unwrap_or_default()
+            .to_lowercase();
+        let word = word.trim_start_matches(|c: char| !c.is_ascii_alphanumeric());
+        numbered
+            && !word.is_empty()
+            && !NOT_REPOS.contains(&word)
+            && named(&format!("{word} #1"), repos).is_empty()
+    })
 }
 
 /// A reading of the mesh: the messages kept, the addresses seen sending,
@@ -367,19 +418,32 @@ type Listed = (PathBuf, String, i64);
 /// went to the group or answer or withdraw one that did, oldest first,
 /// opening only the files written since the reading kept at `kept_at`,
 /// which it `keeps` for the next. A folder, an entry, a file's time or a
-/// kept reading that can't be read is an error, since reading none would
-/// read as none open; a kept reading of another shape is said, and the
-/// week read anew.
+/// kept reading that can't be read or doesn't parse is an error, since
+/// reading none would drop each finding only it holds past the mesh's week
+/// and read them as fixed; one of another version keeps its messages and
+/// reads the week anew.
 fn read(messages: &Path, now: i64, kept_at: &Path, keeps: bool) -> Result<Read, String> {
     let kept: Kept = match std::fs::read(kept_at) {
         Ok(json) => match serde_json::from_slice::<Kept>(&json) {
             Ok(kept) if kept.v == VERSION => kept,
-            _ => {
+            Ok(kept) => {
                 eprintln!(
-                    "cadence: {} is of another shape, so the week is read anew",
-                    kept_at.display()
+                    "cadence: {} is of version {}, so its messages are kept and the week is read \
+                     anew",
+                    kept_at.display(),
+                    kept.v
                 );
-                Kept::default()
+                Kept {
+                    through_ms: 0,
+                    ..kept
+                }
+            }
+            Err(error) => {
+                return Err(format!(
+                    "the reading kept in {} doesn't parse ({error}); moved aside, the week \
+                     would be read anew, forgetting what only it held",
+                    kept_at.display()
+                ));
             }
         },
         Err(error) if error.kind() == ErrorKind::NotFound => Kept::default(),
@@ -782,12 +846,27 @@ fn open_findings(posted: &[Posted], orchestrator: &str, known: &BTreeSet<String>
         } else if let Some(at) = thread.filter(|_| lands) {
             let line = one.text.lines().next().unwrap_or_default();
             let root = found[at].root;
+            let from = could_merge_from(one);
             for it in found.iter_mut().skip(at).filter(|it| it.root == root) {
-                land(it, line, one.written);
+                land(it, line, from);
             }
         }
     }
     found
+}
+
+/// The earliest a change `one` names could have merged, in ms: when it was
+/// sent, where its sender stamped it before it was written here, as a note
+/// relayed late was, but never further back than it is kept for.
+fn could_merge_from(one: &Posted) -> i64 {
+    let sent = one
+        .at
+        .as_deref()
+        .and_then(|at| at.parse::<jiff::Timestamp>().ok())
+        .map(jiff::Timestamp::as_millisecond);
+    sent.map_or(one.written, |sent| {
+        sent.clamp(one.written - KEPT_FOR * 1000, one.written)
+    })
 }
 
 /// Whether `one`'s first line can be read whole as a landing note: not
@@ -891,18 +970,19 @@ fn is_address(word: &str) -> bool {
 
 /// `found` as lines of the misses' ledger, so their landing notes are
 /// judged as a miss's check is: what each says, its owner, its landing
-/// notes together as its check, and when the earliest of them came, or
-/// it did where none has, so each main is read back from no further than
-/// a fix it names could have merged, and never past `WALKED_BACK` before
-/// `now`, since an earlier hour kept what merged before.
-fn as_misses(found: &[Finding], now: i64) -> String {
+/// notes together as its check, and the earliest a fix they name could
+/// have merged, or when it was written where none has, so each main is
+/// read back from no further than that. A note naming a change that never
+/// merges has its main walked that far each hour, at most `KEPT_FOR`, some
+/// fifteen seconds: a walk starting later would miss a merge no earlier
+/// hour walked for, as the first hours after this did, or any after the
+/// hour stopped or a main went unread for days, and ask its owner to fix
+/// what is fixed.
+fn as_misses(found: &[Finding]) -> String {
     found
         .iter()
         .map(|finding| {
-            let at = finding
-                .landed_at
-                .unwrap_or(finding.posted.written)
-                .max((now - WALKED_BACK) * 1000);
+            let at = finding.landed_at.unwrap_or(finding.posted.written);
             let at = jiff::Timestamp::from_millisecond(at)
                 .map(|at| at.to_string())
                 .ok();
@@ -936,8 +1016,14 @@ fn named_as(posted: &Posted) -> String {
     } else {
         "?"
     };
+    // A comma would let its words read as a mark the hour adds, such as
+    // ", though cadence couldn't read", and keep it from being counted.
     let words: Vec<&str> = posted.text.split_whitespace().take(14).collect();
-    let words = words.join(" ").replace('"', "'").replace('·', "-");
+    let words = words
+        .join(" ")
+        .replace('"', "'")
+        .replace('·', "-")
+        .replace(',', ";");
     format!("{short} from {from}: {words}")
 }
 

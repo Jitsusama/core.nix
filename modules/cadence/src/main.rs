@@ -726,7 +726,12 @@ fn fetch_or_keep(fetch: impl Fn() -> io::Result<String>) -> bool {
 
 fn write_whole(path: &Path, text: &str) -> io::Result<()> {
     let staged = path.with_extension("new");
-    fs::write(&staged, text)?;
+    // Synced before the rename, so a crash leaves the old file or the new
+    // one whole, never a renamed file still empty: a kept reading that
+    // won't parse holds the hour's findings unjudged.
+    let mut file = fs::File::create(&staged)?;
+    io::Write::write_all(&mut file, text.as_bytes())?;
+    file.sync_all()?;
     fs::rename(staged, path)
 }
 

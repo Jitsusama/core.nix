@@ -60,17 +60,33 @@ fn findings_filed(m: &Measure) -> Vec<Filed> {
         .filter_map(|line| line.rsplit_once(" · "))
         .map(|(what, owner)| {
             let short = what.split(' ').next().unwrap_or_default();
+            // A landing note counts only in its finding's thread, so the
+            // ask names the id to answer, as the mesh shows it, since a
+            // reply to this ask lands on nothing.
+            let closes = format!(
+                "It closes by itself once the changes a landing note answering {short} names \
+                 run here, the note opening as \"Landed core #6000.\" does; a note naming no \
+                 change, or answering this ask, closes nothing."
+            );
+            // One whose fix merged and waits to run has its cause and fix
+            // said already, so only when it runs is asked, as for a miss.
+            let text = match what.split_once(HELD) {
+                Some((name, merged)) if merged.contains(UNRUN) => format!(
+                    "cadence hour: a finding in #v2-symbiosis open past a day is yours: \
+                     {name}. Its fix, {merged}, so it stays open until this machine runs it. \
+                     Please reply with when it will. {closes}"
+                ),
+                _ => format!(
+                    "cadence hour: a finding in #v2-symbiosis open past a day, with no fix \
+                     running here, is yours: {what}. Please reply with its cause and fix \
+                     within a day, or why it can't move. {closes}"
+                ),
+            };
             Filed {
                 key: format!("hour:{FINDINGS}:{owner}:{short}"),
                 owner: owner.to_owned(),
                 says: format!("a work-system finding open past a day, yours: {what}"),
-                text: format!(
-                    "cadence hour: a finding in #v2-symbiosis open past a day, with no fix \
-                     running here, is yours: {what}. Please reply with its cause and fix \
-                     within a day, or why it can't move. It closes by itself once the \
-                     changes a landing note in its thread names run here, the note opening \
-                     as \"Landed core #6000.\" does."
-                ),
+                text,
             }
         })
         .collect()
@@ -543,9 +559,27 @@ mod tests {
             told[1]
                 .1
                 .contains("is yours: ab12 from IKQ63G: the slots. Please reply")
-                && told[1].1.contains("\"Landed core #6000.\""),
-            "a finding was put to its owner as a cell, or without what closes it: {}",
+                && told[1].1.contains("\"Landed core #6000.\"")
+                && told[1].1.contains("a landing note answering ab12"),
+            "a finding was put to its owner as a cell, or without what closes it and the id \
+             to answer: {}",
             told[1].1
+        );
+        // Its fix merged and waiting to run, only when it runs is asked.
+        let mut waits = measure(FINDINGS, Class::Cells, 1.0, Some(0.0));
+        waits.behind = vec![format!(
+            "ab12 from IKQ63G: the slots{HELD}core #6001{UNRUN}the last switch doesn't carry \
+             it · A2VLJN"
+        )];
+        let told = file(&mut Vec::new(), &[waits], "2026-11-21", 1000);
+        assert!(
+            told.len() == 1
+                && told[0]
+                    .1
+                    .contains("is yours: ab12 from IKQ63G: the slots. Its fix, core ")
+                && told[0].1.contains("when it will")
+                && !told[0].1.contains("cause and fix"),
+            "a finding whose fix waits on a switch asked its owner for a fix again: {told:?}"
         );
     }
 
