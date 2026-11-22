@@ -292,10 +292,9 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     call.transcript = Some(file);
     let book = Shared::new(Book::default());
     book.lock().put(call);
-    // Taken up from the file, Bo's part is a line of its own, with no
-    // pieces to join it to Ada's again, and the lines read back keep
-    // their voices, so nothing since is grouped or split. Ada says more,
-    // which Joel's microphone hears too: only an echo to leave out.
+    // Taken up from the file, Bo's part is a line of its own with no
+    // pieces to join it to Ada's, and with voices read back nothing since
+    // is grouped. Ada says more, heard on Joel's side as an echo.
     let mut writing = resumed(&book, "call:e1", "Joel");
     hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
     writing.lines.push(joels(80, 81, "Right."));
