@@ -17,17 +17,28 @@ The host's own code imports some of those modules as well, the
 viewers' terminal pi-tui among them, and a second copy would split the
 state they keep. So every module the virtual modules hand out, typebox
 and its aliases included, also gets host-modules/<name>.js, re-exporting
-the bundle's copy, for the host to resolve its imports to. The names
-are read from every key of virtual-modules.js, so none is kept by hand.
-The build fails when it can't read an entry there, when a host module
-isn't written, or when a durable or chord module that finds files
-through import.meta.url enters the bundle.
+the bundle's copy, default export and all, for the host to resolve its
+imports to. The names are read from every key of virtual-modules.js,
+so none is kept by hand, both from its text and from the module it
+is. The build fails when the two readings disagree, when it can't read
+an entry, when a key is no library's name, when a host module isn't
+written, or when a durable or chord module that finds files through
+import.meta.url enters the bundle.
 
 diff --git a/scripts/build-coding-agent-bundle.mjs b/scripts/build-coding-agent-bundle.mjs
-index d2f622d..d678d31 100644
+index d2f622d..bff7352 100644
 --- a/scripts/build-coding-agent-bundle.mjs
 +++ b/scripts/build-coding-agent-bundle.mjs
-@@ -27,6 +27,112 @@ const allowedExternalPackages = new Set([
+@@ -3,7 +3,7 @@
+ import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+ import { isBuiltin } from "node:module";
+ import { dirname, join, relative, resolve } from "node:path";
+-import { fileURLToPath } from "node:url";
++import { fileURLToPath, pathToFileURL } from "node:url";
+ import { build } from "esbuild";
+ 
+ const scriptDir = dirname(fileURLToPath(import.meta.url));
+@@ -27,6 +27,133 @@ const allowedExternalPackages = new Set([
  	"supports-color",
  ]);
  
@@ -69,12 +80,17 @@ index d2f622d..d678d31 100644
 +// scope: host-modules/pi-tui.js, host-modules/typebox/value.js. Every key is
 +// read from virtual-modules.js itself, so a module pi hands out later gets
 +// its file with no list here to fall behind, and an entry this can't read
-+// fails the build. `export *` drops a default export: typebox's three are
-+// also exported by name (Type, Compile, Value), as the host imports them.
-+const hostModules = virtualModuleSources(join(extensionsDistDir, "virtual-modules.js"));
++// fails the build. A module's default export, which `export *` passes over,
++// is re-exported as the host module's own.
++const hostModules = await virtualModuleSources(join(extensionsDistDir, "virtual-modules.js"));
 +
-+/** Each VIRTUAL_MODULES key's host module name, with the module its value imports. */
-+function virtualModuleSources(file) {
++/**
++ * Each VIRTUAL_MODULES key's host module name, with its key, the module its
++ * value imports, and whether that module has a default export. The keys are
++ * read twice, from the file's text and from the module it is, and the two
++ * must agree, so a key the text hides from this reading fails the build.
++ */
++async function virtualModuleSources(file) {
 +	const source = readFileSync(file, "utf8");
 +	const imported = new Map(
 +		[...source.matchAll(/^import \* as ([\w$]+) from "([^"]+)";$/gm)].map(([, binding, from]) => [binding, from]),
@@ -83,21 +99,36 @@ index d2f622d..d678d31 100644
 +	if (literal === null) {
 +		throw new Error(`${file} declares no VIRTUAL_MODULES this build can read`);
 +	}
-+	const modules = {};
++	const modules = new Map();
 +	for (const entry of literal[1].replace(/\/\/.*$/gm, "").split(",")) {
 +		if (entry.trim() === "") continue;
 +		const match = /^\s*(?:"([^"]+)"|([\w$]+))\s*:\s*([\w$]+)\s*$/.exec(entry);
-+		const from = match === null ? undefined : imported.get(match[3]);
-+		const name = match?.[1] ?? match?.[2];
-+		if (from === undefined || name === undefined) {
-+			throw new Error(`VIRTUAL_MODULES holds ${entry.trim()}, which this build can't give the host a module for`);
++		if (match === null) {
++			throw new Error(`VIRTUAL_MODULES holds ${entry.trim()}, which this build can't read as a key and a module`);
 +		}
-+		const hostModule = name.replace(/^@earendil-works\//, "");
-+		if (hostModule in modules) {
-+			throw new Error(`Two VIRTUAL_MODULES keys would share host-modules/${hostModule}.js`);
++		const [, quoted, bare, binding] = match;
++		const key = quoted ?? bare;
++		const from = imported.get(binding);
++		if (from === undefined) {
++			throw new Error(`VIRTUAL_MODULES hands out ${binding} as ${key}, which ${file} imports as no namespace this build reads`);
 +		}
-+		modules[hostModule] = from;
++		// A library's name alone, so a key can name no file outside host-modules/.
++		if (!/^(?:@[a-z0-9-]+\/)?[a-z0-9-]+(?:\/[a-z0-9-]+)*$/.test(key)) {
++			throw new Error(`VIRTUAL_MODULES key ${key} is no library's name, so it can name no host module`);
++		}
++		const name = key.replace(/^@earendil-works\//, "");
++		if (modules.has(name)) {
++			throw new Error(`Two VIRTUAL_MODULES keys would share host-modules/${name}.js`);
++		}
++		modules.set(name, { key, from });
 +	}
++	const { VIRTUAL_MODULES: handedOut } = await import(pathToFileURL(file).href);
++	const listed = (keys) => [...keys].sort().join(", ");
++	const read = listed([...modules.values()].map(({ key }) => key));
++	if (read !== listed(Object.keys(handedOut))) {
++		throw new Error(`${file} hands out ${listed(Object.keys(handedOut))}, but its text reads as ${read}`);
++	}
++	for (const module of modules.values()) module.withDefault = "default" in handedOut[module.key];
 +	return modules;
 +}
 +
@@ -114,11 +145,12 @@ index d2f622d..d678d31 100644
 +			namespace: "pi-host-module",
 +			path: path.slice("pi-host-module:".length),
 +		}));
-+		build.onLoad({ filter: /.*/, namespace: "pi-host-module" }, ({ path }) => ({
-+			contents: `export * from ${JSON.stringify(hostModules[path])};`,
-+			loader: "js",
-+			resolveDir: extensionsDistDir,
-+		}));
++		build.onLoad({ filter: /.*/, namespace: "pi-host-module" }, ({ path }) => {
++			const { from, withDefault } = hostModules.get(path);
++			const exports = [`export * from ${JSON.stringify(from)};`];
++			if (withDefault) exports.push(`export { default } from ${JSON.stringify(from)};`);
++			return { contents: exports.join("\n"), loader: "js", resolveDir: extensionsDistDir };
++		});
 +	},
 +};
 +
@@ -140,7 +172,7 @@ index d2f622d..d678d31 100644
  const lazyJitiPlugin = {
  	name: "lazy-jiti-transform",
  	setup(build) {
-@@ -141,6 +247,9 @@ for (const entry of [
+@@ -141,6 +268,9 @@ for (const entry of [
  	join(codingAgentDistDir, "cli.js"),
  	join(codingAgentDistDir, "index.js"),
  	join(codingAgentDistDir, "rpc-entry.js"),
@@ -150,7 +182,7 @@ index d2f622d..d678d31 100644
  	join(codingAgentDistDir, "utils", "image-resize-worker.js"),
  	join(codingAgentDistDir, "extensions", "codemode", "worker.js"),
  	join(aiDistDir, "api", "bedrock-converse-stream.js"),
-@@ -156,14 +265,19 @@ mkdirSync(bundleDir, { recursive: true });
+@@ -156,14 +286,19 @@ mkdirSync(bundleDir, { recursive: true });
  
  const mainResult = await build({
  	...commonBuildOptions(),
@@ -163,7 +195,7 @@ index d2f622d..d678d31 100644
  		index: join(codingAgentDistDir, "index.js"),
  		"rpc-entry": join(codingAgentDistDir, "rpc-entry.js"),
 +		host: "pi-host-entry",
-+		...Object.fromEntries(Object.keys(hostModules).map((name) => [`host-modules/${name}`, `pi-host-module:${name}`])),
++		...Object.fromEntries([...hostModules.keys()].map((name) => [`host-modules/${name}`, `pi-host-module:${name}`])),
  	},
  	outdir: bundleDir,
  	chunkNames: "chunks/[name]-[hash]",
@@ -171,12 +203,12 @@ index d2f622d..d678d31 100644
  	splitting: true,
  });
  
-@@ -171,6 +285,13 @@ const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/
+@@ -171,6 +306,13 @@ const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/
  const oauthLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/auth/oauth/load.js");
  const imageResizeOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/utils/image-resize.js");
  const configOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/config.js");
 +refuseBundledAssetReaders(mainResult.metafile);
-+const unwritten = Object.keys(hostModules).filter(
++const unwritten = [...hostModules.keys()].filter(
 +	(name) => !existsSync(join(bundleDir, "host-modules", `${name}.js`)),
 +);
 +if (unwritten.length > 0) {

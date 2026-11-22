@@ -54,27 +54,25 @@ it("names the host entry's version and hands on the bundle's own coding agent", 
 
 it("gives the host, in each host module, the very library the extensions get", () => {
   for (const name of [
+    "@earendil-works/pi-coding-agent",
+    "@earendil-works/pi-agent-core",
     "@earendil-works/pi-tui",
     "@earendil-works/pi-ai",
     "typebox",
     "typebox/compile",
     "typebox/value",
+    "@sinclair/typebox",
+    "@mariozechner/pi-tui",
   ])
     assert.ok(libraries.includes(name), `the extensions get ${name}`);
   for (const name of libraries) {
     const handed = virtual[name];
     const hosted = hostModules[name];
-    // export * passes over a default export; each is also exported by name.
-    const named = Object.keys(handed).filter((key) => key !== "default");
-    assert.deepEqual(Object.keys(hosted).sort(), named.sort(), name);
-    for (const key of named) assert.equal(hosted[key], handed[key], `${name} ${key}`);
-    if ("default" in handed)
-      assert.ok(Object.values(hosted).includes(handed.default), `${name}'s default, by name`);
+    // Every export, a default too, so the host's imports link as they would
+    // unbundled.
+    assert.deepEqual(Object.keys(hosted).sort(), Object.keys(handed).sort(), name);
+    for (const key of Object.keys(handed)) assert.equal(hosted[key], handed[key], `${name} ${key}`);
   }
-  // One TypeBox, so a schema the host builds is the kind the extensions'
-  // checker knows.
-  const schema = hostModules.typebox.Type.Object({ a: hostModules.typebox.Type.String() });
-  assert.equal(virtual["typebox/value"].Value.Check(schema, { a: "b" }), true);
   // The viewers' terminal tells pi-tui its keys are kitty's, and pi's key
   // reader must hear it.
   const tui = "@earendil-works/pi-tui";
