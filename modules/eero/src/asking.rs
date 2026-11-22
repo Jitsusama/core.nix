@@ -232,8 +232,15 @@ mod tests {
         );
     }
 
+    /// Patience no answer in a test should need, which a timely one ends
+    /// long before.
+    const AMPLE: Duration = Duration::from_secs(10);
+
     /// What asking a daemon that says `lines` after reading the ask, then
-    /// hangs up or holds on for `held`, comes to.
+    /// hangs up or holds on for `held`, comes to. One that holds on is
+    /// given the short patience its test is about; one that answers or
+    /// hangs up ends the wait at once, so it's given ample, since a loaded
+    /// builder can stall a thread past a short one.
     fn asked_of(
         name: &str,
         lines: &'static [&'static str],
@@ -257,11 +264,12 @@ mod tests {
             thread::sleep(held);
             ask
         });
-        let answer = act_at(
-            &socket,
-            &json!({"act": "speedtest"}),
-            Duration::from_millis(300),
-        );
+        let patience = if held.is_zero() {
+            AMPLE
+        } else {
+            Duration::from_millis(300)
+        };
+        let answer = act_at(&socket, &json!({"act": "speedtest"}), patience);
         let ask = daemon.join().expect("the daemon's thread ends");
         assert_eq!(
             serde_json::from_str::<Value>(&ask).ok(),
@@ -396,11 +404,7 @@ mod tests {
             writeln!(stream, "{NOT_OURS}").expect("the refusal is written");
             let _ = stream.shutdown(std::net::Shutdown::Both);
         });
-        let answer = act_at(
-            &socket,
-            &json!({"act": "speedtest"}),
-            Duration::from_millis(300),
-        );
+        let answer = act_at(&socket, &json!({"act": "speedtest"}), AMPLE);
         assert!(
             matches!(answer, Err(Undone::NotOurs(_))),
             "a refused connection was said as {answer:?}, not as never read"

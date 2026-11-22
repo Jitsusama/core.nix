@@ -56,9 +56,43 @@ pub fn carried(
     }
     let came = do_it(asked.act);
     if let Err(error) = changes::ended(log, asked, &came, changes::now()) {
-        eprintln!("eero: couldn't log how {:?} went: {error}", asked.act);
+        eprintln!("{}", unended_line(asked, &came, &error));
     }
     Carried::Came(came)
+}
+
+/// What the journal says of an act whose ask couldn't be logged: the act
+/// and who asked it, since the change log is down and the journal is then
+/// the only record of either, as the CLI's pointer to it promises. The
+/// reason is kept to one line, so no line break in it writes an entry of
+/// its own.
+pub fn unlogged_line(asked: &Asked, error: &io::Error) -> String {
+    let peer = asked.peer.as_ref();
+    format!(
+        "eero: {:?} wasn't done, since its ask couldn't be logged (pid {:?}, uid {:?}, unit \
+         {:?}): {}",
+        asked.act,
+        peer.and_then(|peer| peer.pid),
+        peer.map(|peer| peer.uid),
+        peer.and_then(|peer| peer.unit.as_deref()),
+        terminal_kit::layout::one_line(&error.to_string()),
+    )
+}
+
+/// What the journal says of an act done whose end couldn't be logged:
+/// what it came to, and the address an unreservation took away, since the
+/// failed line is cut back off and its undo would be found nowhere else.
+fn unended_line(asked: &Asked, came: &Came, error: &io::Error) -> String {
+    let held = came
+        .held
+        .map(|held| format!(", having held {held}"))
+        .unwrap_or_default();
+    format!(
+        "eero: couldn't log how {:?} went, which was {}{held}: {}",
+        asked.act,
+        changes::result(&came.done),
+        terminal_kit::layout::one_line(&error.to_string()),
+    )
 }
 
 #[cfg(test)]
@@ -94,6 +128,31 @@ mod tests {
                 unit: None,
             }),
         }
+    }
+
+    #[test]
+    fn the_journal_keeps_who_asked_and_what_came_where_the_log_cant() {
+        let error = io::Error::other("disk full\neero: forged");
+        let unlogged = unlogged_line(&asked(), &error);
+        let came = Came {
+            done: Ok(Done::Made),
+            held: Some("10.0.0.208".parse().expect("an address")),
+        };
+        let unended = unended_line(&asked(), &came, &error);
+        for line in [&unlogged, &unended] {
+            assert!(
+                !line.contains('\n') && line.contains("02:00:00:00:00:38"),
+                "a journal line broke in two or lost the MAC as written: {line:?}"
+            );
+        }
+        assert!(
+            unlogged.contains("4242") && unlogged.contains("1000"),
+            "an unlogged ask's journal line lost who asked: {unlogged:?}"
+        );
+        assert!(
+            unended.contains("made") && unended.contains("10.0.0.208"),
+            "an unlogged end's journal line lost what came or its undo: {unended:?}"
+        );
     }
 
     /// Each line's result and pid, in order, or none where there's no log.

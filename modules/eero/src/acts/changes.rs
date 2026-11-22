@@ -156,7 +156,7 @@ fn line(peer: Option<&Peer>, act: Option<&Act>, result: &str, at: i64) -> Value 
 
 /// What an act came to, in one word: a refusal by what mends it alone,
 /// since eero's refusal can carry the whole body it answered.
-fn result(done: &Result<Done, Failure>) -> &'static str {
+pub(super) fn result(done: &Result<Done, Failure>) -> &'static str {
     match done {
         Ok(Done::Made) => "made",
         Ok(Done::Unchanged) => "unchanged",

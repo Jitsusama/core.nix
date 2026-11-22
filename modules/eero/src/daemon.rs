@@ -30,7 +30,7 @@ use std::time::{Duration, Instant};
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use crate::acts::carried::{Carried, carried};
+use crate::acts::carried::{Carried, carried, unlogged_line};
 use crate::acts::{self, Act, Came, changes};
 use crate::api;
 use crate::cloud::{self, Failure};
@@ -582,18 +582,7 @@ fn act(daemon: &mut Daemon, listeners: &Listeners, asked: &Asked) {
     match carried(log, listeners.waits(asked), asked, |act| daemon.act(act)) {
         Carried::Gone => {}
         Carried::Unlogged(error) => {
-            // The change log is down, so the journal is the only record
-            // of who asked, as the CLI's pointer to it promises.
-            let peer = asked.peer.as_ref();
-            let why = terminal_kit::layout::one_line(&error.to_string()).into_owned();
-            eprintln!(
-                "eero: {:?} wasn't done, since its ask couldn't be logged \
-                 (pid {:?}, uid {:?}, unit {:?}): {why}",
-                asked.act,
-                peer.and_then(|peer| peer.pid),
-                peer.map(|peer| peer.uid),
-                peer.and_then(|peer| peer.unit.as_deref()),
-            );
+            eprintln!("{}", unlogged_line(asked, &error));
             listeners.answer_unlogged(asked, &error);
         }
         Carried::Came(came) => listeners.answer_act(asked, &came),

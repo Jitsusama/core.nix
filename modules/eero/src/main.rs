@@ -386,11 +386,15 @@ fn reported(mac: acts::Mac, address: Option<std::net::Ipv4Addr>, answered: &Valu
 /// done or refused.
 fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
     match undone {
-        asking::Undone::Absent(why) => {
-            Failure::new(Exit::Unavailable, "eero-daemon isn't answering")
-                .because(why)
-                .try_this("systemctl --user status eero-daemon")
-        }
+        // A fenced or strict session finds no socket at all, by design,
+        // while the daemon runs fine, so the headline says that may be
+        // why rather than sending an agent after the daemon alone.
+        asking::Undone::Absent(why) => Failure::new(
+            Exit::Unavailable,
+            "eero-daemon isn't answering, or this session can't reach its socket",
+        )
+        .because(why)
+        .try_this("systemctl --user status eero-daemon"),
         // Eero's own refusal and the daemon's guards, which send nothing,
         // both come here; nothing changed either way, and the reason says
         // which held it back.
@@ -408,16 +412,18 @@ fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
             // reservations again as it answers, but the internet's view
             // shows the old list until that read ends, eero's list can lag
             // it until the next, fifteen minutes on, and where this
-            // command stopped waiting the act may still be under way. So
-            // the headline says only what an ask again says if eero took
-            // it: that nothing changed, since the change it finds is its
-            // own. The internet's view lists every reservation, a device
-            // that isn't on now included, which the device's own refuses.
+            // command stopped waiting the act may still be under way. An
+            // ask again before eero's list shows the change reads that
+            // same list, so it would send the change twice and could call
+            // eero's answer to the second a refusal. So the headline says
+            // to wait for the list. The internet's view lists every
+            // reservation, a device that isn't on now included, which the
+            // device's own refuses.
             Failure::new(
                 Exit::TryAgain,
                 format!(
-                    "whether eero took it for {mac} isn't known yet; if it did, asking again \
-                     says nothing changed"
+                    "whether eero took it for {mac} isn't known yet; wait for eero internet \
+                     to show whether it stands, since asking again sooner may send it twice"
                 ),
             )
             .because(why)

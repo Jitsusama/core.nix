@@ -155,6 +155,10 @@ ask the daemon ([`src/asking.rs`][asking]) rather than opening the
 session, so the session is opened by the daemon and by `eero sign-in`,
 `eero internet sqm on|off` and `eero speeds run` alone.
 
+An ask written to the socket by hand keeps its connection open both
+ways until it's answered, since a listener whose side has closed
+counts as gone and its act is let go; the CLI's acts do so.
+
 The socket is the door agents are meant to use, not a wall: a process
 running as the account, unfenced, can open the session itself as those
 three commands do. Only the fence keeps an agent from it, by keeping
@@ -183,10 +187,11 @@ from an open-source client rather than seen. Only eero's own refusal of
 a change it then doesn't keep is said refused: a send that timed out may
 still land, and eero's list may lag its answer, so a change that
 doesn't show yet is unknown. The CLI then exits 75, never saying it
-was done or refused, and says that if eero took it, asking again says
-nothing changed, since the change an ask again finds is its own; it
-points at `eero internet`, which lists every reservation, a device off
-now included. Where the
+was done or refused, and says to wait for `eero internet`, which lists
+every reservation, a device off now included, to show whether it
+stands: an ask again before eero's list shows it reads the same list,
+so it sends the change twice and may call eero's answer a refusal.
+Where the
 daemon says it's unknown, an unreservation's answer says the address it
 kept, which keeping again undoes it; where the CLI stops waiting
 first, the act's last line in the change log holds it once the act
