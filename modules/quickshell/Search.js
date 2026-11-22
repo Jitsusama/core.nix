@@ -133,8 +133,8 @@ function found(pattern, text) {
     }
     let from = looked.indexOf(sought);
     while (from >= 0) {
-        // Its end is where its last letter ends: in a text read letter by
-        // letter, a joiner after the place found isn't taken into it.
+        // Its end is where its last letter ends: in a text whose places
+        // are mapped, a joiner after the place found isn't taken into it.
         const last = from + sought.length - 1;
         const span = plain.starts === null ? pairsWhole(text, from, last + 1)
             : [plain.starts[from], plain.ends[last]];
