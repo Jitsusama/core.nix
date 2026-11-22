@@ -141,7 +141,7 @@ pub fn swapped(mirror: &Path, named: Option<&str>) -> Option<i64> {
     let current = mirror.parent()?.join("current");
     let link = std::fs::symlink_metadata(&current).ok()?;
     let target = std::fs::read_link(&current).ok()?;
-    (target.file_name()?.to_str() == Some(named?)).then_some(())?;
+    (target.file_name()?.to_str().map(commit_of) == Some(named?)).then_some(())?;
     let at = link.modified().ok()?;
     let at = at.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
     Some(i64::try_from(at).ok()? + 1)
@@ -172,10 +172,16 @@ pub fn left_since(mirror: &Path, at: i64) -> Option<Vec<String>> {
         let when = meta.modified().ok()?;
         let when = when.duration_since(std::time::UNIX_EPOCH).ok()?.as_secs();
         if i64::try_from(when).ok()? >= at {
-            left.push(mark.file_name().into_string().ok()?);
+            left.push(commit_of(&mark.file_name().into_string().ok()?).to_owned());
         }
     }
     Some(left)
+}
+
+/// The commit a version's folder, or its mark, is named by: pi-packages
+/// names a rebuild of the same commit `<commit>+<seconds>`.
+pub fn commit_of(folder: &str) -> &str {
+    folder.split_once('+').map_or(folder, |(commit, _)| commit)
 }
 
 #[cfg(test)]
@@ -286,15 +292,23 @@ mod tests {
             "no version left yet read as unreadable"
         );
         std::fs::create_dir_all(place.join("retired")).expect("the marks' folder");
-        for (commit, at) in [("old", "@999999999"), ("stepped", "@1000000500")] {
+        for (commit, at) in [
+            ("old", "@999999999"),
+            ("stepped", "@1000000500"),
+            ("rebuilt+1000000600", "@1000000600"),
+        ] {
             let mark = place.join("retired").join(commit);
             std::fs::write(&mark, "").expect("a mark");
             touch(&["-d", at, &mark.to_string_lossy()]);
         }
         assert_eq!(
-            left_since(&mirror, 1_000_000_001),
-            Some(vec!["stepped".to_owned()]),
-            "a version current left after the time kept wasn't found, or one it left before was"
+            left_since(&mirror, 1_000_000_001).map(|mut left| {
+                left.sort();
+                left
+            }),
+            Some(vec!["rebuilt".to_owned(), "stepped".to_owned()]),
+            "a version current left after the time kept wasn't found by its commit, or one it \
+             left before was"
         );
         std::fs::remove_dir_all(&place).ok();
     }

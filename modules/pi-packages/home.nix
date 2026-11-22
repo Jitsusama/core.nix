@@ -52,6 +52,14 @@ let
   urlOf = source: "https://${lib.removePrefix "git:" source}";
   # Where each package's pis say what they loaded (src/loaded.rs).
   loadedDirs = map (source: "${cfg.root}/${lib.removePrefix "git:" source}/loaded") gitPackages;
+  # Where pnpm keeps what the versions install, what it read of the
+  # registry, where node-gyp keeps node's headers, and npm's own cache,
+  # where prebuild-install keeps the native bindings it fetched (see env
+  # below).
+  store = "${cfg.root}/.pnpm-store";
+  cache = "${cfg.root}/.pnpm-cache";
+  headers = "${cfg.root}/.node-gyp";
+  npmCache = "${cfg.root}/.npm-cache";
   configFile = pkgs.writeText "pi-packages.json" (
     builtins.toJSON {
       inherit (cfg) root;
@@ -60,11 +68,26 @@ let
       node = lib.getExe cfg.node;
       pnpm = lib.getExe pkgs.pnpm;
       path = map (tool: "${lib.getBin tool}/bin") tools ++ cfg.extraPath;
-      # The account's one pnpm store (modules/pnpm), so a version clones
-      # its files from there rather than filling a store of its own.
-      env = lib.filterAttrs (
-        name: _: name == "npm_config_store_dir" || name == "pnpm_config_store_dir"
-      ) config.home.sessionVariables;
+      # A store of its own under the root, never the account's one store
+      # (modules/pnpm). pi loads every dependency from the store's global
+      # virtual store, and its files are hard links to the store's own, so
+      # in a folder an agent's fenced commands write, one could rewrite
+      # code pi then runs outside the fence. The fence holds the root
+      # read-only, so the store lies under it. pnpm's metadata cache and
+      # node-gyp's headers go there too, out of ~/.cache, which fenced
+      # commands write: a rewritten package document or header would be
+      # built into what pi runs. npm's cache moves too: a dependency's
+      # install script, such as sqlite3's prebuild-install, takes a native
+      # binding from its _prebuilds unchecked, and it lay in ~/.npm.
+      # XDG_CACHE_HOME stays, since warming runs pis with this environment.
+      env = {
+        npm_config_store_dir = store;
+        pnpm_config_store_dir = store;
+        npm_config_cache_dir = cache;
+        pnpm_config_cache_dir = cache;
+        npm_config_devdir = headers;
+        npm_config_cache = npmCache;
+      };
     }
   );
   command = "${lib.getExe package} update --config ${configFile}";
