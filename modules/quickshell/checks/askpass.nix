@@ -60,14 +60,16 @@
   # once none has answered for a while, rather than holding ssh-tpm-agent
   # and every key behind it forever, as
   # modules/quickshell/tests/askpass-waits.sh says. The desktop test restarts
-  # a real shell, in minutes; this says it in one.
+  # a real shell, in minutes; this says it in one. It asks for no program
+  # where ssh-tpm-agent's gate would refuse one, decided over the gate's own
+  # cases.
   the-askpass-outlives-its-shell =
     let
       askpass = (account graphical).home.sessionVariables.SSH_ASKPASS;
     in
     pkgs.runCommandLocal "the-askpass-outlives-its-shell" { } ''
       ${lib.getExe' pkgs.coreutils "timeout"} 300 ${lib.getExe pkgs.bash} \
-        ${../tests/askpass-waits.sh} ${askpass} ||
+        ${../tests/askpass-waits.sh} ${askpass} ${../../ssh-tpm-agent/gate-cases.txt} ||
         { echo "the askpass is still waiting, or got something wrong"; exit 1; }
       touch $out
     '';
