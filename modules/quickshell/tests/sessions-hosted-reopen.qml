@@ -326,7 +326,8 @@ ShellRoot {
 
     // Each is asked to reopen as a plain pi, as Reopen Them All asks the last
     // boot's, telling each to carry on; with them, one carried here from
-    // another machine, which no boot here kept.
+    // another machine, which no boot here kept, and two the boot kept as
+    // unplaced, a window it couldn't place, one plain and one hosted.
     function told() {
         if (!find("STALE") || !Sessions.parkedAs("NAPPED"))
             return;
@@ -334,10 +335,14 @@ ShellRoot {
         Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", way: "boot" },
             { id: "s-stale", cwd: "/tmp", way: "boot" },
             { id: "s-napped", cwd: "/tmp", way: "boot" },
-            { id: "s-carried", cwd: "/tmp", way: "carried" }],
+            { id: "s-carried", cwd: "/tmp", way: "carried" },
+            { id: "s-drifted", cwd: "/tmp", way: "boot" }, waitingEntry("s-floated")],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
-            kept({ "s-napped": keptOn(2) }), Sessions.carryOn);
+            kept({ "s-napped": keptOn(2), "s-drifted": { unplaced: true },
+                "s-floated": { unplaced: true } }), Sessions.carryOn);
     }
+    // The windows niri opens for those the walk waits on, beside Joel.
+    readonly property var openedFor: ({ "s-carried": 59, "s-drifted": 68, "s-floated": 69 })
 
     function piFor(id) {
         return Niri.spawns.filter(command => command.includes(` pi --session ${id}`));
@@ -348,16 +353,33 @@ ShellRoot {
         // waiting out its patience, and once the rest are back it is done,
         // with no window it gave up on left to come.
         const carried = Sessions.reopening?.waiting;
-        if (carried?.id === "s-carried" && carried.classed && carried.opened === null) {
-            const window = { id: 59, pid: 590, workspace_id: 40, session: true,
+        const opens = root.openedFor[carried?.id] ?? 0;
+        if (opens > 0 && carried.classed && carried.opened === null) {
+            const window = { id: opens, pid: opens * 10, workspace_id: 40, session: true,
                 opened: carried.classed, layout: { pos_in_scrolling_layout: [1, 1] } };
-            Niri.windows = Object.assign({}, Niri.windows, { "59": window });
+            Niri.windows = Object.assign({}, Niri.windows, { [opens]: window });
             Niri.revision += 1;
             Niri.windowOpenedOrChanged(window);
         }
         const woken = steers.find(one => one.address === "NAPPED");
-        if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken)
+        const floated = viewerSpawns("s-floated").length > 0
+            || Sessions.keptPlaces["s-floated"] !== undefined;
+        if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken
+            || piFor("s-drifted").length === 0 || (!floated && Sessions.reopening !== null))
             return;
+        // Kept as unplaced, floating or drawn beside another in its kitty,
+        // it had a window, so it comes back in one, going home, never held
+        // as one kept nowhere; a hosted one's viewer opens, or waits for
+        // Joel to leave, rather than none.
+        Expect.expect("one kept as unplaced comes back in a window, not held",
+            piFor("s-drifted").length === 1
+            && piFor("s-drifted")[0].includes("/pi-sessions/kitty.sock")
+            && !piFor("s-drifted")[0].includes("holds add --detached"),
+            Niri.spawns.join("\n"));
+        Expect.expect("a hosted one kept as unplaced has its viewer asked for",
+            viewerSpawns("s-floated").length === 1
+            || Sessions.keptPlaces["s-floated"] !== undefined,
+            `${Niri.spawns.join("\n")}\n${JSON.stringify(Sessions.keptPlaces)}`);
         Expect.expect("one its host lists is begun no more", piFor("s-viewed").length === 0,
             Niri.spawns.join("\n"));
         Expect.expect("one parked is woken, told to carry on, never begun",

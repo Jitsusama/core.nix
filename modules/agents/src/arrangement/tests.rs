@@ -191,6 +191,11 @@ fn a_session_running_here_with_no_window_is_told_apart() {
              ended or elsewhere, nor one whose window can't be told from another's"
     );
     assert_eq!(
+        seen.unsure,
+        HashSet::new(),
+        "nor is any of those unsure, since each terminal still draws one of its own"
+    );
+    assert_eq!(
         seen.heard,
         [
             "s-shown", "s-shut", "s-lapsed", "s-parked", "s-ended", "s-untold", "s-away"
@@ -532,24 +537,29 @@ fn a_window_closed_while_the_boot_runs_on_lets_its_place_go() {
         json!({"column": 2}),
         "a window opened again is kept afresh, unmarked"
     );
-    let parked = first.kept(
-        "this",
-        "",
-        Map::new(),
-        Vec::new(),
-        &Windowless {
-            heard: HashSet::from(["s-shut".to_owned()]),
-            ..Windowless::default()
-        },
-        at + 1,
+    let heard = Windowless {
+        heard: HashSet::from(["s-shut".to_owned(), "s-ended".to_owned()]),
+        ..Windowless::default()
+    };
+    let parked = first.kept("this", "", Map::new(), Vec::new(), &heard, at + 1);
+    assert_eq!(
+        parked.boots["this"],
+        json!({"s-shut": {"column": 4, "closed": at}, "s-ended": {"column": 5}}),
+        "one parked or ended after its window was closed keeps its mark, as the host may \
+             park an idle one moments after Joel closes it; one unmarked stays unmarked"
     );
     assert_eq!(
-        parked.boots["this"]["s-shut"],
-        json!({"column": 4}),
-        "one no longer running here without a window, parked or ended, is kept unmarked, \
-             as before it was marked"
+        parked.let_go_at("this"),
+        Some(at + grace),
+        "so its place still goes once a boot's end would have taken it"
     );
-    assert_eq!(parked.let_go_at("this"), None, "so nothing waits on it");
+    assert_eq!(
+        parked
+            .kept("this", "", Map::new(), Vec::new(), &heard, at + grace)
+            .boots["this"],
+        json!({"s-ended": {"column": 5}}),
+        "and past it, parked, its place is let go"
+    );
 }
 
 #[test]

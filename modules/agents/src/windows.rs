@@ -328,6 +328,39 @@ mod tests {
     }
 
     #[test]
+    fn only_one_whose_windows_cant_be_told_apart_says_so() {
+        let shut = json!({"terminal": "kitty", "within": "unix:@kitty-8", "id": 3});
+        let made = made(
+            &[
+                held(
+                    "REEF",
+                    &json!({"hosted": true, "session": "s-reef"}),
+                    &json!(null),
+                ),
+                held("BUOY", &json!({}), &shut),
+            ],
+            &[
+                window(6, 5, "pi-hosted.s-reef"),
+                window(8, 5, "pi-hosted.s-reef"),
+            ],
+        );
+        assert_eq!(
+            windows_of(&made),
+            vec![
+                ("REEF".to_owned(), json!(null)),
+                ("BUOY".to_owned(), json!(null)),
+            ],
+            "a hosted one with two viewers says neither, and one whose kitty draws none, none"
+        );
+        assert_eq!(
+            (made[0].get(UNTOLD), made[1].get(UNTOLD)),
+            (Some(&json!(true)), None),
+            "the hosted one says it couldn't tell, so its window isn't taken as closed; one \
+             with no window at all doesn't, so its close is seen"
+        );
+    }
+
+    #[test]
     fn an_orchestrator_leads_its_own_orchestration_and_the_rest_are_under_none() {
         let terminal = |pid: u64| {
             let scope = format!("unix:@kitty-{pid}");
