@@ -1,9 +1,11 @@
 //! The reader hearing Slack through a tool gateway, against a fake one on
 //! a port of this machine's own: a stop heard there is judged and kept in
 //! shadow as one heard from Slack itself would be, judged once however
-//! many rounds find it; the gateway is asked only to read; Slack's own API
-//! is never asked, nor Joel's phone told; a gateway that can't be signed
-//! in to is told in For You; and the reader refuses to go live over one.
+//! many rounds find it, in a folder of its own; the gateway is asked only
+//! to read, both searches in their detailed form; Slack's own API is never
+//! asked, nor Joel's phone told; a gateway that can't be signed in to
+//! writes its row of what waits in its own folder; and the reader refuses
+//! to go live over one.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -16,9 +18,21 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use super::{
-    JOEL, PATIENCE, decisions, each, home, reader_with, reading, stand_in, the_one_reply,
-    until_decided,
+    JOEL, PATIENCE, decisions, decisions_in, each, home, reader_with, reading, stand_in,
+    the_one_reply_in, until_decided_in,
 };
+
+/// Where the reader over a gateway keeps all it writes, under its home.
+const OWN: &str = "state/pineapple-gateway";
+
+/// What the fake gateway was asked: each tool, with its arguments.
+type Called = Arc<Mutex<Vec<(String, Value)>>>;
+
+/// The tools `called` names, in order.
+fn tools(called: &Called) -> Vec<String> {
+    let called = called.lock().expect("what was called");
+    called.iter().map(|(tool, _)| tool.clone()).collect()
+}
 
 /// The thread the stop is said in, which starts with a pull request.
 const THREAD: &str = "1700000000.000001";
@@ -26,8 +40,8 @@ const THREAD: &str = "1700000000.000001";
 /// A fake gateway reading Joel's Slack: who he is, a search finding one
 /// stop in a thread whichever it's asked for, and that thread's first
 /// message naming a pull request; with its URL and the tools it was asked
-/// for, in order.
-fn gateway() -> (String, Arc<Mutex<Vec<String>>>) {
+/// for, in order, with what each was asked.
+fn gateway() -> (String, Called) {
     let listener = TcpListener::bind("127.0.0.1:0").expect("a port");
     let url = format!("http://{}/mcp", listener.local_addr().expect("its address"));
     let called = Arc::new(Mutex::new(Vec::new()));
@@ -61,7 +75,10 @@ fn gateway() -> (String, Arc<Mutex<Vec<String>>>) {
                 "initialize" => Some(json!({ "protocolVersion": "x" })),
                 "tools/call" => {
                     let tool = request["params"]["name"].as_str().unwrap_or_default();
-                    kept.lock().expect("what was called").push(tool.to_owned());
+                    let asked = request["params"]["arguments"].clone();
+                    kept.lock()
+                        .expect("what was called")
+                        .push((tool.to_owned(), asked));
                     Some(json!({ "content": [{ "type": "text", "text": said(tool, now) }] }))
                 }
                 _ => None,
@@ -91,7 +108,7 @@ fn said(tool: &str, now: u64) -> String {
     let said = match tool {
         "slack_who_am_i" => json!({ "result": format!("User ID: {JOEL}\nUsername: joel\n") }),
         "slack_search_public_and_private" => json!({ "results": format!(
-            "# Search Results for: \n\n## Messages (1 result)\n### Result 1 of 1\n\
+            "# Search Results for: \n\n## Messages (1 results)\n### Result 1 of 1\n\
              Channel: #team (ID: C0ONE00001)\n\
              From: Someone Else <someone@example.com> (ID: U0OTHER001) \n\
              Time: today\nMessage_ts: {ts}\n\
@@ -130,6 +147,58 @@ fn sign_in(home: &Path, fails: bool) -> PathBuf {
     program
 }
 
+/// A fresh alert for the phone, where either reader would find one, so a
+/// reader telling the phone would leave its mark; with how many files the
+/// live reader's folder then holds.
+fn an_alert_waits(home: &Path) -> usize {
+    let at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("after the epoch")
+        .as_millis();
+    let alert = json!({"at": u64::try_from(at).expect("a time in range"),
+        "key": "pineapple:slack:C1:1.0", "saying": "stopped", "shadow": false,
+        "title": "Someone stopped your agents", "words": "pineapple override",
+        "link": "https://example.slack.com/archives/C1/p1"});
+    for folder in ["state/pineapple", OWN] {
+        std::fs::create_dir_all(home.join(folder)).expect("a state folder");
+        std::fs::write(
+            home.join(folder).join("would-tell.jsonl"),
+            format!("{alert}\n"),
+        )
+        .expect("what the launcher's daemon would tell");
+    }
+    std::fs::read_dir(home.join("state/pineapple"))
+        .expect("the live reader's folder")
+        .count()
+}
+
+/// That nothing a reader in shadow did reached past its own folder: no
+/// phone told, by Slack's own API or by the alert waiting, and nothing
+/// written where the live reader keeps its own, which held `live` files.
+fn nothing_left_the_shadow(home: &Path, asked: &Arc<Mutex<Vec<String>>>, live: usize) {
+    assert!(
+        asked.lock().expect("what was asked").is_empty(),
+        "Slack's own API is never asked, so no phone is told"
+    );
+    for folder in ["state/pineapple", OWN] {
+        assert!(
+            !home.join(folder).join("phoned.jsonl").exists(),
+            "nor is a phone told the alert waiting in {folder}"
+        );
+    }
+    assert_eq!(
+        std::fs::read_dir(home.join("state/pineapple"))
+            .expect("the live reader's folder")
+            .count(),
+        live,
+        "nothing is written where the live reader keeps its own"
+    );
+    assert!(
+        decisions(home).is_empty(),
+        "and no decision is written there"
+    );
+}
+
 #[test]
 fn a_stop_heard_through_a_gateway_is_judged_once_in_shadow_and_only_read() {
     let (origin, asked) = stand_in();
@@ -137,16 +206,18 @@ fn a_stop_heard_through_a_gateway_is_judged_once_in_shadow_and_only_read() {
     let home = home();
     let program = sign_in(&home, false);
     let program = program.to_str().expect("a path in UTF-8");
+    let live = an_alert_waits(&home);
     let mut reader = reader_with(
         &home,
         &origin,
         &["--gateway", &url, "--gateway-sign-in", program],
     );
-    until_decided(&home, 1);
+    let own = home.join(OWN);
+    until_decided_in(&own, 1);
     // Rounds go on finding the same stop, which none judges again.
-    let rounds = called.lock().expect("what was called").len();
+    let rounds = tools(&called).len();
     let began = Instant::now();
-    while called.lock().expect("what was called").len() < rounds + 6 {
+    while tools(&called).len() < rounds + 6 {
         assert!(began.elapsed() < PATIENCE, "the reader stopped asking");
         // It reads every tenth of a second, so this sees each round.
         thread::sleep(Duration::from_millis(50));
@@ -154,7 +225,7 @@ fn a_stop_heard_through_a_gateway_is_judged_once_in_shadow_and_only_read() {
     reader.kill().expect("the reader stops");
     reader.wait().expect("the reader is gone");
 
-    let said = decisions(&home);
+    let said = decisions_in(&own);
     assert_eq!(each(&said, "verdict"), ["stop"], "the stop, judged once");
     assert_eq!(
         said[0]["reaches"],
@@ -163,11 +234,31 @@ fn a_stop_heard_through_a_gateway_is_judged_once_in_shadow_and_only_read() {
     );
     assert_eq!(said[0]["shadow"], true, "it is in shadow");
     assert_eq!(
-        the_one_reply(&home)["post"]["thread_ts"],
+        the_one_reply_in(&own)["post"]["thread_ts"],
         THREAD,
         "the reply it would say is kept, for the thread that asked"
     );
-    let called = called.lock().expect("what was called").clone();
+    let searched: Vec<Value> = called
+        .lock()
+        .expect("what was called")
+        .iter()
+        .filter(|(tool, _)| tool == "slack_search_public_and_private")
+        .map(|(_, asked)| asked.clone())
+        .take(2)
+        .collect();
+    let tag = format!("<@{JOEL}>");
+    assert_eq!(
+        each(&searched, "query"),
+        ["pineapple", tag.as_str()],
+        "a round searches for the safe word, then for Joel tagged"
+    );
+    assert!(
+        searched
+            .iter()
+            .all(|asked| asked["response_format"] == "detailed"),
+        "each search asks for the detailed form it is read in: {searched:?}"
+    );
+    let called = tools(&called);
     assert_eq!(
         called
             .iter()
@@ -185,30 +276,25 @@ fn a_stop_heard_through_a_gateway_is_judged_once_in_shadow_and_only_read() {
         called.iter().all(|tool| reading.contains(&tool.as_str())),
         "only tools that post nothing are asked: {called:?}"
     );
-    assert!(
-        asked.lock().expect("what was asked").is_empty(),
-        "Slack's own API is never asked, so no phone is told"
-    );
-    assert!(
-        !home.join("state/pineapple/phoned.jsonl").exists(),
-        "nor is a phone alert written down"
-    );
+    nothing_left_the_shadow(&home, &asked, live);
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
 #[test]
-fn a_gateway_with_no_sign_in_to_give_is_told_in_for_you() {
+fn a_gateway_with_no_sign_in_to_give_writes_its_row_in_its_own_folder() {
     let (origin, _) = stand_in();
     let (url, called) = gateway();
     let home = home();
     let program = sign_in(&home, true);
     let program = program.to_str().expect("a path in UTF-8");
-    let waiting = home.join("waiting.json");
+    // The live reader's row, which this reader must never write.
+    let named = home.join("named-waiting.json");
+    let waiting = home.join(OWN).join("waiting.json");
     let mut reader = reading(
         &home,
         &origin,
         &["--gateway", &url, "--gateway-sign-in", program],
-        Some(&waiting),
+        Some(&named),
     );
     let began = Instant::now();
     while !waiting.exists() && began.elapsed() < PATIENCE {
@@ -224,10 +310,20 @@ fn a_gateway_with_no_sign_in_to_give_is_told_in_for_you() {
         row["items"][0]["id"]
             .as_str()
             .is_some_and(|id| id.starts_with("pineapple-slack-deaf-")),
-        "Joel is told the safe word can't hear Slack: {row}"
+        "its row says the safe word can't hear Slack: {row}"
     );
     assert!(
-        called.lock().expect("what was called").is_empty(),
+        row["items"][0]["why"]
+            .as_str()
+            .is_some_and(|why| why.contains("no Slack sign-in it can read")),
+        "for want of a sign-in, not a refused one: {row}"
+    );
+    assert!(
+        !named.exists(),
+        "the row the environment names is the live reader's, so it's never written"
+    );
+    assert!(
+        tools(&called).is_empty(),
         "no tool is called without a sign-in"
     );
     assert!(decisions(&home).is_empty(), "and nothing is judged");

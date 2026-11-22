@@ -289,6 +289,10 @@ fn env_dir(var: &str, fallback: &str) -> PathBuf {
     )
 }
 
+/// The folder, under the state home, where the reader over a gateway
+/// keeps all it writes, beside the live reader's `pineapple`.
+const GATEWAY_STATE: &str = "pineapple-gateway";
+
 /// Where it keeps its log, its stops and what it has judged.
 fn state() -> PathBuf {
     env_dir("XDG_STATE_HOME", ".local/state").join("pineapple")
@@ -376,8 +380,9 @@ fn said(decisions: &[Value]) -> String {
 }
 
 /// What either reader starts from: what it has judged, saying what of
-/// that couldn't be read, and where For You is told it can't hear Slack.
-fn begin(state: &Path) -> (Judged, Waiting) {
+/// that couldn't be read, and where For You is told it can't hear Slack,
+/// `named` or else where For You reads.
+fn begin(state: &Path, named: Option<&OsStr>) -> (Judged, Waiting) {
     let (judged, afresh) = judged::read(state, seconds().saturating_sub(LOOK_BACK));
     match afresh {
         Some(Afresh::Unreadable) => eprintln!(
@@ -392,10 +397,7 @@ fn begin(state: &Path) -> (Judged, Waiting) {
     }
     // Where For You reads what waits on Joel: told there when Slack
     // can't be heard, since the phone's alert goes through Slack.
-    let waiting = deaf::waiting(
-        std::env::var_os("SAFE_WORD_WAITING").as_deref(),
-        &env_dir("XDG_STATE_HOME", ".local/state"),
-    );
+    let waiting = deaf::waiting(named, &env_dir("XDG_STATE_HOME", ".local/state"));
     if let Some(refused) = &waiting.refused {
         eprintln!(
             "<4>SAFE_WORD_WAITING names {:?}, which isn't a whole path, so For You is told in \
@@ -426,7 +428,7 @@ fn run(how: &Run) -> Result<(), Failure> {
         words: Words::from_object(REPLIES).unwrap_or_default(),
         shadow: how.shadow,
     };
-    let (mut judged, waiting) = begin(&state);
+    let (mut judged, waiting) = begin(&state, std::env::var_os("SAFE_WORD_WAITING").as_deref());
     let mut phone = Phone {
         origin: how.origin.clone(),
         own: None,
@@ -488,14 +490,18 @@ fn run(how: &Run) -> Result<(), Failure> {
 
 /// The reader over a tool gateway, in shadow, until its service stops it.
 /// Whose Slack it reads, the gateway says once; until it does, nothing is.
+/// It keeps to its own folder, its row of what waits included, however it
+/// was started, so nothing the live reader reads is ever written; and it
+/// leaves the environment as it was, for the sign-in program it runs.
 fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
-    let state = state();
+    let state = env_dir("XDG_STATE_HOME", ".local/state").join(GATEWAY_STATE);
     let reader = Reader {
         origin: how.origin.clone(),
         words: Words::from_object(REPLIES).unwrap_or_default(),
         shadow: true,
     };
-    let (mut judged, waiting) = begin(&state);
+    let waiting = state.join("waiting.json");
+    let (mut judged, waiting) = begin(&state, Some(waiting.as_os_str()));
     let mut through = Through {
         gateway: Gateway::new(url, program),
     };
@@ -550,13 +556,22 @@ fn round(
     }
     let tag = format!("<@{me}>");
     // A round counts as read only once both searches answered, so
-    // judged.json's read_at never says Slack was read when it wasn't.
-    let (phrase, tagged) = match (ears.search("pineapple"), ears.search(&tag)) {
+    // judged.json's read_at never says Slack was read when it wasn't. A
+    // sign-in refused or missing for the first isn't asked for again.
+    let (phrase, tagged) = match ears.search("pineapple") {
+        Err(deaf @ Round::Deaf(_)) => return deaf,
+        phrase => (phrase, ears.search(&tag)),
+    };
+    let (phrase, tagged) = match (phrase, tagged) {
         (Ok(phrase), Ok(tagged)) => (phrase, tagged),
         (phrase, tagged) => {
-            let refused = Round::Deaf(Deafness::Refused);
-            let either = [phrase.err(), tagged.err()].contains(&Some(refused));
-            return if either { refused } else { Round::Unasked };
+            let failed = [phrase.err(), tagged.err()];
+            // A refusal is said first, then a sign-in none could give.
+            return [Deafness::Refused, Deafness::NoSignIn]
+                .into_iter()
+                .map(Round::Deaf)
+                .find(|deaf| failed.contains(&Some(*deaf)))
+                .unwrap_or(Round::Unasked);
         }
     };
     let mut seen = HashSet::new();

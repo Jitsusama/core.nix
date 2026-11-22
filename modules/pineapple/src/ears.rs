@@ -105,12 +105,20 @@ impl Through {
         })
     }
 
-    /// What `tool` says, or what the round counts it as.
+    /// What `tool` says, or what the round counts it as: a failure naming
+    /// one of Slack's own refusals of a sign-in is one.
     fn called(&mut self, tool: &str, arguments: &Value) -> Result<String, Round> {
         self.gateway.call(tool, arguments).map_err(|called| {
             let round = match &called {
                 Called::Refused => Round::Deaf(Deafness::Refused),
                 Called::NoSignIn(_) => Round::Deaf(Deafness::NoSignIn),
+                Called::Failed(why)
+                    if why
+                        .split(|c: char| !c.is_ascii_alphanumeric() && c != '_')
+                        .any(deaf::refuses_the_sign_in) =>
+                {
+                    Round::Deaf(Deafness::Refused)
+                }
                 Called::Unreachable(_) | Called::Failed(_) => Round::Unasked,
             };
             eprintln!("<4>the gateway's {tool} said nothing: {called:?}");
@@ -132,7 +140,11 @@ impl Ears for Through {
                 "response_format": "detailed",
             }),
         )?;
-        Ok(crate::gateway::found(&inner(&said, "results")))
+        // An answer it can't read is no quiet Slack, so it isn't heard.
+        crate::gateway::found(&inner(&said, "results")).map_err(|why| {
+            eprintln!("<4>the gateway's search for {query:?} can't be read: {why}");
+            Round::Unasked
+        })
     }
 
     fn root(&mut self, channel: &str, thread: &str) -> Option<String> {

@@ -82,10 +82,9 @@ let
       Install.WantedBy = [ "default.target" ];
     };
   inherit (config.jitsusama.pineapple) sites gateway;
-  # Where the reader over a tool gateway keeps what it judged, apart from
-  # the live reader's, so its shadow stops reach nothing that acts on one
-  # and the two can be compared.
-  gatewayState = "${config.xdg.stateHome}/pineapple-gateway";
+  # A word systemd reads as itself in ExecStart, which expands `%` and `$`
+  # even inside quotes, as night-shift's units say.
+  literal = lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ];
 in
 {
   imports = [ ../quickshell/providers.nix ];
@@ -186,7 +185,11 @@ in
             type = lib.types.str;
           };
           signIn = lib.mkOption {
-            description = "A program printing Joel's sign-in to the gateway, run when asked.";
+            description = ''
+              A program printing Joel's sign-in to the gateway, run when
+              asked, that fetches it as it runs, never one holding it, since
+              the program sits in the store where anyone can read it.
+            '';
             type = lib.types.path;
           };
         };
@@ -198,9 +201,11 @@ in
     (lib.mkIf (gateway != null) {
       # The Slack reader again, hearing Slack through the gateway
       # (src/ears.rs), only ever in shadow, as the reader refuses --live
-      # with --gateway: it keeps its own state, and tells For You in a file
-      # there that nothing reads, so a gateway it can't hear never reaches
-      # Joel while the reader he trusts goes on.
+      # with --gateway: it keeps to pineapple-gateway beside the live
+      # reader's state, its row of what waits included, however it's run,
+      # so a gateway it can't hear never reaches Joel while the reader he
+      # trusts goes on. The environment is left alone, for the sign-in
+      # program it runs.
       systemd.user.services.pineapple-slack-gateway = {
         Unit = {
           Description = "Reads Slack through a tool gateway for the safe word, in shadow";
@@ -213,13 +218,9 @@ in
             "pineapple-slack-gateway"
             "run"
             "--gateway"
-            gateway.url
+            (literal gateway.url)
             "--gateway-sign-in"
-            gateway.signIn
-          ];
-          Environment = [
-            ''"XDG_STATE_HOME=${gatewayState}"''
-            ''"SAFE_WORD_WAITING=${gatewayState}/waiting.json"''
+            (literal "${gateway.signIn}")
           ];
           Restart = "on-failure";
           RestartSec = 30;
@@ -232,7 +233,13 @@ in
       # A site allows 30 searches a minute and a round spends one a
       # repository, so the reader refuses more than 20; refused here, a
       # switch fails rather than the reader restarting on it for good.
-      assertions = lib.concatLists (
+      # The gateway is given Joel's sign-in with every request.
+      assertions =
+        lib.optional (gateway != null) {
+          assertion = lib.hasPrefix "https://" gateway.url;
+          message = "jitsusama.pineapple.gateway.url is sent Joel's sign-in, so it's https.";
+        }
+        ++ lib.concatLists (
         lib.mapAttrsToList (name: site: [
           {
             assertion =

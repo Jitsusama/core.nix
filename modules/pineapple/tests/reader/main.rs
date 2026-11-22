@@ -341,7 +341,12 @@ fn home() -> PathBuf {
 /// One field of each decision, in the order they were written.
 /// The one reply the reader let through, as replies.jsonl keeps it.
 fn the_one_reply(home: &Path) -> Value {
-    let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
+    the_one_reply_in(&home.join("state/pineapple"))
+}
+
+/// The one reply a reader keeping to `state` let through.
+fn the_one_reply_in(state: &Path) -> Value {
+    let replies = std::fs::read_to_string(state.join("replies.jsonl"))
         .expect("the replies let through are kept");
     assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
     serde_json::from_str(replies.lines().next().unwrap_or_default())
@@ -433,7 +438,12 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
 
 /// The decisions written down so far.
 fn decisions(home: &Path) -> Vec<Value> {
-    std::fs::read_to_string(home.join("state/pineapple/decisions.jsonl"))
+    decisions_in(&home.join("state/pineapple"))
+}
+
+/// The decisions a reader keeping to `state` wrote down so far.
+fn decisions_in(state: &Path) -> Vec<Value> {
+    std::fs::read_to_string(state.join("decisions.jsonl"))
         .unwrap_or_default()
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
@@ -465,12 +475,17 @@ fn until_marked_anew(home: &Path, mark: &str) {
 
 /// Waits until the reader has written `count` decisions, or says it's stuck.
 fn until_decided(home: &Path, count: usize) {
+    until_decided_in(&home.join("state/pineapple"), count);
+}
+
+/// As [`until_decided`], for a reader keeping to `state`.
+fn until_decided_in(state: &Path, count: usize) {
     let began = Instant::now();
-    while decisions(home).len() < count {
+    while decisions_in(state).len() < count {
         assert!(
             began.elapsed() < PATIENCE,
             "the reader wrote {} decisions, not {count}",
-            decisions(home).len()
+            decisions_in(state).len()
         );
         // The reader searches every tenth of a second, so a short wait
         // sees each round without spinning.

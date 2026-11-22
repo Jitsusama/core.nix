@@ -172,16 +172,19 @@ onLinux {
             ];
           }
         ]);
-      home = withGateway {
-        url = "https://gateway.example.com/mcp";
-        signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
-      };
+      signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
+      at = url: withGateway { inherit url signIn; };
+      home = at "https://gateway.example.com/mcp";
       unit = home.systemd.user.services.pineapple-slack-gateway;
       command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
-      state = "${home.xdg.stateHome}/pineapple-gateway";
+      percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
+      encoded = lib.concatStringsSep " " (
+        lib.toList percent.pineapple-slack-gateway.Service.ExecStart
+      );
+      refused = (at "http://gateway.example.com/mcp").assertions;
     in
     holds "pineapple-slack-hears-a-gateway-in-shadow"
-      "The gateway's reader lacks its command, shadow, state, row file or start, or runs unnamed."
+      "The gateway's reader lacks its command, shadow or start, moves the state its sign-in reads, mangles a URL's %, takes plain http, or runs unnamed."
       (
         lib.hasInfix (
           "/bin/pineapple-slack pineapple-slack-gateway run"
@@ -189,8 +192,9 @@ onLinux {
         ) command
         && !(lib.hasInfix "--live" command)
         && lib.hasSuffix ", in shadow" unit.Unit.Description
-        && lib.elem ''"XDG_STATE_HOME=${state}"'' (lib.toList unit.Service.Environment)
-        && lib.elem ''"SAFE_WORD_WAITING=${state}/waiting.json"'' (lib.toList unit.Service.Environment)
+        && !(unit.Service ? Environment)
+        && lib.hasInfix "mcp?x=a%%2Fb" encoded
+        && lib.any (said: !said.assertion && lib.hasInfix "gateway.url" said.message) refused
         && lib.elem "default.target" unit.Install.WantedBy
         && unit.Unit.X-SwitchMethod == "restart"
         && unit.Service.Restart == "on-failure"

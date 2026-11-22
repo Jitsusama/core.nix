@@ -9,11 +9,13 @@ use std::sync::{Arc, Mutex};
 use std::{fs, thread};
 
 use pineapple::mcp::{Called, Gateway};
+use pineapple::sign_in::SignIn;
 use serde_json::{Value, json};
 
 /// One request the fake gateway took.
 #[derive(Clone, Debug)]
 struct Seen {
+    id: Value,
     method: String,
     params: Value,
     session: Option<String>,
@@ -97,6 +99,7 @@ fn gateway(
             reader.read_exact(&mut body).expect("its body");
             let request: Value = serde_json::from_slice(&body).unwrap_or_default();
             let one = Seen {
+                id: request["id"].clone(),
                 method: request["method"].as_str().unwrap_or_default().to_owned(),
                 params: request["params"].clone(),
                 session,
@@ -127,12 +130,27 @@ fn gateway(
 
 /// A sign-in program in `dir` printing `tok-1`, then `tok-2`, and so on.
 fn sign_in(dir: &Path) -> PathBuf {
+    program(dir, "echo \"tok-$n\"")
+}
+
+/// How many times the program in `dir` ran.
+fn runs(dir: &Path) -> u32 {
+    fs::read_to_string(dir.join("sign-in.count"))
+        .ok()
+        .and_then(|count| count.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// A sign-in program in `dir` counting its runs in `$n`, then doing `then`.
+fn program(dir: &Path, then: &str) -> PathBuf {
     fs::create_dir_all(dir).expect("a folder");
     let program = dir.join("sign-in");
     fs::write(
         &program,
-        "#!/bin/sh\nn=$(cat \"$0.count\" 2>/dev/null || echo 0); n=$((n + 1))\n\
-         echo $n > \"$0.count\"; echo \"tok-$n\"\n",
+        format!(
+            "#!/bin/sh\nn=$(cat \"$0.count\" 2>/dev/null || echo 0); n=$((n + 1))\n\
+             echo $n > \"$0.count\"; {then}\n"
+        ),
     )
     .expect("a sign-in program");
     std::process::Command::new("chmod")
@@ -305,6 +323,162 @@ fn a_forgotten_session_is_opened_again() {
 }
 
 #[test]
+fn a_sign_in_refused_as_the_gateway_opens_is_asked_for_again_once() {
+    let dir = scratch("refused-opening");
+    let (url, seen) = gateway(|one, _| match one.method.as_str() {
+        "initialize" if one.sign_in.as_deref() == Some("Bearer tok-1") => status(401),
+        "initialize" => opened("s1"),
+        "tools/call" => tool("me", false),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    assert_eq!(
+        gateway.call("slack_who_am_i", &json!({})),
+        Ok("me".to_owned()),
+        "a gateway checking the sign-in as it opens gets a fresh one"
+    );
+    assert_eq!(
+        last(&seen).sign_in.as_deref(),
+        Some("Bearer tok-2"),
+        "the program is run again once"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_gateway_naming_no_session_is_opened_once() {
+    let dir = scratch("sessionless");
+    let (url, seen) = gateway(|one, _| match one.method.as_str() {
+        "initialize" => json_reply(&json!({ "jsonrpc": "2.0", "id": 1, "result": {} })),
+        "tools/call" => tool("me", false),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    for _ in 0..2 {
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Ok("me".to_owned()),
+            "a gateway with no sessions answers all the same"
+        );
+    }
+    assert_eq!(
+        methods(&seen),
+        [
+            "initialize",
+            "notifications/initialized",
+            "tools/call",
+            "tools/call"
+        ],
+        "it is opened once, though it named no session"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_locked_keyring_is_rested_from_rather_than_asked_each_call() {
+    let dir = scratch("locked");
+    let (url, seen) = gateway(|_, _| status(202));
+    let mut gateway = Gateway::new(&url, program(&dir, "exit 75").as_os_str());
+    for _ in 0..3 {
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Err(Called::NoSignIn(SignIn::Locked)),
+            "a locked keyring is said as no sign-in"
+        );
+    }
+    assert_eq!(
+        runs(&dir),
+        1,
+        "its unlock prompt is raised once, not each call"
+    );
+    assert!(
+        methods(&seen).is_empty(),
+        "nothing is asked without a sign-in"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_missing_sign_in_is_looked_for_again_each_call() {
+    let dir = scratch("missing");
+    let (url, _) = gateway(|_, _| status(202));
+    let mut gateway = Gateway::new(&url, program(&dir, "exit 1").as_os_str());
+    for _ in 0..2 {
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Err(Called::NoSignIn(SignIn::Missing)),
+            "a program with nothing to give is said as no sign-in"
+        );
+    }
+    assert_eq!(runs(&dir), 2, "one that asks nobody is run again");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_tool_saying_something_else_is_not_available_turns_nothing_on() {
+    let dir = scratch("not-available");
+    let (url, seen) = gateway(|one, _| match one.method.as_str() {
+        "initialize" => opened("s1"),
+        "tools/call" => tool("Channel C1 is not available", true),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    assert_eq!(
+        gateway.call("slack_read_thread", &json!({})),
+        Err(Called::Failed("Channel C1 is not available".to_owned())),
+        "the tool's own failure is said"
+    );
+    let asked: Vec<Value> = seen
+        .lock()
+        .expect("what was seen")
+        .iter()
+        .map(|one| one.params["name"].clone())
+        .collect();
+    assert!(
+        !asked.contains(&json!("tool_gateway_enable_backend")),
+        "no backend is turned on: {asked:?}"
+    );
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn a_session_failing_otherwise_is_let_go_and_opened_afresh() {
+    let dir = scratch("bad-session");
+    let (url, seen) = gateway(|one, calls| match (one.method.as_str(), calls) {
+        ("initialize", _) => opened("s1"),
+        // Rejected as JSON-RPC says, then with nothing said.
+        ("tools/call", 0) => Reply {
+            status: 400,
+            ..json_reply(&json!({
+                "jsonrpc": "2.0", "id": 1,
+                "error": { "code": -32600, "message": "no such session" },
+            }))
+        },
+        ("tools/call", 2) => status(500),
+        ("tools/call", _) => tool("me", false),
+        _ => status(202),
+    });
+    let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+    for how in ["as JSON-RPC says", "with nothing said"] {
+        assert!(
+            gateway.call("slack_who_am_i", &json!({})).is_err(),
+            "a session the gateway rejects {how} fails its call"
+        );
+        assert_eq!(
+            gateway.call("slack_who_am_i", &json!({})),
+            Ok("me".to_owned()),
+            "and the next, after one rejected {how}, is asked in a session opened afresh"
+        );
+    }
+    let opened = methods(&seen)
+        .iter()
+        .filter(|method| *method == "initialize")
+        .count();
+    assert_eq!(opened, 3, "the gateway is opened again after each");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_tool_that_fails_says_why() {
     let dir = scratch("failed");
     let (url, _) = gateway(|one, _| match one.method.as_str() {
@@ -326,18 +500,30 @@ fn an_answer_as_an_event_stream_is_read() {
     let dir = scratch("stream");
     let (url, _) = gateway(|one, _| match one.method.as_str() {
         "initialize" => opened("s1"),
-        "tools/call" => Reply {
-            kind: "text/event-stream",
-            body: format!("event: message\ndata: {}\n\n", tool("me", false).body),
-            ..status(200)
-        },
+        "tools/call" => {
+            let answer = json!({
+                "jsonrpc": "2.0", "id": one.id,
+                "result": { "content": [{ "type": "text", "text": "me" }] },
+            });
+            let notice = json!({ "jsonrpc": "2.0", "method": "notifications/message" });
+            let pretty = serde_json::to_string_pretty(&answer).expect("the answer");
+            let split: String = pretty
+                .lines()
+                .flat_map(|line| ["data: ", line, "\n"])
+                .collect();
+            Reply {
+                kind: "text/event-stream",
+                body: format!("event: message\n{split}\nevent: message\ndata: {notice}\n\n"),
+                ..status(200)
+            }
+        }
         _ => status(202),
     });
     let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
     assert_eq!(
         gateway.call("slack_who_am_i", &json!({})),
         Ok("me".to_owned()),
-        "a gateway may answer as a stream of events"
+        "a gateway may answer as a stream, over several lines, a notice after"
     );
     let _ = fs::remove_dir_all(&dir);
 }
