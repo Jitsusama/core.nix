@@ -124,12 +124,15 @@ let
   # minutes waits ten minutes, so a harness that fails as it starts costs
   # a start every few minutes rather than six a minute. Until the harness
   # ships the program there is nothing to run, so it looks again ten
-  # minutes on. The socket and the scratch of the host's conversations go
-  # in the account's own temporary folder, where mycelium and the harness
-  # look on a Mac, which has no XDG_RUNTIME_DIR, and which only the account
-  # may read, unlike /tmp. Its path isn't known until the account asks the
-  # system for it, so sh asks, checks that what it was told is a folder,
-  # not a link, that the account owns and nobody else may read, and then
+  # minutes on. The socket goes in the account's own cache folder, where
+  # mycelium and the harness look on a Mac, which has no XDG_RUNTIME_DIR,
+  # and the scratch of the host's conversations in its temporary folder;
+  # only the account may read either, unlike /tmp. The socket stays out of
+  # the temporary folder because macOS removes what sits there untouched
+  # for three days, and a host's socket lives as long as the host. Neither
+  # path is known until the account asks the system, so sh asks, checks
+  # that each is a folder, not a link, the account's and nobody else's
+  # to read, and then
   # becomes node, the process launchd signals, through env, which takes any
   # name a realm gives and drops every variable that would run code as
   # node starts (host-launch.nix's loadsCode), as Linux's unit does.
@@ -160,17 +163,20 @@ let
       exit 1
     fi
     temporary=$(/usr/bin/getconf DARWIN_USER_TEMP_DIR)
-    if [ -z "$temporary" ] || [ -L "''${temporary%/}" ] || [ ! -d "$temporary" ] ||
-      [ "$(/usr/bin/stat -f '%u %Lp' "$temporary")" != "$(/usr/bin/id -u) 700" ]; then
-      echo "pi-host: the account's own temporary folder wasn't found, or isn't its alone"
-      exit 1
-    fi
+    cache=$(/usr/bin/getconf DARWIN_USER_CACHE_DIR)
+    for folder in "$temporary" "$cache"; do
+      if [ -z "$folder" ] || [ -L "''${folder%/}" ] || [ ! -d "$folder" ] ||
+        [ "$(/usr/bin/stat -f '%u %Lp' "$folder")" != "$(/usr/bin/id -u) 700" ]; then
+        echo "pi-host: the account's own temporary or cache folder wasn't found, or isn't its alone"
+        exit 1
+      fi
+    done
     exec /usr/bin/env ${lib.concatMapStringsSep " " (name: "-u ${name}") launch.loadsCode} \
     ${
       lib.concatMapStrings (word: "  ${word} \\\n") (
         lib.mapAttrsToList (name: value: lib.escapeShellArg "${name}=${value}") (environmentOf realm host)
         ++ [
-          ''XDG_RUNTIME_DIR="$temporary"''
+          ''XDG_RUNTIME_DIR="$cache"''
           ''TMPDIR="$temporary"''
         ]
       )

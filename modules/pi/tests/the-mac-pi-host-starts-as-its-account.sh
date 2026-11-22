@@ -6,8 +6,8 @@
 # Linux's, and the host's node by one that writes down its pid, its words
 # and its environment. The start has to pass shellcheck as sh, move only a
 # log past 10 MB aside, wait before a fourth start in ten minutes, say why
-# and fail when the harness is missing or the temporary folder isn't the
-# account's alone, and otherwise become the node in its own place, with the
+# and fail when the harness is missing or the temporary or cache folder
+# isn't the account's alone, and otherwise become the node in its own place, with the
 # words it was given and every value of the realm's environment whole,
 # whatever the shell would read in it, and none of the variables that would
 # run code as node starts.
@@ -40,13 +40,18 @@ date_program=$(command -v date)
 sed_program=$(command -v sed)
 tail_program=$(command -v tail)
 
-# Prints the folder the test gives it, as getconf prints the account's own,
-# or fails as getconf does when it has none.
+# Prints the temporary or cache folder the test gives it, as getconf prints
+# the account's own, or fails as getconf does when it has none. The cache
+# folder is the test's own unless GIVEN_CACHE is set, empty for none.
 cat >"${stand}/getconf" <<EOF
 #!${BASH}
-[ "\$1" = DARWIN_USER_TEMP_DIR ] || exit 2
-[ -n "\${GIVEN_TEMPORARY:-}" ] || exit 1
-printf '%s\n' "\${GIVEN_TEMPORARY}"
+case "\$1" in
+DARWIN_USER_TEMP_DIR) folder=\${GIVEN_TEMPORARY:-} ;;
+DARWIN_USER_CACHE_DIR) folder=\${GIVEN_CACHE-${work}/cache/} ;;
+*) exit 2 ;;
+esac
+[ -n "\${folder}" ] || exit 1
+printf '%s\n' "\${folder}"
 EOF
 
 # The account's uid, or the one the test gives it.
@@ -151,8 +156,8 @@ run() {
   "${env_program}" -i "$@" "${shell}" "${work}/start"
 }
 
-# Fails unless the start, given a temporary folder, refuses it, says so in
-# a log of its own and never runs node.
+# Fails unless the start, given a temporary or cache folder, refuses it,
+# says so in a log of its own and never runs node.
 refused() {
   local what=$1
   shift
@@ -160,7 +165,7 @@ refused() {
   if run "$@"; then
     fail "under ${name} started in ${what}"
   fi
-  grep -q "temporary folder wasn't found, or isn't its alone" "${log}" ||
+  grep -q "temporary or cache folder wasn't found, or isn't its alone" "${log}" ||
     fail "under ${name} didn't say why it refused ${what}"
   [[ ! -e "${work}/words" ]] || fail "under ${name} ran node in ${what}"
 }
@@ -170,6 +175,8 @@ for shell in "$@"; do
   temporary=${work}/temporary
   mkdir -p "${temporary}"
   chmod 700 "${temporary}"
+  mkdir -p "${work}/cache"
+  chmod 700 "${work}/cache"
   # A Mac's getconf ends the folder with a slash.
   given=${temporary}/
 
@@ -197,6 +204,15 @@ for shell in "$@"; do
   chmod 755 "${work}/open"
   refused "a temporary folder others may read" GIVEN_TEMPORARY="${work}/open/"
   refused "another account's temporary folder" GIVEN_TEMPORARY="${given}" GIVEN_UID=99999
+  # The cache folder, which holds the host's socket, is held to the same.
+  refused "no cache folder" GIVEN_TEMPORARY="${given}" GIVEN_CACHE=
+  refused "a cache folder that isn't there" GIVEN_TEMPORARY="${given}" \
+    GIVEN_CACHE="${work}/not-there/"
+  ln -sfn "${work}/cache" "${work}/cache-link"
+  refused "a cache folder that is a link" GIVEN_TEMPORARY="${given}" \
+    GIVEN_CACHE="${work}/cache-link/"
+  refused "a cache folder others may read" GIVEN_TEMPORARY="${given}" \
+    GIVEN_CACHE="${work}/open/"
 
   # Everything in place: the start becomes node in its own place, so the
   # pid launchd signals is node's, and a short log stays where it is.
@@ -222,7 +238,9 @@ for shell in "$@"; do
   [[ ${words} == "${expected_words}" ]] || fail "under ${name} gave node ${words}"
   grep -q "node ran" "${log}" || fail "under ${name} didn't send node's output to its log"
   expect TMPDIR "${given}"
-  expect XDG_RUNTIME_DIR "${given}"
+  # The socket goes in the cache folder, which macOS doesn't empty of what
+  # sits untouched for three days, as it does the temporary folder.
+  expect XDG_RUNTIME_DIR "${work}/cache/"
   # shellcheck disable=SC2016 # the dollar and backquotes are the value, unexpanded
   expect GREETING 'it'"'"'s $HOME, `here`'
   expect HOME /Users/someone

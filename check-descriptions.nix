@@ -4910,12 +4910,13 @@
     shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes,
     counting from the oldest of three, and not after two or one recent start of three, saying
     that removing its record of starts ends the wait, which then ends within ten seconds,
-    says why and fails on a missing harness or a temporary folder that isn't there, is a link,
-    is another's or others may read, and otherwise becomes the realm's node in its own place
-    with its words, its output in its log, every environment value whole, the realm's LANG and
-    no LC_ALL to outrank it, the account's home realm, TMPDIR and XDG_RUNTIME_DIR the account's
-    temporary folder, the probes its own restart waits on with their % single, and none of the
-    eight variables that would run code as node starts
+    says why and fails on a missing harness or a temporary or cache folder that isn't there, is
+    a link, is another's or others may read, and otherwise becomes the realm's node in its own
+    place with its words, its output in its log, every environment value whole, the realm's LANG
+    and no LC_ALL to outrank it, the account's home realm, TMPDIR the account's temporary folder
+    and XDG_RUNTIME_DIR its cache folder, which macOS doesn't empty after three days, the probes
+    its own restart waits on with their % single, and none of the eight variables that would run
+    code as node starts
   '';
   the-macs-faces-are-the-themes = ''
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
