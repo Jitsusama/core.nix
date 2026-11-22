@@ -43,8 +43,9 @@ COUNTED = "Two machines, both worth a look."
 # about 437 KB and 397 elements since the list of what is worth a look, six to a row,
 # and since no comment is sent, its styles' included; about 445 KB since machines
 # out of reach are named apart, a cost worth the page reading well with many down;
-# 403 elements since each machine's look carries its act, opening it in the launcher.
-BUDGET = Budget(files=25, kilobytes=450, elements=410)
+# 403 elements since each machine's look carries its act, opening it in the launcher;
+# about 490 KB since the builders' code, which adds 45 KB and a card when one is named.
+BUDGET = Budget(files=25, kilobytes=495, elements=415)
 
 
 @pytest.fixture
@@ -57,7 +58,7 @@ def system_daemon(tmp_path: Path) -> Iterator[StandIn]:
 
 @pytest.fixture
 def system_served(tmp_path: Path, system_daemon: StandIn) -> Iterator[Served]:
-    kinds = {"summary": {}, "part": {}, "machine": {}, "builder": {}}
+    kinds: dict[str, dict[str, object]] = {"summary": {}, "part": {}, "machine": {}, "builder": {}}
     whole = {"socket": str(system_daemon.path), "kinds": kinds}
     with serving(tmp_path, {"system": os.environ["SYSTEM_SITE"]}, {"system": whole}) as served:
         yield served
@@ -688,7 +689,7 @@ def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: Stan
     says_it_stands(system_page, "live")
     card = system_page.locator('#parts [data-part="part-builders"]')
     expect(card, "builders were drawn while the node named none").to_have_count(0)
-    gull = {
+    gull: dict[str, object] = {
         "key": "builder:gull",
         "kind": "builder",
         "name": "gull",
