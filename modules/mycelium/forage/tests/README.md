@@ -57,4 +57,4 @@ page checks. Beside a second stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn
 solid. A step on the floor leaves the floor drawn as it is, a record
 hollowing a cell on it is drawn there with the floor kept, and a step
-off it draws it again.
+off it draws it again over the list the record left.

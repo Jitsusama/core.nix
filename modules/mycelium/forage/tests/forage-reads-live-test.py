@@ -305,14 +305,17 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     kept = long_page.evaluate("document.querySelector('#floor svg')?.dataset.kept ?? ''")
     assert kept == "yes", "a step the floor holds drew it again"
     # A record hollows a cell the floor draws: it's drawn hollow, and the floor holds still.
-    long_node.tell("forage", changed=[{"key": f"forage:{TOPS[-1]}", "purpose": ""}])
-    hollowed = long_page.locator(f'#floor rect.hollow[data-cell="{TOPS[-1]}"]')
+    # The floor a step off draws holds that cell too, so it shows which list the step drew.
+    recorded = TOPS[30]
+    long_node.tell("forage", changed=[{"key": f"forage:{recorded}", "purpose": ""}])
+    hollowed = long_page.locator(f'#floor rect.hollow[data-cell="{recorded}"]')
     expect(hollowed, "the floor didn't draw the record").to_have_count(1, timeout=PACE_MS)
     ringed_on_the_floor(long_page, held, "a record moved the ring")
     assert on_the_floor(long_page) == drawn, "a record moved the floor"
     long_page.keyboard.press("g")
     selected(long_page, TOPS[0], "g didn't go to the first row")
     ringed_on_the_floor(long_page, TOPS[0], "a step off the floor didn't draw it around the cursor")
+    expect(hollowed, "a step off the floor drew the list from before the record").to_have_count(1)
 
 
 # A cell named by its whole link, as a notice or another page gives it.
