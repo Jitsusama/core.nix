@@ -243,7 +243,10 @@ fn only_the_fake_camera_and_microphone_are_taken_at_either_end() {
         fake(&fakes, "near").is_ok(),
         "Chromium's fake camera or microphone was refused"
     );
-    let refused = |said: Value, device: &str| matches!(fake(&said, "far"), Err(Step::Refused(why)) if why.contains(device));
+    let refused = |said: Value, device: &str| match fake(&said, "far") {
+        Err(Step::Refused(why)) => why.contains(device),
+        _ => false,
+    };
     assert!(
         refused(
             json!({"label": "MX Brio 705 for Business", "voice": "Fake Default Audio Input"}),

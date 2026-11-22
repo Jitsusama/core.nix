@@ -66,10 +66,24 @@ function media({ width, height, fps }) {
 }
 
 // Plays what the far end hears, so Chromium decodes it as Meet's tab does.
+// Held for the whole call, so the element playing it is never collected partway.
+let speaker;
+
+// Plays the far end's sound, and marks it stopped if playing ends partway, so a stall reads as
+// unheard rather than as sound heard well over the part that played.
 function play(track) {
-  const out = new Audio();
-  out.srcObject = new MediaStream([track]);
-  return out.play();
+  speaker = new Audio();
+  speaker.srcObject = new MediaStream([track]);
+  const stopped = (event) => {
+    played = `stopped: ${event.type}`;
+  };
+  for (const stop of ['pause', 'ended', 'emptied']) {
+    speaker.addEventListener(stop, stopped);
+  }
+  track.addEventListener('ended', () => {
+    played = 'stopped: the track ended';
+  });
+  return speaker.play();
 }
 
 const pick = (r, keys) =>
@@ -174,10 +188,13 @@ globalThis.answer = async (offer, maxBitrate) => {
     .then(() => play(said.receiver.track))
     .then(
       () => {
-        played = 'playing';
+        played ??= 'playing';
       },
       (e) => {
-        played = `refused: ${e?.name ?? e}`;
+        played =
+          e?.name === 'NotAllowedError'
+            ? 'refused: NotAllowedError'
+            : `failed: ${e?.name ?? 'Error'}: ${e?.message ?? e}`;
       },
     );
   preferVp9(t);

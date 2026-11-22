@@ -72,6 +72,52 @@ fn left_out(app: &str, waits: &Waits) -> Vec<String> {
     said
 }
 
+/// The call's sound as four figures, each saying what stood in for Joel's
+/// voice and, when sound went unheard or a figure is missing, why.
+fn sound(call: &Call) -> Vec<Measure> {
+    let call_sound = |first: &str| {
+        let mut said = vec![first.to_string(), SOUND.to_string()];
+        let heard = if call.heard { "heard, but" } else { "unheard" };
+        said.extend(call.sound_why.iter().map(|why| format!("{heard}: {why}")));
+        said
+    };
+    vec![
+        // A figure cadence reads whether or not any sound came, so a call
+        // that heard none files a fault carrying why, rather than its
+        // other sound figures dropping off unread.
+        measure(
+            "call sound heard",
+            Some(if call.heard { 1.0 } else { 0.0 }),
+            1.0,
+            false,
+            call_sound("1 when the far end played the near end's sound, 0 when it didn't"),
+        ),
+        // Past 1% made up, a voice starts to sound clipped; past 30 ms of
+        // jitter, a call's buffer has to grow or drop sound to keep up.
+        measure(
+            "call sound concealed %",
+            call.concealed,
+            1.0,
+            true,
+            call_sound("the share the far end made up for late or lost sound"),
+        ),
+        measure(
+            "call sound jitter p99 ms",
+            call.jitter_p99,
+            30.0,
+            true,
+            call_sound("how unevenly the sound's packets reached the far end"),
+        ),
+        measure(
+            "call sound packets lost",
+            call.lost,
+            0.0,
+            true,
+            call_sound("a count, lost between two programs on one machine, so only under load"),
+        ),
+    ]
+}
+
 /// The hour's figures: the call's, the apps' waits and the launcher's,
 /// whose note says when the shell's journal wasn't read whole, and why.
 pub fn measures(
@@ -83,11 +129,6 @@ pub fn measures(
     unread: Option<&str>,
 ) -> Vec<Measure> {
     let call_too = |first: &str| vec![first.to_string(), stand_in.to_string()];
-    let call_sound = |first: &str| {
-        let mut said = vec![first.to_string(), SOUND.to_string()];
-        said.extend(call.unheard.iter().map(|why| format!("unheard: {why}")));
-        said
-    };
     let mut behind = vec![format!(
         "{} openings in the last hour, chord or ask to on screen",
         opens.len()
@@ -103,7 +144,7 @@ pub fn measures(
         behind,
     );
     launcher.owner = LAUNCHER;
-    vec![
+    let mut all = vec![
         measure(
             "call camera fps p10",
             call.camera,
@@ -135,29 +176,9 @@ pub fn measures(
                 |s| format!("{s} s frozen in the run"),
             )),
         ),
-        // Past 1% made up, a voice starts to sound clipped; past 30 ms of
-        // jitter, a call's buffer has to grow or drop sound to keep up.
-        measure(
-            "call sound concealed %",
-            call.concealed,
-            1.0,
-            true,
-            call_sound("the share the far end made up for late or lost sound"),
-        ),
-        measure(
-            "call sound jitter p99 ms",
-            call.jitter_p99,
-            30.0,
-            true,
-            call_sound("how unevenly the sound's packets reached the far end"),
-        ),
-        measure(
-            "call sound packets lost %",
-            call.lost,
-            0.0,
-            true,
-            call_sound("lost between two programs on one machine, so only under load"),
-        ),
+    ];
+    all.extend(sound(call));
+    all.extend([
         measure(
             "call click to next frame p99 ms",
             call.clicks_p99,
@@ -183,7 +204,8 @@ pub fn measures(
             left_out("Slack", slack),
         ),
         launcher,
-    ]
+    ]);
+    all
 }
 
 /// Writes the hour for cadence, whole or not at all, with the run beside
@@ -222,10 +244,11 @@ mod tests {
             frozen_s: Some(0.0),
             clicks_p50: Some(3.0),
             clicks_p99: Some(9.84),
+            heard: true,
             concealed: Some(0.42),
             jitter_p99: Some(24.0),
-            lost: Some(0.25),
-            unheard: None,
+            lost: Some(3.0),
+            sound_why: None,
             samples: 140,
         }
     }
@@ -246,12 +269,13 @@ mod tests {
             &[20.0, 31.0],
             Some("journalctl ended with code 1: no"),
         );
-        assert_eq!(all.len(), 11);
+        assert_eq!(all.len(), 12);
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         for (name, now, target) in [
+            ("call sound heard", 1.0, 1.0),
             ("call sound concealed %", 0.4, 1.0),
             ("call sound jitter p99 ms", 24.0, 30.0),
-            ("call sound packets lost %", 0.3, 0.0),
+            ("call sound packets lost", 3.0, 0.0),
         ] {
             assert_eq!(
                 (named(name).now, named(name).target),
@@ -267,10 +291,10 @@ mod tests {
         assert_eq!(named("call sent fps p10").now, Some(30.0));
         // A figure read the wrong way passes cadence at any value.
         for m in &all {
-            let fps = m.measure.contains(" fps ");
+            let higher = m.measure.contains(" fps ") || m.measure == "call sound heard";
             assert_eq!(
                 m.lower_is_better,
-                !fps,
+                !higher,
                 "{} reads as {} is better",
                 m.measure,
                 if m.lower_is_better { "lower" } else { "higher" }
@@ -317,10 +341,11 @@ mod tests {
     #[test]
     fn sound_that_went_unheard_says_why_beside_each_of_its_figures() {
         let unheard = Call {
+            heard: false,
             concealed: None,
             jitter_p99: None,
             lost: None,
-            unheard: Some("the far end's playing was refused: NotAllowedError".to_string()),
+            sound_why: Some("the far end's playing was refused: NotAllowedError".to_string()),
             ..call()
         };
         let all = measures(
@@ -331,7 +356,12 @@ mod tests {
             &[],
             None,
         );
-        for m in all.iter().filter(|m| m.measure.starts_with("call sound ")) {
+        let sound: Vec<&Measure> = all
+            .iter()
+            .filter(|m| m.measure.starts_with("call sound "))
+            .collect();
+        assert_eq!(sound.len(), 4, "the sound's figures aren't all named");
+        for m in sound {
             assert_eq!(
                 m.behind.last().map(String::as_str),
                 Some("unheard: the far end's playing was refused: NotAllowedError"),
@@ -339,6 +369,12 @@ mod tests {
                 m.measure
             );
         }
+        let heard = all.iter().find(|m| m.measure == "call sound heard");
+        assert_eq!(
+            heard.map(|m| m.now),
+            Some(Some(0.0)),
+            "a call that heard nothing reads 0, which cadence files, not a null it drops"
+        );
     }
 
     #[test]

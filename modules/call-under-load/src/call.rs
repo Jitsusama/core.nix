@@ -602,6 +602,8 @@ fn chrome_command(chrome: &Path, profile: &Path, memory: &Path, config: &Path) -
         .env_remove("DBUS_SESSION_BUS_ADDRESS")
         // The same holds for Joel's sound servers' addresses, so none is
         // told, and Pulse is named a closed one, so it can't start its own.
+        // These stand behind --disable-audio-output, which is what keeps
+        // the beep off a speaker: without it, Chromium falls back to ALSA.
         .env_remove("PULSE_RUNTIME_PATH")
         .env_remove("PIPEWIRE_REMOTE")
         .env_remove("PIPEWIRE_RUNTIME_DIR")
