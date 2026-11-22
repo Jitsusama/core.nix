@@ -125,7 +125,8 @@ mod tests {
         std::fs::create_dir_all(&unowned).unwrap();
         let a_day_on = SystemTime::now() + UNTOUCHED_A_DAY;
         assert_eq!(clear(&handover, "kestrel", |_| true, a_day_on), 2);
-        assert!(!osprey.exists() && !unowned.exists());
+        assert!(!osprey.exists(), "osprey's, a day old, is cleared");
+        assert!(!unowned.exists(), "one nothing owns, a day old, is cleared");
     }
 
     #[test]
@@ -139,7 +140,7 @@ mod tests {
             0
         );
         assert_eq!(clear(&handover, "kestrel", |_| false, SystemTime::now()), 1);
-        assert!(!job.exists());
+        assert!(!job.exists(), "its process gone, the job is cleared");
     }
 
     #[test]

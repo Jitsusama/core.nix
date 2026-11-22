@@ -613,7 +613,7 @@ mod tests {
 
     #[test]
     fn this_process_runs_and_one_past_any_pid_doesnt() {
-        assert!(alive(std::process::id()));
+        assert!(alive(std::process::id()), "this test's own process runs");
         assert!(
             !alive(i32::MAX.unsigned_abs()),
             "past any pid a system gives"
