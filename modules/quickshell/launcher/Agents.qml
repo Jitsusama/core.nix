@@ -864,9 +864,12 @@ Provider {
                 Theme.alert]]);
         }
 
-        function onUnhosted(session) {
+        // Said by why it held (Sessions' unhosted): one still coming isn't
+        // refused, so it isn't in the alert colour.
+        function onUnhosted(session, why) {
+            const key = why === "" ? "hosted" : why;
             provider.launcher?.tellOnOpen([[provider.footName(session),
-                provider.elsewhere("hosted", session), Theme.alert]]);
+                provider.elsewhere(key, session), key === "opening" ? Theme.text : Theme.alert]]);
         }
 
         function onUnopened(session) {
