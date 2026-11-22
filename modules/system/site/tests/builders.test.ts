@@ -140,7 +140,44 @@ it("says the builders across the machines: the worst one's line, then the rest",
       ].join(" "),
     ),
   );
-  assert.ok(drawn.includes('data-row="builders" data-health="watch" href="../mycelium/"'));
+  assert.ok(
+    drawn.includes('data-row="builders" data-health="watch" href="../mycelium/#builder=gull"'),
+    "several builders weren't led to the worst on the map",
+  );
+  const aside = drawn.split('<p class="aside">')[1]?.split("</p>")[0];
+  assert.equal(
+    read(aside ?? ""),
+    "osprey (good) answers and takes 16 builds at once",
+    "the aside holds the rest, not the worst again",
+  );
+});
+
+it("says every builder in the aside while none is worth a look", () => {
+  const drawn = buildersDrawn(
+    systemOfThese([
+      summary,
+      machinesPart(["machine:kestrel", "builder:osprey", "builder:heron"]),
+      kestrel,
+      osprey,
+      builder("heron", "good", "answers and takes 1 build at a time"),
+    ]),
+  );
+  assert.ok(drawn, "no builders were drawn");
+  assert.ok(
+    drawn.includes('<p class="said">Two builders</p>'),
+    "the good builders weren't counted",
+  );
+  const aside = drawn.split('<p class="aside">')[1]?.split("</p>")[0];
+  assert.equal(
+    read(aside ?? ""),
+    "osprey (good) answers and takes 16 builds at once; " +
+      "heron (good) answers and takes 1 build at a time",
+    "each good builder is said in the aside, in the part's order",
+  );
+  assert.ok(
+    drawn.includes('href="../mycelium/#builder=osprey">See them on the map<'),
+    "several good builders weren't led to the first",
+  );
 });
 
 it("counts the builders while none is worth a look, and leads to one by its name", () => {
@@ -188,4 +225,22 @@ it("leads a builder's look to it on the map, whatever its place among the things
     "the part's side, which names gull, is gull's own look",
   );
   assert.equal(more, 0);
+});
+
+it("keeps a machine's look and a builder's of the same name apart", () => {
+  const system = systemOfThese([
+    summary,
+    machinesPart(["machine:osprey", "builder:osprey"], "watch"),
+    { ...kestrel, key: "machine:osprey", name: "osprey", health: "watch", side: ["on battery"] },
+    builder("osprey", "watch", "isn't answering", ["not answering"]),
+  ]);
+  const { looks } = looksOf(system, 8);
+  assert.deepEqual(
+    looks.map((look) => [look.words, look.href, look.row]),
+    [
+      ["On battery", "#machine-1", "look:machine:osprey:0:on battery"],
+      ["Not answering", "../mycelium/#builder=osprey", "look:builder:osprey:0:not answering"],
+    ],
+    "each leads to its own and keeps a row of its own",
+  );
 });

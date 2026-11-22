@@ -85,7 +85,7 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
   ]);
   const [here, far] = looksOf(read, 1).looks;
   assert.equal(here?.href, "#machine-1", "a machine drawn whole leads to its own section");
-  assert.equal(here?.machine, true, "a machine's name is marked as one");
+  assert.equal(here?.thing, true, "a machine's name is marked as one");
   assert.equal(
     far?.href,
     "../mycelium/#machine=tern%20%26%20gull",
@@ -93,7 +93,7 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
   );
   const network = looksOf(system([], [part("network", "bad", ["the modem is down"])]), 8).looks[0];
   assert.equal(network?.href, "../network/", "a part's look leads to its own site");
-  assert.equal(network?.machine, false, "a part's name is the page's, to translate");
+  assert.equal(network?.thing, false, "a part's name is the page's, to translate");
 });
 
 it("lists what the machines part has worth a look that no machine does", () => {

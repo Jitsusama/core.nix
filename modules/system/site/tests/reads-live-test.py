@@ -2,7 +2,8 @@
 
 The page is the one Nix builds, served by the real local-sites server beside a
 stand-in system daemon (modules/local-sites/tests/stand_in_daemon.py) holding
-a summary, four parts and two machines under test names, system.json. It must
+a summary, four parts, two machines and two builders under test names,
+system.json, trimmed to the kinds home.nix declares (SYSTEM_KINDS). It must
 say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
@@ -51,7 +52,8 @@ def system_daemon(tmp_path: Path) -> Iterator[StandIn]:
 
 @pytest.fixture
 def system_served(tmp_path: Path, system_daemon: StandIn) -> Iterator[Served]:
-    kinds: dict[str, dict[str, object]] = {"summary": {}, "part": {}, "machine": {}, "builder": {}}
+    # The kinds home.nix declares for the feed, so one it leaves out fails here.
+    kinds: dict[str, dict[str, object]] = json.loads(os.environ["SYSTEM_KINDS"])
     whole = {"socket": str(system_daemon.path), "kinds": kinds}
     with serving(tmp_path, {"system": os.environ["SYSTEM_SITE"]}, {"system": whole}) as served:
         yield served

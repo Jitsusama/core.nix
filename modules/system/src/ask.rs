@@ -32,6 +32,9 @@ const COMPLAINT_KEPT: u64 = 4096;
 /// left, and that's given only a moment, past the clock if need be, so an
 /// owner ending right at it still has its answer read.
 const STREAMS_AFTER_IT_ENDS: Duration = Duration::from_secs(1);
+/// The one key a later line of an answer may add: `mycelium machines`
+/// writes its builders after its machines.
+const BUILDERS: &str = "Builders";
 
 /// Each command's answer, in the order asked.
 pub fn all(commands: &[&[&str]]) -> Vec<Answer> {
@@ -292,11 +295,13 @@ fn hides(each: char) -> bool {
     )
 }
 
-/// The document an owner's answer opens with, and what the documents after
-/// it add to its `Ok`: `mycelium machines` says its machines, then the
-/// builders it sends to on a line of their own. A later document adds only
-/// what the first doesn't say, so it can't overwrite the answer, and one
-/// that isn't an `Ok` or isn't JSON adds nothing, nor does what follows it.
+/// The document an owner's answer opens with, and the builders a later
+/// one adds to its `Ok`: `mycelium machines` says its machines, then the
+/// builders it sends to on a line of their own. A later `Ok` object adds
+/// only its `Builders`, and only where nothing earlier said them, so no
+/// later line can change what the machines are. A later document that
+/// isn't an `Ok` object adds nothing and is passed over, and reading stops
+/// at the first words that aren't JSON.
 fn whole(said: &str, bytes: &[u8]) -> Answer {
     let mut documents = serde_json::Deserializer::from_slice(bytes).into_iter::<Value>();
     let mut answer = documents
@@ -308,8 +313,8 @@ fn whole(said: &str, bytes: &[u8]) -> Answer {
             let Some(Value::Object(adds)) = later.get("Ok").cloned() else {
                 continue;
             };
-            for (key, value) in adds {
-                ok.entry(key).or_insert(value);
+            if let Some(builders) = adds.get(BUILDERS) {
+                ok.entry(BUILDERS).or_insert_with(|| builders.clone());
             }
         }
     }
@@ -517,12 +522,33 @@ mod tests {
             Ok(json!({ "Ok": { "Machines": [1] } })),
             "a later line never overwrites what the first said"
         );
-        let failed = b"{\"Ok\":{\"Machines\":[]}}\n{\"Err\":{\"Builders\":[9]}}\nnot json\n\
-            {\"Ok\":{\"B\":1}}";
+        let other = b"{\"Ok\":{\"Machines\":[]}}\n{\"Ok\":{\"Cells\":[1],\"Builders\":[2]}}";
+        assert_eq!(
+            whole("mycelium machines", other),
+            Ok(json!({ "Ok": { "Machines": [], "Builders": [2] } })),
+            "a later line adds only its builders"
+        );
+        let failed = b"{\"Ok\":{\"Machines\":[]}}\n{\"Err\":{\"Builders\":[9]}}\n\
+            {\"Ok\":[]}\n7\n{\"Ok\":{\"Builders\":[3]}}\n{\"Ok\":{\"Builders\":[4]}}";
         assert_eq!(
             whole("mycelium machines", failed),
+            Ok(json!({ "Ok": { "Machines": [], "Builders": [3] } })),
+            "a later Err, or anything not an Ok object, is passed over, and the first builders \
+             stay"
+        );
+        let stopped = b"{\"Ok\":{\"Machines\":[]}}\nnot json\n{\"Ok\":{\"Builders\":[9]}}";
+        assert_eq!(
+            whole("mycelium machines", stopped),
             Ok(json!({ "Ok": { "Machines": [] } })),
-            "a later Err adds nothing, and nothing past words that aren't JSON is read"
+            "nothing past words that aren't JSON is read"
+        );
+        assert_eq!(
+            whole(
+                "mycelium machines",
+                b"{\"Ok\":[]}\n{\"Ok\":{\"Builders\":[1]}}"
+            ),
+            Ok(json!({ "Ok": [] })),
+            "an Ok that isn't an object takes in nothing"
         );
         assert_eq!(
             whole("net --json", b"{\"Err\":\"down\"}\n{\"Ok\":{\"B\":1}}"),
