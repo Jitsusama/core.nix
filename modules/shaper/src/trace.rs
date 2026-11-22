@@ -56,9 +56,9 @@ pub struct Line {
     /// The plateau the upload holds under, in kbit/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plateau: Option<u64>,
-    /// The ceiling the upload was held under, a trial's or its network's,
-    /// in kbit/s, while one did: a rate held there is the ceiling's, not
-    /// the controller's.
+    /// The ceiling the upload was held under, a trial's, its network's or
+    /// its house's that second, in kbit/s, while one did: a rate held there
+    /// is the ceiling's, not the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<u64>,
     /// What another machine on the line said it sent, and the most the

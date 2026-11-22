@@ -3643,8 +3643,9 @@
   '';
   shaper-hears-only-the-house = ''
     a network's house opens the port the shaper hears its reports on, the one src/house.rs names,
-    to the house's address alone, over IPv4 or IPv6 as it's written, and an IPv4 address written
-    as IPv6 is refused
+    to the house's address alone, over IPv4 or IPv6 as it's written, with no other rule or open
+    port reaching it; and a house's address is held to well-formed IPv4 or IPv6, an IPv4 one
+    written as IPv6 refused in each spelling
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests

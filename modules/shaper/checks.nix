@@ -11,33 +11,34 @@
   ...
 }:
 let
-  services = (bareNixos [ self.nixosModules.shaper ]).config.systemd.services;
+  bare = bareNixos [ self.nixosModules.shaper ];
+  services = bare.config.systemd.services;
   named =
     (bareNixos [
       self.nixosModules.shaper
       { jitsusama.shaper.controller = "one-way"; }
     ]).config.systemd.services;
   # A machine whose two networks each name a house, one reporting over
-  # IPv4 and one over IPv6, and one naming an IPv4 address written as
-  # IPv6, which the firewall would match only as IPv6.
+  # IPv4 and one over IPv6.
   housed =
-    from:
     (bareNixos [
       self.nixosModules.shaper
       {
-        jitsusama.shaper.networks = lib.mapAttrs (_: address: {
-          up = 12000;
-          house = {
-            most = 7000;
-            from = address;
-          };
-        }) from;
+        jitsusama.shaper.networks =
+          lib.mapAttrs
+            (_: address: {
+              up = 12000;
+              house = {
+                most = 7000;
+                from = address;
+              };
+            })
+            {
+              "00:00:5e:00:53:01" = "192.0.2.7";
+              "00:00:5e:00:53:02" = "2001:db8::7";
+            };
       }
-    ]).config.networking.firewall.extraInputRules;
-  rules = housed {
-    "00:00:5e:00:53:01" = "192.0.2.7";
-    "00:00:5e:00:53:02" = "2001:db8::7";
-  };
+    ]).config.networking.firewall;
   # The port src/house.rs listens on, read from it so the two can't part.
   port = lib.pipe ./src/house.rs [
     builtins.readFile
@@ -47,14 +48,47 @@ let
     lib.head
     (lib.replaceStrings [ "_" ] [ "" ])
   ];
-  opened = lib.all (rule: lib.hasInfix rule rules) [
-    "ip saddr 192.0.2.7 udp dport ${port} accept"
-    "ip6 saddr 2001:db8::7 udp dport ${port} accept"
+  # Every rule that reaches the port, which must be the houses' own, and
+  # no opening of the port to anyone.
+  reaching = lib.filter (lib.hasInfix "dport ${port} ") (lib.splitString "\n" housed.extraInputRules);
+  opened =
+    reaching == [
+      "ip saddr 192.0.2.7 udp dport ${port} accept"
+      "ip6 saddr 2001:db8::7 udp dport ${port} accept"
+    ]
+    && !lib.elem (lib.toInt port) housed.allowedUDPPorts;
+  # The check a house's address is held to, read from the module's own
+  # option, against addresses Rust's parse takes and refuses alike, and
+  # IPv4 ones written as IPv6, in each spelling.
+  address =
+    (
+      (bare.options.jitsusama.shaper.networks.type.getSubOptions [ ])
+      .house.type.nestedTypes.elemType.getSubOptions
+        [ ]
+    ).from.type;
+  taken = [
+    "192.0.2.7"
+    "10.0.0.255"
+    "2001:db8::7"
+    "fe80::1"
+    "1:2:3:4:5:6:7:8"
+    "1::ffff:a:b"
   ];
-  mapped =
-    (builtins.tryEval (housed {
-      "00:00:5e:00:53:01" = "::ffff:c000:207";
-    })).success;
+  refused = [
+    "the mac"
+    "1.2.3"
+    "10.0.0.256"
+    "192.168.001.007"
+    "1::2::3"
+    "1:2:3:4:5:6:7:8:9"
+    "1:2:3:4:5:6:7::8"
+    "12345::1"
+    "::ffff:192.0.2.7"
+    "::ffff:c000:207"
+    "::FFFF:C000:207"
+    "0:0:0:0:0:ffff:c000:207"
+  ];
+  misread = lib.filter (text: !address.check text) taken ++ lib.filter address.check refused;
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -86,15 +120,16 @@ onLinux {
       );
 
   # A network's house opens the port the shaper hears its reports on to
-  # the house's address alone, over IPv4 or IPv6 as it is written, and an
-  # IPv4 address written as IPv6, which would open the port to no report,
-  # is refused.
+  # the house's address alone, over IPv4 or IPv6 as it is written, with no
+  # rule or open port letting anyone else reach it. A house's address is
+  # held to what the shaper's own parse takes, and an IPv4 address written
+  # as IPv6, which would open the port to no report, is refused.
   shaper-hears-only-the-house = holds "shaper-hears-only-the-house" (
     if !opened then
-      "A house doesn't open UDP port ${port} to its address alone: ${rules}"
+      "UDP port ${port} opens to more than the houses' addresses: ${lib.concatStringsSep "; " reaching}"
     else
-      "An IPv4 address written as IPv6 was taken as a house's."
-  ) (opened && !mapped);
+      "A house's address check misreads: ${lib.concatStringsSep ", " misread}"
+  ) (opened && misread == [ ]);
 
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for

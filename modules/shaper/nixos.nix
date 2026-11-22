@@ -196,11 +196,12 @@ in
                 description = ''
                   The address the other machine reports from, the only one
                   heard, so a report from anywhere else holds nothing. The
-                  address alone says a report is the other machine's, so a
-                  device on the same line that is given that address could
-                  forge one: for as long as it keeps sending, it holds this
-                  machine's upload as low as 4 Mb/s, as a trial may, or lets
-                  it go. An IPv4 address written as IPv6 is refused.
+                  address alone says a report is the other machine's, so any
+                  device on the line could forge one by sending from it: for
+                  as long as it keeps sending, it holds this machine's
+                  upload as low as 4 Mb/s, as a trial may, or lets it go.
+                  Name a private or link-local address, which keeps a forger
+                  on the line. An IPv4 address written as IPv6 is refused.
                 '';
               };
             }

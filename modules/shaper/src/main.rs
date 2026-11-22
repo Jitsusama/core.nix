@@ -1590,9 +1590,9 @@ impl NetworkCeilings {
             .iter()
             .map(|(network, &(_, most))| (network.clone(), most))
             .collect();
-        let least = rate::whole(oneway::MOST_KBIT_LEAST);
-        let steady = self.steady.of(&held, now, least);
-        let steady = steady
+        let steady = self
+            .steady
+            .of(&held, now)
             .into_iter()
             .map(|(network, most)| (network, rate::float(most)));
         (house, steady.collect())
@@ -1600,10 +1600,14 @@ impl NetworkCeilings {
 }
 
 /// Puts in the traced `line` what its link's house heard and held, when
-/// one holds it: the house of `network`, the link's.
+/// one holds it: the house of `network`, the link's. The house held the
+/// link to this second's, under the steady ceiling the controller was
+/// given, so it is the second's ceiling where lower: the bars and a held
+/// replay set a rate held there apart as the ceiling's.
 fn house_traced(line: &mut trace::Line, network: Option<&str>, house: &HouseHolds) {
     if let Some(&(sent, most)) = network.and_then(|n| house.get(n)) {
         (line.house_sent, line.house_most) = (Some(sent), Some(most));
+        line.ceiling = Some(line.ceiling.map_or(most, |ceiling| ceiling.min(most)));
     }
 }
 
@@ -2523,15 +2527,31 @@ mod tests {
         let mut line = trace::Line::default();
         house_traced(&mut line, Some("00:00:5e:00:53:01"), &house);
         assert_eq!(
-            (line.house_sent, line.house_most),
-            (Some(2_500), Some(4_500)),
-            "its network's house"
+            (line.house_sent, line.house_most, line.ceiling),
+            (Some(2_500), Some(4_500), Some(4_500)),
+            "its network's house, whose hold is the second's ceiling"
         );
+        let mut line = trace::Line {
+            ceiling: Some(5_250),
+            ..trace::Line::default()
+        };
+        house_traced(&mut line, Some("00:00:5e:00:53:01"), &house);
+        assert_eq!(
+            line.ceiling,
+            Some(4_500),
+            "the second's hold, under the steady ceiling the controller had"
+        );
+        let mut line = trace::Line {
+            ceiling: Some(4_000),
+            ..trace::Line::default()
+        };
+        house_traced(&mut line, Some("00:00:5e:00:53:01"), &house);
+        assert_eq!(line.ceiling, Some(4_000), "a trial's lower ceiling kept");
         let mut line = trace::Line::default();
         house_traced(&mut line, Some("00:00:5e:00:53:02"), &house);
         assert_eq!(
-            (line.house_sent, line.house_most),
-            (None, None),
+            (line.house_sent, line.house_most, line.ceiling),
+            (None, None, None),
             "another network's"
         );
         house_traced(&mut line, None, &house);

@@ -5,11 +5,12 @@
 //! November the VPN ran late in 6 to 14% of seconds while the two sent
 //! under 5 Mb/s between them, and in 87% at 11 to 12, whichever sent it.
 //!
-//! The source address alone says a report is the other machine's, so a
-//! device on a line that gives it that address can forge one: it holds
-//! this machine's upload down to the least a trial may set, or lets it
-//! go, for as long as it keeps sending. Unlike a trial it needs no
-//! administrator, only the address.
+//! The source address alone says a report is the other machine's, so any
+//! device on the line can forge one by sending from that address: it
+//! holds this machine's upload down to the least a trial may set, or lets
+//! it go, for as long as it keeps sending. Unlike a trial it needs no
+//! administrator. An address the line keeps to itself, private or
+//! link-local, keeps such a forger on the line.
 //!
 //! A report is one datagram a second to `PORT`: the bytes the machine's
 //! uplink has sent since it started, and its own clock in milliseconds,
@@ -35,6 +36,13 @@ pub const FRESH: Duration = Duration::from_secs(3);
 /// give a rate: past it, one was lost and the bytes between are spread
 /// too thin to say a second's sending.
 const APART_MS: u64 = 3_000;
+
+/// How far ahead of the time since the last report a report may be on the
+/// reporter's clock and still be taken, in ms. Reports come a second
+/// apart, so two the line held back and let through together lie a
+/// second apart on the clock and a moment apart here; a report lost
+/// between widens the time since and the clock alike.
+const AHEAD_MS: u64 = 1_500;
 
 /// The most a rate is read as, in kbit/s: the most a house's ceiling may
 /// name (nixos.nix). Reports are numbers off the wire, so one claiming
@@ -98,7 +106,12 @@ pub fn held(most: u64, sent: Option<(f64, Duration)>, floor: u64) -> Option<u64>
 }
 
 /// The house's ceilings heard over the last `STEADY`, by network, so the
-/// controller is given a ceiling that holds still.
+/// controller is given a ceiling that holds still. The controller may sit
+/// above the link's hold for as long, by as much as the house swings. A
+/// plateau it lowers is read from the most the link carried over a span
+/// as long (`PROVEN_S` in src/oneway.rs), which while the link is busy is
+/// near the high this ceiling holds, and never under a declared line's
+/// hold, so a second the house held isn't learned as the line.
 #[derive(Default)]
 pub struct Steady {
     seen: BTreeMap<String, VecDeque<(Instant, u64)>>,
@@ -107,15 +120,11 @@ pub struct Steady {
 impl Steady {
     /// The ceiling the controller is given on each network at `now`, in
     /// kbit/s, from this moment's `held`: the highest of the last
-    /// `STEADY`, rounded down to `STEP_KBIT`, never under `floor`. A
-    /// network whose house holds nothing now is forgotten at once, so a
-    /// house that lets go lets the controller go too.
-    pub fn of(
-        &mut self,
-        held: &BTreeMap<String, u64>,
-        now: Instant,
-        floor: u64,
-    ) -> BTreeMap<String, u64> {
+    /// `STEADY`, rounded down to `STEP_KBIT`. `held` is never under the
+    /// least a trial may set, a multiple of `STEP_KBIT`, so neither is
+    /// this. A network whose house holds nothing now is forgotten at once,
+    /// so a house that lets go lets the controller go too.
+    pub fn of(&mut self, held: &BTreeMap<String, u64>, now: Instant) -> BTreeMap<String, u64> {
         self.seen.retain(|network, _| held.contains_key(network));
         held.iter()
             .map(|(network, &most)| {
@@ -128,7 +137,7 @@ impl Steady {
                     seen.pop_front();
                 }
                 let high = seen.iter().map(|&(_, most)| most).max().unwrap_or(most);
-                (network.clone(), (high / STEP_KBIT * STEP_KBIT).max(floor))
+                (network.clone(), high / STEP_KBIT * STEP_KBIT)
             })
             .collect()
     }
@@ -206,9 +215,11 @@ impl Ear {
     /// Takes a report from `address`, heard `at`. Within `FRESH` of the
     /// last one taken, a report is left out when it's no later on the
     /// reporter's clock, as a copy or one come out of order is, or further
-    /// ahead than the time since plus `APART_MS`, as a forged one or a
-    /// clock that jumped is: either would become what the next is read
-    /// against, and the second would leave out every true one for `FRESH`.
+    /// ahead than the time since plus `AHEAD_MS`, as a clock that jumped
+    /// is: either would become what the next is read against, and the
+    /// second would leave out every true one for `FRESH`. A forged report
+    /// within `AHEAD_MS` is still taken, and leaves out the true ones for
+    /// as long, which a forger sending its own reports could do anyway.
     /// Past `FRESH` any report is read against from then, as one is after
     /// the reporter restarts. One that can't give a rate with the last,
     /// after a report was lost, is read against from then too, and the
@@ -220,7 +231,7 @@ impl Ear {
         let since = |w: &Heard| at.saturating_duration_since(w.at);
         let in_step = |w: &Heard| {
             let since_ms = u64::try_from(since(w).as_millis()).unwrap_or(u64::MAX);
-            report.ms > w.report.ms && report.ms - w.report.ms <= since_ms.saturating_add(APART_MS)
+            report.ms > w.report.ms && report.ms - w.report.ms <= since_ms.saturating_add(AHEAD_MS)
         };
         if was.is_some_and(|w| since(&w) <= FRESH && !in_step(&w)) {
             return;
@@ -427,18 +438,32 @@ mod tests {
         ear.hear(mac, report(0, 0), at);
         ear.hear(mac, report(250_000, 1_000), ms(1_000));
         ear.hear(mac, report(0, u64::MAX), ms(1_500));
-        ear.hear(mac, report(0, 1_000 + 500 + APART_MS + 1), ms(1_500));
+        ear.hear(mac, report(0, 1_000 + 500 + AHEAD_MS + 1), ms(1_500));
         ear.hear(mac, report(750_000, 2_000), ms(2_000));
         assert_eq!(
             ear.sent(mac, ms(2_000)),
             Some((4_000.0, Duration::ZERO)),
             "the true report after them heard at once"
         );
-        ear.hear(mac, report(1_000_000, 4_500), ms(2_500));
+        ear.hear(mac, report(875_000, 3_000), ms(2_000));
         assert_eq!(
-            ear.sent(mac, ms(2_500)),
-            Some((800.0, Duration::ZERO)),
-            "one further ahead than the time since, within its step, taken"
+            ear.sent(mac, ms(2_000)),
+            Some((1_000.0, Duration::ZERO)),
+            "one a second ahead, as two the line held back come, taken"
+        );
+        ear.hear(mac, report(0, 3_000 + 500 + AHEAD_MS), ms(2_500));
+        ear.hear(mac, report(1_000_000, 4_000), ms(3_000));
+        ear.hear(mac, report(1_125_000, 5_000), ms(4_000));
+        assert_eq!(
+            ear.sent(mac, ms(4_000)),
+            Some((1_000.0, Duration::from_secs(2))),
+            "a forged one within the slack leaves out the true ones until they pass it"
+        );
+        ear.hear(mac, report(1_250_000, 6_000), ms(5_000));
+        assert_eq!(
+            ear.sent(mac, ms(5_000)),
+            Some((10_000.0, Duration::ZERO)),
+            "and the first past it is read against it, as against a forger's own reports"
         );
     }
 
@@ -449,30 +474,35 @@ mod tests {
         let mut steady = Steady::default();
         let at = Instant::now();
         let home = |most| BTreeMap::from([("home".to_string(), most)]);
+        let at_s = |s: u64| at + Duration::from_secs(s);
         let mut said = Vec::new();
-        for (s, most) in [5_400, 4_600, 5_300, 4_500, 5_200, 4_700]
-            .into_iter()
-            .enumerate()
-        {
-            let now = at + Duration::from_secs(u64::try_from(s).expect("a few"));
-            said.push(steady.of(&home(most), now, 4_000)["home"]);
+        for (s, most) in (0..).zip([5_400, 4_600, 5_300, 4_500, 5_200, 4_700]) {
+            said.push(steady.of(&home(most), at_s(s))["home"]);
         }
         assert_eq!(said, [5_250; 6], "the highest, stepped down");
-        let later = at + Duration::from_secs(12);
         assert_eq!(
-            steady.of(&home(4_600), later, 4_000)["home"],
+            steady.of(&home(4_600), at_s(7))["home"],
+            5_250,
+            "one 5 s old kept"
+        );
+        assert_eq!(
+            steady.of(&home(4_600), at_s(8))["home"],
+            5_000,
+            "one 6 s old gone, the next highest stepped down"
+        );
+        assert_eq!(
+            steady.of(&home(4_600), at_s(14))["home"],
             4_500,
             "a lower that lasts"
         );
-        assert_eq!(steady.of(&home(3_900), later, 4_000)["home"], 4_500);
         assert!(
-            steady.of(&BTreeMap::new(), later, 4_000).is_empty(),
+            steady.of(&BTreeMap::new(), at_s(14)).is_empty(),
             "a house let go"
         );
         assert_eq!(
-            steady.of(&home(4_100), later, 4_000)["home"],
+            steady.of(&home(4_100), at_s(14))["home"],
             4_000,
-            "from nothing after it, and never under the floor"
+            "from nothing after it"
         );
     }
 

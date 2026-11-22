@@ -185,9 +185,9 @@ impl Follow {
     /// How the stay's upload is tuned: by the trial, under the lowest of
     /// its ceiling, the network's and the house's, so a trial may try
     /// under a network's ceiling but never past it. The controller holds
-    /// its own rate under the house's as under a trial's, so it never
-    /// judges the line by a rate the house held, and climbs back gently
-    /// once the house lets go.
+    /// its own rate under the house's as under a trial's, the steady one
+    /// main gives it (`house::Steady`, which says what that trades), and
+    /// climbs back gently once the house lets go.
     fn tuning(&self) -> Tuning {
         let tuning = self.trial.unwrap_or_default();
         let lowest = [
