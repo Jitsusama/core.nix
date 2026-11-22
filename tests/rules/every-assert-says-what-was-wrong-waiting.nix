@@ -67,7 +67,7 @@
   "modules/disk-guard/tests/guard/entries.rs" = 1;
   "modules/disk-guard/tests/guard/finished.rs" = 10;
   "modules/disk-guard/tests/guard/freezer.rs" = 4;
-  "modules/disk-guard/tests/guard/garbage.rs" = 5;
+  "modules/disk-guard/tests/guard/garbage.rs" = 4;
   "modules/disk-guard/tests/guard/generations.rs" = 2;
   "modules/disk-guard/tests/guard/git.rs" = 7;
   "modules/disk-guard/tests/guard/holders.rs" = 12;

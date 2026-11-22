@@ -48,7 +48,10 @@ fn a_batch_is_deleted_without_what_came_alive_or_is_already_gone() {
     let batch = [path("gone"), path("a"), path("live"), path("b")];
     let deleted = delete(&nix, &dir.path().join("roots"), &batch, false, || false).unwrap();
     assert!(deleted.ran && !deleted.put_off, "{deleted:?}");
-    assert!(!Path::new(&path("a")).exists() && !Path::new(&path("b")).exists());
+    assert!(
+        !Path::new(&path("a")).exists() && !Path::new(&path("b")).exists(),
+        "the paths that never came alive were kept"
+    );
     assert!(Path::new(&path("live")).exists(), "alive, so kept");
     let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
     assert_eq!(
