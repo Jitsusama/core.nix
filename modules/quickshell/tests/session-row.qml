@@ -501,6 +501,31 @@ QtObject {
                 failures.push(`takesBack, ${what}: ${JSON.stringify(back)}`);
         }
 
+        // What Agents does with each: a Wake taken back goes to becameNot as
+        // itself, "" too, and anything else is said on the foot.
+        const toldLauncher = [];
+        const launcherStandIn = {
+            becameNot: (key, why) => toldLauncher.push(["becameNot", key, why]),
+            tellOnOpen: lines => toldLauncher.push(["tellOnOpen", lines])
+        };
+        const steers = [
+            ["a Wake never answered, let go at once as no answer", "wake", "Wake", "",
+                [["becameNot", "agent:PARKED", ""]]],
+            ["a refused Wake, let go by the node's reason", "wake", "Wake", "so PARKED went",
+                [["becameNot", "agent:PARKED", "so Parked Quest went"]]],
+            ["a Pause never answered, said on the foot", "pause", "Pause", "",
+                [["tellOnOpen", [["Parked Quest",
+                    "Pause had no answer from the node, so it may not be done", "alert"]]]]]
+        ];
+        for (const [what, act, actName, why, want] of steers) {
+            toldLauncher.length = 0;
+            SessionRow.unsteered(launcherStandIn, machineSaid, { act, actName, why,
+                address: "PARKED", name: "Parked Quest", called: "Parked Quest", held: true },
+                "alert");
+            if (JSON.stringify(toldLauncher) !== JSON.stringify(want))
+                failures.push(`unsteered, ${what}: ${JSON.stringify(toldLauncher)}`);
+        }
+
         const names = [
             ["its row's name first", "Parked Quest", "Its Quest", "PARKED", "Parked Quest"],
             ["its quest's title with no row served", undefined, "Its Quest", "PARKED", "Its Quest"],

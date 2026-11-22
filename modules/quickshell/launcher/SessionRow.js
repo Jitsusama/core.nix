@@ -255,10 +255,10 @@ function refusal(said, refused) {
 // is said as itself (refusal) and leaves the Wake's row as it was to
 // become. A Wake with no answer is taken back too, as "", which the
 // launcher says as not woken yet, with no answer (becameNot): no answer is
-// still coming, but the Wake may still land, since a line that went while
-// it waited had already sent it, and the one that didn't answer is as
-// likely the agents daemon as the node. Held for Becoming's 30 s, the row
-// read woken all that time (#5878's follow-up). `refused` is as refusal
+// still coming, but the Wake may still land. From Agents, no answer means
+// the agents daemon's line was gone or went while it waited, and it may
+// already have sent the steer, so nobody is blamed. Held for Becoming's
+// 30 s, the row read woken all that time (#5878's follow-up). `refused` is as refusal
 // takes it, the act by its id ("wake"), and `refused.held` whether the row
 // is becoming woken.
 function takesBack(refused) {
@@ -267,4 +267,23 @@ function takesBack(refused) {
         return null;
     }
     return reasonOf(why, address, name);
+}
+
+// What Agents does with a steer its node refused or never answered, so
+// the choice is made here, where its cases reach it. A row takesBack takes
+// back goes straight to the launcher's becameNot, "" included, which a
+// provider's refused would drop; anything else is said on the foot by
+// refusal. `launcher` holds becameNot and tellOnOpen, `said` the
+// agents:machine words, `alert` the foot's colour, and `refused` is as
+// takesBack takes it, with `actName` the act's name and `called` what the
+// foot names the session by.
+function unsteered(launcher, said, refused, alert) {
+    const back = takesBack(refused);
+    if (back !== null) {
+        launcher?.becameNot?.(`agent:${refused.address}`, back);
+        return;
+    }
+    const [name, words] = refusal(said, { act: refused.actName, why: refused.why,
+        address: refused.address, name: refused.called });
+    launcher?.tellOnOpen?.([[name, words, alert]]);
 }
