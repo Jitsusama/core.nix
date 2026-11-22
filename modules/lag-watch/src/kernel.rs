@@ -376,9 +376,18 @@ pub mod tests {
 
     #[test]
     fn a_thread_is_asleep_unless_its_stat_says_it_runs_or_is_ready() {
-        assert!(asleep("7 (Chrome_ChildIOT) S 1 7 7 0 -1\n"));
-        assert!(asleep("7 (a (b) c) D 1 7 7 0 -1\n"));
-        assert!(!asleep("7 (CrBrowserMain) R 1 7 7 0 -1\n"));
+        assert!(
+            asleep("7 (Chrome_ChildIOT) S 1 7 7 0 -1\n"),
+            "a sleeping thread counted as ready"
+        );
+        assert!(
+            asleep("7 (a (b) c) D 1 7 7 0 -1\n"),
+            "a thread in disk sleep, named with brackets, counted as ready"
+        );
+        assert!(
+            !asleep("7 (CrBrowserMain) R 1 7 7 0 -1\n"),
+            "a ready thread counted as asleep"
+        );
         assert!(!asleep(""), "an unread stat counted as asleep");
     }
 
