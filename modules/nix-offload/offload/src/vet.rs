@@ -20,8 +20,9 @@
 //! then on its fingerprints must stay as they were, since any change
 //! moves them, even one undone between two looks. The project's own
 //! metadata, which every instance takes where it sets nothing itself, may
-//! hold no script the guest agent would run at boot and no ssh keys it
-//! would make accounts of, unless the builder sets its own. Any other
+//! hold no script the guest agent would run at boot, no ssh keys it
+//! would make accounts of, and no OS Config that would run jobs, unless
+//! the builder sets its own. Any other
 //! project key is let through and said, since a cloud product such as
 //! GKE writes keys of its own there that no guest agent reads, and
 //! refusing on one stopped every builder on 22 November.
@@ -187,8 +188,8 @@ pub fn marks(described: &Value) -> Option<String> {
     Some(format!("{instance} {metadata}"))
 }
 
-/// Whether the project `described` sets no script or ssh keys the
-/// instance `instance` would take, with the project's keys it lets
+/// Whether the project `described` sets no script, ssh keys or OS Config
+/// the instance `instance` would take, with the project's keys it lets
 /// through that root doesn't know; why not otherwise.
 pub fn project_holds(described: &Value, instance: &Value) -> Result<Vec<String>, String> {
     let keys = |items: &Value| -> Vec<String> {
@@ -199,19 +200,33 @@ pub fn project_holds(described: &Value, instance: &Value) -> Result<Vec<String>,
             .filter_map(|item| item["key"].as_str().map(str::to_owned))
             .collect()
     };
-    let own = keys(&instance["metadata"]["items"]);
-    let blocks = instance["metadata"]["items"]
-        .as_array()
-        .map_or(&[][..], Vec::as_slice)
-        .iter()
-        .any(|item| {
-            item["key"] == "block-project-ssh-keys"
-                && item["value"]
-                    .as_str()
-                    .is_some_and(|said| said.eq_ignore_ascii_case("true"))
-        });
+    let said = |items: &Value, key: &str, is: &str| {
+        items
+            .as_array()
+            .map_or(&[][..], Vec::as_slice)
+            .iter()
+            .any(|item| {
+                item["key"] == key
+                    && item["value"]
+                        .as_str()
+                        .is_some_and(|said| said.eq_ignore_ascii_case(is))
+            })
+    };
+    let (project, builder) = (
+        &described["commonInstanceMetadata"]["items"],
+        &instance["metadata"]["items"],
+    );
+    let own = keys(builder);
+    let blocks = said(builder, "block-project-ssh-keys", "true");
+    if said(project, "enable-osconfig", "true") && !said(builder, "enable-osconfig", "false") {
+        return Err(
+            "sits in a project setting enable-osconfig, which would let OS Config \
+                    run jobs on every builder"
+                .to_owned(),
+        );
+    }
     let mut unknown = Vec::new();
-    for key in keys(&described["commonInstanceMetadata"]["items"]) {
+    for key in keys(project) {
         let script = PROJECT_SCRIPTS.contains(&key.as_str());
         if script && !own.contains(&key) {
             return Err(format!(
@@ -471,6 +486,22 @@ mod tests {
                 "a project's {script} was let run"
             );
         }
+        let osconfig = json!({"commonInstanceMetadata": {"items": items(&[
+            ("enable-osconfig", "TRUE"),
+        ])}});
+        assert!(
+            project_holds(&osconfig, &builder).is_err_and(|why| why.contains("enable-osconfig")),
+            "a project's OS Config reached a builder"
+        );
+        let declining = json!({"metadata": {"items": items(&[
+            ("block-project-ssh-keys", "TRUE"),
+            ("enable-osconfig", "FALSE"),
+        ])}});
+        assert_eq!(
+            project_holds(&osconfig, &declining),
+            Ok(vec!["enable-osconfig".to_owned()]),
+            "a project's OS Config was refused though the builder turns it off"
+        );
         for keys in PROJECT_SSH_KEYS {
             let refused = project_holds(&project(&[keys]), &open);
             assert!(
