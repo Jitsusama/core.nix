@@ -1370,13 +1370,21 @@ ShellRoot {
         const wholeList = drawn.reduce((keys, row) => keys.concat(standsFor(row)), []);
         const seeded = ["on:waiting:desktop", "on:waiting:want:WANTF", "on:waiting:want:WANTG",
             "on:waiting:Sign in to the bank", "on:waiting:Pay the bill", "on:look:p"];
-        expect("and lists the rest of For You in the list's order",
+        // Each its own, so a failure says which held: the state the order
+        // is judged in, what :filter holds, then the order itself.
+        const placeOf = key => wholeList.indexOf(key);
+        expect("the list it's judged by draws no heading, the asks gathered between the to-dos",
             !drawn.some(row => row.heading) && drawn.some(row => row.key
-                === "on:waitingOnYou:kind:agent") && wholeList.indexOf("on:waiting:Pay the bill")
-                < wholeList.indexOf("on:waiting:want:WANTF") && JSON.stringify([...narrowed].sort())
-                === JSON.stringify([...seeded].sort())
-                && JSON.stringify(wholeList) === JSON.stringify(narrowed),
-            JSON.stringify([drawn.map(row => row.key), wholeList, narrowed]));
+                === "on:waitingOnYou:kind:agent") && placeOf("on:waiting:Pay the bill")
+                < placeOf("on:waiting:want:WANTF") && placeOf("on:waiting:want:WANTG")
+                < placeOf("on:waiting:Sign in to the bank"),
+            JSON.stringify(drawn.map(row => [row.key, row.heading === true])));
+        expect(":filter holds each row the state makes",
+            JSON.stringify([...narrowed].sort()) === JSON.stringify([...seeded].sort()),
+            JSON.stringify(narrowed));
+        expect("and lists the rest of For You in the list's order",
+            JSON.stringify(wholeList) === JSON.stringify(narrowed),
+            JSON.stringify([wholeList, narrowed]));
         now.lookTexts = beforeLook;
         // Ahead of a session's question too, in For You and home alike.
         Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
