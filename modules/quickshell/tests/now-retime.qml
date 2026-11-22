@@ -7,7 +7,7 @@
 // placed: an opening into For You that wasn't yet asleep made all 17
 // again as Now's rows were come to, with no minute turned (2026-11-12).
 // A walk from outside, as a terminal reads Date, places them as it begins
-// and leaves them stale once it ends, so a showing places them again.
+// and again, shut, as it ends, so no showing keeps a row the walk made.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -17,8 +17,9 @@ import "Expect.js" as Expect
 ShellRoot {
     id: root
 
-    // The launcher as Now reads it, shut, wanting Now's rows only as said,
-    // counting each time it's asked to place the time.
+    // The launcher as Now reads it, shut, wanting Now's rows only as said
+    // or while a walk runs (Wanted.js), counting each time it's asked to
+    // place the time, and the date.
     QtObject {
         id: theLauncher
 
@@ -28,13 +29,16 @@ ShellRoot {
         property var held: []
         readonly property var sources: []
         property int placed: 0
+        property int dated: 0
 
         function wants(source) {
-            return wanting;
+            return wanting || cataloguing;
         }
         function resolved(id) {
             if (id === "time")
                 placed += 1;
+            if (id === "today")
+                dated += 1;
             return null;
         }
     }
@@ -148,12 +152,17 @@ ShellRoot {
                 theLauncher.open = false;
                 theLauncher.wanting = false;
                 theLauncher.placed = 0;
+                theLauncher.dated = 0;
                 theLauncher.cataloguing = true;
                 Expect.same("walked from outside, it places the time as the walk begins",
                     theLauncher.placed, 1);
+                Expect.same("walked from outside, it places the date as the walk begins",
+                    theLauncher.dated, 1);
                 theLauncher.cataloguing = false;
-                Expect.same("the walk over, what it placed is stale for Now's rows",
-                    now.timeStale, true);
+                Expect.same("the walk over, it places the date shut again at once",
+                    theLauncher.dated, 2);
+                Expect.same("the walk over, nothing it placed is left stale", now.timeStale,
+                    false);
                 // Now's rows shown, and settled, before a walk.
                 theLauncher.open = true;
                 theLauncher.wanting = true;
@@ -183,7 +192,7 @@ ShellRoot {
     }
 
     // Walked while Now's rows are shown, they're placed again once the walk
-    // is over, as the showing reads them.
+    // is over, as the showing reads them, and not a third time after.
     Timer {
         id: walkedWhileShown
 
