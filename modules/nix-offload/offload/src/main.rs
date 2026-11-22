@@ -1018,7 +1018,7 @@ fn progress(host: &str) -> Result<(), Failure> {
     let Some(lent) = lent else {
         return Err(Failure::new(
             Exit::TryAgain,
-            format!("no lender lends a builder called {host}"),
+            format!("no lender lends a builder called {host} that root vouches for"),
         ));
     };
     let scratch = env::var_os("XDG_RUNTIME_DIR")
@@ -1256,7 +1256,13 @@ fn sent(
     };
     // Said apart from the lent builder's absence, which the line after it
     // reads as.
-    if vm && store.is_none() {
+    if vm && store.is_none() && there::unvouched(dir) {
+        eprintln!(
+            "nix-offload: the VM builder in {} stands, but root never vouched for it, so its \
+             VM tests weren't sent, nor the lent way",
+            dir.display()
+        );
+    } else if vm && store.is_none() {
         eprintln!(
             "nix-offload: the VM lender in {} lent no VM builder, so its VM tests weren't \
              sent, nor the lent way",

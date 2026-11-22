@@ -3699,7 +3699,14 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
 /// take.
 fn waited_vouching(dir: &Path, waiting: Waiting, file: &Path) -> Option<String> {
     if !waiting.asks {
-        eprintln!("nix-offload: no builder stands, and --never-ask leaves the lender unasked");
+        if builder_stands(dir) {
+            eprintln!(
+                "nix-offload: the builder that stands isn't one root vouches for, and \
+                 --never-ask waits for nothing"
+            );
+        } else {
+            eprintln!("nix-offload: no builder stands, and --never-ask leaves the lender unasked");
+        }
         return None;
     }
     if !lender_runs(dir, waiting) {
@@ -4127,30 +4134,50 @@ pub fn admitted<'a>(
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
     let mut said = false;
+    let mut held_said = false;
     let mut place: Option<Claim> = None;
+    let began = std::time::Instant::now();
     loop {
-        // A builder root doesn't vouch for takes no room while another it
-        // does stands, so a run isn't held there waiting on root while
-        // that one stands idle or frees room: it waits for whichever
-        // comes first. With none vouched, the run claims room here and
-        // waits on root as a run sent here would.
-        let vouched_others: Vec<&Path> = others
-            .iter()
-            .copied()
-            .filter(|other| vouched_store(other).is_some())
-            .collect();
-        let held_for_root = unvouched(dir) && !vouched_others.is_empty();
-        if held_for_root
-            && let Some((other, claimed)) = vouched_others
+        // A builder root doesn't vouch for takes no room, so a run isn't
+        // held there waiting on root while another stands that root does
+        // vouch for. It queues on that one instead, in its order, with
+        // this one among its others: so it's taken there in its turn,
+        // rather than passed by every run that queued there after it, and
+        // still goes back here if root vouches for this one and it has
+        // room first.
+        if unvouched(dir) {
+            if let Some(vouched) = others
                 .iter()
-                .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
-        {
-            eprintln!(
-                "nix-offload: root doesn't vouch for this VM builder yet, and another it does \
-                 has room, so this goes there"
-            );
-            drop(place);
-            return (other, Some(claimed));
+                .copied()
+                .find(|other| vouched_store(other).is_some())
+            {
+                eprintln!(
+                    "nix-offload: root doesn't vouch for this VM builder yet, so this waits on \
+                     {} instead, or for root, whichever comes first",
+                    vouched.display()
+                );
+                drop(place);
+                let rest: Vec<&Path> = std::iter::once(dir)
+                    .chain(others.iter().copied().filter(|other| *other != vouched))
+                    .collect();
+                return admitted(vouched, &rest, count, room, rank);
+            }
+            // With none vouched, nothing is claimed while root may yet
+            // vouch for this one or another, for as long as a run sent
+            // waits on root: claimed here at once, a run stayed held on
+            // it after another was vouched with room. Past that, it
+            // claims room here and waits on root as a run sent here would.
+            if began.elapsed() < WAITING.longest {
+                if !held_said {
+                    eprintln!(
+                        "nix-offload: root vouches for none of the VM builders yet, so this \
+                         waits for it to"
+                    );
+                    held_said = true;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(500));
+                continue;
+            }
         }
         let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
             return (dir, claim(dir, wants));
@@ -4161,7 +4188,7 @@ pub fn admitted<'a>(
         }
         let busy = claimed(dir);
         let before = ahead(dir, place.as_ref(), rank, busy, room);
-        if !held_for_root && before == 0 && (busy == 0 || busy + wants <= room) {
+        if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
             let claimed = claim(dir, wants);
@@ -4188,13 +4215,6 @@ pub fn admitted<'a>(
             );
             drop(place);
             return (other, Some(claimed));
-        }
-        if !said && held_for_root {
-            eprintln!(
-                "nix-offload: root doesn't vouch for this VM builder yet, and the others it \
-                 does are full, so this waits for whichever comes first"
-            );
-            said = true;
         }
         if !said {
             let queue = match before {
@@ -7326,6 +7346,7 @@ mod tests {
         let lent = dir.path().join("lent");
         fs::write(&lent, "nix-offload other ssh-ed25519 AAAA\n").unwrap();
         let vouching = lent.clone();
+        let began = std::time::Instant::now();
         let root = std::thread::spawn(move || {
             // Past QUICK's 300 ms answer, which once ended the wait.
             std::thread::sleep(std::time::Duration::from_secs(1));
@@ -7336,7 +7357,38 @@ mod tests {
             Some(store),
             "it gave up before root vouched"
         );
+        // The store stood from the start, so a wait that took it without
+        // asking root would have answered at once with the same text.
+        assert!(
+            began.elapsed() >= std::time::Duration::from_secs(1),
+            "it took the store before root vouched for it"
+        );
         root.join().unwrap();
+    }
+
+    #[test]
+    fn a_builder_root_never_vouches_for_is_never_taken() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let store = concat!(
+            "ssh-ng://nix-offload-vm?",
+            "base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n"
+        );
+        fs::write(dir.path().join("store"), store).unwrap();
+        // Root names the lender, but with another host key.
+        let lent = dir.path().join("lent");
+        fs::write(&lent, "nix-offload-vm vm-1 ssh-ed25519 BBBB\n").unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(waited_vouching(dir.path(), QUICK, &lent), None);
+        // A standing builder is an answer, so it waits the whole wait.
+        assert!(
+            began.elapsed() >= QUICK.longest,
+            "it gave up at the answer, not the longest wait"
+        );
     }
 
     #[test]
