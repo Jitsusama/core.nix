@@ -172,8 +172,6 @@ LANDINGS += [
 ]
 # How many rows' keys a step into Landed may weigh: one of each run alike, not each of them.
 WEIGHED_INTO_LANDED = 3
-# How many of the rows it made last the launcher names by key (Provider.qml's tallyKept).
-LATELY_KEPT = 16
 
 
 def landed_today() -> str:
@@ -1455,8 +1453,8 @@ def picks_kept() -> dict[str, Json]:
 
 def landings_made_last(shell: Shell, made: int) -> list[str]:
     """Give the keys of the landings among the last `made` rows Agents made."""
-    assert made <= LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
-    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
+    assert made <= launcher_on_niri.LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
+    lately = shell.made()["lately"]["agents"]
     return [key for key in (lately[-made:] if made else []) if key.startswith("agents:landed:")]
 
 
@@ -2730,7 +2728,7 @@ def talks(inbox: Path) -> list[Path]:
 
 def made_by_agents(shell: Shell) -> int:
     """Give how many rows Agents has made since the shell started."""
-    return int(json.loads(shell.as_account(shell.ipc("made")))["rows"]["agents"])
+    return shell.rows_made("agents")
 
 
 def landings_looked(shell: Shell) -> int:
@@ -2745,16 +2743,12 @@ def sessions_sought(shell: Shell) -> int:
 
 def made_since(shell: Shell, before: int) -> list[str]:
     """Give the keys of the rows Agents made after it had made `before`, oldest first."""
-    made = made_by_agents(shell) - before
-    assert made <= LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
-    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
-    return [key.split(" ")[0] for key in (lately[-made:] if made else [])]
+    return shell.made_since("agents", before)
 
 
 def made_lately(shell: Shell) -> str:
     """Say the last rows Agents made, each marked shut or walked as the launcher was then."""
-    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
-    return ", ".join(lately) or "none"
+    return shell.made_lately("agents")
 
 
 def sortings_taken(shell: Shell) -> int:
@@ -3052,20 +3046,9 @@ def test_a_session_landing_while_now_is_held_is_counted_in_landed_once_stepped_o
         (PRESENCE / "nowlnd.json").unlink(missing_ok=True)
 
 
-# How long Agents makes no row before an opening's work is taken as done: many frames.
-SETTLED = 0.5
-
-
 def made_settled(shell: Shell) -> None:
     """Wait until Agents has made no row for a while, the opening's work done."""
-    deadline = time.monotonic() + 10
-    made, still_since = made_by_agents(shell), time.monotonic()
-    while time.monotonic() - still_since < SETTLED:
-        assert time.monotonic() < deadline, "Agents never stopped making rows"
-        time.sleep(0.1)
-        now = made_by_agents(shell)
-        if now != made:
-            made, still_since = now, time.monotonic()
+    shell.made_settled("agents")
 
 
 @pytest.fixture
