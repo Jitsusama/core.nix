@@ -249,16 +249,20 @@ def test_a_step_out_of_now_makes_no_spec_while_its_head_says_the_same(shell: She
 
     Made anew each time Agents' rows were read, Spec was made in every - out of Now as home was
     held, though nothing it says had changed, where the rest of Agents' are kept (core.nix#6037).
-    Agents is opened first, so Spec is known to be served, and none can pass for want of one.
+    Agents is opened first, so Spec is known to be served, and again after, so a Spec dropped
+    rather than kept can't pass for one not made.
     """
     with agents_with_parts(shell, SPEC):
         pass
     in_now(shell)
+    before = shell.rows_made("agents")
     try:
-        made = stepped_out_of_now(shell)
+        stepped_out_of_now(shell)
     finally:
         shell.close_launcher()
-    assert "agents:spec" not in made, f"- out of Now made Spec again: {made}"
+    with agents_with_parts(shell, SPEC):
+        made = shell.made_since("agents", before)
+    assert "agents:spec" not in made, f"- out of Now, or Agents after, made Spec again: {made}"
 
 
 def test_spec_says_a_head_changed_since_it_was_last_made(shell: Shell) -> None:
@@ -296,16 +300,20 @@ def test_a_step_out_of_now_makes_no_budgets_while_spend_serves_the_same(shell: S
     """- out of Now makes Agents' Budgets again only if AI spend's row it's made of has changed.
 
     Made anew each time Agents' rows were read, Budgets was made in every - out of Now as home
-    was held, as Spec was. Agents is opened first, so Budgets is known to be served.
+    was held, as Spec was. Agents is opened first, so Budgets is known to be served, and again
+    after, so a Budgets dropped rather than kept can't pass for one not made.
     """
     with agents_with_parts(shell):
         pass
     in_now(shell)
+    before = shell.rows_made("agents")
     try:
-        made = stepped_out_of_now(shell)
+        stepped_out_of_now(shell)
     finally:
         shell.close_launcher()
-    assert "agents:budgets" not in made, f"- out of Now made Budgets again: {made}"
+    with agents_with_parts(shell):
+        made = shell.made_since("agents", before)
+    assert "agents:budgets" not in made, f"- out of Now, or Agents after, made Budgets: {made}"
 
 
 def test_budgets_says_a_side_that_changed_while_now_was_held(shell: Shell) -> None:

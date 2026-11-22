@@ -14,7 +14,9 @@
 // served, lists the rows in the order served, and puts a finding that
 // wants a look first, whose going to its session and marking it expected
 // are asked of the socket and say why serve refuses them. Shut, the rows
-// written again make none of its rows. It exits 0 once every case holds,
+// written again make none of its rows. A row shown elsewhere reads as
+// served, and as none while down but for Start, while shared, or once
+// served with no rows. It exits 0 once every case holds,
 // and otherwise 1, saying which didn't. Long because its cases run as one
 // chain over one real serve, each from where the one before left the
 // rows, the launcher and the clipboard, which a split would start again.
@@ -209,6 +211,17 @@ ShellRoot {
         if (!String(startDrawer?.body ?? "").startsWith("Starts the watch on AI spend")
             || down[0].thing !== true) {
             console.warn(`FAIL Start the Watch says what it does: ${JSON.stringify(startDrawer)}`);
+            Qt.exit(1);
+            return;
+        }
+        // Asked while its rows aren't wanted, as Agents' Budgets asks, a down
+        // Spend makes no row but its down one, which reads as it is, so a
+        // hold on Start isn't let go as though it went (core.nix#6073).
+        const start = unwanted("spend:start");
+        const budgetsDown = unwanted("spend:budgets");
+        if (start?.name !== "Start the Watch" || budgetsDown !== null) {
+            console.warn(`FAIL a down Spend makes only its down row: ${
+                JSON.stringify([start?.name, budgetsDown])}`);
             Qt.exit(1);
             return;
         }
@@ -870,6 +883,16 @@ ShellRoot {
             windows.map(row => row.hue).join(", "));
         root.drawers(budgets);
         root.capsAndPeriods(spend.everything());
+        // Shown elsewhere, it reads as served, and as none while the screen
+        // is shared, whose quiet place holds no Budgets, rather than with
+        // its amounts (core.nix#6073).
+        const elsewhere = unwanted("spend:budgets");
+        Quiet.sharing = true;
+        const shared = unwanted("spend:budgets");
+        Quiet.sharing = false;
+        expect("shown elsewhere it reads as served, and as none while sharing",
+            elsewhere?.side === "$100 this month" && shared === null,
+            JSON.stringify([elsewhere?.side, shared]));
 
         // The rows come as the daemon placed them, the shell ranking none
         // (2026-11-10).
@@ -962,12 +985,39 @@ ShellRoot {
                     && again - made <= wanted.length && shutSpend.tally.rows === again,
                     JSON.stringify([again - made, shutSpend.tally.rows - again,
                         wanted.map(row => row.name)]));
+                emptied();
+            }));
+    }
+
+    // Answered with no rows, as after a restart with no collection, a row
+    // shown elsewhere is none, not what was last listed while wanted
+    // (core.nix#6073).
+    function emptied() {
+        const none = JSON.parse(root.collected);
+        // A report's cuts are rows of the place too, so they go with it.
+        none.shown = [];
+        none.summaryRows = [];
+        none.reports = Array.isArray(none.reports) ? [] : {};
+        rewrite(none, "no rows served", () => shutSpend.served.keys.length === 0,
+            () => step(() => {
+                const budgets = unwanted("spend:budgets");
+                expect("answered with no rows, a row shown elsewhere is none",
+                    budgets === null, JSON.stringify(budgets));
                 Qt.callLater(() => Qt.exit(0));
             }));
     }
 
+    // What the shut Spend says a row reads now while its rows aren't
+    // wanted, as Agents' Budgets and Now's drawers ask it, wanted again after.
+    function unwanted(key) {
+        shutLauncher.wanting = false;
+        const now = shutSpend.rowNow(key);
+        shutLauncher.wanting = true;
+        return now;
+    }
+
 
     // Spend over the files spend-watch wrote, read once they're there.
-    Component.onCompleted: waits.until("the written files read",
-        () => root.collected !== "" && root.budgeted !== "", collect)
+    Component.onCompleted: waits.until("the written files read, and the socket heard down",
+        () => root.collected !== "" && root.budgeted !== "" && shutSpend.down, collect)
 }

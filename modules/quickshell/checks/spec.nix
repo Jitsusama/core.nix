@@ -60,8 +60,9 @@
   # the rows the daemon serves after a restart (modules/quickshell/tests/
   # spec-on-niri-test.py). `spend-watch serve` gives Agents' other part,
   # Budgets, so a - out of Now is held to making neither again while what
-  # each is made of stands, and Budgets to going while spend-watch is down. Spec's place among the parts is held in Qt's own
-  # engine (tests/ranking.qml); the order here is the cadence module's.
+  # each is made of stands, and Budgets to going while spend-watch is down.
+  # Spec's place among the parts is held in Qt's own engine
+  # (tests/ranking.qml); the order here is the cadence module's.
   agents-lists-spec-once-on-niri = launcherOnNiri {
     name = "agents-lists-spec-once-on-niri";
     tests = ../tests/spec-on-niri-test.py;
