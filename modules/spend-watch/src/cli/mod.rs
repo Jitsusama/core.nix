@@ -204,21 +204,32 @@ fn held(config: &Config) -> Result<std::fs::File, Failure> {
 fn readable(config: &Config) -> Result<History, Failure> {
     let path = config.history();
     let _lock = match History::older(&path) {
-        Some(shape) => Some(crate::daemon::lock(&config.state).map_err(|why| {
-            Failure::new(
-                Exit::TryAgain,
-                "spend-watch is bringing the history up to date",
-            )
-            .because(format!(
-                "it's moving the history from shape {shape} to {}, which takes a few \
-                     minutes on a large one, and {why}",
-                crate::history::SCHEMA
-            ))
-            .try_this("try again in a few minutes")
-        })?),
+        Some(shape) => Some(moving(config, shape)?),
         None => None,
     };
     History::open(&path).map_err(unread)
+}
+
+/// The lock to move a history of an older shape under, said first, since
+/// minutes of silence read as a hang, and a reader stopped partway leaves
+/// the history as it was, for the next one to start again.
+fn moving(config: &Config, shape: i64) -> Result<std::fs::File, Failure> {
+    let to = crate::history::SCHEMA;
+    let lock = crate::daemon::lock(&config.state).map_err(|why| {
+        Failure::new(
+            Exit::TryAgain,
+            "spend-watch is bringing the history up to date",
+        )
+        .because(format!(
+            "it's moving the history from shape {shape} to {to}, which takes a few \
+                 minutes on a large one, and {why}"
+        ))
+        // Whatever holds the lock may not be moving it: an older
+        // daemon still running, or one whose step fails and restarts.
+        .try_this("try again in a few minutes; if it lasts, systemctl --user status spend-watch")
+    })?;
+    eprintln!("bringing the history from shape {shape} to {to}, a few minutes on a large one");
+    Ok(lock)
 }
 
 /// Facts as an answer under their schema.

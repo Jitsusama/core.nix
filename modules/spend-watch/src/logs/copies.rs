@@ -2,8 +2,9 @@
 //! parent is here to count what was copied. A copy's turns before its
 //! header are its parent's, so they're counted once, by the parent, when
 //! the parent's log is found where this machine would read it or the
-//! history already holds the parent's session, read from any machine's
-//! logs. Which is decided for the session, not for one log of it: two
+//! history already holds the parent's turns from before the fork, read
+//! from any machine's logs; a header alone naming the parent isn't
+//! enough, since it says nothing was spent. Which is decided for the session, not for one log of it: two
 //! copies of a session, or one gone on elsewhere without its parent, would
 //! otherwise each count the parent's turns again.
 
@@ -15,7 +16,7 @@ use std::path::{Path, PathBuf};
 /// brought from another machine names its parent by that machine's path,
 /// so its parent is looked for where that machine's sessions are brought,
 /// in the same project folder under the same name. `held` says whether
-/// the history holds the parent's session already.
+/// the history holds the parent's turns from before the fork already.
 pub fn carried(header: &Value, brought: Option<&Path>, held: bool) -> bool {
     parent(header).is_some_and(|parent| held || here(Path::new(parent), brought).is_file())
 }
