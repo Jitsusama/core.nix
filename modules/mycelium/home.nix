@@ -597,8 +597,8 @@ in
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
-    # never looser; a Mac runs its strict for either, which writes only the
-    # run's folder.
+    # never looser; a Mac runs its strict for either, which writes the
+    # run's folder and the account's temporary folder, its runtime folder.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
       default = [

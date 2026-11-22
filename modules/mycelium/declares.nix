@@ -111,9 +111,9 @@ rec {
           each minute.
         '';
       };
-      # A carry an orchestrator orders lands only on ground at least as
-      # firm as the session's own, judged from what each machine says
-      # here; a kind left unsaid is one no ordered carry lands in, so the
+      # A carry an orchestrator orders lands only in a kind at least as
+      # strict as the session's own, behind no door it lacked, judged from
+      # what each machine says here; a kind left unsaid is one no ordered carry lands in, so the
       # default refuses them all.
       fence = lib.mkOption {
         type = lib.types.submodule {
@@ -135,10 +135,13 @@ rec {
         description = ''
           The fences an agent session runs in here, by kind, unfenced (none),
           fenced (fence) or strictly fenced (strict), each with the doors it
-          opens, so an orchestrator's carry never lands looser than it left.
-          A Mac's strict reads the home folder but what pi's fence hides,
-          where Linux's reads only what it lists, yet both say strict: a
-          carry from Linux to a Mac lands looser in what it may read.
+          opens, so an orchestrator's carry never lands in a weaker kind or
+          behind a door it lacked. The kinds aren't the same on each system:
+          a Mac's strict reads the home folder but what pi's fence hides,
+          where Linux's reads only what it lists, and it writes the account's
+          temporary folder, which on a Mac is also its runtime folder, yet
+          both say strict. So a carry from Linux to a Mac lands looser in
+          what it may read and write.
         '';
       };
     };

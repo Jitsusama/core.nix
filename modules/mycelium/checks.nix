@@ -848,7 +848,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a Mac can't declare fence or strict, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
