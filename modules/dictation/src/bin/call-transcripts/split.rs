@@ -384,6 +384,37 @@ mod tests {
     }
 
     #[test]
+    fn a_take_missing_its_first_piece_keeps_its_opening_words_and_start() {
+        // The speaker model failed on the take's first piece, so its
+        // pieces start 3 s after the line does.
+        let mut lines = vec![theirs(10, 19, "We could. Not yet.")];
+        let mut pieces = pieces_of(0, 0, &[13, 16]);
+        let mut words = HashMap::from([(
+            0,
+            vec![
+                word("We", 11),
+                word("could.", 14),
+                word("Not", 16),
+                word("yet.", 17),
+            ],
+        )]);
+        let mut call = Call {
+            lines: &mut lines,
+            pieces: &mut pieces,
+            words: &mut words,
+        };
+        by_voice(&mut call, &[Some(0), Some(1)]);
+        assert_eq!(
+            said(&lines),
+            [
+                ("We could.", Some(0), 10, 16),
+                ("Not yet.", Some(1), 16, 19)
+            ],
+            "the words before the first piece were lost, or the first part lost the line's start"
+        );
+    }
+
+    #[test]
     fn a_part_with_no_words_joins_the_part_before_it() {
         let mut lines = vec![theirs(0, 9, "Right, so.")];
         let mut pieces = pieces_of(0, 0, &[0, 3, 6]);

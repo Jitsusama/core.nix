@@ -293,8 +293,9 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     let book = Shared::new(Book::default());
     book.lock().put(call);
     // Taken up from the file, Bo's part is a line of its own, with no
-    // pieces to join it to Ada's again; then Ada says more.
-    // Ada says more, which Joel's microphone hears too.
+    // pieces to join it to Ada's again, and the lines read back keep
+    // their voices, so nothing since is grouped or split. Ada says more,
+    // which Joel's microphone hears too: only an echo to leave out.
     let mut writing = resumed(&book, "call:e1", "Joel");
     hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
     writing.lines.push(joels(80, 81, "Right."));
@@ -308,33 +309,36 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
 }
 
 #[test]
-fn joels_lines_read_back_stay_kept_when_a_take_since_is_split() {
-    // Read back before any was told apart: Joel saying what they said
-    // beside him, kept when it was written.
-    let earlier = vec![
-        line(Side::Theirs, 0, None),
-        line(Side::Mine, 5, None),
-        line(Side::Theirs, 10, None),
-    ];
-    let mut writing = sitting(earlier, false);
-    writing.read = 3;
-    hear_take(
-        &mut writing,
-        80,
-        &[ADA, BO],
-        &[("Done.", 1), ("Not", 4), ("yet.", 5)],
-    );
-    give_voices(&mut writing, None);
-    let bo = writing.lines[4].voice;
-    assert!(
-        said_by(&writing).contains(&("Not yet.", bo)),
-        "the take heard since the restart wasn't split, so the lines read back never moved"
+fn a_takes_pieces_are_timed_from_the_call_and_a_failing_one_left_out() {
+    // A 10 s take 40 s in: pieces of 3, 3 and 4 s, the second failing.
+    let samples = vec![0.0; 10 * SECOND];
+    let mut tried = 0;
+    let (embedded, failed) = embed_take(40 * SECOND, &samples, |_| {
+        tried += 1;
+        if tried == 2 {
+            Err("refused".to_owned())
+        } else {
+            Ok(Some(ADA.to_vec()))
+        }
+    });
+    let timed: Vec<(usize, usize)> = embedded
+        .iter()
+        .map(|&(_, at, samples)| (at / SECOND, samples / SECOND))
+        .collect();
+    assert_eq!(
+        timed,
+        [(40, 3), (46, 4)],
+        "the pieces kept weren't timed from the call's start, or the failing one wasn't left out"
     );
     assert_eq!(
-        joels_written(&writing),
-        ["Said."],
-        "Joel's line read back was judged again once a take was split, or his echo heard since \
-         wasn't"
+        failed.as_deref(),
+        Some("1 of 3 pieces' voice not heard: refused"),
+        "the take's failures weren't told in one line"
+    );
+    let (_, none) = embed_take(40 * SECOND, &samples, |_| Ok(None));
+    assert_eq!(
+        none, None,
+        "a take with no failing piece was told as failing"
     );
 }
 

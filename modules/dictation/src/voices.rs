@@ -774,7 +774,7 @@ mod tests {
             samples: 1,
             ..heard(&[1.0, 0.0], 0)
         }];
-        takes.extend((0..MOST_TAKES).map(|_| Heard {
+        takes.extend((0..=MOST_TAKES).map(|_| Heard {
             samples: 2,
             ..heard(&[1.0, 0.0], 0)
         }));
@@ -786,8 +786,8 @@ mod tests {
             "more takes than the most were grouped"
         );
         assert!(
-            !held.contains(&0),
-            "the shortest take was grouped in place of a longer one"
+            !held.contains(&0) && !held.contains(&(MOST_TAKES + 1)),
+            "the shortest take was grouped, or of takes as long the latest wasn't the one left out"
         );
     }
 

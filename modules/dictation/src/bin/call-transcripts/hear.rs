@@ -207,11 +207,11 @@ pub fn hear(
                 let Some(parakeet) = loaded(settings, &mut speech, book, &key, &mut told) else {
                     continue;
                 };
-                let (text, words) = heard(parakeet, side, start, &samples);
+                let (text, words) = transcribe_take(parakeet, side, start, &samples);
                 // Embedded once Parakeet has heard it, so a call's first
                 // line never waits on the speaker model's loading.
                 if side == Side::Theirs {
-                    let embedded = embed_take(settings, &mut speakers, start, &samples);
+                    let embedded = embed_theirs(settings, &mut speakers, start, &samples);
                     let line = text.is_some().then_some(writing.lines.len());
                     writing.heard(line, &words, embedded);
                 }
@@ -260,13 +260,13 @@ pub fn hear(
 /// which is logged; and for their side, each word and when it was said,
 /// from the call's start. Their text is their words, a space between
 /// each, which is what `transcribe` spells.
-fn heard(
+fn transcribe_take(
     parakeet: &mut Parakeet,
     side: Side,
     start: usize,
     samples: &[f32],
 ) -> (Option<String>, Vec<Word>) {
-    let heard = if side == Side::Theirs {
+    let transcribed = if side == Side::Theirs {
         parakeet.transcribe_words(samples).map(|(words, took)| {
             let joined: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
             (joined.join(" "), words, took)
@@ -276,7 +276,7 @@ fn heard(
             .transcribe(samples)
             .map(|(text, took)| (text, Vec::new(), took))
     };
-    match heard {
+    match transcribed {
         Ok((text, words, took)) => {
             eprintln!("call-transcripts: {}", took.describe(&parakeet.device));
             (said::spoken(text.trim()), from_call_start(start, words))
@@ -339,32 +339,48 @@ fn loaded<'a>(
     speech.as_mut()
 }
 
-/// Each piece of a take of theirs that starts `start` samples into the
-/// call, embedded, with the sample of the call it starts at and how many
-/// it holds. A piece the speaker model fails on is left out, logged once
-/// a take, so a model failing on every piece doesn't bury the journal.
-fn embed_take(
+/// A take of theirs embedded in pieces by the speaker model, as
+/// `embed_take` says, its failures logged.
+fn embed_theirs(
     settings: &Settings,
     speakers: &mut Speakers,
     start: usize,
     samples: &[f32],
 ) -> Vec<(Vec<f32>, usize, usize)> {
+    let (embedded, failed) = embed_take(start, samples, |piece| embed(settings, speakers, piece));
+    if let Some(failed) = failed {
+        eprintln!("call-transcripts: {failed}");
+    }
+    embedded
+}
+
+/// Each piece of a take of theirs that starts `start` samples into the
+/// call, as `embed` hears it, with the sample of the call it starts at
+/// and how many it holds. A piece `embed` fails on is left out, and the
+/// failures are told in one line a take, so a model failing on every
+/// piece doesn't bury the journal.
+fn embed_take(
+    start: usize,
+    samples: &[f32],
+    mut embed: impl FnMut(&[f32]) -> Result<Option<Vec<f32>>, String>,
+) -> (Vec<(Vec<f32>, usize, usize)>, Option<String>) {
     let cut = pieces::pieces(samples.len());
     let mut embedded = Vec::new();
     let mut failed = (0, None);
     for &(from, to) in &cut {
         let piece = &samples[from..to];
-        match embed(settings, speakers, piece) {
+        match embed(piece) {
             Ok(Some(embedding)) => embedded.push((embedding, start + from, piece.len())),
             Ok(None) => {}
             Err(why) => failed = (failed.0 + 1, Some(why)),
         }
     }
-    if let (over, Some(why)) = failed {
-        let of = cut.len();
-        eprintln!("call-transcripts: {over} of {of} pieces' voice not heard: {why}");
-    }
-    embedded
+    let of = cut.len();
+    let failed = match failed {
+        (over, Some(why)) => Some(format!("{over} of {of} pieces' voice not heard: {why}")),
+        _ => None,
+    };
+    (embedded, failed)
 }
 
 /// How a piece of a take of theirs sounds, from the speaker model, loaded
