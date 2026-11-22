@@ -43,7 +43,10 @@ fi
 # then the cgroup of each parent it names after, made up as processes
 # numbered from 5000001, past any pid the kernel gives, so none is this
 # shell's. The last one's parent is init, as the gate reads a chain to.
+# The askpass reads its own place first, as it took it from its caller,
+# so its self is this shell's.
 mkdir -p "proc/$$"
+ln -s "$$" proc/self
 cp "/proc/$$/cmdline" "proc/$$/cmdline"
 user=/user.slice/user-1000.slice/user@1000.service
 from() {
@@ -285,6 +288,12 @@ refuses "a command moved out of its spawner's scope"
 check "saying where it was started" complained "was started from $user/jobs.slice/pi-spawner-1-2.scope"
 from "$user/agents.slice/kitty-1-2.scope/app.slice/kitty-3-4.scope"
 refuses "a cgroup named as Joel's inside agents' place"
+# An asker that exits before its askpass reads it leaves the askpass with
+# the user manager, whose place is Joel's: its own place, its asker's,
+# still decides.
+from "$user/jobs.slice/pi-spawner-1-2.scope" "$user/init.scope"
+refuses "an askpass whose asker has gone, taken on by the user manager"
+check "saying where it runs" complained "runs in $user/jobs.slice/pi-spawner-1-2.scope"
 
 # A chain it can't read to init is refused, as the gate refuses it.
 cut "$user/app.slice/kitty-2210-1.scope" "$user/app.slice/app-niri-kitty-1.scope"
@@ -313,6 +322,13 @@ printf '%s\n' '  # watching' '' 'watch' 'refuse /agents\.slice/' > gate
 : > logged
 asks "an asker a watching gate would refuse"
 check "journalling that it would have" grep -q 'would have refused to ask Joel, as ' logged
+# Its own three refusals hold while the gate watches: a prompt from
+# unattended work is never right.
+for place in "$user/offload.slice/nix-offload-vm-8.service" \
+  "$user/background.slice/queue-isxeg8-1.service" /; do
+  from "$place" "$user/init.scope"
+  refuses "one in $place, though the gate watches"
+done
 for broken in 'refuse (' 'deny /agents\.slice/' 'allow /x' 'watch /x'; do
   printf '%s\n' "$broken" > gate
   from "$user/app.slice/kitty-2210-1.scope" "$user/init.scope"

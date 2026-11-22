@@ -92,7 +92,7 @@ own=('/offload\.slice/' '/background\.slice/' '^/$')
 refuse() {
   logger -p user.warning -t ssh-askpass -- "refused to ask Joel, as $1" 2> /dev/null || true
   printf '%s\n' "ssh-askpass: refused, as $1" \
-    "  only what Joel runs asks him; unattended work uses BatchMode and pinned host keys" >&2
+    "  ${2:-only what Joel runs asks him; unattended work uses BatchMode and pinned host keys}" >&2
   exit 1
 }
 gate=${SSH_ASKPASS_GATE:-}
@@ -129,10 +129,14 @@ if [[ -f $gate && -r $gate ]] && text=$(< "$gate"); then
 else
   broken="it can't be read"
 fi
-[[ -z $broken ]] || refuse "its gate (${gate:-none}) can't be judged by: $broken"
-# The asker's chain: its cgroup, then each parent's up to init.
+[[ -z $broken ]] || refuse "its gate (${gate:-none}) can't be judged by: $broken" \
+  "nothing asks anyone until the gate reads again, as ssh-tpm-agent serves no one"
+# The asker's chain: its cgroup, then each parent's up to init. It starts
+# at this askpass's own, which it took from its asker as it was started
+# and keeps, so an asker that exits first leaves its place behind rather
+# than the reaper's that took the askpass on, and no chain is empty.
 places=() pids=()
-pid=$PPID whole=0 lost=
+pid=self whole=0 lost=
 while :; do
   if [[ $pid == 1 ]]; then
     whole=1
@@ -152,15 +156,17 @@ while :; do
     break
   fi
   places+=("$where") pids+=("$pid")
-  pid=$(sed -n 's/^PPid:[[:space:]]*//p' "$proc/$pid/status" 2> /dev/null || true)
-  if ! [[ $pid =~ ^[1-9][0-9]*$ ]]; then
+  parent=$(sed -n 's/^PPid:[[:space:]]*//p' "$proc/$pid/status" 2> /dev/null || true)
+  if ! [[ $parent =~ ^[1-9][0-9]*$ ]]; then
     lost="is gone, or its status can't be read"
     break
   fi
+  pid=$parent
 done
-# Who the first place the gate names belongs to, said as it reads.
+# Who the first place the gate names belongs to, said as it reads: the
+# askpass's own is its asker's.
 who() {
-  if [[ $1 == "$PPID" ]]; then
+  if [[ $1 == self || $1 == "$PPID" ]]; then
     echo "$asker (pid $PPID) runs in $2"
   else
     echo "$asker (pid $PPID) was started from $2"
