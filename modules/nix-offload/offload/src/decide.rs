@@ -371,7 +371,7 @@ mod tests {
     }
 
     #[test]
-    fn a_builder_builds_still_reach_is_given_back_only_after_ten_failed_proofs() {
+    fn a_builder_builds_still_reach_goes_only_after_ten_failed_proofs_and_three_misses() {
         let unasked = || panic!("it isn't asked whether it answers");
         let mut silent = 0;
         assert!(
