@@ -1081,14 +1081,18 @@ fn vm_extra_dirs() -> Vec<PathBuf> {
 /// first, all go to the first. Those waiting count, since a run sent
 /// where others wait goes only after them: on 4 November ten runs waited
 /// 51 minutes on the first builder, with 2 of its 4 claimed, while the
-/// second sat idle.
+/// second sat idle. A builder past the first that stands while root
+/// doesn't vouch for it takes none, since a run split there would wait
+/// on root while the first had room.
 fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there::Asked>> {
     let mut parts: Vec<Option<there::Asked>> = vm_dirs.iter().map(|_| None).collect();
     let Some(part) = vm else {
         return parts;
     };
     let lending: Vec<usize> = (0..vm_dirs.len())
-        .filter(|index| *index == 0 || there::lends(&vm_dirs[*index]))
+        .filter(|index| {
+            *index == 0 || (there::lends(&vm_dirs[*index]) && !there::unvouched(&vm_dirs[*index]))
+        })
         .collect();
     if lending.len() == 1 {
         parts[0] = Some(part);

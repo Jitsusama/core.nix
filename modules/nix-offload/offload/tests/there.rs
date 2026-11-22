@@ -6033,6 +6033,13 @@ fn a_vm_run_never_goes_to_a_builder_root_doesnt_vouch_for() {
     fs::create_dir_all(rig.vm.join("sending")).unwrap();
     let first = rig.vm.join(format!("sending/{}.0", std::process::id()));
     fs::write(&first, "6\n").unwrap();
+    // The first still warming, so a spill doesn't ask the other to be
+    // warm, and only root's vouching keeps the run off it.
+    fs::write(
+        rig.vm.join("warming"),
+        format!("{} vm-1\n", std::process::id()),
+    )
+    .unwrap();
     let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
     let began = std::time::Instant::now();
     while !rig.said().contains("so this waits for room") {
@@ -6056,6 +6063,26 @@ fn a_vm_run_never_goes_to_a_builder_root_doesnt_vouch_for() {
     assert!(
         said.contains("root doesn't vouch for the builder in"),
         "{said}"
+    );
+}
+
+#[test]
+fn a_vm_run_leaves_a_builder_root_doesnt_vouch_for_for_one_it_does() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        3,
+        "{built:?} {said}"
     );
 }
 

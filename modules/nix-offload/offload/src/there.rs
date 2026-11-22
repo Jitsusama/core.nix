@@ -3155,7 +3155,7 @@ pub fn reach(
         if !hidden(Path::new(key)) {
             command.args(["-o", "IdentityAgent=none"]);
         } else if let Some(host_key) = &lent.host_key {
-            vouched(Path::new(VOUCHED), alias, host_key, VOUCHED_PATIENCE)?;
+            vouched(&vouching(), alias, host_key, VOUCHED_PATIENCE)?;
         }
         command.args(["-i", key]);
     }
@@ -3225,9 +3225,15 @@ fn names(text: &str, lender: &str, host_key: &str) -> bool {
 }
 
 /// Root's file of the builders it vouches for, or the one
-/// `NIX_OFFLOAD_VOUCHED` names for a test.
+/// `NIX_OFFLOAD_VOUCHED` names for a test; set empty, it names none, so
+/// it can't turn the check off by naming nothing. The crate's own tests
+/// never read the machine's file, which names none of their builders.
 fn vouching() -> PathBuf {
-    std::env::var_os("NIX_OFFLOAD_VOUCHED").map_or_else(|| PathBuf::from(VOUCHED), PathBuf::from)
+    match std::env::var_os("NIX_OFFLOAD_VOUCHED") {
+        Some(file) if !file.is_empty() => PathBuf::from(file),
+        _ if cfg!(test) => PathBuf::from("/nonexistent/nix-offload-lines/lent"),
+        _ => PathBuf::from(VOUCHED),
+    }
 }
 
 /// Whether root vouches for the builder `store` names, as `file` says:
@@ -3257,13 +3263,17 @@ fn vouched_in(file: &Path, store: &str) -> bool {
 /// vouches for a new builder within seconds to minutes of its standing,
 /// so one waited on is taken once it does.
 pub fn vouched_store(dir: &Path) -> Option<String> {
+    vouched_store_in(dir, &vouching())
+}
+
+/// [`vouched_store`], as root's `file` says.
+fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
     // Each folder is said once a run, however often it's looked at.
     static SAID: std::sync::Mutex<BTreeSet<PathBuf>> = std::sync::Mutex::new(BTreeSet::new());
     let store = fs::read_to_string(dir.join("store"))
         .ok()
         .filter(|store| !store.trim().is_empty())?;
-    let file = vouching();
-    if vouched_in(&file, &store) {
+    if vouched_in(file, &store) {
         return Some(store);
     }
     if SAID
@@ -3272,7 +3282,7 @@ pub fn vouched_store(dir: &Path) -> Option<String> {
     {
         eprintln!(
             "nix-offload: root doesn't vouch for the builder in {} as {} says, so nothing goes \
-             to it",
+             to it until it does",
             dir.display(),
             file.display()
         );
@@ -3280,10 +3290,14 @@ pub fn vouched_store(dir: &Path) -> Option<String> {
     None
 }
 
+/// Whether `dir`'s lender names a builder that stands, vouched for or not.
+fn builder_stands(dir: &Path) -> bool {
+    fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty())
+}
+
 /// Whether `dir`'s builder stands but root doesn't vouch for it.
 pub fn unvouched(dir: &Path) -> bool {
-    fs::read_to_string(dir.join("store")).is_ok_and(|store| !store.trim().is_empty())
-        && vouched_store(dir).is_none()
+    builder_stands(dir) && vouched_store(dir).is_none()
 }
 
 /// Whether `file` is a key hidden from this process, as the fence hides
@@ -3669,6 +3683,15 @@ fn wanting(dir: &Path) -> Option<Want> {
 /// ends just as a build that would have used its builder asks. It gives
 /// the store's text once one stands.
 pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
+    waited_vouching(dir, waiting, &vouching())
+}
+
+/// [`waited`], with root's `file` saying which builders it vouches for.
+/// A builder that stands is the lender's answer, so a run waits up to
+/// `longest` for root to vouch for it rather than giving up after
+/// `answered`: on 22 November one waited 30 s, not the minutes root may
+/// take.
+fn waited_vouching(dir: &Path, waiting: Waiting, file: &Path) -> Option<String> {
     if !waiting.asks {
         eprintln!("nix-offload: no builder stands, and --never-ask leaves the lender unasked");
         return None;
@@ -3677,11 +3700,18 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
         return None;
     }
     let want = wanting(dir)?;
-    eprintln!(
-        "nix-offload: no builder stands, so this asks for one and waits for it, for up to {} \
-         minutes",
-        waiting.longest.as_secs().div_ceil(60)
-    );
+    let minutes = waiting.longest.as_secs().div_ceil(60);
+    if builder_stands(dir) {
+        eprintln!(
+            "nix-offload: a builder stands that root doesn't vouch for yet, so this waits for \
+             it to, for up to {minutes} minutes"
+        );
+    } else {
+        eprintln!(
+            "nix-offload: no builder stands, so this asks for one and waits for it, for up to \
+             {minutes} minutes"
+        );
+    }
     let began = std::time::Instant::now();
     let read = |name: &str| {
         fs::read_to_string(dir.join(name))
@@ -3689,11 +3719,12 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
             .filter(|text| !text.trim().is_empty())
     };
     let stood = loop {
-        if let Some(store) = vouched_store(dir) {
+        if let Some(store) = vouched_store_in(dir, file) {
             break Some(store);
         }
         let so_far = began.elapsed();
-        if so_far >= waiting.longest || (so_far >= waiting.answered && read("lending").is_none()) {
+        let unanswered = read("lending").is_none() && read("store").is_none();
+        if so_far >= waiting.longest || (so_far >= waiting.answered && unanswered) {
             break None;
         }
         std::thread::sleep(std::time::Duration::from_millis(250).min(waiting.answered));
@@ -4092,6 +4123,23 @@ pub fn admitted<'a>(
     let mut said = false;
     let mut place: Option<Claim> = None;
     loop {
+        // A builder root doesn't vouch for takes no room while another it
+        // does has some, so a run isn't held there waiting on root while
+        // that one stands idle; with none, the run claims room here and
+        // waits on root as a run sent here would.
+        if unvouched(dir)
+            && let Some((other, claimed)) = others
+                .iter()
+                .filter(|other| vouched_store(other).is_some())
+                .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
+        {
+            eprintln!(
+                "nix-offload: root doesn't vouch for this VM builder yet, and another it does \
+                 has room, so this goes there"
+            );
+            drop(place);
+            return (other, Some(claimed));
+        }
         let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
             return (dir, claim(dir, wants));
         };
@@ -7238,6 +7286,38 @@ mod tests {
         });
         assert_eq!(waited(dir.path(), QUICK).as_deref(), Some("ssh-ng://far\n"));
         restarting.join().unwrap();
+    }
+
+    #[test]
+    fn a_run_waits_past_its_answer_for_root_to_vouch_for_a_builder_that_stands() {
+        // On 22 November a run gave up 30 s into waiting on a builder
+        // that stood while root, which can take minutes, hadn't vouched.
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        // "c3NoLWVkMjU1MTkgQUFBQQ==" is "ssh-ed25519 AAAA".
+        let store = concat!(
+            "ssh-ng://nix-offload-vm?",
+            "base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n"
+        );
+        fs::write(dir.path().join("store"), store).unwrap();
+        let lent = dir.path().join("lent");
+        fs::write(&lent, "nix-offload other ssh-ed25519 AAAA\n").unwrap();
+        let vouching = lent.clone();
+        let root = std::thread::spawn(move || {
+            // Past QUICK's 300 ms answer, which once ended the wait.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            fs::write(&vouching, "nix-offload-vm vm-1 ssh-ed25519 AAAA\n").unwrap();
+        });
+        assert_eq!(
+            waited_vouching(dir.path(), QUICK, &lent).as_deref(),
+            Some(store),
+            "it gave up before root vouched"
+        );
+        root.join().unwrap();
     }
 
     #[test]
