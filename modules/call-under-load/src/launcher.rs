@@ -7,6 +7,7 @@
 
 use crate::figures::percentile;
 use serde::Serialize;
+use serde_json::{Value, json};
 use std::process::Command;
 
 /// How many times slower than the span before's the call span's openings
@@ -177,6 +178,18 @@ pub fn beside(opens: &[(f64, f64)], started: u64, ended: u64) -> Beside {
     }
 }
 
+/// The spans as the run keeps them. A journal not read whole keeps what
+/// it gave, but says why and can't tell, so nothing gating on the spans
+/// takes part of an hour for the whole of it.
+pub fn written(read: &Read, started: u64, ended: u64) -> Value {
+    let mut kept = json!(beside(&read.opens, started, ended));
+    if let Some(why) = &read.unread {
+        kept["worse"] = Value::Null;
+        kept["unread"] = json!(why);
+    }
+    kept
+}
+
 /// Seconds since the epoch as a float, which holds them exactly until 2106.
 fn seconds(at: u64) -> f64 {
     f64::from(u32::try_from(at).unwrap_or(u32::MAX))
@@ -185,7 +198,6 @@ fn seconds(at: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
 
     /// Openings at `at` s, each taking its ms.
     fn opened(at: &[f64], ms: f64) -> Vec<(f64, f64)> {
@@ -233,6 +245,43 @@ mod tests {
         );
         let whole = from(Some(0), stdout, "");
         assert_eq!((whole.opens.len(), whole.unread), (2, None));
+    }
+
+    #[test]
+    fn a_journal_not_read_whole_can_t_tell_but_keeps_its_spans() {
+        // Three openings a side, the call's four times slower: worse,
+        // when the journal was read whole.
+        let mut opens = opened(&[910.0, 930.0, 950.0], 10.0);
+        opens.extend(opened(&[1010.0, 1030.0, 1050.0], 40.0));
+        let whole = Read {
+            opens,
+            unread: None,
+        };
+        let kept = written(&whole, 1000, 1100);
+        assert_eq!(kept["worse"], json!(true), "{kept}");
+        assert!(
+            kept.get("unread").is_none(),
+            "a whole read says nothing: {kept}"
+        );
+        let part = Read {
+            unread: Some("journalctl ended with code 2".to_string()),
+            ..whole
+        };
+        let kept = written(&part, 1000, 1100);
+        assert_eq!(
+            kept["worse"],
+            Value::Null,
+            "part of an hour can't tell: {kept}"
+        );
+        assert_eq!(kept["unread"], json!("journalctl ended with code 2"));
+        assert_eq!(
+            (
+                kept["before"]["opens"].clone(),
+                kept["during"]["opens"].clone()
+            ),
+            (json!(3), json!(3)),
+            "the spans read are kept beside why: {kept}"
+        );
     }
 
     #[test]

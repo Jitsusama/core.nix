@@ -349,14 +349,7 @@ fn run(context: &Context) -> Result<(), Failure> {
     );
     // The call's span runs from the run's start, Chromium's own included,
     // to now: the whole of the load the test put beside Joel's programs.
-    let mut launcher = json!(launcher::beside(&read.opens, started, at));
-    if let Some(why) = &read.unread {
-        // A journal not read whole keeps what it gave, but says why and
-        // can't tell, so nothing gating on the spans takes part of an
-        // hour for the whole of it.
-        launcher["worse"] = Value::Null;
-        launcher["unread"] = json!(why);
-    }
+    let launcher = launcher::written(&read, started, at);
     let run = json!({"started": started, "seconds": SECONDS, "call": call, "launcher": launcher});
     hour::write(&folder(), at, &measures, &run).map_err(|error| {
         Failure::new(Exit::Failed, "the hour couldn't be written")
