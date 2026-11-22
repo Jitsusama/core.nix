@@ -236,7 +236,7 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             .or_insert_with(|| (one.clone(), BTreeSet::new()));
         realms.insert(one.realm.clone());
         // Read down by two realms, it was last heard when either last
-        // heard it, on battery if either heard so.
+        // heard it, with a battery if either heard one.
         let both_down = kept.reading == Reading::Down && one.reading == Reading::Down;
         let (heard, battery) = (kept.heard.max(one.heard), kept.battery || one.battery);
         // A realm that didn't say keeps the word unsaid, unless another
@@ -392,8 +392,8 @@ pub fn due(
                     spell.down_since = Some(now);
                 }
                 spell.read_at = Some(now);
-                // Its node keeps the power it last heard, which may be
-                // the unplugging just before the lid shut.
+                // A battery heard in any read of the spell stands, as one
+                // realm's node may hear it when another's doesn't.
                 spell.battery |= one.battery;
                 let since = spell.down_since.unwrap_or(now);
                 let lately = spell
