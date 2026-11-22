@@ -215,15 +215,25 @@ fn a_call_that_never_connected_fails() {
 }
 
 #[test]
-fn only_the_fake_camera_is_taken_at_either_end() {
+fn only_the_fake_camera_and_microphone_are_taken_at_either_end() {
+    // The labels Chromium 157 gave its fake devices in a trial on 22 Nov.
+    let fakes = json!({"label": "fake_device_0", "voice": "Fake Default Audio Input"});
     assert!(
-        fake(&json!({"label": "fake_device_0"}), "near").is_ok(),
-        "Chromium's fake camera was refused"
+        fake(&fakes, "near").is_ok(),
+        "Chromium's fake camera or microphone was refused"
     );
     let refused = |said: Value| matches!(fake(&said, "far"), Err(Step::Refused(_)));
     assert!(
-        refused(json!({"label": "MX Brio 705 for Business"})),
+        refused(json!({"label": "MX Brio 705 for Business", "voice": "Fake Default Audio Input"})),
         "a real camera was taken"
+    );
+    assert!(
+        refused(json!({"label": "fake_device_0", "voice": "Built-in Audio Analog Stereo"})),
+        "a real microphone was taken"
+    );
+    assert!(
+        refused(json!({"label": "fake_device_0"})),
+        "a microphone with no name is refused"
     );
     assert!(refused(json!({})), "a camera with no name is refused");
 }

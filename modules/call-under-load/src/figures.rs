@@ -82,8 +82,51 @@ pub struct Call {
     /// A click on the call's own tab to its next frame, in ms.
     pub clicks_p50: Option<f64>,
     pub clicks_p99: Option<f64>,
+    /// How the far end heard the near end's sound: the share of what it
+    /// played that it had to make up for late or lost packets, in %.
+    pub concealed: Option<f64>,
+    /// How unevenly the sound's packets came, p99 over the call, in ms.
+    pub jitter_p99: Option<f64>,
+    /// The sound's packets lost, in %.
+    pub lost: Option<f64>,
     /// How many of the near end's samples were counted.
     pub samples: usize,
+}
+
+/// The change in a running count from the first sample to the last.
+fn grew(first: &Value, last: &Value, key: &str) -> Option<f64> {
+    Some(last["aud"][key].as_f64()? - first["aud"][key].as_f64()?)
+}
+
+/// A share in %, to two places, or none when there was nothing to share.
+fn share(part: f64, whole: f64) -> Option<f64> {
+    (whole > 0.0).then(|| (part / whole * 10_000.0).round() / 100.0)
+}
+
+/// The far end's sound, from its samples' running counts: concealed and
+/// lost as shares of the call, its jitter as a p99.
+fn heard(far: &[Value]) -> (Option<f64>, Option<f64>, Option<f64>) {
+    let sound: Vec<&Value> = far
+        .iter()
+        .filter(|row| row["aud"]["totalSamplesReceived"].is_number())
+        .collect();
+    let jitter: Vec<f64> = sound
+        .iter()
+        .filter_map(|row| row["aud"]["jitter"].as_f64())
+        .map(|s| s * 1000.0)
+        .collect();
+    let (Some(first), Some(last)) = (sound.first(), sound.last()) else {
+        return (None, percentile(&jitter, 99), None);
+    };
+    // Every sample the far end played counts, its quiet between beeps
+    // too, since that quiet stands in for Joel talking.
+    let concealed = grew(first, last, "concealedSamples")
+        .zip(grew(first, last, "totalSamplesReceived"))
+        .and_then(|(made_up, played)| share(made_up, played));
+    let lost = grew(first, last, "packetsLost")
+        .zip(grew(first, last, "packetsReceived"))
+        .and_then(|(lost, got)| share(lost, lost + got));
+    (concealed, percentile(&jitter, 99), lost)
 }
 
 pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
@@ -121,6 +164,7 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         freezes = change("freezeCount").map(|(b, a)| ((b - a) / tenths * 10.0).round() / 10.0);
         frozen_s = change("totalFreezesDuration").map(|(b, a)| ((b - a) * 100.0).round() / 100.0);
     }
+    let (concealed, jitter_p99, lost) = heard(far);
     Call {
         camera: percentile(&camera, 10),
         sent: percentile(&sent, 10),
@@ -129,6 +173,9 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
         frozen_s,
         clicks_p50: percentile(clicks, 50),
         clicks_p99: percentile(clicks, 99),
+        concealed,
+        jitter_p99,
+        lost,
         samples: mine.len(),
     }
 }
@@ -259,6 +306,36 @@ mod tests {
             row["t"] = json!(t * 1200);
         }
         assert_eq!(call(&mine, &far, &[]).freezes, Some(8.5));
+    }
+
+    #[test]
+    fn the_far_end_s_sound_is_counted_from_its_running_counts_once_the_call_settles() {
+        // 48,000 samples a second played and 50 packets heard, with 480
+        // made up and one packet lost each second once the call settles;
+        // its first seconds, left out, made up everything.
+        let far: Vec<Value> = (0..30_u32)
+            .map(|t| {
+                let settled = f64::from(t.saturating_sub(10));
+                let early = f64::from(t.min(10));
+                json!({"t": t * 1000, "aud": {
+                    "totalSamplesReceived": 48_000.0 * f64::from(t),
+                    "concealedSamples": 48_000.0 * early + 480.0 * settled,
+                    "packetsReceived": 49.0 * f64::from(t),
+                    "packetsLost": f64::from(t),
+                    "jitter": if t == 29 { 0.040 } else { 0.010 },
+                }})
+            })
+            .collect();
+        let figures = call(&[], &far, &[]);
+        assert_eq!(figures.concealed, Some(1.0), "480 in 48,000 is 1%");
+        assert_eq!(figures.lost, Some(2.0), "1 in 50 packets is 2%");
+        assert_eq!(figures.jitter_p99, Some(40.0), "the worst of 20 is the p99");
+        let silent = call(&[], &[json!({"aud": {}})], &[]);
+        assert_eq!(
+            (silent.concealed, silent.jitter_p99, silent.lost),
+            (None, None, None),
+            "a call that heard nothing has no sound figures"
+        );
     }
 
     #[test]

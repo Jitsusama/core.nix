@@ -16,6 +16,12 @@ const OWNER: &str = "5193FV";
 /// Who answers for the launcher's.
 const LAUNCHER: &str = "XY9H5C";
 
+/// What stands in for Joel's voice, said beside the sound's figures. The
+/// far end plays on this machine too, under the same load, so what it
+/// made up counts its own playing as well as the near end's sending.
+const SOUND: &str = "Chromium's fake microphone, a beep each second, sent as Opus; \
+                     the far end plays it on this machine, into a fake output";
+
 /// One figure, as cadence reads it.
 #[derive(Debug, PartialEq, Serialize)]
 #[expect(
@@ -77,6 +83,7 @@ pub fn measures(
     unread: Option<&str>,
 ) -> Vec<Measure> {
     let call_too = |first: &str| vec![first.to_string(), stand_in.to_string()];
+    let call_sound = |first: &str| vec![first.to_string(), SOUND.to_string()];
     let mut behind = vec![format!(
         "{} openings in the last hour, chord or ask to on screen",
         opens.len()
@@ -123,6 +130,29 @@ pub fn measures(
                 || "how long it froze is unread".to_string(),
                 |s| format!("{s} s frozen in the run"),
             )),
+        ),
+        // Past 1% made up, a voice starts to sound clipped; past 30 ms of
+        // jitter, a call's buffer has to grow or drop sound to keep up.
+        measure(
+            "call sound concealed %",
+            call.concealed,
+            1.0,
+            true,
+            call_sound("the share the far end made up for late or lost sound"),
+        ),
+        measure(
+            "call sound jitter p99 ms",
+            call.jitter_p99,
+            30.0,
+            true,
+            call_sound("how unevenly the sound's packets reached the far end"),
+        ),
+        measure(
+            "call sound packets lost %",
+            call.lost,
+            0.0,
+            true,
+            call_sound("lost between two programs on one machine, so only under load"),
         ),
         measure(
             "call click to next frame p99 ms",
@@ -188,8 +218,15 @@ mod tests {
             frozen_s: Some(0.0),
             clicks_p50: Some(3.0),
             clicks_p99: Some(9.84),
+            concealed: Some(0.42),
+            jitter_p99: Some(24.0),
+            lost: Some(0.0),
             samples: 140,
         }
+    }
+
+    fn named_now(all: &[Measure], name: &str) -> Option<f64> {
+        all.iter().find(|m| m.measure == name).and_then(|m| m.now)
     }
 
     #[test]
@@ -208,7 +245,9 @@ mod tests {
             &[20.0, 31.0],
             Some("journalctl ended with code 1: no"),
         );
-        assert_eq!(all.len(), 8);
+        assert_eq!(all.len(), 11);
+        assert_eq!(named_now(&all, "call sound concealed %"), Some(0.4));
+        assert_eq!(named_now(&all, "call sound jitter p99 ms"), Some(24.0));
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         assert_eq!(named("call sent fps p10").now, Some(30.0));
         // A figure read the wrong way passes cadence at any value.

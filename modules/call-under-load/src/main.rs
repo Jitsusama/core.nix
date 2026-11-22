@@ -1,12 +1,13 @@
 //! Whether Joel's calls and apps stay quick while the machine is under
 //! everything it carries, measured each hour.
 //!
-//! Joel asked to run insanely high quality video while the machine is
-//! under all its pressures, with Chrome and Slack staying responsive. A
-//! check that runs only when someone remembers finds a slide a day late,
-//! so each hour `call-under-load run` makes a test call shaped as Meet's
-//! between two Chromiums on this machine, on Chromium's fake camera, never a
-//! real one, and clicks the call's tab every five seconds. It writes what
+//! Joel asked to run insanely high quality video and audio while the
+//! machine is under all its pressures, with Chrome and Slack staying
+//! responsive. A check that runs only when someone remembers finds a slide
+//! a day late, so each hour `call-under-load run` makes a test call shaped
+//! as Meet's between two Chromiums on this machine, on Chromium's fake
+//! camera and microphone, never a real one, and clicks the call's tab
+//! every five seconds. It writes what
 //! the call did, with the hour's Chrome and Slack drawing waits from
 //! lag-watch's history and the launcher's openings from the journal, to
 //! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges. The
