@@ -181,6 +181,16 @@ let
   # A provider's program by its absolute path, for the reason a via's is;
   # it takes no words of its own, since the node adds what it asks.
   provider = lib.types.strMatching "/[^:[:space:]%$]+";
+  # A lend's upstream socket, whole or relative: no part of it starts with
+  # a dot, so `..` can't climb out of the folder it is named in.
+  socket = lib.types.strMatching "/?([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
+  # Folders any account may make a socket in, where the first to bind one
+  # would be handed every lent machine's requests and answer them.
+  shared = [
+    "/tmp/"
+    "/var/tmp/"
+    "/dev/shm/"
+  ];
   providersDescription = ''
     The programs of providers that may make this realm's machines, each by
     its absolute path. The node asks each what it offers, and makes a
@@ -223,12 +233,12 @@ let
             options = {
               upstream = lib.mkOption {
                 # A path relative to the node's runtime folder, since a
-                # module doesn't know the account's uid, or a whole one;
-                # no part of it starts with a dot, so `..` can't climb out.
+                # module doesn't know the account's uid, or a whole one.
                 # On a Mac with no XDG_RUNTIME_DIR, mycelium takes the
                 # account's temporary folder as the system names it for
-                # that runtime folder, so a relative path holds there too.
-                type = lib.types.strMatching "/?([A-Za-z0-9_-][A-Za-z0-9._-]*/)*[A-Za-z0-9_-][A-Za-z0-9._-]*";
+                # that runtime folder, so a relative path holds there too;
+                # with no runtime folder at all it refuses the request.
+                type = socket;
                 example = "model-relay/agents.sock";
                 description = ''
                   The socket each request goes on to, whole or relative to the
@@ -263,9 +273,12 @@ let
                 '';
               };
               key = lib.mkOption {
-                # Its program in the Nix store, where the account can't
-                # swap it for one printing the key somewhere else too,
-                # and with no `.` or `..` part that could climb out of it.
+                # Its program in the Nix store, with no `.` or `..` part
+                # that could climb out of it, and named by the package it
+                # comes from, so the lend file keeps it from the garbage
+                # collector. Only the program word is held: the words
+                # after it may still name a script the account writes,
+                # which the account, trusted as lendArgs says, may do.
                 type = lib.types.nullOr (
                   lib.types.addCheck (lib.types.nonEmptyListOf lib.types.str) (
                     words:
@@ -273,6 +286,7 @@ let
                       program = lib.head words;
                     in
                     lib.hasPrefix "${builtins.storeDir}/" program
+                    && builtins.hasContext program
                     && !lib.any (part: part == "." || part == "..") (lib.splitString "/" program)
                   )
                 );
@@ -769,6 +783,18 @@ in
           message = "jitsusama.mycelium.lend.budgets has a budget with a key whose upstream is a whole path: name it within the node's runtime folder, which only the account reaches, since the key goes to whatever answers there.";
         }
         {
+          # Keyed or not, whatever answers at a budget's upstream reads every
+          # lent machine's requests, which are its sessions' prompts, and
+          # its answers are taken as the model's. So a whole path is never
+          # one in a folder any account may bind a socket in.
+          assertion =
+            cfg.lend != null
+            -> lib.all (budget: !lib.any (folder: lib.hasPrefix folder budget.upstream) shared) (
+              lib.attrValues cfg.lend.budgets
+            );
+          message = "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp, /var/tmp or /dev/shm, where any account may bind it first and read and answer every lent machine's requests.";
+        }
+        {
           # mycelium refuses a machine whose name starts as two prefixes do,
           # so two that overlap would refuse every machine they both match.
           # Compared by place, so a prefix named twice is caught too.
@@ -779,8 +805,9 @@ in
                 prefixes = map (vm: vm.prefix) cfg.lend.vms;
                 places = lib.range 0 (lib.length prefixes - 1);
                 at = builtins.elemAt prefixes;
+                apart = one: other: one == other || !(lib.hasPrefix (at one) (at other));
               in
-              lib.all (one: lib.all (other: one == other || !(lib.hasPrefix (at one) (at other))) places) places
+              lib.all (one: lib.all (apart one) places) places
             );
           message = "jitsusama.mycelium.lend.vms has two prefixes where one starts the other, so every machine both match is refused.";
         }

@@ -55,6 +55,9 @@ let
   stimulatingNode =
     toString
       (linux (links // { stimuli = [ "github" ]; })).systemd.user.services.mycelium.Service.ExecStart;
+  # A key program in the store, named with a dot as a versioned package is,
+  # and never built, since only its path is read.
+  modelsKey = pkgs.writeShellScript "models-key-1.0" "echo 'Bearer stand-in'";
   # What a machine lends, in the names of the file mycelium reads.
   lending = {
     vms = [
@@ -70,8 +73,7 @@ let
         host = "models.example";
         paths = [ "/v1/messages" ];
         auth_header = "authorization";
-        # A program in the store, named but never built.
-        key = [ "${builtins.storeDir}/00000000000000000000000000000000-models-key/bin/models-key" ];
+        key = [ "${modelsKey}" ];
       };
       keyless = {
         upstream = "/run/relay/agents.sock";
@@ -1057,7 +1059,7 @@ in
   # would refuse or read wider than meant is refused as the machine builds.
   mycelium-lends-from-the-store =
     holds "mycelium-lends-from-the-store"
-      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it, the lend's names aren't the locked mycelium's own, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a lend with plain prefixes and paths is refused, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store or climbing out of it, a keyed upstream outside the runtime folder, an upstream climbing out with .., or a path lending everything or nothing is taken."
+      "A lending machine doesn't evaluate, its home realm node on NixOS or nix-darwin isn't given its lend as a store file holding it, the lend's names aren't the locked mycelium's own, or its key isn't optional or its cap a u64 there, a budget with no key says one, a further realm's node or a machine lending nothing is given a lend, a lend with plain prefixes, dotted paths or a key package is refused, or a lend with no realm, naming a budget it lacks, with overlapping prefixes, a key outside the store, climbing out of it or named as text, a keyed upstream outside the runtime folder, any upstream in /tmp or /dev/shm, an upstream climbing out with .., or a path lending everything or nothing is taken."
       (
         let
           # Each machine whole, for its own pkgs, and its account.
@@ -1090,7 +1092,10 @@ in
           holding =
             system: "${machine.${system}.pkgs.writeText "mycelium-lend.json" (builtins.toJSON lending)}";
           # The fields of the locked mycelium's struct NAME, as its lender
-          # reads the file; none where it has no such struct.
+          # reads the file, each by its name to its type. serde reads a
+          # field by its name unless an attribute renames or flattens it,
+          # so one doing so in or just above the struct fails here, as a
+          # struct no longer found does, rather than passing unread.
           source = lib.splitString "\n" (builtins.readFile "${self.inputs.mycelium}/src/lend/lender/mod.rs");
           fields =
             struct:
@@ -1098,19 +1103,33 @@ in
               from = lib.lists.findFirstIndex (line: line == "struct ${struct} {") null source;
               body = lib.drop (from + 1) source;
               to = lib.lists.findFirstIndex (line: line == "}") (lib.length body) body;
+              read = lib.take to body ++ lib.sublist (from - 3) 3 source;
+              renaming = line: builtins.match ".*(rename|flatten|alias).*" line != null;
+              renamed = lib.any renaming read;
             in
             if from == null then
-              [ ]
+              throw "mycelium's src/lend/lender/mod.rs has no line 'struct ${struct} {'"
+            else if renamed then
+              throw "mycelium's struct ${struct} renames or flattens a field, which the lend doesn't follow"
             else
-              lib.sort lib.lessThan (
+              lib.listToAttrs (
                 lib.concatMap (
                   line:
                   let
-                    matched = builtins.match "    ([a-z_]+): .*" line;
+                    matched = builtins.match "    ([a-z_][a-z0-9_]*): (.*)," line;
                   in
-                  if matched == null then [ ] else matched
+                  if matched == null then
+                    [ ]
+                  else
+                    [
+                      {
+                        name = lib.head matched;
+                        value = lib.last matched;
+                      }
+                    ]
                 ) (lib.take to body)
               );
+          named = struct: lib.attrNames (fields struct);
           # Refused by the assertion whose message starts so, and by it.
           assertsAgainst =
             settings: start:
@@ -1141,14 +1160,20 @@ in
           vm = lib.head lending.vms;
         in
         evaluates home
+        && evaluates (account machine.mac)
         && given home.systemd.user.services.mycelium == holding "linux"
         && given home.systemd.user.services.mycelium-other == null
         && given bothLinux.mycelium == null
         && after onMac.mycelium.config.ProgramArguments == holding "mac"
         && after onMac.mycelium-other.config.ProgramArguments == null
-        && fields "Written" == lib.attrNames lending
-        && fields "Vm" == lib.attrNames vm
-        && fields "Budget" == lib.attrNames lending.budgets.models
+        && named "Written" == lib.attrNames lending
+        && named "Vm" == lib.attrNames vm
+        && named "Budget" == lib.attrNames lending.budgets.models
+        # A keyless budget is written with no key, which mycelium reads as
+        # none only while its key is optional; and any positive count a Nix
+        # integer holds fits its daily cap.
+        && lib.hasPrefix "Option<" (fields "Budget").key
+        && (fields "Vm").requests_a_day == "u64"
         && takes (
           lending
           // {
@@ -1162,6 +1187,7 @@ in
           paths = [
             "/v1"
             "/v1/files/*"
+            "/v1/files/a.json"
           ];
         })
         && assertsAgainst { lend = lending; } "jitsusama.mycelium.lend needs jitsusama.mycelium.realm"
@@ -1202,8 +1228,32 @@ in
           key = [ "/tmp/models-key" ];
         })
         && typeRefuses (withModels {
-          key = [ "${builtins.storeDir}/../tmp/models-key" ];
+          key = [ "${modelsKey}/../../tmp/models-key" ];
         })
+        # A store path named as text, which no package keeps alive.
+        && typeRefuses (withModels {
+          key = [ "${builtins.storeDir}/00000000000000000000000000000000-models-key-1.0" ];
+        })
+        && refuses (
+          lending
+          // {
+            budgets = lending.budgets // {
+              keyless = lending.budgets.keyless // {
+                upstream = "/tmp/relay/agents.sock";
+              };
+            };
+          }
+        ) "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp"
+        && refuses (
+          lending
+          // {
+            budgets = lending.budgets // {
+              keyless = lending.budgets.keyless // {
+                upstream = "/dev/shm/agents.sock";
+              };
+            };
+          }
+        ) "jitsusama.mycelium.lend.budgets has a budget whose upstream is in /tmp"
         && typeRefuses (withModels {
           paths = [ "/*" ];
         })
