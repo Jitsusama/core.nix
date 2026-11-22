@@ -162,7 +162,28 @@ rec {
         type = lib.types.listOf lib.types.str;
         description = "The secrets released to a fenced command.";
       };
+      # A carry lands only where no door is wider than here's, but the
+      # person may allow one machine a wider door for sessions carried
+      # from here. The machine there still declares every door it opens,
+      # so the gain is said beside the allowance, never hidden.
+      accepts = lib.mkOption {
+        type = lib.types.attrsOf accepted;
+        default = { };
+        example.other-machine.secrets = [ "tokens" ];
+        description = "The doors each other machine, by name, may open beyond these for a session carried from here.";
+      };
     };
+  };
+  # The doors of each kind a session carried from here may gain there.
+  accepted = lib.types.submodule {
+    options = lib.genAttrs [ "builders" "forges" "secrets" ] (
+      door:
+      lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "The ${door} a carried session may gain there.";
+      }
+    );
   };
   # One machine within another, as either names it.
   another = lib.types.submodule {
