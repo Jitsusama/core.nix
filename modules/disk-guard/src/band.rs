@@ -17,6 +17,17 @@ pub enum Band {
     CriticallyFull,
 }
 
+/// Whether Nix's deletes are spaced on a disk measured at `measured`: one
+/// a pass, none while they rest or another process writes Nix's database.
+/// Short of nearly full they are, unless the band the guard's own reach
+/// aims for, which `forecast` names, is nearly full or past: it is then a
+/// forecast of that band, which starts a pass only
+/// as long before as a pass takes, which a rest would use up. An ask names
+/// no forecast, so no account can end the spacing by naming a band.
+pub fn spaces_deletes(measured: Band, forecast: Option<Band>) -> bool {
+    measured < Band::NearlyFull && forecast.is_none_or(|band| band < Band::NearlyFull)
+}
+
 /// A filesystem's space as the guard reads it: `free` is what an
 /// unprivileged writer may still use (`f_bavail`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

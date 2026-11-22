@@ -335,7 +335,9 @@ or launchd, and [`home.nix`][2] the account's.
   "Short of nearly full" is the store disk's own band as last measured,
   never the band a pass aims for or an account's guard asks at, since a
   garbage pass aims at healthy whatever the disk reads and any account
-  may ask. Short of nearly full a pass makes one delete, and the next waits four
+  may ask. The one exception is the guard's own forecast of nearly full
+  or past, which starts a pass only as long before as a pass takes, so a
+  rest would use up its lead: that pass is unspaced. Short of nearly full a pass makes one delete, and the next waits four
   times as long as the last Nix ran took, refused or timed out included,
   so deleting takes at most a fifth of the store's time, a rest a
   restart forgets at the cost of one delete; a batch temporary roots
@@ -349,7 +351,8 @@ or launchd, and [`home.nix`][2] the account's.
   kept for either is looked at again once it's over, whatever pass kept
   it, under the garbage's own rest, and a pass reaching for room that
   kept it ends `waiting` rather than taking what costs more to lose in
-  its place. Where the guard can't tell whether anything writes, it says
+  its place, and so does an account's guard whose ask the system's
+  guard answers `waiting`. Where the guard can't tell whether anything writes, it says
   so once on its standard error and waits for none. Nearly full and
   past, room comes first: batches go back to back, writer or none. A
   batch runs at most half an hour over all its Nix runs, and keeps the

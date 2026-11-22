@@ -2678,11 +2678,11 @@ impl Guard {
         thresholds: Thresholds,
         scan: &mut Scan,
     ) -> io::Result<End> {
-        let Some((path, spaced)) = self
-            .watched
-            .get(&device)
-            .map(|watched| (watched.path.clone(), watched.band < Band::NearlyFull))
-        else {
+        let Some((path, spaced)) = self.watched.get(&device).map(|watched| {
+            let forecast = matches!(why, Why::Reach).then_some(band);
+            let spaced = crate::band::spaces_deletes(watched.band, forecast);
+            (watched.path.clone(), spaced)
+        }) else {
             return Ok(End::Exhausted);
         };
         let candidates: Vec<_> = here.iter().map(|offer| offer.candidate.clone()).collect();
@@ -3554,7 +3554,7 @@ fn ending(end: &End) -> String {
         End::Stalled => "stalled".to_owned(),
         End::Stopped => "stopped".to_owned(),
         End::Unfinished => "unfinished".to_owned(),
-        End::Waiting => "waiting".to_owned(),
+        End::Waiting => crate::pass::WAITING.to_owned(),
         End::Failed(why) => format!("failed: {why}"),
     }
 }

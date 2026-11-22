@@ -345,6 +345,10 @@ pub struct Reclaim<'a> {
     /// The store's paths the system refused to let a delete change.
     refused: Vec<String>,
     deletes: Deletes,
+    /// Whether the system daemon this asked kept the store's garbage for
+    /// its rest or a writer, so a pass reaching for room waits with it.
+    /// Apart from `deletes`, whose wait has this guard look again itself.
+    system_waits: bool,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
     /// The other filesystems the guard watches, which this pass gives way
@@ -413,6 +417,7 @@ impl<'a> Reclaim<'a> {
             stale: false,
             refused: Vec::new(),
             deletes: Deletes::default(),
+            system_waits: false,
             band: Band::Healthy,
             pacer: None,
             elsewhere: Vec::new(),
@@ -583,6 +588,27 @@ impl<'a> Reclaim<'a> {
         }
     }
 
+    /// Asks the system daemon at `socket` to collect the garbage of the
+    /// store at `root`. Its deletes waiting, for its rest or a writer, keep
+    /// the garbage and have this pass wait with it, rather than take what
+    /// costs more to lose while the store's garbage stays.
+    fn ask(&mut self, root: PathBuf, socket: PathBuf) -> Outcome {
+        let collect = socket::Request::Collect {
+            path: root,
+            band: self.band,
+        };
+        match self.waiting(move || socket::ask(&socket, &collect, COLLECT_TIMEOUT)) {
+            Ok(Ok(socket::Reply::Collected(end))) if end == crate::pass::WAITING => {
+                self.system_waits = true;
+                Outcome::Kept("the system daemon's deletes wait".to_owned())
+            }
+            Ok(Ok(socket::Reply::Collected(_))) => Outcome::Reclaimed,
+            Ok(Ok(other)) => Outcome::Failed(format!("the system daemon answered {other:?}")),
+            Ok(Err(error)) => Outcome::Failed(format!("asking the system daemon: {error}")),
+            Err(Stopped) => stopped(),
+        }
+    }
+
     /// What each unlink of a new item tells the pacer, which gives the
     /// item its own time to wait on strain.
     fn unlinking(&self) -> impl FnMut() + 'static {
@@ -614,7 +640,7 @@ impl Reclaimer for Reclaim<'_> {
     }
 
     fn waiting(&self) -> bool {
-        self.deletes.again
+        self.deletes.again || self.system_waits
     }
 
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
@@ -670,19 +696,8 @@ impl Reclaimer for Reclaim<'_> {
             // Nix judges liveness itself, under its own lock.
             // What it freed is measured, like any command's.
             Action::Ask { socket, .. } => {
-                let collect = socket::Request::Collect {
-                    path: root_path.to_owned(),
-                    band: self.band,
-                };
-                let socket = socket.clone();
-                match self.waiting(move || socket::ask(&socket, &collect, COLLECT_TIMEOUT)) {
-                    Ok(Ok(socket::Reply::Collected(_))) => Outcome::Reclaimed,
-                    Ok(Ok(other)) => {
-                        Outcome::Failed(format!("the system daemon answered {other:?}"))
-                    }
-                    Ok(Err(error)) => Outcome::Failed(format!("asking the system daemon: {error}")),
-                    Err(Stopped) => stopped(),
-                }
+                let (root_path, socket) = (root_path.to_owned(), socket.clone());
+                self.ask(root_path, socket)
             }
             Action::Expire {
                 nix,

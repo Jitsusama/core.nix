@@ -514,6 +514,40 @@ fn a_pass_reaching_for_room_ends_where_what_it_kept_waits() {
 }
 
 #[test]
+fn a_waiting_pass_learns_nothing_from_a_batch_that_stalled() {
+    // A temp freed nothing before the garbage after it was kept to wait.
+    let candidates = temps(10, GIB / 4);
+    let disk = std::cell::RefCell::new(FakeDisk::new(14 * GIB));
+    let first = candidates[0].path.clone();
+    let mut reclaimer = FakeReclaimer {
+        disk: &disk,
+        frees: BTreeMap::from([(first.clone(), 0)]),
+        kept: candidates[1..].iter().map(|c| c.path.clone()).collect(),
+        taken: Vec::new(),
+        stops_after: None,
+        waits: true,
+        held: 0,
+    };
+    let mut learned = Learned::default();
+    let report = pass(
+        &mut Shared(&disk),
+        &mut reclaimer,
+        &candidates,
+        &thresholds(),
+        Band::Filling,
+        Goal::Reach,
+        &mut learned,
+    );
+    assert_eq!(report.end, End::Waiting);
+    assert_eq!(reclaimer.taken, [first], "not the one temp, then the wait");
+    let ratio = learned.ratio(Class::Temp);
+    assert!(
+        (ratio - 1.0).abs() < f64::EPSILON,
+        "a stalled batch taught a ratio of {ratio}"
+    );
+}
+
+#[test]
 fn upkeep_looks_at_all_that_is_due_past_what_waits() {
     let (end, asked) = waiting_on_each(Goal::Upkeep);
     assert_ne!(end, End::Waiting, "upkeep ended at a wait");

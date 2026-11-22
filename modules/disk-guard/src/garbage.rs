@@ -439,7 +439,9 @@ pub fn delete(
             .filter(|path| !held.contains(path.as_str()))
             .filter(|path| Path::new(path).symlink_metadata().is_ok())
             .collect();
-        let put_off = ran && writing();
+        // Asked only when something is left, so an empty batch says what it
+        // came to rather than that it waits for a writer.
+        let put_off = !left.is_empty() && ran && writing();
         if left.is_empty() || put_off {
             return Ok(Deleted {
                 refused: forbidden,

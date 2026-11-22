@@ -87,6 +87,10 @@ pub enum Goal {
     Clear,
 }
 
+/// How a pass that ended [`End::Waiting`] is journalled and answered, which
+/// a user daemon reads back from the system daemon it asked.
+pub const WAITING: &str = "waiting";
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum End {
     Reached,
@@ -379,12 +383,16 @@ pub fn pass(
         };
         let freed = after.free.saturating_sub(before.free);
         report.freed += freed;
+        let stalling = float(freed) < float(predicted) * STALL_SHARE;
         if waiting {
-            credit(learned, &batch, freed);
+            // What waits ends the pass, but a stalled batch teaches nothing.
+            if !stalling {
+                credit(learned, &batch, freed);
+            }
             report.end = End::Waiting;
             return report;
         }
-        if float(freed) < float(predicted) * STALL_SHARE {
+        if stalling {
             if predicted >= STALL_FLOOR {
                 stalled(groups, &mut stalls, &mut given_up);
             }

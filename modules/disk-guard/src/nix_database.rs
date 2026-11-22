@@ -37,12 +37,9 @@ pub fn database_written(database: &Path) -> bool {
     let shared = match opened {
         Ok(shared) if shared.metadata().is_ok_and(|meta| meta.is_file()) => shared,
         Ok(_) => return blind(&path, "it isn't a file"),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            if database.join("db.sqlite").exists() {
-                return blind(&path, "Nix keeps its database without one");
-            }
-            return false;
-        }
+        // SQLite can unlink it as the last connection closes, so a quiet
+        // store may have none, and that is no failure to say.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return false,
         Err(error) => return blind(&path, &error.to_string()),
     };
     let write = write_lock();

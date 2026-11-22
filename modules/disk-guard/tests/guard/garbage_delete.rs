@@ -196,26 +196,58 @@ fn a_delete_stops_before_running_nix_again_while_another_process_writes() {
 }
 
 #[test]
+fn a_batch_left_with_nothing_isnt_put_off_for_a_writer() {
+    // Nix's first run names the batch's only path alive, so with nothing
+    // left to delete a writer holding the database changes nothing.
+    let dir = tempfile::tempdir().unwrap();
+    let nix = deleting_nix(dir.path());
+    let live = dir.path().join("live").to_str().unwrap().to_owned();
+    fs::create_dir(&live).unwrap();
+    fs::write(format!("{live}.alive"), "").unwrap();
+    let deleted = delete(&nix, &dir.path().join("roots"), &[live], false, || true).unwrap();
+    assert!(
+        !deleted.put_off,
+        "put off a batch with nothing left: {deleted:?}"
+    );
+}
+
+#[test]
 fn a_name_holding_a_space_is_never_given_to_nix() {
-    // Nix reads its paths one a word, so such a name would reach it as two.
+    // Nix reads its paths one a line, and the fake one a word, so such a
+    // name would reach it as two.
     let dir = tempfile::tempdir().unwrap();
     let nix = deleting_nix(dir.path());
     let path = |name: &str| dir.path().join(name).to_str().unwrap().to_owned();
-    for name in ["a", "b c"] {
+    let spaced = ["b c", "d\te", "f\ng"];
+    for name in std::iter::once("a").chain(spaced) {
         fs::create_dir(path(name)).unwrap();
     }
-    delete(
-        &nix,
-        &dir.path().join("roots"),
-        &[path("a"), path("b c")],
-        false,
-        || false,
-    )
-    .unwrap();
-    assert!(
-        Path::new(&path("b c")).exists(),
-        "a spaced name went to Nix"
-    );
+    let batch: Vec<String> = std::iter::once("a").chain(spaced).map(path).collect();
+    delete(&nix, &dir.path().join("roots"), &batch, false, || false).unwrap();
+    for name in spaced {
+        assert!(Path::new(&path(name)).exists(), "{name:?} went to Nix");
+    }
     let runs = fs::read_to_string(dir.path().join("runs")).unwrap();
     assert_eq!(runs, format!("{}\n", path("a")));
+}
+
+#[test]
+fn deletes_are_spaced_short_of_nearly_full_but_not_for_the_guards_own_forecast() {
+    use disk_guard::band::{Band, spaces_deletes};
+    assert!(
+        spaces_deletes(Band::Filling, None),
+        "an ask or upkeep on a filling disk went unspaced"
+    );
+    assert!(
+        spaces_deletes(Band::Filling, Some(Band::Filling)),
+        "the guard's own pass on a filling disk went unspaced"
+    );
+    assert!(
+        !spaces_deletes(Band::Filling, Some(Band::NearlyFull)),
+        "a forecast of nearly full was spaced, using up its lead"
+    );
+    assert!(
+        !spaces_deletes(Band::NearlyFull, None),
+        "a nearly full disk was spaced"
+    );
 }
