@@ -109,6 +109,19 @@ ShellRoot {
         }]
     }
 
+    // Time, as Now's plate reads it: the reading Timekeeping keeps, as
+    // Clocks.qml gives it. It's among the launcher's sources only for the
+    // plate's kept-reading cases, so no other case reads a clock.
+    QtObject {
+        id: clocks
+
+        readonly property var settings: ({ name: "time" })
+        readonly property var kept: Timekeeping.reading
+        function millis(ms, signed) {
+            return `${ms} ms`;
+        }
+    }
+
     // Quests, as Now's What Moved reads it: each workstream that moved, as
     // its rows, what showing them shows, and what each ask to count them
     // looked at gave back.
@@ -974,7 +987,7 @@ ShellRoot {
             keptStage.step = 1;
             keptStage.at = Date.now();
         } else if (keptStage.step === 1) {
-            if (since < 3 * Timekeeping.keptFor)
+            if ((since < 3 * Timekeeping.keptFor || Timekeeping.lettingGo()) && since < 5000)
                 return;
             if (!tried(() => expect("a refusal said while watched isn't the timer's to clear",
                 Timekeeping.refused && Timekeeping.reading === null,
@@ -1003,7 +1016,7 @@ ShellRoot {
             keptStage.step = 2;
             keptStage.at = Date.now();
         } else {
-            if (Timekeeping.reading !== null && since < 300)
+            if (Timekeeping.reading !== null && since < 1500)
                 return;
             if (!tried(() => expect("unwatched, it's kept only for what's left of its time",
                 Timekeeping.reading === null, read)))
@@ -1253,15 +1266,27 @@ ShellRoot {
         // (the keys lab, 2026-11-22). A refusal isn't kept, so a step
         // back asks afresh. Past its time by the wall clock, as after a
         // suspend, a kept reading is let go. The reader's answers go
-        // through heard(), which says when the reading was heard.
+        // through heard(), which says when the reading was heard; no
+        // socket is made, so the sandbox's want of a reader can't answer
+        // in its place, and Time stands in so the plate reads the reading.
         const kept = () => JSON.stringify(Timekeeping.reading) === root.keptSaid;
+        const sources = theLauncher.sources;
+        theLauncher.sources = sources.concat([clocks]);
+        Timekeeping.trying = false;
         Timekeeping.watching += 1;
         root.answerTime();
+        const keptSays = JSON.stringify(["synchronised"]);
+        expect("answered, the plate's clock says how it's kept",
+            JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
         Timekeeping.watching -= 1;
         expect("unwatched, the reading is kept", kept(), JSON.stringify(Timekeeping.reading));
+        expect("unwatched, the plate still says the kept reading",
+            JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
         Timekeeping.watching += 1;
         expect("watched again within its time, the reading is still the one kept", kept(),
             JSON.stringify(Timekeeping.reading));
+        expect("watched again within its time, the plate says the kept reading",
+            JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
         Timekeeping.unanswered();
         Timekeeping.watching -= 1;
         Timekeeping.watching += 1;
@@ -1272,6 +1297,8 @@ ShellRoot {
         Timekeeping.watching -= 1;
         expect("unwatched past its time, the reading is let go",
             Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
+        expect("let go, the plate's clock says nothing of how it's kept",
+            clockSays().length === 0, JSON.stringify(clockSays()));
         Timekeeping.watching += 1;
         root.answerTime();
         Timekeeping.watching -= 1;
@@ -1280,6 +1307,8 @@ ShellRoot {
         expect("watched again past its time, as after a suspend, it's let go",
             Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
         Timekeeping.watching -= 1;
+        Timekeeping.trying = true;
+        theLauncher.sources = sources;
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the

@@ -106,6 +106,11 @@ Singleton {
         letGo.stop();
         reading = null;
     }
+    // Whether a kept reading's time is still running, so a case can wait
+    // for it to run out rather than guess at a builder's pace.
+    function lettingGo() {
+        return letGo.running;
+    }
 
     Timer {
         id: letGo
