@@ -1,7 +1,6 @@
 use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Brought, Missed, bring_back, landed};
 use std::io::ErrorKind;
-#[cfg(target_os = "linux")]
 use std::path::Path;
 use std::time::{Duration, Instant};
 use terminal_kit::Exit;
