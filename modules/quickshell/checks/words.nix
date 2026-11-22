@@ -243,6 +243,7 @@
           "launcher/Calculator.qml"
           "launcher/Characters.qml"
           "launcher/Clocks.qml"
+          "launcher/Held.js"
           "launcher/Networks.qml"
           "launcher/Provider.qml"
           "launcher/Today.qml"

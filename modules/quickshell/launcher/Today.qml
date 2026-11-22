@@ -262,16 +262,23 @@ Provider {
     // takes the answer in its place: keyed apart, the asking row stayed
     // where it was, dimmed and doing nothing, and the answer came in at
     // the end (Joel, 2026-11-07: "Now -> Date -> Calendars does not work
-    // from the launcher").
+    // from the launcher"). Still asking, Return steps in all the same, to
+    // a place saying "..." that the four calendars fill as they come, since
+    // the steps held are made again as Date answers: a Return on the way to
+    // them never closes the launcher under him. Only a reader that refused
+    // gives a row whose Return closes, as it has nothing to wait for, and a
+    // step held on it then leaves by itself. A reader that takes the
+    // question and never answers leaves the place saying "...", as the row
+    // did before, since Calendars.qml gives a question no deadline.
     function calendarsRow(at, now) {
         const reading = Calendars.reading;
         const said = calendarsSaid;
-        if (reading?.day !== Moment.iso(at)) {
-            const side = Calendars.refused ? said.silent : "\u2026";
+        if (reading?.day !== Moment.iso(at) && Calendars.refused)
             return copyRow({ key: "today:calendars", name: Words.name("today:calendars"),
-                side: side,
-                copiesNothing: true, note: "", glyph: Theme.glyph.date });
-        }
+                side: said.silent, copiesNothing: true, note: "", glyph: Theme.glyph.date });
+        if (reading?.day !== Moment.iso(at))
+            return holderRow({ key: "today:calendars", name: Words.name("today:calendars"),
+                side: "\u2026", empty: "\u2026", glyph: Theme.glyph.date }, () => []);
         // From sunset, a calendar whose day begins then is on the day begun;
         // before the day before's sunset, where it comes after midnight far
         // north in summer, it's still on the day before's. It's reckoned

@@ -1126,6 +1126,9 @@ def calendars_from_now(desktop: Desktop) -> None:
     desktop.launcher_until(lambda shown: "Date" in shown["rows"])
     desktop.down_to("Date")
     desktop.step_in()
+    # Return goes as soon as Calendars is listed, as Joel's would. Date asks the reader again
+    # as it's shown, and one just started can take seconds to answer, so Calendars may still
+    # read "...": its Return steps in all the same, and the four calendars fill the place.
     desktop.launcher_until(lambda shown: "Calendars" in shown["rows"])
     desktop.down_to("Calendars")
     desktop.step_in()
@@ -1158,7 +1161,15 @@ def calendars_asked(desktop: Desktop) -> None:
             )
         )
         desktop.down_to("Calendars")
-        assert desktop.showing()["selected"]["verb"] == "close", desktop.showing()["selected"]
+        # Date's own ask clears the refusal as it's shown, so the row reads "..." for a moment
+        # before the missing socket refuses again; it's the refused row whose Return closes.
+        desktop.launcher_until(
+            lambda shown: (
+                (shown["selected"] or {}).get("name") == "Calendars"
+                and shown["selected"]["side"] == "not answering"
+                and shown["selected"]["verb"] == "close"
+            )
+        )
         desktop.close_launcher()
     finally:
         desktop.as_account("systemctl --user start timekeeping.socket")

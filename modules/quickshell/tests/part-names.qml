@@ -17,6 +17,7 @@ import qs
 import Quickshell
 import QtQuick
 import "launcher" as Launcher
+import "launcher/Held.js" as Held
 
 ShellRoot {
     id: root
@@ -146,6 +147,7 @@ ShellRoot {
         asNowShows();
         asKept();
         asUnkept();
+        asAsked();
         const stoodIn = Calendars.reading;
         // Its day as it is before sunset, whenever the check runs.
         Calendars.reading = evening(stoodIn, Date.now() + 3600000);
@@ -241,6 +243,60 @@ ShellRoot {
                 === `${Words.name("today:calendars:dayBegins")} ${said.noSunset}`
                 && none[2].words && none[2].row.endsWith(" false"),
             JSON.stringify(none[2]));
+    }
+
+    // Until the reader answers today, Date's Calendars says it's asking and
+    // steps in all the same, to a place saying "..." that the calendars fill
+    // as they come, so a Return on the way to them never closes the launcher
+    // (Joel, 2026-11-07: "Now -> Date -> Calendars does not work from the
+    // launcher"). Once the reader has refused, it says so, and its Return
+    // only closes, with nothing to wait for. The step held on the asking
+    // row is made again by Held.js as Date answers, finding its row by key
+    // as the launcher's sameRow does, so the answer takes its place.
+    function asAsked() {
+        const stoodIn = Calendars.reading;
+        const wasRefused = Calendars.refused;
+        const date = () => today.answer("date").rows;
+        const calendarsOf = rows => rows
+            .find(row => row.name === Words.name("today:calendars"));
+        const ways = {
+            same: (row, was) => row.key === was.key,
+            into: thing => Held.offers(thing.verbs ? thing.verbs() : [], 0, thing.empty),
+            keep: (step, into) => into
+        };
+        try {
+            Calendars.reading = null;
+            const asked = date();
+            const asking = calendarsOf(asked);
+            expect("asking, Calendars says so", asking?.side === "\u2026", asking?.side);
+            expect("and its Return steps in rather than closing", asking?.verb === "more",
+                asking?.verb);
+            expect("keyed as the answer will be", asking?.key === "today:calendars", asking?.key);
+            const steps = [{ row: { key: "date" }, rows: asked }, { row: asking, rows: [] }];
+            const still = Held.remade(steps, 1, date(), ways);
+            expect("held while still asking, the step stays, holding nothing yet",
+                still.all && still.steps[1].rows.length === 0, JSON.stringify(still.leave));
+            Calendars.reading = stoodIn;
+            const answered = Held.remade(steps, 1, date(), ways);
+            expect("as Date answers, the four calendars take its place",
+                answered.all && answered.steps[1].rows.map(each => each.name).join(", ")
+                    === "Chinese, Japanese, Hebrew, Islamic",
+                answered.steps[1].rows.map(each => each.name).join(", "));
+            Calendars.reading = null;
+            Calendars.refused = true;
+            const refusedRows = date();
+            const refused = calendarsOf(refusedRows);
+            const silent = (Words.of("today:calendars").said ?? {}).silent;
+            expect("refused, it says the reader isn't answering",
+                !!silent && refused?.side === silent, refused?.side);
+            expect("and its Return only closes", refused?.verb === "close", refused?.verb);
+            const left = Held.remade(steps, 1, refusedRows, ways);
+            expect("held as it's refused, the step leaves by itself",
+                !left.all && left.leave === 1, JSON.stringify(left.leave));
+        } finally {
+            Calendars.refused = wasRefused;
+            Calendars.reading = stoodIn;
+        }
     }
 
     // The day in other calendars, from a reading as timekeeping gives it
