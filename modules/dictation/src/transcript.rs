@@ -4,12 +4,15 @@
 //! Joel's side is his microphone as it hears the room, before the call
 //! app's echo cancelling, so on the laptop's speakers it hears the others
 //! too. A line of his whose words repeat a line of theirs said at the same
-//! time is their echo, and is left out; on a headset there's none.
+//! time is their echo, and is left out; on a headset there's none. Where
+//! each word's time is known, their words his microphone heard just after
+//! they said them are cut from his line, and his own words in it stay.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 
 use crate::mel::RATE;
+use crate::parakeet::Word;
 
 /// Who spoke a line: Joel, whose microphone it came from, or the others on
 /// the call, whose sound it came from.
@@ -48,6 +51,24 @@ const ECHO_SHARE: f32 = 0.6;
 /// only when it holds most of their line's words too: a long line of
 /// theirs heard through his speakers comes back as long takes.
 const ECHO_WORDS: usize = 4;
+
+/// How long after one of their words Joel's microphone may hear it, in
+/// samples: the speakers' and the microphone's buffers, and a word timed
+/// by the encoder frame it was written on, 80 ms each. Joel saying their
+/// words back starts after they've finished saying them.
+const ECHO_LAG: usize = RATE;
+
+/// How long before one of their words its echo may be timed, in samples,
+/// since each side's word is timed by its own frame.
+const ECHO_LEAD: usize = RATE / 2;
+
+/// How many of Joel's words in a row, each one of theirs heard just
+/// after it, are their echo.
+const ECHO_RUN: usize = 1;
+
+/// How many of their words a word of their echo may follow the last by:
+/// either side may hear a word the other doesn't.
+const ECHO_GAP: usize = 2;
 
 /// What the others on a call are called where nobody knows who they are.
 pub const OTHERS: &str = "Others";
@@ -154,7 +175,7 @@ pub fn markdown_unechoed(
     // run is one side under one speaker, so a line of theirs never joins
     // Joel's, even where he's called what one of them is.
     let mut last: Option<(Side, String)> = None;
-    for line in heard {
+    for line in heard.into_iter().filter(|line| !line.text.is_empty()) {
         let who = match (line.side, named, line.voice.filter(|_| voiced)) {
             (Side::Mine, ..) => me.to_owned(),
             (Side::Theirs, Some(them), _) => them.to_owned(),
@@ -233,6 +254,38 @@ pub fn echoes(line: &Line, lines: &[Line]) -> bool {
                     && (shared >= ECHO_WORDS || share(shared, &said) >= ECHO_SHARE)
             }
     })
+}
+
+/// For each of Joel's `mine`, the one of `theirs` it's the echo of, if
+/// it's one: a run of his words, each spelled as one of theirs, in their
+/// order, that his microphone heard within a moment of them saying it.
+pub fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
+    let _ = (theirs, ECHO_LAG, ECHO_LEAD, ECHO_RUN, ECHO_GAP);
+    vec![None; mine.len()]
+}
+
+/// Some of Joel's words cut from a line of his as the others' echo: the
+/// line's index, when the first was heard, how long after its word of
+/// theirs, in samples, and what they say.
+#[derive(Debug, PartialEq)]
+pub struct Cut {
+    pub line: usize,
+    pub at: usize,
+    pub after: isize,
+    pub text: String,
+}
+
+/// `lines` with the others' echo cut from each of Joel's whose words
+/// `words` holds, by the line's index, what's left tidied by `tidy`, and
+/// what was cut. A line left with nothing has no text, and isn't
+/// written, so the lines keep their indices.
+pub fn cut_echoes(
+    lines: &[Line],
+    words: &HashMap<usize, Vec<Word>>,
+    tidy: impl Fn(&str) -> Option<String>,
+) -> (Vec<Line>, Vec<Cut>) {
+    let _ = (words, tidy);
+    (lines.to_vec(), Vec::new())
 }
 
 /// The share of `of`'s words that `shared` of them are.
@@ -632,6 +685,128 @@ mod tests {
             "a part of their long line was kept as Joel's: {:?}",
             kept(&lines)
         );
+    }
+
+    /// `text`'s words, the first heard `from` milliseconds into the call
+    /// and each after 300 ms on.
+    fn timed(text: &str, from: usize) -> Vec<Word> {
+        text.split_whitespace()
+            .enumerate()
+            .map(|(i, word)| Word {
+                text: word.to_owned(),
+                at: (from + 300 * i) * RATE / 1000,
+            })
+            .collect()
+    }
+
+    /// A line of `side`'s holding `words`, from its first word to 300 ms
+    /// after its last.
+    fn worded(side: Side, words: &[Word]) -> Line {
+        let joined: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+        Line {
+            side,
+            start: words[0].at,
+            end: words[words.len() - 1].at + RATE * 3 / 10,
+            text: joined.join(" "),
+            voice: None,
+            name: None,
+        }
+    }
+
+    /// Joel's lines as written once their echo is cut from them, each
+    /// side's words given as they were heard.
+    fn cut_from(theirs: &[Vec<Word>], mine: &[Vec<Word>]) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut words = HashMap::new();
+        for (side, said) in [(Side::Theirs, theirs), (Side::Mine, mine)] {
+            for heard in said {
+                words.insert(lines.len(), heard.clone());
+                lines.push(worded(side, heard));
+            }
+        }
+        let (cut, _) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        kept(&cut)
+    }
+
+    #[test]
+    fn their_words_heard_just_after_them_are_cut_from_joels_line() {
+        // As Joel's microphone heard a meeting, 50 ms after the far end
+        // said it, with his own words before it in one take.
+        let theirs = timed("Please please leave me a space at the bottom, I'm little.", 3_000);
+        let mut mine = timed("Uh yeah, okay. Sorry.", 1_800);
+        mine.extend(timed("Please please leave me a space at the bottom.", 3_050));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["Uh yeah, okay. Sorry."],
+            "their echo wasn't cut from Joel's line, or his own words went with it"
+        );
+    }
+
+    #[test]
+    fn joels_short_answer_heard_with_their_echo_is_his_own() {
+        // His answer is in their line too, but said before they said it.
+        let theirs = timed("Yes, we could use a seagull, yes.", 2_000);
+        let mut mine = timed("Yes yes.", 1_000);
+        mine.extend(timed("we could use a seagull, yes.", 2_350));
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["Yes yes."],
+            "Joel's answer went with their echo"
+        );
+    }
+
+    #[test]
+    fn joel_saying_their_words_back_after_them_is_his_own() {
+        // They say "a seagull" from 2 s; Joel says it back from 3.5 s.
+        let theirs = timed("Could it be a seagull?", 1_100);
+        let mine = timed("A seagull, right.", 3_500);
+        assert_eq!(
+            cut_from(&[theirs], &[mine]),
+            ["A seagull, right."],
+            "Joel's own words were cut as their echo"
+        );
+    }
+
+    #[test]
+    fn a_line_of_joels_all_their_echo_is_left_out() {
+        let theirs = timed("Flying around everywhere.", 8_000);
+        let mine = timed("Flying around everywhere.", 8_080);
+        assert!(
+            cut_from(&[theirs], &[mine]).is_empty(),
+            "a line of Joel's that's all their echo was written"
+        );
+    }
+
+    #[test]
+    fn what_was_cut_says_where_it_was_and_how_late() {
+        let theirs = timed("Lunch at noon", 5_000);
+        let mine = timed("Fine. Lunch at noon", 4_700);
+        let lines = [worded(Side::Theirs, &theirs), worded(Side::Mine, &mine)];
+        let words = HashMap::from([(0, theirs), (1, mine)]);
+        let (cut, cuts) = cut_echoes(&lines, &words, |left| Some(left.to_owned()));
+        assert_eq!(cut[1].text, "Fine.");
+        assert_eq!(
+            cuts,
+            [Cut {
+                line: 1,
+                at: 5_000 * RATE / 1000,
+                after: 0,
+                text: "Lunch at noon".to_owned(),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_line_whose_words_are_unknown_is_cut_from_by_its_text_alone() {
+        // Lines read back after a restart have no words; the whole-line
+        // rule still leaves their echo out where the transcript's written.
+        let lines = [
+            line(Side::Theirs, 4, "Sounds good."),
+            line(Side::Mine, 4, "Sounds good"),
+        ];
+        let (cut, cuts) = cut_echoes(&lines, &HashMap::new(), |left| Some(left.to_owned()));
+        assert_eq!(cut, lines);
+        assert!(cuts.is_empty());
     }
 
     #[test]

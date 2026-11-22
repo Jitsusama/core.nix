@@ -63,7 +63,7 @@ const STEPPED: usize = 188;
 
 /// A word heard, and the sample of the sound it starts at, by the frame
 /// its first piece was written on.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Word {
     pub text: String,
     pub at: usize,

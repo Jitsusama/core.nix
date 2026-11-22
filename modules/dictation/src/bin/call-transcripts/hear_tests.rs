@@ -292,6 +292,28 @@ fn joels_echoes_of_their_takes_are_left_out_of_what_is_written() {
 }
 
 #[test]
+fn their_echo_in_a_take_of_joels_is_cut_and_his_own_words_written() {
+    let mut writing = ada_then_bo();
+    // Joel says "Right.", and his microphone hears Bo's "Not yet." 50 ms
+    // after Bo says it, in the same take. Judged whole, the take shares
+    // two of the seven words of the one it echoes, so it's no echo.
+    let late = SECOND / 20;
+    let words = vec![
+        word("Right.", 44 * SECOND),
+        word("Not", 46 * SECOND + late),
+        word("yet.", 47 * SECOND + late),
+    ];
+    writing.words.insert(writing.lines.len(), words);
+    writing.lines.push(joels(44, 48, "Right. Not yet."));
+    give_voices(&mut writing, None);
+    assert_eq!(
+        joels_written(&writing),
+        ["Right."],
+        "Bo's echo was written as Joel's, or Joel's own word went with it"
+    );
+}
+
+#[test]
 fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     let folder = tempfile::tempdir().unwrap();
     let file = folder.path().join("transcript.md");
