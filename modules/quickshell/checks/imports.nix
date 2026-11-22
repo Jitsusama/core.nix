@@ -141,6 +141,7 @@
     "When.js"
     "launcher/Recent.js"
   ];
+  "launcher/ChangesPresented.js" = [ "launcher/Presented.js" ];
   "launcher/Characters.qml" = [ "launcher/Characters.js" ];
   "launcher/Clocks.qml" = [
     "launcher/Ago.js"

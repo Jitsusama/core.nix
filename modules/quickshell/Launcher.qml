@@ -89,6 +89,7 @@ import "launcher/Pacing.js" as Pacing
 import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
+import "launcher/ChangesPresented.js" as ChangesPresented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -5804,7 +5805,8 @@ Scope {
             return;
         const place = source.settings.name;
         const was = updatesWaiting[place];
-        updatesWaiting = Presented.heard(updatesWaiting, place, line + KeyTimes.now() - Date.now());
+        updatesWaiting = ChangesPresented.heard(updatesWaiting, place,
+            line + KeyTimes.now() - Date.now());
         if (updatesWaiting[place] !== was) {
             updatesHeard[place] = KeyTimes.now();
             updatesBy[place] = Hearing.heardBy();
@@ -5818,7 +5820,7 @@ Scope {
         // find, which makes it in the slice after, not on the pace. Only
         // till home's found: one after is made at once or in that slice,
         // a frame or so on, and one asked again (reanswer) waits on nothing.
-        updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+        updatesHeld = ChangesPresented.heldFrom(updatesHeld, updatesHeard, {
             places: [source.settings.name], at: KeyTimes.now(),
             holding: fillFinding && refreshHeld });
         // A collection's note is read as the corpus is joined, so a source
@@ -6069,7 +6071,7 @@ Scope {
         // nothing's held, so a shut stopped short leaves no source waiting.
         if (fillFinding && open) {
             refreshHeld = true;
-            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+            updatesHeld = ChangesPresented.heldFrom(updatesHeld, updatesHeard, {
                 places: refreshing.map(source => source.settings.name), at: KeyTimes.now(),
                 holding: true });
             return;
@@ -13208,7 +13210,7 @@ Scope {
             return;
         const one = { place, from, heard: updatesHeard[place], held: updatesHeld[place],
             refreshed, by: updatesBy[place] };
-        updatesWaiting = Presented.drawn(updatesWaiting, place);
+        updatesWaiting = ChangesPresented.drawn(updatesWaiting, place);
         delete updatesHeard[place];
         delete updatesBy[place];
         delete updatesHeld[place];
@@ -13227,7 +13229,7 @@ Scope {
     function keysPresentedSaid() {
         const first = Presented.keysSaid("presented", keysPresented, true);
         const clock = Presented.keysClockSaid(keysPresented);
-        const updates = Presented.changesSaid(updatesPresented)
+        const updates = ChangesPresented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
         // Each key's own time goes with the opening's trial, where health
         // pools a day's keys for their p99 (1JQPPC, 2026-11-12).

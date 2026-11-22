@@ -24,6 +24,7 @@
 // share one check's qml run, so each part split from it would need a check
 // and a run of its own.
 import QtQuick
+import "ChangesPresented.js" as ChangesPresented
 import "Collector.js" as Collector
 import "Flash.js" as Flash
 import "Makings.js" as Makings
@@ -777,17 +778,17 @@ QtObject {
     // A daemon's changes are timed from the first line the draw shows,
     // and said a place a line as the launcher closes (Y2YBTS, 2026-11-11).
     function presenting(failures) {
-        const first = Presented.heard({}, "quests", 1000);
-        const later = Presented.heard(first, "quests", 1100);
+        const first = ChangesPresented.heard({}, "quests", 1000);
+        const later = ChangesPresented.heard(first, "quests", 1100);
         check(failures, "a change waiting on a draw is timed from its first line",
             later.quests, 1000);
         check(failures, "which an earlier line still moves back",
-            Presented.heard(later, "quests", 900).quests, 900);
-        const both = Presented.heard(later, "windows", 1200);
+            ChangesPresented.heard(later, "quests", 900).quests, 900);
+        const both = ChangesPresented.heard(later, "windows", 1200);
         check(failures, "each place waits apart", JSON.stringify(both),
             '{"quests":1000,"windows":1200}');
         check(failures, "a place drawn waits no more",
-            JSON.stringify(Presented.drawn(both, "quests")), '{"windows":1200}');
+            JSON.stringify(ChangesPresented.drawn(both, "quests")), '{"windows":1200}');
         check(failures, "nor is what waited changed", JSON.stringify(both),
             '{"quests":1000,"windows":1200}');
 
@@ -810,7 +811,7 @@ QtObject {
         check(failures, "each key's time is kept in the order pressed",
             JSON.stringify(Presented.eachTook([{ from: 10, at: 60 }, { from: 0, at: 30.6 }])),
             "[31,50]");
-        const said = Presented.changesSaid([
+        const said = ChangesPresented.changesSaid([
             { place: "windows", from: 100, at: 130 },
             { place: "quests", from: 0, at: 70 },
             { place: "windows", from: 200, at: 290 }
@@ -820,14 +821,14 @@ QtObject {
             + "the slowest 70 ms, the p99 70 ms, 0 within 50 ms\n"
             + "launcher: 2 changes in windows presented a median 30 ms from the line, "
             + "the slowest 90 ms, the p99 90 ms, 1 within 50 ms");
-        check(failures, "none presented says nothing", Presented.changesSaid([]).length, 0);
+        check(failures, "none presented says nothing", ChangesPresented.changesSaid([]).length, 0);
         // Joel's 20 changes in machine took a median 36 ms, 6 past 50, and
         // nothing said whether they waited in the shell or after their
         // frame began (2026-11-11). Each part is said over the changes
         // stamped with it, as a key's is, and how long each waited on the
         // pace before its refresh began, which Windows' 190 ms in the shell
         // was (2026-11-12).
-        const parted = Presented.changesSaid([
+        const parted = ChangesPresented.changesSaid([
             { place: "machine", from: 0, heard: 5, refreshed: 7, begun: 15, at: 40 },
             { place: "machine", from: 100, heard: 102, refreshed: 122, begun: 130, at: 190 },
             { place: "machine", from: 200, at: 230 },
@@ -847,7 +848,7 @@ QtObject {
         // refresh (H6EDLC, Super+N, 2026-11-19). Each place is said its own
         // way, so a place with none held beside it says no hold.
         // The longest hold comes after a shorter one, so the first isn't it.
-        const heldApart = Presented.changesSaid([
+        const heldApart = ChangesPresented.changesSaid([
             { place: "machine", from: 100, heard: 102, held: 110, refreshed: 122, begun: 130,
                 at: 190 },
             { place: "windows", from: 0, heard: 5, refreshed: 40, begun: 48, at: 70 },
@@ -869,18 +870,18 @@ QtObject {
         // heard of nothing held for nothing, and none while nothing holds, as
         // once home's found (Launcher.qml's refreshDue and refreshed).
         const heardOf = { machine: 5, windows: 8 };
-        const firstHeld = Presented.heldFrom({}, heardOf,
+        const firstHeld = ChangesPresented.heldFrom({}, heardOf,
             { places: ["machine", "quests"], at: 10, holding: true });
-        const heldAgain = Presented.heldFrom(firstHeld, heardOf,
+        const heldAgain = ChangesPresented.heldFrom(firstHeld, heardOf,
             { places: ["machine", "windows"], at: 30, holding: true });
-        const heldNone = Presented.heldFrom(firstHeld, heardOf,
+        const heldNone = ChangesPresented.heldFrom(firstHeld, heardOf,
             { places: ["windows"], at: 40, holding: false });
         check(failures, "a hold holds those heard from when it was first due",
             [firstHeld, heldAgain, heldNone].map(one => JSON.stringify(one)).join(" "),
             '{"machine":10} {"machine":10,"windows":30} {"machine":10}');
         // An earlier line come late takes its place's change after the hold
         // began, so it's held from when it was heard, never a wait below none.
-        const heardLate = Presented.changesSaid([
+        const heardLate = ChangesPresented.changesSaid([
             { place: "machine", from: 0, heard: 20, held: 10, refreshed: 40, begun: 48, at: 70 }
         ]);
         check(failures, "a change heard after its hold began waits on no pace",
@@ -893,7 +894,7 @@ QtObject {
         // nothing said which daemons' lines they came from, Now being made
         // from many (2026-11-11, 20:10). Each daemon is said with how many
         // it set going, most first, then by name.
-        const whose = Presented.changesSaid([
+        const whose = ChangesPresented.changesSaid([
             { place: "on", from: 0, at: 60, by: "wifi" },
             { place: "on", from: 100, at: 170, by: "machine" },
             { place: "on", from: 200, at: 260, by: "machine" },
