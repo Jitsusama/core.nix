@@ -168,7 +168,10 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
 /// lead waiting for a session under it too, which the node, counting a
 /// cell by its own standing alone, leaves out. So a network holding a
 /// marked cell sorts first, says it needs him and never folds away, as
-/// the cell does inside it.
+/// the cell does inside it. Each cell it moves to needing him leaves the
+/// count the node put it in, so the counts still sum to the cells; the
+/// node's counts don't say which cell is where, so it comes from the
+/// likeliest of a lead's standings first, moving.
 pub(crate) fn as_marked(network: &Value, rows: &HashMap<String, &Value>) -> Value {
     let mut seen = network.clone();
     if network["shape"] == "machines" {
@@ -185,11 +188,26 @@ pub(crate) fn as_marked(network: &Value, rows: &HashMap<String, &Value>) -> Valu
         })
         .count();
     let marked = u64::try_from(marked).unwrap_or(u64::MAX);
-    if marked > count(network, "needs-you") {
-        seen["counts"]["needs-you"] = json!(marked);
+    let needs = count(network, "needs-you");
+    if marked <= needs {
+        return seen;
+    }
+    seen["counts"]["needs-you"] = json!(marked);
+    let mut moved = marked - needs;
+    for standing in MARKED_FROM {
+        let left = count(network, standing);
+        let taken = left.min(moved);
+        if taken > 0 {
+            seen["counts"][standing] = json!(left - taken);
+        }
+        moved -= taken;
     }
     seen
 }
+
+/// The counts a cell wearing Joel's mark leaves, likeliest first: a lead
+/// waiting on a session under it is most often moving.
+const MARKED_FROM: [&str; 4] = ["moving", "quiet", "dormant", "stuck"];
 
 /// A cell of a network keyed `parent`: its session's row as the tree
 /// serves it, under the network, stepping into nothing more; none where
@@ -632,7 +650,34 @@ mod tests {
             ],
             "it sorts first and never folds away, past twelve networks"
         );
-        assert_eq!(said(world), ["1 needs you", "1 moving"], "and says so");
+        assert_eq!(
+            said(world),
+            ["1 needs you"],
+            "and says so, its one cell counted once"
+        );
+    }
+
+    #[test]
+    fn a_marked_cell_leaves_the_count_the_node_put_it_in() {
+        let mut lead = session("KELP01", "working", "orchestration");
+        lead["held"]["anyWaitsOnJoel"] = json!(true);
+        let mut quiet_lead = session("KELP02", "working", "orchestration");
+        quiet_lead["held"]["anyWaitsOnJoel"] = json!(true);
+        let top = [lead, quiet_lead];
+        let counts = json!({"needs-you": 0, "stuck": 1, "moving": 1, "quiet": 1, "dormant": 0});
+        let team = record(
+            "repo.world",
+            "repository",
+            &["kelp01", "kelp02", "tern03"],
+            &counts,
+            0,
+        );
+        let seen = as_marked(&team, &sessions(&top));
+        assert_eq!(
+            seen["counts"],
+            json!({"needs-you": 2, "stuck": 1, "moving": 0, "quiet": 0, "dormant": 0}),
+            "two marked cells leave moving, then quiet, and the counts still sum to three cells"
+        );
     }
 
     #[test]

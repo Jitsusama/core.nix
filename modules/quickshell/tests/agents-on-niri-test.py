@@ -2664,7 +2664,7 @@ def test_a_session_waiting_on_joel_is_drawn_in_his_mark_not_the_agents(
     finally:
         shell.close_launcher()
         for address in ("asking", "idling"):
-            (PRESENCE / f"{address}.json").unlink()
+            (PRESENCE / f"{address}.json").unlink(missing_ok=True)
         # A session asking for Joel's yes, left for the cases after, would stand first in
         # For You and Agents, so it's gone from the node before they begin.
         deadline = time.monotonic() + 10

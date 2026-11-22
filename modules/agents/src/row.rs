@@ -435,10 +435,6 @@ impl Row {
     }
 }
 
-/// What Close leaves of a session here: its worktree, where it works in a
-/// folder under a trees folder, as the harness's and World's trees both
-/// are cut, else its folder, and its quest's to-dos; "" for one
-/// elsewhere, which has no Close.
 /// How a session stands to Joel, whether he put off what it wants of
 /// him, and the hue its row wears. A want put off still waits, so its row
 /// keeps his mark, but in its own hue, lighting nothing above it (top.rs)
@@ -454,6 +450,10 @@ fn worn(session: Session, known: &Known, warns: bool) -> (Stands, bool, &'static
     (wears, put_off, hue)
 }
 
+/// What Close leaves of a session here: its worktree, where it works in a
+/// folder under a trees folder, as the harness's and World's trees both
+/// are cut, else its folder, and its quest's to-dos; "" for one
+/// elsewhere, which has no Close.
 fn leaves(session: Session, known: &Known, words: &Words) -> String {
     if !session.here() {
         return String::new();
