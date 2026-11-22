@@ -800,7 +800,9 @@ Scope {
         if (open && !waking)
             Qt.callLater(freshen);
     }
-    function freshen() {
+    // A join is felt as `felt`: the open handler names its own as its lap
+    // (Pacing.lapName), so it isn't added up with a slice's "joining".
+    function freshen(felt = "joining") {
         if (!choicesStale)
             return;
         const began = KeyTimes.now();
@@ -828,7 +830,7 @@ Scope {
             out.push(withSynonyms(row));
         choicesJoined += 1;
         choices = out;
-        feltSpan("joining", began);
+        feltSpan(felt, began);
     }
 
     // Where a collection that's no place of its own leads, as one found row,
@@ -10991,6 +10993,12 @@ Scope {
     }
 
     onOpenChanged: {
+        // Each part of an opening's own work, timed as it's done from the
+        // handler's start, so the line its frame says names what an opening
+        // slow to draw spent its time on (Joel, 2026-11-10: the launcher
+        // takes forever to load).
+        let lapped = KeyTimes.now();
+        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
         // A link's hold on the first keys lasts only the opening it made.
         if (!open)
             prompt.unlinked();
@@ -10998,11 +11006,6 @@ Scope {
         // An opening's selection rests anew, never on the last opening's.
         restsOn = null;
         selectionMoved();
-        // Each part of an opening's own work, timed as it's done, so the
-        // line its frame says names what an opening slow to draw spent its
-        // time on (Joel, 2026-11-10: the launcher takes forever to load).
-        let lapped = KeyTimes.now();
-        const parts = { before: open && openAsked >= 0 ? lapped - openAsked : 0 };
         // Each lap is felt as a span of its own too, so an opening's longest
         // stall names this handler's parts rather than calling them all
         // "opening", with what's left of it the bindings and handlers
@@ -11096,8 +11099,11 @@ Scope {
         else
             traces.closed({ depth: held.length, rows: matches.length });
         if (open) {
-            // What ran before the sources wake, marking it open and its
-            // spots, is a lap of its own, so waking is the waking alone.
+            // All the handler did before the sources wake (the selection
+            // resting anew, marking it open, its spots, what's made since,
+            // the traces) is a lap of its own, so waking is the waking
+            // alone: less than the waking said before 2026-11-22, which
+            // held all of this.
             lap("beginning");
             openWoke = wakeEach();
             lap("waking");
@@ -11124,7 +11130,7 @@ Scope {
             fillFoundJoined = 0;
             fillFoundAfter = null;
             if (!fillFinding)
-                freshen();
+                freshen(Pacing.lapName("joining"));
             lap("joining");
             trials.opened(KeyTimes.now());
             lap("trials");

@@ -5,7 +5,8 @@
 // the launcher reads it. And how long the thread ran and waited for a
 // CPU, read while it spins alone and then beside another thread held to
 // the same CPU. And that a WallTimer ends on its time, once a start, from
-// its latest start, and not at all once stopped. It exits 0
+// its latest start, and not at all once stopped. And that the thread's
+// major page faults are read, leaving out its minor ones. It exits 0
 // once all hold, and otherwise 1, saying which didn't.
 #include "keytimes.h"
 #include "walltimer.h"
@@ -147,14 +148,22 @@ long touchedFresh() {
 // checked rather than assumed, and don't raise the count a thousand, as a
 // count of every fault would. That they're the calling thread's alone, and
 // that a major one is counted at all, rests on getrusage's RUSAGE_THREAD
-// and ru_majflt and isn't shown here, since nothing in the build can make
-// a page wait to be read in to order.
+// and ru_majflt and isn't shown here: a major fault comes to order only
+// from a file whose pages can be dropped, which a build's own folder may
+// not hold, so a case for it could only skip. Where the build can't show
+// the touches faulting a page at a time, it says so rather than blaming
+// faulted().
 bool faultsCounted(const KeyTimes &times) {
     const double before = times.faulted();
     const long minor = touchedFresh();
     const double after = times.faulted();
-    const bool holds = before >= 0 && minor >= TOUCHED_PAGES && after >= before
-        && after - before < TOUCHED_PAGES;
+    if (minor < TOUCHED_PAGES) {
+        std::fprintf(stderr, "FAIL the build shows fresh pages faulting a page at a time: %ld"
+                     " minor faults over %ld pages, -1 where they couldn't be had\n", minor,
+                     TOUCHED_PAGES);
+        return false;
+    }
+    const bool holds = before >= 0 && after >= before && after - before < TOUCHED_PAGES;
     if (!holds)
         std::fprintf(stderr, "FAIL a thread's major faults are read: %.0f, then %.0f over %ld"
                      " fresh pages taking %ld minor faults\n", before, after, TOUCHED_PAGES,

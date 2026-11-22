@@ -302,7 +302,7 @@ QtObject {
             [132, { ran: 20, waited: 2, faulted: -1 }]].reduce((was, [at, thread]) =>
             Pacing.feltTicked(was, at, pace, { thread }),
             Pacing.feltBegun(0, { thread: { ran: 0, waited: 0, faulted: 0 } }));
-        check(failures, "a stall whose count wasn't read takes none",
+        check(failures, "a stall whose count wasn't read takes no count",
             unreadStall.stallThread.faulted, undefined);
         check(failures, "and says nothing of them",
             Thread.said(unreadStall.stall, unreadStall.stallThread, "the stall"),
@@ -391,14 +391,20 @@ QtObject {
         check(failures, "one all named says nothing unnamed",
             Pacing.stallSpent(nested, 10, 70), "filling 50, the drawer 10");
         // The open handler's laps beside the slices after its frame, which
-        // say "waking" for their own work (2026-11-21).
-        const laps = [{ name: "opening", from: 0, to: 40 },
-            { name: Pacing.lapName("beginning"), from: 0, to: 5 },
+        // say "waking" and "joining" for their own work (2026-11-21), in
+        // the order the launcher pushes them: the handler's join, felt by
+        // freshen inside its lap, then the lap, and "opening", begun
+        // before the handler, once `open` has turned.
+        const laps = [{ name: Pacing.lapName("beginning"), from: 1, to: 5 },
             { name: Pacing.lapName("waking"), from: 5, to: 25 },
-            { name: "waking", from: 60, to: 80 }];
+            { name: Pacing.lapName("joining"), from: 26, to: 30 },
+            { name: Pacing.lapName("joining"), from: 25, to: 31 },
+            { name: "opening", from: 0, to: 40 },
+            { name: "waking", from: 60, to: 80 },
+            { name: "joining", from: 80, to: 90 }];
         check(failures, "an opening's laps are said apart from the slices after it",
-            Pacing.stallSpent(laps, 0, 100),
-            "opening's waking 20, waking 20, opening 15, opening's beginning 5, 40 unnamed");
+            Pacing.stallSpent(laps, 0, 100), "opening's waking 20, waking 20, opening 10, "
+                + "joining 10, opening's joining 6, opening's beginning 4, 30 unnamed");
     }
 
     // Each frame's own work, as spans: the rows it laid out and its sync,
