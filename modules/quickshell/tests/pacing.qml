@@ -239,6 +239,10 @@ QtObject {
             "; the collector 30 ms of the stall, 38 of the opening");
         check(failures, "an opening the collector didn't reach says nothing of it",
             Collector.collectorSaid(0, 0.4), "");
+        check(failures, "an opening's working says what the collector took of it",
+            Collector.workingSaid(12.4), "; the collector 12 ms of its working");
+        check(failures, "working the collector didn't reach says nothing of it",
+            Collector.workingSaid(0.4), "");
         // Read once the room is left, so outside has the room or more and
         // the chunks the room, or more under Qt's own limit, or, as here,
         // less, their cap holding them nearer.

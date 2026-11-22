@@ -1500,9 +1500,19 @@ def test_a_place_its_chord_opened_is_drawn_as_it_stood(shell: Shell) -> None:
     shell.close_launcher()
     shell.launcher_until(lambda shown: shown.get("kept"))
     timed = latest(openings(shell))
+    since = shell.mark()
     shell.as_account(shell.ipc("collection", "on"))
     opening = filled_after(shell, timed)
     assert opening.get("into") == "on", f"the opening didn't say its chord: {opening}"
+    # What its thread did while it worked, so a slow one's asking says whether it ran, waited for
+    # a CPU or slept: Joel's into Now asked 15 to 22 ms, six of 19 over 50 to the frame with
+    # nothing said of why (2026-11-21).
+    thread = cast("Json", opening.get("thread") or {})
+    assert cast("float", thread.get("ran", 0)) > 0, f"its thread's working went unsaid: {opening}"
+    took = [line for line in said_of_chords(shell, since).splitlines() if "opening took" in line]
+    assert took, "the opening said nothing of its time"
+    assert "; its thread ran " in took[-1], f"the opening's line didn't say its thread: {took[-1]}"
+    assert " of its working, waited " in took[-1], f"its thread's working went unsaid: {took[-1]}"
     assert opening["shown"]["keys"] == left["keys"], f"kept, the rows moved: {left} to {opening}"
     assert opening["rows"] == 0, f"the kept opening made rows before its frame: {opening}"
     # A place's fill joins inside `open`, as its steps into the place read what's joined; only
