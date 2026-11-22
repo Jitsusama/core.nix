@@ -12563,6 +12563,8 @@ Scope {
                 + ` ${Math.round(allocator.kept)} MB freed and kept`));
         if (KeyTimes.now() >= censusDue)
             censusLater.restart();
+        else if (holdersCounted && freeingNext.length > 0)
+            freedLater.restart();
     }
 
     // What's live is said by kind, from the shell's tenth minute and then
@@ -12587,7 +12589,8 @@ Scope {
     // in his shell, and only cutting what the shell keeps has cut what the
     // heap holds. It marks the whole heap again, up to about 100 ms naming
     // and then the rest, so it runs a second later in a turn of its own,
-    // only if the launcher is still shut, and says how long it took.
+    // only if the launcher is still shut, once a shell, and says how long
+    // it took.
     property real censusDue: KeyTimes.now() + 10 * 60 * 1000
     Timer {
         id: censusLater
@@ -12615,16 +12618,61 @@ Scope {
             holdersLater.restart();
         }
     }
+    // Which holders letting go of is still to be weighed, the largest first.
+    // The holders are counted once a shell, since each count stalls its one
+    // thread about 180 ms on Joel's heap (2026-11-21) beside the margin cat,
+    // and a switch starts a new shell after each change worth counting.
+    // Each holder counted first takes all it shares with those after it,
+    // so what letting go of it frees is weighed apart: every other holder
+    // marked first, a whole heap's marking each, so one a turn, a second
+    // apart, and only while the launcher is shut; a second after the next
+    // closing takes up any an opening or a collection put off.
+    property bool holdersCounted: false
+    property var freeingNext: []
     Timer {
         id: holdersLater
         interval: 1000
         onTriggered: {
             if (root.open || root.opening || root.parting !== "")
                 return;
+            if (root.holdersCounted) {
+                if (root.freeingNext.length > 0)
+                    freedLater.restart();
+                return;
+            }
             const holders = Heap.holders(12);
             console.info("launcher: what holds what's live, " + (!holders.busy ? holders.said
                 : holders.marked ? "not counted, marks were left set outside a collection"
                 : "not counted, a collection under way"));
+            if (holders.busy)
+                return;
+            root.holdersCounted = true;
+            root.freeingNext = holders.holders.slice(0, 3).map(row => row[0]);
+            freedLater.restart();
+        }
+    }
+    Timer {
+        id: freedLater
+        interval: 1000
+        onTriggered: {
+            if (root.open || root.opening || root.parting !== ""
+                || root.freeingNext.length === 0)
+                return;
+            const freed = Heap.freedBy(root.freeingNext[0]);
+            if (freed.busy) {
+                console.info("launcher: what letting go of " + root.freeingNext[0]
+                    + " frees, not counted yet, "
+                    + (freed.marked ? "marks were left set outside a collection"
+                    : "a collection under way"));
+                return;
+            }
+            // A name from holders() is filtered for the journal, so it's
+            // safe to say when freedBy() won't say it, its holder emptied.
+            console.info("launcher: " + (freed.held ? freed.said
+                : root.freeingNext[0] + " holds nothing now"));
+            root.freeingNext = root.freeingNext.slice(1);
+            if (root.freeingNext.length > 0)
+                freedLater.restart();
         }
     }
 

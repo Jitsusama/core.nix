@@ -1014,10 +1014,163 @@ bool namesWhatHoldsIt() {
     return held;
 }
 
-// Whether holders() counts nothing while a collection is under way between
-// its slices, saying only that it's busy, rather than clearing the marks
-// the collection has set: what the collection keeps still reads back once
-// it's ended.
+// How many objects the freeing test keeps under one property alone, and
+// how many in the one array two properties hold.
+constexpr int ALONE = 40000;
+constexpr int SHARED = 40000;
+// How many objects one property's array holds that a closure connected to
+// a signal holds too, and how many objects made in script, with no parent,
+// one property alone holds, and how many each of those holds of its own.
+constexpr int CLOSED = 40000;
+constexpr int SCRIPTED = 2000;
+constexpr int EACH = 20;
+
+// Whether freedBy() counts for a property what only it reaches: about what
+// letting it go frees, the next collection taking it, objects made in
+// script with no parent included, since nothing else keeps them; next to
+// nothing for either of two properties holding the same array, though
+// holders() counts it all for the one whose name sorts first, nor for one
+// whose array a connected closure keeps too, as the collector does through
+// its persistent values, nor for one holding an object made in script
+// whose parent's tree keeps it, as the collector's weak values do; none
+// for a name no property has, said as held by none without saying the
+// name; and the same asked twice, so it cleared the marks it set.
+bool freesWhatItAloneHolds() {
+    QTemporaryDir shell;
+    QDir files(shell.path());
+    const bool wrote =
+        files.mkdir(QStringLiteral("pieces")) && files.cd(QStringLiteral("pieces")) &&
+        written(files, QStringLiteral("Sharing.qml"),
+                QStringLiteral("import QtQml\nQtObject {\n    id: root\n"
+                               "    property var alone: []\n    property var adopted: null\n"
+                               "    property var aShares: []\n    property var bShares: null\n"
+                               "    property var closed: null\n    property var made: []\n"
+                               "    property Component piece: Component {\n"
+                               "        QtObject { property var own: [] }\n    }\n"
+                               "    signal poked()\n"
+                               "    function letAloneGo() { alone = []; }\n"
+                               "    function letMadeGo() { made = []; }\n"
+                               "    Component.onCompleted: {\n"
+                               "        for (let i = 0; i < %1; i++)\n"
+                               "            alone.push({ n: i, s: 'a' + i });\n"
+                               "        for (let i = 0; i < %2; i++)\n"
+                               "            aShares.push({ n: i, s: 'b' + i });\n"
+                               "        bShares = aShares;\n"
+                               "        const kept = [];\n"
+                               "        for (let i = 0; i < %3; i++)\n"
+                               "            kept.push({ n: i, s: 'c' + i });\n"
+                               "        closed = kept;\n"
+                               "        poked.connect(() => kept.length);\n"
+                               "        const kid = piece.createObject(root);\n"
+                               "        for (let i = 0; i < %3; i++)\n"
+                               "            kid.own.push({ n: i, s: 'e' + i });\n"
+                               "        adopted = kid;\n"
+                               "        for (let i = 0; i < %4; i++) {\n"
+                               "            const one = piece.createObject(null);\n"
+                               "            for (let j = 0; j < %5; j++)\n"
+                               "                one.own.push({ n: j, s: 'd' + j });\n"
+                               "            made.push(one);\n"
+                               "        }\n"
+                               "    }\n}\n")
+                    .arg(ALONE)
+                    .arg(SHARED)
+                    .arg(CLOSED)
+                    .arg(SCRIPTED)
+                    .arg(EACH));
+    if (!wrote) {
+        std::fprintf(stderr, "FAIL the freeing test's file wasn't written in %s\n",
+                     qPrintable(shell.path()));
+        return false;
+    }
+    QQmlEngine engine;
+    Heap heap(&engine);
+    QQmlComponent component(&engine,
+                            QUrl::fromLocalFile(files.filePath(QStringLiteral("Sharing.qml"))));
+    // A parent with no QML data, as a tree's root made in C++ has. Qt marks
+    // the children of a marked wrapper only when its object has no parent,
+    // so with this one only the walk to the tree's root keeps the adopted
+    // kid. Made first, it's let go last, after the object has left it.
+    QObject top;
+    const std::unique_ptr<QObject> made(component.create());
+    if (!made) {
+        std::fprintf(stderr, "FAIL the freeing test's object wasn't made: %s\n",
+                     qPrintable(component.errorString()));
+        return false;
+    }
+    made->setParent(&top);
+    const double before = weighed(engine, heap).live;
+    const QVariantMap alone = heap.freedBy(QStringLiteral("pieces/Sharing.qml alone"));
+    const QVariantMap again = heap.freedBy(QStringLiteral("pieces/Sharing.qml alone"));
+    const QVariantMap first = heap.freedBy(QStringLiteral("pieces/Sharing.qml aShares"));
+    const QVariantMap second = heap.freedBy(QStringLiteral("pieces/Sharing.qml bShares"));
+    const QVariantMap none = heap.freedBy(QStringLiteral("pieces/Sharing.qml nothing"));
+    const QVariantMap closed = heap.freedBy(QStringLiteral("pieces/Sharing.qml closed"));
+    const QVariantMap madeAlone = heap.freedBy(QStringLiteral("pieces/Sharing.qml made"));
+    const QVariantMap adopted = heap.freedBy(QStringLiteral("pieces/Sharing.qml adopted"));
+    const Holding sorted =
+        holding(heap.holders(EVERY, UNHURRIED_MS), QStringLiteral("pieces/Sharing.qml aShares"));
+    const bool cleared = !anyMarked(engine.handle()->memoryManager);
+    const QString line = alone.value(QStringLiteral("said")).toString();
+    QMetaObject::invokeMethod(made.get(), "letAloneGo");
+    const double afterAlone = weighed(engine, heap).live;
+    const double freed = before - afterAlone;
+    QMetaObject::invokeMethod(made.get(), "letMadeGo");
+    const double madeFreed = afterAlone - weighed(engine, heap).live;
+    const double madeMB = madeAlone.value(QStringLiteral("freed")).toDouble();
+    const double madeCount = madeAlone.value(QStringLiteral("count")).toDouble();
+    const double closedMB = closed.value(QStringLiteral("freed")).toDouble();
+    const bool scripted = madeAlone.value(QStringLiteral("held")).toBool() &&
+                          madeCount >= SCRIPTED * EACH &&
+                          std::abs(madeMB - madeFreed) <= madeFreed / 5;
+    const double aloneMB = alone.value(QStringLiteral("freed")).toDouble();
+    const double adoptedMB = adopted.value(QStringLiteral("freed")).toDouble();
+    const bool persisting = closed.value(QStringLiteral("held")).toBool() &&
+                            closedMB < aloneMB / 50 &&
+                            adopted.value(QStringLiteral("held")).toBool() &&
+                            adoptedMB < aloneMB / 50;
+    const double aloneCount = alone.value(QStringLiteral("count")).toDouble();
+    const double firstMB = first.value(QStringLiteral("freed")).toDouble();
+    const double secondMB = second.value(QStringLiteral("freed")).toDouble();
+    const bool frees = alone.value(QStringLiteral("held")).toBool() &&
+                       aloneCount >= 2 * ALONE && std::abs(aloneMB - freed) <= freed / 5;
+    const bool shared = first.value(QStringLiteral("held")).toBool() &&
+                        second.value(QStringLiteral("held")).toBool() &&
+                        sorted.count >= 2 * SHARED && firstMB < sorted.mb / 50 &&
+                        secondMB < sorted.mb / 50;
+    const bool unheld = !none.value(QStringLiteral("held")).toBool() &&
+                        none.value(QStringLiteral("freed")).toDouble() == 0 &&
+                        none.contains(QStringLiteral("said")) &&
+                        !none.value(QStringLiteral("said")).toString().contains(
+                            QStringLiteral("nothing"));
+    const bool same = !again.value(QStringLiteral("busy")).toBool() &&
+                      again.value(QStringLiteral("count")).toDouble() == aloneCount;
+    const bool said = line.contains(QStringLiteral("pieces/Sharing.qml alone ")) &&
+                      alone.value(QStringLiteral("ms")).toDouble() > 0;
+    const bool held =
+        frees && shared && unheld && same && said && cleared && scripted && persisting;
+    if (!held)
+        std::fprintf(stderr,
+                     "FAIL freedBy() counts what a property alone reaches, about what letting "
+                     "it go frees, objects made in script included, next to nothing for two "
+                     "sharing one array, one a connected closure shares or an object its tree "
+                     "keeps, none for a name no "
+                     "property has, the same twice and no mark left: alone %.2f MB (%.0f) "
+                     "against %.2f freed, made %.2f MB (%.0f) against %.2f freed, closed "
+                     "%.2f MB, adopted %.2f MB, again %.0f, shared %.2f and %.2f MB against %.2f "
+                     "(%.0f) sorted first, none held %s, cleared %s: %s; none: %s\n",
+                     aloneMB, aloneCount, freed, madeMB, madeCount, madeFreed, closedMB, adoptedMB,
+                     again.value(QStringLiteral("count")).toDouble(), firstMB, secondMB,
+                     sorted.mb, sorted.count,
+                     none.value(QStringLiteral("held")).toBool() ? "yes" : "no",
+                     cleared ? "yes" : "no", qPrintable(line),
+                     qPrintable(none.value(QStringLiteral("said")).toString()));
+    return held;
+}
+
+// Whether holders() and freedBy() count nothing while a collection is under
+// way between its slices, saying only that they're busy, rather than
+// clearing the marks the collection has set: what the collection keeps
+// still reads back once it's ended.
 bool waitsOutACollection() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1028,26 +1181,30 @@ bool waitsOutACollection() {
     manager->runGC();
     const bool running = manager->gcStateMachine->inProgress();
     const QVariantMap during = heap.holders(EVERY, UNHURRIED_MS);
+    const QVariantMap freeing = heap.freedBy(QStringLiteral("kept"));
     manager->gcStateMachine->timeLimit = slice;
     engine.collectGarbage();
     constexpr int LAST = KEPT / SCATTERED - 1;
     const bool busy = during.value(QStringLiteral("busy")).toBool() &&
                       !during.value(QStringLiteral("marked")).toBool() &&
-                      !during.contains(QStringLiteral("said"));
+                      !during.contains(QStringLiteral("said")) &&
+                      freeing.value(QStringLiteral("busy")).toBool() &&
+                      !freeing.value(QStringLiteral("marked")).toBool() &&
+                      !freeing.contains(QStringLiteral("said"));
     const bool kept = few.property(QStringLiteral("length")).toInt() == LAST + 1 &&
                       few.property(LAST).property(QStringLiteral("n")).toInt() ==
                           LAST * SCATTERED;
     const bool held = running && busy && kept;
     if (!held)
         std::fprintf(stderr,
-                     "FAIL holders() says only that it's busy during a collection and leaves "
-                     "what it keeps: left running %s, busy %s, kept %s\n",
+                     "FAIL holders() and freedBy() say only that they're busy during a "
+                     "collection and leave what it keeps: left running %s, busy %s, kept %s\n",
                      running ? "yes" : "no", busy ? "yes" : "no", kept ? "yes" : "no");
     return held;
 }
 
-// Whether holders() counts nothing over a mark it finds set outside a
-// collection, saying so, and leaves that mark as it was.
+// Whether holders() and freedBy() count nothing over a mark they find set
+// outside a collection, saying so, and leave that mark as it was.
 bool leavesAStrayMark() {
     QJSEngine engine;
     Heap heap(&engine);
@@ -1064,16 +1221,20 @@ bool leavesAStrayMark() {
     const quintptr bit = chunk->objectBitmap[word] & (~chunk->objectBitmap[word] + 1);
     chunk->blackBitmap[word] |= bit;
     const QVariantMap stray = heap.holders(EVERY, UNHURRIED_MS);
+    const QVariantMap strayFreeing = heap.freedBy(QStringLiteral("kept"));
     const bool left = (chunk->blackBitmap[word] & bit) != 0;
     chunk->blackBitmap[word] &= ~bit;
     const bool held = stray.value(QStringLiteral("busy")).toBool() &&
                       stray.value(QStringLiteral("marked")).toBool() &&
                       !stray.contains(QStringLiteral("said")) && left &&
+                      strayFreeing.value(QStringLiteral("busy")).toBool() &&
+                      strayFreeing.value(QStringLiteral("marked")).toBool() &&
+                      !strayFreeing.contains(QStringLiteral("said")) &&
                       kept.property(QStringLiteral("kept")).toBool();
     if (!held)
         std::fprintf(stderr,
-                     "FAIL holders() says marks were left set outside a collection and leaves "
-                     "them: busy %s, marked %s, counted %s, left %s\n",
+                     "FAIL holders() and freedBy() say marks were left set outside a "
+                     "collection and leave them: busy %s, marked %s, counted %s, left %s\n",
                      stray.value(QStringLiteral("busy")).toBool() ? "yes" : "no",
                      stray.value(QStringLiteral("marked")).toBool() ? "yes" : "no",
                      stray.contains(QStringLiteral("said")) ? "yes" : "no", left ? "yes" : "no");
@@ -1175,10 +1336,11 @@ int main(int argc, char **argv) {
     const bool holdsIt = namesWhatHoldsIt();
     const bool waitsItOut = waitsOutACollection();
     const bool stray = leavesAStrayMark();
+    const bool alone = freesWhatItAloneHolds();
     return grows && falls && holds && scattered && bounded && timed && collects && roomy &&
                    roomyOutside && lasting && lastingOutside && stillCollectsOutside &&
                    reckoned && ownLimits && follows && given && fits && whole && census &&
-                   placed && stands && underWay && holdsIt && waitsItOut && stray
+                   placed && stands && underWay && holdsIt && waitsItOut && stray && alone
                ? 0
                : 1;
 }

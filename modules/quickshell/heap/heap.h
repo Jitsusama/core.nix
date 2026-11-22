@@ -112,6 +112,17 @@ public:
     // one, which the sweep should leave none of, `busy` and `marked`.
     Q_INVOKABLE QVariantMap holders(int top, int namingMs = 100) const;
 
+    // What letting go of one holder, named as holders() names it, would
+    // free: what its values reach that the next collection's own marking
+    // reaches without them, from the engine, the JavaScript stack, the
+    // values C++ keeps and the objects that stay alive unreached, through
+    // every other property. `holder`; `held`, whether any property so named
+    // holds a value the heap keeps; `freed`, its megabytes; `count`; `ms`;
+    // and `said`, as one line, which names the holder only when one holds
+    // something. It marks with the collector's own marks and clears them,
+    // so it answers `busy`, and `marked`, as holders() does.
+    Q_INVOKABLE QVariantMap freedBy(const QString &holder) const;
+
 private:
     QJSEngine *engine;
 };
