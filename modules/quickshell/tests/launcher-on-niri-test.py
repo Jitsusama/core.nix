@@ -4393,8 +4393,8 @@ def test_the_home_network_rests_whole_where_the_wheel_leaves_it(shell: Shell) ->
     The wheel moves the view by pixels, so it can stop inside a row; once it stops, the list
     rests on the top of the first row at or below where it stopped (Launcher.qml's
     onMovementEnded, Headings.rested). The selection stays on the first row, which the wheel
-    takes wholly out of view and back, so a selected row the wheel leaves across the foot
-    isn't asked here.
+    can take out of view, and where the turn back up rests depends on the rows' heights, so
+    whether the selection is in view isn't asked here.
     """
     home_network_in_normal(shell)
     card = shell.showing()["card"]
