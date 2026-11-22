@@ -710,7 +710,9 @@ Singleton {
     // than screensPatience on it, rather than never reopening at all.
     property var screens: ({})
     // The screens connected now, of those last said (Places.connected), for
-    // anything sending a window or a workspace to one.
+    // anything sending a window or a workspace to one. Niri.workspaces is
+    // empty before niri lists any, and briefly after the windows daemon
+    // restarts; then every screen said counts.
     function screensThere() {
         return Places.connected(screens, Object.values(Niri.workspaces ?? {}));
     }
@@ -1532,7 +1534,9 @@ Singleton {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
-        const places = Places.placed(keptPlaces, root.screensThere(),
+        // None heard is null: none of those heard connected is known, not unheard.
+        const there = Object.keys(root.screens).length > 0 ? root.screensThere() : null;
+        const places = Places.placed(keptPlaces, there,
             Niri.workspace()?.output ?? null,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Only Reopen Them All tells each to carry on, which marks its walk.

@@ -82,11 +82,11 @@ function othersGone(at, moment, screens) {
 // belongs (`away`), so its workspace can go there once the screen comes,
 // with the other screens as it was found gone (`others`, of othersGone),
 // each twin (of `moments`, each place's boot's) given a connector of its
-// own. `screens` maps each connector there is to its description; with
-// none known, as when niri didn't answer, or no screen in use, a gone one
-// is left as it was kept.
+// own. `screens` maps each connector there is to its description, or is
+// null when niri didn't answer; then, or with no screen in use, a gone one
+// is left as it was kept. Screens heard but none connected are known.
 function placed(places, screens, inUse, moments) {
-    const known = Object.keys(screens ?? {}).length > 0;
+    const known = screens !== null && screens !== undefined;
     const given = [];
     const found = places.map((at, index) => {
         if (!at) {
