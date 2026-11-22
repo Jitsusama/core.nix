@@ -12631,7 +12631,8 @@ Scope {
     // Whether the holders are counted and which letting go of is still to be
     // weighed, the largest first (launcher/Weighing.js, which says how many
     // and which). The holders are counted once a shell, since each count stalls its one
-    // thread about 180 ms on Joel's heap (2026-11-21) beside the margin cat,
+    // thread about 180 ms on Joel's heap (2026-11-21, naming for 100 ms of
+    // it, so up to about 380 ms at the 300 ms below) beside the margin cat,
     // and a switch starts a new shell after each change worth counting.
     // Each holder counted first takes all it shares with those after it,
     // so what letting go of it frees is weighed apart: every other holder
