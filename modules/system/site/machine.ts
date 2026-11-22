@@ -349,8 +349,10 @@ function updated(figures: Figures, when: (at: string) => string): string | undef
       return why === undefined ? `Updated ${at}.` : stopped(`Updated ${at}, but ${why}`);
     case "unchanged":
       return `Unchanged at its update ${at}.`;
+    // A node too old to say its step, or one whose step couldn't be read,
+    // which the daemon leaves out: either way, not known to have gone ahead.
     case undefined:
-      return `Last updated ${at}.`;
+      return `Its last update was ${at}.`;
     default:
       return why === undefined
         ? `Its update ${at} says ${figures.updateStep}.`

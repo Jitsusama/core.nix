@@ -23,6 +23,7 @@
 pub mod homes;
 pub mod kept;
 pub mod parts;
+pub mod plain;
 pub mod power;
 pub mod record;
 pub mod words;

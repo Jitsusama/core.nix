@@ -303,6 +303,11 @@ it("itself says its disk, then its processor, memory, power and update", () => {
       (at) => `at ${at.slice(11, 16)}`,
     ).aside;
   assert.equal(
+    asideOf({}),
+    "Its last update was at 02:40.",
+    "an update whose step isn't known, or couldn't be read, isn't said to have gone ahead",
+  );
+  assert.equal(
     asideOf({ update_step: "done", update_why: "the boot check failed" }),
     "Updated at 02:40, but the boot check failed.",
     "a done update that didn't all go ahead says why",

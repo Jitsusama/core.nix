@@ -302,7 +302,9 @@ fn ended(step: Option<&str>, ago: Option<String>) -> Option<String> {
         (Some("done"), None) => "updated".to_owned(),
         (Some("unchanged"), Some(ago)) => format!("unchanged at its update {ago}"),
         (Some("unchanged"), None) => "unchanged at its last update".to_owned(),
-        (None, Some(ago)) => format!("last updated {ago}"),
+        // A node too old to say its step, or one whose step couldn't be
+        // read: either way, not known to have gone ahead.
+        (None, Some(ago)) => format!("its last update was {ago}"),
         (None, None) => return None,
         (Some(step), Some(ago)) => format!("its update {ago} says {step}"),
         (Some(step), None) => format!("its last update says {step}"),
@@ -587,6 +589,14 @@ mod tests {
                 "2 TB free",
                 "40% charged, on battery; its last update says building"
             )
+        );
+        let unknown = json!({"figures": {"disk_free": 2_000_000_000_000_u64,
+                                         "updated_at": "2025-11-17T23:00:18Z"}});
+        assert_eq!(
+            itself(&unknown, now),
+            said("2 TB free", "its last update was 5 m ago"),
+            "an update whose step isn't known, or couldn't be read, isn't said to have gone \
+             ahead"
         );
         let refused = json!({"figures": {"disk_free": 2_000_000_000_000_u64,
                                          "updated_at": "2025-11-17T23:00:18Z",
