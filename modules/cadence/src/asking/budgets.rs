@@ -374,13 +374,15 @@ mod tests {
     #[test]
     fn a_window_split_across_two_hours_keeps_its_later_telling() {
         let mut s = calm(100_000);
-        s.budgets = vec![crate::watch::budgets::Allowance {
+        let at = |share: f64| crate::watch::budgets::Allowance {
             resets: Some("2026-11-21T16:30:00Z".into()),
-            ..week(0.85, "85% of five hours")
-        }];
+            ..week(share, "of five hours")
+        };
         // As the old rounding left it: 80% told under 16:00 long ago, then
         // 80% and 90% under 17:00 lately, as each telling keeps the levels
-        // beneath it.
+        // beneath it. Read first under 80%, where no level standing renews
+        // the time its keys meet with, so the one kept decides whether its
+        // rest is over, then past 80% a read later.
         let mut state = State::default();
         let key = |level: u32, hour: u32| {
             format!("alarm:budget:proxy:weekly:{level}:2026-11-21T{hour}:00:00Z")
@@ -388,10 +390,14 @@ mod tests {
         state.seen.insert(key(80, 16), s.now - 7 * 3600);
         state.seen.insert(key(80, 17), s.now - 600);
         state.seen.insert(key(90, 17), s.now - 600);
-        assert!(
-            tick(&s, &mut state).is_empty(),
-            "a split window took its older telling and was told again"
-        );
+        for share in [0.70, 0.85] {
+            s.budgets = vec![at(share)];
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a split window took its older telling and was told again at {share}"
+            );
+            s.now += 5 * 60;
+        }
     }
 
     #[test]
