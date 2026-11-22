@@ -263,9 +263,13 @@ Provider {
     // where it was, dimmed and doing nothing, and the answer came in at
     // the end (Joel, 2026-11-07: "Now -> Date -> Calendars does not work
     // from the launcher"). Still asking, Return steps in all the same, to
-    // a place saying "..." that the four calendars fill as they come, since
-    // the steps held are made again as Date answers: a Return on the way to
-    // them never closes the launcher under him. Only a reader that refused
+    // a place saying "..." that the four calendars fill as they come where
+    // Date is a step held, from Now or followed into, since the steps below
+    // it are made again as Date answers: a Return on the way to them never
+    // closes the launcher under him. Stepped into from what's typed at the
+    // top, no step holds Date, so the place stays "..." until he steps back
+    // to the answer, which shows them, as any part stepped into from an
+    // answer at the top is made again only as he steps back. Only a reader that refused
     // gives a row whose Return closes, as it has nothing to wait for, and a
     // step held on it then leaves by itself. A reader that takes the
     // question and never answers leaves the place saying "...", as the row

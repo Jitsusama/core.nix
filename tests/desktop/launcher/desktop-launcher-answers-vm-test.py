@@ -1133,7 +1133,11 @@ def calendars_from_now(desktop: Desktop) -> None:
     desktop.down_to("Calendars")
     desktop.step_in()
     calendars = ["Chinese", "Japanese", "Hebrew", "Islamic"]
-    desktop.launcher_until(lambda shown: shown["rows"][: len(calendars)] == calendars)
+    # The wait covers the reader's whole start, given the 60 s a restart gives it.
+    desktop.launcher_until(
+        lambda shown: shown["rows"][: len(calendars)] == calendars,
+        timeout=dt.timedelta(seconds=60),
+    )
     desktop.close_launcher()
 
 
