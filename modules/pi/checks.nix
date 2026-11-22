@@ -378,6 +378,15 @@ import ./host-checks.nix args
         touch $out
       '';
 
+  # A hosted pi's bundle has a host entry, built into its own chunks, so a
+  # host loads pi and the durable runtime as one module graph: one copy of
+  # pi-ai, with less heap and CPU than loading the same modules file by file.
+  pi-hosted-loads-one-bundle = pkgs.runCommandLocal "pi-hosted-loads-one-bundle" { } ''
+    HOME=$TMPDIR ${lib.getExe pkgs.nodejs} --no-warnings \
+      ${./tests/pi-hosted-loads-one-bundle.mjs} ${hostedPi}/lib/node_modules/pi-monorepo
+    touch $out
+  '';
+
   # A hosted pi's screen stays in its own conversation: quitting or a crash
   # ends only that screen and what it was doing, a stopped screen builds
   # nothing for an extension and disposes the footer, header and editor one

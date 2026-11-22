@@ -1,0 +1,173 @@
+A host loads pi from its bundle, as one module graph with the durable
+runtime it drives.
+
+A host loading pi unbundled holds about 10 MB more heap a conversation
+and spends about three times the CPU importing it than pi's own bundle
+does, with the same exports. The bundle keeps pi-ai, pi-tui and
+pi-agent-core in its own chunks and hands them to extensions from its
+virtual modules, which it doesn't export; and durable, loaded beside
+it, would bring its own copy of pi-ai, whose session cleanups and
+UUIDv7 sequence are kept per copy. So the bundle gains a host entry,
+built in the main split build so that it shares the bundle's chunks:
+the virtual modules, the built-in extensions, project trust, durable's
+main, SQLite and Node environment entries, and chord's context, each
+from the file an unbundled host loads, with hostEntryVersion 1.
+
+The host's own code imports some of those libraries as well, the
+viewers' terminal pi-tui among them, and a second copy would split the
+state they keep. So each library the virtual modules hand out under
+@earendil-works/ also gets host-modules/<name>.js, re-exporting the
+bundle's copy, for the host to resolve its imports to. The build fails
+when the virtual modules hand out a library with no such file, or when
+a durable or chord module that finds files through import.meta.url
+enters the bundle.
+
+diff --git a/scripts/build-coding-agent-bundle.mjs b/scripts/build-coding-agent-bundle.mjs
+index d2f622d..49f423a 100644
+--- a/scripts/build-coding-agent-bundle.mjs
++++ b/scripts/build-coding-agent-bundle.mjs
+@@ -27,6 +27,89 @@ const allowedExternalPackages = new Set([
+ 	"supports-color",
+ ]);
+ 
++// What a pi host loads beside the coding agent's main entry, emitted as the
++// bundle's host entry. Built in the main split build, it shares the bundle's
++// chunks, so the host, the durable runtime it drives and the extensions pi
++// loads hold one copy of pi-ai, pi-tui and pi-agent-core, and of the state
++// some of their modules keep (pi-ai's session cleanups, its UUIDv7
++// sequence). Loaded beside the bundle instead, durable would bring copies of
++// its own. Each path is the file a host loads from an unbundled install.
++const durableDistDir = join(repoRoot, "packages", "durable", "dist");
++const chordDistDir = join(repoRoot, "packages", "chord", "dist");
++const extensionsDistDir = join(codingAgentDistDir, "core", "extensions");
++const hostEntryVersion = 1;
++const hostEntryExports = [
++	["VIRTUAL_MODULES", join(extensionsDistDir, "virtual-modules.js")],
++	["builtInExtensions", join(codingAgentDistDir, "extensions", "index.js")],
++	["resolveProjectTrusted", join(codingAgentDistDir, "core", "project-trust.js")],
++];
++const hostEntryNamespaces = [
++	["durable", join(durableDistDir, "index.js")],
++	["durableSqlite", join(durableDistDir, "storage", "sqlite", "node.js")],
++	["durableNodeEnv", join(durableDistDir, "env", "node.js")],
++	["chordContext", join(chordDistDir, "context", "index.js")],
++];
++const hostEntrySource = hostEntryExports
++	.map(([name, file]) => `export { ${name} } from ${JSON.stringify(file)};`)
++	.concat(hostEntryNamespaces.map(([name, file]) => `export * as ${name} from ${JSON.stringify(file)};`))
++	.concat(`export const hostEntryVersion = ${hostEntryVersion};`)
++	.join("\n");
++
++// The host's own code imports some of these libraries too, the viewers'
++// terminal pi-tui among them, and a second copy would split the state they
++// keep: pi-tui's kitty flag, set on one copy, goes unread by pi's key reader
++// on the other. So each library VIRTUAL_MODULES hands extensions under
++// @earendil-works/ gets a file of its own, host-modules/<name>.js, that
++// re-exports the copy VIRTUAL_MODULES holds, imported as virtual-modules.js
++// imports it, for the host to resolve its imports to. None of them has a
++// default export for `export *` to drop.
++const hostModules = {
++	"pi-agent-core": "@earendil-works/pi-agent-core",
++	"pi-tui": "@earendil-works/pi-tui",
++	"pi-ai": "./pi-ai-extension-view.js",
++	"pi-ai/compat": "./pi-ai-extension-view.js",
++	"pi-ai/models": "@earendil-works/pi-ai/models",
++	"pi-ai/oauth": "@earendil-works/pi-ai/oauth",
++	"pi-ai/providers/all": "@earendil-works/pi-ai/providers/all",
++	"pi-coding-agent": "../../index.js",
++};
++
++const hostEntryPlugin = {
++	name: "pi-host-entry",
++	setup(build) {
++		build.onResolve({ filter: /^pi-host-entry$/ }, () => ({ namespace: "pi-host-entry", path: "pi-host-entry" }));
++		build.onLoad({ filter: /.*/, namespace: "pi-host-entry" }, () => ({
++			contents: hostEntrySource,
++			loader: "js",
++			resolveDir: codingAgentDir,
++		}));
++		build.onResolve({ filter: /^pi-host-module:/ }, ({ path }) => ({
++			namespace: "pi-host-module",
++			path: path.slice("pi-host-module:".length),
++		}));
++		build.onLoad({ filter: /.*/, namespace: "pi-host-module" }, ({ path }) => ({
++			contents: `export * from ${JSON.stringify(hostModules[path])};`,
++			loader: "js",
++			resolveDir: extensionsDistDir,
++		}));
++	},
++};
++
++// A module that finds a file beside itself through import.meta.url finds
++// nothing once bundled, so none of durable's or chord's may enter the
++// bundle: Photon's images, which start a worker that way, would fail only
++// at first use.
++function refuseBundledAssetReaders(metafile) {
++	const readers = Object.keys(metafile.inputs).filter(
++		(input) =>
++			/(?:^|\/)packages\/(?:durable|chord)\/dist\//.test(input) &&
++			readFileSync(resolve(repoRoot, input), "utf8").includes("import.meta.url"),
++	);
++	if (readers.length > 0) {
++		throw new Error(`The host entry bundled modules that find files beside themselves: ${readers.join(", ")}`);
++	}
++}
++
+ const lazyJitiPlugin = {
+ 	name: "lazy-jiti-transform",
+ 	setup(build) {
+@@ -141,6 +224,9 @@ for (const entry of [
+ 	join(codingAgentDistDir, "cli.js"),
+ 	join(codingAgentDistDir, "index.js"),
+ 	join(codingAgentDistDir, "rpc-entry.js"),
++	...hostEntryExports.map(([, file]) => file),
++	...hostEntryNamespaces.map(([, file]) => file),
++	join(extensionsDistDir, "pi-ai-extension-view.js"),
+ 	join(codingAgentDistDir, "utils", "image-resize-worker.js"),
+ 	join(codingAgentDistDir, "extensions", "codemode", "worker.js"),
+ 	join(aiDistDir, "api", "bedrock-converse-stream.js"),
+@@ -156,14 +242,19 @@ mkdirSync(bundleDir, { recursive: true });
+ 
+ const mainResult = await build({
+ 	...commonBuildOptions(),
+-	entryNames: "[name]",
++	// [dir] keeps the folders an entry's name gives, host-modules/pi-ai/compat
++	// among them; the other entries name none.
++	entryNames: "[dir]/[name]",
+ 	entryPoints: {
+ 		"cli-runtime": join(codingAgentDistDir, "cli.js"),
+ 		index: join(codingAgentDistDir, "index.js"),
+ 		"rpc-entry": join(codingAgentDistDir, "rpc-entry.js"),
++		host: "pi-host-entry",
++		...Object.fromEntries(Object.keys(hostModules).map((name) => [`host-modules/${name}`, `pi-host-module:${name}`])),
+ 	},
+ 	outdir: bundleDir,
+ 	chunkNames: "chunks/[name]-[hash]",
++	plugins: [...commonBuildOptions().plugins, hostEntryPlugin],
+ 	splitting: true,
+ });
+ 
+@@ -171,6 +262,23 @@ const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/
+ const oauthLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/auth/oauth/load.js");
+ const imageResizeOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/utils/image-resize.js");
+ const configOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/config.js");
++refuseBundledAssetReaders(mainResult.metafile);
++const handedOut = [
++	...readFileSync(join(extensionsDistDir, "virtual-modules.js"), "utf8").matchAll(/"@earendil-works\/([^"]+)"\s*:/g),
++]
++	.map(([, name]) => name)
++	.sort();
++if (handedOut.join() !== Object.keys(hostModules).sort().join()) {
++	throw new Error(
++		`VIRTUAL_MODULES hands extensions ${handedOut.join(", ")}, but the host modules are ${Object.keys(hostModules).join(", ")}`,
++	);
++}
++const unwritten = Object.keys(hostModules).filter(
++	(name) => !existsSync(join(bundleDir, "host-modules", `${name}.js`)),
++);
++if (unwritten.length > 0) {
++	throw new Error(`The bundle has no host module for ${unwritten.join(", ")}`);
++}
+ if (dirname(bedrockLoaderOutput) !== dirname(oauthLoaderOutput)) {
+ 	throw new Error("Bedrock and OAuth lazy loaders were emitted into different directories");
+ }
