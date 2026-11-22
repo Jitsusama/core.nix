@@ -20,7 +20,7 @@
 // messages each end sent and of what kinds, never what they said, with a
 // strength the map fades to now. A feeding (its `fed` kind) is who fed
 // whom, when and the kind in a word, never the change itself; who started
-// each cell is read off its forage (lineage.ts).
+// each cell is read off its record, else its forage (lineage.ts).
 
 import {
   type Fields,
@@ -479,7 +479,7 @@ function nowOf(heard: Heard, at: number): Now {
     waits: waitsOf(heard.unanswered),
     ties: tiesOf(heard.tie, at),
     fed: fedOf(heard.fed, at),
-    started: startedOf(heard.forage),
+    started: startedOf(heard.cell, heard.forage),
     foraged: foragedOf(heard.forage),
   };
   // Every field is untyped JSON from the node, and plain keeps its shape.

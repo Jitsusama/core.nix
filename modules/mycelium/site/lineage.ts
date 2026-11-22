@@ -1,9 +1,10 @@
-// Who started each cell, from its forage (the node's `forage` kind): the
-// cell that asked this machine's node to start it, else the orchestrator
-// its presence names. Nothing of a forage crosses a link, so a node says
-// it only of its own machine's cells, and the map grows one network out
-// of another only from those until the cell itself carries it. From that,
-// which network grows out of which, as a hypha branches from another.
+// Who started each cell: the cell whose ask started it, from the book of
+// starts kept by the node that started it, else the orchestrator its
+// presence names. Each cell's own record says so on every machine, since
+// links carry it; a node too old to say it there says it only in its
+// forages (the node's `forage` kind), which never cross a link, so only
+// this machine's cells are known that way. From that, which network grows
+// out of which, as a hypha branches from another.
 
 import { type Held, object, text } from "../../local-sites/kit/records.ts";
 
@@ -31,24 +32,30 @@ interface Grown {
 const collate = new Intl.Collator("en-CA").compare;
 
 /**
- * Who started each cell a forage is held for; none at all when the node
- * serves no forages, so a node too old to serve them reads as one that
- * says nothing of who started whom. A cell said to have started itself
- * names nobody.
+ * Who started each cell: its own record's word first, which reaches every
+ * machine, then its forage's for a cell whose record says nothing, as an
+ * older node's does. None at all when no cell's record names a starter and
+ * the node serves no forages, so a node too old for either reads as one
+ * that says nothing of who started whom. A cell said to have started
+ * itself names nobody.
  */
-function startedOf(held: Held | undefined): Started[] | null {
-  if (held === undefined) {
+function startedOf(cells: Held, forages: Held | undefined): Started[] | null {
+  const by = new Map<string, string>();
+  const say = (cell: string | undefined, starter: string | undefined): void => {
+    if (cell && starter && starter !== cell && !by.has(cell)) {
+      by.set(cell, starter);
+    }
+  };
+  for (const record of cells.all()) {
+    say(text(record, "name"), text(record, "started_by"));
+  }
+  if (forages === undefined && by.size === 0) {
     return null;
   }
-  const started: Started[] = [];
-  for (const record of held.all()) {
-    const cell = text(record, "cell");
-    const by = text(object(record, "lineage") ?? {}, "started_by");
-    if (cell && by && by !== cell) {
-      started.push({ cell, by });
-    }
+  for (const record of forages?.all() ?? []) {
+    say(text(record, "cell"), text(object(record, "lineage") ?? {}, "started_by"));
   }
-  return started;
+  return [...by].map(([cell, starter]) => ({ cell, by: starter }));
 }
 
 /**

@@ -14,7 +14,8 @@ steps out past its own size, gather the talk between two networks into one
 line until it or a cell it touches opens,
 draw a receptor's feeding of a cell while the node says it and not after,
 grow one network out of another while a forage says a cell of the one
-started a cell of the other,
+started a cell of the other, and across machines while the cell's own
+record says so,
 answer a key of each kind keys.ts decides (the keys dialog, find and its
 field, stepping through what was found, Escape's order, the walk, the
 machines, Now and Escape closing it, the view zoomed about its middle,
@@ -1522,6 +1523,46 @@ def test_a_network_whose_cell_another_started_grows_out_of_it(
             "data-branch-of", re.compile("."), timeout=PACE_MS
         )
         expect(foraged, "the cell's drawer kept a forage that went").to_have_count(0)
+    finally:
+        opened.close()
+
+
+def test_a_cell_whose_record_names_its_starter_grows_a_branch_across_machines(
+    browser: Browser, mycelium_served: Served, mycelium_node: StandIn
+) -> None:
+    # HERON1 runs on osprey and SKIFF1 on kestrel, and this node serves no
+    # forages, so only the cell's record can say who started it.
+    root, _ = mycelium_served
+    opened = Opened(browser, f"{root}mycelium/#net={GROWN}", SIZES[-1], "light")
+    try:
+        page = opened.page
+        the_map_stands(page, "live")
+        hub = page.locator(f'#world [data-key="h:{GROWN}"]')
+        expect(hub, "the network to grow was never drawn").to_have_count(1, timeout=PACE_MS)
+        page.wait_for_timeout(REDRAWN_MS)
+        expect(hub, "a network nobody else started was drawn as a branch").not_to_have_attribute(
+            "data-branch-of", re.compile(".")
+        )
+        heard = int(datetime.now(UTC).timestamp() * 1000)
+        said = {"key": f"cell:{GROWN_CELL}", "kind": "cell", "heard": heard}
+        mycelium_node.tell(
+            "cell", changed=[{**said, "started_by": GROWN_BY, "started_by_from": "book"}]
+        )
+        expect(hub, "a starter on another machine never grew the branch").to_have_attribute(
+            "data-branch-of", GROWN_FROM, timeout=PACE_MS
+        )
+        the_map_counts(page, COUNTED, "a branch grown across machines changed the count")
+        body = page.locator("#panel-body")
+        expect(body, "the branch's drawer never said whose start grew it").to_contain_text(
+            f"Started by {GROWN_BY_TITLE}: 1 of its 2 cells", timeout=PACE_MS
+        )
+        found = page.evaluate((HERE / "site-checks.js").read_text())
+        assert found == [], f"site-checks.js on a branch grown across machines found {found}"
+        # Once the record stops naming its starter, the branch goes.
+        mycelium_node.tell("cell", changed=[{**said, "started_by": None, "started_by_from": None}])
+        expect(hub, "the branch outlived the word that grew it").not_to_have_attribute(
+            "data-branch-of", re.compile("."), timeout=PACE_MS
+        )
     finally:
         opened.close()
 

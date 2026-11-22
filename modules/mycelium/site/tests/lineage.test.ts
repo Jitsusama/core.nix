@@ -1,8 +1,9 @@
-// Each cell of this machine that works on a quest has a forage (the node's
-// `forage` kind), whose lineage says who started it: these prove what the
-// map keeps of that, that a node too old to serve forages reads as one
-// that says nothing of who started whom, and which network grows out of
-// which from it.
+// Each cell's record says who started it, on every machine, and each cell
+// of this machine that works on a quest has a forage (the node's `forage`
+// kind), whose lineage says so too: these prove what the map keeps of
+// that, that the record's word comes first, that a node too old to say
+// either reads as one that says nothing of who started whom, and which
+// network grows out of which from it.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
@@ -29,9 +30,15 @@ function forage(
   };
 }
 
-/** The four watches the map waits on, empty, and the forage kind's, told `these`. */
-function told(these: readonly object[] | undefined) {
+/** A cell's record as the node serves it, on `machine`, its fields as given. */
+function record(name: string, machine: string, more: Record<string, unknown> = {}) {
+  return { key: `cell:${name}`, kind: "cell", heard: AT, name, type: "session", machine, ...more };
+}
+
+/** The four watches the map waits on, the cells told `cells`, and the forages told `these`. */
+function told(these: readonly object[] | undefined, cells: readonly object[] = []) {
   const heard = { network: new Held(), cell: new Held(), machine: new Held(), message: new Held() };
+  heard.cell.took({ records: cells });
   if (these === undefined) {
     return heard;
   }
@@ -43,6 +50,35 @@ function told(these: readonly object[] | undefined) {
 it("a node that serves no forage says nothing of who started whom, not that nobody did", () => {
   assert.equal(nowOf(told(undefined), AT).started, null);
   assert.deepEqual(nowOf(told([]), AT).started, []);
+});
+
+it("a cell's own record names its starter on any machine, where no forage is served", () => {
+  const cells = [
+    record("HERON1", "osprey", { started_by: "SKIFF1", started_by_from: "book" }),
+    record("SKIFF1", "kestrel"),
+  ];
+  assert.deepEqual(nowOf(told(undefined, cells), AT).started, [{ cell: "HERON1", by: "SKIFF1" }]);
+});
+
+it("a cell's own record is believed before its forage, which fills in where it is silent", () => {
+  const cells = [record("HERON1", "osprey", { started_by: "SKIFF1" }), record("TERN03", "kestrel")];
+  const these = [
+    forage("HERON1", { started_by: "GULL01" }),
+    forage("TERN03", { started_by: "TERN01" }),
+  ];
+  assert.deepEqual(nowOf(told(these, cells), AT).started, [
+    { cell: "HERON1", by: "SKIFF1" },
+    { cell: "TERN03", by: "TERN01" },
+  ]);
+});
+
+it("a record naming itself, a blank or nobody, with no forage served, says nothing of whom", () => {
+  const cells = [
+    record("SELF01", "kestrel", { started_by: "SELF01" }),
+    record("BLANK1", "kestrel", { started_by: "" }),
+    record("ALONE1", "osprey"),
+  ];
+  assert.equal(nowOf(told(undefined, cells), AT).started, null);
 });
 
 it("a cell's starter is kept as the two addresses, never the rest of its forage", () => {

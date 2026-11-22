@@ -39,9 +39,10 @@ Nothing on it acts on the network.
   more of its cells than any other, and its drawer names them. A branch
   lasts only while the cell that started it is on the map, since that
   cell's network is known from where it is drawn. Who started a cell is
-  known only of this machine's cells for now, so each machine's map grows
-  branches only from its own cells, and two machines' maps of one realm
-  can differ.
+  said by the node that started it and carried to every machine, so a
+  branch grows across machines alike. A node too old to say so of its
+  cells says it only of its own machine's, so a realm with such a node in
+  it grows branches from that machine's cells only on that machine's map.
 - **Lines thin as the map steps out past its own size.** What each line
   carries past a hairline thins with the zoom, as the cells shrink with
   it, so the cells read first: a heavier line still reads heavier than a

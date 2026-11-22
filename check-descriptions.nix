@@ -2380,7 +2380,8 @@
     from the balance's latest reading, none when it is past three minutes old, has no time or is
     not served, what a receptor fed a cell, kept for ten minutes and up to a minute ahead, the
     map drawing again when the first balance or feeding ends, who started each cell from its
-    forage, none where no forage is served and none for a cell started by itself or by nobody,
+    own record on any machine, else its forage, none where neither says and none for a cell
+    started by itself or by nobody,
     a network the node sets within none growing out of the one whose cells started more of its
     cells than any other, a tie going by name, where the node sets a network standing, no start
     from inside it counting, of two that started each other's cells the stronger the trunk and
@@ -2411,7 +2412,9 @@
     feeding of a cell drawn with both drawers saying it and leaving once its ten minutes end or the
     node drops it, a network grown out of another as its branch once a forage says a cell of the
     other started one of its own, its hub laid out again as a branch, both drawers saying so and
-    the branch going with the forage, the builders standing under the machines in rounded boxes,
+    the branch going with the forage, and grown across machines once a cell's own record names
+    its starter on another, going once it stops, the builders standing under the machines in
+    rounded boxes,
     dashed while taking no builds, their words read unopened, opened by link and let go by m,
     a key of each
     kind keys.ts decides answering (the keys dialog, find and a letter typed into it, n and N,
