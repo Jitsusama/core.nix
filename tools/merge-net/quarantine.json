@@ -86,5 +86,14 @@
     "owner_session": "orchestrator",
     "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
     "test": "still-windows-draw-nothing-as-animations-start-on-niri"
+  },
+  {
+    "at": 1795370179,
+    "commit": "f7ac6f58a5082a2265c27068330e16230cdb9f9b",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at f7ac6f58a508",
+    "test": "the-margin-cat-sits-above-its-column"
   }
 ]
