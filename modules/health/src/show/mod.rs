@@ -125,10 +125,11 @@ fn said_of(day: &Day) -> Vec<(&'static str, String)> {
             said.push((
                 "memory",
                 format!(
-                    "{name}: {}; largest {}, oldest {}; at most {} at {}",
+                    "{name}: {}; largest {}, oldest {}; {}at most {} at {}",
                     holding(held),
                     memory::size(held.largest_kib),
                     memory::age(held.oldest),
+                    typical(held),
                     memory::size(held.most_kib),
                     clock(held.most_at)
                 ),
@@ -170,6 +171,19 @@ fn the_dead(agents: &Agents) -> Option<String> {
 }
 
 /// What a watched program's copies held at the last look.
+/// A typical and a heavy copy at the last look, as cadence holds them,
+/// when any was running then.
+fn typical(held: &Memory) -> String {
+    if held.copies == 0 {
+        return String::new();
+    }
+    format!(
+        "typical {}, heavy {}; ",
+        memory::size(held.median_kib),
+        memory::size(held.p95_kib)
+    )
+}
+
 pub(super) fn holding(held: &Memory) -> String {
     format!(
         "{} hold {}, {} in swap",
@@ -663,7 +677,7 @@ mod tests {
         assert!(
             line.starts_with(
                 "memory    pi: 2 hold 6.0 GiB, 2.0 GiB in swap; largest 4.0 GiB, oldest 22 h; \
-                 at most 6.0 GiB at "
+                 typical 2.0 GiB, heavy 4.0 GiB; at most 6.0 GiB at "
             ),
             "{shown}"
         );

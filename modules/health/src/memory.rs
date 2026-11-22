@@ -126,6 +126,9 @@ pub fn seconds_of(ran: &str) -> Option<u64> {
 
 /// The last part of the path a process was started by; or, for a node
 /// running the pi host's program, the host or a conversation's process.
+/// A node is any program whose name starts so, since a runtime may name
+/// its own by its version, and a conversation counted as some other
+/// program is lost from its figures without a word.
 fn started_by(process: &Path) -> Option<String> {
     let started = fs::read(process.join("cmdline")).ok()?;
     let mut words = started
@@ -134,7 +137,7 @@ fn started_by(process: &Path) -> Option<String> {
     let first = words.next()?;
     let last_part = |word: &str| word.rsplit('/').next().unwrap_or(word).to_owned();
     let name = last_part(&first);
-    if name == "node" {
+    if name.starts_with("node") {
         let mut after = words.skip_while(|word| last_part(word) != HOST);
         if after.next().is_some() {
             let child = after.any(|word| word == "--child");
@@ -192,10 +195,10 @@ pub struct Memory {
     pub by_age: Vec<Aged>,
     /// What the middle copy held, in memory and swap, in KiB, by nearest
     /// rank: a typical copy, which the sum of them all hides once there
-    /// are a hundred.
+    /// are a hundred. 0 when none was running.
     pub median_kib: u64,
     /// What the copy only one in twenty held more than held, the same way:
-    /// a heavy copy.
+    /// a heavy copy. 0 when none was running.
     pub p95_kib: u64,
     /// The day's looks that saw a copy running.
     pub looks: u64,
@@ -372,6 +375,28 @@ mod tests {
             Some(50),
             0,
         );
+        process(
+            proc.path(),
+            24,
+            &format!("{node}\0server.js\0--child\0"),
+            Some(60),
+            0,
+        );
+        process(
+            proc.path(),
+            25,
+            &format!("{node}\0scripts/not-pi-host.ts\0--child\0"),
+            Some(70),
+            0,
+        );
+        process(
+            proc.path(),
+            26,
+            "/nix/store/z-nodejs-22/bin/node22\0scripts/pi-host.ts\0--child\0",
+            Some(100_000),
+            0,
+        );
+        process(proc.path(), 27, "vim\0scripts/pi-host.ts\0", Some(80), 0);
         let seen = look(proc.path());
         // /proc lists its processes in no order a test can count on.
         let kib = |name: &str| -> Vec<u64> {
@@ -381,15 +406,21 @@ mod tests {
         };
         assert_eq!(
             kib("pi-conversation"),
-            vec![200_000, 300_000],
-            "each conversation's own process, by the host's program and --child"
+            vec![100_000, 200_000, 300_000],
+            "each conversation's own process, by the host's program and --child, \
+             whatever its node is called"
         );
         assert_eq!(
             kib("pi-host"),
             vec![900_000],
             "the host, by its program alone"
         );
-        assert_eq!(seen.len(), 2, "another node program isn't pi: {seen:?}");
+        assert_eq!(
+            seen.len(),
+            2,
+            "another node program, one named like the host's, or the host's \
+             program open in an editor isn't pi: {seen:?}"
+        );
     }
 
     #[test]
@@ -454,18 +485,21 @@ mod tests {
     fn a_typical_copy_and_a_heavy_one_are_kept_each_look_and_over_the_day() {
         let copy = |kib| Held {
             kib,
-            swap_kib: 0,
+            swap_kib: kib / 10,
             age: 60,
         };
         let mut memory = Memory::default();
-        let twenty: Vec<Held> = (1..=20).map(|n| copy(n * 10)).collect();
-        memory.saw(1, &twenty);
+        // Twenty-one copies, out of order, so the middle and the heavy one
+        // fall between ranks and only a sort finds them.
+        let out_of_order: Vec<Held> = (1..=21).map(|n| copy(((n + 6) % 21 + 1) * 10)).collect();
+        memory.saw(1, &out_of_order);
         assert_eq!(
             (memory.median_kib, memory.p95_kib),
-            (100, 190),
-            "the tenth of twenty, and the nineteenth, by nearest rank"
+            (121, 220),
+            "the eleventh of twenty-one and the twentieth, by nearest rank, each \
+             in memory and swap together"
         );
-        memory.saw(2, &[copy(40)]);
+        memory.saw(2, &[copy(20)]);
         memory.saw(3, &[]);
         assert_eq!(
             (memory.median_kib, memory.p95_kib),
@@ -474,7 +508,7 @@ mod tests {
         );
         assert_eq!(
             (memory.looks, memory.median_sum_kib, memory.p95_sum_kib),
-            (2, 140, 230),
+            (2, 143, 242),
             "a look with no copy running says nothing of a copy's size"
         );
     }

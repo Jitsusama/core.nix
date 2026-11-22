@@ -187,9 +187,9 @@ fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
     figures.insert("feel.corrections".to_owned(), f64::from(corrections));
 }
 
-/// What each watched program held, in MiB: the most of any one copy, and a
-/// typical and a heavy copy, each the mean over the day's looks, when it was
-/// seen running.
+/// What each watched program held, in MiB: the most its copies held
+/// together, and a typical and a heavy copy, each the mean over the day's
+/// looks, when it was seen running.
 #[expect(
     clippy::cast_precision_loss,
     reason = "a figure only needs to be near: mebibytes and counts"
@@ -360,9 +360,12 @@ mod tests {
             "each the mean of the day's looks, in MiB"
         );
         assert_eq!(
-            figure("memory.quickshell.copy-median-mib"),
-            None,
-            "never seen running, so no typical copy"
+            (
+                figure("memory.quickshell.copy-median-mib"),
+                figure("memory.quickshell.copy-p95-mib"),
+            ),
+            (None, None),
+            "never seen running, so no typical or heavy copy"
         );
     }
 

@@ -398,25 +398,49 @@ mod tests {
     }
 
     #[test]
-    fn a_typical_conversation_past_its_bar_is_a_finding_and_a_heavy_one_isnt() {
-        let day = Day {
-            figures: figures(
-                r#"{"figures": {"memory.pi-conversation.copy-median-mib": 340.0,
-                    "memory.pi-conversation.copy-p95-mib": 900.0}}"#,
-            ),
+    fn a_typical_conversation_past_its_bar_is_a_finding_and_a_heavy_one_by_its_days() {
+        let day = |median: f64, p95: f64, most: f64, windowed: f64| Day {
+            figures: figures(&format!(
+                r#"{{"figures": {{"memory.pi-conversation.copy-median-mib": {median},
+                    "memory.pi-conversation.copy-p95-mib": {p95},
+                    "memory.pi-conversation.most-mib": {most},
+                    "memory.pi.copy-median-mib": {windowed}}}}}"#
+            )),
             ..Day::default()
         };
-        let judged = judge(&day, &[]);
-        let barred: Vec<(&str, Option<f64>)> = judged
+        let before = [
+            day(250.0, 600.0, 20_000.0, 200.0),
+            day(250.0, 600.0, 20_000.0, 200.0),
+            day(250.0, 600.0, 20_000.0, 200.0),
+        ];
+        let today = day(301.0, 900.0, 30_000.0, 300.0);
+        assert_eq!(
+            today.figures.len(),
+            4,
+            "a figure no measure holds: {today:?}"
+        );
+        let judged = judge(&today, &before);
+        let found: Vec<(&str, Option<f64>)> = judged
             .worse
             .iter()
             .map(|finding| (finding.key.as_str(), finding.bar))
             .collect();
         assert_eq!(
-            barred,
-            [("health.memory.pi-conversation.copy-median-mib", Some(300.0))],
-            "a typical conversation over 300 MiB wasn't held against its bar, \
-             or a heavy one with no bar was"
+            found,
+            [
+                ("health.memory.pi-conversation.copy-median-mib", Some(300.0)),
+                ("health.memory.pi-conversation.copy-p95-mib", None),
+                ("health.memory.pi-conversation.most-mib", None),
+                ("health.memory.pi.copy-median-mib", None),
+            ],
+            "a typical conversation a MiB past 300 wasn't held against its bar, \
+             or a heavy one, all of them or a windowed pi against their days"
+        );
+        let at_its_bar = judge(&day(300.0, 600.0, 20_000.0, 200.0), &before);
+        assert!(
+            at_its_bar.worse.is_empty(),
+            "a typical conversation at its bar is past it: {:?}",
+            at_its_bar.worse
         );
     }
 
