@@ -373,10 +373,15 @@ mod tests {
             0,
         );
         let seen = look(proc.path());
-        let kib = |name: &str| -> Vec<u64> { seen[name].iter().map(|held| held.kib).collect() };
+        // /proc lists its processes in no order a test can count on.
+        let kib = |name: &str| -> Vec<u64> {
+            let mut kib: Vec<u64> = seen[name].iter().map(|held| held.kib).collect();
+            kib.sort_unstable();
+            kib
+        };
         assert_eq!(
             kib("pi-conversation"),
-            vec![300_000, 200_000],
+            vec![200_000, 300_000],
             "each conversation's own process, by the host's program and --child"
         );
         assert_eq!(

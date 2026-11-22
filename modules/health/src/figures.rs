@@ -12,6 +12,7 @@ use serde::Serialize;
 
 use crate::day::{Boot, Day, Thing};
 use crate::feel::Pain;
+use crate::memory::Memory;
 use crate::show::KINDS;
 use crate::typing;
 
@@ -96,23 +97,7 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         crashes.saturating_sub(his) as f64,
     );
     felt(&day.feel, &mut figures);
-    for (name, memory) in &day.memory {
-        figures.insert(
-            format!("memory.{name}.most-mib"),
-            memory.most_kib as f64 / 1024.0,
-        );
-        if memory.looks > 0 {
-            let mean = |sum: u64| sum as f64 / memory.looks as f64 / 1024.0;
-            figures.insert(
-                format!("memory.{name}.copy-median-mib"),
-                mean(memory.median_sum_kib),
-            );
-            figures.insert(
-                format!("memory.{name}.copy-p95-mib"),
-                mean(memory.p95_sum_kib),
-            );
-        }
-    }
+    held(&day.memory, &mut figures);
     figures.insert("agents.died".to_owned(), day.agents.died.len() as f64);
     figures.insert(
         "defunct.most-under-one-parent".to_owned(),
@@ -200,6 +185,33 @@ fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
     let corrections: u32 = feel.iter().map(|pain| pain.signs.corrections).sum();
     figures.insert("feel.stopped".to_owned(), f64::from(stopped));
     figures.insert("feel.corrections".to_owned(), f64::from(corrections));
+}
+
+/// What each watched program held, in MiB: the most of any one copy, and a
+/// typical and a heavy copy, each the mean over the day's looks, when it was
+/// seen running.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a figure only needs to be near: mebibytes and counts"
+)]
+fn held(memory: &BTreeMap<String, Memory>, figures: &mut BTreeMap<String, f64>) {
+    for (name, memory) in memory {
+        figures.insert(
+            format!("memory.{name}.most-mib"),
+            memory.most_kib as f64 / 1024.0,
+        );
+        if memory.looks > 0 {
+            let mean = |sum: u64| sum as f64 / memory.looks as f64 / 1024.0;
+            figures.insert(
+                format!("memory.{name}.copy-median-mib"),
+                mean(memory.median_sum_kib),
+            );
+            figures.insert(
+                format!("memory.{name}.copy-p95-mib"),
+                mean(memory.p95_sum_kib),
+            );
+        }
+    }
 }
 
 /// The most any disk was in use, and each by its mount, so a full one is
