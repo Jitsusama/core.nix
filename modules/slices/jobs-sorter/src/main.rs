@@ -831,8 +831,9 @@ struct Ranks {
 }
 
 /// The windows a sorter before this one held, to give back those not
-/// wanted now; none while focus isn't followed, as nothing would give
-/// them back ([`holds::Holding::left`]).
+/// wanted now, and which of them it held with a hard floor, as their
+/// memory.min says; none while focus isn't followed, as nothing would
+/// give them back ([`holds::Holding::left`]).
 fn left_held(
     following: Option<&focus::Following>,
     under: &[PathBuf],
@@ -842,11 +843,16 @@ fn left_held(
         return holds::Holding::default();
     }
     let scopes = under.iter().flat_map(|slice| homes(slice, prefixes));
-    holds::Holding::left(scopes, |scope| {
-        fs::read_to_string(scope.join("memory.low"))
+    let read = |scope: &Path, file: &str| -> Option<u64> {
+        fs::read_to_string(scope.join(file))
             .ok()
-            .and_then(|low| low.trim().parse().ok())
-    })
+            .and_then(|value| value.trim().parse().ok())
+    };
+    holds::Holding::left(
+        scopes,
+        |scope| read(scope, "memory.low"),
+        |scope| read(scope, "memory.min").is_some_and(|min| min > 0),
+    )
 }
 
 /// The windows a sorter before this one kept in memory, as their
