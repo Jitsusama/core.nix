@@ -735,12 +735,16 @@ ended=$(how_many '^selected: nothing')
 press gf
 logged '^selected: nothing' $((ended + 1))
 logged '^said: E447: Can.t find file "Some of it is on .*" in path' 1
-# Over two lines, as Vim's, it names none.
-press Vj
+# Over two lines, as Vim's, it names none, even with its cursor on the
+# lede's start, where the link after it would be gf's without a selection.
+press 0
+press jVk
 ended=$(how_many '^selected: nothing')
+files=$(how_many '^file: ')
 press gf
 logged '^selected: nothing' $((ended + 1))
 logged '^said: E446: No file name under cursor' 1
+[ "$(how_many '^file: ')" = "$files" ] || fail "gf over two lines went to a file"
 
 # gf opens the file the top's link names, and Ctrl+] follows it.
 press gg

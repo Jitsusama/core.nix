@@ -407,6 +407,47 @@ fn a_selection_names_what_it_holds_on_one_line_as_vims_v_gf_takes_it() {
 }
 
 #[test]
+fn a_name_the_page_wraps_is_still_on_one_line_of_the_file() {
+    let page = Layout::new(
+        vec![
+            line(20.0, "Some words wrap "),
+            line(41.0, "here, and hy\u{ad}"),
+            line(62.0, "phens too."),
+            line(100.0, "Its own line."),
+            line(121.0, "And another."),
+        ],
+        vec![unit(20.0, 1, 1), unit(100.0, 3, 4)],
+        &[5.0, 90.0],
+        "Some words wrap here, and hyphens too.\n\nIts own line.\nAnd another.\n".into(),
+    );
+    let named = |kind, from, to| {
+        let mut selection = Selection::new(kind, from);
+        selection.cursor = to;
+        page.named(&selection)
+    };
+    assert_eq!(
+        named(Kind::Chars, at(0, 11), at(1, 3)).as_deref(),
+        Some("wrap here"),
+        "v over the page's wrap"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(1, 2), at(1, 2)).as_deref(),
+        Some("Some words wrap here, and hyphens too."),
+        "V gives the file's line over every page line it's set on"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(3, 0), at(3, 0)).as_deref(),
+        Some("Its own line."),
+        "V gives its own line of a paragraph the file breaks"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(3, 0), at(4, 0)),
+        None,
+        "V over two of the file's lines in one paragraph"
+    );
+}
+
+#[test]
 fn i_backtick_selects_a_code_spans_words() {
     let page = page();
     let mut s = Selection::new(Kind::Chars, at(4, 8));

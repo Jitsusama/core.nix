@@ -455,6 +455,23 @@ fn staying_says_the_page_as_vim_says_a_file_it_edits_again() {
         "a last line unended"
     );
     assert_eq!(file_info(page, ""), "\"page.md\" 0L, 0B", "empty");
+    let unread = || -> std::io::Result<String> { panic!("the disk read with the lines in") };
+    assert_eq!(
+        staying(page, Some("Shown.\n"), unread),
+        "\"page.md\" 1L, 7B",
+        "the words the lines were read from"
+    );
+    assert_eq!(
+        staying(page, None, || Ok("On disk.\nTwo.\n".into())),
+        "\"page.md\" 2L, 14B",
+        "the disk before the lines are read"
+    );
+    let gone = || Err(std::io::Error::from(std::io::ErrorKind::NotFound));
+    assert_eq!(
+        staying(page, None, gone),
+        "E484: Can't open file /notes/page.md",
+        "a file it can't read, never an empty count"
+    );
 }
 
 #[test]

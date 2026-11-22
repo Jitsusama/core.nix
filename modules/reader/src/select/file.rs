@@ -125,21 +125,38 @@ impl Layout {
 
     /// What Vim's `v_gf` takes as a file's name, as the page sets it, blanks
     /// round it left off: the words a selection of characters holds, or
-    /// the cursor's whole line for one of pieces, as Vim's V gives its
-    /// line. A selection over lines, as Vim's, or of blanks alone names
-    /// none.
+    /// the cursor's whole line of the file for one of pieces, as Vim's V
+    /// gives its line. Lines are the file's, as Vim's are its buffer's, so
+    /// a name the page wraps is still one. A selection over the file's
+    /// lines, as Vim's, or of blanks alone names none.
     pub fn named(&self, selection: &Selection) -> Option<String> {
         let (from, to) = selection.ends();
-        if from.line != to.line {
-            return None;
-        }
         let text = match selection.kind {
             Kind::Chars => self.page_text(from, to),
-            Kind::Pieces => self.chars[from.line]
-                .iter()
-                .filter(|c| **c != BREAK)
-                .collect(),
+            Kind::Pieces => {
+                // The page lines the page wrapped the cursor's line onto.
+                let wrapped = |above: usize| self.between(above, above + 1) != "\n";
+                let mut first = from.line;
+                while first > 0 && wrapped(first - 1) {
+                    first -= 1;
+                }
+                let mut last = to.line;
+                while last + 1 < self.lines.len() && wrapped(last) {
+                    last += 1;
+                }
+                let end = self.chars[last].len().saturating_sub(1);
+                self.page_text(
+                    Pos { line: first, ch: 0 },
+                    Pos {
+                        line: last,
+                        ch: end,
+                    },
+                )
+            }
         };
+        if text.contains('\n') {
+            return None;
+        }
         let name = text.trim();
         (!name.is_empty()).then(|| name.to_string())
     }

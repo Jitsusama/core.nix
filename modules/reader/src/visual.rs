@@ -65,7 +65,16 @@ impl App {
         let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
-                let source = std::fs::read_to_string(&file).unwrap_or_default();
+                // A file it can't read gives no lines, rather than lines
+                // matched to nothing, which would copy and count as empty;
+                // the page set from it has failed or is set again soon.
+                let source = match std::fs::read_to_string(&file) {
+                    Ok(source) => source,
+                    Err(error) => {
+                        eprintln!("reader: can't read {}: {error}", file.display());
+                        return;
+                    }
+                };
                 let _ = to.send((version, select::Layout::read(&page.frame, source, version)));
             });
         if let Err(error) = started {

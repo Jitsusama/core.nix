@@ -65,18 +65,19 @@ impl App {
                 if keys_logged() {
                     eprintln!("file: here");
                 }
-                // Counted from the page shown, as Vim counts its buffer,
-                // and from the disk only before its lines are read.
+                // Counted from the file as this page's lines were read from
+                // it, as Vim counts its buffer, and from the disk only
+                // before they're read.
                 let shown = (self.layout.as_ref())
                     .and_then(|layout| layout.of(self.painter.version))
-                    .map(|layout| layout.source().to_string());
-                match shown.map_or_else(|| std::fs::read_to_string(&self.file), Ok) {
-                    Ok(text) => self.say(&links::file_info(&self.file, &text)),
-                    Err(error) => {
+                    .map(crate::select::Layout::source);
+                let read = || {
+                    std::fs::read_to_string(&self.file).inspect_err(|error| {
                         eprintln!("reader: can't read {}: {error}", self.file.display());
-                        self.say(&format!("E484: Can't open file {}", self.file.display()));
-                    }
-                }
+                    })
+                };
+                let said = links::staying(&self.file, shown, read);
+                self.say(&said);
             }
             Some(links::Going::Heading(anchor)) => self.follow(&format!("#{anchor}")),
             Some(links::Going::File(file, heading)) => {

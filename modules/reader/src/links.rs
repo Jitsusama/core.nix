@@ -196,6 +196,20 @@ pub fn file_info(page: &Path, text: &str) -> String {
     format!("\"{name}\" {lines}L, {}B", text.len())
 }
 
+/// What gf says staying on the page: its file info counted from `shown`,
+/// the words its lines were read from, or from what `read` gives before
+/// they're read, and Vim's E484 when the file can't be read.
+pub fn staying(
+    page: &Path,
+    shown: Option<&str>,
+    read: impl FnOnce() -> std::io::Result<String>,
+) -> String {
+    match shown.map_or_else(read, |text| Ok(text.to_string())) {
+        Ok(text) => file_info(page, &text),
+        Err(_) => format!("E484: Can't open file {}", page.display()),
+    }
+}
+
 /// Where gf goes from a whole line, `from_pt` down the page, in a view
 /// ending at `foot_pt`: by the first of `linked` from there that names
 /// another file `is_file` finds, or the first path written on `lines`
