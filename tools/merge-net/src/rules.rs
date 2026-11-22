@@ -103,7 +103,7 @@ fn let_through(text: &str, after: &[String]) -> Result<Vec<String>, String> {
         .find(|(_, node)| {
             node.get("inputs")
                 .and_then(serde_json::Value::as_object)
-                .is_some_and(|inputs| inputs.values().any(|input| reads_one(input)))
+                .is_some_and(|inputs| inputs.values().any(&reads_one))
         });
     if let Some((key, _)) = reader {
         return Err(format!("its node {key} reads {named}"));
