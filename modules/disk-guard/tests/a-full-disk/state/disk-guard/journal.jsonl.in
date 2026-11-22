@@ -4,4 +4,4 @@
 {"at":@NOW-7240@,"band":"filling","end":"exhausted","event":"pass","freed":2147483648,"seconds":36.9}
 {"at":@NOW-90@,"band":"nearly-full","event":"action","kind":"target","outcome":"reclaimed","path":"/home/someone/src/an-app/target","reason":null,"size":19327352832}
 {"at":@NOW-85@,"band":"nearly-full","event":"action","kind":"trash","outcome":"failed","path":"/home/someone/.local/share/Trash/files/a-film.mkv","reason":"permission denied","size":4294967296}
-{"at":@NOW-80@,"band":"nearly-full","end":"reached","event":"pass","freed":19327352832,"seconds":12.4}
+{"at":@NOW-80@,"band":"nearly-full","end":"reached","event":"pass","freed":19327352832,"judged":2,"offered":2,"seconds":12.4,"surveyed":41.7,"why":"reach"}

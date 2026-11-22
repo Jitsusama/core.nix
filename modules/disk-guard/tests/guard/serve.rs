@@ -1,3 +1,10 @@
+//! The serving loop's scenarios: what the guard does step by step, what it
+//! tells the desktop, and what the system daemon answers.
+//!
+//! Long because it holds the scenarios of `src/serve.rs`, one file per
+//! source module as this folder's README says, and its cases share the one
+//! `Fake` desk and the guards built to step against it.
+
 use crate::procs::{link, stat, text};
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Places, Senses};
@@ -622,6 +629,50 @@ fn a_clear_asked_for_takes_its_folder_s_share_at_once_on_a_healthy_disk() {
     assert!(
         journal.contains("asked.txt") && journal.contains("reclaimed"),
         "the journal says what went: {journal}"
+    );
+    // Its pass says the clear set it going, was offered only what the ask
+    // holds, and the survey of the sources around it.
+    let clear = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .find(|line| line["event"] == "pass" && line["why"] == "clear")
+        .unwrap_or_else(|| panic!("a clear's pass: {journal}"));
+    assert_eq!(clear["offered"], 1, "{journal}");
+    assert!(clear["surveyed"].as_f64() > Some(0.0), "{journal}");
+}
+
+#[test]
+fn every_clear_one_survey_served_carries_its_seconds() {
+    // One walk serving several clears shows on each of their lines, so
+    // none reads as having needed no walk.
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    fs::create_dir_all(root.join("files")).unwrap();
+    fs::create_dir_all(root.join("info")).unwrap();
+    let mut asked = Vec::new();
+    for name in ["one.txt", "two.txt"] {
+        fs::write(root.join("files").join(name), vec![0u8; 3000]).unwrap();
+        let info = format!("[Trash Info]\nPath=/home/u/{name}\nDeletionDate=2099-01-01T08:00:00\n");
+        fs::write(root.join("info").join(format!("{name}.trashinfo")), info).unwrap();
+        let path = fs::canonicalize(root.join("files").join(name)).unwrap();
+        disk_guard::clears::ask(root, &path, 1.0).unwrap();
+        asked.push(path);
+    }
+    let mut guard = guard_at(root, "0%");
+    stepped(&mut guard, 2, &mut Fake::default());
+    assert!(asked.iter().all(|path| !path.exists()), "both asks went");
+    let journal = fs::read_to_string(root.join("journal.jsonl")).unwrap();
+    let seconds: Vec<Option<f64>> = journal
+        .lines()
+        .map(|line| serde_json::from_str::<serde_json::Value>(line).unwrap())
+        .filter(|line| line["event"] == "pass" && line["why"] == "clear")
+        .map(|line| line["surveyed"].as_f64())
+        .collect();
+    assert_eq!(seconds.len(), 2, "a pass for each ask: {journal}");
+    assert!(seconds[0].is_some(), "{journal}");
+    assert_eq!(
+        seconds[0], seconds[1],
+        "one walk, the same seconds: {journal}"
     );
 }
 

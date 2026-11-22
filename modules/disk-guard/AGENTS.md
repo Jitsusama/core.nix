@@ -221,9 +221,38 @@ or launchd, and [`home.nix`][2] the account's.
   journal` shows the account's guard and the machine's together, by time,
   each line saying whose: the machine's guard owns the store and what lies
   outside every home, so the account's alone never said where most of a
-  disk's room went. Any account may pass through the machine's state
-  folder to its journal but not list it, and every other file there is
-  saved as root's alone.
+  disk's room went. A pass's line says what set it going (`reach`,
+  `upkeep`, `garbage`, `producers`, `clear` or `collect`), how many things
+  it was handed, how many of those its windows made due and it judged,
+  each once, taken, kept or failed, and how long the survey that offered
+  them took, which its own seconds leave out, or null when none did. Each
+  pass a survey served carries its seconds, so passes at one time and the
+  same seconds shared one walk. Judged reads beside the line's end: a pass
+  that ended `exhausted` having judged none had nothing due, and one that
+  judged some and freed nothing kept or failed all it judged, which its
+  action lines tell apart. A reach that ended `reached` having judged none
+  was at its target already, and a stopped or failed pass may end before
+  judging any. In the day to 03:00 on 21 November, half the passes freed
+  nothing, and their lines couldn't say which. Offered is what that pass
+  was handed, so it differs by why: a clear is handed what its ask holds
+  that a clear takes; garbage alone, its batches, but beside another
+  disk's survey every offer on the store's disk; and an image's own pass,
+  its builds less those a disk reaching for room tried earlier in the
+  step. A reach's band is the band it reaches for, so a forecast reach
+  on a healthy disk reads `filling`. A survey's seconds take in the system
+  daemon's answer, up to ten seconds a try, and the git and
+  finished-predicate commands as well as the walk, so a jump of about ten
+  seconds is likelier a wait than a slow walk. A garbage pass counts as
+  the routine, so it puts off every disk's next six-hourly `upkeep`. The
+  table shows what
+  set a pass going; `--json` gives the counts and its survey's seconds.
+  `upkeep` covers every trigger of the routine, among them its own
+  retries: ten minutes after one that kept what only an unheard system
+  daemon could vouch for, and at the next spare step after one left
+  unfinished. A producers' or clear's survey that offers nothing makes no
+  pass, so its walk leaves no seconds. Any account may pass
+  through the machine's state folder to its journal but not list it, and
+  every other file there is saved as root's alone.
 - **Replaced builds.** The account's guard marks every target's `deps` with
   fanotify and keeps when each artifact was last opened in `uses.json`, since
   under noatime nothing on disk says. A replaced build is an older build

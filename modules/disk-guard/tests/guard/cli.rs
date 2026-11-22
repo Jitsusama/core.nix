@@ -502,18 +502,50 @@ fn the_journal_is_read_oldest_first_and_since_when_asked() {
     assert!(out.contains("reclaimed"), "{out}");
     let (_, out, _) = machine.run("journal --since 1h --json");
     assert_eq!(out.lines().count(), 1, "{out}");
-    // A pass says how it ended, what it freed and how long it took.
+    // A pass says what set it going, how it ended, what it freed and how
+    // long it took.
     let pass = format!(
-        r#"{{"event":"pass","at":{},"band":"nearly-full","end":"reached","freed":1073741824,"seconds":60.0}}"#,
+        r#"{{"event":"pass","at":{},"band":"nearly-full","end":"reached","freed":1073741824,"seconds":60.0,"why":"reach"}}"#,
         now - 30.0
     );
-    fs::write(machine.env.state.join("journal.jsonl"), format!("{pass}\n")).unwrap();
+    // A line from before passes said what set them going still reads.
+    let unexplained = format!(
+        r#"{{"event":"pass","at":{},"band":"filling","end":"exhausted","freed":0,"seconds":5.0}}"#,
+        now - 40.0
+    );
+    fs::write(
+        machine.env.state.join("journal.jsonl"),
+        format!("{unexplained}\n{pass}\n"),
+    )
+    .unwrap();
     let (_, said, _) = machine.run("journal");
+    let old = said
+        .lines()
+        .find(|row| row.ends_with("exhausted in 5 s"))
+        .unwrap_or_else(|| {
+            panic!("a pass from before its why was journaled should still be shown: {said}")
+        });
+    let whys = [
+        "reach",
+        "upkeep",
+        "garbage",
+        "producers",
+        "clear",
+        "collect",
+    ];
+    assert!(
+        !old.split_whitespace().any(|word| whys.contains(&word)),
+        "a pass that never said what set it going is given no why: {old}"
+    );
     // The newest entry, after what the rotated file still holds.
     let row = said.lines().last().unwrap_or_default();
     assert!(
         row.contains("pass") && row.contains("1.0 GiB") && row.ends_with("reached in 1 m"),
         "a pass should say it was one, what it freed, how it ended and how long it took: {said}"
+    );
+    assert!(
+        row.split_whitespace().any(|word| word == "reach"),
+        "a pass should say what set it going: {said}"
     );
     let answer: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
     assert_eq!(answer["schema"], "disk-guard.journal/1", "{out}");
