@@ -890,6 +890,8 @@ fn only_a_word_shaped_like_a_repository_names_one_cadence_cant_read() {
         "Landed `core` #6000.",
         "Landed this #6000",
         "Landed agentic-harness.pi #1958.",
+        "Landed agentic-harness-pi #1958.",
+        "Landed agentic-harness #1958.",
         "Landed Jitsusama/core.nix#6000.",
         "Landed shop/world#2507636.",
     ] {
@@ -908,12 +910,14 @@ fn only_a_word_shaped_like_a_repository_names_one_cadence_cant_read() {
             "{note:?} didn't read as naming a repository cadence can't read"
         );
     }
-    // Each way of naming core's change is read as core's, so its finding
-    // closes once it runs.
+    // Each way of naming core's change is read as core's, the mesh's group
+    // for it included, so its finding closes once it runs.
     for note in [
         "Landed `core` #6000.",
         "Landed Jitsusama/core.nix#6000.",
         "Landed core.nix #6000.",
+        "Landed core-nix #6000.",
+        "Landed #repo/core-nix #6000.",
     ] {
         assert_eq!(
             named(note, &repos),
@@ -1118,18 +1122,31 @@ fn a_lasting_part_holds_no_finding_while_the_rest_of_its_fix_waits() {
     };
     let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
     let lasting = "cadence can't tell what a pi host loads";
-    // One part not merged yet, then both merged with the other waiting on a
-    // switch: either way the owner still owes something.
+    let blind = "cadence can't list the pi hosts";
+    // One part not merged yet, beside one held for good or for the hour,
+    // then both merged with the other waiting on a switch or a reset:
+    // either way the owner still owes something, and is asked.
     for (merged, unrun) in [
         (
             BTreeSet::from([core(6000)]),
             BTreeMap::from([(core(6000), lasting)]),
         ),
         (
+            BTreeSet::from([core(6000)]),
+            BTreeMap::from([(core(6000), blind)]),
+        ),
+        (
             BTreeSet::from([core(6000), core(6001)]),
             BTreeMap::from([
                 (core(6000), lasting),
                 (core(6001), "the last switch doesn't carry it"),
+            ]),
+        ),
+        (
+            BTreeSet::from([core(6000), core(6001)]),
+            BTreeMap::from([
+                (core(6000), blind),
+                (core(6001), "a pi host failed and waits on a reset"),
             ]),
         ),
     ] {
@@ -1142,11 +1159,10 @@ fn a_lasting_part_holds_no_finding_while_the_rest_of_its_fix_waits() {
         let measure = findings.measured(&repos, &judged, NOW);
         assert!(
             (measure.now - 1.0).abs() < 1e-9
-                && measure
-                    .behind
-                    .iter()
-                    .any(|line| line.contains(" · OSPHT4") && !held_for_good(line)),
-            "a lasting part held a finding whose fix still waits: {} {:?}",
+                && measure.behind.iter().any(|line| line.contains(" · OSPHT4")
+                    && !held_for_good(line)
+                    && !held_unseen(line)),
+            "a part cadence can't see held a finding whose fix still waits: {} {:?}",
             measure.says,
             measure.behind
         );

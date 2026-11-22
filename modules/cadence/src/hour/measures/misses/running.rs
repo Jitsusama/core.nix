@@ -370,15 +370,19 @@ fn judge(
         unit: files.lines().any(|file| file == HOST_UNIT),
         program: false,
     };
+    let lacking = (!reaches.patches.is_empty() || reaches.unit)
+        .then(|| hosts(sha, reaches))
+        .flatten();
     // A fix to how core builds its runtime can't be seen in a runtime built
     // elsewhere, which copies only its patches, so it isn't told fixed;
-    // `changed` leaves the build out where it only listed the patches.
+    // `changed` leaves the build out where it only listed the patches. What
+    // the hosts are seen to lack beside it is still its owner's to mend.
     if files.lines().any(|file| file == HOSTED_PI) {
-        return Some(LOADS_UNSEEN);
+        return lacking
+            .filter(|why| !why.starts_with(UNSEEN))
+            .or(Some(LOADS_UNSEEN));
     }
-    (!reaches.patches.is_empty() || reaches.unit)
-        .then(|| hosts(sha, reaches))
-        .flatten()
+    lacking
 }
 
 /// Why the pi hosts lack a change that `reaches` them, if they do: each

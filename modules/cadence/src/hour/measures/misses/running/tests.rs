@@ -134,14 +134,31 @@ fn a_change_reaching_the_hosts_waits_on_them() {
     );
     // `changed` names core's runtime build only where it changed more than
     // its list of patches, which a runtime built elsewhere may lack beside
-    // the patch.
+    // the patch, though a host seen lacking the patch is its owner's still.
     let beside =
         |_: &str| Some("modules/pi/host-patches/x.patch\nmodules/pi/hosted-pi.nix".to_owned());
     assert_eq!(
         judge("core", at, Some("f00d"), all, beside, lack),
-        Some("cadence can't tell what a pi host loads"),
-        "a patch beside a change to core's runtime build was judged by the patch alone"
+        Some("runtime"),
+        "a host seen lacking a patch beside core's runtime build was held for good"
     );
+    for (seen, hosts) in [
+        (None, "lacking nothing"),
+        (Some("cadence can't list the pi hosts"), "unlisted"),
+    ] {
+        assert_eq!(
+            judge(
+                "core",
+                at,
+                Some("f00d"),
+                all,
+                beside,
+                move |_: &str, _: Reaches| seen
+            ),
+            Some("cadence can't tell what a pi host loads"),
+            "a patch beside core's runtime build, its hosts {hosts}, was judged by the patch alone"
+        );
+    }
     // A fix to how core builds its runtime, with no patch, can't be seen in
     // a runtime built elsewhere, while a note beside the patches reaches no
     // host at all.

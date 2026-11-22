@@ -56,8 +56,8 @@ fn repo_word(before: &str) -> String {
         .trim_matches(|c: char| !c.is_ascii_alphanumeric())
         .to_lowercase();
     match word.rsplit('/').next().unwrap_or_default() {
-        "core.nix" => "core".to_owned(),
-        "agentic-harness.pi" => "harness".to_owned(),
+        "core.nix" | "core-nix" => "core".to_owned(),
+        "agentic-harness.pi" | "agentic-harness-pi" | "agentic-harness" => "harness".to_owned(),
         other => other.to_owned(),
     }
 }
@@ -435,9 +435,15 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
             // A check merged but not yet running is held, as a measure holds
             // one, so its owner isn't asked again which check would catch it.
+            // A part seen unmerged is still its owner's to land, so nothing
+            // holds the line, and an unread main holds only what it hides.
+            let owed = changes
+                .iter()
+                .any(|change| !merged.contains(change) && !unread.contains(&change.repo));
             let note = changes
                 .iter()
-                .find(|change| unread.contains(&change.repo))
+                .filter(|_| !owed)
+                .find(|change| !merged.contains(*change))
                 .map(|change| {
                     format!(
                         ", though cadence couldn't read {}'s main to see its check",
@@ -445,26 +451,28 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
                     )
                 })
                 .or_else(|| {
-                    // A lasting reason speaks for the check only once all of
-                    // it merged and nothing else waits, or a fix half done
-                    // would be held for good while its owner still owes it.
+                    // Every part merged here. What its owner can mend speaks
+                    // first, then what an hour can, and a lasting reason only
+                    // when nothing else waits, or one would hide another.
                     let lasts = |why: &str| LASTING.iter().any(|it| why.starts_with(it));
                     let waiting = || {
                         changes
                             .iter()
+                            .filter(|_| !owed)
                             .filter_map(|change| Some((change, *unrun.get(change)?)))
                     };
-                    let whole = changes.iter().all(|change| merged.contains(change));
                     let (change, why) = waiting()
-                        .find(|&(_, why)| !lasts(why))
-                        .or_else(|| waiting().next().filter(|_| whole))?;
+                        .find(|&(_, why)| !why.starts_with(UNSEEN))
+                        .or_else(|| waiting().find(|&(_, why)| !lasts(why)))
+                        .or_else(|| waiting().next())?;
                     Some(format!(
                         "{HELD}{} #{}{UNRUN}{why}",
                         change.repo, change.number
                     ))
                 })
                 .or_else(|| {
-                    let (machine, change) = (elsewhere?, changes.iter().find(|c| ran(c))?);
+                    let machine = elsewhere.filter(|_| !owed)?;
+                    let change = changes.iter().find(|c| ran(c))?;
                     Some(format!(
                         "{HELD}{} #{}{UNRUN}its miss was on {machine}, and no one has said \
                          it runs there",
