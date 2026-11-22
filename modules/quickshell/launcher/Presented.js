@@ -3,7 +3,8 @@
 // on its own (Y2YBTS, 2026-11-11), so a slow update path is seen against Joel's 50 ms bar as keys
 // are, and a drawer from the key that selected its row (Joel, 2026-11-11 20:28: "the drawer in the
 // launcher and its time to appear needs to be kept to the same performance requirements as
-// everything else"). Changes.js says a daemon's changes with these. Apart from the shell, so
+// everything else"). ChangesPresented.js says a daemon's changes
+// with these. Apart from the shell, so
 // tests/pacing.qml holds it in Qt's own engine.
 .pragma library
 
@@ -390,6 +391,34 @@ function errorShown(error, whole) {
             : typedShown(typeof value === "string" ? value : JSON.stringify(value), false);
     }
     return quoted(told);
+}
+
+// Whom a link from outside named, as TalkTo.js's whom gives it: whole where `whole`, and
+// otherwise by its kind and how many letters the name it gave has, since a page wrote it.
+function whomShown(whom, whole) {
+    if (whole) {
+        return quoted(whom);
+    }
+    const named = whom?.address ?? whom?.name ?? whom?.said;
+    return named === undefined ? String(whom?.to) : `${whom?.to}, ${typedShown(named, false)}`;
+}
+
+// The rows a walk from outside or a terminal took, by their names where `whole`, and otherwise
+// each by its kind as rowShown says it, since a source named them.
+function pathShown(rows, whole) {
+    return whole ? quoted(rows.map(row => row.name).join(" \u203a "))
+        : rows.map(row => rowShown(row, false)).join(" \u203a ");
+}
+
+// The shell's own failure, as the engine threw it: whole where `whole`, and otherwise by its
+// error's name, since its message may quote what it failed on, or by letters where it has none.
+const errorName = /^[A-Z][A-Za-z]*$/;
+function failureShown(error, whole) {
+    if (whole) {
+        return quoted(String(error));
+    }
+    const name = error?.name;
+    return errorName.test(name ?? "") ? name : typedShown(String(error), false);
 }
 
 // The drawers presented since the launcher opened, a line a place, as a place's changes are, each

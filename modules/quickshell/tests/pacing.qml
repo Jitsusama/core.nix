@@ -1225,6 +1225,38 @@ QtObject {
         check(failures, "its line ends that JSON leaves raw escaped",
             Presented.errorShown({ said: "a\u2028launcher: b" }, true),
             '{"said":"a\\u2028launcher: b"}');
+        // A link from outside is a page's words, so its line says whom it
+        // named by kind and how many letters with reports off.
+        check(failures, "a link's session is said by its kind and letters with reports off",
+            Presented.whomShown({ to: "session", address: "LISTEN" }, false),
+            "session, 6 letters");
+        check(failures, "as is a network's name",
+            Presented.whomShown({ to: "network", name: "core-nix" }, false),
+            "network, 8 letters");
+        check(failures, "and a name nothing has",
+            Presented.whomShown({ to: "none", said: "Harbour" }, false), "none, 7 letters");
+        check(failures, "and the void by its kind alone, naming nothing",
+            Presented.whomShown({ to: "void" }, false), "void");
+        check(failures, "and whole while they're on, its line breaks escaped",
+            Presented.whomShown({ to: "none", said: "a\u2028launcher: b" }, true),
+            '{"to":"none","said":"a\\u2028launcher: b"}');
+        // A walk's rows are named by sources, so with reports off each is
+        // said by its kind, as a drawer's row is.
+        const walked = [{ name: "Networks", key: "place:networks" },
+            { name: "Harbour House", key: "wifi:Harbour House" }, { name: "Join" }];
+        check(failures, "a walk's rows are said by their kinds with reports off",
+            Presented.pathShown(walked, false), "place:networks \u203a wifi \u203a answer");
+        check(failures, "and quoted whole while they're on, so a name can't forge a line",
+            Presented.pathShown([{ name: "a\nlauncher: b" }], true), '"a\\nlauncher: b"');
+        // The shell's own failure may quote what it failed on.
+        check(failures, "the shell's failure is said by its kind with reports off",
+            Presented.failureShown(new SyntaxError("Unexpected token Harbour"), false),
+            "SyntaxError");
+        check(failures, "and a thrown word that isn't one by its letters",
+            Presented.failureShown("Harbour", false), "7 letters");
+        check(failures, "and whole while they're on, its line breaks escaped",
+            Presented.failureShown(new Error("a\nlauncher: b"), true),
+            '"Error: a\\nlauncher: b"');
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so
