@@ -86,8 +86,8 @@ in
     };
     scratch = lib.mkOption {
       type = lib.types.str;
-      default = "elsewhere-runs";
-      description = "The folder within the quest's scratch on a far machine that a job's copy runs in, taken away once it ends; a strict fence there writes nowhere else. Name no folder the quest shares, since a share carries only those and the handover, which keeps the copy on the far machine.";
+      default = ".elsewhere-runs";
+      description = "The one folder within the quest's scratch on a far machine that a job's copy runs in, taken away once it ends; a strict fence there writes nowhere else. Hidden, so no share carries a copy home; never the handover, which elsewhere refuses.";
     };
     realm = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

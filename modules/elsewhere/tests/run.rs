@@ -26,7 +26,9 @@ const SCRATCHES: &str = ".cache/pi/agentic-harness.pi/quest-workspace";
 /// folder a build fills. The run stands as a strict fence does: it starts
 /// in the `--folder` named, at its place under the far home, refuses to
 /// start in the home itself, and can write nothing in the far home outside
-/// that folder. Every ask is kept in `asked`, a line each.
+/// that folder, and ends 99 if it finds it can, as under root, so a fence
+/// that stopped holding fails every far test. Every ask is kept in
+/// `asked`, a line each.
 const MYCELIUM: &str = r#"#!/bin/sh
 echo "$@" >> "$REALM/asked"
 case "$1" in
@@ -58,6 +60,10 @@ cross "$here" "$far"
 echo "a login shell's welcome"
 start="$REALM/far/${folder#"$HOME"/}"
 chmod -R a-w "$REALM/far" && chmod -R u+w "$start"
+if touch "$REALM/far/.fenced" 2>/dev/null; then
+  chmod -R u+w "$REALM/far"
+  echo "the stand-in fence doesn't hold, as under root" >&2; exit 99
+fi
 (cd "$start" && HOME="$REALM/far" "$@")
 code=$?
 chmod -R u+w "$REALM/far"
@@ -119,7 +125,7 @@ impl Realm {
     fn bringing(&self, machine: &str, brings_back: &[&str]) {
         let settings = serde_json::json!({
             "machines": [machine],
-            "scratch": "elsewhere-runs",
+            "scratch": ".elsewhere-runs",
             "mycelium": self.root.join("bin/mycelium"),
             "kinds": {"check": {
                 "description": "a stand-in check",
@@ -257,7 +263,7 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
         .join("far")
         .join(SCRATCHES)
         .join(QUEST)
-        .join("elsewhere-runs");
+        .join(".elsewhere-runs");
     assert!(
         out.lines()
             .next()
@@ -459,7 +465,7 @@ fn a_job_placed_here_runs_here() {
     assert!(
         said(&told)
             .0
-            .contains(&format!("/far/{SCRATCHES}/{QUEST}/elsewhere-runs/")),
+            .contains(&format!("/far/{SCRATCHES}/{QUEST}/.elsewhere-runs/")),
         "--there didn't send the job away: {:?}",
         said(&told)
     );

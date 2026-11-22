@@ -14,8 +14,9 @@ onLinux {
   # elsewhere's tests run as it builds, against a stand-in realm: a job
   # mycelium places far goes by the quest's handover and mycelium's run,
   # never ssh or rsync, starts in the quest's scratch and runs in a copy
-  # within it, as a far strict fence allows, of its tracked files alone, those
-  # under a folder a share keeps home included, after its kind's setup, and
+  # of its tracked files alone, those under a folder a share keeps home
+  # included, made within it as a far strict fence allows, after its kind's
+  # setup, and
   # brings back what the kind names as plain files within the job's folder;
   # the far job's code is its own, and a bring-back that falls short says
   # whether another try can help; a job placed here, with no quest or that
@@ -62,7 +63,7 @@ onLinux {
       "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, or an account declaring none sends somewhere or lacks the program."
       (
         settings.machines == [ "far" ]
-        && settings.scratch == "elsewhere-runs"
+        && settings.scratch == ".elsewhere-runs"
         && check.programs == [ "tla-rs" ]
         && check.copies == "folder"
         && check.brings_back == [ "states" ]

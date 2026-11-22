@@ -51,7 +51,8 @@ pub struct Settings {
     pub machines: Vec<String>,
     /// The folder within the quest's scratch on a far machine that its
     /// copies run in: a strict fence there writes only the quest's
-    /// scratch, so a copy anywhere else in its home can't be made.
+    /// scratch, so a copy anywhere else in its home can't be made. Hidden
+    /// by default, so no share carries a copy home.
     pub scratch: String,
     /// The realm mycelium is asked about, or the one it's set to.
     pub realm: Option<String>,
@@ -64,7 +65,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             machines: Vec::new(),
-            scratch: "elsewhere-runs".to_owned(),
+            scratch: ".elsewhere-runs".to_owned(),
             realm: None,
             kinds: BTreeMap::new(),
             mycelium: "mycelium".to_owned(),
@@ -97,6 +98,12 @@ pub fn read(text: &str) -> Result<Settings, String> {
         if let Some(text) = value.get(key).and_then(Value::as_str) {
             text.clone_into(slot);
         }
+    }
+    if !one_folder(&settings.scratch) {
+        return Err(format!(
+            "scratch is one folder's name in the quest's scratch, other than the handover, not {:?}",
+            settings.scratch
+        ));
     }
     settings.realm = value
         .get("realm")
@@ -171,6 +178,21 @@ fn plain(path: &str) -> bool {
             .all(|part| !part.is_empty() && !part.starts_with('.'))
 }
 
+/// Whether `name` names one folder within the quest's scratch, and not
+/// the handover: a job's copy is emptied before it's made, so it must
+/// never land on the files that crossed for the job, or outside the quest.
+fn one_folder(name: &str) -> bool {
+    let handover = crate::far::HANDOVER
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    !name.is_empty()
+        && !name.contains('/')
+        && !name.starts_with('-')
+        && !matches!(name, "." | "..")
+        && name != handover
+}
+
 fn strings(value: &Value, what: &str) -> Result<Vec<String>, String> {
     value
         .as_array()
@@ -205,7 +227,7 @@ mod tests {
             "a kind asked mycelium for what it wasn't given"
         );
         assert_eq!(
-            settings.scratch, "elsewhere-runs",
+            settings.scratch, ".elsewhere-runs",
             "the scratch didn't default"
         );
         assert_eq!(
@@ -229,6 +251,26 @@ mod tests {
             assert!(
                 problem.contains(says),
                 "{text} was refused as {problem}, not {says}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_scratch_that_isn_t_one_folder_of_the_quest_s_own_is_refused() {
+        for scratch in ["", ".", "..", "../x", "a/b", "/runs/", "-x", "handover", "handover/elsewhere"] {
+            let text = serde_json::json!({ "scratch": scratch }).to_string();
+            let problem = read(&text).expect_err(&format!("the scratch {scratch:?} was taken"));
+            assert!(
+                problem.contains("one folder's name"),
+                "the scratch {scratch:?} was refused as {problem}"
+            );
+        }
+        for scratch in [".elsewhere-runs", "runs"] {
+            let text = serde_json::json!({ "scratch": scratch }).to_string();
+            assert_eq!(
+                read(&text).map(|settings| settings.scratch),
+                Ok(scratch.to_owned()),
+                "the scratch {scratch:?} wasn't taken"
             );
         }
     }
