@@ -43,6 +43,7 @@ mod measure;
 mod moves;
 mod network;
 mod nl80211;
+mod others;
 mod page;
 mod parts;
 mod radio;
@@ -91,13 +92,14 @@ use frequencies::Avoided;
 use learn::Learned;
 use link::Link;
 use network::{Account, Address, Inner, Method, Network, Security};
+use others::Others;
 use secret::{Credentials, Secrets};
 use seen::Seen;
 use service::{Ask, Refused, Stage, Wifi};
 use stall::Stalls;
 use state::{Progress, Reach, State, Trouble};
 use store::{Saved, Store};
-use supplicant::{InterfaceProxy, JoinableProxy, Others, Step, SupplicantProxy};
+use supplicant::{InterfaceProxy, JoinableProxy, Step, SupplicantProxy};
 
 /// Where wifid keeps what it must remember between starts.
 const STATE: &str = "/var/lib/wifid";
@@ -1886,7 +1888,7 @@ impl Wifid<'_> {
         } else {
             String::new()
         };
-        match supplicant::others_given(alone, leaving, picked, &step) {
+        match others::others_given(alone, leaving, picked, &step) {
             Others::Kept => {}
             Others::KeptTillTakenOff => {
                 self.alone.borrow_mut().insert(card.name.clone());
@@ -2399,7 +2401,7 @@ impl Wifid<'_> {
                 // off.
                 let alone = self.alone.borrow().contains(card);
                 let leaving = self.leaving.borrow().contains_key(card);
-                match supplicant::others_given(alone, leaving, false, "") {
+                match others::others_given(alone, leaving, false, "") {
                     Others::Kept => {}
                     Others::KeptTillTakenOff => {
                         self.alone.borrow_mut().insert(card.clone());
@@ -2779,17 +2781,37 @@ impl Wifid<'_> {
     /// heard, has left it after all, asked of wpa_supplicant, and so has
     /// its move carry on: the step saying so can be on its way across the
     /// bus as the move's time runs out, and ended there, the move would
-    /// carry on unfollowed with the card's networks on.
+    /// carry on unfollowed with the card's networks on. A card further on,
+    /// in a handshake or done, is asked which point it's on too, as a
+    /// rekey on its own point passes through the same steps. One whose
+    /// step can't be read is said so and taken as never having left.
     async fn under_way(&self, card: &str, from: &str) -> bool {
-        let step = async {
+        let read = async {
             let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
-            interface.state().await
+            let step = interface.state().await?;
+            if arrive::has_left(&step) || !supplicant::holds_a_network(&step) {
+                return zbus::Result::Ok((step, None));
+            }
+            let point = interface.current_access_point().await?;
+            let heard = AccessPoint::new(described(self.bus, &point).await?).heard();
+            Ok((step, heard.map(|heard| heard.bssid)))
         };
-        step.await.is_ok_and(|step| arrive::has_left(&step))
-            && self
-                .arrivals
-                .borrow_mut()
-                .under_way(card, from, Instant::now())
+        match read.await {
+            Ok((step, on)) => {
+                arrive::has_left_for(&step, on.as_deref(), from)
+                    && self
+                        .arrivals
+                        .borrow_mut()
+                        .under_way(card, from, Instant::now())
+            }
+            Err(error) => {
+                println!(
+                    "<4>{card}'s step couldn't be read, so its move is taken as never begun: \
+                     {error}"
+                );
+                false
+            }
+        }
     }
 
     /// Whether a card whose move hasn't left its point is looking, asked

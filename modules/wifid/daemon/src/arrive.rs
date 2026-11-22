@@ -53,6 +53,16 @@ pub fn has_left(step: &str) -> bool {
     LEAVING.contains(&step) || GAVE_UP.contains(&step)
 }
 
+/// Whether a card whose move wifid heard no step of has left `from`, at
+/// this step and `on` the point it's on, where known: one leaving or
+/// given up has, and one further on, in a handshake or done, has only on
+/// a point other than `from`, since a rekey there passes through them.
+pub fn has_left_for(step: &str, on: Option<&str>, from: &str) -> bool {
+    has_left(step)
+        || (crate::supplicant::holds_a_network(step)
+            && on.is_some_and(|on| !on.eq_ignore_ascii_case(from)))
+}
+
 /// How long a move is followed. The move that failed took 18 s to land
 /// somewhere (2026-11-16), and a good one about 100 ms.
 const FOLLOWED: Duration = Duration::from_secs(30);
@@ -1304,6 +1314,27 @@ mod tests {
             !arrivals.under_way("wlan0", DESK, now + BACK_FOR),
             "never a way back"
         );
+    }
+
+    #[test]
+    fn a_card_unheard_from_has_left_its_point_once_on_another() {
+        for (step, on, left) in [
+            ("authenticating", None, true),
+            ("disconnected", None, true),
+            ("4way_handshake", Some(FAR), true),
+            ("group_handshake", Some(FAR), true),
+            ("completed", Some(FAR), true),
+            ("4way_handshake", Some(DESK), false),
+            ("completed", Some(DESK), false),
+            ("completed", Some("6C:AE:F6:C1:84:26"), false),
+            ("4way_handshake", None, false),
+        ] {
+            assert_eq!(
+                has_left_for(step, on, DESK),
+                left,
+                "{step} on {on:?}: a handshake or a join counts only on another point"
+            );
+        }
     }
 
     #[test]
