@@ -3225,9 +3225,10 @@ fn names(text: &str, lender: &str, host_key: &str) -> bool {
 }
 
 /// Root's file of the builders it vouches for, or the one
-/// `NIX_OFFLOAD_VOUCHED` names for a test; set empty, it names none, so
-/// it can't turn the check off by naming nothing. The crate's own tests
-/// never read the machine's file, which names none of their builders.
+/// `NIX_OFFLOAD_VOUCHED` names for a test; set empty, it's ignored and
+/// root's file is read, so naming nothing can't turn the check off. The
+/// crate's own tests never read the machine's file, which names none of
+/// their builders.
 fn vouching() -> PathBuf {
     match std::env::var_os("NIX_OFFLOAD_VOUCHED") {
         Some(file) if !file.is_empty() => PathBuf::from(file),
