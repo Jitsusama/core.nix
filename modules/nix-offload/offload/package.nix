@@ -64,6 +64,7 @@ rustPlatform.buildRustPackage (
       fileset = lib.fileset.unions [
         ./Cargo.toml
         ./Cargo.lock
+        ./last-vm-lane.txt
         ./src
         ./tests
         ../../crate-reach/Cargo.toml

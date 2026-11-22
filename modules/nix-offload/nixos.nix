@@ -306,7 +306,7 @@ in
       # And of a second for VM tests, for those past the first's room.
       "d /run/nix-offload-vm-more 0755 ${config.jitsusama.nix-offload.account} - -"
     ]
-    # And of those past it, to the last lane offload/src/last-vm-lane names
+    # And of those past it, to the last lane offload/last-vm-lane.txt names
     # (home.nix's vmTests.extra lends to as many, and `there` looks in as
     # many, from the same file), which stay empty until one lends.
     ++ map (
@@ -314,7 +314,7 @@ in
         account = config.jitsusama.nix-offload.account;
       in
       number: "d /run/nix-offload-vm-${toString number} 0755 ${account} - -"
-    ) (lib.range 3 (lib.toInt (lib.fileContents ./offload/src/last-vm-lane)))
+    ) (lib.range 3 (lib.toInt (lib.fileContents ./offload/last-vm-lane.txt)))
     ++ [
       # And of a third, for what `there` sends while the first is full.
       "d /run/nix-offload-more 0755 ${config.jitsusama.nix-offload.account} - -"
