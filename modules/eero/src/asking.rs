@@ -237,21 +237,20 @@ mod tests {
     const AMPLE: Duration = Duration::from_secs(10);
 
     /// What asking a daemon that says `lines` after reading the ask, then
-    /// hangs up or holds on for `held`, comes to. One that holds on is
-    /// given the short patience its test is about; one that answers or
-    /// hangs up ends the wait at once, so it's given ample, since a loaded
-    /// builder can stall a thread past a short one.
-    fn asked_of(
-        name: &str,
-        lines: &'static [&'static str],
-        held: Duration,
-    ) -> Result<Value, Undone> {
+    /// hangs up or, where it `holds`, holds on until the ask is given up,
+    /// comes to. One that holds on is given the short patience its test is
+    /// about, and lets go only once the asker has, so a stalled thread
+    /// can't hang it up first; one that answers or hangs up ends the wait
+    /// at once, so it's given ample, since a loaded builder can stall a
+    /// thread past a short one.
+    fn asked_of(name: &str, lines: &'static [&'static str], holds: bool) -> Result<Value, Undone> {
         let folder =
             std::env::temp_dir().join(format!("eero-asking-{name}-{}", std::process::id()));
         std::fs::create_dir_all(&folder).expect("the test's folder is made");
         let socket = folder.join("socket");
         let _ = std::fs::remove_file(&socket);
         let listener = UnixListener::bind(&socket).expect("the test's socket listens");
+        let (given_up, let_go) = std::sync::mpsc::channel::<()>();
         let daemon = thread::spawn(move || {
             let (stream, _) = listener.accept().expect("the ask connects");
             let mut reading = BufReader::new(stream.try_clone().expect("the stream clones"));
@@ -261,15 +260,18 @@ mod tests {
             for line in lines {
                 writeln!(writing, "{line}").expect("the answer is written");
             }
-            thread::sleep(held);
+            if holds {
+                let _ = let_go.recv();
+            }
             ask
         });
-        let patience = if held.is_zero() {
-            AMPLE
-        } else {
+        let patience = if holds {
             Duration::from_millis(300)
+        } else {
+            AMPLE
         };
         let answer = act_at(&socket, &json!({"act": "speedtest"}), patience);
+        let _ = given_up.send(());
         let ask = daemon.join().expect("the daemon's thread ends");
         assert_eq!(
             serde_json::from_str::<Value>(&ask).ok(),
@@ -286,7 +288,7 @@ mod tests {
             asked_of(
                 "done",
                 &[r#"{"change":"x"}"#, r#"{"id":1,"done":true}"#],
-                Duration::ZERO
+                false
             ),
             Ok(json!({"id": 1, "done": true})),
             "a done answer after another line wasn't taken"
@@ -295,7 +297,7 @@ mod tests {
             asked_of(
                 "refused",
                 &[r#"{"id":1,"error":{"code":"refused","message":"taken"}}"#],
-                Duration::ZERO
+                false
             ),
             Err(Undone::Refused("taken".into())),
             "a refusal wasn't said as the daemon said it"
@@ -416,13 +418,10 @@ mod tests {
     #[test]
     fn silence_after_the_ask_is_an_unknown_outcome_not_an_absent_daemon() {
         assert!(
-            matches!(
-                asked_of("gone", &[], Duration::ZERO),
-                Err(Undone::Unknown(_))
-            ),
+            matches!(asked_of("gone", &[], false), Err(Undone::Unknown(_))),
             "a daemon gone after the ask read as one never asked"
         );
-        let slow = asked_of("slow", &[], Duration::from_secs(1));
+        let slow = asked_of("slow", &[], true);
         assert!(
             matches!(&slow, Err(Undone::Unknown(why)) if why.contains("didn't answer in time")),
             "a daemon slower than our patience wasn't given up on at it: {slow:?}"

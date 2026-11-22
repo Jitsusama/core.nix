@@ -154,6 +154,7 @@ fn reserve() -> Help {
         Exit::Unavailable,
         "eero-daemon isn't answering, couldn't log the ask, or doesn't know the act",
     )
+    .exit(Exit::Bug, "eero-daemon couldn't read this command's ask")
 }
 
 /// Stop keeping an address for one device.
@@ -182,6 +183,7 @@ fn unreserve() -> Help {
         Exit::Unavailable,
         "eero-daemon isn't answering, couldn't log the ask, or doesn't know the act",
     )
+    .exit(Exit::Bug, "eero-daemon couldn't read this command's ask")
 }
 
 /// The whole tree, from `eero` down.

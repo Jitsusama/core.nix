@@ -681,6 +681,16 @@ mod tests {
             Some("eero internet"),
             "an outcome no one knows doesn't say to read the reservations again"
         );
+        let unknown = undone_said(Undone::Unknown(why()), mac()).what;
+        assert!(
+            unknown.contains("wait for eero internet") && unknown.contains("send it twice"),
+            "an outcome no one knows doesn't say to wait rather than ask again: {unknown:?}"
+        );
+        let absent = undone_said(Undone::Absent(why()), mac()).what;
+        assert!(
+            absent.contains("can't reach its socket"),
+            "a socket out of reach is said only as the daemon down: {absent:?}"
+        );
     }
 
     #[test]
