@@ -50,6 +50,7 @@ import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Order.js" as Order
 import "Presented.js" as Presented
+import "ReopenTally.js" as ReopenTally
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
@@ -2130,12 +2131,12 @@ Provider {
         // Reopen Them All reopens those that can be, its side counting them
         // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
         // after is counted with how many reopened, and said once the
-        // launcher opens next.
-        const outcome = { asked: reopenable.length, gone: 0 };
-        const tellAll = () => provider.launcher?.tellOnOpen([
-            [String(outcome.gone), String(said[outcome.gone === 1 ? "folderGone"
+        // launcher opens next (ReopenTally.js).
+        const tally = ReopenTally.begun(reopenable.length);
+        const tellAll = now => provider.launcher?.tellOnOpen([
+            [String(now.gone), String(said[now.gone === 1 ? "folderGone"
                 : "foldersGone"] ?? ""), Theme.alert],
-            [String(outcome.asked - outcome.gone), String(said.reopened ?? "")]]);
+            [String(now.reopened), String(said.reopened ?? "")]]);
         // Its count of what failed is drawn in the alert's colour, as the
         // row that failed is, the rest as a side reads (VKCF3Z, 2026-11-07).
         const themAll = () => act("all", {
@@ -2146,17 +2147,10 @@ Provider {
             // carried one beside where Joel is, since it never sat here,
             // and then the windows that reopen themselves. Each is told to
             // carry on as it opens, so none waits to be poked; one reopened
-            // alone from its own row isn't, since Joel is there. Counted
-            // afresh each time, since the row is kept while what's to
-            // reopen stands (ownKept), and a second run would add to the
-            // first's.
-            run: () => {
-                outcome.gone = 0;
-                Sessions.reopenThemAll(reopenable, () => {
-                    outcome.gone += 1;
-                    tellAll();
-                });
-            }
+            // alone from its own row isn't, since Joel is there. Each run
+            // counts afresh, though the row and its tally are kept.
+            run: () => ReopenTally.run(tally,
+                gone => Sessions.reopenThemAll(reopenable, gone), tellAll)
         });
         return thingRow({
             key: "agents:to-reopen",
