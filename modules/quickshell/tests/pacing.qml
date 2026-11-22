@@ -314,14 +314,22 @@ QtObject {
         check(failures, "nor one whose count went back", fellStall.stallThread.faulted,
             undefined);
         // KeyTimes.waited gives 0 for a failed read, so a stall taken from
-        // one would be the thread's whole life's wait.
-        const unwaitedStall = [[16, { ran: 5, waited: 0 }], [132, { ran: 20, waited: 40 }]]
+        // one would be the thread's whole life's wait. Begun on a good
+        // read, the first gap has clocks of its own, which the longest
+        // stall mustn't take for its own when its start wasn't read.
+        const unwaitedStall = [[16, { ran: 5, waited: 2 }], [32, { ran: 6, waited: 0 }],
+            [148, { ran: 20, waited: 40 }]]
             .reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace, { thread }),
-                Pacing.feltBegun(0, { thread: { ran: 0, waited: 0 } }));
-        check(failures, "a stall whose wait wasn't read takes no clocks",
+                Pacing.feltBegun(0, { thread: { ran: 0, waited: 1 } }));
+        check(failures, "a stall whose wait wasn't read at its start takes no clocks",
             unwaitedStall.stallThread, null);
-        check(failures, "and says nothing of its thread",
-            Thread.said(unwaitedStall.stall, unwaitedStall.stallThread, "the stall"), "");
+        // Read well at its start and failed at its end, it would wait
+        // below nothing and sleep more than it lasted.
+        const unwaitedEnd = [[16, { ran: 5, waited: 1 }], [132, { ran: 20, waited: 0 }]]
+            .reduce((was, [at, thread]) => Pacing.feltTicked(was, at, pace, { thread }),
+                Pacing.feltBegun(0, { thread: { ran: 0, waited: 1 } }));
+        check(failures, "nor one whose wait wasn't read at its end",
+            unwaitedEnd.stallThread, null);
         keyThreaded(failures);
     }
 
