@@ -196,11 +196,17 @@ fn beside_said(launcher: &Value) -> Option<String> {
     }
     let span = |side: &str| {
         let opens = launcher[side]["opens"].as_u64()?;
-        let p99 = launcher[side]["p99"]
-            .as_f64()
-            .map_or_else(String::new, |ms| format!(", p99 {ms} ms"));
+        let ms = |key: &str, what: &str| {
+            launcher[side][key]
+                .as_f64()
+                .map_or_else(String::new, |ms| format!(", {what} {ms} ms"))
+        };
         let plural = if opens == 1 { "" } else { "s" };
-        Some(format!("{opens} opening{plural}{p99}"))
+        Some(format!(
+            "{opens} opening{plural}{}{}",
+            ms("p50", "median"),
+            ms("p99", "slowest")
+        ))
     };
     let verdict = match launcher["worse"].as_bool() {
         Some(true) => "worse".to_string(),
@@ -332,16 +338,23 @@ fn run(context: &Context) -> Result<(), Failure> {
     let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
     let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
     let read = launcher::read();
-    let opens = read.as_deref().unwrap_or_default();
-    let took: Vec<f64> = opens.iter().map(|(_, ms)| *ms).collect();
-    let measures = hour::measures(&call, call::STAND_IN, &chrome_waits, &slack_waits, &took);
-    // From the run's start, Chromium's own included, to now: the whole of
-    // the load the test put beside Joel's programs.
-    // A journal that couldn't be read says why, so nothing gating on the
-    // spans takes it for an hour with none.
-    let launcher = match &read {
-        Ok(opens) => json!(launcher::beside(opens, started, at)),
-        Err(why) => json!({"unread": why}),
+    let took: Vec<f64> = read.opens.iter().map(|(_, ms)| *ms).collect();
+    let measures = hour::measures(
+        &call,
+        call::STAND_IN,
+        &chrome_waits,
+        &slack_waits,
+        &took,
+        read.unread.as_deref(),
+    );
+    let launcher = match &read.unread {
+        // A journal not read whole says why, so nothing gating on the
+        // spans takes it for an hour with none.
+        Some(why) => json!({"unread": why}),
+        // The call's span runs from the run's start, Chromium's own
+        // included, to now: the whole of the load the test put beside
+        // Joel's programs.
+        None => json!(launcher::beside(&read.opens, started, at)),
     };
     let run = json!({"started": started, "seconds": SECONDS, "call": call, "launcher": launcher});
     hour::write(&folder(), at, &measures, &run).map_err(|error| {
@@ -389,27 +402,38 @@ mod tests {
 
     #[test]
     fn the_launcher_s_spans_are_said_with_whether_they_tell() {
-        let told = json!({"before": {"opens": 3, "p99": 30.0},
-                          "during": {"opens": 4, "p99": 46.0}, "worse": true});
+        let mut opens: Vec<(f64, f64)> = [910.0, 930.0, 950.0].map(|at| (at, 30.0)).to_vec();
+        opens.extend([1010.0, 1030.0, 1050.0, 1070.0].map(|at| (at, 46.0)));
+        let hour = json!({"measures": [],
+                          "run": {"launcher": launcher::beside(&opens, 1000, 1100)}});
         assert_eq!(
-            beside_said(&told).as_deref(),
-            Some(
-                "launcher during the test: 4 openings, p99 46 ms; \
-                 just before: 3 openings, p99 30 ms; worse\n"
-            )
+            said(&hour, 0),
+            "measured 0 min ago\nlauncher during the test: 4 openings, median 46 ms, \
+             slowest 46 ms; just before: 3 openings, median 30 ms, slowest 30 ms; worse\n",
+            "the run's own spans are said under the figures"
         );
-        let thin = json!({"before": {"opens": 1, "p99": 30.0},
-                          "during": {"opens": 0, "p99": null}, "worse": null});
+        let fine = json!({"before": {"opens": 3, "p50": 30.0, "p99": 30.0},
+                          "during": {"opens": 3, "p50": 31.0, "p99": 31.0}, "worse": false});
+        assert!(
+            beside_said(&fine).is_some_and(|line| line.ends_with("; not worse\n")),
+            "a call that didn't slow the openings says so: {:?}",
+            beside_said(&fine)
+        );
+        let thin = json!(launcher::beside(&[(950.0, 30.0)], 1000, 1100));
         assert_eq!(
             beside_said(&thin).as_deref(),
             Some(
-                "launcher during the test: 0 openings; just before: 1 opening, p99 30 ms; \
-                 can't tell under 3 openings a side\n"
+                "launcher during the test: 0 openings; just before: 1 opening, median 30 ms, \
+                 slowest 30 ms; can't tell under 3 openings a side\n"
             )
         );
+        let unread = "journalctl ended with code 1: No journal files were found.";
         assert_eq!(
-            beside_said(&json!({"unread": "journalctl exited 1: no"})).as_deref(),
-            Some("launcher during the test: unread, journalctl exited 1: no\n")
+            beside_said(&json!({"unread": unread})).as_deref(),
+            Some(
+                "launcher during the test: unread, journalctl ended with code 1: \
+                 No journal files were found.\n"
+            )
         );
         assert_eq!(
             beside_said(&Value::Null),

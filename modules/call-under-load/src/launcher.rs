@@ -1,27 +1,32 @@
 //! The launcher's openings, read from the shell's journal: over the last
 //! hour, and while the test call ran set against the same span just
 //! before it, so an hour says whether the call itself slows what Joel
-//! opens. A call span more than one and a half times worse than the span
-//! before it is hurting him, and the hour says so once each span holds
-//! enough openings to tell.
+//! opens. A call span whose openings are more than one and a half times
+//! slower than the span before's is hurting him, and the hour says so once
+//! each span holds enough openings to tell.
 
 use crate::figures::percentile;
 use serde::Serialize;
 use std::process::Command;
 
-/// How many times the span before the call's p99 the call's own may be
-/// before the call counts as hurting Joel.
+/// How many times slower than the span before's the call span's openings
+/// may be before the call counts as hurting Joel.
 pub const WORSE: f64 = 1.5;
 
 /// The fewest openings each span needs before the two are set against
-/// each other. A span's p99 over fewer is its one slowest opening, so a
-/// single cold opening during the call would read as the call hurting him.
+/// each other, so the median the verdict compares is never one opening's.
 pub const FEWEST: usize = 3;
 
-/// The openings in one span: how many, and their p99 in ms.
+/// The longest a journal's reason is kept, so one line says it.
+const SAID: usize = 200;
+
+/// The openings in one span: how many, their median and their p99 in ms.
+/// A span a few minutes long holds far under a hundred openings, so its
+/// p99 is its slowest, kept so one slow opening still shows.
 #[derive(Debug, PartialEq, Serialize)]
 pub struct Span {
     pub opens: usize,
+    pub p50: Option<f64>,
     pub p99: Option<f64>,
 }
 
@@ -30,48 +35,80 @@ pub struct Span {
 pub struct Beside {
     pub before: Span,
     pub during: Span,
-    /// Whether the call's p99 passed `WORSE` times the span before's, or
-    /// null when either span had fewer than `FEWEST` openings, since then
-    /// it can't be told. A reader gating on it refuses on null.
+    /// Whether the call span's median passed `WORSE` times the span
+    /// before's, or null when either span had fewer than `FEWEST`
+    /// openings, since then it can't be told. The medians, not the p99s,
+    /// since at these counts a p99 is one opening, and one cold opening
+    /// on either side would decide it. A reader gating on it refuses on
+    /// null.
     pub worse: Option<bool>,
 }
 
-/// Each opening over the last hour, as (seconds since the epoch, ms), from
-/// the line the launcher writes to the shell's journal as it's on screen,
-/// or why the journal couldn't be read. Read from the shell's unit alone,
-/// as cadence reads it, so no other program's line passes for one.
-pub fn read() -> Result<Vec<(f64, f64)>, String> {
+/// What the journal gave: each opening over the last hour, as (seconds
+/// since the epoch, ms), and why it wasn't read whole, when it wasn't.
+pub struct Read {
+    pub opens: Vec<(f64, f64)>,
+    pub unread: Option<String>,
+}
+
+/// Each opening over the last hour, from the line the launcher writes to
+/// the shell's journal as it's on screen. Read from the shell's unit
+/// alone, as cadence reads it, so no other program's line passes for one.
+pub fn read() -> Read {
     let out = Command::new("journalctl")
         .args(["--user", "-u", "quickshell", "--since", "-1h"])
-        .args(["--no-pager", "-o", "short-unix"])
+        .args(["--no-pager", "--quiet", "-o", "short-unix"])
         .args(["--grep", "launcher: opening presented"])
-        .output()
-        .map_err(|error| format!("journalctl couldn't start: {error}"))?;
-    let said = String::from_utf8_lossy(&out.stderr);
-    // A grep that matches nothing exits 1 and says so on stdout alone;
-    // a journal it couldn't read says why on stderr.
-    let read = out.status.success() || (out.status.code() == Some(1) && said.trim().is_empty());
-    if !read {
-        return Err(format!("journalctl exited {}: {}", out.status, said.trim()));
+        .output();
+    match out {
+        Ok(out) => Read {
+            opens: timed(&String::from_utf8_lossy(&out.stdout)),
+            unread: answered(out.status.code(), &String::from_utf8_lossy(&out.stderr)).err(),
+        },
+        Err(error) => Read {
+            opens: Vec::new(),
+            unread: Some(format!("journalctl couldn't start: {error}")),
+        },
     }
-    Ok(timed(&String::from_utf8_lossy(&out.stdout)))
+}
+
+/// Whether journalctl read the journal whole, from how it ended and what
+/// it said on stderr. A grep that matches nothing exits 1 and says so on
+/// stdout alone (systemd 262, 22 Nov 2026); anything on stderr, a file
+/// it skipped among them, means some of the hour may be missing.
+fn answered(code: Option<i32>, said: &str) -> Result<(), String> {
+    let first = said.trim().lines().next().unwrap_or("");
+    let first: String = first.chars().take(SAID).collect();
+    match code {
+        Some(0 | 1) if first.is_empty() => Ok(()),
+        Some(code) if first.is_empty() => Err(format!("journalctl ended with code {code}")),
+        Some(code) => Err(format!("journalctl ended with code {code}: {first}")),
+        None => Err("journalctl was ended by a signal".to_string()),
+    }
 }
 
 /// The openings in `lines` as journalctl's short-unix writes them, each a
-/// line's seconds then its text holding `opening presented N ms`.
+/// line's seconds then the shell's `launcher: opening presented N ms`.
+/// A line not starting with its seconds, a message's own later line, is
+/// no opening.
 pub fn timed(lines: &str) -> Vec<(f64, f64)> {
     lines
         .lines()
         .filter_map(|line| {
-            let (at, text) = line.trim_start().split_once(' ')?;
+            let (at, text) = line.split_once(' ')?;
             Some((at.parse().ok()?, took(text)?))
         })
         .collect()
 }
 
-/// The ms in a line's `... opening presented N ms ...`.
+/// The ms in the launcher's `launcher: opening presented N ms ...`, read
+/// as cadence reads it: the launcher's first word after its tag, so text
+/// it logs from elsewhere can't pass for an opening.
 fn took(text: &str) -> Option<f64> {
-    let after = text.split_once("opening presented ")?.1;
+    let after = text
+        .split_once("launcher: ")?
+        .1
+        .strip_prefix("opening presented ")?;
     after
         .strip_suffix(" ms")
         .unwrap_or(after)
@@ -95,12 +132,13 @@ pub fn beside(opens: &[(f64, f64)], started: u64, ended: u64) -> Beside {
             .collect();
         Span {
             opens: took.len(),
+            p50: percentile(&took, 50),
             p99: percentile(&took, 99),
         }
     };
     let before = span(&|at| at >= from - (to - from) && at < from);
     let during = span(&|at| at >= from && at <= to);
-    let worse = match (before.p99, during.p99) {
+    let worse = match (before.p50, during.p50) {
         (Some(b), Some(d)) if before.opens >= FEWEST && during.opens >= FEWEST => {
             Some(d > WORSE * b)
         }
@@ -123,16 +161,25 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    /// Openings at `at` s, each taking its ms.
+    fn opened(at: &[f64], ms: f64) -> Vec<(f64, f64)> {
+        at.iter().map(|at| (*at, ms)).collect()
+    }
+
     #[test]
     fn openings_are_read_with_their_times_from_short_unix_lines() {
         let lines = "1795303690.981234 laptop quickshell[2101]: \
                      INFO qml: launcher: opening presented 41 ms after the chord\n\
                      -- No entries --\n\
-                     \x20 1795303700.5 laptop quickshell[2101]: launcher: opening presented 7 ms\n\
-                     1795303701.0 laptop quickshell[2101]: launcher: opening presented late\n";
+                     1795303700.5 laptop quickshell[2101]: launcher: opening presented 7 ms\n\
+                     1795303701.0 laptop quickshell[2101]: launcher: opening presented late\n\
+                     \x20 1795303702.0 launcher: opening presented 900 ms\n\
+                     1795303703.0 laptop quickshell[2101]: launcher: asked from outside to show \
+                     the network x launcher: opening presented 900 ms\n";
         assert_eq!(
             timed(lines),
-            [(1_795_303_690.981_234, 41.0), (1_795_303_700.5, 7.0)]
+            [(1_795_303_690.981_234, 41.0), (1_795_303_700.5, 7.0)],
+            "a later line of a message, or the phrase in text from elsewhere, is no opening"
         );
     }
 
@@ -154,6 +201,7 @@ mod tests {
             seen.before,
             Span {
                 opens: 3,
+                p50: Some(25.0),
                 p99: Some(30.0)
             }
         );
@@ -161,45 +209,68 @@ mod tests {
             seen.during,
             Span {
                 opens: 3,
+                p50: Some(42.0),
                 p99: Some(46.0)
             }
         );
         assert_eq!(
             seen.worse,
             Some(true),
-            "46 ms against 30 ms before is past 1.5 times"
+            "a median of 42 ms against 25 before is past 1.5 times"
         );
-        let fine = beside(
-            &[
-                (910.0, 30.0),
-                (930.0, 30.0),
-                (950.0, 30.0),
-                (1010.0, 45.0),
-                (1030.0, 45.0),
-                (1050.0, 45.0),
-            ],
-            1000,
-            1100,
-        );
+        let mut even = opened(&[910.0, 930.0, 950.0], 30.0);
+        even.extend(opened(&[1010.0, 1030.0, 1050.0], 45.0));
         assert_eq!(
-            fine.worse,
+            beside(&even, 1000, 1100).worse,
             Some(false),
             "45 ms against 30 ms is exactly 1.5 times, not past it"
         );
     }
 
     #[test]
+    fn one_slow_opening_on_either_side_doesn_t_decide_it() {
+        let mut cold = opened(&[910.0, 930.0, 950.0], 30.0);
+        cold.extend([(1010.0, 20.0), (1030.0, 20.0), (1050.0, 400.0)]);
+        let seen = beside(&cold, 1000, 1100);
+        assert_eq!(seen.during.p99, Some(400.0), "the slow opening still shows");
+        assert_eq!(
+            seen.worse,
+            Some(false),
+            "one cold opening during isn't the call"
+        );
+        let mut slowed = vec![(910.0, 30.0), (930.0, 30.0), (950.0, 400.0)];
+        slowed.extend([(1010.0, 200.0), (1030.0, 210.0), (1050.0, 220.0)]);
+        assert_eq!(
+            beside(&slowed, 1000, 1100).worse,
+            Some(true),
+            "one slow opening before doesn't hide a call that slowed every one"
+        );
+    }
+
+    #[test]
     fn too_few_openings_on_either_side_can_t_be_told() {
-        let one_each = beside(&[(950.0, 20.0), (1050.0, 400.0)], 1000, 1100);
-        assert_eq!(one_each.worse, None, "one cold opening is not a verdict");
-        let none_during = beside(&[(910.0, 30.0), (930.0, 30.0), (950.0, 30.0)], 1000, 1100);
-        assert_eq!(none_during.during.opens, 0);
-        assert_eq!(none_during.worse, None, "nothing during compares");
+        let full = opened(&[910.0, 930.0, 950.0], 30.0);
+        let thin = opened(&[1010.0, 1050.0], 400.0);
+        let short_during: Vec<_> = full.iter().chain(&thin).copied().collect();
+        assert_eq!(
+            beside(&short_during, 1000, 1100).worse,
+            None,
+            "two openings during, however slow, can't be told"
+        );
+        let thin_before = opened(&[910.0, 950.0], 30.0);
+        let full_during = opened(&[1010.0, 1030.0, 1050.0], 400.0);
+        let short_before: Vec<_> = thin_before.iter().chain(&full_during).copied().collect();
+        assert_eq!(
+            beside(&short_before, 1000, 1100).worse,
+            None,
+            "two openings before can't be told"
+        );
         let none = beside(&[], 1000, 1100);
         assert_eq!(
             none.during,
             Span {
                 opens: 0,
+                p50: None,
                 p99: None
             }
         );
@@ -217,13 +288,54 @@ mod tests {
     }
 
     #[test]
+    fn the_journal_counts_as_read_only_when_journalctl_said_nothing_on_stderr() {
+        assert_eq!(answered(Some(0), ""), Ok(()));
+        assert_eq!(
+            answered(Some(1), "\n"),
+            Ok(()),
+            "a grep that matched nothing"
+        );
+        assert_eq!(
+            answered(Some(1), "No journal files were found.\nsecond\n"),
+            Err("journalctl ended with code 1: No journal files were found.".to_string())
+        );
+        assert_eq!(
+            answered(
+                Some(0),
+                "Journal file x.journal~ is truncated, ignoring file.\n"
+            ),
+            Err(
+                "journalctl ended with code 0: Journal file x.journal~ is truncated, \
+                 ignoring file."
+                    .to_string()
+            ),
+            "a skipped file may hold some of the hour"
+        );
+        assert_eq!(
+            answered(Some(2), ""),
+            Err("journalctl ended with code 2".to_string())
+        );
+        assert_eq!(
+            answered(None, ""),
+            Err("journalctl was ended by a signal".to_string())
+        );
+        let long = "x".repeat(500);
+        let said = answered(Some(1), &long).unwrap_err();
+        assert!(
+            said.len() < 260,
+            "a long reason is cut to one short line: {} bytes",
+            said.len()
+        );
+    }
+
+    #[test]
     fn the_run_carries_the_spans_in_the_shape_its_readers_take() {
         let seen = beside(&[(950.0, 30.0)], 1000, 1100);
         assert_eq!(
             serde_json::to_value(&seen).unwrap(),
             json!({
-                "before": {"opens": 1, "p99": 30.0},
-                "during": {"opens": 0, "p99": null},
+                "before": {"opens": 1, "p50": 30.0, "p99": 30.0},
+                "during": {"opens": 0, "p50": null, "p99": null},
                 "worse": null,
             })
         );
