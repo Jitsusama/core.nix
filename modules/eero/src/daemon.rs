@@ -26,19 +26,19 @@ use std::io;
 use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use crate::acts::{self, Act};
+use crate::acts::{self, Act, Done};
 use crate::api;
 use crate::changes;
 use crate::cloud::{self, Failure};
 use crate::day;
 use crate::desktop::Notifier;
 use crate::history::History;
-use crate::listeners::{Call, Listeners};
+use crate::listeners::{Asked, Call, Listeners};
 use crate::model::{Cloud, CloudState, HomeNetwork};
 use crate::notices::{self, Watch};
 use crate::probe::{self, Targets};
@@ -104,15 +104,7 @@ pub fn run() -> Result<(), String> {
         match woken.recv_timeout(daemon.wait(Instant::now(), listeners.listening())) {
             Ok(Call::Read) => daemon.schedule.ask(),
             // Done before the next cycle, which reads what it changed.
-            Ok(Call::Act(asked)) => {
-                let done = daemon.act(asked.act);
-                // Logged before it's answered, while the process that
-                // asked still waits, so its unit can be read.
-                if let Err(error) = changes::log(&asked, &done, now_unix()) {
-                    eprintln!("eero: couldn't log {:?}: {error}", asked.act);
-                }
-                listeners.answer_act(&asked, done.map_err(String::from));
-            }
+            Ok(Call::Act(asked)) => act(&mut daemon, &listeners, &asked),
             Ok(Call::Joined | Call::Left | Call::Looked) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Err("the socket stopped".into()),
         }
@@ -383,14 +375,16 @@ impl Daemon {
                 self.cloud = None;
                 Heard::SignedOut(reason)
             }
-            Failure::Unreachable(reason) | Failure::Refused(reason) => Heard::Unreachable(reason),
+            Failure::Unreachable(reason) | Failure::Refused(reason) | Failure::Unknown(reason) => {
+                Heard::Unreachable(reason)
+            }
         }
     }
 
     /// Does an act the shell asked for, and has the network read at once
     /// after, so the row it changed is served as eero now says it. A
     /// session eero refuses is let go, as a read's is.
-    fn act(&mut self, act: Act) -> Result<(), Failure> {
+    fn act(&mut self, act: Act) -> Result<Done, Failure> {
         let done = session(&mut self.cloud, &mut self.network)
             .and_then(|(cloud, network)| acts::done(cloud, &network, act));
         self.schedule.ask();
@@ -565,9 +559,40 @@ fn write(file: &Path, contents: &str) -> io::Result<()> {
 }
 
 fn now_unix() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs().try_into().unwrap_or(i64::MAX))
+    changes::now()
+}
+
+/// Does an act a listener asked for and answers it, logged as asked
+/// before it's done and with its result after, so a daemon stopped
+/// partway still leaves a line. One whose asker has gone is let go
+/// undone, since no one would hear how it went and it would hold up the
+/// reads behind it; one whose ask can't be logged isn't done, since a
+/// change no line names couldn't be found again.
+fn act(daemon: &mut Daemon, listeners: &Listeners, asked: &Asked) {
+    if !listeners.waits(asked) {
+        eprintln!(
+            "eero: let {:?} go undone, since who asked it has gone",
+            asked.act
+        );
+        return;
+    }
+    let log = changes::file();
+    let done = match log
+        .as_deref()
+        .map_err(|error| io::Error::new(error.kind(), error.to_string()))
+        .and_then(|log| changes::asked(log, asked, now_unix()))
+    {
+        Ok(()) => daemon.act(asked.act),
+        Err(error) => Err(Failure::Refused(format!(
+            "couldn't log the ask, so nothing was done: {error}"
+        ))),
+    };
+    if let Ok(log) = &log
+        && let Err(error) = changes::ended(log, asked, &done, now_unix())
+    {
+        eprintln!("eero: couldn't log how {:?} went: {error}", asked.act);
+    }
+    listeners.answer_act(asked, &done);
 }
 
 #[cfg(test)]

@@ -72,7 +72,7 @@ impl Cloud {
 
     /// An answer to a DELETE, which is how a reservation goes. eero may
     /// answer one with no data, so its data is null then rather than a
-    /// refusal.
+    /// refusal (`judge`).
     pub fn delete(&mut self, path: &str) -> Result<Value, Failure> {
         self.call(Method::Delete, path, None)
     }
@@ -149,14 +149,7 @@ impl Cloud {
         })?;
         let status = answer.status().as_u16();
         let read: Value = answer.body_mut().read_json().unwrap_or(Value::Null);
-        match judge(path, status, &read) {
-            Err(Refused::Failed(Failure::Refused(_)))
-                if matches!(method, Method::Delete) && (200..300).contains(&status) =>
-            {
-                Ok(Value::Null)
-            }
-            judged => judged,
-        }
+        judge(method, path, status, &read)
     }
 
     fn keep(&self) -> Result<(), String> {
@@ -168,7 +161,13 @@ impl Cloud {
 /// The data of an answer to `path`, or why there's none: an aged session
 /// apart, since a refresh mends it, and eero failing on its side apart
 /// from eero refusing, since only the first may answer if asked again.
-fn judge(path: &str, status: u16, read: &Value) -> Result<Value, Refused> {
+/// A DELETE eero took may come back with no data, which is null then
+/// rather than a refusal; only a DELETE, since a read with no data is
+/// one eero couldn't answer, never an empty one.
+fn judge(method: Method, path: &str, status: u16, read: &Value) -> Result<Value, Refused> {
+    if matches!(method, Method::Delete) && (200..300).contains(&status) {
+        return Ok(api::data(read).cloned().unwrap_or(Value::Null));
+    }
     if api::session_expired(status, read) {
         return Err(Refused::Aged);
     }
@@ -188,9 +187,36 @@ fn judge(path: &str, status: u16, read: &Value) -> Result<Value, Refused> {
         .map_err(|reason| Refused::Failed(Failure::Refused(reason)))
 }
 
+/// What the acts ask of eero's cloud, so a test can answer in its place
+/// (reservations.rs).
+pub trait Asks {
+    fn get(&mut self, path: &str) -> Result<Value, Failure>;
+    fn post(&mut self, path: &str, body: Option<&Value>) -> Result<Value, Failure>;
+    fn put(&mut self, path: &str, body: &Value) -> Result<Value, Failure>;
+    fn delete(&mut self, path: &str) -> Result<Value, Failure>;
+}
+
+impl Asks for Cloud {
+    fn get(&mut self, path: &str) -> Result<Value, Failure> {
+        Cloud::get(self, path)
+    }
+
+    fn post(&mut self, path: &str, body: Option<&Value>) -> Result<Value, Failure> {
+        Cloud::post(self, path, body)
+    }
+
+    fn put(&mut self, path: &str, body: &Value) -> Result<Value, Failure> {
+        Cloud::put(self, path, body)
+    }
+
+    fn delete(&mut self, path: &str) -> Result<Value, Failure> {
+        Cloud::delete(self, path)
+    }
+}
+
 /// How a request asks: eero's reads are GETs, a setting changes by PUT,
 /// a reservation goes by DELETE, and everything else POSTs.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum Method {
     Get,
     Post,
@@ -213,6 +239,10 @@ pub enum Failure {
     Unreachable(String),
     /// eero answered, but refused this request or gave it no data.
     Refused(String),
+    /// A change was sent, but neither eero's answer nor a read after it
+    /// says whether eero took it, so whoever asked reads it again rather
+    /// than trusting either way.
+    Unknown(String),
 }
 
 impl fmt::Display for Failure {
@@ -220,7 +250,8 @@ impl fmt::Display for Failure {
         match self {
             Failure::SignedOut(reason)
             | Failure::Unreachable(reason)
-            | Failure::Refused(reason) => f.write_str(reason),
+            | Failure::Refused(reason)
+            | Failure::Unknown(reason) => f.write_str(reason),
         }
     }
 }
@@ -259,7 +290,7 @@ mod tests {
     use serde_json::json;
 
     fn failure(status: u16, read: &Value) -> Option<Failure> {
-        match judge("/2.2/networks/1001", status, read) {
+        match judge(Method::Get, "/2.2/networks/1001", status, read) {
             Ok(_) => None,
             Err(refused) => Some(refused.into()),
         }
@@ -270,7 +301,7 @@ mod tests {
         let read = json!({"meta": {"code": 200}, "data": {"name": "home"}});
 
         assert_eq!(
-            judge("/2.2/networks/1001", 200, &read).ok(),
+            judge(Method::Get, "/2.2/networks/1001", 200, &read).ok(),
             Some(json!({"name": "home"}))
         );
     }
@@ -305,5 +336,44 @@ mod tests {
         };
 
         assert!(reason.contains("run `eero sign-in"), "{reason}");
+    }
+
+    #[test]
+    fn only_a_delete_eero_took_may_come_back_without_data() {
+        let path = "/2.2/networks/1001/reservations/2c8db13091a2";
+        let judged = |method, status, read: Value| match judge(method, path, status, &read) {
+            Ok(data) => Ok(data),
+            Err(refused) => Err(Failure::from(refused)),
+        };
+        let missing = json!({"meta": {"code": 404, "error": "error.reservation.missing"}});
+        assert_eq!(
+            [
+                judged(Method::Delete, 204, Value::Null),
+                judged(Method::Delete, 200, json!({"meta": {"code": 200}})),
+                judged(
+                    Method::Delete,
+                    200,
+                    json!({"meta": {"code": 200}, "data": {}})
+                ),
+            ],
+            [Ok(Value::Null), Ok(Value::Null), Ok(json!({}))],
+            "a DELETE eero took read as refused"
+        );
+        assert!(
+            matches!(
+                judged(Method::Delete, 404, missing),
+                Err(Failure::Refused(_))
+            ),
+            "a DELETE eero refused read as taken"
+        );
+        for method in [Method::Get, Method::Post, Method::Put] {
+            assert!(
+                matches!(
+                    judged(method, 200, json!({"meta": {"code": 200}, "data": null})),
+                    Err(Failure::Refused(_))
+                ),
+                "a {method:?} answered with no data read as taken"
+            );
+        }
     }
 }

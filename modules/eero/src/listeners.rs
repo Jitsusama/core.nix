@@ -26,8 +26,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
+use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -35,7 +36,9 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::acts::Act;
+use crate::acts::{Act, Done};
+use crate::changes;
+use crate::cloud::Failure;
 use crate::model::HomeNetwork;
 use crate::served::{self, Mapped, Said, Vocabularies};
 
@@ -65,28 +68,57 @@ pub struct Asked {
 }
 
 /// The process at the other end of a listener's connection, as the kernel
-/// says it, which no listener can tell otherwise.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// says it, which no listener can tell otherwise, and the unit it ran in
+/// as it joined, read then rather than once an act is done, when the
+/// process may have gone and its pid be another's.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Peer {
-    pub pid: i32,
+    /// None where the kernel can't say: one in a pid namespace the
+    /// daemon can't see is said as 0.
+    pub pid: Option<i32>,
     pub uid: u32,
+    pub unit: Option<String>,
 }
 
 impl Peer {
     /// Who connected on `stream`, or none where the kernel won't say.
     fn of(stream: &UnixStream) -> Option<Peer> {
-        let said = rustix::net::sockopt::socket_peercred(stream).ok()?;
+        let mut said = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut length = libc::socklen_t::try_from(std::mem::size_of::<libc::ucred>()).ok()?;
+        // SAFETY: SO_PEERCRED writes one ucred into a buffer of the size
+        // `length` gives, and the socket is open for the call. It's read
+        // through libc rather than rustix, whose pid can't hold the 0 the
+        // kernel says for a pid it can't map.
+        let read = unsafe {
+            libc::getsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                (&raw mut said).cast(),
+                &raw mut length,
+            )
+        };
+        if read != 0 || usize::try_from(length).ok()? != std::mem::size_of::<libc::ucred>() {
+            return None;
+        }
+        let pid = (said.pid > 0).then_some(said.pid);
         Some(Peer {
-            pid: said.pid.as_raw_nonzero().get(),
-            uid: said.uid.as_raw(),
+            pid,
+            uid: said.uid,
+            unit: pid.and_then(changes::unit),
         })
     }
 
     /// Whether this is the daemon's own account, the only one it answers:
     /// what it tells holds the home network's devices, and what it's asked
     /// can change it.
-    fn is_ours(self) -> bool {
-        self.uid == rustix::process::getuid().as_raw()
+    fn is_ours(&self) -> bool {
+        // SAFETY: getuid has no failure and touches no memory.
+        self.uid == unsafe { libc::getuid() }
     }
 }
 
@@ -111,6 +143,8 @@ struct Hub {
     vocabularies: Vocabularies,
     listeners: Vec<Listener>,
     next_id: u64,
+    /// The change log an ask refused as no act is written to, if any.
+    log: Option<PathBuf>,
 }
 
 /// A watch of the rows: its id, the vocabulary they're said in, and the
@@ -151,15 +185,18 @@ impl Listeners {
     /// tells `wake` whenever a listener joins, leaves, looks or asks for a
     /// read. Its rows offer the network map's page, `map`, if any.
     pub fn listen(path: &Path, wake: Sender<Call>, map: Option<Mapped>) -> io::Result<Listeners> {
-        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map))
+        let log = changes::file().ok();
+        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map), log)
     }
 
     /// Listens as `listen` does, reading vocabularies as `vocabularies`
-    /// allows: from the Nix store, but in tests.
+    /// allows, from the Nix store but in tests, and logging an ask refused
+    /// as no act to `log`, the account's change log but in tests.
     fn listen_within(
         path: &Path,
         wake: Sender<Call>,
         vocabularies: Vocabularies,
+        log: Option<PathBuf>,
     ) -> io::Result<Listeners> {
         match fs::remove_file(path) {
             Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
@@ -169,6 +206,7 @@ impl Listeners {
         let listeners = Listeners {
             hub: Arc::new(Mutex::new(Hub {
                 vocabularies,
+                log,
                 ..Hub::default()
             })),
         };
@@ -260,13 +298,34 @@ impl Listeners {
         });
     }
 
-    /// Answers an act a listener asked for, done (`Ok`) or refused with
-    /// why, as every daemon answers one: `done`, or an error the shell
-    /// says in its own words. One gone since it asked hears nothing.
-    pub fn answer_act(&self, asked: &Asked, done: Result<(), String>) {
+    /// Whether the listener that asked for `asked` is still connected to
+    /// hear its answer.
+    pub fn waits(&self, asked: &Asked) -> bool {
+        self.hub()
+            .listeners
+            .iter()
+            .any(|listener| listener.id == asked.listener)
+    }
+
+    /// Answers an act a listener asked for, done or not and why, as every
+    /// daemon answers one: `done`, or an error the shell says in its own
+    /// words, coded by what mends it. One gone since it asked hears
+    /// nothing.
+    pub fn answer_act(&self, asked: &Asked, done: &Result<Done, Failure>) {
         let answer = match done {
-            Ok(()) => json!({"id": asked.id, "done": true}),
-            Err(why) => json!({"id": asked.id, "error": {"code": "refused", "message": why}}),
+            Ok(Done::Freed(address)) => {
+                json!({"id": asked.id, "done": true, "freed": address.to_string()})
+            }
+            Ok(_) => json!({"id": asked.id, "done": true}),
+            Err(failure) => {
+                let code = match failure {
+                    Failure::SignedOut(_) => "signed-out",
+                    Failure::Unreachable(_) => "unreachable",
+                    Failure::Refused(_) => "refused",
+                    Failure::Unknown(_) => "unknown",
+                };
+                json!({"id": asked.id, "error": {"code": code, "message": failure.to_string()}})
+            }
         };
         let mut hub = self.hub();
         let Some(listener) = hub
@@ -287,7 +346,7 @@ impl Listeners {
             return;
         }
         let peer = Peer::of(&stream);
-        if !peer.is_some_and(Peer::is_ours) {
+        if !peer.as_ref().is_some_and(Peer::is_ours) {
             eprintln!(
                 "eero: refused a listener of uid {:?}, which isn't the daemon's",
                 peer.map(|peer| peer.uid)
@@ -345,6 +404,7 @@ impl Listeners {
             network,
             vocabularies,
             listeners,
+            log,
             ..
         } = &mut *hub;
         let records: Vec<Value> = record.iter().cloned().collect();
@@ -397,13 +457,21 @@ impl Listeners {
                         listener: id,
                         id: said,
                         act,
-                        peer: listener.peer,
+                        peer: listener.peer.clone(),
                     }));
                 }
-                Err(why) => (
-                    json!({"id": said, "error": {"code": "bad-act", "message": why}}),
-                    None,
-                ),
+                Err(why) => {
+                    let logged = log.as_deref().map(|log| {
+                        changes::refused(log, listener.peer.as_ref(), &asked, changes::now())
+                    });
+                    if let Some(Err(error)) = logged {
+                        eprintln!("eero: couldn't log a refused act: {error}");
+                    }
+                    (
+                        json!({"id": said, "error": {"code": "bad-act", "message": why}}),
+                        None,
+                    )
+                }
             },
             _ => (
                 json!({"id": said, "error": "the eero daemon doesn't know that ask"}),

@@ -13,9 +13,15 @@ fn folder(name: &str) -> std::path::PathBuf {
 
 /// A socket in a folder of the test's own, and what wakes the daemon.
 fn listening(name: &str) -> (Listeners, mpsc::Receiver<Call>, std::path::PathBuf) {
-    let path = folder(name).join("socket");
+    let folder = folder(name);
+    let path = folder.join("socket");
+    let log = folder.join("changes.jsonl");
+    let _ = fs::remove_file(&log);
     let (wake, woken) = mpsc::channel();
-    let listeners = Listeners::listen(&path, wake, None).expect("the socket listens");
+    // Logging to the test's own folder, never the account's change log.
+    let listeners =
+        Listeners::listen_within(&path, wake, Vocabularies::default().mapped(None), Some(log))
+            .expect("the socket listens");
     (listeners, woken, path)
 }
 
@@ -44,8 +50,9 @@ fn serving_mapped(
         page: "http://sites.localhost/network/".into(),
         record,
     });
-    let listeners = Listeners::listen_within(&path, wake, Vocabularies::within(store).mapped(map))
-        .expect("the socket listens");
+    let vocabularies = Vocabularies::within(store).mapped(map);
+    let listeners =
+        Listeners::listen_within(&path, wake, vocabularies, None).expect("the socket listens");
     let (stream, reader) = connected(&path);
     (listeners, words.display().to_string(), stream, reader)
 }
@@ -194,20 +201,27 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
         Act::Conferencing(true),
         "the act is the one asked"
     );
+    let pid = i32::try_from(std::process::id()).expect("a pid fits");
     assert_eq!(
         asked.peer,
         Some(Peer {
-            pid: i32::try_from(std::process::id()).expect("a pid fits"),
-            uid: rustix::process::getuid().as_raw(),
+            pid: Some(pid),
+            // SAFETY: getuid has no failure and touches no memory.
+            uid: unsafe { libc::getuid() },
+            unit: changes::unit(pid),
         }),
         "the act carries who asked, as the kernel says it"
     );
-    listeners.answer_act(&asked, Err("eero is busy".into()));
+    assert!(
+        listeners.waits(&asked),
+        "a listener still connected isn't waiting"
+    );
+    listeners.answer_act(&asked, &Err(Failure::Unreachable("eero is busy".into())));
 
     assert_eq!(
         read(&mut reader),
-        json!({"id": "act-1", "error": {"code": "refused", "message": "eero is busy"}}),
-        "the act is answered with what the daemon heard"
+        json!({"id": "act-1", "error": {"code": "unreachable", "message": "eero is busy"}}),
+        "the act is answered with what the daemon heard, coded by what mends it"
     );
     ask(
         &mut stream,
@@ -216,27 +230,46 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
     let Ok(Call::Act(asked)) = woken.recv() else {
         panic!("the act wakes the daemon to do it");
     };
-    listeners.answer_act(&asked, Ok(()));
+    listeners.answer_act(&asked, &Ok(Done::Made));
     assert_eq!(
         read(&mut reader),
         json!({"id": "act-2", "done": true}),
         "an act done is answered done"
     );
+    ask(
+        &mut stream,
+        &json!({"id": "act-3", "ask": "act", "act": "unreserve", "mac": "02:00:00:00:00:38"}),
+    );
+    let Ok(Call::Act(asked)) = woken.recv() else {
+        panic!("the act wakes the daemon to do it");
+    };
+    let freed = "10.0.0.208".parse().expect("an address");
+    listeners.answer_act(&asked, &Ok(Done::Freed(freed)));
+    assert_eq!(
+        read(&mut reader),
+        json!({"id": "act-3", "done": true, "freed": "10.0.0.208"}),
+        "an unreservation's answer doesn't say what it freed"
+    );
+    drop((stream, reader));
+    assert_eq!(woken.recv(), Ok(Call::Left), "leaving wakes the daemon");
+    assert!(
+        !listeners.waits(&asked),
+        "a listener gone was still waiting"
+    );
 }
 
 #[test]
 fn only_the_daemons_own_account_is_answered() {
-    let ours = rustix::process::getuid().as_raw();
+    // SAFETY: getuid has no failure and touches no memory.
+    let ours = unsafe { libc::getuid() };
+    let peer = |uid| Peer {
+        pid: Some(1),
+        uid,
+        unit: None,
+    };
+    assert!(peer(ours).is_ours(), "the daemon's own account was refused");
     assert!(
-        Peer { pid: 1, uid: ours }.is_ours(),
-        "the daemon's own account was refused"
-    );
-    assert!(
-        !Peer {
-            pid: 1,
-            uid: ours.wrapping_add(1)
-        }
-        .is_ours(),
+        !peer(ours.wrapping_add(1)).is_ours(),
         "another account was answered"
     );
 }
@@ -253,13 +286,21 @@ fn an_act_eero_has_none_of_is_answered_at_once() {
     );
 
     assert_eq!(
-        read(&mut reader)["error"]["code"],
-        "bad-act",
-        "an act eero hasn't is refused by the daemon itself"
+        read(&mut reader)["error"],
+        json!({"code": "bad-act", "message": "eero does nothing called reboot"}),
+        "an act eero hasn't is refused by the daemon itself, saying back only its name"
     );
     assert!(
         woken.try_recv().is_err(),
         "an act refused doesn't wake the daemon"
+    );
+    let log = path.with_file_name("changes.jsonl");
+    let logged: Value = serde_json::from_str(&fs::read_to_string(&log).expect("the log"))
+        .expect("the line is JSON");
+    assert_eq!(
+        (&logged["act"], &logged["result"], logged["uid"].is_u64()),
+        (&json!("reboot"), &json!("bad-act"), true),
+        "a refused act wasn't logged with who asked"
     );
 }
 

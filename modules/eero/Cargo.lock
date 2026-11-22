@@ -288,9 +288,9 @@ name = "eero"
 version = "0.1.0"
 dependencies = [
  "jiff",
+ "libc",
  "ready-rows",
  "rusqlite",
- "rustix",
  "serde",
  "serde_json",
  "terminal-kit",

@@ -62,6 +62,7 @@ mod notices;
 mod place;
 mod probe;
 mod read;
+mod reservations;
 mod rows;
 mod schedule;
 mod served;
@@ -229,6 +230,9 @@ fn from_cloud(failure: cloud::Failure) -> Failure {
             Failure::new(Exit::Unavailable, "eero's cloud isn't answering").because(why)
         }
         cloud::Failure::Refused(why) => Failure::new(Exit::Failed, "eero refused").because(why),
+        cloud::Failure::Unknown(why) => {
+            Failure::new(Exit::TryAgain, "whether eero took it isn't known").because(why)
+        }
     }
 }
 
@@ -299,18 +303,7 @@ fn conferencing(context: &Context, on: bool) -> Result<(), Failure> {
 /// by asking the daemon (asking.rs). It says what it changes and how to
 /// undo it before asking, since the change is to the whole house.
 fn reserve(context: &Context, mac: &str, address: Option<&str>) -> Result<(), Failure> {
-    let mac = acts::Mac::parse(mac).ok_or_else(|| {
-        Failure::new(Exit::Usage, "a reservation names a device by its MAC")
-            .try_this("eero devices 02:00:00:00:00:01 reserve 192.168.4.20")
-    })?;
-    let address: Option<std::net::Ipv4Addr> = address
-        .map(|address| {
-            address.parse().map_err(|_| {
-                Failure::new(Exit::Usage, "a reservation keeps an IPv4 address")
-                    .try_this(format!("eero devices {mac} reserve 192.168.4.20"))
-            })
-        })
-        .transpose()?;
+    let (mac, address) = reservation(mac, address)?;
     let (asked, doing, undo) = match address {
         Some(address) => (
             json!({"act": "reserve", "mac": mac.to_string(), "address": address.to_string()}),
@@ -328,14 +321,11 @@ fn reserve(context: &Context, mac: &str, address: Option<&str>) -> Result<(), Fa
         undo.as_ref()
             .map_or_else(String::new, |undo| format!("; undo with {undo}"))
     );
-    asking::act(&asked).map_err(|undone| match undone {
-        asking::Undone::Absent(why) => {
-            Failure::new(Exit::Unavailable, "eero-daemon isn't answering")
-                .because(why)
-                .try_this("systemctl --user status eero-daemon")
-        }
-        asking::Undone::Refused(why) => Failure::new(Exit::Failed, "eero refused").because(why),
-    })?;
+    let answered = asking::act(&asked).map_err(|undone| undone_said(undone, mac))?;
+    // An unreservation's undo is known only once the daemon says the
+    // address it freed.
+    let freed = answered["freed"].as_str();
+    let undo = undo.or_else(|| freed.map(|freed| format!("eero devices {mac} reserve {freed}")));
     if context.format().is_json() {
         return said(context.answer(&json!({
             "schema": "eero.reservation/1",
@@ -344,10 +334,57 @@ fn reserve(context: &Context, mac: &str, address: Option<&str>) -> Result<(), Fa
             "undo": undo,
         })));
     }
-    said(context.say(&match address {
-        Some(address) => format!("eero keeps {address} for {mac}.\n"),
-        None => format!("eero keeps no address for {mac}.\n"),
+    said(context.say(&match (address, &undo) {
+        (Some(address), _) => format!("eero keeps {address} for {mac}.\n"),
+        (None, Some(undo)) => format!("eero keeps no address for {mac}; undo with {undo}.\n"),
+        (None, None) => format!("eero keeps no address for {mac}.\n"),
     }))
+}
+
+/// How an act asked of the daemon that wasn't done is said, each by what
+/// mends it: an outcome no one knows is said to be read again, never as
+/// done or refused.
+fn undone_said(undone: asking::Undone, mac: acts::Mac) -> Failure {
+    match undone {
+        asking::Undone::Absent(why) => {
+            Failure::new(Exit::Unavailable, "eero-daemon isn't answering")
+                .because(why)
+                .try_this("systemctl --user status eero-daemon")
+        }
+        asking::Undone::Refused(why) => Failure::new(Exit::Failed, "eero refused").because(why),
+        asking::Undone::Unreachable(why) => {
+            Failure::new(Exit::TryAgain, "eero couldn't be reached").because(why)
+        }
+        asking::Undone::SignedOut(why) => Failure::new(Exit::Refused, "not signed in to eero")
+            .because(why)
+            .try_this("eero sign-in <email or phone>"),
+        asking::Undone::Unknown(why) => {
+            Failure::new(Exit::TryAgain, "whether eero took it isn't known")
+                .because(why)
+                .try_this(format!("eero devices {mac}"))
+        }
+    }
+}
+
+/// The device and the address, if any, a reservation names, or why it
+/// names none.
+fn reservation(
+    mac: &str,
+    address: Option<&str>,
+) -> Result<(acts::Mac, Option<std::net::Ipv4Addr>), Failure> {
+    let mac = acts::Mac::parse(mac).ok_or_else(|| {
+        Failure::new(Exit::Usage, "a reservation names a device by its MAC")
+            .try_this("eero devices 02:00:00:00:00:01 reserve 192.168.4.20")
+    })?;
+    let address: Option<std::net::Ipv4Addr> = address
+        .map(|address| {
+            address.parse().map_err(|_| {
+                Failure::new(Exit::Usage, "a reservation keeps an IPv4 address")
+                    .try_this(format!("eero devices {mac} reserve 192.168.4.20"))
+            })
+        })
+        .transpose()?;
+    Ok((mac, address))
 }
 
 /// Each network's status a line, for a person. A network's name is
@@ -364,7 +401,7 @@ fn each_said(networks: &[api::Network]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{api, commands, each_said, view_words};
+    use super::{api, commands, each_said, reservation, view_words};
     use serde_json::json;
     use terminal_kit::tree;
 
@@ -487,5 +524,29 @@ mod tests {
             "Home [2Jeero  online  online  conferencing on\n",
             "a network's name drew a line of its own, or a control reached the terminal"
         );
+    }
+
+    #[test]
+    fn a_reservation_names_a_mac_and_an_ipv4_address_or_is_usage() {
+        assert!(
+            reservation("02:00:00:00:00:01", Some("10.0.0.31")).is_ok(),
+            "a good reservation was refused"
+        );
+        assert!(
+            reservation("02:00:00:00:00:01", None).is_ok(),
+            "a good unreservation was refused"
+        );
+        for (mac, address) in [
+            ("Pixel", Some("10.0.0.31")),
+            ("Pixel", None),
+            ("02:00:00:00:00:01", Some("10.0.0")),
+            ("02:00:00:00:00:01", Some("Pixel")),
+        ] {
+            assert_eq!(
+                reservation(mac, address).err().map(|failure| failure.exit),
+                Some(terminal_kit::Exit::Usage),
+                "eero devices {mac} reserve {address:?} should be refused with 64"
+            );
+        }
     }
 }

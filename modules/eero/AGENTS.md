@@ -148,26 +148,50 @@ no DNS, port forward, firewall, admin or account change goes through
 that door. The socket's folder is 0700, and the daemon answers only its
 own account, by the connection's peer credentials, closing any other at
 once. The fence gives its commands an empty runtime folder of their
-own, so no fenced or strict session reaches the socket at all. `eero devices <MAC> reserve <address>` and
-`eero devices <MAC> unreserve` ask the daemon ([`src/asking.rs`][asking])
-rather than opening the session, so the session is opened by the daemon
-and by `eero sign-in`, `eero internet sqm on|off` and `eero speeds run`
-alone. A reservation refuses rather than replaces one already kept for
-that device or that address, and every change is read back, since eero
-takes a change it then ignores.
+own, so no fenced or strict session reaches the socket at all.
+`eero devices <MAC> reserve <address>` and `eero devices <MAC> unreserve`
+ask the daemon ([`src/asking.rs`][asking]) rather than opening the
+session, so the session is opened by the daemon and by `eero sign-in`,
+`eero internet sqm on|off` and `eero speeds run` alone.
 
-Each act the daemon is asked is logged before it answers, a JSON line in
-`$XDG_STATE_HOME/eero/changes.jsonl` ([`src/changes.rs`][changes]): when,
-the act and the MAC and address it names, the asking process's pid and
-uid from the socket's peer credentials, the unit or scope it runs in,
-and whether eero took it or, by kind alone, what kept it from doing so.
-It holds no session and nothing eero answered, whose refusals can carry
-their whole body.
+The socket is the door agents are meant to use, not a wall: a process
+running as the account, unfenced, can open the session itself as those
+three commands do. Only the fence keeps an agent from it, by hiding
+`session.cred` and systemd's credentials as well as the socket.
+
+A reservation changes which device DHCP gives which address, so each
+refuses rather than guesses ([`src/reservations.rs`][reservations]). A
+reservation crossing one eero keeps is refused, not replaced, and so is
+an address a device or an eero holds now, or one outside the home
+subnet. An unreservation is refused where a port forward reaches the
+address, where eero keeps more than one for the device, or where its
+reservation lives anywhere but under the network's reservations. A list
+this can't read whole refuses too. Each change is judged by reading
+eero's reservations after it rather than by eero's answer, whose shape
+for a change was taken from an open-source client rather than seen.
+Where neither says, the outcome is unknown: the CLI exits 75 and says to
+read the device again, never that it was done or refused. An act whose
+asker has gone before the daemon reaches it is let go undone.
+
+Each act the daemon is asked is logged as asked before it's done and
+with its result after, as JSON lines in
+`$XDG_STATE_HOME/eero/changes.jsonl` ([`src/changes.rs`][changes]), and
+one whose ask can't be logged isn't done. A line holds when, the act and
+the MAC and address it names, the asking process's pid and uid from the
+socket's peer credentials, the unit or scope it ran in as it connected,
+and its result by kind alone. An unreservation's result names the
+address it freed, which is its undo. An ask refused as `bad-act` is
+logged too, its act's name cut short. The log holds no session and
+nothing eero answered, whose refusals can carry their whole body. It's
+a record the daemon keeps, not an audit: any process running as the
+account can write the file, and a process can ask through another.
 
 The session sealed in `session.cred` is the account's alone: the file is
 made mode 600 from the start and its folder 700, never narrowed after
-writing. Every change to the home network still waits on Joel's yes,
-with what it changes and its undo.
+writing. Nothing in the code waits on Joel: an agent asks for a speed
+test or conferencing and gaming on its own, and asks for a reservation
+or an unreservation only after Joel's yes on that one change, with what
+it changes and its undo.
 
 ## What It Tells
 
@@ -278,6 +302,7 @@ offered by its hardware address.
 [acts]: src/acts.rs
 [asking]: src/asking.rs
 [changes]: src/changes.rs
+[reservations]: src/reservations.rs
 [contract]: contract/README.md
 [model]: home-network.json
 [read]: src/read/mod.rs

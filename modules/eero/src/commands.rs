@@ -121,32 +121,54 @@ fn run() -> Help {
 /// Keep an address for one device, asked of the daemon, which alone opens
 /// eero's session.
 fn reserve() -> Help {
-    Help::new("reserve", "keep an address for this device, by its MAC")
-        .example(
-            "eero devices 02:00:00:00:00:01 reserve 192.168.4.20",
-            "DHCP gives it that address from now on",
-        )
-        .example(
-            "eero devices 02:00:00:00:00:01 reserve 192.168.4.20 --json",
-            "the same, said as eero.reservation/1",
-        )
-        .argument("<address>", "the IPv4 address to keep for it")
-        .exit(
-            Exit::Failed,
-            "eero refused, or it keeps another address or device",
-        )
-        .exit(Exit::Unavailable, "eero-daemon isn't answering")
+    Help::new(
+        "reserve",
+        "keep an address for a device; <name> is its MAC, such as 02:00:00:00:00:01",
+    )
+    .example(
+        "eero devices 02:00:00:00:00:01 reserve 192.168.4.20",
+        "DHCP gives it that address from now on",
+    )
+    .example(
+        "eero devices 02:00:00:00:00:01 reserve 192.168.4.20 --json",
+        "the same, said as eero.reservation/1",
+    )
+    .argument(
+        "<address>",
+        "the IPv4 address to keep for it, in the home subnet and held by no other device",
+    )
+    .exit(
+        Exit::Failed,
+        "eero refused, or the address or the device is another's",
+    )
+    .exit(
+        Exit::TryAgain,
+        "eero couldn't be reached, or whether it took it isn't known",
+    )
+    .exit(Exit::Refused, "not signed in to eero")
+    .exit(Exit::Unavailable, "eero-daemon isn't answering")
 }
 
 /// Stop keeping an address for one device.
 fn unreserve() -> Help {
-    Help::new("unreserve", "stop keeping an address for this device")
-        .example(
-            "eero devices 02:00:00:00:00:01 unreserve",
-            "DHCP may give it any address again",
-        )
-        .exit(Exit::Failed, "eero refused")
-        .exit(Exit::Unavailable, "eero-daemon isn't answering")
+    Help::new(
+        "unreserve",
+        "stop keeping an address for a device; <name> is its MAC",
+    )
+    .example(
+        "eero devices 02:00:00:00:00:01 unreserve",
+        "DHCP may give it any address again",
+    )
+    .exit(
+        Exit::Failed,
+        "eero refused, or a port forward reaches the address",
+    )
+    .exit(
+        Exit::TryAgain,
+        "eero couldn't be reached, or whether it took it isn't known",
+    )
+    .exit(Exit::Refused, "not signed in to eero")
+    .exit(Exit::Unavailable, "eero-daemon isn't answering")
 }
 
 /// The whole tree, from `eero` down.
