@@ -13,7 +13,7 @@
 //! Joel comes first: he gets what he carries on each lane, a fifth more
 //! and a megabit, so his next burst finds room before the next second
 //! moves the rates; a fifth alone would take ten seconds to grow from one
-//! megabit to six. What he needs straight on the connection rises at once
+//! megabit to six. What his straight lane is given rises at once
 //! and falls by a fifth a second, as the VPN's share, which carries his
 //! part inside it, already does: a second in which something past the
 //! shaper, a router's queue when the controller climbs past the line, gave
@@ -249,8 +249,8 @@ pub struct Said {
     pub waiting_direct: u32,
 }
 
-/// Follows the VPN's share, and what Joel needs straight on the
-/// connection, from second to second; a rate of zero forgets both.
+/// Follows the VPN's share, and what Joel's straight lane is held at,
+/// from second to second; a rate of zero forgets both.
 #[derive(Clone, Debug, Default)]
 pub struct Lanes {
     share: Option<f64>,
@@ -258,8 +258,9 @@ pub struct Lanes {
     /// what's held of Joel's straight lane, so it rises back past the band
     /// it otherwise stays still inside.
     held_back: bool,
-    /// What Joel's straight lane was given at the last real second, as a
-    /// share of the rate, as the VPN's is, so a new rate takes it along.
+    /// What Joel's straight lane was given at the last real second, or with
+    /// no agent waiting what's held of it as it falls, as a share of the
+    /// rate, as the VPN's is, so a new rate takes it along.
     joel: f64,
     last: Seen,
     /// The seconds split over so far.
@@ -419,9 +420,17 @@ impl Lanes {
         let joel = straight_now + extra.min(spare);
         // Only a real second is stored, as the VPN's share is: a moment at a
         // higher rate gives his lane more, but holding it would let the next
-        // dip take it from the VPN at the rate it falls back to.
+        // dip take it from the VPN at the rate it falls back to. With no
+        // agent waiting nothing is held from anyone, and the VPN fills what
+        // he leaves, so the hold is stored as it falls rather than as what
+        // he carried: agents who start waiting the second after find it.
         if dt > 0.0 {
-            self.joel = joel / rate;
+            let held = if beside || within {
+                joel
+            } else {
+                straight_now + extra
+            };
+            self.joel = held / rate;
         }
         // Held for the VPN's wait while they wait, agents straight keep a
         // share of their split, never under their part of the floor, and
@@ -1004,7 +1013,8 @@ mod tests {
             near(dipped, busy * (1.0 - FALL)),
             "a second's dip took Joel's lane from {busy} to {dipped}"
         );
-        // Held as what he needs, not as what a smaller rate left him.
+        // Held as what a real second gave him: a smaller rate between
+        // seconds stores nothing.
         lanes.at(RATE / 2.0);
         assert!(
             near(lanes.at(RATE).joel, dipped),
@@ -1205,19 +1215,20 @@ mod tests {
 
     // The controller moves its rate between seconds; a moment at a higher
     // rate gives his straight lane more, but holds none of it.
+    // With no agent waiting nothing is held from anyone, so a dip then
+    // leaves the hold falling by a fifth, for agents who start waiting the
+    // second after to find.
     #[test]
-    fn a_rate_raised_between_seconds_leaves_joel_s_hold_as_it_was() {
+    fn a_second_with_no_agent_waiting_leaves_joel_s_hold_falling() {
         let mut lanes = Lanes::default();
-        let agents = (Agents::default(), waiting(30));
-        let busy = lanes.split(&seen((6_000.0, 4_000.0), agents), 1.0);
-        lanes.at(2.0 * RATE);
-        lanes.at(RATE);
-        let dipped = lanes.split(&seen((200.0, 200.0), agents), 1.0);
+        let none = (Agents::default(), Agents::default());
+        lanes.split(&seen((4_000.0, 0.0), none), 1.0);
+        lanes.split(&seen((200.0, 0.0), none), 1.0);
+        let fell = need(4_000.0) * (1.0 - FALL);
         assert!(
-            dipped.vpn >= busy.vpn * (1.0 - FALL) - 1.0,
-            "a moment at twice the rate let a dip take the VPN from {} to {}",
-            busy.vpn,
-            dipped.vpn
+            near(lanes.joel * RATE, fell),
+            "a second with no agent waiting took Joel's hold from {fell} to {}",
+            lanes.joel * RATE
         );
     }
 
