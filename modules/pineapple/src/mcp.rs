@@ -292,15 +292,15 @@ impl Gateway {
             let text = answer.body_mut().read_to_string().map_err(|error| {
                 Called::Unreachable(format!("couldn't read the gateway's answer: {error}"))
             })?;
+            // A gateway that's down or busy passes, whatever its page holds,
+            // as a spent rate does in deaf.rs.
+            if status >= SERVER_FAILING || status == TOO_MANY {
+                return Err(Called::Unreachable(format!(
+                    "the gateway answered {status}"
+                )));
+            }
             Some(answered(&text, self.asked).ok_or_else(|| {
-                let why = format!("the gateway answered {status}, not JSON-RPC");
-                // A gateway that's down or busy says so in its own page,
-                // and passes, as a spent rate does in deaf.rs.
-                if status >= SERVER_FAILING || status == TOO_MANY {
-                    Called::Unreachable(why)
-                } else {
-                    Called::Unreadable(why)
-                }
+                Called::Unreadable(format!("the gateway answered {status}, not JSON-RPC"))
             })?)
         } else {
             None
@@ -317,8 +317,12 @@ impl Gateway {
 /// event stream answering request `asked`, as the transport lets a server
 /// answer either way. An event's data may run over several lines, and
 /// the stream may carry the server's own notices beside the answer.
+/// JSON holding neither a result nor an error, such as a page a proxy
+/// wrote, is no answer.
 fn answered(text: &str, asked: u64) -> Option<Value> {
-    serde_json::from_str(text).ok().or_else(|| {
+    let answers = |one: &Value| one.get("result").is_some() || one.get("error").is_some();
+    let whole = serde_json::from_str::<Value>(text).ok();
+    whole.filter(answers).or_else(|| {
         text.replace("\r\n", "\n")
             .split("\n\n")
             .filter_map(|event| {
@@ -329,7 +333,7 @@ fn answered(text: &str, asked: u64) -> Option<Value> {
                     .collect();
                 serde_json::from_str::<Value>(&data.join("\n")).ok()
             })
-            .find(|event| event["id"] == json!(asked))
+            .find(|event| event["id"] == json!(asked) && answers(event))
     })
 }
 

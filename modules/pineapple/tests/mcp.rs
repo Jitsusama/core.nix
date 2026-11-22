@@ -582,29 +582,35 @@ fn an_answer_as_an_event_stream_is_read() {
 
 #[test]
 fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down_or_busy() {
+    let pages = [
+        ("text/html", "<html>sign in</html>"),
+        ("application/json", r#"{"message":"slow down"}"#),
+    ];
     for (code, unreadable) in [(200, true), (400, true), (429, false), (502, false)] {
-        let dir = scratch(&format!("not-json-rpc-{code}"));
-        let (url, _) = gateway(move |one, _| match one.method.as_str() {
-            "initialize" => opened("s1"),
-            "tools/call" => Reply {
-                kind: "text/html",
-                body: "<html>sign in</html>".to_owned(),
-                ..status(code)
-            },
-            _ => status(202),
-        });
-        let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
-        let called = gateway.call("slack_who_am_i", &json!({}));
-        assert!(
-            if unreadable {
-                matches!(called, Err(Called::Unreadable(_)))
-            } else {
-                matches!(called, Err(Called::Unreachable(_)))
-            },
-            "a page in a {code} is unreadable, a cause that lasts, unless it's the gateway's \
-             own failing or a spent rate: {called:?}"
-        );
-        let _ = fs::remove_dir_all(&dir);
+        for (at, (kind, page)) in pages.into_iter().enumerate() {
+            let dir = scratch(&format!("not-json-rpc-{code}-{at}"));
+            let (url, _) = gateway(move |one, _| match one.method.as_str() {
+                "initialize" => opened("s1"),
+                "tools/call" => Reply {
+                    kind,
+                    body: page.to_owned(),
+                    ..status(code)
+                },
+                _ => status(202),
+            });
+            let mut gateway = Gateway::new(&url, sign_in(&dir).as_os_str());
+            let called = gateway.call("slack_who_am_i", &json!({}));
+            assert!(
+                if unreadable {
+                    matches!(called, Err(Called::Unreadable(_)))
+                } else {
+                    matches!(called, Err(Called::Unreachable(_)))
+                },
+                "a {kind} page in a {code} is unreadable, a cause that lasts, unless it's the \
+             gateway's own failing or a spent rate: {called:?}"
+            );
+            let _ = fs::remove_dir_all(&dir);
+        }
     }
 }
 
