@@ -171,7 +171,7 @@ fn orchestration(row: &Row, members: &[&Row], known: &Known, said: &Said) -> Val
             "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
-                "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off,
+                "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off(),
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -324,7 +324,7 @@ fn member(row: &Row, parent: &str, depth: usize, under: usize, said: &Said) -> V
             "depth": depth, "side": items(&side), "note": row.note,
             "drawer": format!("drawer:{PLACE}:{address}"), "acts": acts,
             "held": {"address": address, "also": row.also, "state": row.state, "gone": row.gone,
-                "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off,
+                "waitsOnJoel": row.waits_on_joel, "putOff": row.put_off(),
                 "anyWaitsOnJoel": row.waits_on_joel || under_waits},
         }),
     )
@@ -500,7 +500,6 @@ mod tests {
             orchestrates: false,
             gone: false,
             waits_on_joel: state == "needs",
-            put_off: false,
             state,
             doing: state.to_owned(),
             returns: "switch",
@@ -926,7 +925,7 @@ mod tests {
     fn a_session_inside_whose_want_joel_put_off_lights_nothing_and_offers_no_talk() {
         let mut put_off = row("A", "needs", 1, LIVE);
         if let Shown::Session(row) = &mut put_off {
-            (row.waits_on_joel, row.put_off, row.glyph) = (false, true, "waitsOnJoel");
+            (row.waits_on_joel, row.glyph) = (false, "waitsOnJoel");
         }
         let rows = top(&[
             wearing(row("O", "listening", 0, LIVE), "shapeSquare", "warning"),

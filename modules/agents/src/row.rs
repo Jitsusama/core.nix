@@ -138,9 +138,6 @@ pub struct Row {
     /// his still open, which For You lists as waiting too, so its row and
     /// those over it wear his mark either way.
     pub waits_on_joel: bool,
-    /// Whether it wants Joel but he put it off for the hour, so it wears
-    /// his mark quietly and counts as needing him nowhere (networks.rs).
-    pub put_off: bool,
     pub state: &'static str,
     /// How it stands in words, among its side's items too: For You's
     /// heading over the cell says it alone, without its figures.
@@ -374,7 +371,6 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
         orchestrates: place.orchestrates,
         gone: !session.reachable(),
         waits_on_joel,
-        put_off,
         state: stands.id(),
         doing: doing_said,
         // One standing at the top is gone to to be told something, the
@@ -397,6 +393,14 @@ pub fn row(session: Session, place: Place, known: &Known, words: &Words) -> Row 
 }
 
 impl Row {
+    /// Whether it wants Joel but he put it off for the hour: it wears his
+    /// mark, quietly, yet waits on him for nothing (`worn`), so it counts
+    /// as needing him nowhere (networks.rs).
+    #[must_use]
+    pub fn put_off(&self) -> bool {
+        self.glyph == standing::glyph(Stands::Needs, None) && !self.waits_on_joel
+    }
+
     /// The act `id` as the launcher's rows hold it: its verb's key and the
     /// ask that does it, which the shell sends back as it is. Close says
     /// too what its ask names and what stays, so the launcher asks it as
@@ -770,7 +774,11 @@ mod tests {
             let row = made(record, Place::default(), &put_off);
             format!(
                 "{}:{}:{}:{}:{}",
-                row.glyph, row.hue, row.mark_hue, row.waits_on_joel, row.put_off
+                row.glyph,
+                row.hue,
+                row.mark_hue,
+                row.waits_on_joel,
+                row.put_off()
             )
         };
         assert_eq!(

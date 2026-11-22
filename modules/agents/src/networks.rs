@@ -210,13 +210,13 @@ pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) 
     let unlit = counts["needs-you"].min(put_off);
     *counts.entry("needs-you").or_default() -= unlit;
     *counts.entry("quiet").or_default() += unlit;
-    let mut moved = leads;
+    let mut moving = leads;
     for standing in MARKED_FROM {
-        let taken = counts[standing].min(moved);
+        let taken = counts[standing].min(moving);
         *counts.entry(standing).or_default() -= taken;
-        moved -= taken;
+        moving -= taken;
     }
-    *counts.entry("needs-you").or_default() += leads - moved;
+    *counts.entry("needs-you").or_default() += leads;
     for (standing, many) in counts {
         if seen["counts"].get(standing).is_some() || many > 0 {
             seen["counts"][standing] = json!(many);
