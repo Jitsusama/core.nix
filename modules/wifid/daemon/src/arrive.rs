@@ -53,14 +53,22 @@ pub fn has_left(step: &str) -> bool {
     LEAVING.contains(&step) || GAVE_UP.contains(&step)
 }
 
+/// Whether which point a card is on decides if it has left the one it
+/// was on: only in a handshake or done, steps a rekey on its own point
+/// passes through too.
+pub fn needs_point(step: &str) -> bool {
+    !has_left(step) && crate::supplicant::holds_a_network(step)
+}
+
 /// Whether a card whose move wifid heard no step of has left `from`, at
-/// this step and `on` the point it's on, where known: one leaving or
-/// given up has, and one further on, in a handshake or done, has only on
-/// a point other than `from`, since a rekey there passes through them.
+/// this step and `on` the point it's on: one leaving or given up has, and
+/// one in a handshake or done (`needs_point`) has unless it's on `from`.
+/// One whose point can't be named (`None`) is taken as having left, as
+/// the move it was asked is likelier than a rekey in the same moment, and
+/// carried on it costs at worst a way back to where it is, where taken as
+/// never begun it has its networks on mid-join.
 pub fn has_left_for(step: &str, on: Option<&str>, from: &str) -> bool {
-    has_left(step)
-        || (crate::supplicant::holds_a_network(step)
-            && on.is_some_and(|on| !on.eq_ignore_ascii_case(from)))
+    has_left(step) || (needs_point(step) && on.is_none_or(|on| !on.eq_ignore_ascii_case(from)))
 }
 
 /// How long a move is followed. The move that failed took 18 s to land
@@ -1327,13 +1335,35 @@ mod tests {
             ("4way_handshake", Some(DESK), false),
             ("completed", Some(DESK), false),
             ("completed", Some("6C:AE:F6:C1:84:26"), false),
-            ("4way_handshake", None, false),
+            ("4way_handshake", None, true),
+            ("completed", None, true),
+            ("scanning", None, true),
+            ("", None, false),
+            ("", Some(FAR), false),
         ] {
             assert_eq!(
                 has_left_for(step, on, DESK),
                 left,
                 "{step} on {on:?}: a handshake or a join counts only on another point"
             );
+        }
+    }
+
+    #[test]
+    fn only_a_card_in_a_handshake_or_done_is_asked_its_point() {
+        for step in ["4way_handshake", "group_handshake", "completed"] {
+            assert!(needs_point(step), "{step} is a rekey's step too");
+        }
+        for step in [
+            "authenticating",
+            "associating",
+            "associated",
+            "disconnected",
+            "scanning",
+            "inactive",
+            "",
+        ] {
+            assert!(!needs_point(step), "{step} says whether it left alone");
         }
     }
 

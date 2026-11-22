@@ -2783,35 +2783,49 @@ impl Wifid<'_> {
     /// bus as the move's time runs out, and ended there, the move would
     /// carry on unfollowed with the card's networks on. A card further on,
     /// in a handshake or done, is asked which point it's on too, as a
-    /// rekey on its own point passes through the same steps. One whose
-    /// step can't be read is said so and taken as never having left.
+    /// rekey on its own point passes through the same steps; one whose
+    /// point can't be named is said so and taken as having left
+    /// (`arrive::has_left_for`). One whose step can't be read is said so
+    /// and taken as never having left.
     async fn under_way(&self, card: &str, from: &str) -> bool {
         let read = async {
             let interface = interface(self.bus, self.supplicant.get_interface(card).await?).await?;
             let step = interface.state().await?;
-            if arrive::has_left(&step) || !supplicant::holds_a_network(&step) {
-                return zbus::Result::Ok((step, None));
-            }
-            let point = interface.current_access_point().await?;
-            let heard = AccessPoint::new(described(self.bus, &point).await?).heard();
-            Ok((step, heard.map(|heard| heard.bssid)))
+            zbus::Result::Ok((interface, step))
         };
-        match read.await {
-            Ok((step, on)) => {
-                arrive::has_left_for(&step, on.as_deref(), from)
-                    && self
-                        .arrivals
-                        .borrow_mut()
-                        .under_way(card, from, Instant::now())
-            }
+        let (interface, step) = match read.await {
+            Ok(read) => read,
             Err(error) => {
                 println!(
                     "<4>{card}'s step couldn't be read, so its move is taken as never begun: \
                      {error}"
                 );
-                false
+                return false;
+            }
+        };
+        let mut on = None;
+        if arrive::needs_point(&step) {
+            let point = async {
+                let point = interface.current_access_point().await?;
+                zbus::Result::Ok(AccessPoint::new(described(self.bus, &point).await?).heard())
+            };
+            match point.await {
+                Ok(Some(heard)) => on = Some(heard.bssid),
+                Ok(None) => println!(
+                    "<7>{card} is at {step} on a point with no name, so is taken as having \
+                     left {from}"
+                ),
+                Err(error) => println!(
+                    "<7>{card} is at {step} on a point that couldn't be read, so is taken as \
+                     having left {from}: {error}"
+                ),
             }
         }
+        arrive::has_left_for(&step, on.as_deref(), from)
+            && self
+                .arrivals
+                .borrow_mut()
+                .under_way(card, from, Instant::now())
     }
 
     /// Whether a card whose move hasn't left its point is looking, asked
