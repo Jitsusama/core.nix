@@ -13,26 +13,20 @@ use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
-use model_relay::{
-    CONNECT_WITHIN, Clocks, IDLE_EXIT, Origin, Relay, Roots, STANDS_DOWN_FOR,
-    STANDS_DOWN_FOR_AT_MOST, TRIES_ITS_PATH_EVERY,
-};
+use model_relay::{CONNECT_WITHIN, Clocks, DRAINS_WITHIN, IDLE_EXIT, Origin, Relay, Roots};
 use terminal_kit::{Exit, Failure, Help, flags};
+use tokio::signal::unix::SignalKind;
 
 /// The named flags it reads, every one taking a value.
-const FLAGS: [&str; 8] = [
+const FLAGS: [&str; 7] = [
     "--origin",
     "--socket",
     "--connections",
     "--roots",
     "--connect-within",
     "--idle-exit",
-    "--stand-down-for",
-    "--try-path-every",
+    "--drain-within",
 ];
-
-/// The longest it may be told to wait between trials of its path.
-const TRIES_ITS_PATH_EVERY_AT_MOST: Duration = Duration::from_hours(1);
 
 /// How many connections it keeps to the origin unless told.
 const CONNECTIONS: usize = 4;
@@ -42,6 +36,12 @@ const MOST_CONNECTIONS: usize = 16;
 
 /// The first descriptor systemd hands a service it starts for a socket.
 const LISTEN_FDS_START: i32 = 3;
+
+/// How long it waits, its counts said, on a name lookup of the origin
+/// still running before it leaves anyway. Nothing can cut a lookup, and
+/// one waiting on a resolver gone quiet can take tens of seconds, which a
+/// relay leaving within its stop timeout hasn't got.
+const LOOKUPS_GIVEN: Duration = Duration::from_millis(500);
 
 /// What it says of itself, set as help and read by the check.
 fn help() -> Help {
@@ -75,19 +75,12 @@ fn help() -> Help {
         "leave once asked nothing this long, 120 if not told, never at 0",
     )
     .option(
-        "--stand-down-for SECONDS",
-        "how long its first stand-down sends pi direct at most, 600 if not told, a day at \
-         most; one within six times as long after the last doubles, to six times as long",
-    )
-    .option(
-        "--try-path-every SECONDS",
-        "how often it tries its path while it stands down, taking requests again once the \
-         path answers; the first trial waits twice as long, times as many as the stand-down \
-         has doubled; 30 if not told, an hour at most",
+        "--drain-within SECONDS",
+        "once stopped, wait on the answers it holds this long, then cut them, 80 if not told",
     )
     .exit(
         Exit::Failed,
-        "it couldn't listen, or its roots couldn't be read",
+        "it couldn't listen or hear its stop, or its roots couldn't be read",
     )
 }
 
@@ -232,35 +225,19 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         ));
     }
     let idle_exit = seconds(given[5].as_deref(), "--idle-exit", IDLE_EXIT)?;
-    let stands_down_for = seconds(given[6].as_deref(), "--stand-down-for", STANDS_DOWN_FOR)?;
-    if stands_down_for.is_zero() || stands_down_for > STANDS_DOWN_FOR_AT_MOST {
+    let drains_within = seconds(given[6].as_deref(), "--drain-within", DRAINS_WITHIN)?;
+    // None would cut every answer in hand at a stop, which is what the
+    // drain is for.
+    if drains_within.is_zero() {
         return Err(Failure::new(
             Exit::Usage,
-            format!(
-                "--stand-down-for takes 1 to {} seconds",
-                STANDS_DOWN_FOR_AT_MOST.as_secs()
-            ),
-        ));
-    }
-    let tries_its_path_every = seconds(
-        given[7].as_deref(),
-        "--try-path-every",
-        TRIES_ITS_PATH_EVERY,
-    )?;
-    if tries_its_path_every.is_zero() || tries_its_path_every > TRIES_ITS_PATH_EVERY_AT_MOST {
-        return Err(Failure::new(
-            Exit::Usage,
-            format!(
-                "--try-path-every takes 1 to {} seconds",
-                TRIES_ITS_PATH_EVERY_AT_MOST.as_secs()
-            ),
+            "--drain-within takes at least a second",
         ));
     }
     let clocks = Clocks {
         connect_within,
         idle_exit: (!idle_exit.is_zero()).then_some(idle_exit),
-        stands_down_for,
-        tries_its_path_every,
+        drains_within,
     };
     let relay = Relay::new(origin, connections, roots, clocks)
         .map_err(|why| Failure::new(Exit::Failed, "its TLS couldn't be set up").because(why))?;
@@ -282,13 +259,35 @@ fn serve(args: &[String]) -> Result<(), Failure> {
         .enable_all()
         .build()
         .map_err(|why| Failure::new(Exit::Failed, "it couldn't start").because(why.to_string()))?;
-    runtime.block_on(async move {
+    let served = runtime.block_on(async move {
         let listener = tokio::net::UnixListener::from_std(listener).map_err(|why| {
             Failure::new(Exit::Failed, "it couldn't listen").because(why.to_string())
         })?;
-        relay.serve(listener).await;
-        Ok(())
-    })
+        // systemd stops it with SIGTERM, which it takes as its word to
+        // leave once its answers end rather than at once, and a second as
+        // its word to leave now. Each is heard for as long as it runs,
+        // since taking SIGTERM ends its default of leaving at once.
+        let mut terminate =
+            tokio::signal::unix::signal(SignalKind::terminate()).map_err(|why| {
+                Failure::new(Exit::Failed, "it couldn't hear its stop").because(why.to_string())
+            })?;
+        // Room for a second stop close behind a first not yet read, since
+        // the second says something the first doesn't; a third says nothing
+        // new. Stops that come between two reads of `terminate` are heard
+        // as one, as tokio's signals are.
+        let (stop, stops) = tokio::sync::mpsc::channel(2);
+        tokio::spawn(async move {
+            while terminate.recv().await.is_some() {
+                let _ = stop.try_send(());
+            }
+        });
+        Ok(relay.serve_until(listener, stops).await)
+    });
+    // Dropped, the runtime would wait on a lookup for as long as it took.
+    runtime.shutdown_timeout(LOOKUPS_GIVEN);
+    // The answers it cut count only as the runtime drops them, just now.
+    served?.say();
+    Ok(())
 }
 
 fn main() -> ExitCode {
