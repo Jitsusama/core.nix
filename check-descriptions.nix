@@ -368,8 +368,9 @@
   '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
-    the agent sits in jobs.slice itself, and leaves Joel's own calls, a call naming a slice and a
-    call to the system manager as they were
+    the call comes from jobs.service or a pi-spawner scope, or below one, and leaves Joel's own
+    calls, his services in jobs.slice, a path naming jobs.slice only inside another's scope, a
+    call naming a slice and a call to the system manager as they were
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a

@@ -21,18 +21,28 @@ says() {
   fi
 }
 
-# A call from a unit sitting in jobs itself, as pi's commands and a host's
-# spawners do, goes in jobs-work.slice: jobs.slice holds no cores, so the
-# slice it would inherit lets the unit onto every one.
-says "${manager}/jobs.slice/jobs.service" "--slice=jobs-work.slice --user -q true" --user -q true
-says "${manager}/jobs.slice/pi-spawner-9-a1.scope" "--slice=jobs-work.slice --user --scope true" \
-  --user --scope true
-# One from a slice inside jobs keeps that slice: Joel's terminal work and
-# timed work stay free, and pi's sorted work stays where it was sorted.
-for slice in jobs-awaited.slice/awaited.service jobs-timed.slice/timed.service \
-  jobs-work.slice/jobs-work-unranked.slice/work-1.scope; do
-  says "${manager}/jobs.slice/${slice}" "--slice-inherit --user true" --user true
+# A call from agents' own places in jobs, where pi writes its commands and
+# a host makes its spawners' scopes, and anything below them, goes in
+# jobs-work.slice: jobs.slice holds no cores, so the slice it would
+# inherit lets the unit onto every one.
+for place in jobs.service jobs.service/sub jobs.service/x.slice/y pi-spawner-9-a1.scope \
+  pi-spawner-9-a1.scope/sub; do
+  says "${manager}/jobs.slice/${place}" "--slice=jobs-work.slice --user --scope true" \
+    --user --scope true
 done
+# One from a slice inside jobs keeps that slice: Joel's terminal work and
+# timed work stay free, and pi's sorted work stays where it was sorted. So
+# do Joel's own services sitting in jobs.slice, and a place that only names
+# jobs.slice further down, inside another's scope.
+for place in jobs.slice/jobs-awaited.slice/awaited.service \
+  jobs.slice/jobs-timed.slice/timed.service \
+  jobs.slice/jobs-work.slice/jobs-work-unranked.slice/work-1.scope \
+  jobs.slice/jobs-work.slice/work-1.scope jobs.slice/sccache.service \
+  agents.slice/kitty-1-3.scope/a.service/jobs.slice/jobs.service; do
+  says "${manager}/${place}" "--slice-inherit --user true" --user true
+done
+says "${manager}/jobs.slice/jobs.service" "--user -p Slice=a.slice true" \
+  --user -p Slice=a.slice true
 says "${manager}/agents.slice/kitty-1-3.scope" "--slice-inherit --user --scope true" \
   --user --scope true
 says "${manager}/app.slice/kitty-1-0.scope" "--user -u run-u1 true" --user -u run-u1 true

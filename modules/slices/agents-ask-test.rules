@@ -11,6 +11,9 @@ var where = {
   host: account + "agents.slice/pi-host-work-background.service",
   work: account + "jobs.slice/jobs-work.slice/jobs-work-qestabc.slice/work-12-3.scope",
   command: account + "jobs.slice/jobs.service",
+  // Where systemd-run.sh puts a unit an agent's command starts naming no
+  // slice: in jobs.slice itself it would ask Joel on his screen.
+  started: account + "jobs.slice/jobs-work.slice/run-u21.service",
   timed: account + "jobs.slice/jobs-timed.slice/work-16-2.scope",
   shared: account + "shared.slice/run-p17-i9.scope",
   brokered: account + "app.slice/pi-jobs-qestabc-1.scope",
@@ -31,6 +34,7 @@ var pids = {
   brokered: 18,
   node: 19,
   held: 20,
+  started: 21,
 };
 for (var place in where) {
   processes[pids[place]] = where[place];
@@ -79,6 +83,7 @@ expect("libvirt's system connection", libvirt, "session", "no");
 expect("libvirt's system connection", libvirt, "host", "no");
 expect("libvirt's system connection", libvirt, "work", "no");
 expect("libvirt's system connection", libvirt, "command", "no");
+expect("libvirt's system connection", libvirt, "started", "no");
 expect("libvirt's system connection", libvirt, "timed", "no");
 expect("libvirt's system connection", libvirt, "shared", "no");
 expect("libvirt's system connection", libvirt, "brokered", "no");
@@ -89,6 +94,7 @@ expect("libvirt's system connection", libvirt, "app", null);
 expect("writing firmware", firmware, "session", "no");
 expect("writing firmware", firmware, "work", "no");
 expect("writing firmware", firmware, "command", "no");
+expect("writing firmware", firmware, "started", "no");
 expect("writing firmware", firmware, "terminal", "auth_admin_keep");
 expect("writing firmware", firmware, "app", "auth_admin_keep");
 

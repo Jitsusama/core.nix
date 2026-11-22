@@ -291,17 +291,19 @@ def test_work_in_jobs_moves_itself_in(jobs: Account) -> None:
     jobs.machine.wait_until_succeeds("grep -q timed.service /tmp/moved", timeout=APPEARING)
 
 
-def test_an_agents_run_naming_no_slice_stays_in_jobs(jobs: Account) -> None:
+def test_an_agents_run_naming_no_slice_from_jobs_goes_in_work(jobs: Account) -> None:
     """A unit an agent's shell in jobs starts with systemd-run, naming no slice, goes in work."""
     jobs.machine.succeed(
         "systemd-run -M alice@ --user --slice=jobs.slice --unit=asker"
         f" --expand-environment=no -p KillMode=process {jobs.bash} -c"
-        f" 'echo $$ > {JOBS}/jobs.service/cgroup.procs;"
+        f" 'echo $$ > {JOBS}/jobs.service/cgroup.procs; cat /proc/self/cgroup > /tmp/asked;"
         f" systemd-run --user --unit=bare {jobs.sleep} 1015; exec {jobs.sleep} infinity'"
     )
-    # The sorter may move the asking shell into a work scope before it asks, and then the unit
-    # inherits that scope's slice under jobs-work.slice; from jobs.service it goes in the slice.
-    jobs.wait_until_in(1015, "jobs.slice/jobs-work.slice/.*bare.service$")
+    jobs.wait_until_in(1015, "jobs.slice/jobs-work.slice/bare.service$")
+    # The sorter moves a shell only once it has run a second, so it asks from jobs.service; had
+    # it been moved, the unit would have inherited a work slice and proved nothing here.
+    asked = jobs.machine.succeed("cat /tmp/asked").strip()
+    assert asked.endswith("/jobs.slice/jobs.service"), f"the shell asked from {asked}"
 
 
 def test_a_terminals_busy_work_goes_where_its_terminals_owner_works(jobs: Account) -> None:

@@ -11,14 +11,26 @@
 # its caller runs in. Calls from Joel's own programs, the system manager's
 # and those naming a slice or another machine pass through unchanged.
 #
-# A call from a unit sitting in jobs.slice itself goes in jobs-work.slice
-# instead. pi writes each command it starts into jobs.service, which holds
-# the efficient cores, but the slice it would inherit is jobs.slice, which
-# holds none, since Joel's terminal work and timed work sit under it
-# (efficient-work.nix). On 22 November 92 units agents started that way,
-# and the 54 scopes hosts start their commands' spawners in, ran on every
-# core, and 17 of 37 threads in five samples of the performance cores sat
-# in jobs.slice. A call from a slice inside jobs keeps inheriting it.
+# A call from agents' own places in jobs.slice goes in jobs-work.slice
+# instead: jobs.service, and the pi-spawner scopes, with anything below
+# them. pi writes each process it starts into jobs.service, which holds the
+# efficient cores, but the slice it would inherit is jobs.slice, which holds
+# none, since Joel's terminal work and timed work sit under it
+# (efficient-work.nix). A host's spawner scope is made by a systemd-run pi
+# has written there, so it moves too. On 22 November 92 units agents
+# started that way, and 54 spawner scopes, ran on every core, and 17 of 37
+# threads in five samples of the performance cores sat in jobs.slice. A
+# call from a slice inside jobs, or from one of Joel's own units in
+# jobs.slice, sccache's and load-proof's, keeps inheriting. The place is
+# read from just below the manager, so a path only naming jobs.slice
+# further down, inside another's scope, is no agents' place.
+#
+# In jobs-work.slice such a unit is judged as agents' work everywhere else
+# too: polkit's agents-ask-first.rules refuses it rather than asking Joel,
+# the sorter clears its real-time scheduling and ranks it first for the
+# OOM killer, and it sits beside any tiers' slices at the default weight,
+# outside their order. An explicit --slice-inherit is the caller's own
+# choice, and still inherits.
 #
 # A slice named as a property, -p Slice=, is named too: systemd keeps the
 # last Slice= a unit is given, so an added --slice-inherit put the units
@@ -35,11 +47,14 @@ systemd-run  run a unit, an agent's kept in its own slice
   A --user call naming no slice, from anywhere but
   app.slice or session.slice, runs in its caller's slice
   rather than among the apps, or in jobs-work.slice when
-  its caller sits in jobs.slice itself. Every other call
-  reaches systemd's own systemd-run unchanged.
+  its caller is an agent's, in jobs.service or a pi-spawner
+  scope. Every other call reaches systemd's own systemd-run
+  unchanged.
 
 EXAMPLES
-  systemd-run --user --scope true  in the caller's slice
+  systemd-run --user --scope true  in the caller's slice, or
+                                   jobs-work.slice from an
+                                   agent's place in jobs
   systemd-run -h                   systemd's own help
 
 EXIT
@@ -65,12 +80,15 @@ for arg in "$@"; do
 done
 cgroup=""
 read -r cgroup <"@cgroup@" || true
+agents='^0::/user\.slice/user-[0-9]+\.slice/user@[0-9]+\.service/jobs\.slice/'
+agents+='(jobs\.service|pi-spawner-[^/]+\.scope)(/|$)'
+if [[ "${user}" == true && "${cgroup}" =~ ${agents} ]]; then
+  exec "${real}" --slice=jobs-work.slice "$@"
+fi
 case "${user}:${cgroup}" in
   false:* | *:*/app.slice | *:*/app.slice/* | *:*/session.slice | *:*/session.slice/*)
     exec "${real}" "$@"
     ;;
-  *:*/user@*.service/jobs.slice/*.slice/*) exec "${real}" --slice-inherit "$@" ;;
-  *:*/user@*.service/jobs.slice/*) exec "${real}" --slice=jobs-work.slice "$@" ;;
   *:*/user@*.service/*) exec "${real}" --slice-inherit "$@" ;;
   *) exec "${real}" "$@" ;;
 esac
