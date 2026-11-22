@@ -1827,8 +1827,14 @@ fn say_unslotted(said: &mut Unslotted, now: Vec<(String, String)>) {
              the session."
         );
     }
+    // A session drops out once a slot holds it, no window Joel is at shows it, or its host runs
+    // no conversation unit at all, where the host is still ranked for it, as a host running its
+    // conversations itself always is; so the line names all three rather than a rank changed.
     for (key, session) in found {
-        eprintln!("No longer ranking host {key} in place of session {session}'s conversation.");
+        eprintln!(
+            "Session {session} of host {key} no longer goes unranked: a slot holds it, no window \
+             Joel is at shows it, or its host runs no conversation units."
+        );
     }
 }
 
