@@ -1217,8 +1217,11 @@ QtObject {
             Presented.refusalShown("couldn't dim Harbour", "unread", false), "unread, 20 letters");
         check(failures, "or the letters alone where no code came with it",
             Presented.refusalShown("couldn't dim Harbour", "", false), "20 letters");
-        check(failures, "and its words quoted while they're on",
-            Presented.refusalShown("no\nlauncher: x", "unread", true), '"no\\nlauncher: x"');
+        check(failures, "and its code and words quoted while they're on",
+            Presented.refusalShown("no\nlauncher: x", "unread", true),
+            'unread, "no\\nlauncher: x"');
+        check(failures, "or its words alone where no code came with them",
+            Presented.refusalShown("no", "", true), '"no"');
         check(failures, "or that no answer came", Presented.codeShown(null), "no answer");
         // A daemon's error says its codes whole, being no one's words, and
         // its words by how many letters, since they can name a row.

@@ -400,10 +400,11 @@ function actShown(key, whole) {
     return quoted(kinds.length > said.length ? kinds : said).slice(1, -1);
 }
 
-// A refusal come after its line was done, as the journal says it: quoted while reports are on,
-// otherwise by how many letters, after the daemon's code where it gave one (codeShown).
+// A refusal come after its line was done, as the journal says it: the daemon's code where it gave
+// one (codeShown), whatever the reports setting, since it names no one and tells a daemon refusing
+// from one gone, then its words quoted while reports are on, otherwise by how many letters.
 function refusalShown(why, code, whole) {
-    return whole ? typedShown(why, true) : `${code ? `${code}, ` : ""}${typedShown(why, false)}`;
+    return `${code ? `${code}, ` : ""}${typedShown(why, whole)}`;
 }
 
 // A daemon's code for a refusal, as wifid's WrongPassword, said whole whatever the reports setting
