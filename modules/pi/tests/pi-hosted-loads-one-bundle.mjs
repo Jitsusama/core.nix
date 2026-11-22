@@ -3,10 +3,10 @@
 // extensions, and the durable runtime and chord built into the same chunks,
 // so pi-ai, pi-tui and pi-agent-core each keep their state once: one UUIDv7
 // sequence, one set of session cleanups, one kitty flag. The host's own
-// imports of those libraries resolve to the bundle's host modules, each the
-// copy the extensions get. It reads no file of pi's from outside the
-// bundle, and holds less heap and spends less CPU than loading the same
-// modules file by file.
+// imports of those libraries, and of typebox, resolve to the bundle's host
+// modules, each the copy the extensions get. It reads no file of pi's from
+// outside the bundle, and holds less heap and spends less CPU than loading
+// the same modules file by file.
 // Run as: node THIS PI_ROOT
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -32,11 +32,11 @@ registerHooks({
 const entry = await import(pathToFileURL(entryFile).href);
 const virtual = entry.VIRTUAL_MODULES;
 const ai = virtual["@earendil-works/pi-ai"];
-const libraries = Object.keys(virtual).filter((name) => name.startsWith("@earendil-works/"));
+const libraries = Object.keys(virtual);
 const hostModules = Object.fromEntries(
   await Promise.all(
     libraries.map(async (name) => {
-      const file = join(bundle, "host-modules", `${name.slice("@earendil-works/".length)}.js`);
+      const file = join(bundle, "host-modules", `${name.replace(/^@earendil-works\//u, "")}.js`);
       assert.ok(existsSync(file), `No host module for ${name} at ${file}`);
       return [name, await import(pathToFileURL(file).href)];
     }),
@@ -53,22 +53,28 @@ it("names the host entry's version and hands on the bundle's own coding agent", 
 });
 
 it("gives the host, in each host module, the very library the extensions get", () => {
-  assert.deepEqual(libraries.sort(), [
-    "@earendil-works/pi-agent-core",
-    "@earendil-works/pi-ai",
-    "@earendil-works/pi-ai/compat",
-    "@earendil-works/pi-ai/models",
-    "@earendil-works/pi-ai/oauth",
-    "@earendil-works/pi-ai/providers/all",
-    "@earendil-works/pi-coding-agent",
+  for (const name of [
     "@earendil-works/pi-tui",
-  ]);
+    "@earendil-works/pi-ai",
+    "typebox",
+    "typebox/compile",
+    "typebox/value",
+  ])
+    assert.ok(libraries.includes(name), `the extensions get ${name}`);
   for (const name of libraries) {
     const handed = virtual[name];
     const hosted = hostModules[name];
-    assert.deepEqual(Object.keys(hosted).sort(), Object.keys(handed).sort(), name);
-    for (const key of Object.keys(handed)) assert.equal(hosted[key], handed[key], `${name} ${key}`);
+    // export * passes over a default export; each is also exported by name.
+    const named = Object.keys(handed).filter((key) => key !== "default");
+    assert.deepEqual(Object.keys(hosted).sort(), named.sort(), name);
+    for (const key of named) assert.equal(hosted[key], handed[key], `${name} ${key}`);
+    if ("default" in handed)
+      assert.ok(Object.values(hosted).includes(handed.default), `${name}'s default, by name`);
   }
+  // One TypeBox, so a schema the host builds is the kind the extensions'
+  // checker knows.
+  const schema = hostModules.typebox.Type.Object({ a: hostModules.typebox.Type.String() });
+  assert.equal(virtual["typebox/value"].Value.Check(schema, { a: "b" }), true);
   // The viewers' terminal tells pi-tui its keys are kitty's, and pi's key
   // reader must hear it.
   const tui = "@earendil-works/pi-tui";

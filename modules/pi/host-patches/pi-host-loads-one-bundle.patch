@@ -13,20 +13,21 @@ the virtual modules, the built-in extensions, project trust, durable's
 main, SQLite and Node environment entries, and chord's context, each
 from the file an unbundled host loads, with hostEntryVersion 1.
 
-The host's own code imports some of those libraries as well, the
+The host's own code imports some of those modules as well, the
 viewers' terminal pi-tui among them, and a second copy would split the
-state they keep. So each library the virtual modules hand out under
-@earendil-works/ also gets host-modules/<name>.js, re-exporting the
-bundle's copy, for the host to resolve its imports to. The build fails
-when the virtual modules hand out a library with no such file, or when
-a durable or chord module that finds files through import.meta.url
-enters the bundle.
+state they keep. So every module the virtual modules hand out, typebox
+and its aliases included, also gets host-modules/<name>.js, re-exporting
+the bundle's copy, for the host to resolve its imports to. The names
+are read from every key of virtual-modules.js, so none is kept by hand.
+The build fails when it can't read an entry there, when a host module
+isn't written, or when a durable or chord module that finds files
+through import.meta.url enters the bundle.
 
 diff --git a/scripts/build-coding-agent-bundle.mjs b/scripts/build-coding-agent-bundle.mjs
-index d2f622d..49f423a 100644
+index d2f622d..d678d31 100644
 --- a/scripts/build-coding-agent-bundle.mjs
 +++ b/scripts/build-coding-agent-bundle.mjs
-@@ -27,6 +27,89 @@ const allowedExternalPackages = new Set([
+@@ -27,6 +27,112 @@ const allowedExternalPackages = new Set([
  	"supports-color",
  ]);
  
@@ -61,21 +62,44 @@ index d2f622d..49f423a 100644
 +// The host's own code imports some of these libraries too, the viewers'
 +// terminal pi-tui among them, and a second copy would split the state they
 +// keep: pi-tui's kitty flag, set on one copy, goes unread by pi's key reader
-+// on the other. So each library VIRTUAL_MODULES hands extensions under
-+// @earendil-works/ gets a file of its own, host-modules/<name>.js, that
-+// re-exports the copy VIRTUAL_MODULES holds, imported as virtual-modules.js
-+// imports it, for the host to resolve its imports to. None of them has a
-+// default export for `export *` to drop.
-+const hostModules = {
-+	"pi-agent-core": "@earendil-works/pi-agent-core",
-+	"pi-tui": "@earendil-works/pi-tui",
-+	"pi-ai": "./pi-ai-extension-view.js",
-+	"pi-ai/compat": "./pi-ai-extension-view.js",
-+	"pi-ai/models": "@earendil-works/pi-ai/models",
-+	"pi-ai/oauth": "@earendil-works/pi-ai/oauth",
-+	"pi-ai/providers/all": "@earendil-works/pi-ai/providers/all",
-+	"pi-coding-agent": "../../index.js",
-+};
++// on the other. So each module VIRTUAL_MODULES hands extensions gets a file
++// of its own, host-modules/<name>.js, that re-exports the copy it holds,
++// imported as virtual-modules.js imports it, for the host to resolve its
++// imports to. <name> is the key extensions import, less the @earendil-works/
++// scope: host-modules/pi-tui.js, host-modules/typebox/value.js. Every key is
++// read from virtual-modules.js itself, so a module pi hands out later gets
++// its file with no list here to fall behind, and an entry this can't read
++// fails the build. `export *` drops a default export: typebox's three are
++// also exported by name (Type, Compile, Value), as the host imports them.
++const hostModules = virtualModuleSources(join(extensionsDistDir, "virtual-modules.js"));
++
++/** Each VIRTUAL_MODULES key's host module name, with the module its value imports. */
++function virtualModuleSources(file) {
++	const source = readFileSync(file, "utf8");
++	const imported = new Map(
++		[...source.matchAll(/^import \* as ([\w$]+) from "([^"]+)";$/gm)].map(([, binding, from]) => [binding, from]),
++	);
++	const literal = /^export const VIRTUAL_MODULES = \{\n([\s\S]*?)^\};$/m.exec(source);
++	if (literal === null) {
++		throw new Error(`${file} declares no VIRTUAL_MODULES this build can read`);
++	}
++	const modules = {};
++	for (const entry of literal[1].replace(/\/\/.*$/gm, "").split(",")) {
++		if (entry.trim() === "") continue;
++		const match = /^\s*(?:"([^"]+)"|([\w$]+))\s*:\s*([\w$]+)\s*$/.exec(entry);
++		const from = match === null ? undefined : imported.get(match[3]);
++		const name = match?.[1] ?? match?.[2];
++		if (from === undefined || name === undefined) {
++			throw new Error(`VIRTUAL_MODULES holds ${entry.trim()}, which this build can't give the host a module for`);
++		}
++		const hostModule = name.replace(/^@earendil-works\//, "");
++		if (hostModule in modules) {
++			throw new Error(`Two VIRTUAL_MODULES keys would share host-modules/${hostModule}.js`);
++		}
++		modules[hostModule] = from;
++	}
++	return modules;
++}
 +
 +const hostEntryPlugin = {
 +	name: "pi-host-entry",
@@ -116,7 +140,7 @@ index d2f622d..49f423a 100644
  const lazyJitiPlugin = {
  	name: "lazy-jiti-transform",
  	setup(build) {
-@@ -141,6 +224,9 @@ for (const entry of [
+@@ -141,6 +247,9 @@ for (const entry of [
  	join(codingAgentDistDir, "cli.js"),
  	join(codingAgentDistDir, "index.js"),
  	join(codingAgentDistDir, "rpc-entry.js"),
@@ -126,7 +150,7 @@ index d2f622d..49f423a 100644
  	join(codingAgentDistDir, "utils", "image-resize-worker.js"),
  	join(codingAgentDistDir, "extensions", "codemode", "worker.js"),
  	join(aiDistDir, "api", "bedrock-converse-stream.js"),
-@@ -156,14 +242,19 @@ mkdirSync(bundleDir, { recursive: true });
+@@ -156,14 +265,19 @@ mkdirSync(bundleDir, { recursive: true });
  
  const mainResult = await build({
  	...commonBuildOptions(),
@@ -147,21 +171,11 @@ index d2f622d..49f423a 100644
  	splitting: true,
  });
  
-@@ -171,6 +262,23 @@ const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/
+@@ -171,6 +285,13 @@ const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/
  const oauthLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/auth/oauth/load.js");
  const imageResizeOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/utils/image-resize.js");
  const configOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/config.js");
 +refuseBundledAssetReaders(mainResult.metafile);
-+const handedOut = [
-+	...readFileSync(join(extensionsDistDir, "virtual-modules.js"), "utf8").matchAll(/"@earendil-works\/([^"]+)"\s*:/g),
-+]
-+	.map(([, name]) => name)
-+	.sort();
-+if (handedOut.join() !== Object.keys(hostModules).sort().join()) {
-+	throw new Error(
-+		`VIRTUAL_MODULES hands extensions ${handedOut.join(", ")}, but the host modules are ${Object.keys(hostModules).join(", ")}`,
-+	);
-+}
 +const unwritten = Object.keys(hostModules).filter(
 +	(name) => !existsSync(join(bundleDir, "host-modules", `${name}.js`)),
 +);
