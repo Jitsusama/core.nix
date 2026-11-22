@@ -6583,10 +6583,8 @@ Scope {
         }
         if (answersLate !== null && answersLate.sources.includes(source)) {
             const late = Date.now() - answersLate.began;
-            console.info(`launcher: ${source.settings?.name ?? ""} answered`
-                + ` ${Presented.typedShown(answersLate.text, Options.reports)} ${late} ms after its`
-                + ` key, past the`
-                + ` ${answersWaitedFor} ms its list waited`);
+            console.info(`launcher: ${Presented.answeredLateSaid(source.settings?.name ?? "",
+                answersLate.text, { late, waited: answersWaitedFor, whole: Options.reports })}`);
             Report.say(`answered late ${source.settings?.name ?? ""}`);
             answersLate.sources = answersLate.sources.filter(one => one !== source);
             if (answersLate.sources.length === 0)
@@ -8227,10 +8225,9 @@ Scope {
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
-            const words = Presented.typedShown(waited.text, Options.reports);
-            console.info(`launcher: ${words} listed without`
-                + ` ${waited.sources.map(one => one.settings?.name ?? "").join(", ")},`
-                + ` which hadn't answered in ${root.answersWaitedFor} ms`);
+            const places = waited.sources.map(one => one.settings?.name ?? "");
+            console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
+                root.answersWaitedFor, Options.reports)}`);
             Report.say("listed without answers");
             root.searchAwaited();
         }

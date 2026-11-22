@@ -381,6 +381,20 @@ function timedShown(typed, step, whole) {
         : typedShown(typed, whole);
 }
 
+// A key listed before every place it waited on answered, as the journal says it: its words as
+// typedShown says them, the places that hadn't answered, and how long its list waited.
+function listedWithoutSaid(typed, places, waited, whole) {
+    return `${typedShown(typed, whole)} listed without ${places.join(", ")},`
+        + ` which hadn't answered in ${waited} ms`;
+}
+
+// A place's answer come after its key was listed without it, as the journal says it: the words as
+// typedShown says them, how late it came, and how long the list waited.
+function answeredLateSaid(place, typed, { late, waited, whole }) {
+    return `${place} answered ${typedShown(typed, whole)} ${late} ms after its key, past the`
+        + ` ${waited} ms its list waited`;
+}
+
 // Words typed inside a row's step (ready-rows.md's within) as a line may say them, as typedShown
 // does, and the row quoted, by its key as a drawer's is.
 function typedInSaid(typed, within, whole) {

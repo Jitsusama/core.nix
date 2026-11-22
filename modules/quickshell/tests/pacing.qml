@@ -1171,6 +1171,21 @@ QtObject {
         check(failures, "and both whole while they're on",
             Presented.typedInSaid("door", "wifi:Harbour House", true),
             '"door" typed in "wifi:Harbour House"');
+        // A key listed before its places answered, and one answering after, say
+        // what was typed as typedShown does: by its letters with reports off,
+        // and quoted while they're on, so a quote typed can't end the line.
+        check(failures, "a key listed without a place says its letters with reports off",
+            Presented.listedWithoutSaid('door "x', ["wifi", "notices"], 8, false),
+            "7 letters listed without wifi, notices, which hadn't answered in 8 ms");
+        check(failures, "and its words quoted while they're on",
+            Presented.listedWithoutSaid('door "x', ["wifi"], 8, true),
+            '"door \\"x" listed without wifi, which hadn\'t answered in 8 ms');
+        check(failures, "a place answering late says the key's letters with reports off",
+            Presented.answeredLateSaid("wifi", 'door "x', { late: 23, waited: 8, whole: false }),
+            "wifi answered 7 letters 23 ms after its key, past the 8 ms its list waited");
+        check(failures, "and its words quoted while they're on",
+            Presented.answeredLateSaid("wifi", 'door "x', { late: 23, waited: 8, whole: true }),
+            'wifi answered "door \\"x" 23 ms after its key, past the 8 ms its list waited');
         // An act's key is said bare while reports are on, as the desktop's
         // tests read it, but a calendar's words in it still can't end the line,
         // nor can a key the launcher says whole with them off.
