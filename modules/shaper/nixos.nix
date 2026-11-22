@@ -95,8 +95,9 @@ let
   houses = lib.filter (house: house != null) (lib.catAttrs "house" (lib.attrValues networks));
   # An address as the firewall and src/networks.rs read it alike: IPv4's
   # four octets, or IPv6's eight groups with at most one :: for a run of
-  # them. An IPv4 one written as IPv6, in any spelling, is refused: the
-  # firewall would match it as IPv6, which no IPv4 report is.
+  # them. An IPv4 one written as IPv6, mapped or in the old compatible
+  # form, in any spelling, is refused: the firewall would match it as
+  # IPv6, which no IPv4 report is. Rust's to_ipv4 refuses the same.
   octet = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
   group = "[0-9a-fA-F]{1,4}";
   isIpv4 = text: builtins.match "${octet}([.]${octet}){3}" text != null;
@@ -113,10 +114,32 @@ let
           lib.length halves == 2 && lib.length groups <= 7;
     in
     each && counted;
-  isMapped = text: builtins.match "[0:]*:ffff:${group}:${group}" (lib.toLower text) != null;
-  address = lib.types.addCheck lib.types.str (text: isIpv4 text || isIpv6 text && !isMapped text) // {
-    description = "IPv4 or IPv6 address";
-  };
+  # A well-formed IPv6 address's eight groups, its :: written out.
+  groupsOf =
+    text:
+    let
+      halves = lib.splitString "::" (lib.toLower text);
+      parts = half: lib.optionals (half != "") (lib.splitString ":" half);
+      head = parts (lib.head halves);
+      tail = lib.optionals (lib.length halves == 2) (parts (lib.last halves));
+      run = lib.optionals (lib.length halves == 2) (
+        lib.genList (_: "0") (8 - lib.length head - lib.length tail)
+      );
+    in
+    head ++ run ++ tail;
+  isIpv4In6 =
+    text:
+    let
+      groups = groupsOf text;
+      zero = part: builtins.match "0+" part != null;
+      sixth = lib.elemAt groups 5;
+    in
+    lib.all zero (lib.take 5 groups) && (zero sixth || sixth == "ffff");
+  address =
+    lib.types.addCheck lib.types.str (text: isIpv4 text || isIpv6 text && !isIpv4In6 text)
+    // {
+      description = "IPv4 or IPv6 address";
+    };
 in
 {
   imports = [
@@ -200,8 +223,11 @@ in
                   device on the line could forge one by sending from it: for
                   as long as it keeps sending, it holds this machine's
                   upload as low as 4 Mb/s, as a trial may, or lets it go.
-                  Name a private or link-local address, which keeps a forger
-                  on the line. An IPv4 address written as IPv6 is refused.
+                  Name a private IPv4 or unique local IPv6 address, not a
+                  link-local one: every link the machine has, a virtual
+                  machine's bridge among them, shares a link-local address,
+                  and the rule names no interface. An IPv4 address written
+                  as IPv6 is refused.
                 '';
               };
             }

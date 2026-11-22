@@ -44,19 +44,31 @@ let
     builtins.readFile
     (lib.splitString "\n")
     (map (builtins.match "pub const PORT: u16 = ([0-9_]+);"))
-    (lib.findFirst (found: found != null) [ "none" ])
+    (lib.findFirst (found: found != null) (
+      throw "shaper-hears-only-the-house: no `pub const PORT: u16` line in src/house.rs"
+    ))
     lib.head
     (lib.replaceStrings [ "_" ] [ "" ])
   ];
-  # Every rule that reaches the port, which must be the houses' own, and
-  # no opening of the port to anyone.
-  reaching = lib.filter (lib.hasInfix "dport ${port} ") (lib.splitString "\n" housed.extraInputRules);
-  opened =
-    reaching == [
+  # The machine's input rules, which must be the houses' two alone, and
+  # no port, range or interface left open to all that takes the port in.
+  rules = lib.filter (line: line != "") (lib.splitString "\n" housed.extraInputRules);
+  houseRules =
+    rules == [
       "ip saddr 192.0.2.7 udp dport ${port} accept"
       "ip6 saddr 2001:db8::7 udp dport ${port} accept"
-    ]
-    && !lib.elem (lib.toInt port) housed.allowedUDPPorts;
+    ];
+  takesThePort =
+    open:
+    lib.elem (lib.toInt port) open.allowedUDPPorts
+    || lib.any (
+      range: range.from <= lib.toInt port && lib.toInt port <= range.to
+    ) open.allowedUDPPortRanges;
+  opened =
+    houseRules
+    && !lib.any takesThePort ([ housed ] ++ lib.attrValues housed.interfaces)
+    # Loopback is trusted on every machine, and reaches no other.
+    && lib.subtractLists [ "lo" ] housed.trustedInterfaces == [ ];
   # The check a house's address is held to, read from the module's own
   # option, against addresses Rust's parse takes and refuses alike, and
   # IPv4 ones written as IPv6, in each spelling.
@@ -87,6 +99,11 @@ let
     "::ffff:c000:207"
     "::FFFF:C000:207"
     "0:0:0:0:0:ffff:c000:207"
+    "0:0:0:0:0:ffff:c000::"
+    "::ffff:0:207"
+    "::c000:207"
+    "0:0:0:0:0:0:c000:207"
+    "::"
   ];
   misread = lib.filter (text: !address.check text) taken ++ lib.filter address.check refused;
   unasked = services.shaper.wantedBy == [ ];
@@ -120,13 +137,17 @@ onLinux {
       );
 
   # A network's house opens the port the shaper hears its reports on to
-  # the house's address alone, over IPv4 or IPv6 as it is written, with no
-  # rule or open port letting anyone else reach it. A house's address is
-  # held to what the shaper's own parse takes, and an IPv4 address written
-  # as IPv6, which would open the port to no report, is refused.
+  # the house's address alone, over IPv4 or IPv6 as it is written: the
+  # machine's input rules are the houses' two alone, and no port, range or
+  # trusted interface opens it to all. A house's address is held to what
+  # the shaper's own parse takes, and an IPv4 address written as IPv6,
+  # mapped or compatible, which would open the port to no report, is
+  # refused.
   shaper-hears-only-the-house = holds "shaper-hears-only-the-house" (
-    if !opened then
-      "UDP port ${port} opens to more than the houses' addresses: ${lib.concatStringsSep "; " reaching}"
+    if !houseRules then
+      "The input rules aren't the houses' two alone: ${lib.concatStringsSep "; " rules}"
+    else if !opened then
+      "UDP port ${port} is open to all, by a port, a range or a trusted interface"
     else
       "A house's address check misreads: ${lib.concatStringsSep ", " misread}"
   ) (opened && misread == [ ]);

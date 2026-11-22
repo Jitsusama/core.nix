@@ -9,8 +9,10 @@
 //! device on the line can forge one by sending from that address: it
 //! holds this machine's upload down to the least a trial may set, or lets
 //! it go, for as long as it keeps sending. Unlike a trial it needs no
-//! administrator. An address the line keeps to itself, private or
-//! link-local, keeps such a forger on the line.
+//! administrator. A private IPv4 or unique local IPv6 address is the one
+//! to name; a link-local one is shared by every link the machine has, a
+//! virtual machine's bridge among them, and the firewall's rule names no
+//! interface.
 //!
 //! A report is one datagram a second to `PORT`: the bytes the machine's
 //! uplink has sent since it started, and its own clock in milliseconds,
@@ -121,8 +123,8 @@ impl Steady {
     /// The ceiling the controller is given on each network at `now`, in
     /// kbit/s, from this moment's `held`: the highest of the last
     /// `STEADY`, rounded down to `STEP_KBIT`. `held` is never under the
-    /// least a trial may set, a multiple of `STEP_KBIT`, so neither is
-    /// this. A network whose house holds nothing now is forgotten at once,
+    /// least a trial may set, a multiple of `STEP_KBIT` (a test holds it
+    /// to that), so neither is this. A network whose house holds nothing now is forgotten at once,
     /// so a house that lets go lets the controller go too.
     pub fn of(&mut self, held: &BTreeMap<String, u64>, now: Instant) -> BTreeMap<String, u64> {
         self.seen.retain(|network, _| held.contains_key(network));
@@ -218,8 +220,11 @@ impl Ear {
     /// ahead than the time since plus `AHEAD_MS`, as a clock that jumped
     /// is: either would become what the next is read against, and the
     /// second would leave out every true one for `FRESH`. A forged report
-    /// within `AHEAD_MS` is still taken, and leaves out the true ones for
-    /// as long, which a forger sending its own reports could do anyway.
+    /// in step is still taken, and is what the next true one is read
+    /// against, so it sets that second's rate: one with a low count puts
+    /// this machine at its floor for a second, and one within `AHEAD_MS`
+    /// ahead leaves out the true ones for as long. A forger sending its own
+    /// reports could do either anyway.
     /// Past `FRESH` any report is read against from then, as one is after
     /// the reporter restarts. One that can't give a rate with the last,
     /// after a report was lost, is read against from then too, and the
@@ -503,6 +508,11 @@ mod tests {
             steady.of(&home(4_100), at_s(14))["home"],
             4_000,
             "from nothing after it"
+        );
+        assert_eq!(
+            crate::rate::whole(crate::oneway::MOST_KBIT_LEAST) % STEP_KBIT,
+            0,
+            "the least a trial may set is a step, so rounding never takes a ceiling under it"
         );
     }
 

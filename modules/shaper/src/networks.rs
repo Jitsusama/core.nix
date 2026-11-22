@@ -90,7 +90,8 @@ const HOUSE_MOST_KBIT: f64 = 10_000_000.0;
 
 /// The houses written at `path`, or none where there is no such file or it
 /// can't be read as one, leaving out one whose address isn't one, or is
-/// IPv4's written as IPv6, which the firewall and the ear would read
+/// IPv4's written as IPv6, mapped or compatible (`Ipv6Addr::to_ipv4`, as
+/// nixos.nix refuses), which the firewall and the ear would read
 /// apart, or whose ceiling is under the least a trial may set or past the
 /// most, as nixos.nix refuses too.
 pub fn houses(path: &Path) -> Houses {
@@ -99,7 +100,7 @@ pub fn houses(path: &Path) -> Houses {
         .filter_map(|(router, network)| {
             let house: Written = serde_json::from_value(network.house?).ok()?;
             let from: IpAddr = house.from.parse().ok()?;
-            let mapped = matches!(from, IpAddr::V6(v6) if v6.to_ipv4_mapped().is_some());
+            let mapped = matches!(from, IpAddr::V6(v6) if v6.to_ipv4().is_some());
             let least = crate::oneway::MOST_KBIT_LEAST;
             let bounded = (least..=HOUSE_MOST_KBIT).contains(&house.most);
             (bounded && !mapped).then(|| {
@@ -278,14 +279,21 @@ mod tests {
                 r#""00:00:5e:00:53:02": {"up": 9000, "#,
                 r#""house": {"most": 10000001, "from": "192.0.2.7"}}, "#,
                 r#""00:00:5e:00:53:03": {"up": 9000, "#,
-                r#""house": {"most": 8000, "from": "::ffff:c000:207"}}}"#,
+                r#""house": {"most": 8000, "from": "::ffff:c000:207"}}, "#,
+                r#""00:00:5e:00:53:04": {"up": 9000, "#,
+                r#""house": {"most": 8000, "from": "0:0:0:0:0:ffff:c000::"}}, "#,
+                r#""00:00:5e:00:53:05": {"up": 9000, "#,
+                r#""house": {"most": 8000, "from": "::c000:207"}}, "#,
+                r#""00:00:5e:00:53:06": {"up": 9000, "#,
+                r#""house": {"most": 8000, "from": "1::ffff:a:b"}}}"#,
             ),
         )
         .expect("houses at the bounds");
         assert_eq!(
             houses(&file).into_keys().collect::<Vec<_>>(),
-            ["00:00:5e:00:53:01"],
-            "the least kept; past the most, or IPv4's written as IPv6, left out"
+            ["00:00:5e:00:53:01", "00:00:5e:00:53:06"],
+            "the least, and IPv6 merely holding ffff, kept; past the most, or IPv4's written \
+             as IPv6 in any form, left out"
         );
         let _ = fs::remove_dir_all(&folder);
     }

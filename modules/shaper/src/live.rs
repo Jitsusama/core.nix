@@ -697,7 +697,7 @@ mod tests {
         assert_eq!(
             follow.controller.up.limit(),
             Some(5_000),
-            "and climbing from where the house held it, not jumped to it"
+            "and left where the house held it, not jumped to the ceiling"
         );
     }
 
