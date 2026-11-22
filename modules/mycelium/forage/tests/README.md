@@ -55,7 +55,8 @@ cursor by keys, follows the records as they change, stop and come back,
 and keeps the page within its budget and passing the web-design skill's
 page checks. Beside a second stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn
-solid. A step on the floor leaves the floor drawn as it is, and so
-does a find narrowing the list to the cell the cursor is on. A record
+solid. A step on the floor leaves the floor drawn as it is, and a find
+narrowing the list to the cell the cursor is on keeps it on the same
+cells. A record
 hollowing a cell on it is drawn there with the floor kept, and a step
 off it draws it again over the list the record left.

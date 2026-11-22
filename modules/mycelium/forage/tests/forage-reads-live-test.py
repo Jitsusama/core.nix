@@ -295,7 +295,7 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     expect(branch, f"the floor didn't follow the cursor to {SHOOT}").to_have_count(1)
     expect(branch, f"{SHOOT}'s booked branch was dashed").to_have_css("stroke-dasharray", "none")
     drawn = on_the_floor(long_page)
-    # The floor around the shoot holds the list's 21st, though one around it wouldn't.
+    # The floor around the shoot holds the list's 21st; one drawn around it draws the first 48.
     # A mark on the floor drawn shows whether a step draws it again.
     held = TOPS[20]
     long_page.evaluate("document.querySelector('#floor svg').dataset.kept = 'yes'")

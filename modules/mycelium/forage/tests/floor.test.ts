@@ -66,6 +66,11 @@ const floorAt = (
 
 it("draws every cell of a list that fits, whatever the cursor", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 5), "C04")), span(0, 4));
+  assert.deepEqual(compartments(floorAt(LONG.slice(0, 48), "C47")), span(0, 47));
+});
+
+it("draws 48 of a list one cell too long", () => {
+  assert.deepEqual(compartments(floorAt(LONG.slice(0, 49), "C00")), span(0, 47));
 });
 
 it("draws the list's first 48 with no cursor, and counts the rest", () => {
