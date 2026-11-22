@@ -91,11 +91,13 @@ pub fn device(network: &Network, device: &Device, now: u64, pen: &Pen, room: Roo
     if let Some(television) = &device.television {
         // A TV heard before that didn't answer as one this minute, silent
         // or answering as something else, keeps its block, saying so
-        // rather than an old answer's power.
-        let power = if television.answering {
-            television.power.as_deref()
-        } else {
-            Some("not answering as a TV")
+        // rather than an old answer's power. One answering without its
+        // power says so too, since its block would otherwise be a bare
+        // label.
+        let power = match (television.answering, television.power.as_deref()) {
+            (false, _) => Some("not answering as a TV"),
+            (true, None) => Some("not said by the TV"),
+            (true, power) => power,
         };
         let facts = [("power", power)];
         let mut block = vec![pen.label("television")];
@@ -678,5 +680,31 @@ mod tests {
             words.contains("power not answering as a TV") && !words.contains("power on"),
             "its silence isn't said, or an old answer's power is: {text}"
         );
+    }
+
+    #[test]
+    fn a_television_answering_without_its_power_says_so() {
+        let mut network = network();
+        let Some(tv) = network
+            .devices
+            .iter_mut()
+            .find(|device| device.name == "Living Room")
+        else {
+            panic!("the record has no television");
+        };
+        tv.television = Some(crate::model::Television {
+            power: None,
+            answering: true,
+        });
+        let tv = find(&network, "Living Room").expect("the television");
+        for room in ROOMS {
+            let text = device(&network, tv, now(), &Pen::plain(), room);
+            assert_eq!(layout::overrun(&text, room), None);
+            let words = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            assert!(
+                text.contains("TELEVISION") && words.contains("power not said by the TV"),
+                "its block is a bare label, or says it isn't answering: {text}"
+            );
+        }
     }
 }
