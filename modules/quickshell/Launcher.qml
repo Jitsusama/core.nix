@@ -411,6 +411,9 @@ Scope {
         keysWeighing = 0;
         drawerJoining = 0;
         readingBegun();
+        // A list shown afresh shows all it has, so nothing waits.
+        if (!steadying || ordering)
+            waitingRows = 0;
         const composed = live((steadying && !ordering ? steadied(rows.concat(below), gaveWay)
             : rows.concat(below)).concat(ending));
         const listedRows = listedAs(composed);
@@ -5424,8 +5427,9 @@ Scope {
         const renamed = shown.filter(row => !row.gone && onOffer(row.key)
             && !found.some(one => one.key === row.key)).map(row => onOffer(row.key));
         if (!holdingRows) {
-            waitingRows = 0;
-            return Steady.kept(shown, found.concat(renamed), pairedId);
+            const again = Steady.refreshed(shown, found.concat(renamed), pairedId);
+            waitingRows = again.waiting;
+            return again.rows;
         }
         const still = Steady.held(shown, found.concat(renamed), pairedId);
         waitingRows = still.waiting;
@@ -5435,7 +5439,9 @@ Scope {
     // While visual, a pending operator or the command line acts on the
     // rows, they hold still: what arrives waits, counted in the foot as
     // "2 new", and comes in at the end once it ends, as a refresh adds it
-    // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05).
+    // (VKCF3Z's spec, the foot's fact by VKCF3Z, 2026-11-05). A row For
+    // You gets of no cell waits so too, until it's shown afresh, since at
+    // the end it would read as the last cell's (Steady.js's laidAgain).
     readonly property bool holdingRows: open && (visual || pendingSaid !== ""
         || commanding !== null)
     property int waitingRows: 0
@@ -7229,6 +7235,7 @@ Scope {
                     current = 0;
                 return;
             }
+            waitingRows = 0;
             const foundAt = Date.now();
             const lived = live(found);
             const livedAt = Date.now();

@@ -2494,13 +2494,15 @@ Provider {
 
     // A cell's heading, its name and how it stands as the agents daemon
     // words them for Agents' own row (ForYouCells.js's headingName), and
-    // Joel's own heading where no cell is. Kept while it says the same. Its
-    // key sits outside on:waiting's, where a to-do's quest could be "cell".
-    function cellHeading(cell) {
+    // Joel's own heading where no cell is, and how many rows it `holds`.
+    // Kept while it says the same. Its key sits outside on:waiting's, where
+    // a to-do's quest could be "cell".
+    function cellHeading(cell, holds) {
         const name = cellSaid(cell);
         const key = `on:heading:cell:${cell === null ? "yours"
             : String(cell.address).toUpperCase()}`;
-        return keptAlike(cellsKept, key, [name], () => member({ key, name, heading: true }));
+        return keptAlike(cellsKept, key, [name, holds],
+            () => member({ key, name, heading: true, holds }));
     }
     readonly property var cellsKept: keeper()
 
@@ -2553,6 +2555,9 @@ Provider {
             name: Words.name(id),
             glyph: Words.glyph(id),
             hue: kind === "agent" ? rows[0].hue ?? "" : "muted",
+            // What agents ask never waits unseen behind the foot's "1 new"
+            // (Steady.js's laidAgain).
+            asks: kind === "agent",
             side: String(rows.length),
             nested: true,
             thing: true,
