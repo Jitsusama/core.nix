@@ -746,7 +746,8 @@ e446=$(how_many '^said: E446')
 press gf
 logged '^selected: nothing' $((ended + 1))
 logged '^said: E446: No file name under cursor' $((e446 + 1))
-[ "$(how_many '^file: ')" = "$files" ] || fail "gf over two lines went to a file"
+opened=$(how_many '^file: ')
+[ "$opened" = "$files" ] || fail "gf over two lines went to a file"
 
 # gf opens the file the top's link names, and Ctrl+] follows it.
 press gg
