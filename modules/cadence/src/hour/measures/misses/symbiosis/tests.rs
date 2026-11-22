@@ -986,16 +986,23 @@ fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
         orchestrator: "P9R1KI".to_owned(),
     };
     let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
-    let (none, merged) = (BTreeSet::new(), BTreeSet::from([core(6000)]));
+    let fix = Named {
+        repo: "core".to_owned(),
+        number: 6000,
+    };
+    let (none, merged) = (BTreeSet::new(), BTreeSet::from([fix.clone()]));
     let main_unread = BTreeSet::from(["core".to_owned()]);
-    let hosts_unlisted = BTreeMap::from([(core(6000), "cadence can't list the pi hosts")]);
+    let (all_run, hosts_unlisted) = (
+        BTreeMap::new(),
+        BTreeMap::from([(fix, "cadence can't list the pi hosts")]),
+    );
     // A main unread, or a listing that failed this hour: its fix may still
     // be on its way, so the follow-up's owner isn't asked of it.
     for judged in [
         Judged {
             merged: &none,
             unread: &main_unread,
-            unrun: &BTreeMap::new(),
+            unrun: &all_run,
             here: "here",
         },
         Judged {
