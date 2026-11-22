@@ -253,17 +253,18 @@ function refusal(said, refused) {
 // refused or never answered, or null where it's left be. Only a Wake takes
 // it back: another act refused meanwhile, a Pause or words talked to it,
 // is said as itself (refusal) and leaves the Wake's row as it was to
-// become. A Wake with no answer is taken back too, saying so in the
-// vocabulary's `unanswered` words, since no answer is still coming: the
-// node wasn't there to ask, or its line went while it waited. Held for
-// Becoming's 30 s, the row read woken all that time (#5878's follow-up).
-// `said` and `refused` are as refusal takes them, the act by its id
-// ("wake"), and `refused.held` whether the row is becoming woken.
-function takesBack(said, refused) {
+// become. A Wake with no answer is taken back too, as "", which the
+// launcher says as not woken yet, with no answer (becameNot): no answer is
+// still coming, but the Wake may still land, since a line that went while
+// it waited had already sent it, and the one that didn't answer is as
+// likely the agents daemon as the node. Held for Becoming's 30 s, the row
+// read woken all that time (#5878's follow-up). `refused` is as refusal
+// takes it, the act by its id ("wake"), and `refused.held` whether the row
+// is becoming woken.
+function takesBack(refused) {
     const { act, why, address, name, held } = refused;
     if (act !== "wake" || !held) {
         return null;
     }
-    const reason = reasonOf(why, address, name);
-    return reason === "" ? String(said.unanswered ?? "") : reason;
+    return reasonOf(why, address, name);
 }

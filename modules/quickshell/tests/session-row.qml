@@ -487,15 +487,15 @@ QtObject {
         const takings = [
             ["a refused Wake, by the node's reason, its address said by name", "wake",
                 "so PARKED went", true, "so Parked Quest went"],
-            ["a Wake never answered, saying no answer came", "wake", "", true,
-                "the node didn't answer, so it may not have been told"],
+            ["a Wake never answered, as no reason, said not woken yet", "wake", "", true, ""],
             ["never for a Pause refused meanwhile", "pause", "PARKED is busy", true, null],
             ["nor a Pause never answered", "pause", "", true, null],
             ["nor words talked to it", "", "PARKED is busy", true, null],
-            ["nor a Wake whose row isn't becoming woken", "wake", "PARKED is busy", false, null]
+            ["nor a Wake whose row isn't becoming woken", "wake", "PARKED is busy", false, null],
+            ["nor a Wake never answered whose row isn't becoming woken", "wake", "", false, null]
         ];
         for (const [what, act, why, held, want] of takings) {
-            const back = SessionRow.takesBack(machineSaid,
+            const back = SessionRow.takesBack(
                 { act, why, address: "PARKED", name: "Parked Quest", held });
             if (back !== want)
                 failures.push(`takesBack, ${what}: ${JSON.stringify(back)}`);

@@ -883,7 +883,7 @@ Provider {
             const key = `agent:${session.address}`;
             const called = provider.footName(session);
             const machine = Words.of("agents:machine").said ?? {};
-            const back = SessionRow.takesBack(machine, { act, why, address: session.address,
+            const back = SessionRow.takesBack({ act, why, address: session.address,
                 name: called === session.address ? "" : called,
                 held: Boolean(provider.launcher?.becoming?.[key]) });
             if (back !== null) {
