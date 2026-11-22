@@ -12,10 +12,12 @@
 //! speaker; the gap between the two readings says what context and the
 //! cutting are worth, a side at a time.
 
+use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::Path;
 
-use dictation::parakeet::{RATE, WINDOW};
+use dictation::parakeet::{Parakeet, RATE, Timings, WINDOW, Word};
+use dictation::takes::Take;
 use dictation::transcript::{self, Line, Side, markdown};
 use dictation::wav;
 use dictation::wer::{Errors, said, words};
@@ -64,14 +66,54 @@ pub struct Meeting<'a> {
 }
 
 /// A meeting's errors: each side's as written down, and as heard alone,
-/// and Joel's side's as it would be written with none of his lines taken
+/// and Joel's side's as it would be written with none of his words taken
 /// for the others' echo. A meeting's sides hold no echo (meetings.nix), so
 /// where that's lower, the echo filter left out words he said.
 #[derive(Default)]
 struct Scored {
     written: [Errors; 2],
     alone: [Errors; 2],
-    unechoed: Errors,
+    unfiltered: Errors,
+}
+
+/// A take of `side`'s heard as a line, with its words timed from the
+/// start of its sound, none when it holds no words, and how long it took.
+pub fn hear_take(
+    speech: &mut Parakeet,
+    side: Side,
+    take: &Take,
+) -> Result<(Option<(Line, Vec<Word>)>, Timings), String> {
+    let (heard, took) = speech.transcribe_words(&take.samples)?;
+    let joined: Vec<&str> = heard.iter().map(|word| word.text.as_str()).collect();
+    let written = said::spoken(&joined.join(" ")).map(|text| {
+        let line = Line {
+            side,
+            start: take.start,
+            end: take.start + take.samples.len(),
+            text,
+            voice: None,
+            name: None,
+        };
+        let timed = heard
+            .into_iter()
+            .map(|word| Word {
+                at: take.start + word.at,
+                ..word
+            })
+            .collect();
+        (line, timed)
+    });
+    Ok((written, took))
+}
+
+/// Joel's lines of `lines` that are written, by when each starts.
+fn joels(lines: &[Line]) -> Vec<&Line> {
+    let mut own: Vec<&Line> = lines
+        .iter()
+        .filter(|line| line.side == Side::Mine && !line.text.is_empty())
+        .collect();
+    own.sort_by_key(|line| line.start);
+    own
 }
 
 /// Scores every meeting of `set` with the speech model in `model`, says
@@ -94,19 +136,13 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
     {
         let mut scored = Scored::default();
         let mut lines = Vec::new();
+        let mut timed = HashMap::new();
         for side in [Side::Mine, Side::Theirs] {
             let sound = &sounds[index(side)];
             for take in takes(sound) {
-                let (text, _) = speech.transcribe(&take.samples)?;
-                if let Some(text) = said::spoken(&text) {
-                    lines.push(Line {
-                        side,
-                        start: take.start,
-                        end: take.start + take.samples.len(),
-                        text,
-                        voice: None,
-                        name: None,
-                    });
+                if let (Some((line, its_words)), _) = hear_take(&mut speech, side, &take)? {
+                    timed.insert(lines.len(), its_words);
+                    lines.push(line);
                 }
             }
             for line in reference.iter().filter(|line| whose(line, mine) == side) {
@@ -123,7 +159,16 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                 .flat_map(|line| said(&line.text))
                 .collect()
         };
-        let written = transcript::read(&markdown(&lines, "Me", None, None), "Me");
+        let (cut, cuts) = transcript::cut_echoes(&lines, &timed, said::spoken);
+        for echo in &cuts {
+            let ms = echo.after * 1000 / isize::try_from(RATE).unwrap_or(isize::MAX);
+            println!(
+                "{name}: Joel's words at {} taken for an echo, {ms} ms after theirs: {}",
+                transcript::clock(echo.at),
+                echo.text
+            );
+        }
+        let written = transcript::read(&markdown(&cut, "Me", None, None), "Me");
         for side in [Side::Mine, Side::Theirs] {
             let heard: Vec<String> = written
                 .iter()
@@ -132,26 +177,27 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
                 .collect();
             scored.written[index(side)] = Errors::count(&spoken(side), &heard);
         }
-        let mut own: Vec<&Line> = lines
-            .iter()
-            .filter(|line| line.side == Side::Mine)
-            .collect();
-        own.sort_by_key(|line| line.start);
-        for line in own.iter().filter(|line| transcript::echoes(line, &lines)) {
+        for line in joels(&cut)
+            .into_iter()
+            .filter(|line| transcript::echoes(line, &cut))
+        {
             let at = transcript::clock(line.start);
             println!(
                 "{name}: Joel's line at {at} taken for an echo: {}",
                 line.text
             );
         }
-        let heard: Vec<String> = own.iter().flat_map(|line| words(&line.text)).collect();
-        scored.unechoed = Errors::count(&spoken(Side::Mine), &heard);
+        let heard: Vec<String> = joels(&lines)
+            .iter()
+            .flat_map(|line| words(&line.text))
+            .collect();
+        scored.unfiltered = Errors::count(&spoken(Side::Mine), &heard);
         println!("{}", report(name, &scored));
         for i in 0..2 {
             all.written[i] += scored.written[i];
             all.alone[i] += scored.alone[i];
         }
-        all.unechoed += scored.unechoed;
+        all.unfiltered += scored.unfiltered;
     }
     println!("{}", report("all", &all));
     let mut total = all.written[0];
@@ -269,9 +315,9 @@ fn report(name: &str, scored: &Scored) -> String {
     }
     let _ = write!(
         out,
-        "{name} with none of Joel's lines taken for an echo: Joel's side {} ({})",
-        rate(&scored.unechoed),
-        kinds(&scored.unechoed),
+        "{name} with none of Joel's words taken for an echo: Joel's side {} ({})",
+        rate(&scored.unfiltered),
+        kinds(&scored.unfiltered),
     );
     out
 }

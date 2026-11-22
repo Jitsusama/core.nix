@@ -595,11 +595,10 @@ fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
     );
 }
 
-/// A take heard as scripted: these words for theirs and this text for
-/// Joel's, each given once, and a failure for what isn't scripted.
+/// A take heard as scripted: these words, given once, and a failure for
+/// a take after it.
 struct Scripted {
     words: Option<Vec<Word>>,
-    text: Option<String>,
 }
 
 /// What's `heard`, with timings no case reads, or a failure if nothing.
@@ -618,10 +617,6 @@ impl Hears for Scripted {
         took(self.words.take())
     }
 
-    fn text(&mut self, _: &[f32]) -> Result<(String, Timings), String> {
-        took(self.text.take())
-    }
-
     fn device(&self) -> &'static str {
         "CPU"
     }
@@ -633,11 +628,9 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
     // are timed from the call's, so words left unmoved 40 s in would all
     // fall in the take's first piece, and a later voice would get none.
     let start = 40 * SECOND;
-    let mut scripted = Scripted {
-        words: Some(vec![word("Not", 0), word("yet.", 4 * SECOND)]),
-        text: None,
-    };
-    let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]).unwrap();
+    let said = vec![word("Not", 0), word("yet.", 4 * SECOND)];
+    let mut scripted = Scripted { words: Some(said) };
+    let (text, words) = transcribe_take(&mut scripted, start, &[]).unwrap();
     assert_eq!(
         text.as_deref(),
         Some("Not yet."),
@@ -663,36 +656,14 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
 }
 
 #[test]
-fn joels_take_is_kept_as_spelled_with_no_words() {
-    let mut scripted = Scripted {
-        words: None,
-        text: Some(" Done. ".to_owned()),
-    };
-    assert_eq!(
-        transcribe_take(&mut scripted, Side::Mine, 40 * SECOND, &[]),
-        Ok((Some("Done.".to_owned()), Vec::new())),
-        "Joel's text wasn't kept as Parakeet spelled it, without words"
-    );
-}
-
-#[test]
 fn a_take_that_isnt_heard_says_why() {
-    // The `transcribe` subcommand stops on why, so a check can't pass on
-    // a failing model; the daemon leaves the take out (the next case).
-    let mut failing = Scripted {
-        words: None,
-        text: None,
-    };
-    let why = Err("the encoder failed".to_owned());
+    // Either side's take is heard by its words, so one case holds both;
+    // the daemon leaves the take out (the next case).
+    let mut failing = Scripted { words: None };
     assert_eq!(
-        transcribe_take(&mut failing, Side::Theirs, 40 * SECOND, &[]),
-        why,
-        "a take of theirs that wasn't heard didn't say why"
-    );
-    assert_eq!(
-        transcribe_take(&mut failing, Side::Mine, 40 * SECOND, &[]),
-        why,
-        "a take of Joel's that wasn't heard didn't say why"
+        transcribe_take(&mut failing, 40 * SECOND, &[]),
+        Err("the encoder failed".to_owned()),
+        "a take that wasn't heard didn't say why"
     );
 }
 

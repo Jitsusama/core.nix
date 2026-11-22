@@ -256,12 +256,64 @@ pub fn echoes(line: &Line, lines: &[Line]) -> bool {
     })
 }
 
-/// For each of Joel's `mine`, the one of `theirs` it's the echo of, if
-/// it's one: a run of his words, each spelled as one of theirs, in their
-/// order, that his microphone heard within a moment of them saying it.
+/// For each of Joel's `mine`, the one of `theirs`, in the order they were
+/// said, it's the echo of, if it's one: a run of his words, each spelled
+/// as one of theirs, in their order, that his microphone heard within a
+/// moment of them saying it.
 pub fn echoes_of(mine: &[Word], theirs: &[Word]) -> Vec<Option<usize>> {
-    let _ = (theirs, ECHO_LAG, ECHO_LEAD, ECHO_RUN, ECHO_GAP);
-    vec![None; mine.len()]
+    // Each of his words' runs: which of theirs it may echo, and how long
+    // the run ending on it is.
+    let mut runs: Vec<Vec<(usize, usize)>> = Vec::with_capacity(mine.len());
+    for (i, word) in mine.iter().enumerate() {
+        let spelling = spelled(&word.text);
+        let from = theirs.partition_point(|said| said.at + ECHO_LAG < word.at);
+        let to = theirs.partition_point(|said| said.at <= word.at + ECHO_LEAD);
+        let before = i
+            .checked_sub(1)
+            .map_or(&[][..], |last| runs[last].as_slice());
+        let heard = (from..to.max(from))
+            .filter(|&j| !spelling.is_empty() && spelled(&theirs[j].text) == spelling)
+            .map(|j| {
+                let longest = before
+                    .iter()
+                    .filter(|&&(k, _)| k < j && j - k <= ECHO_GAP)
+                    .map(|&(_, run)| run)
+                    .max()
+                    .unwrap_or(0);
+                (j, longest + 1)
+            })
+            .collect();
+        runs.push(heard);
+    }
+    // Walked back from each run's end, so a run long enough is all marked.
+    let mut echoes = vec![None; mine.len()];
+    for end in (0..mine.len()).rev() {
+        if echoes[end].is_some() {
+            continue;
+        }
+        let Some(&(mut j, mut run)) = runs[end].iter().max_by_key(|&&(_, run)| run) else {
+            continue;
+        };
+        if run < ECHO_RUN {
+            continue;
+        }
+        echoes[end] = Some(j);
+        for i in (0..end).rev() {
+            if run == 1 {
+                break;
+            }
+            run -= 1;
+            let Some(&(k, _)) = runs[i]
+                .iter()
+                .find(|&&(k, length)| length == run && k < j && j - k <= ECHO_GAP)
+            else {
+                break;
+            };
+            echoes[i] = Some(k);
+            j = k;
+        }
+    }
+    echoes
 }
 
 /// Some of Joel's words cut from a line of his as the others' echo: the
@@ -284,8 +336,59 @@ pub fn cut_echoes(
     words: &HashMap<usize, Vec<Word>>,
     tidy: impl Fn(&str) -> Option<String>,
 ) -> (Vec<Line>, Vec<Cut>) {
-    let _ = (words, tidy);
-    (lines.to_vec(), Vec::new())
+    let mut theirs: Vec<Word> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.side == Side::Theirs)
+        .filter_map(|(index, _)| words.get(&index))
+        .flatten()
+        .cloned()
+        .collect();
+    theirs.sort_by_key(|word| word.at);
+    let mut cuts = Vec::new();
+    let mut cut = lines.to_vec();
+    for (index, line) in cut.iter_mut().enumerate() {
+        let Some(mine) = words.get(&index).filter(|_| line.side == Side::Mine) else {
+            continue;
+        };
+        let echoes = echoes_of(mine, &theirs);
+        if echoes.iter().all(Option::is_none) {
+            continue;
+        }
+        let mut kept = Vec::new();
+        let mut run: Option<Cut> = None;
+        for (word, echo) in mine.iter().zip(&echoes) {
+            let Some(j) = *echo else {
+                kept.push(word.text.as_str());
+                cuts.extend(run.take());
+                continue;
+            };
+            if let Some(cutting) = run.as_mut() {
+                cutting.text.push(' ');
+                cutting.text.push_str(&word.text);
+            } else {
+                run = Some(Cut {
+                    line: index,
+                    at: word.at,
+                    after: later(word.at, theirs[j].at),
+                    text: word.text.clone(),
+                });
+            }
+        }
+        cuts.extend(run);
+        line.text = tidy(&kept.join(" ")).unwrap_or_default();
+    }
+    (cut, cuts)
+}
+
+/// How many samples `heard` comes after `said`, before it if negative.
+fn later(heard: usize, said: usize) -> isize {
+    let by = |from: usize, to: usize| isize::try_from(to - from).unwrap_or(isize::MAX);
+    if heard >= said {
+        by(said, heard)
+    } else {
+        -by(heard, said)
+    }
 }
 
 /// The share of `of`'s words that `shared` of them are.
@@ -297,14 +400,17 @@ fn share(shared: usize, of: &HashSet<String>) -> f32 {
 /// A line's words, lowercased, without their punctuation.
 fn words(text: &str) -> HashSet<String> {
     text.split_whitespace()
-        .map(|word| {
-            word.chars()
-                .filter(|c| c.is_alphanumeric() || *c == '\'')
-                .collect::<String>()
-                .to_lowercase()
-        })
+        .map(spelled)
         .filter(|word| !word.is_empty())
         .collect()
+}
+
+/// A word lowercased, without its punctuation, as its echo would be.
+fn spelled(word: &str) -> String {
+    word.chars()
+        .filter(|c| c.is_alphanumeric() || *c == '\'')
+        .collect::<String>()
+        .to_lowercase()
 }
 
 /// Where in the call a sample falls, as minutes and seconds, with hours
@@ -732,9 +838,15 @@ mod tests {
     fn their_words_heard_just_after_them_are_cut_from_joels_line() {
         // As Joel's microphone heard a meeting, 50 ms after the far end
         // said it, with his own words before it in one take.
-        let theirs = timed("Please please leave me a space at the bottom, I'm little.", 3_000);
+        let theirs = timed(
+            "Please please leave me a space at the bottom, I'm little.",
+            3_000,
+        );
         let mut mine = timed("Uh yeah, okay. Sorry.", 1_800);
-        mine.extend(timed("Please please leave me a space at the bottom.", 3_050));
+        mine.extend(timed(
+            "Please please leave me a space at the bottom.",
+            3_050,
+        ));
         assert_eq!(
             cut_from(&[theirs], &[mine]),
             ["Uh yeah, okay. Sorry."],
