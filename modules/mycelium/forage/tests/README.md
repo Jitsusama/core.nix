@@ -58,9 +58,8 @@ floor draws, it follows the cursor to a booked start past the 48th, drawn
 solid. A step on the floor leaves the floor drawn as it is, and a find
 narrowing the list to the cell the cursor is on keeps it on the same
 cells, as one matching nothing keeps the cursor and the floor through
-its end. A record
-hollowing a cell on it is drawn there with the floor kept, and a step
-off it draws it again over the list the record left. During a find
-matching nothing, a link to the cell the cursor is on brings its row
-back, and that cell ending leaves a floor drawn around another cell
-where it was.
+its end. A record hollowing a cell on it is drawn there with the floor
+kept, and a step off it draws it again over the list the record left.
+During a find matching nothing, a link naming the cell the cursor is on
+in another form than the page's own brings its row back, and that cell
+ending leaves a floor drawn around another cell where it was.

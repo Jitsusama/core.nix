@@ -258,7 +258,14 @@ it("keeps the floor for a cursor it holds or none, and moves it for one off it",
   assert.equal(floorAfter(ended, none, "C00").around, "C00");
   // With no cursor, a floor whose own cell ends goes back to the list's first cells.
   const gone = LONG.filter((each) => each.cell !== "C55");
-  assert.equal(floorAfter(gone, kept, null).around, null);
+  const back = floorAfter(gone, kept, null);
+  assert.equal(back.around, null);
+  assert.deepEqual(
+    back.drawn.map((each) => each.cell),
+    gone.slice(0, 48).map((each) => each.cell),
+  );
+  // With no cursor, its cell coming back doesn't pull the floor back to it.
+  assert.equal(floorAfter(LONG, back, null).around, null);
 });
 
 it("keeps the floor still as the page steps and records arrive, until a step leaves it", () => {

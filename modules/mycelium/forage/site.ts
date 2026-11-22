@@ -442,7 +442,8 @@ listen({
 
 addEventListener("hashchange", () => {
   const named = cellIn(location.hash);
-  // The cursor's own cell opens too while a find hides it, so the link ends the find.
+  // The cursor's own cell opens too while a find hides it, so a link naming it in
+  // another form ends the find. The page's own form changes no hash, so fires nothing.
   if (named !== null && (named !== cursor || !shown().some((each) => each.cell === named))) {
     openCell(named);
   }
