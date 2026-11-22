@@ -371,6 +371,12 @@ pub struct Deletes {
     /// Whether the guard's rest after the last delete still ran as the
     /// pass began, so it makes none short of nearly full.
     resting: bool,
+    /// Whether the store's disk read short of nearly full as the guard
+    /// last measured it, so this pass spaces its deletes and waits for
+    /// other writers. It's the disk's own band, not the one a pass aims
+    /// for or a user daemon's ask names: a garbage pass aims for healthy
+    /// whatever the disk reads, and any account may ask in any band.
+    spaced: bool,
 }
 
 /// Another filesystem the guard watches, as it was when a pass began.
@@ -388,7 +394,9 @@ const LOOK_ELSEWHERE: Duration = Duration::from_secs(5);
 
 /// How long the system daemon may take over the garbage a user daemon asks
 /// it to collect: a pass of many batches, each measured, and a delete that
-/// runs to its own half-hour limit with room for one more.
+/// runs to its own half-hour limit with room for one more. A disk nearly
+/// full deletes back to back and may take longer; the user daemon then
+/// counts its ask failed and goes on while the system daemon's pass does.
 const COLLECT_TIMEOUT: Duration = Duration::from_hours(1);
 
 impl<'a> Reclaim<'a> {
@@ -458,9 +466,12 @@ impl<'a> Reclaim<'a> {
         self
     }
 
-    /// For a pass begun while the guard rests after its last delete.
+    /// For a pass on a store whose disk the guard last measured short of
+    /// nearly full, `spaced`, which spaces its deletes, and begun while the
+    /// guard rests after its last delete, `resting`.
     #[must_use]
-    pub fn resting_deletes(mut self, resting: bool) -> Self {
+    pub fn spacing_deletes(mut self, spaced: bool, resting: bool) -> Self {
+        self.deletes.spaced = spaced;
         self.deletes.resting = resting;
         self
     }
@@ -492,12 +503,12 @@ impl<'a> Reclaim<'a> {
         if self.stale {
             return Outcome::Kept("its listing was found stale this pass".to_owned());
         }
-        if self.band < Band::NearlyFull {
+        if self.deletes.spaced {
             if self.deletes.resting || self.deletes.last.is_some() {
                 self.deletes.again = true;
                 return Outcome::Kept("Nix's deletes rest, each reading all its links".to_owned());
             }
-            if garbage::database_written(database) {
+            if crate::nix_database::database_written(database) {
                 self.deletes.again = true;
                 return Outcome::Kept("another process is writing Nix's database".to_owned());
             }
@@ -512,7 +523,10 @@ impl<'a> Reclaim<'a> {
         let gentle = self.gentle;
         let tried = free.len();
         let began = Instant::now();
-        let deleting = self.waiting(move || garbage::delete(&nix, &roots, &free, gentle));
+        let spaced = self.deletes.spaced;
+        let database = database.to_owned();
+        let writing = move || spaced && crate::nix_database::database_written(&database);
+        let deleting = self.waiting(move || garbage::delete(&nix, &roots, &free, gentle, writing));
         if !matches!(
             deleting,
             Ok(Ok(garbage::Deleted { ran: false, .. })) | Err(Stopped)
@@ -520,6 +534,11 @@ impl<'a> Reclaim<'a> {
             self.deletes.last = Some(began.elapsed().as_secs_f64());
         }
         let outcome = match deleting {
+            Ok(Ok(deleted)) if deleted.put_off => {
+                self.refused.extend(deleted.refused);
+                self.deletes.again = true;
+                Outcome::Kept("another process is writing Nix's database".to_owned())
+            }
             Ok(Ok(deleted)) => {
                 let all = deleted.refused.len() == tried;
                 self.refused.extend(deleted.refused);
@@ -592,6 +611,10 @@ impl Reclaimer for Reclaim<'_> {
             path.display()
         );
         true
+    }
+
+    fn waiting(&self) -> bool {
+        self.deletes.again
     }
 
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {

@@ -5,6 +5,7 @@ use disk_guard::band::Band;
 use disk_guard::clock::Tick;
 use disk_guard::config::Config;
 use disk_guard::daemon::{Guard, Hearing, Places, Senses};
+use disk_guard::garbage::BATCH_BYTES;
 use disk_guard::moments::{Power, Pressure};
 use disk_guard::socket::Responder;
 use std::collections::HashMap;
@@ -1549,15 +1550,16 @@ fn nearly_full_a_pass_deletes_back_to_back_while_another_process_writes() {
     // the garbage as its disk reads nearly full, as a guard of its own
     // nearly full runs Nix's collection for want of a listing.
     let store = Store::new();
-    let older = store.dead("aaa-older", 10.0 * DAY, 8 << 30);
-    let newer = store.dead("bbb-newer", 9.0 * DAY, 8 << 30);
+    let older = store.dead("aaa-older", 10.0 * DAY, BATCH_BYTES);
+    let newer = store.dead("bbb-newer", 9.0 * DAY, BATCH_BYTES);
     let shared = written_database(&store);
-    let _writing = crate::garbage::locked(&shared, libc::F_WRLCK, 120, 1);
+    let _writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
     let mut guard = store.guard(store.config("100%", "100%"));
     let asking = store.spoken_for(&mut guard, Duration::ZERO);
     store.step_until(&mut guard, |store| {
         store.root.join("state/garbage.json").exists()
     });
+    assert!(older.exists() && newer.exists(), "{:?}", store.log());
     let (_ours, theirs) = UnixStream::pair().unwrap();
     asking
         .send((
@@ -1572,6 +1574,54 @@ fn nearly_full_a_pass_deletes_back_to_back_while_another_process_writes() {
         "a pass nearly full rested or waited between its deletes: {:?}",
         store.log()
     );
+    assert_eq!(deletes(&store), 2, "{:?}", store.log());
+    assert_eq!(kept_for(&store), Vec::<String>::new(), "kept some");
+}
+
+#[test]
+fn an_ask_naming_a_fuller_band_than_the_disk_reads_still_waits_for_writers() {
+    // Any account may ask the system daemon, naming any band, so the disk's
+    // own band says whether deletes wait. A pass reaching for room that
+    // keeps garbage for a writer ends there rather than taking what costs
+    // more to lose.
+    let store = Store::new();
+    let older = store.dead("aaa-older", 10.0 * DAY, BATCH_BYTES);
+    let newer = store.dead("bbb-newer", 9.0 * DAY, BATCH_BYTES);
+    let shared = written_database(&store);
+    let _writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
+    let mut guard = store.guard(store.config("100%", "0%"));
+    let asking = store.spoken_for(&mut guard, Duration::ZERO);
+    store.step_until(&mut guard, |store| {
+        store.root.join("state/garbage.json").exists()
+    });
+    let (_ours, theirs) = UnixStream::pair().unwrap();
+    asking
+        .send((
+            store.root.join("store"),
+            Band::NearlyFull,
+            Responder::new(theirs),
+        ))
+        .unwrap();
+    guard.step(&tick(), &CALM).unwrap();
+    assert!(
+        older.exists() && newer.exists(),
+        "deleted under a writer for an ask's word: {:?}",
+        store.log()
+    );
+    assert_eq!(deletes(&store), 0, "{:?}", store.log());
+    assert!(
+        kept_for(&store)
+            .iter()
+            .any(|why| why == "another process is writing Nix's database"),
+        "kept for another reason: {:?}",
+        kept_for(&store)
+    );
+    let passes = store.passes();
+    assert_eq!(
+        passes.last().map(|pass| pass["end"].clone()),
+        Some(serde_json::json!("waiting")),
+        "{passes:?}"
+    );
 }
 
 #[test]
@@ -1582,7 +1632,7 @@ fn garbage_waits_while_another_process_writes_nix_s_database() {
     let store = Store::new();
     let dead = store.dead("aaa-dead", 10.0 * DAY, 4096);
     let shared = written_database(&store);
-    let writing = crate::garbage::locked(&shared, libc::F_WRLCK, 120, 1);
+    let writing = crate::nix_database::locked(&shared, libc::F_WRLCK, 120, 1);
     let mut guard = store.guard(store.config("0%", "0%"));
     listed_later(&store, &mut guard, 0.0, &CALM);
     step_later(&mut guard, 1.0, &CALM);

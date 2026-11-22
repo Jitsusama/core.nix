@@ -230,6 +230,10 @@ impl<R: Reclaimer> Reclaimer for Journaled<'_, R> {
     fn stopping(&self) -> bool {
         self.inner.stopping()
     }
+
+    fn waiting(&self) -> bool {
+        self.inner.waiting()
+    }
 }
 
 pub struct Journal {

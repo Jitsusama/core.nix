@@ -295,6 +295,25 @@ fn a_command_that_reads_little_of_its_input_still_says_what_it_did() {
 }
 
 #[test]
+fn a_command_that_answers_as_it_reads_has_all_its_input_and_answers_read() {
+    // Past what a pipe holds each way, so a writer that wrote it all
+    // before reading would wait on a command waiting on it.
+    let input = vec![b'x'; 256 << 10];
+    let started = Instant::now();
+    let output = finished(fed(&job(&["cat"]), &input).unwrap());
+    assert_eq!(output.status, Some(0), "{output:?}");
+    assert_eq!(
+        output.stdout.len(),
+        input.len(),
+        "lost some of what it said"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "writing and reading waited on each other"
+    );
+}
+
+#[test]
 fn a_command_that_never_reads_its_input_is_killed_at_its_time() {
     let mut job = job(&["sleep", "30"]);
     job.timeout = Duration::from_millis(500);

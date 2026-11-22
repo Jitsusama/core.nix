@@ -56,6 +56,13 @@ pub trait Reclaimer {
     fn stopping(&self) -> bool {
         crate::commands::stop_waiting()
     }
+
+    /// Whether this pass kept garbage that waits for a rest or another
+    /// process to finish, so a pass reaching for room ends there rather
+    /// than taking what costs more to lose than garbage while it waits.
+    fn waiting(&self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -90,6 +97,9 @@ pub enum End {
     /// A routine pass ran `ROUTINE_LONGEST`, and what was left is due again
     /// at the next step.
     Unfinished,
+    /// A pass reaching for room kept garbage for a rest or another process
+    /// and left what costs more to lose for when that's over.
+    Waiting,
     Failed(String),
 }
 
@@ -339,6 +349,7 @@ pub fn pass(
 
         let started = disk.now();
         let (mut predicted, mut batch, mut groups) = (0, Vec::new(), Vec::new());
+        let mut waiting = false;
         for step in &steps {
             let index = left[step.index];
             let candidate = &candidates[index];
@@ -363,6 +374,10 @@ pub fn pass(
                 }
             }
             report.actions.push((candidate.path.clone(), outcome));
+            if goal == Goal::Reach && reclaimer.waiting() {
+                waiting = true;
+                break;
+            }
             let enough = remaining.is_some_and(|remaining| predicted >= remaining);
             let measure = freeing && candidate.class.command();
             if enough || measure || disk.now() - started >= BATCH_SECONDS {
@@ -370,6 +385,10 @@ pub fn pass(
             }
         }
         if batch.is_empty() {
+            if waiting {
+                report.end = End::Waiting;
+                return report;
+            }
             continue;
         }
         if let Err(error) = disk.settle() {
@@ -381,6 +400,11 @@ pub fn pass(
         };
         let freed = after.free.saturating_sub(before.free);
         report.freed += freed;
+        if waiting {
+            credit(learned, &batch, freed);
+            report.end = End::Waiting;
+            return report;
+        }
         if float(freed) < float(predicted) * STALL_SHARE {
             if predicted >= STALL_FLOOR {
                 stalled(groups, &mut stalls, &mut given_up);

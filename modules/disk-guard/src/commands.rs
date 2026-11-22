@@ -135,6 +135,28 @@ pub fn fed(job: &Job, input: &[u8]) -> io::Result<Ran> {
     running(job, None, input)
 }
 
+/// Writes `input` to `child`'s standard input apart, so a command that
+/// answers before it has read it all still has its answers read; one that
+/// exits without reading it all says why in what it prints and its status,
+/// so a write it broke off has nothing more to say. A machine that can't
+/// make the thread ends the command rather than the guard, as a loaded one
+/// at its task limit can't.
+fn feed(child: &mut Child, input: &[u8]) -> io::Result<()> {
+    let Some(mut stdin) = child.stdin.take() else {
+        return Ok(());
+    };
+    let input = input.to_vec();
+    let writing = std::thread::Builder::new().spawn(move || {
+        let _ = io::Write::write_all(&mut stdin, &input);
+    });
+    if let Err(error) = writing {
+        signal(child, libc::SIGKILL);
+        child.wait()?;
+        return Err(error);
+    }
+    Ok(())
+}
+
 fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>, input: &[u8]) -> io::Result<Ran> {
     let Some((program, args)) = job.argv.split_first() else {
         return Err(io::Error::new(io::ErrorKind::InvalidInput, "no program"));
@@ -170,23 +192,7 @@ fn running(job: &Job, stop: Option<(&AtomicBool, Duration)>, input: &[u8]) -> io
         });
     }
     let mut child = command.spawn()?;
-    if let Some(mut stdin) = child.stdin.take() {
-        // Written apart, so a command that answers before it has read it
-        // all still has its answers read; one that exits without reading
-        // it all says why in what it prints and its status, so a write
-        // it broke off has nothing more to say. A machine that can't make
-        // the thread ends the command rather than the guard, as a loaded
-        // one at its task limit can't.
-        let input = input.to_vec();
-        let writing = std::thread::Builder::new().spawn(move || {
-            let _ = io::Write::write_all(&mut stdin, &input);
-        });
-        if let Err(error) = writing {
-            signal(&child, libc::SIGKILL);
-            child.wait()?;
-            return Err(error);
-        }
-    }
+    feed(&mut child, input)?;
     let deadline = Instant::now() + job.timeout;
     let mut streams = [
         Stream::new(

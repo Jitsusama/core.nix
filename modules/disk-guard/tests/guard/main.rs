@@ -28,6 +28,7 @@ mod footprint;
 #[cfg(target_os = "linux")]
 mod freezer;
 mod garbage;
+mod garbage_delete;
 mod generations;
 mod git;
 mod holders;
@@ -43,6 +44,8 @@ mod logs;
 #[cfg(target_os = "macos")]
 mod macos;
 mod nix_builds;
+#[cfg(target_os = "linux")]
+mod nix_database;
 #[cfg(target_os = "linux")]
 mod notices;
 #[cfg(target_os = "linux")]

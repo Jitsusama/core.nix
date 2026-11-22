@@ -48,6 +48,7 @@ pub mod logs;
 pub mod macos;
 pub mod moments;
 pub mod nix_builds;
+pub mod nix_database;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod notices;
 #[cfg(target_os = "linux")]

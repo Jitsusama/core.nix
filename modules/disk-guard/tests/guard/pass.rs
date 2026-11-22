@@ -236,6 +236,10 @@ struct FakeReclaimer<'a> {
     taken: Vec<PathBuf>,
     /// How many it takes before a stop waits, if one comes.
     stops_after: Option<usize>,
+    /// Whether what it keeps waits for another process, as garbage does.
+    waits: bool,
+    /// How many it has kept.
+    held: usize,
 }
 
 impl Reclaimer for FakeReclaimer<'_> {
@@ -244,12 +248,17 @@ impl Reclaimer for FakeReclaimer<'_> {
             .is_some_and(|after| self.taken.len() >= after)
     }
 
+    fn waiting(&self) -> bool {
+        self.waits && self.held > 0
+    }
+
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
         {
             let mut disk = self.disk.borrow_mut();
             disk.clock += disk.each;
         }
         if self.kept.contains(&candidate.path) {
+            self.held += 1;
             return Outcome::Kept("a build started in it".into());
         }
         self.taken.push(candidate.path.clone());
@@ -324,6 +333,8 @@ fn run(
         kept,
         taken: Vec::new(),
         stops_after: None,
+        waits: false,
+        held: 0,
     };
     let mut learned = Learned::default();
     let report = pass(
@@ -464,6 +475,49 @@ fn deletes_that_free_nothing_stop_the_pass_after_three_batches() {
     );
     // A stall teaches nothing, or the next pass would plan everything.
     crate::assert_exactly(run.learned.ratio(Class::Target), 1.0);
+}
+
+/// How a pass of `goal` over ten temp files ends when each is kept to
+/// wait, and how many it asked for.
+fn waiting_on_each(goal: Goal) -> (End, usize) {
+    let candidates = temps_of_two_days(10);
+    let disk = std::cell::RefCell::new(FakeDisk::new(14 * GIB));
+    let mut reclaimer = FakeReclaimer {
+        disk: &disk,
+        frees: BTreeMap::new(),
+        kept: candidates.iter().map(|c| c.path.clone()).collect(),
+        taken: Vec::new(),
+        stops_after: None,
+        waits: true,
+        held: 0,
+    };
+    let report = pass(
+        &mut Shared(&disk),
+        &mut reclaimer,
+        &candidates,
+        &thresholds(),
+        Band::Filling,
+        goal,
+        &mut Learned::default(),
+    );
+    (report.end, reclaimer.held)
+}
+
+#[test]
+fn a_pass_reaching_for_room_ends_where_what_it_kept_waits() {
+    // Garbage kept for Nix's rest or another writer goes first as the
+    // cheapest loss, so what costs more waits with it rather than going in
+    // its place.
+    let (end, asked) = waiting_on_each(Goal::Reach);
+    assert_eq!(end, End::Waiting);
+    assert_eq!(asked, 1, "went on past the wait");
+}
+
+#[test]
+fn upkeep_looks_at_all_that_is_due_past_what_waits() {
+    let (end, asked) = waiting_on_each(Goal::Upkeep);
+    assert_ne!(end, End::Waiting, "upkeep ended at a wait");
+    assert_eq!(asked, 10, "upkeep stopped at a wait");
 }
 
 /// `count` temp files of `size` each, long idle, so due at any band.
@@ -697,6 +751,8 @@ fn a_stop_ends_a_pass_before_its_next_candidate() {
         kept: Vec::new(),
         taken: Vec::new(),
         stops_after: Some(2),
+        waits: false,
+        held: 0,
     };
     let report = pass(
         &mut Shared(&disk),

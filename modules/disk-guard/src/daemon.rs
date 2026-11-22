@@ -2678,10 +2678,10 @@ impl Guard {
         thresholds: Thresholds,
         scan: &mut Scan,
     ) -> io::Result<End> {
-        let Some(path) = self
+        let Some((path, spaced)) = self
             .watched
             .get(&device)
-            .map(|watched| watched.path.clone())
+            .map(|watched| (watched.path.clone(), watched.band < Band::NearlyFull))
         else {
             return Ok(End::Exhausted);
         };
@@ -2693,7 +2693,10 @@ impl Guard {
         let images = self.images(device, here);
         let reclaimer = Reclaim::new(here, scan)
             .during(band)
-            .resting_deletes(self.deletes_resting(tick.wall + since.elapsed().as_secs_f64()))
+            .spacing_deletes(
+                spaced,
+                self.deletes_resting(tick.wall + since.elapsed().as_secs_f64()),
+            )
             .paced(Rc::clone(&pacer))
             .giving_way(self.elsewhere(device));
         let mut reclaim = Journaled {
@@ -3551,6 +3554,7 @@ fn ending(end: &End) -> String {
         End::Stalled => "stalled".to_owned(),
         End::Stopped => "stopped".to_owned(),
         End::Unfinished => "unfinished".to_owned(),
+        End::Waiting => "waiting".to_owned(),
         End::Failed(why) => format!("failed: {why}"),
     }
 }

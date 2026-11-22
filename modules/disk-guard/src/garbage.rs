@@ -354,11 +354,11 @@ pub fn list(nix: &Path, idle: bool) -> Result<Vec<Listed>, String> {
         .collect())
 }
 
-/// How long deleting one batch may take. Nix ends every delete reading
-/// each entry of the store's links folder, whatever it deleted: on 21
-/// November a machine's deletes took five to eight minutes apiece, a few
-/// bytes or gigabytes, near a ten-minute limit, and that machine is often
-/// busier.
+/// How long deleting one batch may take, every run of Nix it takes
+/// counted from the first. Nix ends every delete reading each entry of the
+/// store's links folder, whatever it deleted: on 21 November a machine's
+/// deletes took five to eight minutes apiece, a few bytes or gigabytes,
+/// near a ten-minute limit, and that machine is often busier.
 const DELETE_TIMEOUT: Duration = Duration::from_mins(30);
 /// How many paths may come alive since the batch was made before it's
 /// taken as too stale to go on with. Each refusal costs Nix a whole look
@@ -386,48 +386,6 @@ fn refused<'a>(said: &str, left: &[&'a String]) -> Option<&'a String> {
     })
 }
 
-/// The byte of a SQLite database's shared memory a writer locks while it
-/// writes, in write-ahead mode as Nix keeps its database: the first of the
-/// locks that follow the index's header (`WALINDEX_LOCK_OFFSET` and
-/// `WAL_WRITE_LOCK` in SQLite's wal.c).
-const WRITE_LOCK_BYTE: libc::off_t = 120;
-
-/// Whether another process holds Nix's database in `database` for
-/// writing, as the kernel answers for a write lock on its write byte. A
-/// delete would wait on it, and a build or an evaluation then waits on the
-/// delete, reading "database is busy": on 21 November, of 41 moments a
-/// sampler saw a writer, evaluations held it in most. Asked of the file
-/// itself, so no lock on another file, and no whole-file `flock`, can
-/// answer for it. Where its shared memory can't be opened, nothing has
-/// the database open to write.
-#[allow(
-    clippy::useless_conversion,
-    clippy::unnecessary_fallible_conversions,
-    reason = "libc types a lock's kind as an int on Linux and a short on a Mac"
-)]
-pub fn database_written(database: &Path) -> bool {
-    let Ok(shared) = std::fs::File::open(database.join("db.sqlite-shm")) else {
-        return false;
-    };
-    let (Ok(write), Ok(whence)) = (
-        libc::c_short::try_from(libc::F_WRLCK),
-        libc::c_short::try_from(libc::SEEK_SET),
-    ) else {
-        return false;
-    };
-    // SAFETY: a lock of all zeroes is a valid one, filled in below.
-    let mut lock: libc::flock = unsafe { std::mem::zeroed() };
-    lock.l_type = write;
-    lock.l_whence = whence;
-    lock.l_start = WRITE_LOCK_BYTE;
-    lock.l_len = 1;
-    let fd = std::os::fd::AsRawFd::as_raw_fd(&shared);
-    // SAFETY: a plain system call on a file this holds open, filling in a
-    // lock it owns.
-    let asked = unsafe { libc::fcntl(fd, libc::F_GETLK, &raw mut lock) };
-    asked == 0 && lock.l_type == write
-}
-
 /// What a delete came to.
 #[derive(Debug)]
 pub struct Deleted {
@@ -436,6 +394,9 @@ pub struct Deleted {
     /// Whether Nix ran, which it doesn't when temporary roots hold every
     /// path, so a delete that cost nothing earns no rest.
     pub ran: bool,
+    /// Whether it stopped before running Nix again for another process
+    /// writing Nix's database, leaving what was left for later.
+    pub put_off: bool,
 }
 
 /// Whether a delete failed because the listing its batch came from is
@@ -454,22 +415,36 @@ pub fn stale(why: &str) -> bool {
 /// dropped and the rest tried again. A path the system won't let Nix
 /// change stops the call there too, and is dropped the same way; the
 /// paths the system refused are what it answers, and whether Nix ran.
-pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<Deleted, String> {
+/// Evaluations, which root paths again, also write Nix's database, so
+/// before Nix runs again the delete asks `writing` and stops while it
+/// says so. A name holding a space is no store path Nix can be given one a
+/// line, and is left out.
+pub fn delete(
+    nix: &Path,
+    roots: &Path,
+    paths: &[String],
+    idle: bool,
+    writing: impl Fn() -> bool,
+) -> Result<Deleted, String> {
     let mut alive: Vec<String> = Vec::new();
     let mut forbidden: Vec<String> = Vec::new();
     let mut ran = false;
+    let deadline = std::time::Instant::now() + DELETE_TIMEOUT;
     loop {
         let held = temp_roots(roots);
         let left: Vec<&String> = paths
             .iter()
+            .filter(|path| !path.contains(char::is_whitespace))
             .filter(|path| !alive.contains(path) && !forbidden.contains(path))
             .filter(|path| !held.contains(path.as_str()))
             .filter(|path| Path::new(path).symlink_metadata().is_ok())
             .collect();
-        if left.is_empty() {
+        let put_off = ran && writing();
+        if left.is_empty() || put_off {
             return Ok(Deleted {
                 refused: forbidden,
                 ran,
+                put_off,
             });
         }
         let mut argv: Vec<&OsStr> = vec![nix.as_os_str()];
@@ -486,11 +461,16 @@ pub fn delete(nix: &Path, roots: &Path, paths: &[String], idle: bool) -> Result<
             input.push(b'\n');
         }
         ran = true;
-        let (ok, said) = output(&argv, DELETE_TIMEOUT, idle, &input)?;
+        let left_of_it = deadline.saturating_duration_since(std::time::Instant::now());
+        if left_of_it.is_zero() {
+            return Err(format!("{} ran past {DELETE_TIMEOUT:?}", name(&argv)));
+        }
+        let (ok, said) = output(&argv, left_of_it, idle, &input)?;
         if ok {
             return Ok(Deleted {
                 refused: forbidden,
                 ran,
+                put_off: false,
             });
         }
         let revived = said
