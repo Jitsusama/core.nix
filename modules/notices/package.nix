@@ -28,6 +28,9 @@ rustPlatform.buildRustPackage rec {
       (lib.fileset.fileFilter (file: file.hasExt "rs") ./tests)
       ../chrome/session/Cargo.toml
       ../chrome/session/src
+      # The address cases every copy of the rule is held to, read by the
+      # tests (src/notice.rs).
+      ../mycelium/site/tests/addresses.txt
       ../daemon-client/Cargo.toml
       ../daemon-client/src
       ../daemon-serve/Cargo.toml

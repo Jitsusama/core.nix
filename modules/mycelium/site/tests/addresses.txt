@@ -1,0 +1,28 @@
+# What a session's address on the mesh is, one case a line: `is` or `not`,
+# a space, then the text, to the end of the line, spaces and all; `not` alone
+# is the empty text. An address is 1 to 12 capital letters and digits, in
+# ASCII. Three copies of that rule read this file in their tests, so none can
+# drift from the others unseen: the map's isAddress (../sprout.ts), the
+# notices daemon's address_shaped (modules/notices/src/notice.rs) and
+# mycelium-link's addressed (modules/quickshell/mycelium-link/src/main.rs).
+is T
+is 9
+is TERN02
+is 1C8A2F0E
+is ABCDEFGHIJKL
+is 123456789012
+not
+not tern02
+not Tern02
+not TERN-02
+not TERN_02
+not TERN.02
+not TERN 02
+not  TERN02
+not ABCDEFGHIJKLM
+not X&words=Y
+not calls@kestrel
+not TERN02#look:1
+not ÉTERN
+not ＴＥＲＮ
+not ٢٣

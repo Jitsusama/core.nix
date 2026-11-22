@@ -453,6 +453,24 @@ mod tests {
         read(link).map_err(|failed| failed.what)
     }
 
+    /// The cases every copy of the address rule is held to, shared with the
+    /// map and the notices daemon (modules/mycelium/site/tests/addresses.txt).
+    const ADDRESSES: &str = include_str!("../../../mycelium/site/tests/addresses.txt");
+
+    #[test]
+    fn an_address_is_judged_as_every_copy_of_the_rule_judges_it() {
+        let cases: Vec<&str> = ADDRESSES
+            .lines()
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .collect();
+        assert!(cases.len() > 20, "the shared cases are read");
+        for line in cases {
+            let (kind, text) = line.split_once(' ').unwrap_or((line, ""));
+            assert!(matches!(kind, "is" | "not"), "{line:?} says is or not");
+            assert_eq!(addressed(text), kind == "is", "{text:?}");
+        }
+    }
+
     #[test]
     fn a_cell_link_names_its_address_and_nothing_after_it() {
         for link in [

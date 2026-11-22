@@ -3,6 +3,7 @@
 // address, and no link at all without words.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { handedWords, isAddress, LONGEST_WORDS, sproutLink, sproutWords } from "../sprout.ts";
 
@@ -96,6 +97,20 @@ it("says the cell it comes from only when that is an address", () => {
       "mycelium:sprout?words=tidy%20the%20rows",
       `${JSON.stringify(from)} isn't an address, so it should be left out`,
     );
+  }
+});
+
+it("judges an address as every copy of the rule does", () => {
+  const cases = readFileSync(new URL("addresses.txt", import.meta.url), "utf8")
+    .split("\n")
+    .filter((line) => line !== "" && !line.startsWith("#"));
+  assert.ok(cases.length > 20, "the shared cases should be read");
+  for (const line of cases) {
+    const [kind, ...rest] = line.split(" ");
+    const text = rest.join(" ");
+    assert.ok(kind === "is" || kind === "not", `${JSON.stringify(line)} should say is or not`);
+    const is = kind === "is";
+    assert.equal(isAddress(text), is, `${JSON.stringify(text)} should ${is ? "" : "not "}be one`);
   }
 });
 
