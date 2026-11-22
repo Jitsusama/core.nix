@@ -231,20 +231,27 @@ pub fn recall(network: &mut Network, day: &[Moment]) {
 /// modem's first S of uptime, all of them if it came sooner, and
 /// stretches the span it names by S when the stretch's first line was
 /// read before it. One back by S hides each line read before it until S
-/// after it was read, since it is stamped after now, and counts lines
-/// read up to S before a start as after it, leaving only the counts to
-/// show that start. In the first two minutes back from a gap, or from a
-/// step back of five minutes or more, now alone says when the modem
-/// started: a misread short uptime then cuts the stretch to the start it
-/// says, or to nothing lately, and none leaves only the counts to show a
-/// start. The page misreads a count now and then, often several channels
-/// in one minute, so counts must read lower in both newer lines. The
-/// newest line has only now after it, so its counts are judged against
-/// now alone: in the first minute after a restart the older lines still
-/// outvote now's new start, and only the counts show it, while a misread
-/// now costs at most a minute with no count lately, in which a channel
-/// far above the rest is a concern. A minute the modem didn't answer
-/// says nothing of it, so the walk passes it by.
+/// after it was read, since it is stamped after now. Until a line is
+/// read after it, any lines read from S to S and five minutes ago are
+/// stamped recent and vote with the start they said, S late, outvoting
+/// now: the lines before the step are judged by their own clock, but a
+/// restart since those lines were read shows only by the counts. From
+/// then on, now and the lines since decide, and lines read up to S
+/// before a start count as after it, leaving only the counts to show
+/// that start. In the first two minutes back from a gap, or from a step
+/// forward of five minutes or more, no earlier line has a say, so now
+/// says when the modem started: a misread short uptime then cuts the
+/// stretch to the start it says, or to nothing lately. With no uptime
+/// now, only the counts show a start in the first of those minutes, and
+/// the one recent line's start in the second. The page misreads a count
+/// now and then, often several channels in one minute, so counts must
+/// read lower in both newer lines. The newest line has only now after
+/// it, so its counts are judged against now alone: in the first minute
+/// after a restart the older lines still outvote now's new start, and
+/// only the counts show it, while a misread now costs at most a minute
+/// with no count lately, in which a channel far above the rest is a
+/// concern. A minute the modem didn't answer says nothing of it, so the
+/// walk passes it by.
 fn lately(modem: &mut Modem, started: Option<u64>, day: &[Moment], now: u64) {
     let lines: Vec<&Moment> = day
         .iter()
@@ -781,7 +788,9 @@ mod tests {
     fn a_newest_line_whose_uptime_read_short_is_outvoted() {
         // The newest line's uptime read short, so it says the modem
         // started after the line three hours ago was read; now and the
-        // line before it say it didn't, and outvote it.
+        // line before it say it didn't, and outvote it. Now agrees with
+        // the majority, so this pins the newest line not winning; that
+        // now alone doesn't decide is pinned by the five-minute test.
         let now = network();
         let mut misread = earlier(&now, 60, 875, 41);
         misread.modem_started = Some(now.collected_at - 3 * HOUR + 60);
@@ -805,7 +814,9 @@ mod tests {
         // channel 16 lower than since, so only the start ends the walk.
         // The newest line's uptime read long, saying a start before all
         // the day's lines; now and the line before it outvote it, so the
-        // walk still stops at the start rather than crossing it.
+        // walk still stops at the start rather than crossing it. Now
+        // agrees with the majority here too, so this pins the newest line
+        // and the earliest start not winning.
         let now = up_for(3 * HOUR);
         let mut misread = earlier(&now, 60, 875, 41);
         misread.modem_started = Some(now.collected_at - 10 * HOUR);
@@ -912,11 +923,12 @@ mod tests {
         // line three hours ago, and none leaves the counts, which kept
         // climbing, to read on. With now's unsaid, the one recent line's
         // misread start stands instead and cuts the stretch to that line.
+        // The line three hours ago says the modem started a minute before
+        // it, which would cut the stretch there were it given a say.
         let gap = || {
-            vec![
-                earlier(&network(), 5 * HOUR, 800, 41),
-                earlier(&network(), 3 * HOUR, 840, 41),
-            ]
+            let mut cut = earlier(&network(), 3 * HOUR, 840, 41);
+            cut.modem_started = Some(network().collected_at - 3 * HOUR - 60);
+            vec![earlier(&network(), 5 * HOUR, 800, 41), cut]
         };
         let mut misread = earlier(&network(), 60, 875, 41);
         misread.modem_started = Some(network().collected_at - 3 * HOUR + 60);
@@ -951,13 +963,12 @@ mod tests {
     }
 
     #[test]
-    fn a_step_back_in_nets_clock_hides_the_lines_before_it_and_shortens_the_stretch() {
+    fn a_step_back_in_nets_clock_shortens_the_stretch_by_the_step() {
         // Net's clock stepped an hour back three minutes ago. A line read
         // before it is stamped an hour later than it was read, and says
-        // the modem started an hour later too: the one four minutes ago
-        // is stamped after now and hidden, and the stretch from the line
-        // five hours ago reads an hour short. The two lines since vote
-        // with now, so the start stands.
+        // the modem started an hour later too, so the stretch from the
+        // line five hours ago reads an hour short. The two lines since
+        // vote with now, so the start stands.
         const STEP: u64 = HOUR;
         let now = network();
         let before = |ago, sixteen| {
@@ -978,6 +989,44 @@ mod tests {
             (modem(&network).lately_s, sixteen(&network).lost_lately),
             (Some(5 * HOUR - STEP), Some(78)),
             "a step back in net's clock cost other than the step"
+        );
+    }
+
+    #[test]
+    fn in_the_first_minute_after_a_step_back_the_lines_before_it_outvote_now() {
+        // Net's clock stepped an hour back thirty seconds ago, so no line
+        // has been read since. The two read an hour and a minute or two
+        // ago are stamped a minute or two ago, and vote with the start
+        // they said, an hour late, over now's uptime, which read three
+        // hours. The line read four minutes ago misread its uptime as now
+        // did, but it is stamped after now and hidden, so it has no say.
+        // The stretch from the line five hours ago then reads an hour
+        // short, as after any step back; had now's start stood, it would
+        // have cut the stretch at the line three hours ago.
+        const STEP: u64 = HOUR;
+        let now = network();
+        let before = |ago, sixteen| {
+            let mut line = earlier(&now, ago, sixteen, 41);
+            line.at += STEP;
+            line.modem_started = line.modem_started.map(|started| started + STEP);
+            line
+        };
+        let mut misread = before(4 * 60, 874);
+        misread.modem_started = Some(now.collected_at - 3 * HOUR);
+        let day = [
+            before(5 * HOUR, 800),
+            before(3 * HOUR, 840),
+            before(STEP + 2 * 60, 870),
+            before(STEP + 60, 872),
+            misread,
+        ];
+        let mut now = now;
+        device_mut(&mut now, "modem").up_s = Some(3 * HOUR);
+        let network = recalled(now, &day);
+        assert_eq!(
+            (modem(&network).lately_s, sixteen(&network).lost_lately),
+            (Some(5 * HOUR - STEP), Some(78)),
+            "in the first minute after a step back, the start was judged wrongly"
         );
     }
 
