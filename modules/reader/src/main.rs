@@ -485,10 +485,9 @@ fn show(
         place::read(std::path::Path::new(file))
     };
     // Measuring, a headless window's is named by nobody.
-    let unnamed_pt = f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX;
     let width = page::Width::first(
         if measuring { None } else { place::window_pt() },
-        unnamed_pt,
+        f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX,
     );
     let opens_at = opening_at(kept.as_ref(), letter);
     // Connecting before the page is set lets the GL driver come up beside it.
@@ -721,7 +720,7 @@ fn set_rest(
                     let _ = whole.send(done);
                     return;
                 }
-                Ok(Err(error)) => error.to_string(),
+                Ok(Err(error)) => error,
                 Err(_) => "it panicked".to_string(),
             };
             eprintln!("reader: can't set the rest, so marks waiting on it land as kept: {why}");
