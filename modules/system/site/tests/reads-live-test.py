@@ -36,9 +36,9 @@ RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
-# about 477 KB and 398 elements since the list of what is worth a look, six to a row,
-# and the line counting what more the network holds.
-BUDGET = Budget(files=25, kilobytes=480, elements=401)
+# about 482 KB and 398 elements since the list of what is worth a look, six to a row,
+# the line counting what more the network holds and the builders' code.
+BUDGET = Budget(files=25, kilobytes=485, elements=401)
 
 
 @pytest.fixture
@@ -51,7 +51,7 @@ def system_daemon(tmp_path: Path) -> Iterator[StandIn]:
 
 @pytest.fixture
 def system_served(tmp_path: Path, system_daemon: StandIn) -> Iterator[Served]:
-    kinds = {"summary": {}, "part": {}, "machine": {}, "builder": {}}
+    kinds: dict[str, dict[str, object]] = {"summary": {}, "part": {}, "machine": {}, "builder": {}}
     whole = {"socket": str(system_daemon.path), "kinds": kinds}
     with serving(tmp_path, {"system": os.environ["SYSTEM_SITE"]}, {"system": whole}) as served:
         yield served
@@ -475,7 +475,7 @@ def test_a_builder_comes_on_its_own_watch(system_page: Page, system_daemon: Stan
     says_it_stands(system_page, "live")
     card = system_page.locator('#parts [data-part="part-builders"]')
     expect(card, "builders were drawn while the node named none").to_have_count(0)
-    gull = {
+    gull: dict[str, object] = {
         "key": "builder:gull",
         "kind": "builder",
         "name": "gull",
