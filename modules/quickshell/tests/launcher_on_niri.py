@@ -254,13 +254,17 @@ class Shell:
         words = os.environ.get("WINDOWS_WORDS")
         self.daemon("windows", os.environ["WINDOWS"], *(["--words", words] if words else []))
 
-    def daemon_stopped(self, name: str) -> None:
-        """Stop the daemon started as `name`, so a case may stand in on its socket."""
+    def daemon_stopped(self, name: str, socket: Path | None = None) -> None:
+        """Stop the daemon started as `name`, so a case may stand in on its socket.
+
+        One that keeps a socket of its own, as spend-watch does, is given it.
+        """
         process = self.daemons.pop(name, None)
         if process is not None:
             process.terminate()
             process.wait(timeout=10)
-        (Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / f"{name}.sock").unlink(missing_ok=True)
+        socket = socket or Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / f"{name}.sock"
+        socket.unlink(missing_ok=True)
 
     def stop(self) -> None:
         """End the shell."""
