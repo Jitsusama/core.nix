@@ -6,6 +6,8 @@
 // to, place them once, and only once a minute has turned since they were
 // placed: an opening into For You that wasn't yet asleep made all 17
 // again as Now's rows were come to, with no minute turned (2026-11-12).
+// A walk from outside, as a terminal reads Date, places them as it begins
+// and leaves them stale once it ends, so a showing places them again.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import Quickshell
 import QtQuick
@@ -141,6 +143,55 @@ ShellRoot {
                 theLauncher.open = true;
                 Expect.same("opened onto Now's rows a minute on, it places the time once",
                     theLauncher.placed, 1);
+                // Walked from outside while shut, as a terminal reads Date,
+                // within the minute it was placed in.
+                theLauncher.open = false;
+                theLauncher.wanting = false;
+                theLauncher.placed = 0;
+                theLauncher.cataloguing = true;
+                Expect.same("walked from outside, it places the time as the walk begins",
+                    theLauncher.placed, 1);
+                theLauncher.cataloguing = false;
+                Expect.same("the walk over, what it placed is stale for Now's rows",
+                    now.timeStale, true);
+                // Now's rows shown, and settled, before a walk.
+                theLauncher.open = true;
+                theLauncher.wanting = true;
+                shownThenWalked.start();
+            } catch (error) {
+                Expect.fail(error.message ?? error);
+            }
+        }
+    }
+
+    // Walked while Now's rows are shown, settled first so that coming to
+    // them places nothing of its own.
+    Timer {
+        id: shownThenWalked
+
+        interval: 50
+        onTriggered: {
+            try {
+                theLauncher.placed = 0;
+                theLauncher.cataloguing = true;
+                theLauncher.cataloguing = false;
+                walkedWhileShown.start();
+            } catch (error) {
+                Expect.fail(error.message ?? error);
+            }
+        }
+    }
+
+    // Walked while Now's rows are shown, they're placed again once the walk
+    // is over, as the showing reads them.
+    Timer {
+        id: walkedWhileShown
+
+        interval: 50
+        onTriggered: {
+            try {
+                Expect.same("walked while shown, it places the time again once it's over",
+                    theLauncher.placed, 2);
                 Qt.exit(0);
             } catch (error) {
                 Expect.fail(error.message ?? error);

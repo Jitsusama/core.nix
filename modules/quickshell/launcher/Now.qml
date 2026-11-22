@@ -337,6 +337,26 @@ Provider {
         replaceLately();
     }
     onLauncherChanged: Qt.callLater(retime)
+
+    // A walk from outside, as a terminal reads Date (`launcher show`),
+    // reads the time and the date placed as it begins, since those placed
+    // shut were made as a showing would ask: a calendar reader's standing
+    // refusal reached a terminal as still asking, for good. Once it ends they're
+    // stale, so Now's rows, wanted now or next, are placed as a showing
+    // reads them again.
+    Connections {
+        target: provider.launcher
+
+        function onCataloguingChanged() {
+            if (provider.launcher.cataloguing === true) {
+                provider.retime();
+                return;
+            }
+            provider.timeStale = true;
+            if (provider.wanted)
+                Qt.callLater(provider.retimeIfStale);
+        }
+    }
     onWantedChanged: {
         if (wanted)
             Qt.callLater(retimeIfStale);
