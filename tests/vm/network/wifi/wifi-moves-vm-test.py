@@ -117,6 +117,13 @@ def rejoined_unpicked(machine: BaseMachine) -> None:
             ' && echo "$s" | grep -qx wpa_state=COMPLETED'
             ' && echo "$s" | grep -qx bssid=02:00:00:00:00:00; do sleep 0.2; done\''
         )
+        if status != 0:
+            # wpa_supplicant can keep a look it began as pending for good, after a point
+            # stopped under it, refusing every look after ("Reject scan trigger since one is
+            # already pending"), so the card can't find the first point again. Taking the
+            # link down drops its queued radio work (events.c, EVENT_INTERFACE_DISABLED),
+            # and the next try starts clean.
+            machine.succeed("ip link set wlan2 down && ip link set wlan2 up")
         return status == 0
 
     retry(rejoined, timeout=timedelta(seconds=60))

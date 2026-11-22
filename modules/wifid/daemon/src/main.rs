@@ -945,15 +945,10 @@ impl<'a> Air<'a> {
                 return;
             };
             let moving = self.arrivals.borrow().moving(card);
-            // A card at rest after a nudge keeps "scanning" as its step,
-            // so a look that starts its count again is new too.
-            let new = step != "scanning" || !self.stalls.counting(card);
+            let new = says_a_stranger_looked(step, self.stalls.counting(card));
             if let Some(changed) = stranger_look(changed, step, moving) {
                 // Said apart, so the journal shows a look wpa_supplicant
-                // never said, as the stall it can set off is read there;
-                // and only as it changes the card's step or starts a
-                // stall's count, as one taken again changes nothing, so a
-                // flood of them can't crowd wifid's own lines out.
+                // never said, as the stall it can set off is read there.
                 if new {
                     println!("<7>another account says {card} is scanning");
                 }
@@ -1221,6 +1216,15 @@ fn stranger_look(
         changed.retain(|property, _| property == "State");
         changed
     })
+}
+
+/// Whether another account's look taken at a card at this step, its stall
+/// counted or not, is said: only as it changes the card's step or starts a
+/// stall's count, as one taken again changes nothing, so a flood can't
+/// crowd wifid's own lines out. A card at rest after a nudge keeps
+/// "scanning" as its step, so a look that starts its count again is new.
+fn says_a_stranger_looked(step: &str, counting: bool) -> bool {
+    step != "scanning" || !counting
 }
 
 /// Whether another account's signal says only what wifid takes from any:
@@ -3386,6 +3390,22 @@ mod tests {
             "of a card off every network, its step alone, never a point"
         );
         assert_eq!(properties(joined), None, "of one joined, nothing");
+    }
+
+    #[test]
+    fn another_accounts_look_is_said_only_as_it_changes_something() {
+        assert!(
+            says_a_stranger_looked("disconnected", false),
+            "said as it changes the card's step"
+        );
+        assert!(
+            !says_a_stranger_looked("scanning", true),
+            "unsaid while the card's look is counted already"
+        );
+        assert!(
+            says_a_stranger_looked("scanning", false),
+            "said as it starts the count of a card at rest"
+        );
     }
 
     #[test]
