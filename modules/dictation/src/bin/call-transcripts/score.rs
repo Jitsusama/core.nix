@@ -276,11 +276,11 @@ fn report(name: &str, scored: &Scored) -> String {
     out
 }
 
-fn rate(errors: &Errors) -> String {
+pub fn rate(errors: &Errors) -> String {
     format!("{} of {} words", percent(errors.tenths()), errors.words)
 }
 
-fn kinds(errors: &Errors) -> String {
+pub fn kinds(errors: &Errors) -> String {
     format!(
         "{} substituted, {} dropped, {} added",
         errors.substituted, errors.deleted, errors.inserted
@@ -289,7 +289,7 @@ fn kinds(errors: &Errors) -> String {
 
 /// A reference's lines: a start and end in seconds, a speaker, and what
 /// they said, after any comment.
-fn reference(text: &str) -> Result<Vec<Said>, String> {
+pub fn reference(text: &str) -> Result<Vec<Said>, String> {
     text.lines()
         .filter(|line| !line.starts_with('#') && !line.trim().is_empty())
         .map(|line| {
