@@ -170,11 +170,10 @@ fn the_dead(agents: &Agents) -> Option<String> {
     ))
 }
 
-/// What a watched program's copies held at the last look.
 /// A typical and a heavy copy at the last look, as cadence holds them,
-/// when any was running then.
+/// when more than one was running then: a lone copy is its largest.
 fn typical(held: &Memory) -> String {
-    if held.copies == 0 {
+    if held.copies < 2 {
         return String::new();
     }
     format!(
@@ -184,6 +183,7 @@ fn typical(held: &Memory) -> String {
     )
 }
 
+/// What a watched program's copies held at the last look.
 pub(super) fn holding(held: &Memory) -> String {
     format!(
         "{} hold {}, {} in swap",
@@ -684,6 +684,16 @@ mod tests {
         assert!(
             !shown.contains("quickshell"),
             "not running all day: {shown}"
+        );
+        let mut single = Memory::default();
+        single.saw(0, &[copy(3 << 20, 600)]);
+        assert!(typical(&single).is_empty(), "a lone copy is its largest");
+        let mut quiet = Memory::default();
+        quiet.saw(0, &[copy(3 << 20, 600), copy(1 << 20, 600)]);
+        quiet.saw(1, &[]);
+        assert!(
+            quiet.most_kib > 0 && typical(&quiet).is_empty(),
+            "ran earlier in the day, with no copies now"
         );
         let aged = asked(&minded, "memory");
         assert!(!aged.contains("quickshell"), "not running all day: {aged}");

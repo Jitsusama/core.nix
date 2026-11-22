@@ -128,7 +128,10 @@ pub fn seconds_of(ran: &str) -> Option<u64> {
 /// running the pi host's program, the host or a conversation's process.
 /// A node is any program whose name starts so, since a runtime may name
 /// its own by its version, and a conversation counted as some other
-/// program is lost from its figures without a word.
+/// program is lost from its figures without a word. The host's program is
+/// the first word after node's own flags, each one word as the host's
+/// unit writes them, so a script naming it later is not the host, and
+/// a `--child` counts only after it.
 fn started_by(process: &Path) -> Option<String> {
     let started = fs::read(process.join("cmdline")).ok()?;
     let mut words = started
@@ -138,8 +141,11 @@ fn started_by(process: &Path) -> Option<String> {
     let last_part = |word: &str| word.rsplit('/').next().unwrap_or(word).to_owned();
     let name = last_part(&first);
     if name.starts_with("node") {
-        let mut after = words.skip_while(|word| last_part(word) != HOST);
-        if after.next().is_some() {
+        let mut after = words.skip_while(|word| word.starts_with('-'));
+        if after
+            .next()
+            .is_some_and(|program| last_part(&program) == HOST)
+        {
             let child = after.any(|word| word == "--child");
             return Some(if child { "pi-conversation" } else { "pi-host" }.to_owned());
         }
@@ -397,6 +403,20 @@ mod tests {
             0,
         );
         process(proc.path(), 27, "vim\0scripts/pi-host.ts\0", Some(80), 0);
+        process(
+            proc.path(),
+            28,
+            &format!("{node}\0scripts/tool.js\0scripts/pi-host.ts\0--child\0"),
+            Some(90),
+            0,
+        );
+        process(
+            proc.path(),
+            29,
+            &format!("{node}\0--child\0scripts/pi-host.ts\0realm\0"),
+            Some(400_000),
+            0,
+        );
         let seen = look(proc.path());
         // /proc lists its processes in no order a test can count on.
         let kib = |name: &str| -> Vec<u64> {
@@ -412,8 +432,8 @@ mod tests {
         );
         assert_eq!(
             kib("pi-host"),
-            vec![900_000],
-            "the host, by its program alone"
+            vec![400_000, 900_000],
+            "the host, by its program alone, a --child before it being node's"
         );
         assert_eq!(
             seen.len(),
@@ -498,6 +518,14 @@ mod tests {
             (121, 220),
             "the eleventh of twenty-one and the twentieth, by nearest rank, each \
              in memory and swap together"
+        );
+        let mut even = Memory::default();
+        even.saw(1, &(1..=20).map(|n| copy(n * 10)).collect::<Vec<_>>());
+        assert_eq!(
+            (even.median_kib, even.p95_kib),
+            (110, 209),
+            "the tenth of twenty and the nineteenth, where an index rounded \
+             down would take the eleventh and the twentieth"
         );
         memory.saw(2, &[copy(20)]);
         memory.saw(3, &[]);
