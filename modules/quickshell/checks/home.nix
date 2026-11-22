@@ -139,9 +139,19 @@
   # session is gone is never settled, Now telling the launcher once, the
   # daemon stood in on its socket by the case itself
   # (modules/quickshell/tests/now-look-unwritten.qml).
+  # With reports off, the journal names the look's file by its letters and
+  # keeps the daemon's code, never its words, since a file is named for what
+  # Joel wrote.
   the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
     name = "the-launcher-puts-back-a-look-it-couldnt-write";
     test = ../tests/now-look-unwritten.qml;
+    after = ''
+      grep -F "didn't settle 6 letters ({\"code\":\"refused\",\"message\":\"29 letters\"})" said.log
+      if grep -e 'a\.json' -e 'read-only' said.log; then
+        echo "the journal said the look's file or the daemon's words"
+        exit 1
+      fi
+    '';
   };
 
   # The launcher's weather answers now, its parts and the rain by the hour from

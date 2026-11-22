@@ -4821,10 +4821,11 @@
   '';
   the-launcher-puts-back-a-look-it-couldnt-write = ''
     a look cleared in For You shows cleared in the act's own frame, and when its file can't be
-    written is put back as it read, its failure said in the journal, the shut launcher keeping
-    the looks it read, the daemon's word on one it settled, the same look written its own way,
-    leaves the text the act showed, and a served look whose session is gone is never settled and
-    Now tells the launcher once that it's gone
+    written is put back as it read, its failure said in the journal with reports off by the
+    file's letters and the daemon's code, never their words, the shut launcher keeping the looks
+    it read, the daemon's word on one it settled, the same look written its own way, leaves the
+    text the act showed, and a served look whose session is gone is never settled and Now tells
+    the launcher once that it's gone
   '';
   the-launcher-reads-spec-from-its-daemon = ''
     the launcher's Spec reads what the cadence-spec daemon serves: the head as the daemon says it,

@@ -272,6 +272,14 @@ const keysSaidByKind = /^(row|window|verb):/;
 const appWord = /^[A-Za-z0-9][A-Za-z0-9.-]*$/;
 const appsUnnamed = ["null", "undefined"];
 
+// A program's own id, as a power profile's hold names it: whole where `whole`, or where it's
+// shaped as an app's name, as a window's app is said, and otherwise as app, since a program
+// may give any words as its id.
+function appShown(app, whole) {
+    const text = String(app ?? "");
+    return whole || (appWord.test(text) && !appsUnnamed.includes(text)) ? text : "app";
+}
+
 // A key's parts up to the first that isn't a kind's word.
 function kindsLed(parts) {
     const end = parts.findIndex(part => !kindWord.test(part));

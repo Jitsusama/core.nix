@@ -1225,6 +1225,15 @@ QtObject {
         check(failures, "its line ends that JSON leaves raw escaped",
             Presented.errorShown({ said: "a\u2028launcher: b" }, true),
             '{"said":"a\\u2028launcher: b"}');
+        // A program holding a power profile names itself, so with reports
+        // off its id is said as a window's app is.
+        check(failures, "a program's id is said whole with reports off where it's an app's name",
+            Presented.appShown("org.gnome.Software", false), "org.gnome.Software");
+        check(failures, "but as app where it's words of its own",
+            Presented.appShown("Backing up Harbour", false), "app");
+        check(failures, "or nothing", Presented.appShown(undefined, false), "app");
+        check(failures, "and whole while they're on",
+            Presented.appShown("Backing up Harbour", true), "Backing up Harbour");
         // A link from outside is a page's words, so its line says whom it
         // named by kind and how many letters with reports off.
         check(failures, "a link's session is said by its kind and letters with reports off",
