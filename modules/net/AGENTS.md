@@ -166,7 +166,11 @@ what net says of the day.
   paired device, and pairing waits on Joel's yes, so none is asked.
 - A Samsung TV: each device eero lists with Samsung as its maker and
   generic or media streamer as its kind, at the address eero gives, so
-  a box eero places as a phone, tablet or computer isn't asked. It asks
+  a box eero places as a phone, tablet or computer isn't asked. A box
+  that has answered as a TV is asked at the address eero lists it on,
+  whatever maker or kind eero gives it later, since its own answer said
+  it was a TV; one eero lists on without an address can't be asked, so
+  it keeps its name and says it isn't answering as a TV. It asks
   `:8001/api/v2/` once, two seconds and 64 KB at most, following no
   redirect: what the TV says of itself to anyone, as JSON. Only an
   answer saying `Samsung SmartTV` counts; any other box says nothing,
@@ -181,8 +185,11 @@ what net says of the day.
   too; a daemon starting while every TV sleeps names no TV source until
   one answers. Only an answer that isn't a
   TV's (another page, an error status, a redirect or a page past 64 KB),
-  while no TV answers as one, makes it unreachable. A TV switched off leaves eero's list, so
-  it isn't asked, and is forgotten. The answer stays as
+  while no TV answers as one, makes it unreachable. A TV switched off
+  leaves eero's list of devices on, so it isn't asked; it's forgotten
+  only once eero knows it neither on nor off. A minute net can't read
+  eero's record (it's missing, can't be opened or doesn't parse), or
+  one listing no devices, asks no TV and forgets none. The answer stays as
   `detail.samsung`, but for its ids and the addresses eero gives. Sending
   it a key waits on Joel pressing Allow on the TV, so none is sent.
 
@@ -237,13 +244,14 @@ words is `said.rs`, and what the line carried over the last day is
   device can say, its ports and radios, the links it's on, a modem's
   channels and log, a receiver's volume and what it's doing, a
   printer's ink, what it's doing and the pages it has printed, a
-  television's power, or that it isn't answering as a TV, then what
-  each source says that those didn't, in the source's words. A list of
-  records or a series of readings is left to `--json`, which keeps every
-  source's detail whole, but for a printer's statuses, read field by
-  field as HP names them; its usage counters and settings are left there
-  too, as is what describes a maker's file rather than the device (HP's
-  versions, schemas and alert counter). A source's section says each
+  television's power, that the TV didn't say it, or that it isn't
+  answering as a TV, then what each source says that those didn't, in
+  the source's words. A list of records or a series of readings is left
+  to `--json`, which keeps every source's detail whole, but for a
+  printer's statuses, read field by field as HP names them; its usage
+  counters and settings are left there too, as is what describes a
+  maker's file rather than the device (HP's versions, schemas and alert
+  counter). A source's section says each
   path once: its lone facts first, then each group of facts under a line
   of the path they share, two cells in, and so again at every depth.
 
