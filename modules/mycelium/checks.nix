@@ -576,7 +576,14 @@ in
   mycelium-node-takes-its-flags =
     let
       words = lib.splitString " " (
-        builtins.unsafeDiscardStringContext "${linuxNode} ${stimulatingNode} ${lendingNode} ${sleepingNode}"
+        builtins.unsafeDiscardStringContext (
+          lib.concatStringsSep " " [
+            linuxNode
+            stimulatingNode
+            lendingNode
+            sleepingNode
+          ]
+        )
       );
       flags = lib.unique (lib.filter (lib.hasPrefix "--") words);
       locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
