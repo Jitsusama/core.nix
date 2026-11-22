@@ -603,6 +603,8 @@ Singleton {
 
     // A hosted one asked for by itself before its host serves it: its
     // waiting viewer, raised when niri lists it already, never a second.
+    // Its entry's words are run as they are, as Reopen Them All runs them
+    // (reopenViewer), since the harness writes the entry whole.
     function reopenWaiting(lost) {
         const named = viewerNamed(lost.id);
         const words = Viewers.waitingWords(lost);
@@ -633,18 +635,14 @@ Singleton {
             : Object.assign({}, into, { focused: true }), title);
         console.info(`sessions: viewing ${lost.id} to wait for its host`);
     }
-    // Whether a viewer `named` is held back, said as why: asked for
-    // moments ago and not listed yet (viewerComing), or listed by the
-    // windows daemon alone while niri lists others, so one niri has
-    // closed and the daemon, which lags it, hasn't heard of yet.
+    // Whether a viewer `named` is held back, as one asked for moments ago
+    // that niri hasn't listed yet (viewerComing), said opening. Asked
+    // only once a listed viewer would have been raised.
     function heldBack(id, named, said) {
-        const why = viewerComing(named) ? "opening"
-            : openNamed(named) && listedNamed(named) === undefined ? "closing" : "";
-        if (why === "")
+        if (!viewerComing(named))
             return false;
-        console.info(`sessions: ${id} not viewed again, since its viewer is `
-            + (why === "opening" ? "asked for already" : "listed only by the windows daemon"));
-        unhosted(said, why);
+        console.info(`sessions: ${id} not viewed again, since its viewer is asked for already`);
+        unhosted(said, "opening");
         return true;
     }
 
@@ -1758,19 +1756,20 @@ Singleton {
                     return;
                 }
                 if (started) {
-                    // Opened as any viewer is (viewWith), titled for its
-                    // quest and folder until pi titles it, and never a
-                    // second while it comes, rather than a bare attach
-                    // whose window reads "mycelium"; one listed already
-                    // is raised.
-                    const asked = root.viewWith(["mycelium", "--realm",
-                        host.replace(/-attended$/, ""), "attach", "--host", host, "--session", id],
-                        viewer, null, Viewers.viewerTitle("", quest, folder));
-                    const listed = asked ? undefined : root.listedNamed(viewer);
+                    // One listed already is raised, and one still coming
+                    // is said (heldBack); otherwise it opens as any viewer
+                    // does (viewWith), titled for its quest and folder
+                    // until pi titles it, rather than a bare attach whose
+                    // window reads "mycelium".
+                    const listed = root.listedNamed(viewer);
                     if (listed)
                         Niri.act({ FocusWindow: { id: listed.id } });
+                    else if (!root.heldBack(id, viewer, { address: quest, machine: "" }))
+                        root.viewWith(["mycelium", "--realm", host.replace(/-attended$/, ""),
+                            "attach", "--host", host, "--session", id],
+                            viewer, null, Viewers.viewerTitle("", quest, folder));
                     console.info(`sessions: started ${quest} in pi's host ${host}, as ${id}`
-                        + (asked ? "" : ", its viewer already open or coming"));
+                        + (listed ? ", its viewer already open" : ""));
                     Report.say(`started a session ${orchestrates ? "orchestrating" : "on"} ${quest}`
                         + " in pi's host");
                     return;
@@ -2503,24 +2502,28 @@ Singleton {
     // A row's Reopen or a hosted start tells it too, why naming the one
     // that held: "hostless", no host serves it and its entry gives no
     // words to wait with; "opening", its viewer was asked for moments ago
-    // (heldBack); "closing", only the lagging windows daemon lists it;
-    // "unviewable", started in pi's host under a host or id it can't view
-    // by. Each is said in the launcher's foot, since a press is never met
-    // with nothing.
+    // (heldBack); "unviewable", started in pi's host under a host or id
+    // it can't view by. Each is said in the launcher's foot, since a press
+    // is never met with nothing.
     signal unhosted(var session, string why)
     // A window Go To opens goes where the session would reopen (goesTo),
     // never on whichever workspace Joel is on.
     function goTo(session) {
-        if (session.presence?.hosted && !session.window) {
-            // niri may list its viewer before the windows daemon does, as
-            // just after a crash: that one is raised, never a second
-            // (listedNamed). One whose viewer can't be named has none to
-            // raise, rather than any window niri lists with no app id, and
-            // one held back (heldBack) is said, with no place worked out.
+        if (session.presence?.hosted && !root.listedNow(session.window)) {
+            // Its viewer niri lists is raised, never a second
+            // (listedNamed); one whose window niri no longer lists is
+            // viewed afresh. Each refused is said before any place is
+            // worked out, which can name a workspace, in the order a row's
+            // Reopen says it: one whose viewer can't be named, rather than
+            // raising any window niri lists with no app id, one with no
+            // words to view it by, then one held back (heldBack).
             const named = viewerOf(session.presence);
             const listed = listedNamed(named);
+            const words = session.attach;
             if (listed)
                 Niri.act({ FocusWindow: { id: listed.id } });
+            else if (named === "" || !Array.isArray(words) || words.length === 0)
+                unhosted(session, named === "" ? "unnamed" : "hosted");
             else if (!heldBack(session.address, named, session))
                 view(session, root.goesTo(session));
             return;
@@ -2610,9 +2613,9 @@ Singleton {
     // niri lists its window (viewerCame), or for viewPatience, as long as
     // the walk waits for a window, since the sessions' kitty may be
     // starting again after a crash. Within attachPatience alone, a second
-    // would open beside a viewer slow to come. Nor while niri lists one
-    // open already (openNamed), which a served session's record, read
-    // from the windows daemon's lagging index, may not say yet.
+    // would open beside a viewer slow to come. Nor while one is open
+    // already (openNamed), which a served session's record may not say
+    // yet.
     readonly property int viewPatience: 30000
     function viewWith(words, named, into, title) {
         if (root.openNamed(named) || viewerComing(named))
@@ -2747,24 +2750,33 @@ Singleton {
             keepPlaces(kept);
     }
 
-    // Whether a window opened with app id `named` is open, by niri's own
-    // list or the windows daemon's, so a second is never opened beside it:
-    // the daemon's index lags niri, and niri's may be empty, just after the
-    // crash a waiting viewer opens for.
+    // Whether a window opened with app id `named` is open (listedNamed),
+    // so a second is never opened beside it.
     function openNamed(named) {
-        return named !== "" && (Object.values(Niri.windows).some(window => window.opened === named)
-            || (niriWindows.opened[named] ?? []).length > 0);
+        return listedNamed(named) !== undefined;
     }
-    // The window opened with app id `named` to raise: niri's own, while
-    // niri lists any, since the windows daemon lags it and may still list
-    // one niri has closed; the daemon's only while niri lists none, as
-    // just after a crash. Undefined while neither has it, or for "".
+    // The window opened with app id `named`, as niri lists it while that
+    // list is to be trusted (trustsNiri), else as this file's index of the
+    // windows daemon has it. Undefined while neither has it, or for "".
     function listedNamed(named) {
         if (named === "")
             return undefined;
-        const shown = Object.values(Niri.windows);
-        return shown.length > 0 ? shown.find(window => window.opened === named)
+        return trustsNiri() ? Object.values(Niri.windows).find(window => window.opened === named)
             : (niriWindows.opened[named] ?? [])[0];
+    }
+    // Whether niri's list says which windows are open: while it lists
+    // any, being the windows daemon's own, or while niri's own stream
+    // stands in for a daemon that isn't answering, which leaves the index
+    // (niriWindows) as it last stood. Only while it lists none, before it
+    // has heard the daemon, is the index read instead.
+    function trustsNiri() {
+        return Object.keys(Niri.windows).length > 0 || Niri.standIn === true;
+    }
+    // Whether `window`, a session's as the index names it, is one niri
+    // lists, when that list is trusted.
+    function listedNow(window) {
+        return window !== null && window !== undefined
+            && (!trustsNiri() || String(window.id) in Niri.windows);
     }
     // Whether a viewer `named` was asked for within viewPatience and niri
     // hasn't listed it since (viewerCame).
