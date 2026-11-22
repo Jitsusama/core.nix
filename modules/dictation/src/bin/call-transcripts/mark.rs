@@ -45,7 +45,7 @@ pub fn help() -> Help {
         )
         .exit(
             Exit::Failed,
-            "a file can't be read, or mine never speaks in it",
+            "a file can't be read, the reference holds no words, or mine never speaks in it",
         )
 }
 
@@ -64,7 +64,8 @@ pub fn mark(file: &Path, reference: &Path, mine: Option<&str>) -> Result<(), Str
 /// Each side's errors, Joel's then theirs, in `file`, a call's file with
 /// Joel's lines under `me`, against `reference`, whose speaker `mine`,
 /// where one's named, is Joel's side; refused when `mine` never speaks,
-/// since a mistyped speaker would move his whole side to the far end.
+/// since a mistyped speaker would move his whole side to the far end, and
+/// when the reference holds no words, which would read as none wrong.
 fn marked(
     file: &str,
     reference: &[Said],
@@ -76,13 +77,20 @@ fn marked(
     {
         return Err(format!("{mine} never speaks, so can't be Joel's side"));
     }
-    // No speaker is named "", so with none named every line is theirs.
-    let mine = mine.unwrap_or_default();
+    if reference.iter().all(|line| said(&line.text).is_empty()) {
+        return Err("it holds no words to mark against".to_owned());
+    }
+    // With none named, every line is theirs, even one whose speaker is
+    // left empty, which no stand-in name could promise.
+    let whose = |line: &Said| match mine {
+        Some(mine) => score::whose(line, mine),
+        None => Side::Theirs,
+    };
     let lines = transcript::read(filed::transcript(file), me);
     Ok([Side::Mine, Side::Theirs].map(|side| {
         let spoken: Vec<String> = reference
             .iter()
-            .filter(|line| score::whose(line, mine) == side)
+            .filter(|line| whose(line) == side)
             .flat_map(|line| said(&line.text))
             .collect();
         let heard: Vec<String> = lines
