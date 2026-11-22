@@ -7,15 +7,16 @@
 use crate::history::{History, sql as fail};
 use crate::stats;
 use crate::time::{hour_of, hour_start};
-use rusqlite::ToSql;
+use rusqlite::{OptionalExtension, ToSql};
 use std::collections::HashMap;
 
 /// A span's turns as the figures here sum them: its whole hours from
 /// `waste_hours`, and the ragged edges either side from the turns
-/// themselves, so any bounds read exactly what the turns say. A day's
-/// start is a whole hour, so most spans read only their last, unfinished
-/// hour from the turns. Each edge is its own branch, so each is a range
-/// on `turns_at` alone.
+/// themselves, so any bounds read the very turns that summing them would,
+/// with sums alike but for rounding. Where the zone is a whole number of
+/// hours from UTC a day's start is a whole hour, so most spans read only
+/// their last, unfinished hour from the turns. Each edge is its own
+/// branch, so each is a range on `turns_at` alone.
 const SPAN: &str = "WITH span AS (
     SELECT session, quest, model, kind, cause, turns, cost, cost_cache_write, rebuilt_cost,
         cache_read, prompt FROM waste_hours WHERE hour >= :first AND hour < :last
@@ -111,6 +112,9 @@ pub fn share(history: &History, from: f64, to: f64) -> Result<Option<f64>, Strin
     Ok((spent >= 1.0).then(|| rebuilt / spent.max(rebuilt)))
 }
 
+/// Dollars under this are what a kept sum's rounding leaves of nothing.
+const ROUNDING: f64 = 1e-9;
+
 /// What each session spent rebuilding context it already had in a span,
 /// by its whole id, counted as `waste` counts it: a session that rebuilt
 /// nothing isn't named.
@@ -131,7 +135,10 @@ pub fn rebuilt_by_session(
             Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?))
         })
         .map_err(fail)?
-        .filter(|row| row.as_ref().map_or(true, |(_, dollars)| *dollars > 0.0))
+        .filter(|row| {
+            row.as_ref()
+                .map_or(true, |(_, dollars)| *dollars > ROUNDING)
+        })
         .collect::<Result<HashMap<_, _>, _>>()
         .map_err(fail)
 }
@@ -171,7 +178,8 @@ pub fn waste(history: &History, from: f64, to: f64) -> Result<Waste, String> {
             &span.named()[..],
             |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?)),
         )
-        .ok();
+        .optional()
+        .map_err(fail)?;
     Ok(Waste {
         spent,
         cache_write,
@@ -342,7 +350,7 @@ mod tests {
     /// A turn of the fixture: who, when, and what it cost.
     struct Kept {
         session: String,
-        quest: String,
+        quest: Option<String>,
         model: &'static str,
         kind: &'static str,
         cause: Option<&'static str>,
@@ -357,15 +365,19 @@ mod tests {
         }
     }
 
+    /// The first fixture turn's instant, 40 minutes into its hour.
+    const BASE: f64 = 1_763_700_000.0;
+
     /// Turns over three days at ragged instants, of every cause and kind,
-    /// whose costs are sixteenths so every sum is exact.
+    /// whose costs are sixteenths so every sum is exact, and one with no
+    /// quest on each bound the spans below are cut at, which decides
+    /// whether a bound is counted once and on its own side.
     fn kept() -> Vec<Kept> {
-        const BASE: f64 = 1_763_700_000.0;
         const CAUSES: [Option<&str>; 4] = [None, Some("fresh"), Some("gap"), Some("compaction")];
-        (0..300_u32)
+        let mut turns: Vec<Kept> = (0..300_u32)
             .map(|i| Kept {
                 session: format!("s{}", i % 5),
-                quest: format!("q{}", i % 3),
+                quest: Some(format!("q{}", i % 3)),
                 model: if i % 2 == 0 { "opus" } else { "sonnet" },
                 kind: if i % 7 == 0 { "side" } else { "agent" },
                 cause: CAUSES[usize::try_from(i % 4).expect("under four")],
@@ -373,7 +385,25 @@ mod tests {
                 cost: 0.25 * f64::from(1 + i % 7),
                 cache_read: f64::from(i % 11),
             })
-            .collect()
+            .collect();
+        let whole = hour_start(hour_of(BASE) + 1);
+        let bounds = [
+            whole,
+            whole + 30.0 * crate::time::HOUR,
+            BASE + 1234.5,
+            BASE + 400_000.0,
+        ];
+        turns.extend((0_u32..).zip(bounds).map(|(i, at)| Kept {
+            session: format!("s{i}"),
+            quest: None,
+            model: "opus",
+            kind: "agent",
+            cause: Some("gap"),
+            at,
+            cost: 2.0 + 0.5 * f64::from(i),
+            cache_read: 1.0,
+        }));
+        turns
     }
 
     fn stored(turns: &[Kept]) -> History {
@@ -410,12 +440,11 @@ mod tests {
     fn every_span_reads_what_its_turns_say() {
         let turns = kept();
         let history = stored(&turns);
-        let first = turns[0].at;
         let hour = crate::time::HOUR;
-        let whole = hour_start(hour_of(first) + 1);
+        let whole = hour_start(hour_of(BASE) + 1);
         let spans = [
-            (first - 100.0, first + 400_000.0),
-            (first + 1234.5, first + 2.0 * crate::time::DAY + 17.0),
+            (BASE - 100.0, BASE + 400_000.0),
+            (BASE + 1234.5, BASE + 2.0 * crate::time::DAY + 17.0),
             (whole, whole + 30.0 * hour),
             (whole + 60.0, whole + 2000.0),
             (whole - 900.0, whole + 900.0),
@@ -426,56 +455,28 @@ mod tests {
                 .iter()
                 .filter(|turn| turn.at >= from && turn.at < to)
                 .collect();
-            let spent: f64 = within.iter().map(|turn| turn.cost).sum();
-            let rebuilt: f64 = within.iter().map(|turn| turn.cost / 2.0).sum();
-            let wasted: f64 = within
-                .iter()
-                .filter(|turn| turn.wasted())
-                .map(|turn| turn.cost / 2.0)
-                .sum();
-            let mut by: HashMap<String, f64> = HashMap::new();
-            let mut by_session: HashMap<String, f64> = HashMap::new();
-            let mut gaps: HashMap<String, f64> = HashMap::new();
-            for turn in within.iter().filter(|turn| turn.wasted()) {
-                *by.entry(turn.model.into()).or_default() += turn.cost / 2.0;
-                *by_session.entry(turn.session.clone()).or_default() += turn.cost / 2.0;
-                if turn.cause == Some("gap") {
-                    *gaps.entry(turn.session.clone()).or_default() += turn.cost / 2.0;
-                }
-            }
-            let said = waste(&history, from, to).expect("the waste reads");
-            assert_eq!(
-                (said.spent, said.cache_write, said.rebuilt),
-                (spent, spent / 4.0, wasted.min(rebuilt)),
-                "the span from {from} to {to} summed other than its turns"
-            );
-            let worst = gaps
-                .iter()
-                .max_by(|one, other| one.1.total_cmp(other.1))
-                .map(|(session, dollars)| (session.clone(), *dollars));
-            assert_eq!(
-                said.worst.map(|worst| worst.1),
-                worst.map(|worst| worst.1),
-                "the span from {from} to {to} found another worst gap"
-            );
-            assert_eq!(
-                share(&history, from, to).expect("the share reads"),
-                (spent >= 1.0).then(|| wasted / spent.max(wasted)),
-                "the span from {from} to {to} gave another share"
-            );
+            waste_holds(&history, from, to, &within);
+            let by_session = summed(&within, |turn| turn.session.clone());
             assert_eq!(
                 rebuilt_by_session(&history, from, to).expect("the sessions read"),
-                by_session,
+                by_session.into_iter().collect::<HashMap<_, _>>(),
                 "the span from {from} to {to} gave other sessions' rebuilding"
             );
-            let mut models = rebuilt_by(&history, from, to, "model").expect("the cut reads");
-            models.sort_by(|one, other| one.0.cmp(&other.0));
-            let mut expected: Vec<(String, f64)> = by.into_iter().collect();
-            expected.sort_by(|one, other| one.0.cmp(&other.0));
-            assert_eq!(
-                models, expected,
-                "the span from {from} to {to} cut models otherwise"
-            );
+            let cuts: [(&str, fn(&Kept) -> String); 4] = [
+                ("model", |turn| turn.model.into()),
+                ("quest", |turn| turn.quest.clone().unwrap_or_default()),
+                ("session", |turn| turn.session.clone()),
+                ("cause", |turn| turn.cause.unwrap_or_default().into()),
+            ];
+            for (key, by) in cuts {
+                let mut cut = rebuilt_by(&history, from, to, key).expect("the cut reads");
+                cut.sort_by(|one, other| one.0.cmp(&other.0));
+                assert_eq!(
+                    cut,
+                    summed(&within, by),
+                    "the span from {from} to {to} cut by {key} otherwise"
+                );
+            }
             let mut sessions = super::work(&history, from, to).expect("the work reads");
             sessions.sort_by(|one, other| one.session.cmp(&other.session));
             assert_eq!(
@@ -484,6 +485,86 @@ mod tests {
                 "the span from {from} to {to} saw other work"
             );
         }
+    }
+
+    /// The rebuilt dollars among `within` that `waste` counts, summed by
+    /// `by`, in its order.
+    fn summed(within: &[&Kept], by: impl Fn(&Kept) -> String) -> Vec<(String, f64)> {
+        let mut sums: HashMap<String, f64> = HashMap::new();
+        for &turn in within.iter().filter(|turn| turn.wasted()) {
+            *sums.entry(by(turn)).or_default() += turn.cost / 2.0;
+        }
+        let mut sums: Vec<(String, f64)> = sums.into_iter().collect();
+        sums.sort_by(|one, other| one.0.cmp(&other.0));
+        sums
+    }
+
+    /// `waste` and `share` over a span, against its turns `within`.
+    fn waste_holds(history: &History, from: f64, to: f64, within: &[&Kept]) {
+        let spent: f64 = within.iter().map(|turn| turn.cost).sum();
+        let rebuilt: f64 = within.iter().map(|turn| turn.cost / 2.0).sum();
+        let causes = summed(within, |turn| turn.cause.unwrap_or_default().into());
+        let wasted: f64 = causes.iter().map(|cause| cause.1).sum();
+        let said = waste(history, from, to).expect("the waste reads");
+        assert_eq!(
+            (said.spent, said.cache_write, said.rebuilt),
+            (spent, spent / 4.0, wasted.min(rebuilt)),
+            "the span from {from} to {to} summed other than its turns"
+        );
+        let mut said_causes = said.causes.clone();
+        said_causes.sort_by(|one, other| one.0.cmp(&other.0));
+        assert_eq!(
+            said_causes, causes,
+            "the span from {from} to {to} put rebuilding under other causes"
+        );
+        let gaps: Vec<&Kept> = within
+            .iter()
+            .copied()
+            .filter(|turn| turn.cause == Some("gap"))
+            .collect();
+        let gaps = summed(&gaps, |turn| turn.session.clone());
+        let most = gaps.iter().map(|gap| gap.1).reduce(f64::max);
+        // Sessions can tie, so the one named need only be among the worst.
+        assert!(
+            said.worst.as_ref().map(|worst| worst.1) == most
+                && said
+                    .worst
+                    .as_ref()
+                    .is_none_or(|worst| gaps.contains(&(worst.0.clone(), worst.1))),
+            "the span from {from} to {to} named {:?} the worst gap, of {gaps:?}",
+            said.worst
+        );
+        assert_eq!(
+            share(history, from, to).expect("the share reads"),
+            (spent >= 1.0).then(|| wasted / spent.max(wasted)),
+            "the span from {from} to {to} gave another share"
+        );
+    }
+
+    /// How a span is split: whole hours read kept, and only what lies
+    /// outside them read from the turns, which the figures alone can't
+    /// show, since reading every turn gives the same answers slowly.
+    #[test]
+    fn a_span_reads_its_whole_hours_kept() {
+        let hour = crate::time::HOUR;
+        let first = hour_of(BASE) + 1;
+        let whole = hour_start(first);
+        let split = |span: Span| (span.first, span.last, span.start, span.end);
+        assert_eq!(
+            split(Span::of(whole, whole + 30.0 * hour)),
+            (first, first + 30, whole, whole + 30.0 * hour),
+            "a span of whole hours read some of them from the turns"
+        );
+        assert_eq!(
+            split(Span::of(whole - 900.0, whole + 2.0 * hour + 60.0)),
+            (first, first + 2, whole, whole + 2.0 * hour),
+            "a ragged span read other hours kept than those whole within it"
+        );
+        assert_eq!(
+            split(Span::of(whole + 60.0, whole + 2000.0)),
+            (0, 0, whole + 2000.0, whole + 2000.0),
+            "a span within one hour read an hour kept"
+        );
     }
 
     /// Each session's work among `within`, summed from its agent turns.
@@ -504,7 +585,8 @@ mod tests {
             let prompt: f64 = own.iter().map(|turn| turn.cache_read + 8.0).sum();
             agents.push(Work {
                 session: name.clone(),
-                quest: own.iter().map(|turn| turn.quest.clone()).max(),
+                // As MAX does, passing over turns with no quest.
+                quest: own.iter().filter_map(|turn| turn.quest.clone()).max(),
                 turns,
                 dollars,
                 per_turn: dollars / turns.max(1.0),
