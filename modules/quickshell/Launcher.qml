@@ -7229,8 +7229,13 @@ Scope {
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
             // Searched again only to say what's there now, it keeps the
             // order it's shown in, and the selection where it is (reshow).
+            // What's typed finds rows by rank, where nothing stands under a
+            // heading, so it's steadied with none, as it shows none; and a
+            // list in its own order shows all it has, so nothing waits.
             if (steadying) {
-                matches = unheaded(live(ordering ? found : steadied(found)));
+                if (ordering)
+                    waitingRows = 0;
+                matches = unheaded(live(ordering ? found : steadied(unheaded(found))));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
@@ -11224,10 +11229,12 @@ Scope {
         // A link's hold on the first keys lasts only the opening it made,
         // and a key listed without answers is late only while its
         // opening waits on them: kept, the next unheld answer, maybe hours
-        // on, would say it came that late (answersLate).
+        // on, would say it came that late (answersLate). What waited to be
+        // shown afresh is, at the next.
         if (!open) {
             prompt.unlinked();
             answersLate = null;
+            waitingRows = 0;
         }
         tallyMarked();
         // An opening's selection rests anew, never on the last opening's.
