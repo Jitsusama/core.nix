@@ -544,9 +544,14 @@ fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
     );
     let end = page.lines[first].text.chars().count() - 1;
     let over = named(&page, Kind::Chars, at(first, end), at(first + 1, 0));
+    let next = page.lines[first + 1]
+        .text
+        .chars()
+        .next()
+        .expect("a next row");
     assert!(
         over.as_deref()
-            .is_some_and(|it| !it.contains('\n') && it.ends_with('W')),
+            .is_some_and(|it| !it.contains('\n') && it.ends_with(next)),
         "v over the page's wrap is on one line of the file, joined: {over:?}"
     );
 }
