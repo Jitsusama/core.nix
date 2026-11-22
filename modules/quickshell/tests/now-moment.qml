@@ -909,7 +909,90 @@ ShellRoot {
                     leftAt: undefined, withdrawn: undefined }));
             expect("raised with the launcher shut, the tray counts it", tray() === 1, counts());
         }) && tried(root.movedCases))
+            root.keptReadings();
+    }
+
+    // The reader's answer, as timekeeping says it.
+    readonly property string keptSaid: JSON.stringify({ synchronised: true })
+    function answerTime() {
+        Timekeeping.heard(`{"parameters":${keptSaid}}`);
+    }
+
+    // The kept reading's minute, shortened, run out on `letGo` itself: a
+    // reader gone quiet while watched has its reading let go; a refusal
+    // said while watched isn't the timer's to clear; and a wall clock
+    // stepped back can't keep a reading past its time. No socket is made,
+    // so the sandbox's want of a reader can't answer in its place: it's
+    // unwatched first, past the second a failed socket waits to try again,
+    // so none left from the cases above is made anew mid-stage.
+    function keptReadings() {
+        Timekeeping.watching = 0;
+        keptStage.step = -1;
+        keptStage.at = Date.now();
+        waiting = "kept readings";
+    }
+    Timer {
+        id: keptStage
+
+        property int step: 0
+        property real at: 0
+
+        running: root.waiting === "kept readings"
+        interval: 20
+        repeat: true
+        onTriggered: root.keptReadingsHeld()
+    }
+    function keptReadingsHeld() {
+        const since = Date.now() - keptStage.at;
+        const read = JSON.stringify(Timekeeping.reading);
+        if (keptStage.step === -1) {
+            if (since < 1500)
+                return;
+            Timekeeping.trying = false;
+            Timekeeping.keptFor = 100;
+            Timekeeping.watching = 1;
+            answerTime();
+            keptStage.step = 0;
+            keptStage.at = Date.now();
+        } else if (keptStage.step === 0) {
+            if (Timekeeping.reading !== null && since < 5000)
+                return;
+            if (!tried(() => expect("watched, a reader gone quiet has its reading let go",
+                Timekeeping.reading === null, read)))
+                return;
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            answerTime();
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            Timekeeping.unanswered();
+            keptStage.step = 1;
+            keptStage.at = Date.now();
+        } else if (keptStage.step === 1) {
+            if (since < 3 * Timekeeping.keptFor)
+                return;
+            if (!tried(() => expect("a refusal said while watched isn't the timer's to clear",
+                Timekeeping.refused && Timekeeping.reading === null,
+                `${Timekeeping.refused} ${read}`)))
+                return;
+            Timekeeping.watching = 0;
+            Timekeeping.watching = 1;
+            answerTime();
+            Timekeeping.heardAt = Date.now() + 1e9;
+            Timekeeping.watching = 0;
+            keptStage.step = 2;
+            keptStage.at = Date.now();
+        } else {
+            if (Timekeeping.reading !== null && since < 5000)
+                return;
+            if (!tried(() => expect("a wall clock stepped back keeps it no longer than its time",
+                Timekeeping.reading === null, read)))
+                return;
+            waiting = "";
+            Timekeeping.keptFor = 60000;
+            Timekeeping.trying = true;
             Qt.exit(0);
+        }
     }
 
     // What Moved: no row while nothing moved; a workstream that moved is
@@ -1149,31 +1232,28 @@ ShellRoot {
         // plate of the row left behind was made again inside the step
         // (the keys lab, 2026-11-22). A refusal isn't kept, so a step
         // back asks afresh. Past its time by the wall clock, as after a
-        // suspend, a kept reading is let go.
-        const heard = { synchronised: true };
+        // suspend, a kept reading is let go. The reader's answers go
+        // through heard(), which says when the reading was heard.
+        const kept = () => JSON.stringify(Timekeeping.reading) === root.keptSaid;
         Timekeeping.watching += 1;
-        Timekeeping.reading = heard;
-        Timekeeping.heardAt = Date.now();
+        root.answerTime();
         Timekeeping.watching -= 1;
-        expect("unwatched, the reading is kept", Timekeeping.reading === heard,
-            JSON.stringify(Timekeeping.reading));
+        expect("unwatched, the reading is kept", kept(), JSON.stringify(Timekeeping.reading));
         Timekeeping.watching += 1;
-        expect("watched again within its time, the reading is still the one kept",
-            Timekeeping.reading === heard, JSON.stringify(Timekeeping.reading));
-        Timekeeping.reading = null;
-        Timekeeping.refused = true;
+        expect("watched again within its time, the reading is still the one kept", kept(),
+            JSON.stringify(Timekeeping.reading));
+        Timekeeping.unanswered();
         Timekeeping.watching -= 1;
         Timekeeping.watching += 1;
         expect("a refusal isn't kept past a step out, so a step back doesn't say it",
             !Timekeeping.refused && clockSays().length === 0, JSON.stringify(clockSays()));
-        Timekeeping.reading = heard;
+        root.answerTime();
         Timekeeping.heardAt = Date.now() - Timekeeping.keptFor;
         Timekeeping.watching -= 1;
         expect("unwatched past its time, the reading is let go",
             Timekeeping.reading === null, JSON.stringify(Timekeeping.reading));
         Timekeeping.watching += 1;
-        Timekeeping.reading = heard;
-        Timekeeping.heardAt = Date.now();
+        root.answerTime();
         Timekeeping.watching -= 1;
         Timekeeping.heardAt = Date.now() - Timekeeping.keptFor;
         Timekeeping.watching += 1;

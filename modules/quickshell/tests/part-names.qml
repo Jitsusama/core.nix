@@ -531,10 +531,8 @@ ShellRoot {
         const asked = clocks.answer("time").rows.find(each => each.key === "time:clock");
         Timekeeping.refused = true;
         const refused = clocks.answer("time").rows.find(each => each.key === "time:clock");
-        // Unwatched before the fixture's reading is put back, so it isn't
-        // let go as one past its time.
-        Timekeeping.watching = 0;
         Timekeeping.reading = reading;
+        Timekeeping.watching = 0;
         Timekeeping.refused = false;
         for (const [when, clock, side, empty] of [
             ["asked", asked, "\u2026", "\u2026"],

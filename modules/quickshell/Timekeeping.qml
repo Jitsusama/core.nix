@@ -32,9 +32,11 @@ Singleton {
     property bool refused: false
 
     // When the reader last answered, by the wall clock, and how long past
-    // it a reading is kept once nothing watches. The wall clock, as a
-    // Timer's minute stands still across a suspend, and a reading from
-    // before one is the likeliest to be wrong after it.
+    // it a reading is kept, watched or not: the reader answers each second
+    // while watched, so one a minute old was left by a reader gone quiet.
+    // The wall clock as well as `letGo`, as a Timer's minute stands still
+    // across a suspend, and a reading from before one is the likeliest to
+    // be wrong after it.
     property real heardAt: 0
     property int keptFor: 60000
 
@@ -47,6 +49,7 @@ Singleton {
     function unanswered() {
         if (watching === 0)
             return;
+        letGo.stop();
         reading = null;
         refused = true;
     }
@@ -68,7 +71,8 @@ Singleton {
         reading = reply.parameters;
         refused = false;
         heardAt = Date.now();
-        letGo.stop();
+        letGo.interval = keptFor;
+        letGo.restart();
     }
 
     // The reading is kept a while once nothing watches, not dropped at
@@ -78,24 +82,28 @@ Singleton {
     // comes at once, and is still let go in time if no answer comes, so a
     // reader that takes the connection and says nothing can't hold it up.
     // Its spans counted from when it was read, as a server's last sample
-    // is, read that much low until that answer.
+    // is, read that much low until that answer. Each change of watching
+    // sets `letGo` again by the wall clock, so a suspend can't stretch the
+    // minute past a step back; what's left is held to the minute, so a
+    // wall clock stepped back can't stretch it either.
     onWatchingChanged: {
-        const left = keptFor - (Date.now() - heardAt);
+        const left = Math.min(keptFor, keptFor - (Date.now() - heardAt));
         if (watching === 0)
             refused = false;
         if (reading === null)
             return;
         if (left <= 0) {
             letGoOfReading();
-        } else if (watching === 0) {
+        } else {
             letGo.interval = left;
             letGo.restart();
         }
     }
+    // Only the reading: a refusal is said while watched and cleared once
+    // nothing watches, and is never the timer's to clear.
     function letGoOfReading() {
         letGo.stop();
         reading = null;
-        refused = false;
     }
 
     Timer {
