@@ -79,12 +79,12 @@ fn findings_filed(m: &Measure) -> Vec<Filed> {
             let text = match what.split_once(HELD) {
                 Some((name, merged)) if merged.contains(UNRUN) => format!(
                     "cadence hour: a finding in #v2-symbiosis open past a day is yours: \
-                     "{name}". Its fix, {merged}, so it stays open until this machine runs it. \
+                     \"{name}\". Its fix, {merged}, so it stays open until this machine runs it. \
                      Please reply with when it will. {closes}"
                 ),
                 _ => format!(
                     "cadence hour: a finding in #v2-symbiosis open past a day, with no fix \
-                     running here, is yours: "{what}". Please reply with its cause and fix \
+                     running here, is yours: \"{what}\". Please reply with its cause and fix \
                      within a day, or why it can't move. {closes}"
                 ),
             };
