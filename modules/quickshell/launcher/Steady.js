@@ -19,6 +19,13 @@
 // there, as Write in Slack stands dimmed until Slack answers. A row is
 // known by `id`; rows alike in it pair off in their order, so two windows
 // titled alike keep their places.
+//
+// A new one whose heading isn't the last above the end has that heading
+// said again over it, the same heading in the same words, `repeated`,
+// since what stands under a heading reads as its, and For You's last
+// heading may be another cell's (Y2YBTS, 2026-11-22 [228cdeb9]). One
+// said again stays where it was said, reading as its heading reads now,
+// and a list shown afresh says each heading once.
 // The rows shown that may stand where they are as the list is said again:
 // what ends a search comes after it all and is made again with it, so it's
 // no row to hold in place (held, it stood dimmed above the one made
@@ -32,6 +39,8 @@ function standing(shown, gaveWay) {
 
 function kept(shown, now, id) {
     const waiting = {};
+    const headingsNow = now.filter(row => row.heading === true);
+    const under = headingsUnder(now);
     now.forEach((row, at) => {
         const said = id(row);
         if (waiting[said] === undefined) {
@@ -42,6 +51,12 @@ function kept(shown, now, id) {
     const taken = now.map(() => false);
     const out = [];
     for (const row of shown) {
+        if (row.repeated) {
+            const again = headingsNow.find(one => id(one) === id(row));
+            out.push(again ? Object.assign({}, again, { repeated: true })
+                : row.went ? row : Object.assign({}, row, { gone: true, went: true }));
+            continue;
+        }
         const left = waiting[id(row)];
         if (left && left.length > 0) {
             const at = left.shift();
@@ -51,21 +66,46 @@ function kept(shown, now, id) {
             out.push(row.went ? row : Object.assign({}, row, { gone: true, went: true }));
         }
     }
+    let last = out.filter(row => row.heading === true).pop() ?? null;
     now.forEach((row, at) => {
-        if (!taken[at]) {
-            out.push(shown.length > 0 && typeof row.ranked === "function" ? row.ranked() : row);
+        if (taken[at]) {
+            return;
         }
+        const its = under[at];
+        if (shown.length > 0 && its !== null && (last === null || id(last) !== id(its))) {
+            last = Object.assign({}, its, { repeated: true });
+            out.push(last);
+        }
+        if (row.heading === true) {
+            last = row;
+        }
+        out.push(shown.length > 0 && typeof row.ranked === "function" ? row.ranked() : row);
     });
     return out;
+}
+
+// The heading each row stands under among `rows`, the last above it, or
+// null for a heading itself and a row above them all.
+function headingsUnder(rows) {
+    let above = null;
+    return rows.map(row => {
+        if (row.heading === true) {
+            above = row;
+            return null;
+        }
+        return above;
+    });
 }
 
 // The rows shown, held still as kept holds them, with no new one among
 // them: while visual, a pending operator or the command line holds the
 // rows, what arrives waits, counted, and comes in at the end once it ends
-// (VKCF3Z's spec). { rows, waiting }.
+// (VKCF3Z's spec). { rows, waiting }. A heading is never a row, so none
+// is counted among what waits.
 function held(shown, now, id) {
     const out = kept(shown, now, id);
-    return { rows: out.slice(0, shown.length), waiting: out.length - shown.length };
+    return { rows: out.slice(0, shown.length),
+        waiting: out.slice(shown.length).filter(row => row.heading !== true).length };
 }
 
 // The rows without those that left since they were shown, as a key makes
