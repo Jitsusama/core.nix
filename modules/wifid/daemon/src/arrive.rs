@@ -63,17 +63,14 @@ pub fn needs_point(step: &str) -> bool {
 /// Whether a card whose move wifid heard no step of has left `from`, at
 /// this step and `on` the point it's on: one leaving or given up has, and
 /// one in a handshake or done (`needs_point`) has unless it's on `from`.
-/// Where its point can't be named (`None`), one in a handshake is taken as
-/// having left, as the move it was asked is likelier than a rekey in the
-/// same moment, and carried on it costs at worst a way back to where it
-/// is, where taken as never begun it has its networks on mid-join. One
-/// done isn't: wifid has just found it isn't done on the point it was
-/// sent to, so it's likeliest still on `from`, and joined, it has no join
-/// for its networks to come on in the middle of.
+/// One whose point can't be named (`None`) is taken as having left, as a
+/// join to such a point ends a move (`Arrivals::joined`). Carried on, one
+/// done is ended at the next check, which takes such a join as the move's
+/// too, and one in a handshake costs at worst a way back to where it is.
+/// Taken as never begun, one in a handshake has its networks on mid-join,
+/// and one done on the point it was sent to is held to the one it left.
 pub fn has_left_for(step: &str, on: Option<&str>, from: &str) -> bool {
-    has_left(step)
-        || (needs_point(step)
-            && on.map_or(step != "completed", |on| !on.eq_ignore_ascii_case(from)))
+    has_left(step) || (needs_point(step) && on.is_none_or(|on| !on.eq_ignore_ascii_case(from)))
 }
 
 /// How long a move is followed. The move that failed took 18 s to land
@@ -1330,7 +1327,7 @@ mod tests {
     }
 
     #[test]
-    fn a_card_unheard_from_has_left_its_point_unless_on_it_or_done_on_one_unnamed() {
+    fn a_card_unheard_from_has_left_its_point_unless_known_on_it() {
         for (step, on, left) in [
             ("authenticating", None, true),
             ("disconnected", None, true),
@@ -1342,7 +1339,7 @@ mod tests {
             ("completed", Some("6C:AE:F6:C1:84:26"), false),
             ("4way_handshake", None, true),
             ("group_handshake", None, true),
-            ("completed", None, false),
+            ("completed", None, true),
             ("scanning", None, true),
             ("", None, false),
             ("", Some(FAR), false),
@@ -1350,8 +1347,7 @@ mod tests {
             assert_eq!(
                 has_left_for(step, on, DESK),
                 left,
-                "{step} on {on:?}: a handshake or a join counts unless on its own point, \
-                 and on an unnamed one only a handshake does"
+                "{step} on {on:?}: a handshake or a join counts unless known on its own point"
             );
         }
     }
