@@ -119,18 +119,11 @@ impl App {
         }
     }
 
-    /// gf over the selection, given the name its lines give, or none while
-    /// they're an older setting's. It ends the selection, as Vim's leaves
-    /// visual mode, and takes what it held on one line of the file as the
-    /// name, as Vim's `v_gf` does, spaces and all; over lines, or of blanks,
-    /// it names none.
-    fn follow_selected(&mut self, named: Option<Option<String>>) {
-        // Between a page set again and its lines read, they're the old
-        // page's, so it waits as gf at rest does, and the selection holds.
-        let Some(named) = named else {
-            self.say(crate::app::STILL_READING);
-            return;
-        };
+    /// gf over the selection, given the name its lines give. It ends the
+    /// selection, as Vim's leaves visual mode, and takes what it held on one
+    /// line of the file as the name, as Vim's `v_gf` does, spaces and all;
+    /// over lines, or of blanks, it names none.
+    fn follow_selected(&mut self, named: Option<String>) {
         self.end_selection();
         match named {
             Some(name) => self.follow_named(name),
@@ -225,10 +218,15 @@ impl App {
                 return true;
             }
             (None, Act::FollowFile) => {
+                // Between a page set again and its lines read, they're the
+                // old page's, so it waits as gf at rest does.
                 let named = layout
                     .of(self.painter.version)
                     .map(|it| it.named(selection));
-                self.follow_selected(named);
+                match named {
+                    Some(named) => self.follow_selected(named),
+                    None => self.say(crate::app::STILL_READING),
+                }
                 return true;
             }
             // A mark made while selecting is the cursor's line, as his
