@@ -178,9 +178,7 @@ onLinux {
       unit = home.systemd.user.services.pineapple-slack-gateway;
       command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
       percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
-      encoded = lib.concatStringsSep " " (
-        lib.toList percent.pineapple-slack-gateway.Service.ExecStart
-      );
+      encoded = lib.concatStringsSep " " (lib.toList percent.pineapple-slack-gateway.Service.ExecStart);
       refused = (at "http://gateway.example.com/mcp").assertions;
     in
     holds "pineapple-slack-hears-a-gateway-in-shadow"
@@ -192,7 +190,7 @@ onLinux {
         ) command
         && !(lib.hasInfix "--live" command)
         && lib.hasSuffix ", in shadow" unit.Unit.Description
-        && !(unit.Service ? Environment)
+        && (unit.Service.Environment or [ ]) == [ ]
         && lib.hasInfix "mcp?x=a%%2Fb" encoded
         && lib.any (said: !said.assertion && lib.hasInfix "gateway.url" said.message) refused
         && lib.elem "default.target" unit.Install.WantedBy

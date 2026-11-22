@@ -240,22 +240,22 @@ in
           message = "jitsusama.pineapple.gateway.url is sent Joel's sign-in, so it's https.";
         }
         ++ lib.concatLists (
-        lib.mapAttrsToList (name: site: [
-          {
-            assertion =
-              builtins.match "[a-z0-9-]+" name != null
-              && !lib.elem name [
-                "github"
-                "slack"
-              ];
-            message = "jitsusama.pineapple.sites.${name}: a site's name is lowercase letters, digits and dashes, and neither github nor slack.";
-          }
-          {
-            assertion = lib.length site.repos <= 20;
-            message = "jitsusama.pineapple.sites.${name}: a site reads at most 20 repositories, since each round spends one of its 30 searches a minute on each.";
-          }
-        ]) sites
-      );
+          lib.mapAttrsToList (name: site: [
+            {
+              assertion =
+                builtins.match "[a-z0-9-]+" name != null
+                && !lib.elem name [
+                  "github"
+                  "slack"
+                ];
+              message = "jitsusama.pineapple.sites.${name}: a site's name is lowercase letters, digits and dashes, and neither github nor slack.";
+            }
+            {
+              assertion = lib.length site.repos <= 20;
+              message = "jitsusama.pineapple.sites.${name}: a site reads at most 20 repositories, since each round spends one of its 30 searches a minute on each.";
+            }
+          ]) sites
+        );
       systemd.user.services = lib.mapAttrs' siteReader sites;
     }
     {
