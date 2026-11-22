@@ -9,6 +9,7 @@
 //! the heading it sits under, how far down the page it is, and when it was
 //! left. The launcher lists them (`listed`, which `reader --places` prints)
 //! for the reader's Recent, so nothing there sets a page to say where.
+use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -157,7 +158,8 @@ fn said(value: &Value, top_pt: f64) -> Option<Block> {
 /// The block a point is in, and how far into it: the last block starting
 /// at or above it. A point over every block, as the eyebrow's line is,
 /// stands that far over the first, a distance less than nothing that
-/// lands it there again however far down the first block starts.
+/// keeps it as far above the first block wherever that starts, as what
+/// stands over the page's words moves with them.
 pub fn at(starts: &[(usize, f64)], pt: f64) -> (usize, f64) {
     starts
         .iter()
@@ -407,11 +409,98 @@ pub fn line_in(
     pt: f64,
     lines: &[(f64, f64)],
 ) -> Option<f64> {
+    // A line is in the block its baseline is in, as `line_at` finds it:
+    // from the block's top to the next's, and for the first block from
+    // over the page too. Found once, so a resize on a long page asks each
+    // line once rather than searching every block for it.
+    let at = starts.iter().position(|(b, _)| *b == block)?;
+    let from = if at == 0 {
+        f64::NEG_INFINITY
+    } else {
+        starts[at].1
+    };
+    let to = starts.get(at + 1).map_or(f64::INFINITY, |next| next.1);
     lines
         .iter()
-        .filter(|line| line_at(starts, **line).0 == block)
+        .filter(|(_, baseline)| (from..to).contains(baseline))
         .map(|(top, _)| *top)
         .min_by(|a, b| (a - pt).abs().total_cmp(&(b - pt).abs()))
+}
+
+/// A kept mark taken back onto the page: as it was read, where it stands
+/// now, and whether that's on a line of its block yet. While the mark
+/// stays where it landed it is the kept one, which a resize lands again
+/// from what was kept and closing writes back as it was read, so landing
+/// it costs nothing it was kept with.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Landed {
+    pub kept: Mark,
+    pub pt: f64,
+    pub on_line: bool,
+}
+
+impl Landed {
+    /// Whether the mark still stands where it landed, in `marks`: one set
+    /// or moved since is his own, no longer the kept one.
+    fn holds(&self, marks: &HashMap<char, f64>) -> bool {
+        marks
+            .get(&self.kept.letter)
+            .is_some_and(|pt| (pt - self.pt).abs() < 0.01)
+    }
+}
+
+/// Puts each landed mark not on a line yet on the line of its block
+/// nearest it, of `lines` by their tops and baselines, giving the letters
+/// and the lines' tops: between lines, going to it would take the line
+/// below, and past the block's last line that's the next block's heading.
+/// One whose block has no line read yet waits; one set or moved since goes.
+pub fn on_lines(
+    landed: &mut Vec<Landed>,
+    marks: &HashMap<char, f64>,
+    starts: &[(usize, f64)],
+    lines: &[(f64, f64)],
+) -> Vec<(char, f64)> {
+    landed.retain(|one| one.holds(marks));
+    let mut put = Vec::new();
+    for one in landed.iter_mut().filter(|one| !one.on_line) {
+        if let Some(top) = line_in(starts, one.kept.block, one.pt, lines) {
+            (one.pt, one.on_line) = (top, true);
+            put.push((one.kept.letter, top));
+        }
+    }
+    put
+}
+
+/// Lands again each landed mark still where it landed on the page set
+/// again at another width, whose blocks start at `after`, as far through
+/// its block as it was kept, giving the letters and where they land, to
+/// go on a line once its lines are read. Found again from its own line,
+/// one not on a line yet would be found in the block before.
+pub fn landed_again(
+    landed: &mut Vec<Landed>,
+    marks: &HashMap<char, f64>,
+    after: &[(usize, f64)],
+) -> Vec<(char, f64)> {
+    landed.retain(|one| one.holds(marks));
+    landed
+        .iter_mut()
+        .filter_map(|one| {
+            let kept = &one.kept;
+            let pt = pt_of(after, kept.block, kept.into_pt, kept.block_pt)?;
+            (one.pt, one.on_line) = (pt, false);
+            Some((kept.letter, pt))
+        })
+        .collect()
+}
+
+/// The kept mark a letter's mark at `pt` still is, to write back as it
+/// was read, with its block's height, which the first screen's page may
+/// not know, and before it's on a line, where its own line isn't.
+pub fn as_read(landed: &[Landed], letter: char, pt: f64) -> Option<&Mark> {
+    landed
+        .iter()
+        .find(|one| one.kept.letter == letter && (one.pt - pt).abs() < 0.01)
+        .map(|one| &one.kept)
 }
 
 /// The state home, where places are kept.

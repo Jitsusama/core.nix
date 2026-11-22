@@ -3305,8 +3305,11 @@
     without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
     counts and keys, visual mode's motions, text objects and copies of the file's markdown, where
     vi's paragraph, heading, view, bracket and file moves land, whole-word search, the command line
-    read as Neovim reads it, gO's outline, and the window's title from the document's title or else
-    its file's name
+    read as Neovim reads it, gO's outline, the window's title from the document's title or else
+    its file's name, code in a table's column counted by the stretches Typst breaks it into, math
+    in a cell measured as its words, a place or a mark landing as far through its block at another
+    width and on a line of its own block, kept marks waiting on the first screen for their block's
+    height and written back as read, and the first screen setting the block after a long one
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,

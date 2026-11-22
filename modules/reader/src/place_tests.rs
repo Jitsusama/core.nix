@@ -1,8 +1,9 @@
 use super::{
-    Block, Mark, Opens, Place, Said, at, heading_of, keep_window_in, kept_at, letter, line_in,
-    listed_in, mark, mark_at, moved, opening, pt_of, read_in, still_waiting, through, window_in,
-    write_in,
+    Block, Landed, Mark, Opens, Place, Said, as_read, at, heading_of, keep_window_in, kept_at,
+    landed_again, letter, line_in, listed_in, mark, mark_at, moved, on_lines, opening, pt_of,
+    read_in, still_waiting, through, window_in, write_in,
 };
+use std::collections::HashMap;
 
 #[test]
 fn marks_still_waiting_are_written_back_whole_only_from_the_first_screen() {
@@ -53,6 +54,11 @@ fn a_mark_kept_with_its_blocks_height_waits_on_the_first_screen_for_the_block_af
         mark_at(&first, false, 4, 20.0, None),
         Some(160.0),
         "kept before heights were, it lands at its distance at once"
+    );
+    assert_eq!(
+        mark_at(&first, true, 4, 20.0, Some(80.0)),
+        Some(160.0),
+        "with the rest failed, no block after comes, so it lands at its kept distance"
     );
     assert_eq!(
         mark_at(&whole, true, 9, 20.0, Some(80.0)),
@@ -411,9 +417,14 @@ fn a_line_moved_to_another_width_lands_on_a_line_of_its_own_block() {
         "the page's first line, over its block's capitals, stays"
     );
     assert_eq!(
-        moved(&before, &before, (10.0, 10.0), &[]),
-        Some(10.0),
-        "a line over every block, as the eyebrow's, comes back where it was"
+        moved(
+            &before,
+            &[(0, 50.0), (1, 134.0), (2, 414.0)],
+            (10.0, 10.0),
+            &[]
+        ),
+        Some(24.0),
+        "a line over every block, as the eyebrow's, keeps as far above the first"
     );
     // Block 1's lines, 20 pt apart, with the line before it and the
     // heading after it, each a top and a baseline 14 pt below it.
@@ -446,7 +457,78 @@ fn a_line_moved_to_another_width_lands_on_a_line_of_its_own_block() {
         Some(204.0),
         "past its last line, still its own, never the next heading"
     );
+    assert_eq!(
+        line_in(&before, 1, 121.0, &lines(&[100.0, 146.0])),
+        Some(146.0),
+        "a first line set well inside its block, as a code block's inset sets it, \
+         takes a mark landed over it, never the nearer line before"
+    );
     assert_eq!(line_in(&before, 1, 300.0, &[]), None, "no lines, none");
+}
+
+#[test]
+fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it() {
+    let kept = |letter, block, into_pt| Mark {
+        letter,
+        block,
+        into_pt,
+        block_pt: Some(80.0),
+        said: Said::default(),
+    };
+    let landed_at = |letter, block, into_pt, pt| Landed {
+        kept: kept(letter, block, into_pt),
+        pt,
+        on_line: false,
+    };
+    // Block 1's lines, a top and a baseline 14 pt below it; block 3 has
+    // none read yet.
+    let starts = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 400.0)];
+    let lines: Vec<(f64, f64)> = [100.0, 124.0, 144.0, 164.0, 184.0]
+        .iter()
+        .map(|top| (*top, top + 14.0))
+        .collect();
+    let mut landed = vec![
+        landed_at('a', 1, 40.0, 160.0),
+        landed_at('b', 1, 40.0, 160.0),
+        landed_at('c', 3, 20.0, 420.0),
+    ];
+    let mut marks = HashMap::from([('a', 160.0), ('b', 300.0), ('c', 420.0)]);
+    assert_eq!(
+        on_lines(&mut landed, &marks, &starts, &lines),
+        vec![('a', 164.0)],
+        "a goes on its block's nearest line; b, moved since, is his; c waits for its lines"
+    );
+    let letters: Vec<char> = landed.iter().map(|one| one.kept.letter).collect();
+    assert_eq!(letters, ['a', 'c'], "b is no longer a kept mark");
+    marks.insert('a', 164.0);
+    assert_eq!(
+        as_read(&landed, 'a', 164.0),
+        Some(&kept('a', 1, 40.0)),
+        "on its line, written back as read, its block's height and all"
+    );
+    assert_eq!(
+        as_read(&landed, 'c', 420.0),
+        Some(&kept('c', 3, 20.0)),
+        "waiting for its line, as read, never found again from its point alone"
+    );
+    assert_eq!(as_read(&landed, 'a', 184.0), None, "moved, it's his");
+    // Set again at another width, block 1 twice as tall and block 3 last.
+    let after = [(0, 36.0), (1, 120.0), (2, 280.0), (3, 480.0)];
+    assert_eq!(
+        landed_again(&mut landed, &marks, &after),
+        vec![('a', 200.0), ('c', 500.0)],
+        "each lands again from what was kept: a as far through, c as far in"
+    );
+    assert!(
+        landed.iter().all(|one| !one.on_line),
+        "each goes on a line of the new page once its lines are read"
+    );
+    marks.extend([('a', 200.0), ('c', 430.0)]);
+    assert_eq!(
+        landed_again(&mut landed, &marks, &starts),
+        vec![('a', 160.0)],
+        "c, moved since, is his, and moves with its own line"
+    );
 }
 
 #[test]

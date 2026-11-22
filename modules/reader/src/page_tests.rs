@@ -125,9 +125,9 @@ fn the_first_screen_sets_the_block_after_a_long_one_it_opens_at() {
     // A paragraph longer than the first screen sets, opened at: the block
     // after it says how tall it stands, so a place in it lands as far
     // through it at any width.
-    // Unless that block is as long: then a mark in the long one waits for
-    // the whole page, and the view lands at its kept distance, rather
-    // than move under him once the whole page comes.
+    // Unless that block is as long: then the first screen ends on the long
+    // one, whose height stays unknown, and a mark in it waits for the
+    // whole page.
     let long = "Words enough to run on. ".repeat(400);
     for (after, known) in [("After it.", true), (long.as_str(), false)] {
         let markdown = format!("# Title\n\nThe lede.\n\n{long}\n\n{after}\n\nAnd more.\n");
@@ -147,6 +147,10 @@ fn the_first_screen_sets_the_block_after_a_long_one_it_opens_at() {
         std::fs::remove_dir_all(&dir).expect("cleaned");
         let starts = crate::place::starts(&first.page.frame);
         assert!(first.rest.is_some(), "the first screen sets the whole page");
+        assert!(
+            starts.iter().any(|(block, _)| *block == long_block),
+            "the first screen sets the long block it opens at: {starts:?}"
+        );
         assert_eq!(
             crate::place::height_of(&starts, long_block).is_some(),
             known,

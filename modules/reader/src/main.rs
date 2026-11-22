@@ -188,9 +188,9 @@ struct App {
     start_pt: Option<f64>,
     /// Marks kept from the last time, whose blocks aren't set yet.
     kept_marks: Vec<KeptMark>,
-    /// Kept marks landed as far through their block, each where, to go on
-    /// a line of it once the page's lines are read.
-    landed: Vec<(char, usize, f64)>,
+    /// Kept marks taken back onto the page, as read and where each landed,
+    /// until he moves one.
+    landed: Vec<place::Landed>,
     /// The places jumped from, oldest first, each with its file, and where
     /// Ctrl+O and Ctrl+I stand in them; at its length, past the newest.
     jumps: Vec<Spot>,
@@ -485,7 +485,11 @@ fn show(
         place::read(std::path::Path::new(file))
     };
     // Measuring, a headless window's is named by nobody.
-    let width = page::Width::first(if measuring { None } else { place::window_pt() });
+    let unnamed_pt = f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX;
+    let width = page::Width::first(
+        if measuring { None } else { place::window_pt() },
+        unnamed_pt,
+    );
     let opens_at = opening_at(kept.as_ref(), letter);
     // Connecting before the page is set lets the GL driver come up beside it.
     let conn = Connection::connect_to_env()?;
@@ -709,14 +713,19 @@ fn set_rest(
     let failed = heard(handle, |app: &mut App, ()| app.rest_failed())?;
     std::thread::Builder::new()
         .name("setter".into())
-        .spawn(move || match rest.set() {
-            Ok(done) => {
-                let _ = whole.send(done);
-            }
-            Err(error) => {
-                eprintln!("can't set the rest: {error}");
-                let _ = failed.send(());
-            }
+        // A panic setting it fails it too, or marks waiting on the rest
+        // would wait all session.
+        .spawn(move || {
+            let why = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rest.set())) {
+                Ok(Ok(done)) => {
+                    let _ = whole.send(done);
+                    return;
+                }
+                Ok(Err(error)) => error.to_string(),
+                Err(_) => "it panicked".to_string(),
+            };
+            eprintln!("reader: can't set the rest, so marks waiting on it land as kept: {why}");
+            let _ = failed.send(());
         })?;
     Ok(())
 }

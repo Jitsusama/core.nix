@@ -94,11 +94,11 @@ impl Width {
 
     /// The page the first screen is set at: for the window's width when
     /// the reader last closed, `kept_pt`, which niri most likely opens it
-    /// at again, or else for the one a window has until niri names it, so
-    /// the first configure finds the page already set for it. A window
-    /// niri opens at another width, with none kept, sets it once more.
-    pub fn first(kept_pt: Option<f64>) -> Width {
-        let unnamed_pt = f64::from(crate::app::UNNAMED_SIZE.0) * crate::theme::PT_A_PX;
+    /// at again, or else for the one a window has until niri names it,
+    /// `unnamed_pt`, so the first configure finds the page already set for
+    /// it. A window niri opens at another width, with none kept, sets it
+    /// once more.
+    pub fn first(kept_pt: Option<f64>, unnamed_pt: f64) -> Width {
         Width::for_window(kept_pt.unwrap_or(unnamed_pt))
     }
 

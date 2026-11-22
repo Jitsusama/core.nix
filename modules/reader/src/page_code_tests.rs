@@ -48,8 +48,11 @@ fn probed(body: &str, code: &str, window_pt: f64) -> Vec<String> {
 
 #[test]
 fn an_unboxed_piece_is_counted_in_the_stretches_typst_breaks_it_into() {
-    // After a hyphen, each mark the pattern holds to it, and a flag.
-    let code = "x--y a-1-b --release f(a-) x-.y a-] a-} a-, a-; a-: a-! a-? a-' a-\" a-|b a-/b";
+    // After a hyphen, each mark the pattern holds to it, and a flag. A
+    // lone hyphen opening a word, which Unicode's LB20a would hold to it,
+    // and one before a sign or in a bracket, Typst breaks after.
+    let code = "x--y a-1-b --release f(a-) x-.y a-] a-} a-, a-; a-: a-! a-? a-' a-\" a-|b a-/b \
+                -Dfoo a-+b a-$b (-c)";
     // Its stretches as least-code reads them, and the lines Typst sets it
     // in when every break it may make is taken.
     let read = probed(
@@ -65,7 +68,7 @@ fn an_unboxed_piece_is_counted_in_the_stretches_typst_breaks_it_into() {
          before a figure, a closing mark or a quote, and after a bar or a slash \
          held to one"
     );
-    assert_eq!(read.matches('¦').count(), 20, "it breaks at all: {read}");
+    assert_eq!(read.matches('¦').count(), 28, "it breaks at all: {read}");
 }
 
 #[test]
