@@ -1339,6 +1339,52 @@ ShellRoot {
         expect("and leads what :filter narrows, as the list does",
             filtered[0]?.forYou?.source === "desktop",
             JSON.stringify(filtered.map(row => [row.key, row.forYou?.source ?? ""])));
+        // And lists what the list does in its order, past the first, as
+        // the list stands with no heading, which :filter draws none of: two
+        // sessions asking are gathered in Agents Asking, so no cell stands
+        // among what needs Joel now, and the asks stand where the heaviest
+        // weighs (ForYou.js's agentAt): after a to-do overdue he can do now
+        // (70), before one that only waits (10), each ask weighing 50 as it
+        // blocks its session. Each kind's row stands for those it holds (our
+        // council on #5916, F7, 2026-11-20).
+        const standsFor = row => String(row.key).startsWith("on:waitingOnYou:kind:")
+            ? Array.from(row.targets()).map(one => one.key) : [row.key];
+        const askingOf = (address, said) => ({ address, title: `Session ${address}`, presence: {
+            session: `s-${address}`, addresses: [], wants: { kind: "question", said } } });
+        const signHeld = { title: "Sign in to the bank", minutes: 2 };
+        const payHeld = { title: "Pay the bill", minutes: 2, ready: true,
+            deadline: new Date(Date.now() - 3600000).toISOString() };
+        let drawn = [];
+        let narrowed = [];
+        try {
+            Sessions.wanting = [askingOf("WANTF", "Which?"), askingOf("WANTG", "Where?")];
+            WaitingOnYou.now = [signHeld, payHeld];
+            WaitingOnYou.foremost = payHeld;
+            drawn = Array.from(now.waitingRows());
+            narrowed = Array.from(now.filterable()).map(row => row.key);
+        } finally {
+            Sessions.wanting = [];
+            WaitingOnYou.now = [];
+            WaitingOnYou.foremost = null;
+        }
+        const wholeList = drawn.reduce((keys, row) => keys.concat(standsFor(row)), []);
+        const seeded = ["on:waiting:desktop", "on:waiting:want:WANTF", "on:waiting:want:WANTG",
+            "on:waiting:Sign in to the bank", "on:waiting:Pay the bill", "on:look:p"];
+        // Each its own, so a failure says which held: the state the order
+        // is judged in, what :filter holds, then the order itself.
+        const placeOf = key => wholeList.indexOf(key);
+        expect("the list it's judged by draws no heading, the asks gathered between the to-dos",
+            !drawn.some(row => row.heading) && drawn.some(row => row.key
+                === "on:waitingOnYou:kind:agent") && placeOf("on:waiting:Pay the bill")
+                < placeOf("on:waiting:want:WANTF") && placeOf("on:waiting:want:WANTG")
+                < placeOf("on:waiting:Sign in to the bank"),
+            JSON.stringify(drawn.map(row => [row.key, row.heading === true])));
+        expect(":filter holds each row the state makes",
+            JSON.stringify([...narrowed].sort()) === JSON.stringify([...seeded].sort()),
+            JSON.stringify(narrowed));
+        expect("and lists the rest of For You in the list's order",
+            JSON.stringify(wholeList) === JSON.stringify(narrowed),
+            JSON.stringify([wholeList, narrowed]));
         now.lookTexts = beforeLook;
         // Ahead of a session's question too, in For You and home alike.
         Sessions.wanting = [{ address: "WANTC", title: "Session C", presence: {
