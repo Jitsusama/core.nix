@@ -3256,8 +3256,6 @@ struct SaidKept {
     reached: bool,
     stalled: bool,
     busy: bool,
-    /// That no build is seen to reach it, but it answers.
-    answering: bool,
     /// How many times in a row the builder hasn't said whether it answers.
     silent: u32,
 }
@@ -3321,16 +3319,6 @@ fn unanswered(
         );
     }
     said.stalled &= dropped && stalled;
-    let unreached = dropped && !unanswered && !stalled && !reached;
-    if unreached && said.silent == 0 && !std::mem::replace(&mut said.answering, true) {
-        eprintln!(
-            "nix-offload: {} failed {failures} proofs in a row and no build is seen to reach \
-             it, but it answers, so no new build goes there, and it's kept until it stops \
-             answering or sits idle",
-            builder.name
-        );
-    }
-    said.answering &= unreached;
     if dropped && !unanswered && !stalled && reached && !std::mem::replace(&mut said.reached, true)
     {
         eprintln!(
@@ -3342,8 +3330,10 @@ fn unanswered(
         );
     }
     said.reached &= dropped;
-    let busy =
-        dropped && !unanswered && said.silent == 0 && failures >= decide::FAILS_WHILE_REACHED;
+    // Whether it was asked if it answers: at once when nothing is seen to
+    // reach it, else only once it has failed enough proofs.
+    let asked = !(reached || stalled) || failures >= decide::FAILS_WHILE_REACHED;
+    let busy = dropped && !unanswered && said.silent == 0 && asked;
     if busy && !std::mem::replace(&mut said.busy, true) {
         eprintln!(
             "nix-offload: {} still answers, so it's busy rather than lost, and keeps what it \
