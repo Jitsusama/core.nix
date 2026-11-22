@@ -9,23 +9,6 @@
 // Qt's own engine.
 .pragma library
 
-// The rows as they read now, in the order of those shown: each row shown
-// as it is now, or as it was, `gone` and `went`, where it's no longer
-// there, then each new one in its own order. A new one comes at the end,
-// out of any place a tree would give it, so one that says how it reads
-// ranked flat (`ranked`, as a session under its orchestrator does) reads so;
-// a list shown afresh has nothing new, and keeps every row's own. `went`
-// tells a row that left from one its source draws dimmed itself, gone but
-// there, as Write in Slack stands dimmed until Slack answers. A row is
-// known by `id`; rows alike in it pair off in their order, so two windows
-// titled alike keep their places.
-//
-// A new one whose heading isn't the last above the end has that heading
-// said again over it, the same heading in the same words, `repeated`,
-// since what stands under a heading reads as its, and For You's last
-// heading may be another cell's (Y2YBTS, 2026-11-22 [228cdeb9]). One
-// said again stays where it was said, reading as its heading reads now,
-// and a list shown afresh says each heading once.
 // The rows shown that may stand where they are as the list is said again:
 // what ends a search comes after it all and is made again with it, so it's
 // no row to hold in place (held, it stood dimmed above the one made
@@ -37,62 +20,129 @@ function standing(shown, gaveWay) {
     return shown.filter(row => !row.endedBy && !(gaveWay && row.answered));
 }
 
+// The rows as they read now, in the order of those shown: each row shown
+// as it is now, or as it was, `gone` and `went`, where it's no longer
+// there, then each new one in its own order. A new one comes at the end,
+// out of any place a tree would give it, so one that says how it reads
+// ranked flat (`ranked`, as a session under its orchestrator does) reads so;
+// a list shown afresh has nothing new, and keeps every row's own. `went`
+// tells a row that left from one its source draws dimmed itself, gone but
+// there, as Write in Slack stands dimmed until Slack answers. A row is
+// known by `id`; rows alike in it pair off in their order, so two windows
+// titled alike keep their places. The rows that wait unseen (laidAgain)
+// come in once the list is shown afresh.
 function kept(shown, now, id) {
+    return laidAgain(shown, now, id).rows;
+}
+
+// The rows as kept lays them, and how many new ones wait unseen, counted
+// in the foot as "1 new" (Launcher.qml's waitingRows): { rows, waiting }.
+function refreshed(shown, now, id) {
+    const again = laidAgain(shown, now, id);
+    return { rows: again.rows, waiting: again.late };
+}
+
+// Kept's rows, and `late`, how many new ones wait to be shown afresh.
+// Where a list has headings (Headings.js), as For You's cells do, what
+// stands under a heading reads as its, so a new row under a heading that
+// isn't the last above the end has it said again over it, the same heading
+// in the same words, `repeated`; a heading new to the list comes in only so,
+// over a new row. A new row under no heading there waits, since at the end
+// it would read as the last heading's, unless it `asks`, as Agents Asking's
+// row does, since an ask never waits unseen. A row shown stays where it is,
+// under the heading it was shown under, though its cell has changed. One
+// said again stays where it was said, reading as its heading reads now,
+// and is dimmed while no row under it stands, as a row is while gone; a list shown
+// afresh says each heading once (Y2YBTS, 2026-11-22 [228cdeb9] and
+// [4c5e154a]). One said again among `now`, as a search over the rows kept
+// hands them back, is no row of the source's, and is said only as here.
+function laidAgain(shown, now, id) {
+    const fresh = now.filter(row => !row.repeated);
+    if (shown.length === 0) {
+        return { rows: fresh, late: 0 };
+    }
+    const headingsNow = fresh.filter(row => row.heading === true);
+    const under = headingsUnder(fresh);
     const waiting = {};
-    const headingsNow = now.filter(row => row.heading === true);
-    const under = headingsUnder(now);
-    now.forEach((row, at) => {
+    fresh.forEach((row, at) => {
         const said = id(row);
         if (waiting[said] === undefined) {
             waiting[said] = [];
         }
         waiting[said].push(at);
     });
-    const taken = now.map(() => false);
+    const taken = fresh.map(() => false);
     const out = [];
     for (const row of shown) {
         if (row.repeated) {
             const again = headingsNow.find(one => id(one) === id(row));
-            out.push(again ? Object.assign({}, again, { repeated: true })
-                : row.went ? row : Object.assign({}, row, { gone: true, went: true }));
+            out.push(again ? Object.assign({}, again, { repeated: true }) : dimmed(row));
             continue;
         }
         const left = waiting[id(row)];
         if (left && left.length > 0) {
             const at = left.shift();
             taken[at] = true;
-            out.push(now[at]);
+            out.push(fresh[at]);
         } else {
-            out.push(row.went ? row : Object.assign({}, row, { gone: true, went: true }));
+            out.push(dimmed(row));
         }
     }
-    let last = out.filter(row => row.heading === true).pop() ?? null;
-    now.forEach((row, at) => {
-        if (taken[at]) {
+    let last = out.filter(row => row.heading === true && !row.went).pop() ?? null;
+    let late = 0;
+    fresh.forEach((row, at) => {
+        if (taken[at] || row.heading === true && headingsNow.length > 0) {
             return;
         }
         const its = under[at];
-        if (shown.length > 0 && its !== null && (last === null || id(last) !== id(its))) {
+        if (its === null && headingsNow.length > 0 && row.asks !== true) {
+            late += 1;
+            return;
+        }
+        if (its !== null && (last === null || id(last) !== id(its))) {
             last = Object.assign({}, its, { repeated: true });
             out.push(last);
         }
-        if (row.heading === true) {
-            last = row;
-        }
-        out.push(shown.length > 0 && typeof row.ranked === "function" ? row.ranked() : row);
+        out.push(typeof row.ranked === "function" ? row.ranked() : row);
     });
-    return out;
+    return { rows: out.map((row, at) => row.repeated && !row.went && !standsUnder(out, at)
+        ? dimmed(row) : row), late };
 }
 
-// The heading each row stands under among `rows`, the last above it, or
-// null for a heading itself and a row above them all.
+// A row as it stands once it's left: dimmed where it was, `gone` and `went`.
+function dimmed(row) {
+    return row.went ? row : Object.assign({}, row, { gone: true, went: true });
+}
+
+// Whether a row that hasn't left stands under the heading at `at` in `rows`,
+// before the next heading.
+function standsUnder(rows, at) {
+    for (let next = at + 1; next < rows.length && rows[next].heading !== true; next += 1) {
+        if (!rows[next].went) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The heading each row stands under among `rows`, or null for a heading
+// itself and a row under none. A heading that says how many rows it
+// `holds`, as For You's cells' do (ForYouCells.js's laidOut), holds only
+// those, so what follows, To Look At and History, stands under none; one
+// that doesn't holds every row to the next.
 function headingsUnder(rows) {
     let above = null;
+    let left = 0;
     return rows.map(row => {
         if (row.heading === true) {
             above = row;
+            left = typeof row.holds === "number" ? row.holds : Infinity;
             return null;
         }
+        if (left <= 0) {
+            return null;
+        }
+        left -= 1;
         return above;
     });
 }
@@ -101,11 +151,12 @@ function headingsUnder(rows) {
 // them: while visual, a pending operator or the command line holds the
 // rows, what arrives waits, counted, and comes in at the end once it ends
 // (VKCF3Z's spec). { rows, waiting }. A heading is never a row, so none
-// is counted among what waits.
+// is counted among what waits; what waits to be shown afresh is.
 function held(shown, now, id) {
-    const out = kept(shown, now, id);
-    return { rows: out.slice(0, shown.length),
-        waiting: out.slice(shown.length).filter(row => row.heading !== true).length };
+    const again = laidAgain(shown, now, id);
+    return { rows: again.rows.slice(0, shown.length),
+        waiting: again.rows.slice(shown.length).filter(row => row.heading !== true).length
+            + again.late };
 }
 
 // The rows without those that left since they were shown, as a key makes

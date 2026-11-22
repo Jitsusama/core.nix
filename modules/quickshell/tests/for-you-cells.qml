@@ -73,6 +73,14 @@ QtObject {
                 "three"]);
         expect("a lone cell is still named", laid(Cells.byCell([{ name: "one" }], () => cellA)),
             ["# AAAAAA", "one"]);
+        // Each heading says how many rows it holds, its group's left after
+        // those that went, so what follows them stands under none
+        // (Steady.js's headingsUnder).
+        expect("each heading says how many rows it holds",
+            Cells.laidOut(Cells.byCell([{ name: "one" }, { name: "gone" }, { name: "two" }],
+                item => item.name === "two" ? null : cellA), rowsOf,
+                (cell, holds) => `${cell?.address ?? "yours"} holds ${holds}`),
+            ["AAAAAA holds 1", "one", "yours holds 1", "two"]);
         expect("only Joel's own, no heading over them",
             laid(Cells.byCell([{ name: "two" }, { name: "five" }], () => null)), ["two", "five"]);
         expect("a cell whose rows all went says nothing, and leaves Joel's own unheaded",
