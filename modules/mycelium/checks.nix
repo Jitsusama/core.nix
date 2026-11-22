@@ -207,8 +207,9 @@ let
   # pi's own fence, strict, which an agent's run starts through, each
   # system's with its own build of pi-fence, whichever system checks it.
   # A Mac's strict, its sandbox-exec profile, reads the home folder but what
-  # it hides, where Linux's reads only what it lists; it keeps a run from
-  # the person's secrets and production logins, which is what strict asks.
+  # it hides, where Linux's reads only what it lists, so a secret it doesn't
+  # name lies open. What it hides was probed by hand on a Mac; nothing here
+  # runs it, since core's checks lay no fence on darwin.
   launcherOn = bare: [
     (lib.getExe ((bare [ ]).pkgs.callPackage ../pi/fence-run/package.nix { }))
     "--kind"
@@ -840,8 +841,9 @@ in
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
   # their window, the node and a suspend, and a Mac claims none yet. A fenced
-  # or strict fence starts an agent's run through its system's launcher,
-  # which runs pi's strict profile; an unfenced one says none, so mycelium
+  # or strict fence names its system's launcher for an agent's run, which
+  # runs pi's strict profile; whether every start goes through it is
+  # mycelium's to keep, not this check's. An unfenced one says none, so mycelium
   # refuses it.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =

@@ -136,6 +136,9 @@ rec {
           The fences an agent session runs in here, by kind, unfenced (none),
           fenced (fence) or strictly fenced (strict), each with the doors it
           opens, so an orchestrator's carry never lands looser than it left.
+          A Mac's strict reads the home folder but what pi's fence hides,
+          where Linux's reads only what it lists, yet both say strict: a
+          carry from Linux to a Mac lands looser in what it may read.
         '';
       };
     };
