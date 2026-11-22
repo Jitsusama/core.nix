@@ -2769,6 +2769,11 @@ fn a_nearby_machine_ssh_reaches_takes_its_part_though_its_address_doesnt_answer(
         .unwrap();
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(!said.contains("doesn't answer"), "{said}");
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap_or_default(),
+        "mac\n",
+        "ssh was asked whether it reaches it, once: {said}"
+    );
     let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap_or_default();
     assert!(
         given.starts_with("mac\n") && given.contains("nix build"),

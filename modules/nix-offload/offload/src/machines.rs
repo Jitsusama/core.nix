@@ -17,11 +17,13 @@
 
 use serde_json::{Value, json};
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, TcpStream, ToSocketAddrs};
 use std::os::unix::net::UnixStream;
+use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -428,7 +430,33 @@ pub fn text<'a>(answering: impl Iterator<Item = &'a str>, lent: Option<&'a str>)
 /// name went unanswered for hours while ssh reached it, and every build
 /// for it failed as away.
 pub fn nearby_answers(address: &str, host: &str) -> bool {
-    answers(address) || ssh_reaches(host)
+    answers(address) || ssh_reaches_lately(host)
+}
+
+/// How long what ssh said of a machine nearby is believed before it's
+/// asked again, so a run asking of one Mac several times waits on ssh
+/// once, while a lender running for days still sees one come and go.
+const REACHED_FOR: Duration = Duration::from_secs(60);
+
+/// What ssh last said of each machine nearby, and when.
+static REACHED: Mutex<Vec<(String, Instant, bool)>> = Mutex::new(Vec::new());
+
+/// Whether ssh reaches `host`, as it said within [`REACHED_FOR`] or as it
+/// says now, saying each time it's asked, since asking can take seconds.
+fn ssh_reaches_lately(host: &str) -> bool {
+    let mut reached = REACHED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    reached.retain(|(_, at, _)| at.elapsed() < REACHED_FOR);
+    if let Some((_, _, reaches)) = reached.iter().find(|(name, _, _)| name == host) {
+        return *reaches;
+    }
+    eprintln!(
+        "nix-offload: nothing listens at {host}'s address, so asking ssh whether it reaches it"
+    );
+    let reaches = ssh_reaches("ssh", host);
+    reached.push((host.to_owned(), Instant::now(), reaches));
+    reaches
 }
 
 /// How long ssh may take to reach a machine nearby. Its ssh entry may wait
@@ -436,15 +464,34 @@ pub fn nearby_answers(address: &str, host: &str) -> bool {
 /// more before the handshake, about seven in all on 22 November.
 const REACHING: Duration = Duration::from_secs(20);
 
-/// Whether ssh reaches `host` and runs `true` there, never asking for a
-/// password or a host key it doesn't already hold, within [`REACHING`].
-fn ssh_reaches(host: &str) -> bool {
-    let Ok(mut reaching) = Command::new("ssh")
-        .args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"])
-        .args(["-o", "ConnectTimeout=15", host, "true"])
+/// What ssh is told to reach `host` and run `true` there: never asking
+/// anything, as every ssh nix-offload starts ([`crate::asking::NEVER_ASKS`]),
+/// and giving up on a connection within 15 s.
+fn reaching_args(host: &str) -> Vec<String> {
+    crate::asking::NEVER_ASKS
+        .split_whitespace()
+        .chain(["-o", "ConnectTimeout=15", host, "true"])
+        .map(str::to_owned)
+        .collect()
+}
+
+/// What ssh says when the key a machine shows isn't the one held for it.
+const KEY_REFUSED: [&str; 2] = [
+    "Host key verification failed",
+    "REMOTE HOST IDENTIFICATION HAS CHANGED",
+];
+
+/// Whether `ssh` reaches `host` and runs `true` there, within
+/// [`REACHING`]. It runs in a process group of its own, so a proxy it
+/// starts ends with it, and a key it refuses is said, since that's for
+/// Joel to look at rather than a machine away.
+fn ssh_reaches(ssh: &str, host: &str) -> bool {
+    let Ok(mut reaching) = Command::new(ssh)
+        .args(reaching_args(host))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
+        .process_group(0)
         .spawn()
     else {
         return false;
@@ -452,9 +499,29 @@ fn ssh_reaches(host: &str) -> bool {
     let began = Instant::now();
     loop {
         match reaching.try_wait() {
-            Ok(Some(status)) => return status.success(),
+            Ok(Some(status)) if status.success() => return true,
+            Ok(Some(_)) => {
+                let mut said = String::new();
+                if let Some(mut stderr) = reaching.stderr.take() {
+                    let _ = stderr.read_to_string(&mut said);
+                }
+                if KEY_REFUSED.iter().any(|refused| said.contains(refused)) {
+                    eprintln!(
+                        "nix-offload: warning: ssh refused {host}'s host key, so it's taken as \
+                         away: {}",
+                        said.trim()
+                    );
+                }
+                return false;
+            }
             Ok(None) if began.elapsed() < REACHING => thread::sleep(Duration::from_millis(100)),
             _ => {
+                if let Ok(group) = libc::pid_t::try_from(reaching.id()) {
+                    // SAFETY: kill only signals the group ssh leads.
+                    unsafe {
+                        libc::kill(-group, libc::SIGKILL);
+                    }
+                }
                 let _ = reaching.kill();
                 let _ = reaching.wait();
                 return false;
@@ -964,6 +1031,45 @@ mod tests {
     use super::*;
     use crate::testing::executable;
     use std::net::TcpListener;
+
+    #[test]
+    fn ssh_asked_of_a_machine_nearby_never_asks_and_gives_up_in_15_s() {
+        let args = reaching_args("methuselah");
+        let options: Vec<&str> = args.iter().skip(1).step_by(2).map(String::as_str).collect();
+        for option in [
+            "BatchMode=yes",
+            "StrictHostKeyChecking=yes",
+            "ConnectTimeout=15",
+        ] {
+            assert!(options.contains(&option), "{option} in {args:?}");
+        }
+        assert_eq!(
+            args[args.len() - 2..],
+            ["methuselah", "true"],
+            "it runs true there"
+        );
+    }
+
+    #[test]
+    fn ssh_reaching_a_machine_nearby_says_whether_it_ran_there() {
+        let folder = tempfile::tempdir().unwrap();
+        let ssh = folder.path().join("ssh");
+        executable(&ssh, "#!/bin/sh\nexit 0\n");
+        assert!(ssh_reaches(&ssh.display().to_string(), "methuselah"));
+        executable(
+            &ssh,
+            "#!/bin/sh\necho 'Host key verification failed.' >&2\nexit 255\n",
+        );
+        assert!(
+            !ssh_reaches(&ssh.display().to_string(), "methuselah"),
+            "a refused key is away"
+        );
+        let missing = folder.path().join("missing");
+        assert!(
+            !ssh_reaches(&missing.display().to_string(), "methuselah"),
+            "no ssh to ask"
+        );
+    }
 
     #[test]
     fn standing_builders_are_read_a_line_each() {

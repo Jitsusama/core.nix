@@ -2603,10 +2603,9 @@ impl Sent<'_> {
         let github = match source {
             there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
         };
-        for evaluator in evaluators
-            .iter()
-            .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
-        {
+        for evaluator in evaluators.iter().filter(|evaluator| {
+            evaluator.takes(github) && machines::nearby_answers(&evaluator.address, &evaluator.host)
+        }) {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
                 changed::evaluated(
