@@ -152,7 +152,8 @@ function figuresOf(said: Fields): Figures {
     onBattery: flag(said, "on_battery"),
     updatedAt: text(said, "updated_at"),
     updateStep: text(said, "update_step"),
-    updateWhy: text(said, "update_why"),
+    // An empty why is none, as the daemon has it, so no sentence ends on a colon.
+    updateWhy: text(said, "update_why") || undefined,
   };
 }
 

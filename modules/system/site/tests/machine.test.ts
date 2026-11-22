@@ -297,6 +297,31 @@ it("itself says its disk, then its processor, memory, power and update", () => {
     },
     "an update put off says why",
   );
+  const asideOf = (figures: Record<string, unknown>): string =>
+    itselfSaid(
+      tiesOf({ figures: { updated_at: "2026-11-18T02:40:03Z", ...figures } }),
+      (at) => `at ${at.slice(11, 16)}`,
+    ).aside;
+  assert.equal(
+    asideOf({ update_step: "done", update_why: "the boot check failed" }),
+    "Updated at 02:40, but the boot check failed.",
+    "a done update that didn't all go ahead says why",
+  );
+  assert.equal(
+    asideOf({ update_step: "building" }),
+    "Its update at 02:40 says building.",
+    "an update with no why says how it stands",
+  );
+  assert.equal(
+    asideOf({ update_step: "refused", update_why: "" }),
+    "Its update at 02:40 says refused.",
+    "an empty why is none",
+  );
+  assert.equal(
+    asideOf({ update_step: "refused", update_why: "is the modem on?" }),
+    "Its update at 02:40 says refused: is the modem on?",
+    "a why ending in its own mark ends once",
+  );
   const away = tiesOf({ figures: { charge: 12, on_battery: true } });
   assert.deepEqual(
     itselfSaid(away, (at) => at),

@@ -335,24 +335,26 @@ function power(charge: number, onBattery: boolean | undefined): string {
 
 /**
  * A machine's last update, as a sentence, when its node says one, with why
- * when it didn't go ahead and its node says why.
+ * when it didn't all go ahead. The daemon ties a why only then, so it is
+ * said as it comes; it may end in its own mark, so the sentence ends once.
  */
 function updated(figures: Figures, when: (at: string) => string): string | undefined {
   if (figures.updatedAt === undefined) {
     return undefined;
   }
   const at = when(figures.updatedAt);
+  const why = figures.updateWhy;
   switch (figures.updateStep) {
     case "done":
-      return `Updated ${at}.`;
+      return why === undefined ? `Updated ${at}.` : stopped(`Updated ${at}, but ${why}`);
     case "unchanged":
       return `Unchanged at its update ${at}.`;
     case undefined:
       return `Last updated ${at}.`;
     default:
-      return figures.updateWhy === undefined
+      return why === undefined
         ? `Its update ${at} says ${figures.updateStep}.`
-        : `Its update ${at} says ${figures.updateStep}: ${figures.updateWhy}.`;
+        : stopped(`Its update ${at} says ${figures.updateStep}: ${why}`);
   }
 }
 

@@ -271,18 +271,26 @@ pub fn itself(ties: &Value, now: i64) -> Said {
 
 /// A machine's last update, as a clause, when its node says one: how long
 /// ago it was, where its time reads and isn't ahead of this clock, and
-/// how it ended, with why when it didn't go ahead and its node says why.
+/// how it ended, with why when it didn't all go ahead. The tie carries a
+/// why only then (`update_why` in parts/ties.rs), so it is said as it comes.
 fn updated(figures: &Value, now: i64) -> Option<String> {
     let at = figures.get("updated_at").and_then(Value::as_str)?;
     let ago = moment(at)
         .filter(|then| *then <= now)
         .map(|then| format!("{} ago", span(now.saturating_sub(then).unsigned_abs())));
     let step = figures.get("update_step").and_then(Value::as_str);
-    let why = figures
-        .get("update_why")
-        .and_then(Value::as_str)
-        .map(|why| format!(": {why}"))
-        .unwrap_or_default();
+    let ended = ended(step, ago)?;
+    Some(
+        match (step, figures.get("update_why").and_then(Value::as_str)) {
+            (_, None) => ended,
+            (Some("done"), Some(why)) => format!("{ended}, but {why}"),
+            (_, Some(why)) => format!("{ended}: {why}"),
+        },
+    )
+}
+
+/// How a machine's last update ended, `ago` when its time reads.
+fn ended(step: Option<&str>, ago: Option<String>) -> Option<String> {
     Some(match (step, ago) {
         (Some("done"), Some(ago)) => format!("updated {ago}"),
         (Some("done"), None) => "updated".to_owned(),
@@ -290,8 +298,8 @@ fn updated(figures: &Value, now: i64) -> Option<String> {
         (Some("unchanged"), None) => "unchanged at its last update".to_owned(),
         (None, Some(ago)) => format!("last updated {ago}"),
         (None, None) => return None,
-        (Some(step), Some(ago)) => format!("its update {ago} says {step}{why}"),
-        (Some(step), None) => format!("its last update says {step}{why}"),
+        (Some(step), Some(ago)) => format!("its update {ago} says {step}"),
+        (Some(step), None) => format!("its last update says {step}"),
     })
 }
 
@@ -585,6 +593,22 @@ mod tests {
                 "its update 5 m ago says refused: the Mac is over its room"
             ),
             "an update put off says why"
+        );
+        let refused_ahead = json!({"figures": {"updated_at": "2025-11-17T23:25:18Z",
+                                               "update_step": "refused",
+                                               "update_why": "the Mac is over its room"}});
+        assert_eq!(
+            itself(&refused_ahead, now).aside,
+            "its last update says refused: the Mac is over its room",
+            "an update stamped ahead of this clock still says why"
+        );
+        let boots = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                       "update_step": "done",
+                                       "update_why": "the boot check failed"}});
+        assert_eq!(
+            itself(&boots, now).aside,
+            "updated 5 m ago, but the boot check failed",
+            "a done update that didn't all go ahead says why"
         );
         let unsaid = json!({"figures": {"disk_free": 2_000_000_000_000_u64, "charge": 40}});
         assert_eq!(

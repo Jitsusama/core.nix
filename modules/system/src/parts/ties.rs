@@ -16,6 +16,10 @@ const TENTHS: f64 = 10.0;
 /// The longest name mycelium-link takes for a machine.
 const LONGEST_NAME: usize = 64;
 
+/// The most characters of an update's why said, so a long error stays
+/// one clause of a machine's line.
+const WHY_AT_MOST: usize = 160;
+
 /// The ties of one machine, as the node says it (`said`), with its
 /// sessions from `mycelium health` (`Null` for a health read that lists
 /// none on it), the network's `net --json` and this machine's
@@ -212,8 +216,52 @@ fn figures(said: &Value) -> Value {
         "on_battery": at("/power/on_battery"),
         "updated_at": at("/updated/at"),
         "update_step": at("/updated/step"),
-        "update_why": at("/updated/why"),
+        "update_why": update_why(said.get("updated").unwrap_or(&Value::Null)),
     })
+}
+
+/// Why a machine's last update didn't all go ahead, as its node says it:
+/// a refusal's reason; a failure's first error, else its reason, since a
+/// failure's reason names only the step that failed and the error is what
+/// says why (cadence reads it so); or why a done update's system isn't the
+/// one it boots. None for one that went ahead or is still under way, so a
+/// reason an earlier attempt left can't stand for this one.
+fn update_why(updated: &Value) -> Value {
+    let reason = || updated.get("why").and_then(Value::as_str);
+    let why = match updated.get("step").and_then(Value::as_str) {
+        Some("refused") => reason(),
+        Some("failed") => updated
+            .get("lines")
+            .and_then(Value::as_array)
+            .and_then(|lines| {
+                lines
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::trim)
+                    .find_map(|line| line.strip_prefix("error:"))
+            })
+            .or_else(reason),
+        Some("done") => updated.get("boots").and_then(Value::as_str),
+        _ => None,
+    };
+    why.and_then(plain).map_or(Value::Null, Value::from)
+}
+
+/// `why` as one plain clause, or none when nothing is left of it: its first
+/// line, and the first of its own clauses, since the command joins a
+/// machine's clauses with "; "; control characters as spaces, since it
+/// reaches a terminal; no closing stop, which the page gives it once; and
+/// at most `WHY_AT_MOST` characters.
+fn plain(why: &str) -> Option<String> {
+    let first = why.lines().next().unwrap_or_default();
+    let clause = first.split("; ").next().unwrap_or_default();
+    let spaced: String = clause
+        .chars()
+        .map(|each| if each.is_control() { ' ' } else { each })
+        .take(WHY_AT_MOST)
+        .collect();
+    let said = spaced.trim().trim_end_matches('.').trim_end();
+    (!said.is_empty()).then(|| said.to_owned())
 }
 
 #[cfg(test)]
@@ -321,6 +369,91 @@ mod tests {
             other["code"],
             Value::Null,
             "repos reads only its own machine"
+        );
+    }
+
+    fn why_of(updated: &Value) -> Value {
+        let mut machine = laptop();
+        machine["updated"] = updated.clone();
+        super::ties(&machine, None, None, None)["figures"]["update_why"].clone()
+    }
+
+    #[test]
+    fn an_update_carries_why_only_where_it_didnt_go_ahead() {
+        let paused = "updates are paused for the follower, since uid 501 asked at \
+                      2026-11-21T20:00:00Z; a person's ask still updates, and \
+                      `update-to-main resume` lets the follower's run, and no commit is held";
+        let first = "updates are paused for the follower, since uid 501 asked at \
+                     2026-11-21T20:00:00Z";
+        assert_eq!(
+            why_of(&json!({"step": "refused", "why": paused})),
+            json!(first),
+            "a reason's own clauses would read as the machine's next ones"
+        );
+        let failed = json!({"step": "failed", "why": "building the system failed (exit status: 1)",
+                            "lines": ["building '/nix/store/x.drv'",
+                                      "  error: Cannot build '/nix/store/x.drv'.",
+                                      "error: 1 dependency failed"]});
+        assert_eq!(
+            why_of(&failed),
+            json!("Cannot build '/nix/store/x.drv'"),
+            "a failure says its first error, not the step that failed, and stops once"
+        );
+        let bare = json!({"step": "failed", "why": "switching failed (exit status: 2)",
+                          "lines": ["switching"]});
+        assert_eq!(
+            why_of(&bare),
+            json!("switching failed (exit status: 2)"),
+            "a failure with no error says its reason"
+        );
+        let boots = json!({"step": "done", "boots": "the boot check failed (exit status: 1), \
+                           so the machine boots what it booted before: no loader; bad entry"});
+        assert_eq!(
+            why_of(&boots),
+            json!(
+                "the boot check failed (exit status: 1), so the machine boots what it booted \
+                 before: no loader"
+            ),
+            "a done update that boots its old system says why"
+        );
+        for (updated, what) in [
+            (json!({"step": "done"}), "an update that went ahead"),
+            (
+                json!({"step": "unchanged", "why": "left over"}),
+                "an update with nothing to do",
+            ),
+            (
+                json!({"step": "building", "why": "the Mac is over its room"}),
+                "one under way",
+            ),
+            (
+                json!({"step": "refused", "why": " . "}),
+                "a reason with nothing in it",
+            ),
+            (
+                json!({"step": "refused", "why": 4}),
+                "a reason that isn't words",
+            ),
+        ] {
+            assert_eq!(why_of(&updated), Value::Null, "{what} carries no why");
+        }
+    }
+
+    #[test]
+    fn an_update_why_is_one_plain_line_of_bounded_length() {
+        let why = "busy, saying \u{1b}]8;;x\u{7}ok\rdone\nmore";
+        let said = why_of(&json!({"step": "refused", "why": why}));
+        let said = said.as_str().expect("a reason with words carries them");
+        assert!(
+            !said.chars().any(char::is_control),
+            "no control character reaches a terminal"
+        );
+        assert!(!said.contains("more"), "only its first line is said");
+        let long = json!({"step": "refused", "why": "x".repeat(WHY_AT_MOST * 2)});
+        assert_eq!(
+            why_of(&long).as_str().map(|why| why.chars().count()),
+            Some(WHY_AT_MOST),
+            "a long reason is cut to its bound"
         );
     }
 
