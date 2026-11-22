@@ -90,6 +90,14 @@ impl Stalls {
         }
     }
 
+    /// Whether the card's look is being counted towards a nudge, so a look
+    /// taken now would start no count.
+    pub fn counting(&self, card: &str) -> bool {
+        self.cards
+            .get(card)
+            .is_some_and(|looking| looking.since.is_some())
+    }
+
     /// Forgets the card, as it goes.
     pub fn gone(&mut self, card: &str) {
         self.cards.remove(card);
@@ -196,11 +204,29 @@ mod tests {
         stalls.step("wlan0", "scanning", later);
 
         assert_eq!(resting, None, "no longer counted as looking");
+        assert!(stalls.counting("wlan0"), "counted again once it looks");
         assert_eq!(
             stalls.due(),
             Some(later + 2 * STUCK),
             "looking again, it waits twice as long"
         );
+    }
+
+    #[test]
+    fn a_look_is_counted_only_from_its_start_till_it_rests() {
+        let start = Instant::now();
+        let mut stalls = Stalls::default();
+        let unknown = stalls.counting("wlan0");
+        stalls.step("wlan0", "scanning", start);
+        let looking = stalls.counting("wlan0");
+        stalls.nudge(start + STUCK);
+        let nudged = stalls.counting("wlan0");
+        stalls.rest("wlan0");
+
+        assert!(!unknown, "a card never seen isn't counted");
+        assert!(looking, "a card scanning is counted");
+        assert!(nudged, "a card nudged is counted from the nudge");
+        assert!(!stalls.counting("wlan0"), "a card at rest isn't counted");
     }
 
     #[test]

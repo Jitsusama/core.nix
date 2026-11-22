@@ -945,13 +945,15 @@ impl<'a> Air<'a> {
                 return;
             };
             let moving = self.arrivals.borrow().moving(card);
-            let new = step != "scanning";
+            // A card at rest after a nudge keeps "scanning" as its step,
+            // so a look that starts its count again is new too.
+            let new = step != "scanning" || !self.stalls.counting(card);
             if let Some(changed) = stranger_look(changed, step, moving) {
                 // Said apart, so the journal shows a look wpa_supplicant
                 // never said, as the stall it can set off is read there;
-                // and only as it changes the card's step, as one taken
-                // again changes nothing, so a flood of them can't crowd
-                // wifid's own lines out.
+                // and only as it changes the card's step or starts a
+                // stall's count, as one taken again changes nothing, so a
+                // flood of them can't crowd wifid's own lines out.
                 if new {
                     println!("<7>another account says {card} is scanning");
                 }

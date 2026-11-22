@@ -2775,7 +2775,9 @@ pub(crate) mod tests {
         let near = [quicker_still()];
         let back_again = spanned + Duration::from_secs(60);
         chooser.choose(back_again, on, &near, false);
-        let span_on = chooser.choose(back_again + SPAN, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = back_again + SPAN + Duration::from_secs(1);
+        let span_on = chooser.choose(past_span, on, &near, false);
         let short = chooser.choose(spanned + SETTLE - Duration::from_secs(1), on, &near, false);
         let settled = spanned + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, on, &near, false);
@@ -2838,7 +2840,9 @@ pub(crate) mod tests {
         let missed = third + Duration::from_secs(60);
         let on = (there.as_str(), &badly, -50, CH52);
         chooser.choose(missed, on, &near, false);
-        let span_on = chooser.choose(missed + SPAN, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = missed + SPAN + Duration::from_secs(1);
+        let span_on = chooser.choose(past_span, on, &near, false);
         let next = chooser.choose(third + SETTLE + Duration::from_secs(1), on, &near, false);
 
         assert_eq!(
@@ -2888,7 +2892,9 @@ pub(crate) mod tests {
         );
         let missed = third_try + Duration::from_secs(60);
         chooser.choose(missed, on, &hall_alone, false);
-        let span_on = chooser.choose(missed + SPAN, on, &hall_alone, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = missed + SPAN + Duration::from_secs(1);
+        let span_on = chooser.choose(past_span, on, &hall_alone, false);
         let settled = third_try + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, on, &hall_alone, false);
 
@@ -2957,7 +2963,9 @@ pub(crate) mod tests {
         let on = (third.as_str(), &badly, -55, CH52);
         let minute = start + Duration::from_secs(60);
         let waits = chooser.choose(minute, on, &near, false);
-        let spanned = chooser.choose(minute + SPAN, on, &near, false);
+        // A second past the span, so it holds on any comparison.
+        let past_span = minute + SPAN + Duration::from_secs(1);
+        let spanned = chooser.choose(past_span, on, &near, false);
         let settled = start + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, on, &near, false);
 
@@ -2991,7 +2999,8 @@ pub(crate) mod tests {
         let near = [quicker_still()];
         let rejoined = minute + Duration::from_secs(60);
         let waits = chooser.choose(rejoined, (DESK, &badly, -50, CH52), &near, false);
-        let spanned = rejoined + SPAN;
+        // A second past the span, so it holds on any comparison.
+        let spanned = rejoined + SPAN + Duration::from_secs(1);
         let held = chooser.choose(spanned, (DESK, &badly, -50, CH52), &near, false);
         let settled = start + SETTLE + Duration::from_secs(1);
         let next = chooser.choose(settled, (DESK, &badly, -50, CH52), &near, false);
