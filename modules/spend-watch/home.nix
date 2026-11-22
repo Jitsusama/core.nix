@@ -575,7 +575,10 @@ in
         # A start that fails the same way each time, such as a step to a new
         # shape with no room for its sort, would otherwise redo minutes of
         # reading every 5 s; the waits grow to half an hour instead, and a
-        # switch or a restart by hand starts them short again.
+        # switch that restarts it or a restart by hand starts them short again. systemd counts
+        # every failure since then, however long the runs between them, so
+        # crashes weeks apart end at the half hour too: nothing is lost, as
+        # the watch reads what it missed from the logs when it comes back.
         RestartSteps = 5;
         RestartMaxDelaySec = "30min";
       };

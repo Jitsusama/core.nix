@@ -814,7 +814,7 @@ mod tests {
     }
 
     #[test]
-    fn a_step_sorts_through_files_and_the_passes_after_in_memory() {
+    fn on_disk_sorts_through_files_and_then_in_memory_again() {
         let history = History::memory();
         let store = || -> i64 {
             history

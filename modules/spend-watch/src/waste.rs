@@ -591,9 +591,10 @@ mod tests {
         );
     }
 
-    /// How a span is split: whole hours read kept, and only what lies
-    /// outside them read from the turns, which the figures alone can't
-    /// show, since reading every turn gives the same answers slowly.
+    /// How a span is split into whole hours and the ragged edges outside
+    /// them: one of whole hours, a ragged one and one inside a single
+    /// hour. That the whole hours are then read kept, the test above shows
+    /// by tampering with one.
     #[test]
     fn a_span_reads_its_whole_hours_kept() {
         let hour = crate::time::HOUR;
