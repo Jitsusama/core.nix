@@ -150,10 +150,18 @@ function placed(places, screens, inUse, moments) {
 // screen already is marked (`there`) and left. A twin, a sibling that was
 // another screen as one left or the other way, never takes the other's
 // connector or one given it, and `waiting` is `away` with those still
-// waiting, each knowing those as another screen's for later calls.
+// waiting, each knowing those as another screen's for later calls. Of
+// `screens`, only those niri lists a workspace on are there, since niri
+// keeps one on each it has connected, and `screens` is asked for apart from
+// the workspaces: an answer from before a screen went still lists it.
 function homeward(away, screens, workspaces) {
     const moves = [];
     const waiting = {};
+    const connected = new Set(workspaces.map(each => each.output));
+    const there = {};
+    for (const name of Object.keys(screens ?? {}).filter(name => connected.has(name))) {
+        there[name] = screens[name];
+    }
     for (const screen of Object.keys(away ?? {}).sort()) {
         const given = [];
         const held = [];
@@ -164,7 +172,7 @@ function homeward(away, screens, workspaces) {
         for (const one of live) {
             const claimed = [...new Set(given.filter(was => twins(one, was.one)).map(was => was.to)
                 .concat(live.filter(was => was !== one && was.output && twins(one, was)).map(was => was.output)))];
-            const output = wayBack(one, screen, screens, claimed);
+            const output = wayBack(one, screen, there, claimed);
             if (output === null) {
                 const others = Object.assign({}, one.others, ...claimed.map(name => ({ [name]: screen })));
                 held.push(claimed.length > 0 ? Object.assign({}, one, { others }) : one);
