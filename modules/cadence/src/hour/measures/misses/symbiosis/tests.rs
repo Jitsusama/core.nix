@@ -808,13 +808,18 @@ fn a_finding_held_by_a_main_unread_or_a_change_unreadable_is_kept_apart() {
 
 #[test]
 fn a_findings_own_words_never_read_as_the_hours_blindness() {
+    // Each carries one of the hour's marks within the words a card keeps.
     let quoting = finding(
         2 * DAY,
         "IKQ63G",
-        "IKQ63G finding for A2VLJN: cadence couldn't read the mesh, though its check \
-         core #1 merged, but cadence can't see it",
+        "IKQ63G finding for A2VLJN: drops turns, though cadence couldn't read why",
     );
-    let found = open_findings(std::slice::from_ref(&quoting), "P9R1KI", &known());
+    let merged = finding(
+        2 * DAY - 1,
+        "IKQ63G",
+        "IKQ63G finding for KP0L6A: x, though its check core #1 merged, but cadence can't",
+    );
+    let found = open_findings(&[quoting, merged], "P9R1KI", &known());
     let findings = Findings {
         text: as_misses(&found),
         found,
@@ -829,10 +834,12 @@ fn a_findings_own_words_never_read_as_the_hours_blindness() {
     };
     let measure = findings.measured(&Checkouts::new(), &judged, NOW);
     assert!(
-        (measure.now - 1.0).abs() < 1e-9
-            && measure.behind.len() == 1
-            && !held_unseen(&measure.behind[0])
-            && measure.behind[0].ends_with(" · A2VLJN"),
+        (measure.now - 2.0).abs() < 1e-9
+            && measure.behind.len() == 2
+            && !measure.behind.iter().any(|line| held_unseen(line))
+            && [" · A2VLJN", " · KP0L6A"]
+                .iter()
+                .all(|owner| measure.behind.iter().any(|line| line.ends_with(owner))),
         "a finding quoting the hour's words was held as its blindness: {:?}",
         measure.behind
     );
@@ -840,8 +847,11 @@ fn a_findings_own_words_never_read_as_the_hours_blindness() {
 
 #[test]
 fn a_look_counts_a_finding_naming_no_owner_as_the_orchestrators() {
+    // Its landing note names a change not yet merged, so only matching its
+    // line by the owner's first word keeps it counted.
     let unowned = finding(2 * DAY, "IKQ63G", "IKQ63G: the relay drops a turn");
-    let found = open_findings(std::slice::from_ref(&unowned), "the orchestrator", &known());
+    let note = answer(DAY, "A2VLJN", "Landed core #6000.", &unowned);
+    let found = open_findings(&[unowned, note], "the orchestrator", &known());
     let findings = Findings {
         text: as_misses(&found),
         found,
@@ -854,7 +864,8 @@ fn a_look_counts_a_finding_naming_no_owner_as_the_orchestrators() {
         unrun: &BTreeMap::new(),
         here: "here",
     };
-    let measure = findings.measured(&Checkouts::new(), &judged, NOW);
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let measure = findings.measured(&repos, &judged, NOW);
     assert!(
         (measure.now - 1.0).abs() < 1e-9
             && measure.behind.len() == 1
@@ -862,6 +873,54 @@ fn a_look_counts_a_finding_naming_no_owner_as_the_orchestrators() {
         "a look read a finding naming no owner as closed: {} {:?}",
         measure.says,
         measure.behind
+    );
+}
+
+#[test]
+fn only_a_word_shaped_like_a_repository_names_one_cadence_cant_read() {
+    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    for note in [
+        "Landed core #6000, fixes #5990.",
+        "Landed core #6000 (closes #5990).",
+        "Landed core #6000, see #5990/#5991.",
+        "Landed: #6000",
+        "Landed `core` #6000.",
+        "Landed this #6000",
+        "Landed agentic-harness.pi #1958.",
+    ] {
+        assert!(
+            !names_unreadable(note, &repos),
+            "{note:?} read as naming a repository cadence can't read"
+        );
+    }
+    for note in [
+        "Landed mycelial-node #12.",
+        "Landed core #6001 and `mycelial-node` #13.",
+    ] {
+        assert!(
+            names_unreadable(note, &repos),
+            "{note:?} didn't read as naming a repository cadence can't read"
+        );
+    }
+}
+
+#[test]
+fn a_fix_is_walked_for_from_its_earliest_note_however_late_one_came() {
+    let first = finding(2 * DAY, "IKQ63G", "IKQ63G finding for A2VLJN: x");
+    let sent_sooner = jiff::Timestamp::from_second(NOW - 3 * DAY).expect("a time");
+    let posted = [
+        first.clone(),
+        answer(DAY, "A2VLJN", "Landed core #6000.", &first),
+        Posted {
+            at: Some(sent_sooner.to_string()),
+            ..answer(DAY - 3_600, "A2VLJN", "Landed core #6010 too.", &first)
+        },
+    ];
+    let found = open_findings(&posted, "P9R1KI", &known());
+    assert_eq!(
+        found[0].landed_at,
+        Some((NOW - 3 * DAY) * 1000),
+        "a note written here later but sent sooner didn't move the walk back"
     );
 }
 

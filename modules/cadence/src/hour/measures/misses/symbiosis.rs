@@ -85,15 +85,6 @@ const KEPT_FRESH: i64 = 2 * 3_600;
 /// messages and reads the week again.
 const VERSION: u32 = 2;
 
-/// Words before a `#N` that name no repository, as in "Landed #6000" or
-/// "PR #6000": a note naming a change only so names none cadence could
-/// follow, so it is no fix the hour can't see, and its finding still
-/// counts.
-const NOT_REPOS: &[&str] = &[
-    "landed", "pr", "and", "the", "fix", "change", "issue", "as", "in", "of", "with", "its", "for",
-    "by", "merged", "on", "to",
-];
-
 /// What the measure says.
 const SAYS: &str = "work-system findings in #v2-symbiosis open past a day, with no fix running \
                     here";
@@ -383,8 +374,11 @@ fn merged_unseen(finding: &Finding, repos: &Checkouts) -> bool {
 }
 
 /// Whether `note` names a change by a `#N` after a word naming a repository
-/// cadence can't read, as `mycelial-node #12`, and not after a word naming
-/// none, as `Landed #6000`.
+/// cadence can't read, as `mycelial-node #12`. Only a word shaped like a
+/// repository's name, joined by `-`, `.`, `_` or `/`, reads as one: a
+/// plain word, as in `Landed #6000` or `fixes #5990`, names none, so a
+/// note's readable changes still close its finding and a note naming
+/// nothing keeps it its owner's, erring toward open.
 fn names_unreadable(note: &str, repos: &Checkouts) -> bool {
     note.match_indices('#').any(|(at, _)| {
         let numbered = note[at + 1..].starts_with(|c: char| c.is_ascii_digit());
@@ -394,10 +388,10 @@ fn names_unreadable(note: &str, repos: &Checkouts) -> bool {
             .next()
             .unwrap_or_default()
             .to_lowercase();
-        let word = word.trim_start_matches(|c: char| !c.is_ascii_alphanumeric());
+        let word = word.trim_matches(|c: char| !c.is_ascii_alphanumeric());
         numbered
-            && !word.is_empty()
-            && !NOT_REPOS.contains(&word)
+            && word.contains(['-', '.', '_', '/'])
+            && word.chars().any(|c| c.is_ascii_alphabetic())
             && named(&format!("{word} #1"), repos).is_empty()
     })
 }
@@ -893,7 +887,9 @@ fn land(finding: &mut Finding, line: &str, at: i64) {
         finding.landed_at = None;
     }
     finding.landed.push(line.to_owned());
-    finding.landed_at.get_or_insert(at);
+    // The earliest any counted note could have merged from, since a note
+    // written here later may have been sent sooner.
+    finding.landed_at = Some(finding.landed_at.map_or(at, |was| was.min(at)));
 }
 
 /// Whether `one`'s opening, after its sender's address, is one of `words`,
