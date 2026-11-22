@@ -175,8 +175,9 @@ fn a_step_broken_off_for_joel_s_call_counts_as_stopped_and_any_other_as_failed()
     let broken = || Err(Step::Failed("Chrome's DevTools pipe closed".into()));
     let watch = Watch::asking(on, Duration::from_millis(10));
     assert!(heard(&watch), "the watch never heard of Joel's call");
+    let ended = settled(broken(), &watch);
     assert!(
-        matches!(settled(broken(), &watch), Ok(Ended::Stopped(ref why)) if why == "Joel's call began"),
+        matches!(ended, Ok(Ended::Stopped(ref why)) if why == "Joel's call began"),
         "a step the watch broke off read as a failed hour"
     );
     drop(watch);

@@ -9,7 +9,10 @@
 //! real one, and clicks the call's tab every five seconds. It writes what
 //! the call did, with the hour's Chrome and Slack drawing waits from
 //! lag-watch's history and the launcher's openings from the journal, to
-//! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges.
+//! `$XDG_STATE_HOME/apps-under-load/hour.json`, which cadence judges. The
+//! run beside them sets the launcher's openings while the test ran against
+//! the same span just before, and says when the test made them worse, or
+//! that too few openings were seen to tell.
 //!
 //! It keeps out of Joel's calls: it asks `a-call-is-on --here`, which hears
 //! a call on this machine by its microphone, before it starts and every five seconds after,
@@ -25,13 +28,14 @@ mod figures;
 mod gate;
 mod history;
 mod hour;
+mod launcher;
 mod managed;
 
 use serde_json::{Value, json};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 use terminal_kit::{Context, Exit, Failure, Format, Help, flags};
 
@@ -152,6 +156,7 @@ fn now(context: &Context) -> Result<(), Failure> {
             "at": hour["at"],
             "age_s": age,
             "measures": hour["measures"],
+            "run": hour["run"],
         })),
     }
     .map_err(|error| unwritten(&error))
@@ -177,7 +182,42 @@ fn said(hour: &Value, age: u64) -> String {
             m["measure"].as_str().unwrap_or("?")
         );
     }
+    if let Some(line) = beside_said(&hour["run"]["launcher"]) {
+        text.push_str(&line);
+    }
     text
+}
+
+/// The launcher's openings during the test against just before it, as a
+/// line, or none for an hour written before the run carried them.
+fn beside_said(launcher: &Value) -> Option<String> {
+    if let Some(why) = launcher["unread"].as_str() {
+        return Some(format!("launcher during the test: unread, {why}\n"));
+    }
+    let span = |side: &str| {
+        let opens = launcher[side]["opens"].as_u64()?;
+        let ms = |key: &str, what: &str| {
+            launcher[side][key]
+                .as_f64()
+                .map_or_else(String::new, |ms| format!(", {what} {ms} ms"))
+        };
+        let plural = if opens == 1 { "" } else { "s" };
+        Some(format!(
+            "{opens} opening{plural}{}{}",
+            ms("p50", "median"),
+            ms("p99", "slowest")
+        ))
+    };
+    let verdict = match launcher["worse"].as_bool() {
+        Some(true) => "worse".to_string(),
+        Some(false) => "not worse".to_string(),
+        None => format!("can't tell under {} openings a side", launcher::FEWEST),
+    };
+    Some(format!(
+        "launcher during the test: {}; just before: {}; {verdict}\n",
+        span("during")?,
+        span("before")?
+    ))
 }
 
 /// Refuses the call where a test browser could join anyone's management
@@ -297,21 +337,27 @@ fn run(context: &Context) -> Result<(), Failure> {
         history::ran(&std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default());
     let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
     let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
+    let read = launcher::read();
+    let took: Vec<f64> = read.opens.iter().map(|(_, ms)| *ms).collect();
     let measures = hour::measures(
         &call,
         call::STAND_IN,
         &chrome_waits,
         &slack_waits,
-        &launcher_opens(),
+        &took,
+        read.unread.as_deref(),
     );
-    let run = json!({"started": started, "seconds": SECONDS, "call": call});
+    // The call's span runs from the run's start, Chromium's own included,
+    // to now: the whole of the load the test put beside Joel's programs.
+    let launcher = launcher::written(&read, started, at);
+    let run = json!({"started": started, "seconds": SECONDS, "call": call, "launcher": launcher});
     hour::write(&folder(), at, &measures, &run).map_err(|error| {
         Failure::new(Exit::Failed, "the hour couldn't be written")
             .because(error.to_string())
             .try_this(format!("ls -ld {}", folder().display()))
     })?;
     context
-        .say(&said(&json!({"measures": measures}), 0))
+        .say(&said(&json!({"measures": measures, "run": run}), 0))
         .map_err(|error| unwritten(&error))
 }
 
@@ -320,37 +366,6 @@ fn on_path(name: &str) -> Option<PathBuf> {
     std::env::split_paths(&std::env::var_os("PATH")?)
         .map(|dir| dir.join(name))
         .find(|path| path.is_file())
-}
-
-/// How long the launcher took to open over the last hour, in ms, each
-/// from the line it writes to the shell's journal as it's on screen; read
-/// from the shell's unit alone, as cadence reads it, so no other program's
-/// line passes for one.
-fn launcher_opens() -> Vec<f64> {
-    Command::new("journalctl")
-        .args(["--user", "-u", "quickshell", "--since", "-1h"])
-        .args(["--no-pager", "-o", "cat"])
-        .args(["--grep", "launcher: opening presented"])
-        .output()
-        .map(|out| opens(&String::from_utf8_lossy(&out.stdout)))
-        .unwrap_or_default()
-}
-
-/// The openings' times in `lines`, each `... opening presented N ms ...`.
-fn opens(lines: &str) -> Vec<f64> {
-    lines
-        .lines()
-        .filter_map(|line| {
-            let after = line.split_once("opening presented ")?.1;
-            after
-                .strip_suffix(" ms")
-                .unwrap_or(after)
-                .split(' ')
-                .next()?
-                .parse()
-                .ok()
-        })
-        .collect()
 }
 
 /// Where the call's page is installed beside the program at `exe`.
@@ -367,23 +382,58 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_launcher_s_openings_are_read_from_its_journal_lines() {
-        let lines = "  INFO qml: launcher: opening presented 41 ms after the chord\n\
-                     something else\n\
-                     launcher: opening presented 7 ms\n";
-        assert_eq!(opens(lines), [41.0, 7.0]);
-    }
-
-    #[test]
     fn the_hour_is_said_figure_by_figure_against_its_target() {
         let hour = json!({"measures": [
             {"measure": "call sent fps p10", "now": 29.8, "target": 30.0, "lower_is_better": false},
-            {"measure": "launcher open ms p99", "now": null, "target": 50.0, "lower_is_better": true},
+            {"measure": "launcher open ms p99", "now": null, "target": 50.0,
+             "lower_is_better": true},
         ]});
         assert_eq!(
             said(&hour, 125),
             "measured 2 min ago\ncall sent fps p10: 29.8, at least 30\n\
              launcher open ms p99: unread, at most 50\n"
+        );
+    }
+
+    #[test]
+    fn the_launcher_s_spans_are_said_with_whether_they_tell() {
+        let mut opens: Vec<(f64, f64)> = [910.0, 930.0, 950.0].map(|at| (at, 30.0)).to_vec();
+        opens.extend([1010.0, 1030.0, 1050.0, 1070.0].map(|at| (at, 46.0)));
+        let hour = json!({"measures": [],
+                          "run": {"launcher": launcher::beside(&opens, 1000, 1100)}});
+        assert_eq!(
+            said(&hour, 0),
+            "measured 0 min ago\nlauncher during the test: 4 openings, median 46 ms, \
+             slowest 46 ms; just before: 3 openings, median 30 ms, slowest 30 ms; worse\n",
+            "the run's own spans are said under the figures"
+        );
+        let fine = json!({"before": {"opens": 3, "p50": 30.0, "p99": 30.0},
+                          "during": {"opens": 3, "p50": 31.0, "p99": 31.0}, "worse": false});
+        assert!(
+            beside_said(&fine).is_some_and(|line| line.ends_with("; not worse\n")),
+            "a call that didn't slow the openings says so: {:?}",
+            beside_said(&fine)
+        );
+        let thin = json!(launcher::beside(&[(950.0, 30.0)], 1000, 1100));
+        assert_eq!(
+            beside_said(&thin).as_deref(),
+            Some(
+                "launcher during the test: 0 openings; just before: 1 opening, median 30 ms, \
+                 slowest 30 ms; can't tell under 3 openings a side\n"
+            )
+        );
+        let unread = "journalctl ended with code 1: No journal files were found.";
+        assert_eq!(
+            beside_said(&json!({"unread": unread})).as_deref(),
+            Some(
+                "launcher during the test: unread, journalctl ended with code 1: \
+                 No journal files were found.\n"
+            )
+        );
+        assert_eq!(
+            beside_said(&Value::Null),
+            None,
+            "an older hour says nothing"
         );
     }
 

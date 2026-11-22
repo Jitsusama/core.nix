@@ -66,24 +66,30 @@ fn left_out(app: &str, waits: &Waits) -> Vec<String> {
     said
 }
 
-/// The hour's figures: the call's, the apps' waits and the launcher's.
+/// The hour's figures: the call's, the apps' waits and the launcher's,
+/// whose note says when the shell's journal wasn't read whole, and why.
 pub fn measures(
     call: &Call,
     stand_in: &str,
     chrome: &Waits,
     slack: &Waits,
     opens: &[f64],
+    unread: Option<&str>,
 ) -> Vec<Measure> {
     let call_too = |first: &str| vec![first.to_string(), stand_in.to_string()];
+    let mut behind = vec![format!(
+        "{} openings in the last hour, chord or ask to on screen",
+        opens.len()
+    )];
+    if let Some(why) = unread {
+        behind.push(format!("the shell's journal wasn't read whole: {why}"));
+    }
     let mut launcher = measure(
         "launcher open ms p99",
         crate::figures::percentile(opens, 99),
         50.0,
         true,
-        vec![format!(
-            "{} openings in the last hour, chord or ask to on screen",
-            opens.len()
-        )],
+        behind,
     );
     launcher.owner = LAUNCHER;
     vec![
@@ -146,11 +152,13 @@ pub fn measures(
     ]
 }
 
-/// Writes the hour for cadence, whole or not at all, and adds the run's
-/// line to the history beside it.
+/// Writes the hour for cadence, whole or not at all, with the run beside
+/// its figures, and adds the run's line to the history beside it. Cadence
+/// reads only the figures; the run says what lies behind them, the
+/// launcher's openings during the test and just before it among them.
 pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::Result<()> {
     fs::create_dir_all(folder)?;
-    let hour = json!({"at": at, "measures": measures});
+    let hour = json!({"at": at, "measures": measures, "run": run});
     // Named for this run, so a run by hand beside the hour's can't take it.
     let part = folder.join(format!("hour.json.{}.part", std::process::id()));
     fs::write(&part, serde_json::to_vec_pretty(&hour)?)?;
@@ -198,6 +206,7 @@ mod tests {
             &chrome,
             &Waits::default(),
             &[20.0, 31.0],
+            Some("journalctl ended with code 1: no"),
         );
         assert_eq!(all.len(), 8);
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
@@ -222,7 +231,33 @@ mod tests {
         assert_eq!(named("Slack CPU wait per wakeup p99 ms").now, None);
         assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
         assert_eq!(named("launcher open ms p99").now, Some(31.0));
+        assert_eq!(
+            named("launcher open ms p99").behind[1],
+            "the shell's journal wasn't read whole: journalctl ended with code 1: no",
+            "an unread journal is said beside the figure cadence reads"
+        );
         assert_eq!(named("call freezes per 10 min").behind[1], "a fake camera");
+    }
+
+    #[test]
+    fn a_journal_read_whole_adds_nothing_to_the_launcher_s_note() {
+        let all = measures(
+            &call(),
+            "a fake camera",
+            &Waits::default(),
+            &Waits::default(),
+            &[20.0, 31.0],
+            None,
+        );
+        let launcher = all
+            .iter()
+            .find(|m| m.measure == "launcher open ms p99")
+            .unwrap();
+        assert_eq!(launcher.now, Some(31.0));
+        assert_eq!(
+            launcher.behind,
+            ["2 openings in the last hour, chord or ask to on screen"]
+        );
     }
 
     #[test]
@@ -235,6 +270,7 @@ mod tests {
             &Waits::default(),
             &Waits::default(),
             &[],
+            None,
         );
         write(&root, 1_795_200_000, &all, &json!({"took_s": 190})).unwrap();
         write(&root, 1_795_203_600, &all, &json!({"took_s": 191})).unwrap();
@@ -244,6 +280,11 @@ mod tests {
         let parts = fs::read_dir(&root).unwrap().count();
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(hour["at"], 1_795_203_600);
+        assert_eq!(
+            hour["run"],
+            json!({"took_s": 191}),
+            "the newest run beside the hour"
+        );
         let first = &hour["measures"][0];
         for key in [
             "measure",
