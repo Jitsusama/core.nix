@@ -21,8 +21,8 @@
 //! moves them, even one undone between two looks. The project's own
 //! metadata, which every instance takes where it sets nothing itself, may
 //! hold no script the guest agent would run at boot, no ssh keys it
-//! would make accounts of, and no OS Config that would run jobs, unless
-//! the builder sets its own. Any other
+//! would make accounts of and no OS Login, unless the builder sets its
+//! own, and no OS Config that would run jobs. Any other
 //! project key is let through and said, since a cloud product such as
 //! GKE writes keys of its own there that no guest agent reads, and
 //! refusing on one stopped every builder on 22 November.
@@ -41,10 +41,22 @@ const METADATA: [&str; 7] = [
     "startup-script",
 ];
 
-/// The project's metadata a lent builder sits under unremarked: each
-/// overridden by the instance's own `block-project-ssh-keys` and
-/// `enable-oslogin`.
-const PROJECT_METADATA: [&str; 2] = ["enable-oslogin", "ssh-keys"];
+/// The project's metadata a lent builder sits under unremarked, once the
+/// instance's own `block-project-ssh-keys` and `enable-oslogin` turn it
+/// off, or root has judged it.
+const PROJECT_METADATA: [&str; 4] = ["enable-oslogin", "enable-osconfig", "ssh-keys", "sshKeys"];
+
+/// Whether `said` is true as the guest agents read it: they are written
+/// in Go and take a boolean with its `strconv.ParseBool`, so `1` and `t`
+/// turn a setting on, and `tRuE` is no boolean at all.
+fn go_true(said: &str) -> bool {
+    matches!(said, "1" | "t" | "T" | "TRUE" | "true" | "True")
+}
+
+/// Whether `said` is false as the guest agents read it, as `go_true`.
+fn go_false(said: &str) -> bool {
+    matches!(said, "0" | "f" | "F" | "FALSE" | "false" | "False")
+}
 
 /// The project's scripts the guest agent runs on an instance that doesn't
 /// set its own of the same name, which would hand every builder to
@@ -188,9 +200,11 @@ pub fn marks(described: &Value) -> Option<String> {
     Some(format!("{instance} {metadata}"))
 }
 
-/// Whether the project `described` sets no script, ssh keys or OS Config
-/// the instance `instance` would take, with the project's keys it lets
-/// through that root doesn't know; why not otherwise.
+/// Whether the project `described` sets no script, ssh keys, OS Login or
+/// OS Config the instance `instance` would take, with the project's keys
+/// it lets through that root doesn't know; why not otherwise. OS Config
+/// is refused whatever the builder sets, since no builder may carry
+/// `enable-osconfig` of its own.
 pub fn project_holds(described: &Value, instance: &Value) -> Result<Vec<String>, String> {
     let keys = |items: &Value| -> Vec<String> {
         items
@@ -200,28 +214,30 @@ pub fn project_holds(described: &Value, instance: &Value) -> Result<Vec<String>,
             .filter_map(|item| item["key"].as_str().map(str::to_owned))
             .collect()
     };
-    let said = |items: &Value, key: &str, is: &str| {
+    let said = |items: &Value, key: &str, is: fn(&str) -> bool| {
         items
             .as_array()
             .map_or(&[][..], Vec::as_slice)
             .iter()
-            .any(|item| {
-                item["key"] == key
-                    && item["value"]
-                        .as_str()
-                        .is_some_and(|said| said.eq_ignore_ascii_case(is))
-            })
+            .any(|item| item["key"] == key && item["value"].as_str().is_some_and(is))
     };
     let (project, builder) = (
         &described["commonInstanceMetadata"]["items"],
         &instance["metadata"]["items"],
     );
     let own = keys(builder);
-    let blocks = said(builder, "block-project-ssh-keys", "true");
-    if said(project, "enable-osconfig", "true") && !said(builder, "enable-osconfig", "false") {
+    let blocks = said(builder, "block-project-ssh-keys", go_true);
+    if said(project, "enable-osconfig", go_true) {
         return Err(
             "sits in a project setting enable-osconfig, which would let OS Config \
                     run jobs on every builder"
+                .to_owned(),
+        );
+    }
+    if said(project, "enable-oslogin", go_true) && !said(builder, "enable-oslogin", go_false) {
+        return Err(
+            "sits in a project setting enable-oslogin, which would let OS Login make \
+                    accounts on a builder not turning it off"
                 .to_owned(),
         );
     }
@@ -452,6 +468,7 @@ mod tests {
         };
         let builder = json!({"metadata": {"items": items(&[
             ("block-project-ssh-keys", "TRUE"),
+            ("enable-oslogin", "FALSE"),
             ("startup-script", "#!/bin/bash\n"),
         ])}});
         let open = json!({"metadata": {"items": items(&[("startup-script", "#!/bin/bash\n")])}});
@@ -473,8 +490,8 @@ mod tests {
         let gke = "gke-a-cluster-0e6a923f-secondary-ranges";
         assert_eq!(
             project_holds(&project(&["ssh-keys", gke, "enable-osconfig"]), &builder),
-            Ok(vec![gke.to_owned(), "enable-osconfig".to_owned()]),
-            "a key root doesn't know wasn't let through and named"
+            Ok(vec![gke.to_owned()]),
+            "a key root doesn't know wasn't let through and named alone"
         );
         for script in PROJECT_SCRIPTS
             .iter()
@@ -486,22 +503,38 @@ mod tests {
                 "a project's {script} was let run"
             );
         }
-        let osconfig = json!({"commonInstanceMetadata": {"items": items(&[
-            ("enable-osconfig", "TRUE"),
+        let setting = |key: &str, value: &str| json!({"commonInstanceMetadata": {"items": items(&[(key, value)])}});
+        for on in ["TRUE", "true", "1", "t"] {
+            assert!(
+                project_holds(&setting("enable-osconfig", on), &builder)
+                    .is_err_and(|why| why.contains("enable-osconfig")),
+                "a project's OS Config, said {on}, reached a builder"
+            );
+            assert!(
+                project_holds(&setting("enable-oslogin", on), &open)
+                    .is_err_and(|why| why.contains("enable-oslogin")),
+                "a project's OS Login, said {on}, reached a builder not turning it off"
+            );
+            assert_eq!(
+                project_holds(&setting("enable-oslogin", on), &builder),
+                Ok(vec![]),
+                "a project's OS Login, said {on}, was refused though the builder turns it off"
+            );
+        }
+        let unblocking = json!({"metadata": {"items": items(&[
+            ("block-project-ssh-keys", "FALSE"),
+            ("startup-script", "#!/bin/bash\n"),
         ])}});
-        assert!(
-            project_holds(&osconfig, &builder).is_err_and(|why| why.contains("enable-osconfig")),
-            "a project's OS Config reached a builder"
-        );
-        let declining = json!({"metadata": {"items": items(&[
-            ("block-project-ssh-keys", "TRUE"),
-            ("enable-osconfig", "FALSE"),
+        let wrongly = json!({"metadata": {"items": items(&[
+            ("block-project-ssh-keys", "tRuE"),
         ])}});
-        assert_eq!(
-            project_holds(&osconfig, &declining),
-            Ok(vec!["enable-osconfig".to_owned()]),
-            "a project's OS Config was refused though the builder turns it off"
-        );
+        for not_blocking in [&unblocking, &wrongly] {
+            assert!(
+                project_holds(&project(&["ssh-keys"]), not_blocking)
+                    .is_err_and(|why| why.contains("ssh-keys")),
+                "a project's ssh keys reached a builder whose block isn't one the agent reads"
+            );
+        }
         for keys in PROJECT_SSH_KEYS {
             let refused = project_holds(&project(&[keys]), &open);
             assert!(
@@ -510,11 +543,7 @@ mod tests {
             );
             assert_eq!(
                 project_holds(&project(&[keys]), &builder),
-                Ok(if keys == "ssh-keys" {
-                    vec![]
-                } else {
-                    vec![keys.to_owned()]
-                }),
+                Ok(vec![]),
                 "a project's {keys} was refused though the builder blocks them"
             );
         }

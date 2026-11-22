@@ -769,7 +769,7 @@ impl HostKeys {
         let noted = (!unknown.is_empty()).then(|| {
             format!(
                 "the project sets the metadata {}, which root doesn't know; it is no boot \
-                 script or ssh key, so builders are lent still",
+                 script, ssh key, OS Login or OS Config, so builders are lent still",
                 unknown.join(", ")
             )
         });
@@ -1380,6 +1380,7 @@ mod tests {
     fn marked_in(dir: &Path, started: &str, extra: &[(&str, &str)], mark: &str) {
         let mut items = vec![
             json!({"key": "block-project-ssh-keys", "value": "TRUE"}),
+            json!({"key": "enable-oslogin", "value": "FALSE"}),
             json!({"key": "offload-hook-key", "value": ROOT_KEY}),
             json!({"key": "startup-script", "value": "#!/bin/bash\necho the builder\n"}),
         ];

@@ -139,8 +139,9 @@ in
               The startup script every lent builder is made with. An instance
               running any other, started again or changed since root first
               trusted it, whose audit log holds more than its making, or in a
-              project setting metadata its own doesn't override, lends
-              nothing. Each lent token must read the project's Admin Activity
+              project setting a boot script, ssh keys or OS Login its own
+              doesn't override, or OS Config, lends nothing; any other
+              project key is only journalled. Each lent token must read the project's Admin Activity
               audit log. Unset, a lent builder is trusted on its host key
               alone, which anything able to change the instance can get
               round, and the machine warns so.
