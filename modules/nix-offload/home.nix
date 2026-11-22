@@ -89,6 +89,8 @@ let
     KillMode = "mixed";
     TimeoutStopSec = "10s";
     Restart = "on-failure";
+    # The askpass refuses to ask Joel for anything in this slice, by its
+    # name (modules/quickshell/askpass.sh), so a rename goes there too.
     Slice = "offload.slice";
     # A switch that changes it reloads it rather than restarting it: its
     # end ends the way to its builder, and every build reaching it with

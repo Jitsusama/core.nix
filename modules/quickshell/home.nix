@@ -819,9 +819,14 @@ let
       pkgs.systemd
       pkgs.util-linux
     ];
-    # Whom it refuses to ask for, read from the same gate as the agent that
-    # holds Joel's keys, so the two never disagree on where agents' work runs.
-    runtimeEnv.SSH_ASKPASS_GATE = "${../ssh-tpm-agent/gate.conf}";
+    # Whom it refuses to ask for, read from the file the agent that holds
+    # Joel's keys reads at each connection, so a switch, or a gate opening
+    # with watch, changes both at once; where that file is gone, the gate it
+    # was built with.
+    runtimeEnv = {
+      SSH_ASKPASS_GATE = "${config.xdg.configHome}/ssh-tpm-agent/gate";
+      SSH_ASKPASS_GATE_BUILT = "${../ssh-tpm-agent/gate.conf}";
+    };
     text = builtins.readFile ./askpass.sh;
   };
 
