@@ -31,7 +31,7 @@
           "kestrel booted 3 hours ago after a firmware error",
           "osprey says its code wants a look"
         ],
-        "things": ["machine:kestrel", "machine:osprey"],
+        "things": ["machine:kestrel", "machine:osprey", "builder:heron"],
         "deeper": { "command": "mycelium machines", "launcher": "Agents", "site": "mycelium/" }
       },
       {
@@ -134,6 +134,16 @@
         }
       }
     ],
-    "builder": []
+    "builder": [
+      {
+        "key": "builder:heron",
+        "kind": "builder",
+        "name": "heron",
+        "health": "good",
+        "says": "answers and takes 4 jobs at once",
+        "side": [],
+        "ties": null
+      }
+    ]
   }
 }
