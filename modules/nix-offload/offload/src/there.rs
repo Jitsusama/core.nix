@@ -3286,12 +3286,22 @@ fn vouched_store_in(dir: &Path, file: &Path) -> Option<String> {
         .lock()
         .is_ok_and(|mut said| said.insert((dir.to_path_buf(), store.clone())))
     {
-        eprintln!(
-            "nix-offload: root doesn't vouch for the builder in {} as {} says, so nothing goes \
-             to it until it does",
-            dir.display(),
-            file.display()
-        );
+        // A file that can't be read vouches for none, as a sandbox not
+        // granted /run/nix-offload-lines finds, which is no fault of root's.
+        match fs::metadata(file) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => eprintln!(
+                "nix-offload: {} can't be read ({error}), so the builder in {} counts as one \
+                 root doesn't vouch for, and nothing goes to it",
+                file.display(),
+                dir.display()
+            ),
+            _ => eprintln!(
+                "nix-offload: root doesn't vouch for the builder in {} as {} says, so nothing \
+                 goes to it until it does; root's reason is in `journalctl -u nix-offload-lines`",
+                dir.display(),
+                file.display()
+            ),
+        }
     }
     None
 }
@@ -4124,19 +4134,42 @@ pub const VM_ROOM: usize = 4;
 /// after-merge net sends dozens of VM tests a round, and on 5 November a
 /// session's few waited behind the whole round. A run sent first goes
 /// ahead of every run that isn't, bulk or not.
+///
+/// It gives the builder's folder, the room claimed there, and what is left
+/// of `waiting` once the time it held for root is taken from its
+/// `longest`, so a run waits on root once, not here and again once sent.
 pub fn admitted<'a>(
     dir: &'a Path,
     others: &[&'a Path],
     count: usize,
     room: usize,
     rank: Rank,
-) -> (&'a Path, Option<Claim>) {
+    waiting: Waiting,
+) -> (&'a Path, Option<Claim>, Waiting) {
+    let (dir, claim, held) = admitted_holding(dir, others, count, room, rank, waiting);
+    let left = Waiting {
+        longest: waiting.longest.saturating_sub(held),
+        ..waiting
+    };
+    (dir, claim, left)
+}
+
+/// [`admitted`], giving how long it held for root rather than what's left.
+fn admitted_holding<'a>(
+    dir: &'a Path,
+    others: &[&'a Path],
+    count: usize,
+    room: usize,
+    rank: Rank,
+    waiting: Waiting,
+) -> (&'a Path, Option<Claim>, std::time::Duration) {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
     let mut said = false;
     let mut held_said = false;
     let mut place: Option<Claim> = None;
     let began = std::time::Instant::now();
+    let mut held = std::time::Duration::ZERO;
     loop {
         // A builder root doesn't vouch for takes no room, so a run isn't
         // held there waiting on root while another stands that root does
@@ -4160,14 +4193,18 @@ pub fn admitted<'a>(
                 let rest: Vec<&Path> = std::iter::once(dir)
                     .chain(others.iter().copied().filter(|other| *other != vouched))
                     .collect();
-                return admitted(vouched, &rest, count, room, rank);
+                let (dir, claim, more) =
+                    admitted_holding(vouched, &rest, count, room, rank, waiting);
+                return (dir, claim, held + more);
             }
             // With none vouched, nothing is claimed while root may yet
             // vouch for this one or another, for as long as a run sent
             // waits on root: claimed here at once, a run stayed held on
             // it after another was vouched with room. Past that, it
-            // claims room here and waits on root as a run sent here would.
-            if began.elapsed() < WAITING.longest {
+            // claims room here, and is sent with that wait spent. A run
+            // that never asks waits for nothing, so it isn't held.
+            if waiting.asks && began.elapsed() < waiting.longest {
+                held = began.elapsed();
                 if !held_said {
                     eprintln!(
                         "nix-offload: root vouches for none of the VM builders yet, so this \
@@ -4180,11 +4217,11 @@ pub fn admitted<'a>(
             }
         }
         let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
-            return (dir, claim(dir, wants));
+            return (dir, claim(dir, wants), held);
         };
         // SAFETY: flock only locks the file it's given, open until dropped.
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
-            return (dir, claim(dir, wants));
+            return (dir, claim(dir, wants), held);
         }
         let busy = claimed(dir);
         let before = ahead(dir, place.as_ref(), rank, busy, room);
@@ -4193,7 +4230,7 @@ pub fn admitted<'a>(
             // as dropping it does.
             let claimed = claim(dir, wants);
             drop(place);
-            return (dir, claimed);
+            return (dir, claimed, held);
         }
         if place.is_none() {
             place = queued(dir, wants, rank);
@@ -4214,7 +4251,7 @@ pub fn admitted<'a>(
                  there"
             );
             drop(place);
-            return (other, Some(claimed));
+            return (other, Some(claimed), held);
         }
         if !said {
             let queue = match before {

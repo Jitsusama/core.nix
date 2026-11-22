@@ -1101,7 +1101,12 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
     let builds = vm_room();
     let busy_in =
         |index: &usize| there::claimed(&vm_dirs[*index]) + there::waiting(&vm_dirs[*index]);
-    let lending = warm_of(&part, lending, vm_dirs, builds, busy_in);
+    // Those left out as root vets them still come, so none more is asked
+    // for in their place.
+    let vetting = (1..vm_dirs.len())
+        .filter(|index| there::lends(&vm_dirs[*index]) && there::unvouched(&vm_dirs[*index]))
+        .count();
+    let lending = warm_of(&part, lending, vm_dirs, builds, vetting, busy_in);
     let busy: Vec<usize> = lending.iter().map(busy_in).collect();
     let split = there::overflow(&part, &busy, builds);
     let onward: usize = split.iter().skip(1).flatten().map(there::count).sum();
@@ -1127,12 +1132,14 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
 /// VM tests may go to: the warm ones while any stands, else all of them,
 /// since a cold one's first tests build for an hour what a warm one holds.
 /// Where the warm ones' room runs out, cold ones that aren't on their way
-/// are asked for, to warm for the runs after.
+/// are asked for, to warm for the runs after, less the `vetting` ones
+/// standing as root vets them, which are on their way too.
 fn warm_of(
     part: &there::Asked,
     lending: Vec<usize>,
     vm_dirs: &[PathBuf],
     builds: usize,
+    vetting: usize,
     busy_in: impl Fn(&usize) -> usize,
 ) -> Vec<usize> {
     let (warm, cold): (Vec<usize>, Vec<usize>) = lending
@@ -1145,7 +1152,8 @@ fn warm_of(
     let (coming, unasked): (Vec<usize>, Vec<usize>) = cold
         .iter()
         .partition(|index| there::coming(&vm_dirs[**index]));
-    let asking = there::to_warm(there::count(part), &busy, builds, coming.len()).min(unasked.len());
+    let asking = there::to_warm(there::count(part), &busy, builds, coming.len() + vetting)
+        .min(unasked.len());
     for index in &unasked[..asking] {
         there::want(&vm_dirs[*index]);
     }
@@ -1203,11 +1211,11 @@ fn at_once<'a>(
                     .collect();
                 scope.spawn(move || {
                     let began = now();
-                    let (dir, _claim) = if vm {
+                    let (dir, _claim, waiting) = if vm {
                         let rank = there::rank(part);
-                        there::admitted(dir, &others, there::count(part), room, rank)
+                        there::admitted(dir, &others, there::count(part), room, rank, waiting)
                     } else {
-                        (dir.as_path(), None)
+                        (dir.as_path(), None, waiting)
                     };
                     let roomed = now().saturating_sub(began);
                     let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waiting);
@@ -1401,10 +1409,13 @@ fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
     };
     let busy = |store: String| there::pressure(&store, scratch, "ssh");
     let waits = busy(stands);
-    let second = || {
-        standing(more).map_or(there::Second::Unlent, |store| {
-            there::Second::Stands(busy(store))
-        })
+    // A second that stands but root doesn't yet vouch for is no idle
+    // second to ask for: a build sent there waits on root, so it counts
+    // as one standing whose load can't be read, which keeps builds here.
+    let second = || match standing(more) {
+        Some(store) => there::Second::Stands(busy(store)),
+        None if there::unvouched(more) => there::Second::Stands(None),
+        None => there::Second::Unlent,
     };
     match waits {
         // The second is read only once the first is full.

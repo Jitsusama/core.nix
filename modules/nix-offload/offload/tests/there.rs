@@ -6200,6 +6200,47 @@ fn a_vm_run_held_off_a_builder_goes_back_once_root_vouches_for_it() {
     );
 }
 
+// A run that never asks waits for nothing, so with no VM builder vouched
+// it isn't held for root, as the gate's runs would be for four minutes
+// after each hand-over, and nothing goes to the unvouched builder.
+#[test]
+fn a_vm_run_that_never_asks_is_not_held_for_root() {
+    let rig = TwoVm::new();
+    let lent = rig.folder.path().join("lent");
+    fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+    let _ = fs::remove_file(rig.bin.join("ssh-sent"));
+    let said = rig.folder.path().join("said");
+    let mut running = there_command(&rig.bin, &rig.offload, rig.folder.path())
+        .env("NIX_OFFLOAD_VOUCHED", &lent)
+        .args(["--never-ask", "-L", "github:o/r/abc", "checks.x.vm-0"])
+        .env("NIX_OFFLOAD_VM_DIR", &rig.vm)
+        .env("NIX_OFFLOAD_VM_MORE_DIR", &rig.more)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &rig.third)
+        .stdout(std::process::Stdio::null())
+        .stderr(fs::File::create(&said).unwrap())
+        .spawn()
+        .unwrap();
+    let began = std::time::Instant::now();
+    while running.try_wait().unwrap().is_none() {
+        if began.elapsed() > std::time::Duration::from_secs(30) {
+            let _ = running.kill();
+            let _ = running.wait();
+            panic!("it was held: {}", rig.said());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let said = rig.said();
+    assert!(
+        !said.contains("root vouches for none of the VM builders yet"),
+        "{said}"
+    );
+    let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.lines().any(|line| line.contains("#checks.x.vm-0")),
+        "a VM test went to a builder root doesn't vouch for: {sent}"
+    );
+}
+
 /// Waits until a run held off a builder root doesn't vouch for says it
 /// waits on one root does.
 fn wait_for_room(rig: &TwoVm) {
