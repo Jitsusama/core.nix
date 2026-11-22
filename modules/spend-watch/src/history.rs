@@ -14,7 +14,7 @@ use std::path::Path;
 use std::time::Duration;
 
 /// Bumped whenever a table's shape or meaning changes.
-pub const SCHEMA: i64 = 10;
+pub const SCHEMA: i64 = 11;
 
 /// The most the write-ahead log keeps on disk once checkpointed. SQLite
 /// otherwise keeps it at the largest it ever grew: on 7 November 321 MB,
@@ -89,6 +89,52 @@ CREATE TRIGGER turn_hours_take AFTER DELETE ON turns BEGIN
 END;
 CREATE TRIGGER turns_stay BEFORE UPDATE ON turns BEGIN
     SELECT RAISE(ABORT, 'a turn is added or forgotten, never changed');
+END;
+"
+    };
+}
+
+/// Each hour's turns summed by what the waste and work figures split them
+/// by, kept as they're added and forgotten, for the reason `turn_hours`
+/// is: a week's or a month's figures summed from the turns fetched each
+/// one at random through `turns_at`, and on 21 November a pass read 22 GB
+/// that way from a history of 2 GB. Kept apart from `turn_hours`, which
+/// every pass reads for every hour, since splitting those by cause too
+/// would grow every one of those reads.
+macro_rules! waste_hours {
+    () => {
+        "
+CREATE TABLE waste_hours (
+    hour INTEGER NOT NULL, session TEXT NOT NULL, quest TEXT, model TEXT NOT NULL,
+    kind TEXT NOT NULL, cause TEXT, turns INTEGER NOT NULL, cost REAL NOT NULL,
+    cost_cache_write REAL NOT NULL, rebuilt_cost REAL NOT NULL, cache_read REAL NOT NULL,
+    prompt REAL NOT NULL);
+CREATE INDEX waste_hours_key ON waste_hours (hour, session, quest, model, kind, cause);
+CREATE TRIGGER waste_hours_add AFTER INSERT ON turns BEGIN
+    INSERT INTO waste_hours SELECT NEW.hour, NEW.session, NEW.quest, NEW.model, NEW.kind,
+        NEW.cause, 0, 0, 0, 0, 0, 0
+        WHERE NOT EXISTS (SELECT 1 FROM waste_hours WHERE hour = NEW.hour
+            AND session = NEW.session AND quest IS NEW.quest AND model = NEW.model
+            AND kind = NEW.kind AND cause IS NEW.cause);
+    UPDATE waste_hours SET turns = turns + 1, cost = cost + NEW.cost,
+        cost_cache_write = cost_cache_write + NEW.cost_cache_write,
+        rebuilt_cost = rebuilt_cost + NEW.rebuilt_cost,
+        cache_read = cache_read + NEW.cache_read,
+        prompt = prompt + NEW.input + NEW.cache_read + NEW.cache_write
+        WHERE hour = NEW.hour AND session = NEW.session AND quest IS NEW.quest
+            AND model = NEW.model AND kind = NEW.kind AND cause IS NEW.cause;
+END;
+CREATE TRIGGER waste_hours_take AFTER DELETE ON turns BEGIN
+    UPDATE waste_hours SET turns = turns - 1, cost = cost - OLD.cost,
+        cost_cache_write = cost_cache_write - OLD.cost_cache_write,
+        rebuilt_cost = rebuilt_cost - OLD.rebuilt_cost,
+        cache_read = cache_read - OLD.cache_read,
+        prompt = prompt - OLD.input - OLD.cache_read - OLD.cache_write
+        WHERE hour = OLD.hour AND session = OLD.session AND quest IS OLD.quest
+            AND model = OLD.model AND kind = OLD.kind AND cause IS OLD.cause;
+    DELETE FROM waste_hours WHERE turns = 0 AND hour = OLD.hour AND session = OLD.session
+        AND quest IS OLD.quest AND model = OLD.model AND kind = OLD.kind
+        AND cause IS OLD.cause;
 END;
 "
     };
@@ -187,7 +233,7 @@ macro_rules! cap_events {
 
 /// What brings each older shape up to the next, where only something was
 /// added: `UPGRADES[n - 1]` takes shape n to n + 1.
-const UPGRADES: [&str; 9] = [
+const UPGRADES: [&str; 10] = [
     "ALTER TABLE caps ADD COLUMN resets REAL;",
     "ALTER TABLE health ADD COLUMN since REAL;",
     concat!(
@@ -235,6 +281,13 @@ const UPGRADES: [&str; 9] = [
          DELETE FROM unresolved WHERE rowid NOT IN
              (SELECT MIN(rowid) FROM unresolved GROUP BY session, at, budget);",
         once!()
+    ),
+    concat!(
+        waste_hours!(),
+        "INSERT INTO waste_hours SELECT hour, session, quest, model, kind, cause, COUNT(*),
+         SUM(cost), SUM(cost_cache_write), SUM(rebuilt_cost), SUM(cache_read),
+         SUM(input + cache_read + cache_write) FROM turns
+         GROUP BY hour, session, quest, model, kind, cause;"
     ),
 ];
 
@@ -302,7 +355,8 @@ CREATE TABLE notices (key TEXT NOT NULL, at REAL NOT NULL, cap INTEGER NOT NULL,
 ",
     crossings!(),
     hours!(),
-    once!()
+    once!(),
+    waste_hours!()
 );
 
 pub struct History {
@@ -1053,6 +1107,7 @@ mod tests {
             .replace(unresolved!(), "")
             .replace(SESSIONS_10, "")
             .replace(once!(), "")
+            .replace(waste_hours!(), "")
             .replace(billed!("billed"), BILLED)
             .replace(caps!("caps"), CAPS)
             .replace(cap_events!("cap_events"), CAP_EVENTS)
@@ -1213,7 +1268,8 @@ mod tests {
                 &TABLES
                     .replace(unresolved!(), "")
                     .replace(SESSIONS_10, "")
-                    .replace(once!(), ""),
+                    .replace(once!(), "")
+                    .replace(waste_hours!(), ""),
             )
             .unwrap();
             db.execute_batch(
@@ -1252,8 +1308,13 @@ mod tests {
         let path = dir.path().join("history.db");
         {
             let db = Connection::open(&path).unwrap();
-            db.execute_batch(&TABLES.replace(SESSIONS_10, "").replace(once!(), ""))
-                .unwrap();
+            db.execute_batch(
+                &TABLES
+                    .replace(SESSIONS_10, "")
+                    .replace(once!(), "")
+                    .replace(waste_hours!(), ""),
+            )
+            .unwrap();
             db.execute_batch(
                 "INSERT INTO meta VALUES ('schema', '9');
                  INSERT INTO sessions VALUES ('here', '/x', 'x', 1.0, NULL, NULL);
@@ -1330,6 +1391,113 @@ mod tests {
             (1, 1),
             "a refusal or unresolved budget kept twice before machines wasn't kept once"
         );
+    }
+
+    /// A turn as the waste figures read it: everything they sum, by what
+    /// they split it by.
+    fn wasted(history: &History, session: &str, at: f64, cause: Option<&str>, cost: f64) {
+        history
+            .db
+            .execute(
+                "INSERT INTO turns (session, at, hour, model, provider, kind, quest, input,
+                 output, cache_read, cache_write, cache_write_long, cost, cost_cache_write,
+                 cost_output, gap, rebuilt, rebuilt_cost, cause) VALUES
+                 (?1, ?2, ?3, 'opus', 'anthropic', 'agent', 'q', 3, 1, 5, 7, 0, ?4, ?4 / 4,
+                 0, NULL, 0, ?4 / 2, ?5)",
+                params![session, at, crate::time::hour_of(at), cost, cause],
+            )
+            .unwrap();
+    }
+
+    /// The waste hours as kept, against the turns summed afresh.
+    fn waste_hours_hold(history: &History) {
+        type Row = (i64, String, Option<String>, i64, f64, f64, f64, f64, f64);
+        let read = |sql: &str| -> Vec<Row> {
+            let mut statement = history.db.prepare(sql).unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                        row.get(8)?,
+                    ))
+                })
+                .unwrap()
+                .map(Result::unwrap)
+                .collect()
+        };
+        let kept = read(
+            "SELECT hour, session, cause, turns, cost, cost_cache_write, rebuilt_cost,
+             cache_read, prompt FROM waste_hours ORDER BY hour, session, cause",
+        );
+        let summed = read(
+            "SELECT hour, session, cause, COUNT(*), SUM(cost), SUM(cost_cache_write),
+             SUM(rebuilt_cost), SUM(cache_read), SUM(input + cache_read + cache_write)
+             FROM turns GROUP BY hour, session, quest, model, kind, cause
+             ORDER BY hour, session, cause",
+        );
+        assert_eq!(kept, summed, "the waste hours drifted from their turns");
+    }
+
+    // The tenth shape summed no waste by the hour; the eleventh builds the
+    // sums from the turns it holds, and keeps them as turns come and go.
+    #[test]
+    fn the_tenth_shape_gains_waste_by_the_hour() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history.db");
+        {
+            let history = History {
+                db: Connection::open(&path).unwrap(),
+            };
+            history
+                .db
+                .execute_batch(&TABLES.replace(waste_hours!(), ""))
+                .unwrap();
+            history
+                .db
+                .execute_batch("INSERT INTO meta VALUES ('schema', '10');")
+                .unwrap();
+            wasted(&history, "a", 10.0, None, 1.0);
+            wasted(&history, "a", 20.0, Some("gap"), 2.0);
+            wasted(&history, "a", 30.0, Some("gap"), 4.0);
+            wasted(&history, "b", 4000.0, Some("fresh"), 8.0);
+        }
+        let history = History::open(&path).unwrap();
+        assert_eq!(history.meta("schema"), Some(SCHEMA.to_string()));
+        waste_hours_hold(&history);
+        let rows: i64 = history
+            .db
+            .query_row("SELECT COUNT(*) FROM waste_hours", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            rows, 3,
+            "the step didn't sum one row for each hour, session and cause"
+        );
+        wasted(&history, "a", 40.0, Some("gap"), 16.0);
+        waste_hours_hold(&history);
+        history
+            .db
+            .execute(
+                "DELETE FROM turns WHERE session = 'a' AND cause IS NULL",
+                [],
+            )
+            .unwrap();
+        history
+            .db
+            .execute("DELETE FROM turns WHERE session = 'b'", [])
+            .unwrap();
+        waste_hours_hold(&history);
+        let rows: i64 = history
+            .db
+            .query_row("SELECT COUNT(*) FROM waste_hours", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "an hour whose turns were all forgotten was kept");
     }
 
     #[test]
