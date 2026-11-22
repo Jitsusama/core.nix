@@ -55,13 +55,17 @@ part has `part`, `health`, `says` (a sentence, worst first), `side` (what
 is worth a look, an item each, worded to stand at a side: lower case
 unless a name leads, no closing stop, without what the part holds, at
 most three, and empty when nothing is, with a fourth, the note, when the
-part was read from its owner's last answer), `note` (that note, as "as
-read at 11:54; just now net --json gave no answer in 20 s", also said in
-`says` and `side`, or null for a part read just now: tell the note in
-`side` by this, never by its wording), `holds` (what it holds, counted
-in a few words, as "21 devices", or null when it wasn't read), `things`
-(the machines, worst first, each with
-`kind`, `name`, `health`, `says`, `address`, its home on the local
+part was read from its owner's last answer), `more` (how many looks past
+those `side` lists, which `side` then says as its last item, as "and 2
+more worth a look", or 0: drop that item by this, never by its wording),
+`note` (that note, as "as read at 11:54; just now net --json gave no
+answer in 20 s", also said in `says` and `side`, or null for a part read
+just now: tell the note in `side` by this, the same words exactly, never
+by a pattern of how a note reads), `holds` (what it holds, counted in a
+few words, as "21 devices", or null when it wasn't read), `things` (the
+machines, worst first, each with
+`kind`, `name`, `health`, `says`, `side` and `more` as a part's,
+`address`, its home on the local
 sites as the site home to it gives it, or null while none is, and
 `ties`, what ties it to the other parts: `cells` (busy, idle and ended,
 all 0 where the health lists none on it, or null when the mycelium's

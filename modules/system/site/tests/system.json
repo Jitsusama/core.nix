@@ -57,6 +57,7 @@
           "as read at 11:54; just now net --json gave no answer in 20 s",
           "and 2 more worth a look"
         ],
+        "more": 2,
         "note": "as read at 11:54; just now net --json gave no answer in 20 s",
         "things": [],
         "deeper": { "command": "net", "launcher": "Network", "site": "network/" }

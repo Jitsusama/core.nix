@@ -1034,6 +1034,7 @@ mod tests {
             health: Health::Good,
             says: String::new(),
             side: Vec::new(),
+            more: 0,
             address: Some("stale/".to_owned()),
             ties: serde_json::Value::Null,
         };
@@ -1045,6 +1046,7 @@ mod tests {
                 health: Health::Good,
                 says: String::new(),
                 side: Vec::new(),
+                more: 0,
                 note: None,
                 holds: None,
                 things: vec![thing("laptop"), thing("studio")],

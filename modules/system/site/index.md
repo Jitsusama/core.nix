@@ -105,12 +105,13 @@ The system daemon holds three kinds of record. The `summary` has
 not read), `side` (every part's, in order) and `parts`, the part names
 in order. Each `part:<name>` has `part` (machines, mycelium, network or
 code), `health`, `says`, `side` (what is worth a look, an item each),
-`note` (what the part says of an answer kept from its owner's last read,
-also in `says` and `side`, or null for a part read just now), `holds`
-(what it holds, or null when it wasn't read), `things` (the keys of its
-things) and `deeper`: `command`, `site` (from the sites' root) and
-`launcher` (its path there). Each `machine:<name>` has
-`name`, `health`, `says`, `side`, where its home publishes one,
+`more` (how many looks past those `side` lists, which it then ends by
+saying, or 0), `note` (what the part says of an answer kept from its
+owner's last read, also in `says` and `side`, or null for a part read
+just now), `holds` (what it holds, or null when it wasn't read),
+`things` (the keys of its things) and `deeper`: `command`, `site` (from
+the sites' root) and `launcher` (its path there). Each `machine:<name>`
+has `name`, `health`, `says`, `side` and `more`, where its home publishes one,
 `address`, and `ties`: its cells, network, code, figures and acts, as
 the system skill says them. A tie that is null wasn't read.
 `system --json` says the same as one record.

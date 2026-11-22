@@ -15,30 +15,26 @@ const LOOKS_LISTED = 8;
 // look, since nothing it holds can be told.
 const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch: 2, good: 3 };
 
-/** The item a side ends with when it had more than it lists, as the daemon says it. */
-const MORE = /^and (\d+) more worth a look$/u;
-
 /**
  * `words`' own health in `part`'s side, whose looks are at the part's: good
  * when they are the note the part carries when it was read from its owner's
  * last answer, which the daemon says on its own as well as in the side
- * (modules/system/src/kept.rs), so it is told by what it is and never by how
- * it reads. A kept answer raises no alarm of its own, and the part keeps the
- * health that answer gave it, which the note is no part of.
+ * (modules/system/src/kept.rs), so it is told by the field's own words,
+ * exactly, and never by a pattern of how a note reads. A kept answer raises
+ * no alarm of its own, and the part keeps the health that answer gave it,
+ * which the note is no part of.
  */
 function healthIn(words: string, part: Part): Health {
   return words === part.note ? "good" : part.health;
 }
 
-/** How many more looks `side` counts past those it lists, as its last item says. */
-function moreIn(side: readonly string[]): number {
-  const count = MORE.exec(side.at(-1) ?? "")?.[1];
-  return count === undefined ? 0 : Number(count);
-}
-
-/** `side`'s looks, without the item counting those it doesn't list. */
-function listed(side: readonly string[]): readonly string[] {
-  return MORE.test(side.at(-1) ?? "") ? side.slice(0, -1) : side;
+/**
+ * `side`'s looks, without the item counting those it doesn't list, which
+ * it ends with when `more`, the count the daemon carries beside it, is
+ * above 0: told by that, never by its words, which an owner's may match.
+ */
+function listed(side: readonly string[], more: number): readonly string[] {
+  return more > 0 ? side.slice(0, -1) : side;
 }
 
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
@@ -115,7 +111,7 @@ function machineLooks(part: Part, drawn: number): readonly Look[] {
  */
 function ownLooks(part: Part): readonly Look[] {
   const machines = part.named.map((name) => `${name} `);
-  const own = listed(part.side).filter(
+  const own = listed(part.side, part.more).filter(
     (words) => words === part.note || !machines.some((name) => words.startsWith(name)),
   );
   return keyed(own).map(({ words, key }) => lookOf(part, "good", words, key));
@@ -128,7 +124,7 @@ function ownLooks(part: Part): readonly Look[] {
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   return part.things.flatMap((thing, at) =>
-    keyed(listed(thing.side)).map(({ words, key }) => ({
+    keyed(listed(thing.side, thing.more)).map(({ words, key }) => ({
       health: thing.health,
       whose: thing.name,
       machine: true,
@@ -164,7 +160,7 @@ function partLooks(part: Part): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
-  return keyed(listed(part.side)).map(({ words, key }) =>
+  return keyed(listed(part.side, part.more)).map(({ words, key }) =>
     lookOf(part, healthIn(words, part), words, key),
   );
 }
@@ -172,8 +168,8 @@ function partLooks(part: Part): readonly Look[] {
 /**
  * How many looks the sides in `system` count past those they list: a part's,
  * and each machine's, as the daemon counts them. The machines part's own
- * count is of its machines' looks, which they list themselves, and a part
- * not read lists none.
+ * count is of machines past those it names, whose records list their looks
+ * and count their own, and a part not read lists none.
  */
 function uncounted(system: System): number {
   return system.parts
@@ -181,8 +177,8 @@ function uncounted(system: System): number {
     .reduce(
       (more, part) =>
         more +
-        (part.part === "machines" ? 0 : moreIn(part.side)) +
-        part.things.reduce((things, thing) => things + moreIn(thing.side), 0),
+        (part.part === "machines" ? 0 : part.more) +
+        part.things.reduce((things, thing) => things + thing.more, 0),
       0,
     );
 }

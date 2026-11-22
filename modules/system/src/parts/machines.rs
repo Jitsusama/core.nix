@@ -135,7 +135,7 @@ pub fn machines(
         .collect();
     // The worst first, then by name, so the line a look wants leads.
     read.sort_by(|(a, _), (b, _)| b.health.cmp(&a.health).then_with(|| a.name.cmp(&b.name)));
-    let side = side_of(
+    let (side, more) = side_of(
         read.iter()
             .filter(|(thing, _)| thing.health > Health::Good)
             .map(|(thing, looks)| format!("{} {}", thing.name, looks.join(", ")))
@@ -169,6 +169,7 @@ pub fn machines(
         health,
         says,
         side,
+        more,
         note: None,
         holds: Some(holds),
         things,
@@ -311,7 +312,7 @@ fn machine(
     // The side says the worst first; a sort that keeps ties in place keeps
     // the rest in the order they were found.
     looks.sort_by(|(a, ..), (b, ..)| b.cmp(a));
-    let side = side_of(looks.into_iter().map(|(.., side)| side).collect());
+    let (side, more) = side_of(looks.into_iter().map(|(.., side)| side).collect());
     if line.is_empty() {
         line.push("is ready".to_owned());
     }
@@ -324,6 +325,7 @@ fn machine(
         health,
         says: line.join(", "),
         side,
+        more,
         address: None,
         ties: Value::Null,
     };
@@ -701,6 +703,26 @@ mod tests {
     }
 
     #[test]
+    fn a_machine_with_many_looks_carries_how_many_more_on_its_own() {
+        let mut studio = laptop(&[], "nearly-full");
+        studio["state"] = json!("unreachable");
+        studio["power"] = json!({"on_battery": true, "charge": 12});
+        studio["firmware"] = json!({"error_before_boot": 7200});
+        let part = machines(&Ok(realm(&[studio])), &Err(String::new()), None, None);
+        let studio = &part.things[0];
+        assert_eq!(
+            studio.side,
+            [
+                "out of reach",
+                "nearly full disk, 279 GB free",
+                "and 2 more worth a look"
+            ],
+            "the bad first, then the count"
+        );
+        assert_eq!(studio.more, 2, "a machine's count is carried on its own");
+    }
+
+    #[test]
     fn a_side_of_many_machines_says_how_many_more() {
         let away = |name: &str| json!({"name": name, "state": "unreachable"});
         let many: Vec<Value> = ["a", "b", "c", "d", "e"].into_iter().map(away).collect();
@@ -713,6 +735,7 @@ mod tests {
                 "and 3 more worth a look"
             ]
         );
+        assert_eq!(part.more, 3, "the count is carried on its own");
     }
 
     #[test]

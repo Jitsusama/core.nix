@@ -129,6 +129,9 @@ it("a part's side and what it holds are read apart", () => {
       [[], "18 repositories"],
     ],
   );
+});
+
+it("a part's note and its side's count are read from their own fields", () => {
   const note = "as read at 11:54; just now repos --json gave no answer in 20 s";
   const noted = told(
     records.map((record) => {
@@ -143,6 +146,14 @@ it("a part's side and what it holds are read apart", () => {
     [undefined, note],
     "a part's note is read as told, and a null one is none",
   );
+  const counts = [3, 0, -1, 1.5, "2", null];
+  const counted = counts.map((more) => {
+    const each = told(
+      records.map((record) => (record.key === "part:code" ? { ...record, more } : record)),
+    );
+    return systemOf(each.summary, each.part, each.machine)?.parts[1]?.more;
+  });
+  assert.deepEqual(counted, [3, 0, 0, 0, 0, 0], "only a whole count above 0 counts");
 });
 
 /** What `markup` reads as, its tags gone and its spaces run together. */

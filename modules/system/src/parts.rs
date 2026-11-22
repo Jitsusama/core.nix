@@ -94,11 +94,13 @@ pub fn mycelium(health: &Answer) -> Part {
     }
     let holds = held.join("; ");
     words.extend(held);
+    let (side, more) = side_of(side);
     Part {
         name: "mycelium",
         health: worst,
         says: words.join("; "),
-        side: side_of(side),
+        side,
+        more,
         note: None,
         holds: Some(holds),
         things: Vec::new(),
@@ -149,6 +151,7 @@ pub fn network(net: &Answer) -> Part {
         })
         .unwrap_or_default();
     let mut side = words.clone();
+    let beyond = looks.len().saturating_sub(1);
     if let Some(first) = looks.first() {
         worst = worst.max(Health::Watch);
         words.push((*first).to_owned());
@@ -159,10 +162,8 @@ pub fn network(net: &Answer) -> Part {
         }
         // Net words its first look best, and orders them so.
         side.push(lowered(unstopped(first)));
-        if looks.len() > 1 {
-            side.push(format!("and {} more worth a look", looks.len() - 1));
-        }
     }
+    let (side, more) = side_past(side, beyond);
     let devices = said
         .get("devices")
         .and_then(Value::as_array)
@@ -180,7 +181,8 @@ pub fn network(net: &Answer) -> Part {
             [holds] => holds.clone(),
             _ => sentences(&words),
         },
-        side: side_of(side),
+        side,
+        more,
         note: None,
         holds: Some(holds),
         things: Vec::new(),
@@ -231,6 +233,7 @@ pub fn code(repos: &Answer) -> Part {
         health: Health::Good,
         says: holds.clone(),
         side: Vec::new(),
+        more: 0,
         note: None,
         holds: Some(holds),
         things: Vec::new(),
@@ -251,6 +254,7 @@ fn unread(name: &'static str, why: &str, deeper: Deeper) -> Part {
         health: Health::Unread,
         says: why.to_owned(),
         side: vec![lowered(why)],
+        more: 0,
         note: None,
         holds: None,
         things: Vec::new(),
@@ -259,14 +263,26 @@ fn unread(name: &'static str, why: &str, deeper: Deeper) -> Part {
 }
 
 /// A side's items, at most `SIDE_ITEMS` of them, the last saying how many
-/// more there were when there were.
-fn side_of(mut items: Vec<String>) -> Vec<String> {
-    if items.len() > SIDE_ITEMS {
-        let more = items.len() - (SIDE_ITEMS - 1);
+/// more there were when there were, and how many that is.
+fn side_of(items: Vec<String>) -> (Vec<String>, usize) {
+    side_past(items, 0)
+}
+
+/// `items` as a side, with `beyond` more found past them that it doesn't
+/// list: at most `SIDE_ITEMS`, the last saying how many more there are
+/// when there are any, and how many that is, for a reader to drop that
+/// item by rather than by its words.
+fn side_past(mut items: Vec<String>, beyond: usize) -> (Vec<String>, usize) {
+    let more = if beyond == 0 && items.len() <= SIDE_ITEMS {
+        0
+    } else {
+        items.len().saturating_sub(SIDE_ITEMS - 1) + beyond
+    };
+    if more > 0 {
         items.truncate(SIDE_ITEMS - 1);
         items.push(format!("and {more} more worth a look"));
     }
-    items
+    (items, more)
 }
 
 /// An owner's words as an item of a side, which starts lower case unless
@@ -458,6 +474,7 @@ mod tests {
             ["Main Floor's radio is busy", "and 1 more worth a look"],
             "a name leading keeps its capital, and the devices are left out"
         );
+        assert_eq!(part.more, 1, "the side's last item counts one more");
     }
 
     #[test]
@@ -486,12 +503,14 @@ mod tests {
             ],
             "an item of a side carries no stop"
         );
+        assert_eq!(part.more, 2, "the side's count is carried on its own");
         let alone = network(&Ok(net(&[("eero", "answering")], &[("weak", "Wait...")])));
         assert_eq!(
             alone.says, "Wait... 3 devices.",
             "a single look, its ellipsis whole"
         );
         assert_eq!(alone.side, ["Wait..."]);
+        assert_eq!(alone.more, 0, "a single look leaves none past it");
     }
 
     #[test]

@@ -55,6 +55,10 @@ pub struct Thing {
     /// side is but without its name or a leading "is" or "has": its
     /// worst first, and none when nothing is.
     pub side: Vec<String>,
+    /// How many looks past those `side` lists, which it then says as its
+    /// last item, so a reader drops that item by this and never by how it
+    /// reads; 0 when it lists them all.
+    pub more: usize,
     /// Its home on the local sites, from their root, as the site that is
     /// home to it says (homes.rs); none when no site is.
     pub address: Option<String>,
@@ -76,6 +80,8 @@ pub struct Part {
     /// case unless a name leads, with no closing stop, and without what
     /// it holds. None when nothing is.
     pub side: Vec<String>,
+    /// How many looks past those `side` lists, as a thing's `more` is.
+    pub more: usize,
     /// The note it carries when it was read from its owner's last answer,
     /// as kept.rs puts it in `says` and `side`: said again on its own, so a
     /// reader tells it from a look by what it is, never by how it reads.
@@ -188,6 +194,7 @@ impl System {
                     "health": thing.health.word(),
                     "says": thing.says,
                     "side": thing.side,
+                    "more": thing.more,
                     "address": thing.address,
                     "ties": thing.ties,
                 })
@@ -212,6 +219,7 @@ fn part_json(part: &Part) -> Value {
         "health": part.health.word(),
         "says": part.says,
         "side": part.side,
+        "more": part.more,
         "note": part.note,
         "holds": part.holds,
         "things": part.things.iter().map(|thing| json!({
@@ -220,6 +228,7 @@ fn part_json(part: &Part) -> Value {
             "health": thing.health.word(),
             "says": thing.says,
             "side": thing.side,
+            "more": thing.more,
             "address": thing.address,
             "ties": thing.ties,
         })).collect::<Vec<_>>(),
@@ -241,6 +250,7 @@ mod tests {
             health,
             says: String::new(),
             side: Vec::new(),
+            more: 0,
             note: None,
             holds: None,
             things: Vec::new(),
@@ -267,6 +277,7 @@ mod tests {
             health,
             says: format!("{name} says so"),
             side: Vec::new(),
+            more: 0,
             address: None,
             ties: Value::Null,
         }

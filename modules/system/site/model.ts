@@ -4,8 +4,8 @@
 // case is proven in node, and a reading the page couldn't make sense of is
 // said rather than drawn as if it were whole.
 
-import type { Held } from "../../local-sites/kit/records.ts";
-import { object, text, texts } from "../../local-sites/kit/records.ts";
+import type { Fields, Held } from "../../local-sites/kit/records.ts";
+import { number, object, text, texts } from "../../local-sites/kit/records.ts";
 import { copyable, type Ties, tiesOf } from "./ties.ts";
 
 /** How a part or thing stands, as the daemon words it. */
@@ -18,6 +18,8 @@ interface Thing {
   readonly says: string;
   /** What in it is worth a look, worded for a side, worst first. */
   readonly side: readonly string[];
+  /** How many looks past those `side` lists, the count `side` then ends with. */
+  readonly more: number;
   /** Its home's address from the sites' root, when its home publishes one. */
   readonly address: string | undefined;
   /** What ties it to the other parts, a machine's (ties.ts). */
@@ -38,6 +40,11 @@ interface Part {
   readonly says: string;
   /** What in it is worth a look, an item each, the last maybe "and N more". */
   readonly side: readonly string[];
+  /**
+   * How many looks past those `side` lists, as the daemon carries it: above
+   * 0, `side`'s last item says it, and is told by this, never by its words.
+   */
+  readonly more: number;
   /**
    * The note in its side when it was read from its owner's last answer, as
    * the daemon carries it on its own; none when it was read just now.
@@ -152,9 +159,16 @@ function thingOf(held: Held, key: string, unread: string[]): Thing | undefined {
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
+    more: moreOf(record),
     address: text(record, "address"),
     ties: tiesOf(record["ties"]),
   };
+}
+
+/** The count a record's side ends with, as its `more` says; none unless a whole count. */
+function moreOf(record: Fields): number {
+  const more = number(record, "more");
+  return more !== undefined && Number.isInteger(more) && more > 0 ? more : 0;
 }
 
 /** The part `name`, read from its record and its things'. */
@@ -175,6 +189,7 @@ function partOf(parts: Held, things: Held, name: string, unread: string[]): Part
     health: healthOf(text(record, "health")),
     says: text(record, "says") ?? "",
     side: texts(record, "side") ?? [],
+    more: moreOf(record),
     note: text(record, "note"),
     holds: text(record, "holds"),
     things: keys.map((key) => thingOf(things, key, unread)).filter((thing) => thing !== undefined),

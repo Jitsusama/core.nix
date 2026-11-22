@@ -53,7 +53,7 @@ const ties = {
 };
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf(ties) };
+  return { name, health, says: "", side, more: 0, address: undefined, ties: tiesOf(ties) };
 }
 
 function system(things: Thing[], others: Part[] = []): System {
@@ -62,6 +62,7 @@ function system(things: Thing[], others: Part[] = []): System {
     health: "watch",
     says: "",
     side: [],
+    more: 0,
     note: undefined,
     holds: undefined,
     things,

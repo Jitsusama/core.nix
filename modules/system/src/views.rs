@@ -276,6 +276,7 @@ mod tests {
                            248 GB free, runs 70 busy and 20 idle sessions"
                         .to_owned(),
                     side: Vec::new(),
+                    more: 0,
                     note: None,
                     holds: Some("1 machine".to_owned()),
                     things: vec![Thing {
@@ -284,6 +285,7 @@ mod tests {
                         health: Health::Watch,
                         says: "is short of memory, runs 3 busy sessions".to_owned(),
                         side: Vec::new(),
+                        more: 0,
                         address: Some("mycelium/#machine=laptop".to_owned()),
                         ties: ties(),
                     }],
@@ -298,6 +300,7 @@ mod tests {
                     health: Health::Unread,
                     says: "net isn't on this machine".to_owned(),
                     side: Vec::new(),
+                    more: 0,
                     note: None,
                     holds: None,
                     things: Vec::new(),

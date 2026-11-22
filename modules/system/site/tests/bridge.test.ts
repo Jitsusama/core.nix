@@ -20,6 +20,7 @@ function machine(name: string, busy: number, idle: number, health: Thing["health
     health,
     says: "",
     side: health === "good" ? [] : ["on battery at 12%", "code wants a look"],
+    more: 0,
     address: undefined,
     ties: tiesOf({
       cells: { busy, idle, ended: 0 },

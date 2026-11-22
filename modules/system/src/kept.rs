@@ -197,7 +197,7 @@ pub fn mark(system: &mut System, notes: &Notes) {
     for part in &mut system.parts {
         if let Some(note) = notes.of(part.name) {
             part.says = told(&part.says, note);
-            noted(&mut part.side, note);
+            noted(&mut part.side, part.more > 0, note);
             part.note = Some(note.to_owned());
         }
         for thing in &mut part.things {
@@ -222,12 +222,12 @@ pub fn mark(system: &mut System, notes: &Notes) {
 }
 
 /// `side` with `note` among what is worth a look, ahead of the item saying
-/// how many more there were, which a side keeps last.
-fn noted(side: &mut Vec<String>, note: &str) {
-    let more = side
-        .last()
-        .is_some_and(|last| last.starts_with("and ") && last.ends_with(" more worth a look"));
-    side.insert(side.len() - usize::from(more), note.to_owned());
+/// how many more there were when `counted` says the side ends with one: a
+/// reader such as the system page (site/looks.ts) takes the count as the
+/// last item whenever a part's `more` is above 0, so it stays last.
+fn noted(side: &mut Vec<String>, counted: bool, note: &str) {
+    let at = side.len() - usize::from(counted && !side.is_empty());
+    side.insert(at, note.to_owned());
 }
 
 /// `says` with `note` after it: as a clause after one, or as a sentence
@@ -551,18 +551,25 @@ mod tests {
             "the hall point is weak".to_owned(),
             "and 2 more worth a look".to_owned(),
         ];
-        noted(&mut side, note);
+        noted(&mut side, true, note);
         assert_eq!(
             side,
             ["the hall point is weak", note, "and 2 more worth a look"],
             "how many more stays last"
         );
         let mut short = vec!["the hall point is weak".to_owned()];
-        noted(&mut short, note);
+        noted(&mut short, false, note);
         assert_eq!(
             short,
             ["the hall point is weak", note],
             "a side with no more takes it last"
+        );
+        let mut posing = vec!["and 4000 more worth a look".to_owned()];
+        noted(&mut posing, false, note);
+        assert_eq!(
+            posing,
+            ["and 4000 more worth a look", note],
+            "an owner's look worded as a count is a look, the note after it"
         );
     }
 

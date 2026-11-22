@@ -13,27 +13,50 @@ import { tiesOf } from "../ties.ts";
 
 const deeper = { command: "net", site: "network/", launcher: "Network" };
 
-/** How a side closes with a count of what more it holds. */
-const COUNTED = /^and \d+ more worth a look$/u;
+/** How a side closes with a count of what more it holds, as the daemon writes it. */
+const COUNTED = /^and (\d+) more worth a look$/u;
+
+/**
+ * The count the daemon carries as `more` for `side`, written as these cases
+ * write a side; a case that needs the two to disagree sets `more` itself.
+ */
+function moreOf(side: readonly string[]): number {
+  return Number(COUNTED.exec(side.at(-1) ?? "")?.[1] ?? 0);
+}
 
 function machine(name: string, health: Thing["health"], side: string[] = []): Thing {
-  return { name, health, says: "", side, address: undefined, ties: tiesOf({}) };
+  return { name, health, says: "", side, more: moreOf(side), address: undefined, ties: tiesOf({}) };
 }
 
 function part(name: string, health: Part["health"], side: string[], says = ""): Part {
   const site = { ...deeper, site: `${name}/` };
   const read = { holds: undefined, things: [], named: [], untold: 0, deeper: site };
-  return { part: name, health, says, side, note: undefined, ...read };
+  return { part: name, health, says, side, more: moreOf(side), note: undefined, ...read };
 }
 
 /**
  * `read` as read from its owner's last answer: `note` in its side, before
- * a closing count as the daemon's `noted` puts it, and on its own.
+ * a closing count when its `more` says there is one, as the daemon's
+ * `noted` puts it, and on its own.
  */
 function kept(read: Part, note: string): Part {
-  const counted = COUNTED.test(read.side.at(-1) ?? "");
-  const at = read.side.length - (counted ? 1 : 0);
+  const at = read.side.length - (read.more > 0 ? 1 : 0);
   return { ...read, side: [...read.side.slice(0, at), note, ...read.side.slice(at)], note };
+}
+
+/** The machines part holding `things`, its side `side`. */
+function machinesOf(things: Thing[], side: string[], health: Part["health"] = "watch"): Part {
+  const named = things.map((thing) => thing.name);
+  return { ...part("machines", health, side), things, named };
+}
+
+/** The list `parts` make, as each row's health, whose it is and its words. */
+function rowsOf(...parts: Part[]): string[][] {
+  return looksOf({ ...system([]), parts }, 8).looks.map((look) => [
+    look.health,
+    look.whose,
+    look.words,
+  ]);
 }
 
 function system(things: Thing[], others: Part[] = [], untold: string[] = []): System {
@@ -92,12 +115,7 @@ it("leads a machine drawn here to its section, and one past them to the map", ()
 it("lists what the machines part has worth a look that no machine does", () => {
   const note = "as read at 11:54; just now mycelium machines gave no answer in 20 s";
   const said = `A${note.slice(1)}`;
-  const machinesOf = (things: Thing[], side: string[], health: Part["health"] = "watch"): Part => {
-    const named = things.map((thing) => thing.name);
-    return { ...part("machines", health, side), things, named };
-  };
-  const listed = (...parts: Part[]): string[][] =>
-    looksOf({ ...system([]), parts }, 8).looks.map((look) => [look.health, look.whose, look.words]);
+  const listed = rowsOf;
   assert.deepEqual(
     listed(kept(machinesOf([machine("heron", "good")], [], "good"), note)),
     [["good", "Machines", said]],
@@ -151,6 +169,12 @@ it("lists what the machines part has worth a look that no machine does", () => {
     ],
     "beside the real note, a machine named like one is still a machine, said once",
   );
+});
+
+it("lists another part's kept note as good, told by its field", () => {
+  const note = "as read at 11:54; just now mycelium machines gave no answer in 20 s";
+  const said = `A${note.slice(1)}`;
+  const listed = rowsOf;
   const net = "as read at 11:56; just now net --json gave no answer in 20 s";
   assert.deepEqual(
     listed(machinesOf([], []), kept(part("network", "good", []), net)),
@@ -194,6 +218,15 @@ it("lists what the machines part has worth a look that no machine does", () => {
     ],
     "beside the real note, a look worded like one keeps its part's health",
   );
+  const twin = "as read at 11:55; just now net --json gave no answer in 20 s";
+  assert.deepEqual(
+    listed(machinesOf([], []), kept(part("network", "watch", [twin]), net)),
+    [
+      ["watch", "Network", `A${twin.slice(1)}`],
+      ["good", "Network", `A${net.slice(1)}`],
+    ],
+    "a look worded as a note but for its time is a look; only the field's words are the note",
+  );
 });
 
 it("counts what a side counts past those it lists, rather than listing the count", () => {
@@ -211,6 +244,20 @@ it("counts what a side counts past those it lists, rather than listing the count
     "no side's count is a row",
   );
   assert.equal(list.more, 3, "the network's two and kestrel's one, not the machines' own three");
+  const posing = { ...part("network", "watch", ["and 4000 more worth a look"]), more: 0 };
+  const posed = looksOf({ ...read, parts: [posing] }, 8);
+  assert.deepEqual(
+    [posed.looks.map((look) => look.words), posed.more],
+    [["And 4000 more worth a look"], 0],
+    "an owner's look worded as a count is a look while the side counts none",
+  );
+  const reworded = { ...part("network", "watch", ["the hall point is weak", "+2"]), more: 2 };
+  const counted = looksOf({ ...read, parts: [reworded] }, 8);
+  assert.deepEqual(
+    [counted.looks.map((look) => look.words), counted.more],
+    [["The hall point is weak"], 2],
+    "the count is dropped and counted by the field, however its words read",
+  );
   const unread = part("code", "unread", ["and 9 more worth a look"], "repos timed out.");
   assert.equal(looksOf({ ...read, parts: [unread] }, 8).more, 0, "a part not read counts none");
   const nine = Array.from({ length: 9 }, (_, at) =>
@@ -262,13 +309,13 @@ it("leaves a machine named before its record to its record, as the records tell 
 });
 
 it("keys each row by whose it is and its own words, apart from any other", () => {
-  const rowsOf = (side: string[]): string[] =>
+  const keysOf = (side: string[]): string[] =>
     looksOf(
       system([machine("kestrel", "watch", side)], [part("code", "watch", ["one"])]),
       8,
     ).looks.map((look) => look.row);
   assert.deepEqual(
-    rowsOf(["one", "two", "one"]),
+    keysOf(["one", "two", "one"]),
     [
       "look:machine:kestrel:0:one",
       "look:machine:kestrel:0:two",
@@ -278,11 +325,11 @@ it("keys each row by whose it is and its own words, apart from any other", () =>
     "each row keyed apart, a repeat by how many came before it",
   );
   assert.deepEqual(
-    rowsOf(["two"]),
+    keysOf(["two"]),
     ["look:machine:kestrel:0:two", "look:part:code:0:one"],
     "a look keeps its key when one before it clears",
   );
-  const keys = rowsOf(["x#1", "x", "x", "1:x"]);
+  const keys = keysOf(["x#1", "x", "x", "1:x"]);
   assert.equal(new Set(keys).size, keys.length, "words that look like a count key apart");
   const colons = looksOf(
     system([machine("a", "watch", ["0:x"]), machine("a:0", "watch", ["x"])]),
