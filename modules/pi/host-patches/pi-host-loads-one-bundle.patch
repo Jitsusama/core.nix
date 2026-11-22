@@ -1,0 +1,98 @@
+A host loads pi from its bundle, as one module graph with the durable
+runtime it drives.
+
+A host loading pi unbundled holds about 10 MB more heap a conversation
+and spends about three times the CPU importing it than pi's own bundle
+does, with the same exports. The bundle keeps pi-ai, pi-tui and
+pi-agent-core in its own chunks and hands them to extensions from its
+virtual modules, which it doesn't export; and durable, loaded beside
+it, would bring its own copy of pi-ai, whose session cleanups and
+UUIDv7 sequence are kept per copy. So the bundle gains a host entry,
+built in the main split build so that it shares the bundle's chunks:
+the virtual modules, the built-in extensions, project trust, durable's
+main, SQLite and Node environment entries, and chord's context, each
+from the file an unbundled host loads, with hostEntryVersion 1.
+
+diff --git a/scripts/build-coding-agent-bundle.mjs b/scripts/build-coding-agent-bundle.mjs
+index d2f622d..5f004b3 100644
+--- a/scripts/build-coding-agent-bundle.mjs
++++ b/scripts/build-coding-agent-bundle.mjs
+@@ -27,6 +27,44 @@ const allowedExternalPackages = new Set([
+ 	"supports-color",
+ ]);
+ 
++// What a pi host loads beside the coding agent's main entry, emitted as the
++// bundle's host entry. Built in the main split build, it shares the bundle's
++// chunks, so the host, the durable runtime it drives and the extensions pi
++// loads hold one copy of pi-ai, pi-tui and pi-agent-core, and of the state
++// some of their modules keep (pi-ai's session cleanups, its UUIDv7
++// sequence). Loaded beside the bundle instead, durable would bring copies of
++// its own. Each path is the file a host loads from an unbundled install.
++const durableDistDir = join(repoRoot, "packages", "durable", "dist");
++const hostEntryVersion = 1;
++const hostEntrySource = [
++	["VIRTUAL_MODULES", join(codingAgentDistDir, "core", "extensions", "virtual-modules.js")],
++	["builtInExtensions", join(codingAgentDistDir, "extensions", "index.js")],
++	["resolveProjectTrusted", join(codingAgentDistDir, "core", "project-trust.js")],
++]
++	.map(([name, file]) => `export { ${name} } from ${JSON.stringify(file)};`)
++	.concat(
++		[
++			["durable", join(durableDistDir, "index.js")],
++			["durableSqlite", join(durableDistDir, "storage", "sqlite", "node.js")],
++			["durableNodeEnv", join(durableDistDir, "env", "node.js")],
++			["chordContext", join(repoRoot, "packages", "chord", "dist", "context", "index.js")],
++		].map(([name, file]) => `export * as ${name} from ${JSON.stringify(file)};`),
++	)
++	.concat(`export const hostEntryVersion = ${hostEntryVersion};`)
++	.join("\n");
++
++const hostEntryPlugin = {
++	name: "pi-host-entry",
++	setup(build) {
++		build.onResolve({ filter: /^pi-host-entry$/ }, () => ({ namespace: "pi-host-entry", path: "pi-host-entry" }));
++		build.onLoad({ filter: /.*/, namespace: "pi-host-entry" }, () => ({
++			contents: hostEntrySource,
++			loader: "js",
++			resolveDir: codingAgentDir,
++		}));
++	},
++};
++
+ const lazyJitiPlugin = {
+ 	name: "lazy-jiti-transform",
+ 	setup(build) {
+@@ -141,6 +179,9 @@ for (const entry of [
+ 	join(codingAgentDistDir, "cli.js"),
+ 	join(codingAgentDistDir, "index.js"),
+ 	join(codingAgentDistDir, "rpc-entry.js"),
++	join(codingAgentDistDir, "core", "extensions", "virtual-modules.js"),
++	join(codingAgentDistDir, "core", "project-trust.js"),
++	join(durableDistDir, "index.js"),
+ 	join(codingAgentDistDir, "utils", "image-resize-worker.js"),
+ 	join(codingAgentDistDir, "extensions", "codemode", "worker.js"),
+ 	join(aiDistDir, "api", "bedrock-converse-stream.js"),
+@@ -161,9 +202,11 @@ const mainResult = await build({
+ 		"cli-runtime": join(codingAgentDistDir, "cli.js"),
+ 		index: join(codingAgentDistDir, "index.js"),
+ 		"rpc-entry": join(codingAgentDistDir, "rpc-entry.js"),
++		host: "pi-host-entry",
+ 	},
+ 	outdir: bundleDir,
+ 	chunkNames: "chunks/[name]-[hash]",
++	plugins: [...commonBuildOptions().plugins, hostEntryPlugin],
+ 	splitting: true,
+ });
+ 
+@@ -171,6 +214,11 @@ const bedrockLoaderOutput = findContainingOutput(mainResult.metafile, "packages/
+ const oauthLoaderOutput = findContainingOutput(mainResult.metafile, "packages/ai/dist/auth/oauth/load.js");
+ const imageResizeOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/utils/image-resize.js");
+ const configOutput = findContainingOutput(mainResult.metafile, "packages/coding-agent/dist/config.js");
++// Durable's Photon images start a worker found beside their own file, which
++// the bundle doesn't emit, since nothing the host entry loads reaches them.
++if (Object.keys(mainResult.metafile.inputs).some((input) => input.endsWith("packages/durable/dist/images/node.js"))) {
++	throw new Error("Durable's Photon images were bundled without their worker; emit node-worker.js beside them");
++}
+ if (dirname(bedrockLoaderOutput) !== dirname(oauthLoaderOutput)) {
+ 	throw new Error("Bedrock and OAuth lazy loaders were emitted into different directories");
+ }

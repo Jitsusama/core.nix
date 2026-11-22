@@ -3033,6 +3033,12 @@
     imports each extension and before it runs each factory, and still loads every extension in
     the order it was given
   '';
+  pi-hosted-loads-one-bundle = ''
+    pi built with the host's patches, applied exactly, has a bundle host entry that hands on the
+    bundle's own coding agent and libraries, durable and chord, reading none of pi's files outside
+    the bundle; ids its pi-ai and durable mint in turn keep their order, one copy of the session
+    cleanups runs, and it holds 5 MiB less heap and spends less CPU than loading pi file by file
+  '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
     through a hosted screen's viewers' terminals, sends a viewer who joins late the images
