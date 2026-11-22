@@ -1379,6 +1379,23 @@ ShellRoot {
         Timekeeping.trying = true;
         theLauncher.sources = sources;
 
+        // Once it answers, the plate says how far off the clock was at its last update, from
+        // the reading's clock as Time's own figures read it: the reading carries an exchange
+        // only per server, so reading one at its top said nothing.
+        const sourcesBeforeTime = theLauncher.sources;
+        theLauncher.sources = sourcesBeforeTime.concat([{ settings: { name: "time" },
+            clockSaid: { point: "." },
+            kept: { synchronised: true, clock: { lastOffset: -0.000388 }, servers: [] } }]);
+        const clockQualifier = Array.from(now.placePlate().groups)
+            .reduce((all, group) => all.concat(Array.from(group)), [])
+            .filter(fact => fact.label === Words.name("on:plate:clock"))
+            .map(fact => fact.qualifier);
+        theLauncher.sources = sourcesBeforeTime;
+        expect("kept, the plate's clock says how far off it was at its last update",
+            clockQualifier.length === 1 && clockQualifier[0].indexOf("388") !== -1
+                && clockQualifier[0].indexOf("\u00b5s") !== -1,
+            JSON.stringify(clockQualifier));
+
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
         // clock didn't follow: found only to 26 km, with nothing said of

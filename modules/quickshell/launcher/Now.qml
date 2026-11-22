@@ -36,6 +36,7 @@ import "Order.js" as Order
 import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
+import "Keeping.js" as Keeping
 import "PlaceRow.js" as PlaceRow
 import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
@@ -572,14 +573,16 @@ Provider {
         const how = !here ? "" : here.hand === true ? said("byHand")
             : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
-        // how far off it was at the last poll, signed, as Time says it.
+        // how far off it was at the clock's last update, signed, as Time
+        // says it (Clocks.qml's clockParts).
         // Chrony is asked only while home shows, so until the reader
         // answers it's left out, but for a reading kept from the minute
         // before (Timekeeping.qml); that nothing keeps the time is said
         // only once the reader refused, as on a machine without chrony.
         const time = source("time");
         const kept = time?.kept ?? null;
-        const offset = kept?.exchange ? time.millis(kept.exchange.offset, true) : "";
+        const offset = kept?.clock
+            ? Keeping.seconds(kept.clock.lastOffset, true, time.clockSaid?.point ?? ".") : "";
         const step = kept ? said(kept.synchronised ? "synchronised" : "unsynchronised")
             : Timekeeping.refused ? said("unkept") : "";
         return {
