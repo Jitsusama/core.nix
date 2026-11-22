@@ -8,6 +8,8 @@ came; Qt's own engine holds the parts' order (tests/ranking.qml), and this holds
 launcher to listing it once, the cursor staying on it as the daemon's answers change, a
 step held in Spec taking the rows the daemon serves after a restart, and Spec kept while its
 head says the same, so a - out of Now makes it again only once the head has changed.
+`spend-watch serve` gives Agents' other part, Budgets, over a collection a case rewrites, and
+Budgets is held the same way, kept while AI spend's row it's made of stands.
 """
 
 from __future__ import annotations
@@ -33,6 +35,8 @@ if TYPE_CHECKING:
 LOGS = Path(os.environ["LOGS"])
 # What the stand-in for cadence prints, rewritten by a case to serve other rows.
 SERVED = LOGS.resolve() / "served.json"
+# Where spend-watch keeps what it serves and its socket, as the account's does.
+SPEND = Path(os.environ["XDG_RUNTIME_DIR"]) / "spend-watch"
 
 
 def serve(rows: Json) -> None:
@@ -66,24 +70,60 @@ def spec_daemon(shell: Shell) -> None:
     shell.daemon("cadence-spec", os.environ["CADENCE_SPEC"], str(cadence()), os.environ["WORDS"])
 
 
+def budgets_written(side: str) -> None:
+    """Write a collection of AI spend's Budgets alone, saying this side, for spend-watch to serve.
+
+    Put in place whole, so serve, which tells a rewrite as a pass's changes, reads it whole.
+    """
+    budget = {"key": "budget:claude", "name": "Claude Pro", "side": "85% of 5 h"}
+    budget |= {"copy": "Claude Pro: 85% of 5 h", "role": "warning", "mark": "agent"}
+    line: Json = {"key": "budgets", "name": "Budgets", "side": side, "copy": f"Budgets: {side}"}
+    line |= {"role": "warning", "mark": "agent", "rows": [budget | {"budget": budget["key"]}]}
+    written = SPEND / "collection.json.new"
+    written.write_text(json.dumps({"v": 2, "now": [line], "shown": ["budgets"]}))
+    written.replace(SPEND / "collection.json")
+
+
+def spend_daemon(shell: Shell) -> None:
+    """Start `spend-watch serve` on its socket, worded as the account's is, its log beside."""
+    own = LOGS.resolve() / "spend-watch"
+    own.mkdir(exist_ok=True)
+    paths = {name: str(own / name) for name in ("sessions", "runs", "registry", "quests")}
+    config: Json = paths | {"state": str(own / "state"), "runtime": str(SPEND), "zone": "UTC"}
+    config |= {"notices": {"enable": False}, "vocabulary": os.environ["WORDS"]}
+    serve_config = own / "serve.json"
+    serve_config.write_text(json.dumps(config))
+    with (LOGS / "spend-watch.log").open("ab") as log:
+        shell.daemons["spend-watch"] = subprocess.Popen(
+            [os.environ["SPEND_WATCH"], "--config", str(serve_config), "serve"],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+
+
 @pytest.fixture(scope="module")
 def shell() -> Iterator[Shell]:
-    """Give the shell, started once a run with cadence-spec serving two axes."""
+    """Give the shell, started once a run with cadence-spec serving two axes and spend Budgets."""
     LOGS.mkdir(parents=True, exist_ok=True)
     serve(served_first())
+    SPEND.mkdir(mode=0o700, exist_ok=True)
+    budgets_written("$100 this month")
     started = launcher_on_niri.started()
     spec_daemon(started)
+    spend_daemon(started)
     yield started
     started.stop()
 
 
 @contextlib.contextmanager
-def agents_with_spec(shell: Shell) -> Iterator[None]:
-    """Open Agents once it lists Spec, and close it after, so a case failing open fails alone."""
+def agents_with_parts(shell: Shell) -> Iterator[None]:
+    """Open Agents once it lists Spec and Budgets, and close it after, so a case fails alone."""
     shell.as_account(shell.ipc("collection", "agents"))
     try:
         shell.launcher_ready()
-        shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Spec" in shown["rows"])
+        shell.launcher_until(
+            lambda shown: shown["held"] == ["agents"] and {"Spec", "Budgets"} <= set(shown["rows"])
+        )
         yield
     finally:
         shell.close_launcher()
@@ -98,7 +138,7 @@ def test_agents_lists_spec_once_and_the_cursor_stays_on_it_as_its_head_changes(
     daemon reads cadence at most once in five minutes, so a new answer here is its start
     again over a head rewritten, and the cursor is watched until the row says it.
     """
-    with agents_with_spec(shell):
+    with agents_with_parts(shell):
         rows = shell.showing()["rows"]
         assert rows.count("Spec") == 1, f"Spec isn't listed once: {rows}"
         shell.down_to("Spec")
@@ -127,7 +167,7 @@ def test_a_step_held_in_spec_takes_the_rows_a_restarted_daemon_serves(shell: She
     start again over rows rewritten; the step stays held through the gap, and its rows are
     replaced with what the daemon says once it answers again (modules/quickshell/Daemon.qml).
     """
-    with agents_with_spec(shell):
+    with agents_with_parts(shell):
         shell.down_to("Spec")
         shell.step_in()
         shell.launcher_until(
@@ -203,8 +243,43 @@ def test_spec_says_a_head_that_changed_while_now_was_held(shell: Shell) -> None:
         stepped_out_of_now(shell)
     finally:
         shell.close_launcher()
-    with agents_with_spec(shell):
+    with agents_with_parts(shell):
         shell.down_to("Spec")
         shell.launcher_until(
             lambda shown: (shown["selected"] or {}).get("side") == "3 readings out of spec"
+        )
+
+
+def test_a_step_out_of_now_makes_no_budgets_while_spend_serves_the_same(shell: Shell) -> None:
+    """- out of Now makes Agents' Budgets again only if AI spend's row it's made of has changed.
+
+    Made anew each time Agents' rows were read, Budgets was made in every - out of Now as home
+    was held, as Spec was. Agents is opened first, so Budgets is known to be served.
+    """
+    with agents_with_parts(shell):
+        pass
+    in_now(shell)
+    try:
+        made = stepped_out_of_now(shell)
+    finally:
+        shell.close_launcher()
+    assert "agents:budgets" not in made, f"- out of Now made Budgets again: {made}"
+
+
+def test_budgets_says_a_side_that_changed_while_now_was_held(shell: Shell) -> None:
+    """A Budgets side spend-watch serves while Now is held is the one Agents says after.
+
+    Kept while AI spend's row is the one it was made of, Budgets is made again once spend-watch
+    serves a change, rather than saying the side it was made of while nothing read it.
+    """
+    in_now(shell)
+    try:
+        budgets_written("$120 this month")
+        stepped_out_of_now(shell)
+    finally:
+        shell.close_launcher()
+    with agents_with_parts(shell):
+        shell.down_to("Budgets")
+        shell.launcher_until(
+            lambda shown: (shown["selected"] or {}).get("side") == "$120 this month"
         )
