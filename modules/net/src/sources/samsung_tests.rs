@@ -297,15 +297,49 @@ fn a_tv_eero_no_longer_knows_is_forgotten() {
 }
 
 #[test]
+fn a_tv_heard_once_is_asked_whatever_maker_or_kind_eero_gives_it() {
+    let mut unplaced = listing();
+    unplaced["make"] = Value::Null;
+    let mut a_phone = listing();
+    a_phone["kind"] = json!("phone");
+    for (case, listed) in [("with no maker", unplaced), ("as a phone", a_phone)] {
+        let mut tvs = Heard::new();
+        let on = Ok::<Value, String>(json!({"devices": [listing()]}));
+        ask(&mut tvs, &on, |_| Reply::Page(answer()));
+        let eero = Ok::<Value, String>(json!({"devices": [listed]}));
+        // Several minutes, so a TV eero keeps listing so is shown as it
+        // answers each minute, not frozen at its last answer.
+        for minute in 1..=3 {
+            let mut reached = Vec::new();
+            let asked = ask(&mut tvs, &eero, |address| {
+                reached.push(address.to_owned());
+                Reply::Page(answer())
+            });
+            assert_eq!(
+                reached,
+                [ADDRESS],
+                "a TV listed {case} wasn't asked at eero's address in minute {minute}"
+            );
+            let (_, found) = read(asked, NOW);
+            assert_eq!(
+                found
+                    .iter()
+                    .map(|tv| (tv.name.as_deref(), tv.television.answering))
+                    .collect::<Vec<_>>(),
+                [(Some("Living Room"), true)],
+                "a TV listed {case} lost its name or its answer in minute {minute}"
+            );
+        }
+    }
+}
+
+#[test]
 fn a_tv_eero_still_knows_keeps_its_name_while_it_cant_be_asked() {
     let mut addressless = listing();
     addressless["address"] = Value::Null;
-    let mut unplaced = listing();
-    unplaced["make"] = Value::Null;
     let off = json!({"mac": MAC, "name": "samsung", "make": "Samsung"});
     for (case, eero) in [
         ("listed with no address", json!({"devices": [addressless]})),
-        ("listed with no maker", json!({"devices": [unplaced]})),
         (
             "listed as off",
             json!({"devices": [phone()], "devices_off": [off]}),
@@ -325,17 +359,34 @@ fn a_tv_eero_still_knows_keeps_its_name_while_it_cant_be_asked() {
         });
         assert!(!reached, "a TV {case} was asked");
         // Net shows only what eero lists on, so that minute a TV listed
-        // on keeps its name and role, and one listed off isn't shown.
-        let that_minute: &[Option<String>] = if case == "listed as off" {
-            &[]
-        } else {
-            &[Some("Living Room".to_owned())]
-        };
-        assert_eq!(
-            names(asked),
-            that_minute,
-            "a TV {case} lost its name that minute"
+        // on is said silent, keeping its name and role but no power, and
+        // one listed off isn't shown.
+        let (source, found) = read(asked, NOW);
+        let that_minute = found
+            .iter()
+            .map(|tv| (tv.name.as_deref(), tv.television.clone()))
+            .collect::<Vec<_>>();
+        let silent_tv = (
+            Some("Living Room"),
+            Television {
+                power: None,
+                answering: false,
+            },
         );
+        if case == "listed as off" {
+            assert_eq!(that_minute, [], "a TV {case} was shown that minute");
+        } else {
+            assert_eq!(
+                that_minute,
+                [silent_tv],
+                "a TV {case} lost its name, or was said answering, that minute"
+            );
+            assert_eq!(
+                source.map(|source| (source.state, source.read_at, source.reason)),
+                Some((SourceState::Answering, None, None)),
+                "a TV {case} reads as the source failing, or as read this minute"
+            );
+        }
         assert_eq!(
             names(ask(&mut tvs, &on, |_| silent())),
             [Some("Living Room".to_owned())],

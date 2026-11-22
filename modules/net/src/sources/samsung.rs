@@ -58,7 +58,8 @@ const A_TV: &str = "Samsung SmartTV";
 /// The kinds eero gives a Samsung box that could be a TV: one it can't
 /// place, as it does Joel's, and one that streams. A box eero places as
 /// a phone, a tablet or a computer isn't asked; one it can't place is,
-/// and says nothing unless it answers as a TV.
+/// and says nothing unless it answers as a TV. A box that has answered
+/// as a TV is asked whatever eero later calls it (`ask`).
 const KINDS: [&str; 2] = ["generic", "media_streamer"];
 
 /// The keys of an answer, and of its `device`, that net leaves out: ids
@@ -129,10 +130,12 @@ pub fn listed(eero: &Value) -> Vec<(String, String)> {
 /// null, empty or not a list was written before eero's device list was
 /// first read, not by a home with nothing on it, so it is taken the same
 /// way. A TV is forgotten only once eero knows it neither on nor off:
-/// one eero lists as off keeps its name for the minute it's back, and one
-/// eero lists on this minute without the address, maker or kind it's
-/// asked by isn't asked but is said silent, so it keeps its name and role
-/// that minute too.
+/// one eero lists as off keeps its name for the minute it's back. A TV
+/// that has answered is asked at the address eero lists it on, whatever
+/// maker or kind eero gives it then, since its answer, not eero's guess,
+/// said it was a TV. One eero lists on without an address can't be asked,
+/// so it is said silent, keeping its name and role for as long as eero
+/// lists it so.
 /// Through an outage of eero's cloud, its daemon keeps the last list it
 /// read, so the TVs on it are still asked.
 pub fn ask<E>(
@@ -151,20 +154,25 @@ pub fn ask<E>(
         return Vec::new();
     }
     forget_unknown(tvs, eero);
-    let listed = listed(eero);
-    let unaskable: Vec<Asked> = on(eero)
-        .filter(|mac| !listed.iter().any(|(asked, _)| asked == mac))
-        .filter_map(|mac| {
-            Some(Asked {
-                earlier: Some(tvs.get(mac)?.clone()),
+    let mut asking = listed(eero);
+    let mut unaskable = Vec::new();
+    for (mac, address) in on(eero) {
+        let Some(earlier) = tvs.get(mac) else {
+            continue;
+        };
+        if asking.iter().any(|(listed, _)| listed == mac) {
+            continue;
+        }
+        match address {
+            Some(address) => asking.push((mac.to_owned(), address.to_owned())),
+            None => unaskable.push(Asked {
+                earlier: Some(earlier.clone()),
                 mac: mac.to_owned(),
-                reply: Reply::Silent(
-                    "eero lists it without the address, maker or kind it's asked by".to_owned(),
-                ),
-            })
-        })
-        .collect();
-    listed
+                reply: Reply::Silent("eero lists it without an address to ask it at".to_owned()),
+            }),
+        }
+    }
+    asking
         .into_iter()
         .map(|(mac, address)| {
             let reply = read(&address);
@@ -174,13 +182,17 @@ pub fn ask<E>(
         .collect()
 }
 
-/// The hardware address of each device eero lists on.
-fn on(eero: &Value) -> impl Iterator<Item = &str> {
+/// The hardware address of each device eero lists on, and the address
+/// eero reaches it at when it gives one.
+fn on(eero: &Value) -> impl Iterator<Item = (&str, Option<&str>)> {
     eero.get("devices")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|device| device.get("mac").and_then(Value::as_str))
+        .filter_map(|device| {
+            let mac = device.get("mac").and_then(Value::as_str)?;
+            Some((mac, device.get("address").and_then(Value::as_str)))
+        })
 }
 
 /// What `mac` answered this minute, beside its last answer as a TV; an
