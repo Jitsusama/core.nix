@@ -55,9 +55,9 @@ fn here_or_mirrored(
         return Ok(());
     };
     let mirrored = mirrors();
-    // No mirror read means nothing new to find the head among, so the
+    // No mirrored round means nothing new to find the head among, so the
     // head isn't asked after again, only told with why.
-    if mirrored.asked.is_empty() {
+    if mirrored.rounds.is_subset(&rounds) {
         return Err(seen::unread_with_mirrors(unread, &mirrored));
     }
     rounds.extend(mirrored.rounds.iter().cloned());
@@ -272,8 +272,10 @@ mod tests {
     }
 
     // With no mirror on the machine, a refusal reads as it always did; with
-    // one that couldn't be read, it says why, and the head isn't asked
-    // after a second time over the same rounds.
+    // one that couldn't be read, it says why; and with no mirrored round
+    // the rounds here lack, the head isn't asked after a second time over
+    // the same rounds, while a round still mirroring is said to count once
+    // it lands.
     #[test]
     fn no_mirror_read_refuses_as_before_and_says_why() {
         let said = here_or_mirrored(HashSet::new(), seen::Mirrored::default, asks("ccc"));
@@ -297,6 +299,25 @@ mod tests {
             "an unlisted mirror wasn't said"
         );
         assert_eq!(times, 1, "the head was asked after again with nothing new");
+        let mut again = 0;
+        let said = here_or_mirrored(
+            HashSet::from([round("aaa", None)]),
+            || mirror(&["aaa"], &["equilibrius"], &[]),
+            |rounds| {
+                again += 1;
+                asks("ccc")(rounds)
+            },
+        )
+        .unwrap_err();
+        assert_eq!(
+            again, 1,
+            "a mirror adding no round had the head asked after again"
+        );
+        assert!(
+            said.contains("from equilibrius were asked too")
+                && said.contains("counts here once its mirror holds it"),
+            "the refusal didn't say a round run there counts once mirrored: {said}"
+        );
     }
 
     // A head a round read in full passes with nothing searched; one it

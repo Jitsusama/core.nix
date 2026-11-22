@@ -38,7 +38,12 @@ pub fn rounds_folder() -> PathBuf {
 /// while this one's memory holds councils back, and a mirror copies its
 /// rounds here rather than merging them into ours.
 pub fn mirrors_folder() -> PathBuf {
-    rounds_folder().with_file_name("runs-from")
+    mirrors_beside(&rounds_folder())
+}
+
+/// The mirrors folder beside the rounds folder `rounds`.
+fn mirrors_beside(rounds: &Path) -> PathBuf {
+    rounds.with_file_name("runs-from")
 }
 
 /// The rounds mirrored from other machines: what they read, the nodes whose
@@ -54,7 +59,12 @@ pub struct Mirrored {
 /// not made yet mirrors nothing, as on a machine no mirror fills. A node
 /// that can't be read, or whose rounds can't be, is said so and left out
 /// rather than refusing every head: the rounds here still count. A stray
-/// file beside the nodes is left out.
+/// file beside the nodes is left out, and so is a hidden name, as a sync
+/// tool's own folder.
+///
+/// A range's base is kept only when it names a commit: one spelled as a
+/// ref was resolved in the other machine's clone, where a branch of that
+/// name can be another commit than here, so it stands for no head.
 pub fn mirrored(root: &Path) -> Mirrored {
     let mut mirrored = Mirrored::default();
     let nodes = match fs::read_dir(root) {
@@ -71,14 +81,16 @@ pub fn mirrored(root: &Path) -> Mirrored {
     let mut names: Vec<String> = nodes
         .flatten()
         .map(|node| node.file_name().to_string_lossy().into_owned())
+        .filter(|name| !name.starts_with('.'))
         .collect();
     names.sort();
     for name in names {
         let node = root.join(&name);
         // A link to a folder is a node too, so its target is asked after.
         match fs::metadata(&node) {
-            Ok(found) if found.is_dir() => match witnessed(&node) {
+            Ok(found) if found.is_dir() => match rounds_in(&node) {
                 Ok(rounds) => {
+                    let rounds: HashSet<Read> = rounds.into_iter().map(as_read_here).collect();
                     if rounds.is_empty() && node.join("runs").is_dir() {
                         mirrored.trouble.push(format!(
                             "the mirror from {name} holds a runs folder and no rounds, as if \
@@ -88,9 +100,13 @@ pub fn mirrored(root: &Path) -> Mirrored {
                     mirrored.rounds.extend(rounds);
                     mirrored.asked.push(name);
                 }
-                Err(why) => mirrored
+                Err(Unreadable::Unlisted(error)) => mirrored
                     .trouble
-                    .push(format!("the mirror from {name} wasn't read: {why}")),
+                    .push(format!("the mirror from {name} can't be listed ({error})")),
+                Err(Unreadable::Unshaped(newest)) => mirrored.trouble.push(format!(
+                    "the newest {newest} round files mirrored from {name} hold no round of the \
+                     shape merge-net reads, so that machine's harness may write another shape"
+                )),
             },
             Ok(_) => {}
             Err(error) => mirrored
@@ -101,8 +117,19 @@ pub fn mirrored(root: &Path) -> Mirrored {
     mirrored
 }
 
+/// A mirrored round as it can stand here: a range's base spelled as a ref
+/// becomes no base, which is on no main.
+fn as_read_here(read: Read) -> Read {
+    let from = read.from.map(|base| {
+        let a_commit = base.len() == 40 && base.bytes().all(|b| b.is_ascii_hexdigit());
+        if a_commit { base } else { String::new() }
+    });
+    Read { from, ..read }
+}
+
 /// `why`, a head unread, with what the mirrors said: which nodes' rounds
-/// were asked as well, and any that couldn't be.
+/// were asked as well, that a round run there counts once its mirror has
+/// it, and any that couldn't be read.
 pub fn unread_with_mirrors(why: String, mirrored: &Mirrored) -> String {
     use std::fmt::Write;
     let mut said = why;
@@ -110,7 +137,8 @@ pub fn unread_with_mirrors(why: String, mirrored: &Mirrored) -> String {
     if !mirrored.asked.is_empty() {
         let _ = write!(
             said,
-            "; the rounds mirrored from {} were asked too",
+            "; the rounds mirrored from {} were asked too, and a round run there counts \
+             here once its mirror holds it, a minute or two after it's collected",
             mirrored.asked.join(", ")
         );
     }
@@ -144,16 +172,36 @@ const SHAPE_JUDGED_BY: usize = 5;
 /// harness's records would look like, rather than refusing every head as
 /// unread.
 pub fn witnessed(folder: &Path) -> Result<HashSet<Read>, String> {
+    rounds_in(folder).map_err(|why| match why {
+        Unreadable::Unlisted(error) => format!(
+            "the review rounds at {} can't be read ({error}), so no head can be shown \
+             read; the harness keeps them in its state folder's review/runs",
+            folder.display()
+        ),
+        Unreadable::Unshaped(newest) => format!(
+            "the newest {newest} review round files at {} hold no round of the shape \
+             merge-net reads, so the harness's record shape may have changed: \
+             earlier/seen.rs must follow it",
+            folder.display()
+        ),
+    })
+}
+
+/// Why a folder's rounds weren't read, said by whoever asked: this
+/// machine's folder and a mirror call for different advice.
+enum Unreadable {
+    /// The folder can't be listed.
+    Unlisted(std::io::Error),
+    /// The newest this many round files are none of the shape read here.
+    Unshaped(usize),
+}
+
+/// Every commit a round kept under `folder` read, as `witnessed` says.
+fn rounds_in(folder: &Path) -> Result<HashSet<Read>, Unreadable> {
     let files = match fs::read_dir(folder) {
         Ok(files) => files,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(HashSet::new()),
-        Err(error) => {
-            return Err(format!(
-                "the review rounds at {} can't be read ({error}), so no head can be shown \
-                 read; the harness keeps them in its state folder's review/runs",
-                folder.display()
-            ));
-        }
+        Err(error) => return Err(Unreadable::Unlisted(error)),
     };
     let mut texts: Vec<(std::time::SystemTime, String)> = files
         .flatten()
@@ -166,13 +214,7 @@ pub fn witnessed(folder: &Path) -> Result<HashSet<Read>, String> {
     texts.sort_by_key(|text| std::cmp::Reverse(text.0));
     let newest = &texts[..texts.len().min(SHAPE_JUDGED_BY)];
     if !newest.is_empty() && !newest.iter().any(|(_, text)| shaped(text)) {
-        return Err(format!(
-            "the newest {} review round files at {} hold no round of the shape merge-net \
-             reads, so the harness's record shape may have changed: earlier/seen.rs must \
-             follow it",
-            newest.len(),
-            folder.display()
-        ));
+        return Err(Unreadable::Unshaped(newest.len()));
     }
     Ok(texts.iter().flat_map(|(_, text)| read_in(text)).collect())
 }
@@ -446,20 +488,53 @@ mod tests {
         let elsewhere = folder("mirrored-elsewhere");
         let change =
             |commit: char| json!({"change": {}, "runs": [round(&json!({"witness": id(commit)}))]});
+        let range = |base: &str, commit: char| {
+            json!({
+                "change": {"provider": "local-range", "id": format!("{base}..x")},
+                "runs": [round(&json!({"witness": id(commit)}))],
+            })
+        };
         fs::create_dir(root.join("zebra")).unwrap();
         written(&root.join("zebra"), "one.json", &change('b'), 0);
         written(&elsewhere, "two.json", &change('c'), 0);
         std::os::unix::fs::symlink(&elsewhere, root.join("aardvark")).unwrap();
         fs::write(root.join("stray"), "").unwrap();
+        fs::create_dir(root.join(".sync-tool")).unwrap();
+        written(&root.join(".sync-tool"), "three.json", &change('d'), 0);
+        fs::create_dir(root.join("ranges")).unwrap();
+        written(
+            &root.join("ranges"),
+            "by-ref.json",
+            &range("origin/main", 'e'),
+            0,
+        );
+        written(
+            &root.join("ranges"),
+            "by-commit.json",
+            &range(&id('9'), 'f'),
+            0,
+        );
         let mirrored = mirrored(&root);
         let gone = super::mirrored(&root.join("gone"));
         fs::remove_dir_all(&root).unwrap();
         fs::remove_dir_all(&elsewhere).unwrap();
-        assert_eq!(mirrored.asked, ["aardvark", "zebra"], "the nodes asked");
+        assert_eq!(
+            mirrored.asked,
+            ["aardvark", "ranges", "zebra"],
+            "the nodes asked, a hidden one left out"
+        );
+        let by_ref = Read {
+            commit: id('e'),
+            from: Some(String::new()),
+        };
+        let by_commit = Read {
+            commit: id('f'),
+            from: Some(id('9')),
+        };
         assert_eq!(
             mirrored.rounds,
-            HashSet::from([change_read('b'), change_read('c')]),
-            "the rounds read"
+            HashSet::from([change_read('b'), change_read('c'), by_ref, by_commit]),
+            "the rounds read, a range's base kept only when it names a commit"
         );
         assert!(mirrored.trouble.is_empty(), "{:?}", mirrored.trouble);
         assert!(
@@ -482,6 +557,15 @@ mod tests {
             &json!({"change": {}, "runs": [round(&json!({}))]}),
             0,
         );
+        fs::create_dir(root.join("newer")).unwrap();
+        for each in 0..SHAPE_JUDGED_BY {
+            written(
+                &root.join("newer"),
+                &format!("new-{each}.json"),
+                &json!({"change": {}, "rounds": [round(&json!({}))]}),
+                0,
+            );
+        }
         let mirrored = mirrored(&root);
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(mirrored.asked, ["good", "high"], "the nodes asked");
@@ -491,11 +575,26 @@ mod tests {
             "the good node's rounds"
         );
         assert!(
-            mirrored.trouble.len() == 2
+            mirrored.trouble.len() == 3
                 && mirrored.trouble[0].starts_with("the mirror from dangling can't be read")
-                && mirrored.trouble[1].contains("from high holds a runs folder"),
-            "{:?}",
+                && mirrored.trouble[1].contains("from high holds a runs folder")
+                && mirrored.trouble[2].contains("mirrored from newer hold no round of the shape")
+                && !mirrored
+                    .trouble
+                    .iter()
+                    .any(|said| said.contains("review/runs")),
+            "a mirror's trouble wasn't said as a mirror's: {:?}",
             mirrored.trouble
+        );
+    }
+
+    // The mirrors sit beside the rounds folder, wherever that is set.
+    #[test]
+    fn the_mirrors_sit_beside_the_rounds() {
+        assert_eq!(
+            mirrors_beside(Path::new("/state/pi/agentic-harness.pi/review/runs")),
+            Path::new("/state/pi/agentic-harness.pi/review/runs-from"),
+            "the mirrors folder isn't beside the rounds folder"
         );
     }
 
