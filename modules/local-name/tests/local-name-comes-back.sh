@@ -1,11 +1,14 @@
 # shellcheck shell=bash
 # Checks the job that keeps a Mac's local name, with a stand-in scutil that
 # keeps LocalHostName in a file, fails as the real one does when it isn't
-# set or configd is busy, and records each set: a Mac macOS renamed a-mac-2
-# gets a-mac back and says so once; one already named a-mac is left
-# unwritten; one renamed again within five minutes of being set back is left
-# until they've passed; an unset name is set; and a name that can't be read
-# is said and left alone.
+# set or configd is busy, can be made to refuse a set, and records each
+# set it's asked for: a Mac macOS renamed a-mac-2 gets a-mac back and says
+# so once; one already named a-mac is left unwritten, however old its last
+# set-back; one renamed again four minutes after being set back is left,
+# its time kept, until five have passed; a time still to come counts as
+# old; an unset name is set; a name that can't be read is said once in five
+# minutes and left alone; and a set that's refused is said and tried once
+# in five minutes.
 # usage: local-name-comes-back.sh <keep.sh> <bash>
 set -euo pipefail
 
@@ -21,7 +24,10 @@ case "\$1 \$2" in
     if [[ -e "$work/busy" ]]; then echo "SCPreferences: busy"; exit 1; fi
     if [[ ! -e "$work/name" ]]; then echo "LocalHostName: not set"; exit 1; fi
     cat "$work/name" ;;
-  "--set LocalHostName") printf '%s\n' "\$3" > "$work/name"; echo set >> "$work/sets" ;;
+  "--set LocalHostName")
+    echo set >> "$work/sets"
+    if [[ -e "$work/refuse" ]]; then echo "SCPreferences: refused" >&2; exit 1; fi
+    printf '%s\n' "\$3" > "$work/name" ;;
   *) exit 64 ;;
 esac
 EOF
@@ -37,54 +43,91 @@ keeps() {
   : > "$work/sets"
   ended=0
   "$bash" "$keep" a-mac "$work/stamp" 2> "$work/said" || ended=$?
+  sets=$(wc -l < "$work/sets")
 }
-# Says the last set back was longer ago than five minutes.
-aged() {
-  touch -d '6 minutes ago' "$work/stamp"
+# Says the last set back was $1 seconds ago; a negative $1 is still to come.
+set_back_ago() {
+  local now
+  now=$(date +%s)
+  echo "$((now - $1))" > "$work/stamp"
 }
-# Fails saying $2 unless what was said is the one line the job writes for a
-# rename from $1.
-said_once() {
+# Fails saying $2 unless the job set the name once and said the one line it
+# writes for a rename from $1.
+set_back_once() {
   local lines
+  [[ ${sets} -eq 1 ]] || fail "$2: it set the name ${sets} times"
   lines=$(wc -l < "$work/said")
-  if [[ ${lines} -ne 1 ]] ||
-    ! grep -Eq "^[0-9T:-]+Z the local name was $1, so it is a-mac again$" "$work/said"; then
-    fail "$2: $(<"$work/said")"
-  fi
+  [[ ${lines} -eq 1 ]] || fail "$2: it said ${lines} lines: $(<"$work/said")"
+  grep -Eq "^[0-9T:-]+Z the local name was $1, so it is a-mac again$" "$work/said" ||
+    fail "$2: it said: $(<"$work/said")"
+}
+# Fails saying $1 unless the job neither set the name nor said anything.
+left_quietly() {
+  [[ ${sets} -eq 0 ]] || fail "$1: it set the name ${sets} times"
+  [[ ! -s "$work/said" ]] || fail "$1: it said: $(<"$work/said")"
 }
 
 echo a-mac-2 > "$work/name"
 keeps
 [[ $(<"$work/name") == a-mac ]] || fail "a renamed Mac's name stayed $(<"$work/name")"
-sets=$(wc -l < "$work/sets")
-[[ ${sets} -eq 1 ]] || fail "setting a renamed Mac's name back set it ${sets} times"
-said_once a-mac-2 "setting the name back didn't say so once"
+set_back_once a-mac-2 "setting a renamed Mac's name back"
+[[ ${ended} -eq 0 ]] || fail "setting a renamed Mac's name back ended ${ended}"
 
+set_back_ago 360
 keeps
-[[ ! -s "$work/sets" && ! -s "$work/said" ]] ||
-  fail "a name already right was written again, or the job said something: $(<"$work/said")"
+left_quietly "a name already right, last set back six minutes ago"
 
 echo a-mac-2 > "$work/name"
+set_back_ago 240
+kept=$(<"$work/stamp")
 keeps
-[[ $(<"$work/name") == a-mac-2 && ! -s "$work/sets" && ! -s "$work/said" ]] ||
-  fail "a name renamed again within five minutes of being set back was set back again"
-aged
+[[ $(<"$work/name") == a-mac-2 ]] ||
+  fail "a name renamed again four minutes after being set back was set back again"
+left_quietly "a name renamed again four minutes after being set back"
+[[ $(<"$work/stamp") == "${kept}" ]] ||
+  fail "holding a name off moved its last set-back's time, so it would never come back"
+set_back_ago 300
 keeps
 [[ $(<"$work/name") == a-mac ]] ||
   fail "a name renamed again five minutes after being set back wasn't set back"
-said_once a-mac-2 "setting the name back again didn't say so once"
+set_back_once a-mac-2 "setting the name back again five minutes on"
+
+echo a-mac-2 > "$work/name"
+set_back_ago -3600
+keeps
+[[ $(<"$work/name") == a-mac ]] ||
+  fail "a last set-back dated an hour to come, as after the clock went back, held the name off"
+set_back_once a-mac-2 "setting the name back past a time to come"
 
 rm "$work/name"
-aged
+set_back_ago 360
 keeps
-[[ -e "$work/name" && $(<"$work/name") == a-mac ]] || fail "an unset name wasn't set"
-said_once unset "setting an unset name didn't say so once"
+[[ -e "$work/name" ]] || fail "an unset name wasn't set"
+[[ $(<"$work/name") == a-mac ]] || fail "an unset name was set to $(<"$work/name")"
+set_back_once unset "setting an unset name"
 
 echo a-mac-2 > "$work/name"
 touch "$work/busy"
-aged
+set_back_ago 360
 keeps
-[[ ${ended} -ne 0 && $(<"$work/name") == a-mac-2 && ! -s "$work/sets" ]] ||
-  fail "a name that couldn't be read was written over"
+[[ ${ended} -ne 0 ]] || fail "a name that couldn't be read ended as if it had been kept"
+[[ $(<"$work/name") == a-mac-2 ]] || fail "a name that couldn't be read was written over"
+[[ ${sets} -eq 0 ]] || fail "a name that couldn't be read was set ${sets} times"
 grep -q "couldn't read the local name: SCPreferences: busy" "$work/said" ||
   fail "a name that couldn't be read wasn't said: $(<"$work/said")"
+keeps
+[[ ${ended} -ne 0 ]] || fail "a name still unreadable ended as if it had been kept"
+[[ ! -s "$work/said" ]] ||
+  fail "a name still unreadable a moment later was said again: $(<"$work/said")"
+rm "$work/busy"
+
+touch "$work/refuse"
+set_back_ago 360
+keeps
+[[ ${ended} -ne 0 ]] || fail "a refused set ended as if the name were back"
+[[ ${sets} -eq 1 ]] || fail "a refused set was tried ${sets} times"
+grep -q "couldn't set the local name back to a-mac from a-mac-2" "$work/said" ||
+  fail "a refused set wasn't said: $(<"$work/said")"
+keeps
+[[ ${sets} -eq 0 ]] || fail "a refused set was tried again within five minutes"
+[[ ! -s "$work/said" ]] || fail "a refused set was said again within five minutes: $(<"$work/said")"

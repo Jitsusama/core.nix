@@ -27,14 +27,15 @@ in
         name
         "/var/db/local-name.last"
       ];
-      # scutil, date and what bash needs, from macOS itself.
+      # scutil, date and what bash needs, from macOS itself, where only root
+      # can write, since the job runs as root.
       EnvironmentVariables.PATH = "/usr/sbin:/usr/bin:/bin";
       WatchPaths = [ "/Library/Preferences/SystemConfiguration/preferences.plist" ];
       StartInterval = 60;
       RunAtLoad = true;
-      # Each rename it undoes, with when, so a Mac that keeps renaming
-      # itself is seen: at most twelve lines an hour, since it sets the
-      # name back at most once in five minutes.
+      # Each rename it undoes, with when, and each name it couldn't read or
+      # set, so a Mac that keeps renaming itself is seen: each at most once
+      # in five minutes, so at most twenty-four lines an hour.
       StandardErrorPath = "/var/log/local-name.log";
     };
   };
