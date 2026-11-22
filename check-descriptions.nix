@@ -4877,7 +4877,8 @@
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
-    to watch their drawers ahead, and what it landed is kept past its end
+    to watch their drawers ahead, what it landed is kept past its end, and a second Reopen Them
+    All counts the folders it finds gone afresh rather than adding to the first's
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
