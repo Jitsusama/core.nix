@@ -340,8 +340,10 @@ ShellRoot {
             kept({ "s-napped": keptOn(2) }), Sessions.carryOn);
     }
 
+    // The id as a whole word, since a viewer's words end in its own pi's,
+    // and s-led-viewer's would be read as s-led's.
     function piFor(id) {
-        return Niri.spawns.filter(command => command.includes(` pi --session ${id}`));
+        return Niri.spawns.filter(command => `${command} `.includes(` pi --session ${id} `));
     }
     function asked() {
         // niri opens the one carried here as its kitty does, beside Joel,
@@ -725,14 +727,16 @@ ShellRoot {
             return;
         // 42 holds the orchestrator's window, so its screen's empty
         // workspace is 43, where nothing but a kept place sends them.
-        Expect.expect("a viewer it leads, kept off its workspace, opens where it was kept",
+        Expect.expect("a viewer it leads, kept off its workspace, opens on its kept screen's "
+            + "empty workspace, not its orchestrator's",
             opensOn("s-led-viewer").length === 1
             && opensOn("s-led-viewer")[0].reference.Id === 43 && waitedOn === 42,
             JSON.stringify(Niri.acts));
         const classed = asOpened(piFor("s-led")[0]);
         const acts = Niri.acts.slice(actsFrom);
         const opens = acts.filter(act => act.OpenNextWindowOn?.app_id === classed);
-        Expect.expect("one kept where its orchestrator isn't opens where it was kept",
+        Expect.expect("one kept where its orchestrator isn't opens on its kept screen's empty "
+            + "workspace, not its orchestrator's",
             classed !== "" && opens.length === 1 && opens[0].OpenNextWindowOn.reference.Id === 43,
             `${classed} ${JSON.stringify(Niri.acts)}`);
         const lost = heldFor("QEST-ADRIFT");
@@ -742,6 +746,9 @@ ShellRoot {
             && lost[0].endsWith(`${Quickshell.env("XDG_STATE_HOME")}/trees/keel`)
             && !Niri.spawns.some(command => command.includes("s-lost")),
             Niri.spawns.join("\n"));
+        // A walk that stops pacing after a held start never gets here: no
+        // patience is left running to start the next, so the case timer
+        // names the stage and what the walk still holds.
         Expect.expect("one kept nowhere after another begins at the walk's pace, not its patience",
             lostAt - unwindowedAt >= Sessions.reopenPace - 200
             && lostAt - unwindowedAt < 10000, `${lostAt - unwindowedAt} ms`);
@@ -824,7 +831,10 @@ ShellRoot {
     Timer {
         running: true
         interval: 110000
-        onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
+        onTriggered: Expect.fail(`still at ${root.stage}, the walk holding `
+            + JSON.stringify((Sessions.reopening?.queue ?? []).map(next => next.one?.id))
+            + ` and waiting on ${Sessions.reopening?.waiting?.id ?? "none"}, held starts `
+            + `${JSON.stringify(Sessions.startedHeld)}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }
 }
