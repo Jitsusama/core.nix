@@ -3,7 +3,7 @@
 //! when, so a restart neither judges a message twice nor misses one said
 //! while it was down, as far back as a search's twenty newest reach; and
 //! when Slack was last read whole, which `pineapple-slack heard` says
-//! (src/bin/pineapple-slack.rs). It goes by the messages rather than by
+//! (src/bin/pineapple-slack/). It goes by the messages rather than by
 //! the newest one's time, since Slack's search can find a message a while
 //! after a newer one. GitHub's readers keep theirs apart
 //! (src/progress.rs): they count from seconds, where Slack names a

@@ -3171,6 +3171,12 @@
     the launcher looks, knocks with notify-send and reads its words from the launcher's vocabulary,
     with a pause plan naming the agents' timers and keeping the compile cache
   '';
+  pineapple-slack-hears-a-gateway-in-shadow = ''
+    a machine naming a tool gateway hears Slack through it with a second reader for the safe word,
+    started as Slack's is but only ever in shadow, leaving the environment its sign-in reads as it
+    was, its URL's percent signs reaching systemd as written; a gateway reached over plain http is
+    refused, and a machine naming none has no such reader
+  '';
   pineapple-slack-starts-with-the-sign-in = ''
     the reader of Slack for the safe word starts at login, reads pi's Slack sign-in from the
     keyring, comes back after a switch and a failure, runs in the background slice, reads as

@@ -9,7 +9,10 @@
 //!
 //! A round Slack couldn't be asked in, its network down or its rate
 //! spent, counts neither way: nothing there is Joel's to do, and the
-//! journal says it.
+//! journal says it. An answer that came but can't be read counts as
+//! deaf, though no sign-in mends it: its cause lasts (a gateway's
+//! wording changed, or a message among the newest is shaped like its
+//! markup), so read as nothing it would look like a quiet Slack.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -33,6 +36,8 @@ pub enum Deafness {
     /// No sign-in could be read: signed out, the keyring locked, or one
     /// that doesn't say who Joel is.
     NoSignIn,
+    /// Slack answered in words that can't be read.
+    Unreadable,
 }
 
 /// What a round of the reader came to, as far as hearing goes.
@@ -143,22 +148,33 @@ impl Deaf {
 /// one Joel marked done gone, by name, so a later time needs its own.
 #[must_use]
 pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
-    let (said, first) = match why {
-        Deafness::Refused => ("Slack refused the safe word's sign-in", None),
+    const SIGN_IN: [&str; 3] = [
+        "Press Sign In on Slack in Programs",
+        "Sign in to Slack in the browser it opens",
+        "Or type /slack-auth in a pi session",
+    ];
+    let (said, steps, done): (&str, Vec<&str>, Value) = match why {
+        Deafness::Refused => (
+            "Slack refused the safe word's sign-in",
+            SIGN_IN.to_vec(),
+            json!({"signal": "signin:slack"}),
+        ),
         Deafness::NoSignIn => (
             "The safe word has no Slack sign-in it can read, signed out or with the keyring \
              locked",
-            Some("Unlock your keyring if it asks"),
+            ["Unlock your keyring if it asks"]
+                .into_iter()
+                .chain(SIGN_IN)
+                .collect(),
+            json!({"signal": "signin:slack"}),
+        ),
+        // No sign-in mends it, so only Joel's word marks it done.
+        Deafness::Unreadable => (
+            "Slack's answers to the safe word can't be read",
+            vec!["Ask an agent to read the reader's journal, which says what it couldn't read"],
+            json!({"by": "person"}),
         ),
     };
-    let steps: Vec<&str> = first
-        .into_iter()
-        .chain([
-            "Press Sign In on Slack in Programs",
-            "Sign in to Slack in the browser it opens",
-            "Or type /slack-auth in a pi session",
-        ])
-        .collect();
     json!({
         "v": 2,
         "updated": slack_people::messages::iso(at),
@@ -172,7 +188,7 @@ pub fn waits(why: Deafness, since: u64, at: u64) -> Value {
             "raisedAt": slack_people::messages::iso(since),
             "minutes": 1,
             "ready": true,
-            "doneWhen": {"signal": "signin:slack"},
+            "doneWhen": done,
             "steps": steps,
         }]
     })

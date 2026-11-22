@@ -2,21 +2,24 @@
 //! said in a thread about a pull request reaches that pull request and is
 //! kept as a shadow record; a tag asking to stop without the phrase is
 //! written down and stops nothing; of the would-be replies, only the first
-//! fresh stop in a thread's goes through, and the switch holds even that
-//! back; only Slack's reading methods are asked; a restart judges
-//! nothing twice; and an alert for Joel's phone finds his own IM and, in
-//! shadow, is only written down. The reader let go live is in live.rs,
+//! fresh stop in a thread's goes through; only Slack's reading methods
+//! are asked; and a restart judges nothing twice. What it makes of Joel's
+//! own words and of what it would tell him is in said.rs, the switch
+//! and his phone's alerts among them. The reader let go live is in live.rs,
 //! with a keyring that hangs in keyring.rs, telling Joel in For You when
 //! Slack can't be heard in deaf.rs, how far it had read when that can't
 //! be trusted in kept.rs, and GitHub's reader, against its own stand-in,
-//! in github.rs, and the guard each case holds its reader by in guard.rs.
+//! in github.rs, the reader hearing Slack through a tool gateway in
+//! gateway.rs, and the guard each case holds its reader by in guard.rs.
 
 mod deaf;
+mod gateway;
 mod github;
 mod guard;
 mod kept;
 mod keyring;
 mod live;
+mod said;
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -339,7 +342,12 @@ fn home() -> PathBuf {
 /// One field of each decision, in the order they were written.
 /// The one reply the reader let through, as replies.jsonl keeps it.
 fn the_one_reply(home: &Path) -> Value {
-    let replies = std::fs::read_to_string(home.join("state/pineapple/replies.jsonl"))
+    the_one_reply_in(&home.join("state/pineapple"))
+}
+
+/// The one reply a reader keeping to `state` let through.
+fn the_one_reply_in(state: &Path) -> Value {
+    let replies = std::fs::read_to_string(state.join("replies.jsonl"))
         .expect("the replies let through are kept");
     assert_eq!(replies.lines().count(), 1, "one reply would have gone out");
     serde_json::from_str(replies.lines().next().unwrap_or_default())
@@ -408,6 +416,18 @@ fn reader_with(home: &Path, origin: &str, more: &[&str]) -> Running {
 /// own environment names. It runs in its home, so a relative name lands
 /// there rather than in the crate, and says to its journal there.
 fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> Running {
+    reading_in(home, &home.join("state"), origin, more, waiting)
+}
+
+/// As [`reading`], with `state` as its state home, which may be relative
+/// to `home`, where it runs.
+fn reading_in(
+    home: &Path,
+    state: &Path,
+    origin: &str,
+    more: &[&str],
+    waiting: Option<&Path>,
+) -> Running {
     let mut reader = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"));
     reader
         .current_dir(home)
@@ -421,7 +441,7 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
         .args(more)
         .env("HOME", home)
         .env("XDG_CONFIG_HOME", home.join("config"))
-        .env("XDG_STATE_HOME", home.join("state"))
+        .env("XDG_STATE_HOME", state)
         .stdout(Stdio::null())
         .stderr(journal_of(home))
         .spawn()
@@ -431,7 +451,12 @@ fn reading(home: &Path, origin: &str, more: &[&str], waiting: Option<&Path>) -> 
 
 /// The decisions written down so far.
 fn decisions(home: &Path) -> Vec<Value> {
-    std::fs::read_to_string(home.join("state/pineapple/decisions.jsonl"))
+    decisions_in(&home.join("state/pineapple"))
+}
+
+/// The decisions a reader keeping to `state` wrote down so far.
+fn decisions_in(state: &Path) -> Vec<Value> {
+    std::fs::read_to_string(state.join("decisions.jsonl"))
         .unwrap_or_default()
         .lines()
         .filter_map(|line| serde_json::from_str(line).ok())
@@ -463,12 +488,17 @@ fn until_marked_anew(home: &Path, mark: &str) {
 
 /// Waits until the reader has written `count` decisions, or says it's stuck.
 fn until_decided(home: &Path, count: usize) {
+    until_decided_in(&home.join("state/pineapple"), count);
+}
+
+/// As [`until_decided`], for a reader keeping to `state`.
+fn until_decided_in(state: &Path, count: usize) {
     let began = Instant::now();
-    while decisions(home).len() < count {
+    while decisions_in(state).len() < count {
         assert!(
             began.elapsed() < PATIENCE,
             "the reader wrote {} decisions, not {count}",
-            decisions(home).len()
+            decisions_in(state).len()
         );
         // The reader searches every tenth of a second, so a short wait
         // sees each round without spinning.
@@ -591,203 +621,4 @@ fn resumed(home: &Path, id: &str) -> Value {
     )
     .expect("the record is JSON");
     record["resumed"].clone()
-}
-
-#[test]
-fn joels_own_resume_in_shadow_ends_only_the_shadow_stop_it_names() {
-    let (origin, _) = answering(joel_resumes);
-    let home = home();
-    // Joel's resume was said a minute ago.
-    a_stop(&home, "named", "pr:example/shop#12", true, 120);
-    a_stop(&home, "elsewhere", "quest:QEST-A", true, 120);
-    a_stop(&home, "live", "pr:example/shop#12", false, 120);
-    a_stop(&home, "later", "pr:example/shop#12", true, 30);
-    let mut reading = reader(&home, &origin);
-    until_decided(&home, 1);
-    let began = Instant::now();
-    while resumed(&home, "named").is_null() {
-        assert!(began.elapsed() < PATIENCE, "Joel's resume ended nothing");
-        // The decision is written just before the resume; a short wait
-        // sees it land without spinning.
-        thread::sleep(Duration::from_millis(50));
-    }
-    reading.kill().expect("the reader stops");
-    reading.wait().expect("the reader is gone");
-
-    let said = decisions(&home);
-    assert_eq!(each(&said, "verdict"), ["resume"], "Joel's own resume");
-    assert_eq!(
-        resumed(&home, "named")["by"],
-        "joel",
-        "the stop it names is resumed by Joel"
-    );
-    assert_eq!(
-        resumed(&home, "elsewhere"),
-        Value::Null,
-        "a stop it doesn't name still stands"
-    );
-    assert_eq!(
-        resumed(&home, "live"),
-        Value::Null,
-        "a reader in shadow never ends a live stop"
-    );
-    assert_eq!(
-        resumed(&home, "later"),
-        Value::Null,
-        "a stop said after the resume, though found beside it, still stands"
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
-}
-
-#[test]
-fn the_readers_own_alert_in_joels_im_is_never_judged_as_his_saying() {
-    let (origin, asked) = answering(joel_hears_his_own_alert);
-    let home = home();
-    a_stop(&home, "standing", "everything", true, 120);
-    let mut reading = reader(&home, &origin);
-    let began = Instant::now();
-    // Each round asks twice; three rounds give the echo every chance.
-    while asked.lock().expect("what was asked").len() < 6 {
-        assert!(began.elapsed() < PATIENCE, "the reader asked nothing");
-        // As above, a short wait sees each round without spinning.
-        thread::sleep(Duration::from_millis(50));
-    }
-    reading.kill().expect("the reader stops");
-    reading.wait().expect("the reader is gone");
-
-    assert_eq!(
-        resumed(&home, "standing"),
-        Value::Null,
-        "the echo resumes nothing"
-    );
-    assert!(
-        decisions(&home).is_empty(),
-        "the reader's own alert is no saying: {:?}",
-        decisions(&home)
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
-}
-
-#[test]
-fn heard_says_when_slack_was_last_read_while_nothing_is_heard() {
-    let home = home();
-    let heard = || {
-        let said = Command::new(env!("CARGO_BIN_EXE_pineapple-slack"))
-            .arg("heard")
-            .env("XDG_STATE_HOME", home.join("state"))
-            .output()
-            .expect("heard answers");
-        String::from_utf8_lossy(&said.stdout).into_owned()
-    };
-    assert_eq!(
-        heard(),
-        "nothing heard yet, and Slack hasn't been read yet\n",
-        "a mark with no read_at, as before a first round"
-    );
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("after the epoch")
-        .as_millis();
-    let judged = json!({"since": "1.000000", "keys": [], "read_at": now - 5000});
-    std::fs::write(home.join("state/pineapple/judged.json"), judged.to_string())
-        .expect("the mark written");
-    let said = heard();
-    assert!(
-        said.starts_with("nothing heard yet; Slack was last read ") && said.ends_with(" s ago\n"),
-        "says how long ago it read: {said}"
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
-}
-
-#[test]
-fn the_switch_holds_replies_back_and_stops_carry_on() {
-    let (origin, _) = stand_in();
-    let home = home();
-    std::fs::write(home.join("state/pineapple/replies-switch"), "off\n")
-        .expect("the switch written");
-    let mut reading = reader(&home, &origin);
-    until_decided(&home, 4);
-    reading.kill().expect("the reader stops");
-    reading.wait().expect("the reader is gone");
-
-    let said = decisions(&home);
-    assert_eq!(
-        said[1]["gate"], "held:switched-off",
-        "the reply it would have sent is held back"
-    );
-    assert_eq!(said[1]["verdict"], "stop", "and it still stops");
-    assert!(
-        !home.join("state/pineapple/replies.jsonl").exists(),
-        "no reply is kept as sent"
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
-}
-
-#[test]
-fn an_alert_for_joels_phone_finds_his_own_im_and_in_shadow_sends_nothing() {
-    let (origin, asked) = stand_in();
-    let home = home();
-    let at = u64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .expect("after the epoch")
-            .as_millis(),
-    )
-    .expect("a time in range");
-    let alert = json!({"at": at, "key": "pineapple:slack:C1:1.0", "saying": "stopped",
-        "shadow": false, "title": "Someone stopped your agents on quest SAFEQA",
-        "words": "pineapple override", "link": "https://example.slack.com/archives/C1/p1"});
-    let stale = json!({"at": at - 3_600_000, "key": "pineapple:slack:C2:1.0",
-        "saying": "stopped", "shadow": false, "title": "an hour ago", "words": "",
-        "link": ""});
-    std::fs::write(
-        home.join("state/pineapple/would-tell.jsonl"),
-        format!("{stale}\n{alert}\n"),
-    )
-    .expect("what the launcher's daemon would tell");
-    let phoned = home.join("state/pineapple/phoned.jsonl");
-    let mut reading = reader(&home, &origin);
-    until_decided(&home, 4);
-    let began = Instant::now();
-    while !phoned.exists() {
-        assert!(
-            began.elapsed() < PATIENCE,
-            "Joel's phone was never written down"
-        );
-        // The reader goes round every tenth of a second.
-        thread::sleep(Duration::from_millis(50));
-    }
-    // Another round, to be sure the alert is told only once.
-    thread::sleep(Duration::from_millis(300));
-    reading.kill().expect("the reader stops");
-    reading.wait().expect("the reader is gone");
-
-    let kept = std::fs::read_to_string(&phoned).expect("what Joel's phone was told");
-    let lines: Vec<Value> = kept
-        .lines()
-        .map(|line| serde_json::from_str(line).expect("a line is JSON"))
-        .collect();
-    assert_eq!(
-        lines.len(),
-        1,
-        "the fresh alert once, not the hour-old one: {kept}"
-    );
-    assert_eq!(
-        (&lines[0]["im"], &lines[0]["shadow"], &lines[0]["sent"]),
-        (&json!("D0SELF0001"), &json!(true), &json!(false)),
-        "Joel's own IM is found, and in shadow nothing is sent"
-    );
-    assert_eq!(
-        lines[0]["text"],
-        "pineapple: Someone stopped your agents on quest SAFEQA\n\
-         Said: \"pineapple override\"\n\
-         Where: https://example.slack.com/archives/C1/p1",
-        "in the alert's one form"
-    );
-    let methods = asked.lock().expect("the stand-in's list").clone();
-    assert!(
-        !methods.iter().any(|line| line.contains("chat.postMessage")),
-        "nothing is posted in shadow: {methods:?}"
-    );
-    std::fs::remove_dir_all(&home).expect("the case's home goes");
 }

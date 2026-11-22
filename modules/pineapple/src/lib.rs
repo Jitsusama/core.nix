@@ -19,8 +19,10 @@
 //!   [`reply`] says what one that goes says, from Joel's own account,
 //!   only in the thread that asked, in words he said yes to.
 //! - [`slack`] and [`github`] turn each platform's answers into sayings
-//!   to judge, and [`record`] writes down what was decided, a stop's
-//!   record included.
+//!   to judge, [`gateway`] reads Slack's as a tool gateway words them,
+//!   asking it over [`mcp`], and [`record`] writes down what was decided,
+//!   a stop's record included; [`ears`] is the one seam the Slack reader
+//!   hears through, Slack's own API or a tool gateway.
 //! - [`resume`] lists the stops standing and marks those Joel resumes,
 //!   for his own command (src/bin/pineapple.rs), which refuses under pi.
 //! - [`tell`] makes the rows Joel is shown in the launcher's Needs You,
@@ -42,7 +44,7 @@
 //!   undoes exactly that once he resumes it.
 //!
 //! Readers hand it sayings from each platform, Slack first
-//! (src/bin/pineapple-slack.rs), then GitHub
+//! (src/bin/pineapple-slack/), then GitHub
 //! (src/bin/pineapple-github.rs), and the enforcer acts on what it
 //! decides. The cases in sayings.json are the one table of what counts,
 //! so anything else judging a saying can be held to the same answers.
@@ -50,10 +52,13 @@
 pub mod acts;
 pub mod deaf;
 mod decide;
+pub mod ears;
 pub mod gate;
+pub mod gateway;
 pub mod github;
 mod judge;
 pub mod judged;
+pub mod mcp;
 pub mod pause;
 pub mod peer;
 pub mod phone;
