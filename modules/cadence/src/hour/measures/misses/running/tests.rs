@@ -175,11 +175,34 @@ fn a_change_reaching_the_hosts_waits_on_them() {
     // host at all.
     let build =
         |_: &str| Some("modules/pi/hosted-pi.nix\nmodules/pi/host-patches/README.md".into());
-    assert_eq!(
-        judge("core", at, Some("f00d"), all, build, lack),
-        Some("cadence can't tell what a pi host loads"),
-        "a fix to core's runtime build alone was told fixed"
-    );
+    // Only a host the build may have failed is its owner's; an hour that
+    // can't list the hosts leaves the build unseen, as every hour would.
+    let unseen = "cadence can't tell what a pi host loads";
+    let failed = "a pi host failed and waits on a reset";
+    for (seen, hosts, why) in [
+        (None, "lacking nothing", unseen),
+        (Some("cadence can't list the pi hosts"), "unlisted", unseen),
+        (
+            Some("cadence can't list the pi conversations"),
+            "talking unlisted",
+            unseen,
+        ),
+        (Some(failed), "failed", failed),
+    ] {
+        let judged = judge(
+            "core",
+            at,
+            Some("f00d"),
+            all,
+            build,
+            move |_: &str, _: Reaches| seen,
+        );
+        assert_eq!(
+            judged,
+            Some(why),
+            "a fix to core's runtime build alone, its hosts {hosts}, was judged wrongly"
+        );
+    }
     assert!(
         LASTING.contains(&"cadence can't tell what a pi host loads"),
         "a fix to core's runtime build, which no hour can read, held only for the hour"

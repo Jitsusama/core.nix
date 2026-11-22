@@ -734,10 +734,11 @@ fn write_whole(path: &Path, text: &str) -> io::Result<()> {
         io::Write::write_all(&mut file, text.as_bytes())?;
         file.sync_all()
     });
-    if written.is_err() {
+    let done = written.and_then(|()| fs::rename(&staged, path));
+    if done.is_err() {
         let _ = fs::remove_file(&staged);
     }
-    written.and_then(|()| fs::rename(staged, path))
+    done
 }
 
 #[cfg(test)]
