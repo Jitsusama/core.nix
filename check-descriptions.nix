@@ -3951,7 +3951,9 @@
   the-askpass-outlives-its-shell = ''
     the askpass asks a restarted shell again, never asks twice what's answered, and refuses about 20
     s after the shell goes unless it comes back; it answers --help and refuses anything but one
-    prompt with 64, asking nothing
+    prompt with 64, asking nothing; it asks only for a program in Joel's apps, desktop, timers,
+    terminals or the system's services, and refuses one in agents' places or a process gone, saying
+    where it ran
   '';
   the-askpass-says-who-asks-for-what = ''
     the askpass names the program and the key, passkey or host behind each prompt, and whether it
