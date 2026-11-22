@@ -60,22 +60,33 @@ fn an_unboxed_piece_is_counted_in_the_stretches_typst_breaks_it_into() {
     let broken = probed("box(width: 0.1pt, raw(s))", code, 2560.0).join("|");
     assert_eq!(
         read, broken,
-        "least-code's stretches are where Typst breaks: after a word's hyphens, \
-         but not after a flag's opening ones, nor before a figure or a closing mark"
+        "least-code's stretches are where Typst breaks: after hyphens, \
+         but not before a figure or a closing mark"
     );
-    assert_eq!(read.matches('|').count(), 6, "it breaks at all: {read}");
+    assert_eq!(read.matches('|').count(), 7, "it breaks at all: {read}");
 }
 
 #[test]
 fn an_unboxed_pieces_first_stretch_counts_with_the_short_word_held_to_it() {
     // In a narrow window the name is unboxed, and "run" is held to it, so
     // the column needs "run a-" on one line, wider than any stretch alone.
-    let joined = probed(
-        r#"text(size: 2pt, if calc.abs(measure(least-code(s)).width - measure(raw("run a-")).width) < 0.01pt { "joined" } else { "apart" })"#,
+    let widths = probed(
+        r#"text(size: 2pt, (least-code(s), raw("run a-"), raw("name-")).map(c => str(calc.round(measure(c).width.pt(), digits: 2))).join(" "))"#,
         &format!("run {}", ["a-name"; 30].join("-")),
         360.0,
+    )
+    .join(" ");
+    let parsed: Vec<f64> = widths
+        .split(' ')
+        .map(|width| width.parse::<f64>().unwrap_or(f64::NAN))
+        .collect();
+    let [counted, joined, alone] = parsed[..] else {
+        panic!("three widths, not {widths:?}")
+    };
+    assert!(
+        (counted - joined).abs() < 0.01 && joined > alone,
+        "least-code counts {counted} pt; run a- is {joined} pt, and name- alone {alone} pt"
     );
-    assert_eq!(joined, ["joined"]);
 }
 
 #[test]

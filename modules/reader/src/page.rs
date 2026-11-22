@@ -253,10 +253,10 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
 }
 // What an unboxed piece can't break inside: a run up to a space, or up
 // to and taking a hyphen, after which a line may break, but for one
-// opening a word, as in --release, or before a figure or closing
-// punctuation, as in -1 or a-), which Unicode's line breaking holds to
-// what follows.
-#let unbroken = regex("-*[^ -]*(?:-+[0-9)\\]}.,;:!?'\"][^ -]*)*-*")
+// before a figure or closing punctuation, as in -1 or a-), which Typst's
+// line breaking holds to what follows. A flag's opening hyphens, as in
+// --release, it breaks after.
+#let unbroken = regex("[^ -]*(?:-+[0-9)\\]}.,;:!?'\"][^ -]*)*-*")
 // The least room a table's column needs for a span: its widest run of
 // pieces held together, since only between those can it break. A piece
 // too wide to box is unboxed, so it breaks where its words or a hyphen
@@ -266,7 +266,9 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   let widest = 0pt
   let run = 0pt
   for p in code-pieces(s) {
-    let by = if p.by == " " { measure(raw(" ")).width } else { 0pt }
+    // A held space is set unbreakable, as code does, and a space alone
+    // measures as nothing.
+    let by = if p.by == " " { measure(raw("\u{a0}")).width } else { 0pt }
     if p.whole {
       let width = measure(raw(p.piece)).width
       run = if p.held { run + by + width } else { width }
