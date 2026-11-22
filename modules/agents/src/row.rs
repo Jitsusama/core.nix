@@ -407,6 +407,14 @@ impl Row {
         self.unwanted.is_some()
     }
 
+    /// How it counts and ranks: as it would stand wanting nothing where
+    /// Joel put its want off, so it lights nothing for its hour, else as
+    /// it stands.
+    #[must_use]
+    pub fn counts_as(&self) -> &'static str {
+        self.unwanted.map_or(self.state, Stands::id)
+    }
+
     /// The act `id` as the launcher's rows hold it: its verb's key and the
     /// ask that does it, which the shell sends back as it is. Close says
     /// too what its ask names and what stays, so the launcher asks it as
@@ -456,13 +464,19 @@ impl Row {
 /// nothing above it (top.rs) until the hour is up.
 fn worn(session: Session, known: &Known, warns: bool) -> (Stands, Option<Stands>, &'static str) {
     let wears = session.stands_to_joel(known.joel_can, known.jobs);
-    let unwanted = (wears == Stands::Needs && (known.put_off)(session))
-        .then(|| session.stands_wanting_nothing(known.jobs));
+    let unwanted = unwanted(session, known, wears);
     (
         wears,
         unwanted,
         standing::hue(unwanted.unwrap_or(wears), warns),
     )
+}
+
+/// How a session wearing `wears` would stand wanting nothing, when it
+/// wants Joel and he put that off; else nothing.
+fn unwanted(session: Session, known: &Known, wears: Stands) -> Option<Stands> {
+    (wears == Stands::Needs && (known.put_off)(session))
+        .then(|| session.stands_wanting_nothing(known.jobs))
 }
 
 /// What Close leaves of a session here: its worktree, where it works in a
@@ -503,15 +517,20 @@ pub fn fold_name(counts: &[(Stands, usize)], words: &Words) -> String {
 /// Every session's row, in Sessions' order (`session::in_order`), laid
 /// under their orchestrators with the waiting folded (tree.rs). One the
 /// harness lists as an orchestrator orchestrates, though none of its
-/// own runs, so it says what its whole orchestration spent.
+/// own runs, so it says what its whole orchestration spent. A session
+/// whose want Joel put off sorts and folds as it would wanting nothing,
+/// as it counts (top.rs), lifting nothing above it for its hour.
 pub fn rows(sessions: &[Session], known: &Known, words: &Words) -> Vec<Shown> {
     let members: Vec<Member> = sessions
         .iter()
-        .map(|session| Member {
-            address: session.address(),
-            under: session.under(),
-            stands: session.stands_to_joel(known.joel_can, known.jobs),
-            at_top: session.at_top().is_some(),
+        .map(|session| {
+            let wears = session.stands_to_joel(known.joel_can, known.jobs);
+            Member {
+                address: session.address(),
+                under: session.under(),
+                stands: unwanted(*session, known, wears).unwrap_or(wears),
+                at_top: session.at_top().is_some(),
+            }
         })
         .collect();
     shown(&tree::tree(&members, true), sessions, known, words)
@@ -990,6 +1009,45 @@ mod tests {
                 Stands::Needs
             ]
         );
+    }
+
+    #[test]
+    fn one_whose_want_joel_put_off_sorts_and_folds_as_it_would_wanting_nothing() {
+        let records = [
+            json!({"presence": {"addresses": ["O"], "busy": true}}),
+            json!({"presence": {"addresses": ["B"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["C"], "orchestratedBy": "O", "state": "paused"}}),
+            json!({"presence": {"addresses": ["A"], "orchestratedBy": "O", "state": "parked",
+                "session": "s-1", "wants": {"kind": "approval", "said": "May I push?"}}}),
+        ];
+        let sessions: Vec<_> = records.iter().map(Session).collect();
+        let given = given();
+        let none = |_: &str| None::<String>;
+        let unlisted = |_: &str| None::<(String, String)>;
+        let windowed = |_: Session| false;
+        let known = Known {
+            joel_can: &given.joel_can,
+            jobs: &given.jobs,
+            spent: &none,
+            family: &none,
+            listed: &unlisted,
+            windowed: &windowed,
+            sharing: false,
+            needs: &|_| 0,
+            shape: &|_| None,
+            put_off: &|one| one.address() == "A",
+        };
+        let shown = rows(&sessions, &known, &words());
+        let keys: Vec<_> = shown.iter().map(Shown::key).collect();
+        assert_eq!(
+            keys,
+            ["agent:O", "agents:fold:O"],
+            "its want put off, it lifts nothing and waits in the fold, parked, for its hour"
+        );
+        let Some(Shown::Fold(fold)) = shown.last() else {
+            panic!("a fold last");
+        };
+        assert_eq!(fold.name, "2 paused, 1 parked");
     }
 
     #[test]

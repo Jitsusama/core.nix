@@ -172,7 +172,11 @@ pub(crate) fn sessions(top: &[Value]) -> HashMap<String, &Value> {
 /// wearing his mark for a session under it (`anyWaitsOnJoel`) counts
 /// once more, unless that session, or a marked lead under it, is a cell
 /// here, counted already. A put-off lead still marked for one under it
-/// still needs him, where the node counted it. A network so holding a
+/// still needs him, where the node counted it, unless that one is a cell
+/// here, counted already, when it too stands as it would wanting
+/// nothing. The machines' network names machines, not cells, so it's
+/// left as the node counts it, until a follow-up due Mon 23 Nov. A
+/// network so holding a
 /// marked cell sorts first, says it needs him and never folds away, as
 /// the cell does inside it. A cell the record names twice counts once. A
 /// lead it moves leaves the count the node put it in, so the counts still
@@ -193,19 +197,18 @@ pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) 
         .filter_map(|name| rows.get(&name).copied())
         .collect();
     let held = |row: &Value, field: &str| row["held"][field] == true;
-    let mut unlit: BTreeMap<&str, u64> = BTreeMap::new();
-    for row in cells
-        .iter()
-        .filter(|row| held(row, "putOff") && !held(row, "anyWaitsOnJoel"))
-    {
-        *unlit.entry(counted_as(row)).or_default() += 1;
-    }
     let marked = |row: &&&Value| held(row, "anyWaitsOnJoel") && !held(row, "waitsOnJoel");
     let counted: HashSet<String> = cells
         .iter()
         .filter(|row| held(row, "waitsOnJoel") || marked(row))
         .flat_map(|row| leads_of(row, rows))
         .collect();
+    let mut unlit: BTreeMap<&str, u64> = BTreeMap::new();
+    for row in cells.iter().filter(|row| {
+        held(row, "putOff") && (!held(row, "anyWaitsOnJoel") || counted.contains(&address_of(row)))
+    }) {
+        *unlit.entry(counted_as(row)).or_default() += 1;
+    }
     let leads = cells
         .iter()
         .filter(marked)
@@ -232,7 +235,8 @@ pub(crate) fn as_marked<'a>(network: &'a Value, rows: &HashMap<String, &Value>) 
         *counts.entry(standing).or_default() -= taken;
         moving -= taken;
     }
-    *counts.entry("needs-you").or_default() += leads;
+    let needs = counts.entry("needs-you").or_default();
+    *needs = needs.saturating_add(leads);
     for (standing, many) in counts {
         if seen["counts"].get(standing).is_some() || many > 0 {
             seen["counts"][standing] = json!(many);
@@ -901,6 +905,29 @@ mod tests {
             counts,
             "its own want put off, it still needs Joel for the one under it, and TERN03 still \
              moves"
+        );
+    }
+
+    #[test]
+    fn a_put_off_lead_marked_for_a_member_here_leaves_needs_you_to_it() {
+        let mut lead = marked_lead("KELP01", None);
+        lead["held"]["putOff"] = json!(true);
+        lead["held"]["putOffAs"] = json!("working");
+        let mut member = session("REEF02", "needs", "session");
+        member["parent"] = json!(key_of("KELP01"));
+        // The node counted both needing Joel: KELP01 for its own want.
+        let counts = json!({"needs-you": 2, "stuck": 0, "moving": 0, "quiet": 0, "dormant": 0});
+        let repo = record(
+            "repo.world",
+            "repository",
+            &["kelp01", "reef02"],
+            &counts,
+            0,
+        );
+        assert_eq!(
+            as_marked(&repo, &sessions(&[lead, member]))["counts"],
+            json!({"needs-you": 1, "stuck": 0, "moving": 1, "quiet": 0, "dormant": 0}),
+            "REEF02's want is counted once, as when KELP01's own want isn't put off"
         );
     }
 

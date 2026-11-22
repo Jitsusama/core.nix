@@ -99,7 +99,7 @@ fn orchestrations(shown: &[Shown]) -> Vec<&[Shown]> {
 /// as spend-watch says it, "about" first only where it's an estimate.
 /// Each part is left out where it would say none.
 fn side(all: &[&Row], spent: Option<&str>, said: &Said) -> Vec<Item> {
-    let count = |state: &str| all.iter().filter(|row| row.state == state).count();
+    let count = |state: &str| all.iter().filter(|row| row.counts_as() == state).count();
     let needs = needing(all.iter().filter(|row| row.waits_on_joel).count(), said);
     let working = count("working");
     let works = if working > 0 {
@@ -659,6 +659,21 @@ mod tests {
             found(&rows, "row:agents-top:A:talk:t-A")["depth"],
             json!(2),
             "a step inside its session"
+        );
+    }
+
+    #[test]
+    fn an_orchestrations_row_counts_a_put_off_member_as_it_would_stand() {
+        let mut put_off = row("A", "needs", 1, LIVE);
+        if let Shown::Session(row) = &mut put_off {
+            row.waits_on_joel = false;
+            row.unwanted = Some(Stands::Working);
+        }
+        let rows = top(&[row("O", "working", 0, LIVE), put_off]);
+        assert_eq!(
+            sides(found(&rows, "row:agents-top:O")),
+            ["2 of 2 working", "about $604 in all"],
+            "A's want put off, it needs Joel for nothing and counts working, as Home does"
         );
     }
 
