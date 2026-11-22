@@ -55,6 +55,8 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
         r#"{"name":"yonder","state":"unreachable","measured_at":"2026-11-21T08:32:49Z"},"#,
         r#"{"name":"far","state":"ready","power":{"on_battery":true}},"#,
         r#"{"name":"near","state":"ready","system":"macos","power":{"on_battery":false}},"#,
+        r#"{"name":"lap","state":"ready","power":{"on_battery":false,"charge":80}},"#,
+        r#"{"name":"desk","state":"ready","power":{"on_battery":false,"charge":null}},"#,
         r#"{"name":"odd","state":"starting"}]}}"#,
         "\n",
         r#"{"Ok":{"Builders":[]}}"#,
@@ -77,6 +79,17 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
                 battery: true,
                 heard: None,
                 ..one("near", Reading::Ready, false)
+            },
+            // A laptop on mains, which a lid shut and an unplugging sleep
+            // before its node hears, beside a desktop with no battery.
+            Seen {
+                battery: true,
+                heard: None,
+                ..one("lap", Reading::Ready, false)
+            },
+            Seen {
+                heard: None,
+                ..one("desk", Reading::Ready, false)
             },
             Seen {
                 heard: None,

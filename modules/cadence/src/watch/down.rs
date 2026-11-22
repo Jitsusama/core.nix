@@ -5,10 +5,11 @@
 //! as a finding, once, and again once it's back. On 17 November this machine
 //! powered off by itself and no one heard for minutes; the node knows each
 //! link's state, so the tick reads it rather than wait on another session
-//! to. A machine with no work sleeps as its node lets it, and one on battery
-//! or a Mac sleeps when its lid shuts whatever it holds, so neither is news,
-//! though a laptop shut and then unplugged sleeps before its node hears
-//! the battery, which only a node saying it's going to sleep can tell. With
+//! to. A machine with no work sleeps as its node lets it, and one with a
+//! battery or a Mac may sleep when its lid shuts whatever it holds, so
+//! neither is news: a laptop shut on mains and then unplugged sleeps
+//! before its node hears the battery, and until its node says it's going
+//! to sleep, nothing tells that from a crash. With
 //! none ready, this machine may be the one cut off: unless every network
 //! its node probes for it reads reached, and no two machines down were
 //! last heard within minutes of each other, as a lost link loses every
@@ -70,9 +71,10 @@ pub struct Seen {
     /// Whether a session on it is busy, so its node keeps it awake; none
     /// when the node didn't say which sessions are.
     pub working: Option<bool>,
-    /// Whether a lid shut sleeps it however busy: on battery, or a Mac,
-    /// whose lid sleeps it on any power; for one down, as its node last
-    /// heard.
+    /// Whether a lid shut may sleep it however busy: one with a battery,
+    /// which a lid shut on mains and then unplugged sleeps unheard, or a
+    /// Mac, whose lid sleeps it on any power; for one down, as its node
+    /// last heard.
     pub battery: bool,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
@@ -136,7 +138,9 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
                 realm: realm.to_owned(),
                 reading,
                 working: working.as_ref().map(|busy| busy.contains(name)),
+                // A node gives a charge only for a machine with a battery.
                 battery: machine["power"]["on_battery"].as_bool() == Some(true)
+                    || machine["power"]["charge"].is_u64()
                     || machine["system"] == MAC,
                 heard: machine["measured_at"]
                     .as_str()
