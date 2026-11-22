@@ -230,6 +230,11 @@ fn a_read_while_the_daemon_moves_the_history_is_to_try_again() {
     let _held = crate::daemon::lock(&dir.path().join("state")).expect("the lock is free");
     let read = ran(dir.path(), &["findings"]);
     assert_eq!(read.exit, Exit::TryAgain, "{}", read.stderr);
+    assert!(
+        read.stderr.contains("systemctl --user status spend-watch"),
+        "a lock that lasts wasn't pointed at the daemon: {}",
+        read.stderr
+    );
     assert_eq!(
         History::older(&path),
         Some(9),

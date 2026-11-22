@@ -210,12 +210,16 @@ fn readable(context: &Context, config: &Config) -> Result<History, Failure> {
     };
     let to = crate::history::SCHEMA;
     let _lock = moving(config, shape, to)?;
-    // A wait stderr can't take leaves the move to go on unsaid.
-    let wait = context
-        .wait(&format!(
-            "bringing the history from shape {shape} to {to}, a few minutes on a large one"
-        ))
-        .ok();
+    // Said to a person only: under the JSON forms stderr carries the
+    // error as JSON, which words ahead of it would stop parsing. A wait
+    // stderr can't take leaves the move to go on unsaid.
+    let wait = matches!(context.shared.format, Format::Text)
+        .then(|| {
+            context.wait(&format!(
+                "bringing the history from shape {shape} to {to}, a few minutes on a large one"
+            ))
+        })
+        .and_then(Result::ok);
     let opened = History::open(&path).map_err(unread);
     if let Some(wait) = wait {
         // Said as it ends; a stderr gone meanwhile leaves the answer to
