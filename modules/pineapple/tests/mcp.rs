@@ -581,8 +581,8 @@ fn an_answer_as_an_event_stream_is_read() {
 }
 
 #[test]
-fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down() {
-    for (code, unreadable) in [(200, true), (400, true), (502, false)] {
+fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down_or_busy() {
+    for (code, unreadable) in [(200, true), (400, true), (429, false), (502, false)] {
         let dir = scratch(&format!("not-json-rpc-{code}"));
         let (url, _) = gateway(move |one, _| match one.method.as_str() {
             "initialize" => opened("s1"),
@@ -602,7 +602,7 @@ fn an_answer_that_isnt_json_rpc_is_unreadable_unless_the_gateway_is_down() {
                 matches!(called, Err(Called::Unreachable(_)))
             },
             "a page in a {code} is unreadable, a cause that lasts, unless it's the gateway's \
-             own failing: {called:?}"
+             own failing or a spent rate: {called:?}"
         );
         let _ = fs::remove_dir_all(&dir);
     }

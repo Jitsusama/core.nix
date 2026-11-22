@@ -51,6 +51,9 @@ const NOT_FOUND: u16 = 404;
 const FAILING: u16 = 400;
 const SERVER_FAILING: u16 = 500;
 
+/// HTTP's word for a caller that has asked too often, which passes.
+const TOO_MANY: u16 = 429;
+
 /// HTTP's redirects, which are never followed, since one would carry the
 /// sign-in wherever it pointed.
 const REDIRECTS: std::ops::Range<u16> = 300..400;
@@ -291,8 +294,9 @@ impl Gateway {
             })?;
             Some(answered(&text, self.asked).ok_or_else(|| {
                 let why = format!("the gateway answered {status}, not JSON-RPC");
-                // A gateway that's down says so in its own page, and passes.
-                if status >= SERVER_FAILING {
+                // A gateway that's down or busy says so in its own page,
+                // and passes, as a spent rate does in deaf.rs.
+                if status >= SERVER_FAILING || status == TOO_MANY {
                     Called::Unreachable(why)
                 } else {
                     Called::Unreadable(why)
