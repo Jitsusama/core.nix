@@ -55,7 +55,7 @@ CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # at what the page asks for now, on purpose: each module is one more file a first visit waits
 # on, so splitting one out raises this as a choice rather than slipping past it. The kit's
 # cell.ts is the 23rd, the one way every site names a cell.
-BUDGET = Budget(files=23, kilobytes=532, elements=255)
+BUDGET = Budget(files=23, kilobytes=520, elements=255)
 
 
 @pytest.fixture

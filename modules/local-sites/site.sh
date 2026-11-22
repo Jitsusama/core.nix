@@ -28,10 +28,7 @@ cd "${work}/modules/${name}/site"
 if [[ -d tests ]]; then
   "${node}" --test --test-reporter=spec tests/*.test.ts
 fi
-# The comments stay in the tree for whoever reads it; the browser has no
-# use for them, and every visit would be sent them.
-"${tsc}" -p tsconfig.json --noEmit false --removeComments --rootDir ../.. \
-  --outDir "${work}/emitted"
+"${tsc}" -p tsconfig.json --noEmit false --rootDir ../.. --outDir "${work}/emitted"
 
 mkdir -p "${out}"
 cp "${work}/emitted/${name}/site/"*.js "${out}/"
