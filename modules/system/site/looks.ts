@@ -15,6 +15,9 @@ const LOOKS_LISTED = 8;
 // look, since nothing it holds can be told.
 const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch: 2, good: 3 };
 
+/** The item a side ends with when it had more than it lists, as the daemon says it. */
+const MORE = /^and \d+ more worth a look$/u;
+
 /** One thing worth a look: how bad, whose it is, what it is and where it leads. */
 interface Look {
   readonly health: Health;
@@ -65,17 +68,28 @@ function siteOf(part: Part): string {
  * The machines' looks: each machine's side, a look a word, or why the
  * machines couldn't be read. A machine drawn whole on the page leads to its
  * section, its position among them told by `drawn`; one past those leads
- * to the map. With no machine's own, the part's side, as when the machines
- * were read from their owner's last answer, which says so there.
+ * to the map. Then the part's own, such as the note it says when the
+ * machines were read from their owner's last answer.
  */
 function machineLooks(part: Part, drawn: number): readonly Look[] {
   if (part.health === "unread") {
     return [lookOf(part, "unread", `Couldn't be read: ${part.says}`, "unread")];
   }
-  const looks = thingLooks(part, drawn);
-  return looks.length > 0
-    ? looks
-    : keyed(part.side).map(({ words, key }) => lookOf(part, part.health, words, key));
+  return [...thingLooks(part, drawn), ...ownLooks(part)];
+}
+
+/**
+ * What the machines part says worth a look that no machine does. Its side
+ * names each machine worth a look, "kestrel on battery at 9%", then how many
+ * more; those are left to the machines' own looks, which also clear first
+ * when a machine's record changes before the part's.
+ */
+function ownLooks(part: Part): readonly Look[] {
+  const machines = part.things.map((thing) => `${thing.name} `);
+  const own = part.side.filter(
+    (words) => !(MORE.test(words) || machines.some((name) => words.startsWith(name))),
+  );
+  return keyed(own).map(({ words, key }) => lookOf(part, part.health, words, key));
 }
 
 /** Each machine's side, a look a word, leading to its section or the map. */
