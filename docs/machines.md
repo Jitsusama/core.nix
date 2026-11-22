@@ -185,11 +185,11 @@ jitsusama.update-to-main.refuseWhile = [
 ];
 ```
 
-One with `refusesTheAskAlone` is asked only of the follower's ask, once
-main has something to build and before it's built, so an ask for what the
-machine runs is answered unchanged. It's never asked before the switch,
-since by then a load it reads is the build's own; a person's own ask
-builds anyway. With
+One with `refusesTheAskAlone` is asked only as the follower's ask comes,
+before anything is fetched, never before the switch, since by then a load
+it reads is the build's own; a person's own ask builds anyway. The
+follower asks again soon after such a refusal only when the heads it
+looked at aren't the ones the machine runs. With
 `refusesAtMost` it refuses that many seconds of asks at most, then lets
 one through, so a command that can never tell doesn't refuse the update
 that would mend it. A Mac refuses this way while `nix-offload busy` says

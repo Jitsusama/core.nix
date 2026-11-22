@@ -67,3 +67,14 @@ pub fn stamp() -> String {
         .map_or(0, |since| since.as_secs());
     terminal_kit::time::rfc3339(i64::try_from(now).unwrap_or(i64::MAX))
 }
+
+/// `line` as the log should have it: stamped on a Mac, and as it is
+/// elsewhere, where the journal keeps the time and its readers, such as
+/// cadence's and merge-net's, read the line as it comes.
+pub fn stamped(line: &str) -> String {
+    if cfg!(target_os = "macos") {
+        format!("{} {line}", stamp())
+    } else {
+        line.to_owned()
+    }
+}

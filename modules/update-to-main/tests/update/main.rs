@@ -3842,17 +3842,17 @@ fn refuse_during_calls(world: &mut World) {
     }];
 }
 
-/// The machine is over its room while the world's `call` file is there,
+/// The machine is over its load while the world's `call` file is there,
 /// which a build makes while `call-starts` is: refusing the ask alone, and
 /// for `at_most` seconds of asks if given.
-fn over_its_room(world: &mut World, at_most: Option<u64>) {
+fn over_its_load(world: &mut World, at_most: Option<u64>) {
     world.config.refuse_while = vec![Busy {
         command: vec![
             shell(),
             "-c".to_owned(),
             format!("test -e {}/call", world.root.display()),
         ],
-        why: "the machine is over its room".to_owned(),
+        why: "the machine is over its load".to_owned(),
         follower_waits: false,
         follower_waits_at_most: None,
         every_ask_waits: false,
@@ -3867,7 +3867,7 @@ fn over_its_room(world: &mut World, at_most: Option<u64>) {
 #[test]
 fn a_check_refusing_the_ask_alone_holds_no_switch() {
     let mut world = World::new();
-    over_its_room(&mut world, None);
+    over_its_load(&mut world, None);
     fs::write(world.root.join("call-starts"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
@@ -3879,60 +3879,28 @@ fn a_check_refusing_the_ask_alone_holds_no_switch() {
     let next = world.signed("two");
     world.system(&next);
     let Line::Refused { why, .. } = world.asked_by(&|| true).1 else {
-        panic!("an ask while over its room should be refused")
+        panic!("an ask while over its load should be refused")
     };
-    assert_eq!(why, "the machine is over its room");
+    assert_eq!(why, "the machine is over its load");
 }
 
-/// A busy check that refuses the ask alone spares a build, so an ask for
-/// what the machine already runs is answered unchanged though it's busy:
-/// on 21 November a Mac over its load refused 26 asks in half an hour for
-/// the head it already ran, and its log read as if one waited.
-#[test]
-fn an_ask_for_what_the_machine_runs_is_unchanged_though_it_is_busy() {
-    let mut world = World::new();
-    over_its_room(&mut world, None);
-    let head = world.signed("one");
-    world.system(&head);
-    assert_eq!(world.asked_by(&|| true).1, done(&head));
-    fs::write(world.root.join("call"), "").unwrap();
-    let ending = world.asked_by(&|| true).1;
-    assert!(
-        matches!(&ending, Line::Unchanged { commit, .. } if *commit == head),
-        "an ask for what runs was refused for a build it needn't make: {ending:?}"
-    );
-    let next = world.signed("two");
-    world.system(&next);
-    let (told, ending) = world.asked_by(&|| true);
-    assert!(
-        matches!(ending, Line::Refused { .. }),
-        "an ask with something to build while busy should be refused"
-    );
-    assert!(
-        !told
-            .iter()
-            .any(|line| matches!(line, Line::Building { .. })),
-        "a refused ask shouldn't build"
-    );
-}
-
-/// A person's ask builds though the machine is over its room, since the
+/// A person's ask builds though the machine is over its load, since the
 /// build is theirs to choose, and may be the one that mends the check.
 #[test]
-fn a_person_s_ask_builds_though_the_machine_is_over_its_room() {
+fn a_person_s_ask_builds_though_the_machine_is_over_its_load() {
     let mut world = World::new();
-    over_its_room(&mut world, None);
+    over_its_load(&mut world, None);
     fs::write(world.root.join("call"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
     assert!(
         matches!(world.asked_by(&|| true).1, Line::Refused { .. }),
-        "the follower's ask over its room should be refused"
+        "the follower's ask over its load should be refused"
     );
     assert_eq!(
         world.update().1,
         done(&head),
-        "a person's ask should build though over its room"
+        "a person's ask should build though over its load"
     );
 }
 
@@ -3942,7 +3910,7 @@ fn a_person_s_ask_builds_though_the_machine_is_over_its_room() {
 fn a_check_refusing_the_ask_alone_refuses_no_granted_switch() {
     let mut world = World::new();
     hold_the_daemon(&mut world, "old");
-    over_its_room(&mut world, None);
+    over_its_load(&mut world, None);
     let one = world.signed("one");
     let waited = world.system(&one);
     daemon_unit(&waited, "new");
@@ -3967,7 +3935,7 @@ fn a_check_refusing_the_ask_alone_refuses_no_granted_switch() {
 #[test]
 fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
     let mut world = World::new();
-    over_its_room(&mut world, Some(HOUR));
+    over_its_load(&mut world, Some(HOUR));
     fs::write(world.root.join("call"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
@@ -3977,12 +3945,10 @@ fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
         let Line::Refused { why, .. } = ending else {
             panic!("ask {ask} within the most it may refuse should be refused")
         };
-        assert_eq!(why, "the machine is over its room");
+        assert_eq!(why, "the machine is over its load");
         assert!(
-            !told
-                .iter()
-                .any(|line| matches!(line, Line::Building { .. })),
-            "a refused ask shouldn't build"
+            !told.contains(&Line::Fetching),
+            "a refused ask shouldn't fetch"
         );
         let (began, _) = kept_refusals(&world);
         assert_eq!(
@@ -4014,7 +3980,7 @@ fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
         "the count should start again once an ask went ahead"
     );
     let mut never = World::new();
-    over_its_room(&mut never, None);
+    over_its_load(&mut never, None);
     fs::write(never.root.join("call"), "").unwrap();
     let head = never.signed("one");
     never.system(&head);
@@ -4026,20 +3992,23 @@ fn a_check_refusing_for_at_most_a_while_lets_an_ask_through_after() {
     }
 }
 
-/// A stretch of refusals ends once an ask finds room, or once none came
+/// A stretch of refusals ends once an ask finds the machine under its load, or once none came
 /// for half an hour, as through a call or a sleep, so a refusal hours old
 /// lets no new busy spell through at once.
 #[test]
-fn a_stretch_of_refusals_ends_with_room_or_a_long_gap() {
+fn a_stretch_of_refusals_ends_under_its_load_or_after_a_long_gap() {
     let mut world = World::new();
-    over_its_room(&mut world, Some(HOUR));
+    over_its_load(&mut world, Some(HOUR));
     fs::write(world.root.join("call"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
     refused_since(&world, now() - 2 * HOUR, now() - 60);
     fs::remove_file(world.root.join("call")).unwrap();
     assert_eq!(world.asked_by(&|| true).1, done(&head));
-    assert!(!refusals(&world).exists(), "room should end the stretch");
+    assert!(
+        !refusals(&world).exists(),
+        "an ask under its load should end the stretch"
+    );
     let next = world.signed("two");
     world.system(&next);
     fs::write(world.root.join("call"), "").unwrap();
@@ -4058,7 +4027,7 @@ fn a_stretch_of_refusals_ends_with_room_or_a_long_gap() {
 #[test]
 fn a_refusal_record_it_cant_trust_or_keep_refuses_nothing_for_good() {
     let mut world = World::new();
-    over_its_room(&mut world, Some(HOUR));
+    over_its_load(&mut world, Some(HOUR));
     fs::write(world.root.join("call"), "").unwrap();
     let head = world.signed("one");
     world.system(&head);
@@ -4099,6 +4068,11 @@ const HOUR: u64 = 60 * 60;
 /// follower stamp their lines with the time now, in UTC.
 #[test]
 fn a_log_stamp_is_the_time_now_in_utc() {
+    assert_eq!(
+        terminal_kit::time::rfc3339(0),
+        "1970-01-01T00:00:00Z",
+        "the stamp's time isn't said in UTC, as RFC 3339 says it"
+    );
     let before = now();
     let stamp = update_to_main::stamp();
     let after = now();
@@ -4108,6 +4082,25 @@ fn a_log_stamp_is_the_time_now_in_utc() {
     );
 }
 
+/// Only a Mac's lines are stamped: the journal keeps the time, and its
+/// readers read a line as it comes.
+#[test]
+fn only_a_mac_stamps_its_log_lines() {
+    let line = update_to_main::stamped("{\"step\":\"done\"}");
+    if cfg!(target_os = "macos") {
+        let (stamp, rest) = line.split_once(' ').expect("a Mac's line wasn't stamped");
+        assert!(
+            stamp.len() == 20 && stamp.ends_with('Z') && rest == "{\"step\":\"done\"}",
+            "a Mac's line wasn't the time in UTC and then the line: {line}"
+        );
+    } else {
+        assert_eq!(
+            line, "{\"step\":\"done\"}",
+            "a line the journal keeps was stamped"
+        );
+    }
+}
+
 fn now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -4115,15 +4108,15 @@ fn now() -> u64 {
         .as_secs()
 }
 
-/// Where the room check keeps its stretch of refusals.
+/// Where the load check keeps its stretch of refusals.
 fn refusals(world: &World) -> PathBuf {
     world
         .config
         .state
-        .join("refused-since-the-machine-is-over-its-room")
+        .join("refused-since-the-machine-is-over-its-load")
 }
 
-/// Records a stretch of the room check's refusals, from `began` to `last`.
+/// Records a stretch of the load check's refusals, from `began` to `last`.
 fn refused_since(world: &World, began: u64, last: u64) {
     fs::write(refusals(world), format!("{began} {last}\n")).unwrap();
 }

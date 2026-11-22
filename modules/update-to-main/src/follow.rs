@@ -137,6 +137,11 @@ pub struct Follower {
     dropped: u32,
     /// Whether the last ask was refused for being busy.
     busy: bool,
+    /// The heads its last ask that ended done or unchanged was made at,
+    /// which the machine runs. A busy refusal there isn't asked again
+    /// each minute, since there's nothing to build: on 21 November a Mac
+    /// over its load refused 26 asks in half an hour for what it ran.
+    current: Option<Followed>,
     /// When the machine last switched, for an ask of its own or as its
     /// system profile says.
     switched: Option<Instant>,
@@ -214,7 +219,10 @@ impl Follower {
         {
             return now.duration_since(*when) >= *wait;
         }
-        self.last.as_ref() != Some(heads) || since >= every || (self.busy && since >= BUSY_AGAIN)
+        let behind = self.current.as_ref() != Some(heads);
+        self.last.as_ref() != Some(heads)
+            || since >= every
+            || (self.busy && behind && since >= BUSY_AGAIN)
     }
 
     /// Why the machine can't update, once each time it stops being able
@@ -241,6 +249,7 @@ impl Follower {
         }
         match ending {
             Line::Done { .. } | Line::Unchanged { .. } => {
+                self.current = Some(heads);
                 self.failed = None;
                 self.dropped = 0;
                 self.telling.went_through();
@@ -644,6 +653,41 @@ pub(crate) mod tests {
         assert_eq!(f.asked(at("a"), &refused("a call is on"), "", t), None);
         assert!(!f.should_ask(&at("a"), "", t + LOOK_EVERY, EVERY));
         assert!(f.should_ask(&at("a"), "", t + BUSY_AGAIN, EVERY));
+    }
+
+    #[test]
+    fn a_busy_machine_running_the_heads_isnt_asked_again_soon() {
+        let mut f = Follower::default();
+        let t = Instant::now();
+        f.asked(at("a"), &done(), "", t);
+        f.asked(
+            at("a"),
+            &refused("the machine is over its load"),
+            "",
+            t + EVERY,
+        );
+        assert!(
+            !f.should_ask(&at("a"), "", t + EVERY + BUSY_AGAIN, EVERY),
+            "a busy machine was asked again each minute for the heads it runs"
+        );
+        assert!(
+            f.should_ask(&at("a"), "", t + 2 * EVERY, EVERY),
+            "a busy machine running the heads wasn't asked every so often"
+        );
+        assert!(
+            f.should_ask(&at("b"), "", t + EVERY + LOOK_EVERY, EVERY),
+            "a head that moved wasn't asked for"
+        );
+        f.asked(
+            at("b"),
+            &refused("the machine is over its load"),
+            "",
+            t + EVERY + LOOK_EVERY,
+        );
+        assert!(
+            f.should_ask(&at("b"), "", t + EVERY + LOOK_EVERY + BUSY_AGAIN, EVERY),
+            "a busy machine with a new head to build wasn't asked again soon"
+        );
     }
 
     #[test]

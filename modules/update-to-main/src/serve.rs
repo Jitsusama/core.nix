@@ -20,7 +20,7 @@
 use crate::config::Config;
 use crate::follows::Followed;
 use crate::line::{Applied, Line};
-use crate::{git, held, run, stamp, update};
+use crate::{git, held, run, stamped, update};
 use std::ffi::CString;
 use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Write};
@@ -452,7 +452,7 @@ fn run(config: &Config, heard: &Answer) {
     run::ended();
     // Stamped, since a Mac's log has no time of its own: on 21 November
     // 26 refusals in half an hour could be counted but not timed.
-    eprintln!("{} {}", stamp(), ending.json());
+    eprintln!("{}", stamped(&ending.json()));
     let _ = fs::remove_file(&config.running);
     // Kept before the askers hear it, so one that reads the file after the
     // ending finds it there. Not keeping it costs only the node's word.
