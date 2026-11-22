@@ -185,15 +185,17 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     )
 
 
+# What the network part says it was read from: net's last answer, as the
+# daemon carries it on the part on its own as well as in its side.
+KEPT_NOTE = "As read at 11:54; just now net --json gave no answer in 20 s"
 # What system.json's sides come to, worst first: whose each is, then what.
 LOOKED_AT = [
     ("kestrel", "Booted 3 hours ago after a firmware error"),
     ("osprey", "Code wants a look"),
     ("Mycelium", "4 sessions say they run with their processes gone"),
     ("Network", "The attic's radio is busy 53% of the time"),
-    # Read from net's last answer: the note the part carries on its own as
-    # well, listed as good beneath the part's watch.
-    ("Network", "As read at 11:54; just now net --json gave no answer in 20 s"),
+    # Listed as good beneath the part's watch, since it says no fault.
+    ("Network", KEPT_NOTE),
 ]
 # The network's side ends with how many more it holds, which the list counts
 # rather than listing as a look of its own. The summary's side says 3, so a
@@ -218,6 +220,8 @@ def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: S
     whose = system_page.locator("#looks .whose").all_inner_texts()
     words = system_page.locator("#looks .words").all_inner_texts()
     assert list(zip(whose, words, strict=True)) == LOOKED_AT, "the looks weren't listed in turn"
+    kept = system_page.locator("#looks a.look", has_text=KEPT_NOTE)
+    expect(kept, "the kept note wasn't listed as good").to_have_attribute("data-health", "good")
     expect(system_page.locator("#looks .more"), "the list didn't count a side's more").to_have_text(
         MORE_LOOKS
     )
