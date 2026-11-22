@@ -4447,12 +4447,6 @@
     the kind for the head, and Tab offers only the kinds and sources that would keep something,
     each with how many, its name as the head says it, and its kind's, source's or program's mark
   '';
-  the-launcher-weighs-what-it-owes = ''
-    the launcher counts the shell's holders once, only after the census, then weighs what
-    letting go of each of the six largest by that count would free, one a turn, leaving out names
-    folded under a tilde; a closing resumes a count or weighing put off, and a busy answer keeps
-    what it owes for the next turn rather than dropping it
-  '';
   an-act-shows-before-its-daemon-answers = ''
     a row an act asked a daemon to change is drawn as it will be, keeping what the launcher made
     of it, until its source's row reads the same; one to go is left out until it's gone; a hold
