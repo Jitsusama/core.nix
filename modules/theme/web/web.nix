@@ -377,8 +377,13 @@ pkgs.runCommandLocal "web-kit"
     # (modules/local-sites/site.sh does the same for each site's sheets).
     # theme.css keeps its few, since the sites' home reads its grounds out
     # of it as it is written.
-    ${lib.getExe pkgs.esbuild} --log-level=warning ${./base.css} > $out/base.css 2> said
-    if [ -s said ]; then cat said >&2; exit 1; fi
+    if ! ${lib.getExe pkgs.esbuild} --log-level=warning ${./base.css} > $out/base.css 2> said \
+      || [ -s said ]; then
+      echo "base.css: esbuild wouldn't write it again cleanly" >&2; cat said >&2; exit 1
+    fi
+    if grep -q '/\*' $out/base.css; then
+      echo "base.css: a comment is still in it once written again" >&2; exit 1
+    fi
     ${lib.concatStrings (
       lib.mapAttrsToList (file: font: ''
         ${python}/bin/python3 ${./fonts.py} ${lib.escapeShellArg font.source} $out/fonts/${file} \

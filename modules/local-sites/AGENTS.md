@@ -47,11 +47,15 @@ What holds it together:
 - **A file is answered by its tag.** The server sends an ETag with every
   file and answers a browser that already holds it with a 304, so a
   second visit sends no body again.
-- **A browser is sent no comments.** The kit's tsconfig drops them from
-  every site's TypeScript; [`site.sh`][sitesh] sends a script written by
-  hand through the same compiler and each sheet through esbuild,
-  unminified, so rules and declarations keep their order; the theme's
-  `web.nix` does the same for `base.css`. The comments stay in the tree.
+- **No script or sheet a site builds is sent with its comments.** The
+  kit's tsconfig drops them from every site's TypeScript;
+  [`site.sh`][sitesh] sends a script written by hand through the same
+  compiler and each sheet through esbuild, unminified, so rules and
+  declarations keep their order; the kit's `switch.css` and the theme's
+  `base.css` go the same way. The comments stay in the tree. Still sent
+  with theirs: `theme.css`, which the home reads as it is written, the
+  home's own `strip.css` and `home.css`, which home.py copies, and the
+  pages' few HTML comments, the strip's markers among them.
 - **A live page with a reads-live test holds a budget**: today all six,
   the system page, the map, murmurs, Code, the network and forage. The
   test runs in headless Chromium through the real

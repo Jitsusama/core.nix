@@ -69,13 +69,22 @@ fi
 # The styles go through a CSS compiler for the same reason. esbuild,
 # unminified, writes each sheet again with its rules and declarations in
 # their order, where a minifier reorders and merges them; what else it
-# changes reads the same, as quotes it drops round a selector's value. A
-# warning fails the build rather than scrolling by unread.
+# changes reads the same, as quotes it drops round a selector's value.
+# That was read sheet by sheet on esbuild 0.27, and is worth reading again
+# when nixpkgs brings a printer that may do more. A warning fails the build
+# as an error does, saying which sheet and why, rather than scrolling by
+# unread; and a comment esbuild keeps, as one marked to stay, fails it too,
+# since the budgets count on there being none.
 for sheet in "${out}"/*.css; do
   [[ -f ${sheet} ]] || continue
-  "${esbuild}" --log-level=warning "${sheet}" > "${work}/sheet.css" 2> "${work}/said"
-  if [[ -s "${work}/said" ]]; then
+  if ! "${esbuild}" --log-level=warning "${sheet}" > "${work}/sheet.css" 2> "${work}/said" \
+    || [[ -s "${work}/said" ]]; then
+    echo "${sheet##*/}: esbuild wouldn't write it again cleanly" >&2
     cat "${work}/said" >&2
+    exit 1
+  fi
+  if grep -q '/\*' "${work}/sheet.css"; then
+    echo "${sheet##*/}: a comment is still in it once written again" >&2
     exit 1
   fi
   mv "${work}/sheet.css" "${sheet}"

@@ -29,8 +29,13 @@ let
     ${tsc} -p tsconfig.json
     ${node} --test --test-reporter=spec tests/*.test.ts
     ${tsc} -p tsconfig.json --noEmit false --outDir $out/kit
-    ${esbuild} --log-level=warning switch.css > $out/kit/switch.css 2> said
-    if [ -s said ]; then cat said >&2; exit 1; fi
+    if ! ${esbuild} --log-level=warning switch.css > $out/kit/switch.css 2> said \
+      || [ -s said ]; then
+      echo "switch.css: esbuild wouldn't write it again cleanly" >&2; cat said >&2; exit 1
+    fi
+    if grep -q '/\*' $out/kit/switch.css; then
+      echo "switch.css: a comment is still in it once written again" >&2; exit 1
+    fi
   '';
 in
 {

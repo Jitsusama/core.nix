@@ -34,16 +34,17 @@ which leaves this note behind.
 | `tests/`       | the making of the map from the records, and the page, tried |
 
 `view.js`, `index.html` and `site.css` are the drawing as it was written
-by hand, served unchanged but for view.js's comments, which the build
-drops as it does the TypeScript's, and its seams: site.ts hands it each reading,
-layout.ts says where everything stands, canvas.ts what the ground layer
-touches and says, shape.ts when a reading draws the whole map again,
-keys.ts what each key it hears asks, outline.ts which rows the tree shows
-and where its keys go, words.ts what each thing is in words, when.ts how a
-time is said, health.ts how each thing stands, doing.ts what each is
-doing, spend.ts what each spent, waits.ts what waits and what holds,
-sprout.ts what new work hands the Launcher, lines.ts how wide a line is
-drawn and motion.ts how the map's motion is timed, so those decisions are
+by hand, served unchanged but for the script's and the sheet's comments,
+which the build drops as it does the TypeScript's (site.sh), and its
+seams: site.ts hands it each reading, layout.ts says where everything
+stands, canvas.ts what the ground layer touches and says, shape.ts when
+a reading draws the whole map again, keys.ts what each key it hears asks,
+outline.ts which rows the tree shows and where its keys go, words.ts what
+each thing is in words, when.ts how a time is said, health.ts how each
+thing stands, doing.ts what each is doing, spend.ts what each spent,
+waits.ts what waits and what holds, sprout.ts what new work hands the
+Launcher, lines.ts how wide a line is drawn and motion.ts how the map's
+motion is timed, so those decisions are
 typed and unit-tested while the drawing carries them out. They come under
 the linters as the drawing is rewritten in TypeScript on the kit, and
 until then `treefmt.nix` names them as kept out.

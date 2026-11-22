@@ -43,6 +43,12 @@ grep -qF "${shared}" "${page}" || {
   echo "the site carries a kit/ of its own" >&2
   exit 1
 }
+for sheet in "${built}"/*.css; do
+  if grep -q '/\*' "${sheet}"; then
+    echo "${sheet##*/} is sent with a comment" >&2
+    exit 1
+  fi
+done
 
 # What every build below is handed but the site.
 build_with=("${build}" "${tsc}" "${node}" "${esbuild}" "${kit}")
@@ -88,3 +94,13 @@ copied "${work}/themeless"
 sed -i '\|href="../local-sites/web/theme.css"|d' "${work}/themeless/index.html"
 refused "${work}/themeless" "index.html doesn't read the theme from the sites' one copy" \
   "a page reading no theme"
+
+# A sheet esbuild warns on, or can't read, is refused, saying which, and a
+# comment it keeps because it's marked to stay is refused too.
+copied "${work}/unclosed"
+echo "a { color: red" >>"${work}/unclosed/site.css"
+refused "${work}/unclosed" "site.css: esbuild wouldn't write it again cleanly" \
+  "a sheet esbuild warns on"
+copied "${work}/marked"
+echo "/*! kept */ a { color: red; }" >>"${work}/marked/site.css"
+refused "${work}/marked" "site.css: a comment is still in it" "a sheet keeping a comment"
