@@ -899,6 +899,10 @@ pub struct Setter {
     pieces: Pieces,
     width: Width,
     title: String,
+    /// The words it last set, hashed, and whether they had changed from
+    /// the set before.
+    words: Option<u64>,
+    edited: bool,
 }
 
 impl Setter {
@@ -909,7 +913,15 @@ impl Setter {
             pieces: Pieces::new(),
             width: Width::whole(),
             title: String::new(),
+            words: None,
+            edited: false,
         }
+    }
+
+    /// Whether the file's words, at its last set, had changed since the
+    /// set before, of the same file.
+    pub fn edited(&self) -> bool {
+        self.edited
     }
 
     /// Sets the page at another width from now on, for a window resized.
@@ -921,6 +933,7 @@ impl Setter {
     /// a link followed costs no fonts read again.
     pub fn open(&mut self, file: &str) {
         file.clone_into(&mut self.file);
+        self.words = None;
     }
 
     /// The file it sets.
@@ -938,6 +951,11 @@ impl Setter {
         let start = Instant::now();
         let markdown =
             std::fs::read_to_string(&self.file).map_err(|e| format!("{}: {e}", self.file))?;
+        let mut words = std::hash::DefaultHasher::new();
+        std::hash::Hash::hash(&markdown, &mut words);
+        let words = std::hash::Hasher::finish(&words);
+        self.edited = self.words.is_some_and(|was| was != words);
+        self.words = Some(words);
         let path = std::path::Path::new(&self.file);
         self.title = crate::title::of(path, &markdown);
         let base = path.parent().map(|dir| {

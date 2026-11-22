@@ -9,6 +9,9 @@
 //! the heading it sits under, how far down the page it is, and when it was
 //! left. The launcher lists them (`listed`, which `reader --places` prints)
 //! for the reader's Recent, so nothing there sets a page to say where.
+//!
+//! Long because a mark kept across widths, saves and closes is decided
+//! here in pure functions its tests reach, apart from the window.
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -501,6 +504,60 @@ pub fn as_read(landed: &[Landed], letter: char, pt: f64) -> Option<&Mark> {
         .iter()
         .find(|one| one.kept.letter == letter && (one.pt - pt).abs() < 0.01)
         .map(|one| &one.kept)
+}
+
+/// Takes the kept marks whose blocks the page starting at `starts` has,
+/// `whole` when no block past them comes, into `marks`, each kept as read
+/// in `landed`; the others wait in `kept`. A mark set while it waited is
+/// his, and beats it. One kept before its block's height was would land
+/// unscaled at every width, so it takes the height its block has here,
+/// where its distance is read as it was, once that's known.
+pub fn take_kept(
+    kept: &mut Vec<Mark>,
+    marks: &mut HashMap<char, f64>,
+    landed: &mut Vec<Landed>,
+    starts: &[(usize, f64)],
+    whole: bool,
+) {
+    kept.retain(|one| {
+        let Some(pt) = mark_at(starts, whole, one.block, one.into_pt, one.block_pt) else {
+            return true;
+        };
+        if let std::collections::hash_map::Entry::Vacant(mark) = marks.entry(one.letter) {
+            mark.insert(pt);
+            let block_pt = one.block_pt.or_else(|| height_of(starts, one.block));
+            landed.push(Landed {
+                kept: Mark {
+                    block_pt,
+                    ..one.clone()
+                },
+                pt,
+                on_line: false,
+            });
+        }
+        false
+    });
+}
+
+/// Moves `marks` for the page set again, its blocks starting at `after`:
+/// a kept mark where it landed lands again from what was kept, and the
+/// others go as `moved` takes them. An `edited` file may have renumbered
+/// the blocks under a kept mark, so where it stands then is his, no
+/// longer the kept one's.
+pub fn set_again(
+    landed: &mut Vec<Landed>,
+    marks: &mut HashMap<char, f64>,
+    after: &[(usize, f64)],
+    edited: bool,
+    moved: impl Fn(f64) -> f64,
+) {
+    if edited {
+        landed.clear();
+    }
+    let again: HashMap<char, f64> = landed_again(landed, marks, after).into_iter().collect();
+    for (letter, pt) in marks.iter_mut() {
+        *pt = again.get(letter).copied().unwrap_or_else(|| moved(*pt));
+    }
 }
 
 /// The state home, where places are kept.

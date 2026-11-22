@@ -9,7 +9,6 @@ use crate::theme::PT_A_PX;
 use crate::{
     App, anchor, kept_marks, keys_logged, links, moves, page, place, showing, start, text,
 };
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Range;
 use std::time::Instant;
@@ -29,7 +28,7 @@ impl App {
     /// the view's top words are on it.
     /// A page the reloader set: the file shown, saved, or the file being
     /// opened in its place. One of a file no longer wanted is let go.
-    pub(crate) fn saved(&mut self, (file, set): Reset) {
+    pub(crate) fn saved(&mut self, (file, edited, set): Reset) {
         let file = std::path::PathBuf::from(file);
         let opens = match &self.following {
             Some(following) if following.file == file => true,
@@ -83,6 +82,7 @@ impl App {
             set_ms: ms,
             opens: opens.then_some(file),
             title,
+            edited,
         });
         self.ask_incoming();
     }
@@ -202,37 +202,36 @@ impl App {
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
         // Set again at another width, the page's blocks have moved, so each
-        // mark moves with the block it was in. A save keeps them where they
-        // were, as the words below them may have changed.
+        // mark, and the cursor's line, goes as far through its block from
+        // the line it's on. Set again at the same width, saved or with its
+        // pictures come, they stay where they were, as the words below them
+        // may have changed. A kept mark where it landed lands again from
+        // what was kept either way, unless the file was edited.
         let reflowed = incoming.opens.is_none()
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
         let before = reflowed.then(|| place::starts(&self.painter.page().frame));
         self.painter.take(incoming.page, incoming.version);
-        if let Some(before) = before {
+        if incoming.opens.is_none() && (reflowed || !self.landed.is_empty()) {
             let after = place::starts(&self.painter.page().frame);
             let was = self.words.as_deref().unwrap_or(&[]);
             let now: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
-            // A kept mark where it landed lands again from what was kept;
-            // the others, and the cursor's line, go as far through their
-            // block from the line they're on.
-            let again: HashMap<char, f64> =
-                place::landed_again(&mut self.landed, &self.marks, &after)
-                    .into_iter()
-                    .collect();
-            let moved = |pt: f64| {
-                let line = moves::line_topped(was, pt);
-                place::moved(&before, &after, line, &now).unwrap_or(pt)
+            let moved = |pt: f64| match &before {
+                Some(before) => {
+                    let line = moves::line_topped(was, pt);
+                    place::moved(before, &after, line, &now).unwrap_or(pt)
+                }
+                None => pt,
             };
-            for (letter, pt) in &mut self.marks {
-                *pt = again.get(letter).copied().unwrap_or_else(|| moved(*pt));
-            }
+            place::set_again(
+                &mut self.landed,
+                &mut self.marks,
+                &after,
+                incoming.edited,
+                &moved,
+            );
             if let Some(pt) = self.aim.as_mut() {
                 *pt = moved(*pt);
             }
-        } else if incoming.opens.is_none() {
-            // A save may have moved the blocks under a kept mark, so where
-            // it stands now is his, no longer the kept one's.
-            self.landed.clear();
         }
         self.offset = incoming.offset;
         self.clamp();
@@ -324,30 +323,23 @@ impl App {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
-        let (marks, landed) = (&mut self.marks, &mut self.landed);
-        self.kept_marks.retain(|kept| {
-            match place::mark_at(&starts, whole, kept.block, kept.into_pt, kept.block_pt) {
-                Some(pt) => {
-                    // A mark set while it waited is his, and beats it.
-                    if let Entry::Vacant(mark) = marks.entry(kept.letter) {
-                        mark.insert(pt);
-                        landed.push(place::Landed {
-                            kept: kept.clone(),
-                            pt,
-                            on_line: false,
-                        });
-                    }
-                    false
-                }
-                None => true,
-            }
-        });
+        place::take_kept(
+            &mut self.kept_marks,
+            &mut self.marks,
+            &mut self.landed,
+            &starts,
+            whole,
+        );
         self.marks_on_lines();
     }
 
     /// Puts each kept mark landed as far through its block on the line of
     /// that block nearest it, once the page's lines are read.
     pub(crate) fn marks_on_lines(&mut self) {
+        // Most often none waits, and the page's blocks needn't be walked.
+        if self.landed.iter().all(|one| one.on_line) {
+            return;
+        }
         let Some(lines) = self.words.as_deref() else {
             return;
         };

@@ -1,7 +1,7 @@
 use super::{
     Block, Landed, Mark, Opens, Place, Said, as_read, at, heading_of, keep_window_in, kept_at,
     landed_again, letter, line_in, listed_in, mark, mark_at, moved, on_lines, opening, pt_of,
-    read_in, still_waiting, through, window_in, write_in,
+    read_in, set_again, still_waiting, take_kept, through, window_in, write_in,
 };
 use std::collections::HashMap;
 
@@ -529,6 +529,83 @@ fn a_kept_mark_goes_on_a_line_of_its_block_and_is_kept_as_read_until_he_moves_it
         vec![('a', 160.0)],
         "c, moved since, is his, and moves with its own line"
     );
+}
+
+#[test]
+fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks() {
+    let kept = |letter, block, into_pt, block_pt| Mark {
+        letter,
+        block,
+        into_pt,
+        block_pt,
+        said: Said::default(),
+    };
+    // The first screen's page, ending on block 2, whose height isn't known.
+    let starts = [(0, 36.0), (1, 120.0), (2, 200.0)];
+    let mut waiting = vec![
+        kept('a', 1, 40.0, Some(80.0)),
+        kept('b', 1, 20.0, None),
+        kept('c', 2, 10.0, None),
+        kept('d', 2, 10.0, Some(50.0)),
+        kept('e', 1, 0.0, Some(80.0)),
+    ];
+    let mut marks = HashMap::from([('e', 999.0)]);
+    let mut landed = Vec::new();
+    take_kept(&mut waiting, &mut marks, &mut landed, &starts, false);
+    let letters: Vec<char> = waiting.iter().map(|one| one.letter).collect();
+    assert_eq!(letters, ['d'], "d waits for its block's height");
+    assert_eq!(
+        marks,
+        HashMap::from([('a', 160.0), ('b', 140.0), ('c', 210.0), ('e', 999.0)]),
+        "each lands as far through its block, or as far in; e, set while it waited, is his"
+    );
+    let heights: Vec<(char, Option<f64>)> = landed
+        .iter()
+        .map(|one| (one.kept.letter, one.kept.block_pt))
+        .collect();
+    assert_eq!(
+        heights,
+        [('a', Some(80.0)), ('b', Some(80.0)), ('c', None)],
+        "b takes its block's height here; c's block's isn't known yet"
+    );
+    // Set again at another width, block 1 twice as tall: b scales with it.
+    let after = [(0, 36.0), (1, 120.0), (2, 280.0)];
+    assert_eq!(
+        landed_again(&mut landed, &marks, &after),
+        vec![('a', 200.0), ('b', 160.0), ('c', 290.0)],
+        "b lands as far through its block as a does"
+    );
+}
+
+#[test]
+fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
+    let kept = Mark {
+        letter: 'a',
+        block: 1,
+        into_pt: 40.0,
+        block_pt: Some(80.0),
+        said: Said::default(),
+    };
+    let mut landed = vec![Landed {
+        kept,
+        pt: 164.0,
+        on_line: true,
+    }];
+    let mut marks = HashMap::from([('a', 164.0), ('z', 300.0)]);
+    let after = [(0, 36.0), (1, 120.0), (2, 280.0)];
+    set_again(&mut landed, &mut marks, &after, false, |pt| pt + 1000.0);
+    assert_eq!(
+        marks,
+        HashMap::from([('a', 200.0), ('z', 1300.0)]),
+        "a lands again from what was kept, never from its line; z goes as moved"
+    );
+    assert!(
+        landed.iter().all(|one| !one.on_line),
+        "a goes on a line again"
+    );
+    set_again(&mut landed, &mut marks, &after, true, |pt| pt);
+    assert!(landed.is_empty(), "an edit lets the kept marks go");
+    assert_eq!(marks.get(&'a'), Some(&200.0), "and a stays where it stands");
 }
 
 #[test]

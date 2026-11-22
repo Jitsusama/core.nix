@@ -3309,7 +3309,10 @@
     its file's name, code in a table's column counted by the stretches Typst breaks it into, math
     in a cell measured as its words, a place or a mark landing as far through its block at another
     width and on a line of its own block, kept marks waiting on the first screen for their block's
-    height and written back as read, and the first screen setting the block after a long one
+    height and written back as read, landed again from what was kept unless the file was edited,
+    one kept without a height taking its block's, a set saying the file was edited only when its
+    words changed, the first width from the window kept, and the first screen setting the block
+    after a long one
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,

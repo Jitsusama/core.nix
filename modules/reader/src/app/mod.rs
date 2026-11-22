@@ -109,6 +109,9 @@ pub(crate) struct Incoming {
     opens: Option<std::path::PathBuf>,
     /// The window's title once it shows.
     title: String,
+    /// Whether the file was edited since the page before was set, which
+    /// may have renumbered its blocks.
+    edited: bool,
 }
 
 /// A place on the jump list: a file, how far down it the view's top was,
@@ -136,19 +139,22 @@ pub(crate) struct Following {
     landing: Landing,
 }
 
-/// What the reloader is asked: the file saved, so set it again, set
-/// another file from now on, or set the page at another width from now on,
-/// for a window resized.
+/// What the reloader is asked: the file saved, or its pictures come from
+/// the web, so set it again, set another file from now on, or set the page
+/// at another width from now on, for a window resized.
 pub(crate) enum Reload {
     Saved,
+    Fetched,
     Open(String),
     Fit(page::Width),
 }
 
-/// A page the reloader set, of the file it names, with the window's title
-/// for it, or why it couldn't.
+/// A page the reloader set, of the file it names, whether the file was
+/// edited since the last, with the window's title for it, or why it
+/// couldn't.
 type Reset = (
     String,
+    bool,
     Result<(typst_layout::Page, f64, Vec<text::Line>, String), String>,
 );
 

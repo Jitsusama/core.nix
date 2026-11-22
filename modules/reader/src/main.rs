@@ -723,7 +723,7 @@ fn set_rest(
                 Ok(Err(error)) => error,
                 Err(_) => "it panicked".to_string(),
             };
-            eprintln!("reader: can't set the rest, so marks waiting on it land as kept: {why}");
+            eprintln!("reader: can't set past the first screen, so the page ends there: {why}");
             let _ = failed.send(());
         })?;
     Ok(())
@@ -749,13 +749,13 @@ fn reload_on_save(
         .spawn(move || {
             let mut setter: Option<page::Setter> = None;
             while let Ok(ask) = asks.recv() {
-                let mut open = None;
-                let mut fit = None;
+                let (mut open, mut fit, mut saved) = (None, None, false);
                 for ask in std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())) {
                     match ask {
                         Reload::Open(file) => open = Some(file),
                         Reload::Fit(width) => fit = Some(width),
-                        Reload::Saved => (),
+                        Reload::Saved => saved = true,
+                        Reload::Fetched => (),
                     }
                 }
                 let setter = setter.get_or_insert_with(|| {
@@ -773,15 +773,21 @@ fn reload_on_save(
                     let lines = text::lines(text::runs(&page.frame));
                     (page, ms, lines, setter.title().to_string())
                 });
-                if reset_to.send((setter.file().to_string(), set)).is_err() {
+                // Edited when a save was heard, or when a set for a width
+                // read words a save not heard yet changed.
+                let edited = saved || setter.edited();
+                if reset_to
+                    .send((setter.file().to_string(), edited, set))
+                    .is_err()
+                {
                     return;
                 }
             }
         })?;
-    // Pictures fetched from the web set the page again, as a save does.
+    // Pictures fetched from the web set the page again, the file unedited.
     let fetched_to = reload_to.clone();
     web::when_fetched(move || {
-        let _ = fetched_to.send(Reload::Saved);
+        let _ = fetched_to.send(Reload::Fetched);
     });
     let save_to = reload_to.clone();
     let watch = watch::saves(std::path::Path::new(file), move || {
