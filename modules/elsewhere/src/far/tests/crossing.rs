@@ -198,13 +198,13 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
     kind.brings_back = vec!["out".into()];
     assert!(Path::new("/dev/full").exists(), "no full disk to stand in");
     // A sort that leaves the list's own name on a full disk, so every line
-    // of it fails as it's written. The far tree is two folders below home.
+    // of it fails as it's written.
     let list = handover(Path::new("")).join(BROUGHT);
     let sort = refusing(
         "sort",
         "*\" -u \"*",
         &format!(
-            "sort \"$@\" && ln -sf /dev/full \"$PWD/../../{}\"; exit",
+            "sort \"$@\" && ln -sf /dev/full \"$HOME/{}\"; exit",
             list.display()
         ),
     );
@@ -247,10 +247,11 @@ fn freeing_first(then: &str) -> (&'static str, String) {
         &format!("*\"/{} \"*", super::super::TREE),
         &format!(
             "for a; do case $a in */{tree}) job=${{a%/{tree}}} ;; esac; done\n\
-             case \" $* \" in *\" $HOME/s/1 \"*) ;; *) echo 'the copy was not freed with its tree' >&2 ;; esac\n\
+             case \" $* \" in *\" {work}/1 \"*) ;; *) echo 'the copy was not freed with its tree' >&2 ;; esac\n\
              grep -qxE 'end|cut' \"$job/{BROUGHT}\" && echo 'the list ended before its room was freed' >&2\n\
              rm \"$@\" && echo 'the tree was freed' >&2; {then}; exit 0",
-            tree = super::super::TREE
+            tree = super::super::TREE,
+            work = super::work(Path::new("$HOME")).display(),
         ),
     )
 }

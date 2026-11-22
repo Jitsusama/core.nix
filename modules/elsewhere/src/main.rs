@@ -508,6 +508,10 @@ fn send(
     if let Some(realm) = &settings.realm {
         run.args(["--realm", realm]);
     }
+    // Started in the quest's scratch, which mycelium finds at the same
+    // place under the far home: a strict fence there writes only the
+    // folder a command starts in, and refuses to start one in the home.
+    run.arg("--folder").arg(far::scratches().join(quest));
     let child = run
         .args(["--", "sh", "-c", &script])
         .stdout(std::process::Stdio::piped())
