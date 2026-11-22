@@ -35,13 +35,12 @@ function screensOf(outputs) {
 // The connector a kept place's screen is on now, or undefined when it's
 // gone: found by what it is, the one it was kept on when two screens are
 // alike, as two monitors of one model without serials are, or by its
-// connector when it was kept before screens were named so.
+// connector when it was kept before screens were named so or, with none
+// alike, that connector's screen isn't heard yet ("", of connected).
 function connectorOf(at, screens) {
-    if (at.screen) {
-        const alike = Object.keys(screens).filter(name => screens[name] === at.screen);
-        return alike.includes(at.output) ? at.output : alike[0];
-    }
-    return at.output in screens ? at.output : undefined;
+    const alike = Object.keys(screens).filter(name => at.screen && screens[name] === at.screen);
+    const byConnector = (!at.screen && at.output in screens) || screens[at.output] === "";
+    return alike.includes(at.output) || (alike.length === 0 && byConnector) ? at.output : alike[0];
 }
 
 // The connectors but `at`'s that one moment's places (`moment`, the other
@@ -82,9 +81,8 @@ function othersGone(at, moment, screens) {
 // belongs (`away`), so its workspace can go there once the screen comes,
 // with the other screens as it was found gone (`others`, of othersGone),
 // each twin (of `moments`, each place's boot's) given a connector of its
-// own. `screens` maps each connector there is to its description; with
-// none known, as when niri didn't answer, or no screen in use, a gone one
-// is left as it was kept.
+// own. `screens` is connected's; with none, as before niri answers, or no
+// screen in use, a gone one is left as it was kept.
 function placed(places, screens, inUse, moments) {
     const known = Object.keys(screens ?? {}).length > 0;
     const given = [];
@@ -140,11 +138,13 @@ function placed(places, screens, inUse, moments) {
 }
 
 // Of `screens` (screensOf), those niri lists a workspace on, as on each connected one, all while it
-// lists none: screens heard apart from workspaces can predate one going (vm-screens-keep-places).
+// lists none, then each other it lists, "" as not heard yet: screens heard apart from workspaces
+// can predate one going or coming (vm-screens-keep-places; Reopen Them All, 22 Nov).
 function connected(screens, workspaces) {
     const listed = new Set((workspaces ?? []).map(each => each.output));
-    return Object.keys(screens ?? {}).filter(name => listed.size === 0 || listed.has(name))
-        .reduce((there, name) => Object.assign(there, { [name]: screens[name] }), {});
+    const heard = Object.keys(screens ?? {}).filter(name => listed.size === 0 || listed.has(name));
+    const unheard = [...listed].filter(name => typeof name === "string" && !heard.includes(name));
+    return heard.concat(unheard).reduce((there, name) => Object.assign(there, { [name]: screens?.[name] ?? "" }), {});
 }
 
 // The moves that take workspaces given in place of a gone screen to it once

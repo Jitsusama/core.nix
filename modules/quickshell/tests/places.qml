@@ -261,6 +261,28 @@ QtObject {
         expect("with no workspace listed yet each screen said is taken for there",
             Places.connected({ "Virtual-1": qemu, "eDP-1": panel }, []),
             { "Virtual-1": qemu, "eDP-1": panel });
+        // A screen niri lists a workspace on that the answer to Outputs
+        // predates is there all the same, undescribed (""). Left out, as
+        // when that answer named only the monitor since unplugged, the
+        // screen in use was taken for none: Reopen Them All left the
+        // monitor's places on its gone connector, noted nowhere, and took
+        // the panel's own for a gone screen's.
+        const onlyThePanel = [{ id: 21, output: "eDP-1" }];
+        expect("a screen niri lists a workspace on but wasn't heard yet is there, undescribed",
+            Places.connected({ "DP-4": monitor }, onlyThePanel), { "eDP-1": "" });
+        expect("a place on a screen not heard yet stays on its connector, a gone one's after",
+            Places.placed(docked, Places.connected({ "DP-4": monitor }, onlyThePanel), "eDP-1")
+                .map(at => [at.output, at.workspace, at.away?.screen ?? null]),
+            [["eDP-1", 3, monitor], ["eDP-1", 5, monitor], ["eDP-1", 2, null], ["eDP-1", 1, null]]);
+        expect("a window put back before any screen is heard stays on its listed connector",
+            Places.whereKept(docked[2], [], Places.connected({}, onlyThePanel)), "eDP-1");
+        // A twin not heard yet stays, and is another screen to the one
+        // gone, so that one doesn't take it for home once it's heard.
+        expect("a twin not heard yet is another screen to its twin gone",
+            Places.placed(twins, Places.connected({ "eDP-1": panel },
+                onlyThePanel.concat([{ id: 22, output: "Virtual-1" }])), "eDP-1", [twins, twins])
+                .map(at => [at.output, at.away?.others ?? null]),
+            [["Virtual-1", null], ["eDP-1", { "eDP-1": panel, "Virtual-1": "" }]]);
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",
