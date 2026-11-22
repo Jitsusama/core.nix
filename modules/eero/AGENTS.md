@@ -145,7 +145,10 @@ start eero's speed test, turn Optimize for Conferencing and Gaming on or
 off, keep an address for a device, and stop keeping one. Each is an ask
 `act` on its socket; an act it doesn't name is refused as `bad-act`, so
 no DNS, port forward, firewall, admin or account change goes through
-that door. `eero devices <MAC> reserve <address>` and
+that door. The socket's folder is 0700, and the daemon answers only its
+own account, by the connection's peer credentials, closing any other at
+once. The fence gives its commands an empty runtime folder of their
+own, so no fenced or strict session reaches the socket at all. `eero devices <MAC> reserve <address>` and
 `eero devices <MAC> unreserve` ask the daemon ([`src/asking.rs`][asking])
 rather than opening the session, so the session is opened by the daemon
 and by `eero sign-in`, `eero internet sqm on|off` and `eero speeds run`

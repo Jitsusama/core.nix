@@ -81,6 +81,13 @@ impl Peer {
             uid: said.uid.as_raw(),
         })
     }
+
+    /// Whether this is the daemon's own account, the only one it answers:
+    /// what it tells holds the home network's devices, and what it's asked
+    /// can change it.
+    fn is_ours(self) -> bool {
+        self.uid == rustix::process::getuid().as_raw()
+    }
 }
 
 /// The kind of the one record, and its key.
@@ -279,6 +286,15 @@ impl Listeners {
         if stream.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
             return;
         }
+        let peer = Peer::of(&stream);
+        if !peer.is_some_and(Peer::is_ours) {
+            eprintln!(
+                "eero: refused a listener of uid {:?}, which isn't the daemon's",
+                peer.map(|peer| peer.uid)
+            );
+            let _ = stream.shutdown(Shutdown::Both);
+            return;
+        }
         let Ok(reading) = stream.try_clone() else {
             return;
         };
@@ -288,7 +304,7 @@ impl Listeners {
             hub.next_id += 1;
             hub.listeners.push(Listener {
                 id,
-                peer: Peer::of(&stream),
+                peer,
                 stream,
                 watching: false,
                 looking: false,

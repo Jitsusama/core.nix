@@ -194,6 +194,14 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
         Act::Conferencing(true),
         "the act is the one asked"
     );
+    assert_eq!(
+        asked.peer,
+        Some(Peer {
+            pid: i32::try_from(std::process::id()).expect("a pid fits"),
+            uid: rustix::process::getuid().as_raw(),
+        }),
+        "the act carries who asked, as the kernel says it"
+    );
     listeners.answer_act(&asked, Err("eero is busy".into()));
 
     assert_eq!(
@@ -213,6 +221,23 @@ fn an_act_is_answered_once_the_daemon_has_done_it() {
         read(&mut reader),
         json!({"id": "act-2", "done": true}),
         "an act done is answered done"
+    );
+}
+
+#[test]
+fn only_the_daemons_own_account_is_answered() {
+    let ours = rustix::process::getuid().as_raw();
+    assert!(
+        Peer { pid: 1, uid: ours }.is_ours(),
+        "the daemon's own account was refused"
+    );
+    assert!(
+        !Peer {
+            pid: 1,
+            uid: ours.wrapping_add(1)
+        }
+        .is_ours(),
+        "another account was answered"
     );
 }
 

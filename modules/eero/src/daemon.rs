@@ -23,6 +23,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::io;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -60,7 +61,15 @@ const NET_LOOK: Duration = Duration::from_secs(5);
 pub fn run() -> Result<(), String> {
     let runtime = runtime()?;
     let folder = runtime.join("eero");
-    fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    // The socket that changes the home network lives here, so no other
+    // account may reach it even by a path, and a folder an older daemon
+    // left open is closed before the socket is made.
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(&folder)
+        .and_then(|()| fs::set_permissions(&folder, fs::Permissions::from_mode(0o700)))
+        .map_err(|e| format!("{}: {e}", folder.display()))?;
     let file = folder.join("home-network.json");
     let (wake, woken) = mpsc::channel();
     // net writes its record beside eero's (modules/net), which the map is

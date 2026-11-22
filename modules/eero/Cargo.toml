@@ -14,7 +14,7 @@ ready-rows = { path = "../ready-rows" }
 jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-zoneinfo"] }
 # Who connected to the socket, from the kernel's peer credentials, so each
 # act is logged by the process that asked; already in the lock through zbus.
-rustix = { version = "1.1", default-features = false, features = ["net", "std"] }
+rustix = { version = "1.1", default-features = false, features = ["net", "process", "std"] }
 # The history of what moves, with SQLite built in, as spend-watch has it.
 rusqlite = { version = "0.37", features = ["bundled"] }
 serde = { version = "1.0.229", features = ["derive"] }
