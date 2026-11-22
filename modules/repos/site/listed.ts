@@ -45,7 +45,11 @@ class Listing {
   readonly #kept = new Set<string>();
   #keptIn: string | null = null;
 
-  /** Lists every tree of the repository at `key`, resting and gone opened, or folds them. */
+  /**
+   * Lists every tree of the repository at `key`, resting and gone opened, or folds them, the
+   * trees the cursor stood on there forgotten with them, so stepping through every tree and
+   * folding again leaves the twelve.
+   */
   listWhole(key: string, every: boolean): void {
     const seasons = this.unfolded.get(key) ?? new Set<Season>();
     for (const season of ["resting", "gone"] as const) {
@@ -53,6 +57,9 @@ class Listing {
     }
     this.unfolded.set(key, seasons);
     this.whole[every ? "add" : "delete"](key);
+    if (!every && key === this.#keptIn) {
+      this.#kept.clear();
+    }
   }
 
   /** The trees the cursor has stood on in the repository at `key`, `inner` among them now. */

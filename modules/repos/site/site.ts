@@ -179,7 +179,8 @@ function drawList(): void {
 }
 
 // Draws on the frame after a record, then at most twice a second while records keep coming, and
-// never for more than a fifth of the time, however long the grove takes to draw.
+// for about a fifth of the time while a draw takes under half a second, since the rest after one
+// stops at two seconds so a stall can't leave the page minutes behind.
 const soon = paced(draw, 500, repos);
 
 const followed: readonly (keyof Feed)[] = [...KINDS, USING];

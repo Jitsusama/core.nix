@@ -416,8 +416,8 @@ function unlisted(left: readonly Tree[]): string {
 }
 
 /**
- * A repository's trees, grouped by season; resting and gone fold shut, and the others list only
- * the trees worth it, until opened, which `open` holding resting says.
+ * A repository's trees, grouped by season; resting and gone fold shut until `open` holds them,
+ * and each season lists only the trees worth it, until `drawing.whole` asks for every tree.
  */
 function treeGroups(repository: Repository, drawing: Drawing, open: ReadonlySet<Season>): string {
   return GROUPS.map(([season, title]) => {
