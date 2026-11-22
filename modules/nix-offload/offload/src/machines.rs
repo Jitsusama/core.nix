@@ -21,6 +21,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{Ipv6Addr, SocketAddr, SocketAddrV6, TcpStream, ToSocketAddrs};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crate::cloud::{Cloud, Place};
@@ -417,6 +419,48 @@ pub fn text<'a>(answering: impl Iterator<Item = &'a str>, lent: Option<&'a str>)
         text.push('\n');
         text
     })
+}
+
+/// Whether a machine nearby answers: something listens at its address,
+/// or else ssh reaches it as `host`. A name that doesn't resolve here may
+/// still be reached by ssh's own entry for it, as a Mac's `.local` name is
+/// through the last address it answered at: from 07:01 on 22 November its
+/// name went unanswered for hours while ssh reached it, and every build
+/// for it failed as away.
+pub fn nearby_answers(address: &str, host: &str) -> bool {
+    answers(address) || ssh_reaches(host)
+}
+
+/// How long ssh may take to reach a machine nearby. Its ssh entry may wait
+/// on the name for three seconds and then on the last address for three
+/// more before the handshake, about seven in all on 22 November.
+const REACHING: Duration = Duration::from_secs(20);
+
+/// Whether ssh reaches `host` and runs `true` there, never asking for a
+/// password or a host key it doesn't already hold, within [`REACHING`].
+fn ssh_reaches(host: &str) -> bool {
+    let Ok(mut reaching) = Command::new("ssh")
+        .args(["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"])
+        .args(["-o", "ConnectTimeout=15", host, "true"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
+        return false;
+    };
+    let began = Instant::now();
+    loop {
+        match reaching.try_wait() {
+            Ok(Some(status)) => return status.success(),
+            Ok(None) if began.elapsed() < REACHING => thread::sleep(Duration::from_millis(100)),
+            _ => {
+                let _ = reaching.kill();
+                let _ = reaching.wait();
+                return false;
+            }
+        }
+    }
 }
 
 /// Whether something listens at an address, `host:port`.

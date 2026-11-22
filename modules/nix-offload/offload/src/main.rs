@@ -898,7 +898,9 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
-    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (near, left) = there::shared(&asked, &nearby, |machine| {
+        machines::nearby_answers(&machine.address, &machine.host)
+    });
     let (left, owed) = there::owed(left, &nearby, &this_system());
     if !owed.is_empty() {
         eprintln!(
@@ -1888,7 +1890,7 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
     let mac = nearby_listed()
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
-        .find(|machine| machines::answers(&machine.address))?;
+        .find(|machine| machines::nearby_answers(&machine.address, &machine.host))?;
     // A run that goes says the load it went at, so a busy Mac that was
     // sent one can be told from the gate that let it through.
     match mac::room_alone(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
@@ -2005,7 +2007,8 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     if there::lent_only() {
         return skipped("--lent-only keeps the change off a Mac nearby".to_owned());
     }
-    let answering = |machine: &&there::Nearby| machines::answers(&machine.address);
+    let answering =
+        |machine: &&there::Nearby| machines::nearby_answers(&machine.address, &machine.host);
     let Some(mac) = macs.iter().find(answering) else {
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));

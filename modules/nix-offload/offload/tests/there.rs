@@ -45,6 +45,13 @@ fn wants_of(dir: &Path) -> PathBuf {
 /// `kept-listing-<host>` file, or ends 1 without one, counting no run.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
+# Asked whether ssh reaches a machine nearby whose address doesn't
+# answer: only when the test says ssh's own entry does.
+eval "last=\${$#}"
+if [ "$last" = true ]; then
+  [ -e "$here/ssh-reaches" ]
+  exit
+fi
 echo "$@" > "$here/ssh-options"
 while [ "$#" -gt 2 ]; do
   if [ "$1" = -E ]; then log=$2; fi
@@ -1917,6 +1924,12 @@ done
 # writes one, else a quiet one. Whom it was asked of is kept apart, so
 # what tests count of the rest holds.
 case "$2" in
+  # Asked whether ssh reaches it, where its address doesn't answer:
+  # only when the test says ssh's own entry does.
+  true)
+    echo "$1" >> "$here/reach-was-asked"
+    [ -e "$here/ssh-reaches" ]
+    exit ;;
   *"sysctl -n vm.loadavg hw.ncpu"*)
     echo "$1" >> "$here/load-was-asked"
     cat "$here/load" 2>/dev/null || printf '{ 1.00 1.00 1.00 }\n12\n'
@@ -2324,6 +2337,7 @@ const BLIND_SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 while [ "$#" -gt 2 ]; do shift; done
 case "$2" in
+  true) exit 255 ;;
   *"sysctl -n vm.loadavg hw.ncpu"*)
     echo "$1" >> "$here/load-was-asked"
     printf '{ 1.00 1.00 1.00 }\n12\n'
@@ -2706,6 +2720,59 @@ fn a_nearby_machine_that_doesnt_answer_is_named_as_its_part_goes_the_other_way()
     assert!(
         !bin.join("ssh-was-given").exists(),
         "an away machine isn't sent anything"
+    );
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap(),
+        "mac\n",
+        "ssh was asked whether it reaches it, once"
+    );
+}
+
+#[test]
+fn a_nearby_machine_ssh_reaches_takes_its_part_though_its_address_doesnt_answer() {
+    // From 07:01 on 22 November a Mac's `.local` name went unanswered for
+    // hours while ssh reached it through the last address it answered at,
+    // and every build for it failed as away.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("ssh-reaches"), "").unwrap();
+    fs::write(bin.join("status"), "0").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{away} mac aarch64-darwin\n"),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("doesn't answer"), "{said}");
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap_or_default();
+    assert!(
+        given.starts_with("mac\n") && given.contains("nix build"),
+        "the Mac builds its part: {given} {said}"
     );
 }
 
