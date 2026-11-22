@@ -202,7 +202,15 @@ function keepTime(redraw: () => void): void {
 function paced(act: () => void, gap: number, pacing: () => boolean): () => void {
   let drawn = UNDRAWN;
   let asked = false;
-  return () => {
+  // From a draw until the frame after it, while its cost is still being measured: an ask then
+  // waits for the measure, so the next draw's rest counts the style and layout too.
+  let measuring = false;
+  let askedWhileMeasuring = false;
+  const ask = (): void => {
+    if (measuring) {
+      askedWhileMeasuring = true;
+      return;
+    }
     if (asked) {
       return;
     }
@@ -211,23 +219,27 @@ function paced(act: () => void, gap: number, pacing: () => boolean): () => void 
     setTimeout(() => {
       requestAnimationFrame(() => {
         asked = false;
+        measuring = true;
         const start = performance.now();
         try {
           act();
         } finally {
-          // A draw that throws still cost what it took, so the next waits for it all the same.
-          const end = performance.now();
-          drawn = { end, cost: end - start };
           // The style, layout and paint the markup asks for follow this frame's callbacks, so
-          // the cost runs to the next frame once it comes, a page out of sight keeping the first.
+          // the cost runs to the next frame, a draw that throws counted all the same.
           requestAnimationFrame(() => {
             const painted = performance.now();
             drawn = { end: painted, cost: painted - start };
+            measuring = false;
+            if (askedWhileMeasuring) {
+              askedWhileMeasuring = false;
+              ask();
+            }
           });
         }
       });
     }, wait);
   };
+  return ask;
 }
 
 // The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.

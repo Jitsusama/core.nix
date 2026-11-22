@@ -299,6 +299,7 @@ it("says what works unread where the daemon's reading stopped, never as nothing 
 
 const TREE_ROW = /<li class="tree /gu;
 const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
 
 /** A tree of the hostile repository named `name`, written `ago` before now. */
 function treeNamed(name: string, ago: number, snapshot = false, named: string | null = null) {
@@ -331,6 +332,8 @@ interface Crowding {
   readonly keep?: readonly string[];
   readonly whole?: boolean;
   readonly workingIn?: readonly string[];
+  /** How many trees, past a week unwritten, rest besides those written today. */
+  readonly resting?: number;
 }
 
 /** The crowded repository's drawer, asked for as `crowding` says. */
@@ -341,7 +344,10 @@ function crowdedDrawer(crowding: Crowding = {}): string {
     standing: "moving",
     cwd: `/home/ada/trees/${name}`,
   }));
-  const drawn = groveOf(told(crowded), cellsOf({ cells: working }), NOW);
+  const resting = Array.from({ length: crowding.resting ?? 0 }, (_, index) =>
+    treeNamed(`r${index}`, 8 * DAY + index * MINUTE),
+  );
+  const drawn = groveOf(told([...crowded, ...resting]), cellsOf({ cells: working }), NOW);
   const opened = drawn?.repositories[0];
   assert.ok(drawn !== undefined && opened !== undefined, "the records drew no repository");
   const keep = new Set((crowding.keep ?? []).map((name) => `/home/ada/trees/${name}`));
@@ -392,6 +398,7 @@ it("lists every tree once asked to, and counts none", () => {
 });
 
 it("keeps the twelve in every season when an address opens only its tree's season", () => {
-  const markup = crowdedDrawer({ open: new Set(["resting", "gone"]) });
-  assert.equal(markup.match(TREE_ROW)?.length, 12, `opening a season lifted the cap: ${markup}`);
+  const markup = crowdedDrawer({ open: new Set(["resting", "gone"]), resting: 14 });
+  assert.equal(markup.match(TREE_ROW)?.length, 24, `opening a season lifted the cap: ${markup}`);
+  assert.ok(lists(markup, "r0") && !lists(markup, "r13"), "resting didn't list its newest");
 });

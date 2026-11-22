@@ -71,9 +71,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # cell's link too, two of the kilobytes lead each tree's cells on to the other repositories
 # they work across, and two say what works unread where the daemon's reading stopped. One
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
-# and three of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
+# and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
 # the foot's reasons.
-BUDGET = Budget(files=37, kilobytes=534, elements=276)
+BUDGET = Budget(files=37, kilobytes=535, elements=276)
 CELLS_SITE = "cells/"
 
 

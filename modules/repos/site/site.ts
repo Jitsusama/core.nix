@@ -138,8 +138,16 @@ function drawOpen(): void {
   }
 }
 
-/** Marks the tree the cursor is on inside the open repository. */
-const markInner = (focus: boolean): boolean => markTree(opened, inner, focus);
+/**
+ * Marks the tree the cursor is on inside the open repository, and keeps it listed there, so a
+ * row j, k or a click stood on stays once the cursor steps off, whenever the next draw comes.
+ */
+function markInner(focus: boolean): boolean {
+  if (cursor !== null) {
+    listing.kept(cursor, inner);
+  }
+  return markTree(opened, inner, focus);
+}
 
 function draw(): void {
   grove = groveOf(held, mycelium.cells, Date.now());
