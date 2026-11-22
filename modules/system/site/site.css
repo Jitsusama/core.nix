@@ -200,17 +200,6 @@ html:not([data-theme="light"]) body {
   color: var(--muted);
 }
 
-/* Under it, what most wants a look, in the reading voice. A line is held
-   for it from the first paint, so its arrival moves what is below by a
-   second line at most; only all ready lets it go. */
-.lede {
-  min-block-size: 1lh;
-  max-inline-size: var(--measure);
-  margin: 0 0 var(--items);
-  color: var(--text);
-  font: var(--voice-weight) var(--step-large) / 1.45 var(--serif);
-}
-
 /* Where it was read, when, and whether it's live, after a half-lit dot. */
 .standing {
   display: flex;
@@ -257,7 +246,7 @@ html:not([data-theme="light"]) body {
 }
 
 @supports (text-wrap: pretty) {
-  .lede,
+  .look .words,
   .tie .aside {
     text-wrap: pretty;
   }

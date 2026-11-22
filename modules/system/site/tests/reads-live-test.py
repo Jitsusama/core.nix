@@ -6,9 +6,10 @@ a summary, four parts and two machines under test names, system.json. It must
 say it's live with every machine drawn and counted, follow a machine that
 turns and one that goes, say broken when the daemon stops and live again
 when it's back, say stale when the server goes, and pass the web-design skill's
-page checks at a phone's width and a desk's in both looks. Its keys and places
-must move the cursor from section to section, and a machine's address must
-put it on that machine. Anything the page
+page checks at a phone's width and a desk's in both looks. It must open with
+what is worth a look, each leading where it can be seen whole. Its keys and
+places must move the cursor from section to section, and a machine's address
+must put it on that machine. Anything the page
 logs fails it, since that is how it drew four empty parts unseen on 16 November.
 The server, the browser and the tab are modules/local-sites/tests/live_page.py's.
 """
@@ -34,8 +35,9 @@ PACE_MS = 6000
 RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
-# What a first visit to the page may cost, drawn from system.json.
-BUDGET = Budget(files=24, kilobytes=470, elements=370)
+# What a first visit to the page may cost, drawn from system.json: 25 files,
+# about 477 KB and 397 elements since the list of what is worth a look, six to a row.
+BUDGET = Budget(files=25, kilobytes=480, elements=400)
 
 
 @pytest.fixture
@@ -133,6 +135,8 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     counted(system_page)
     keyboard = system_page.keyboard
     keyboard.press("j")
+    assert section_of_the_cursor(system_page) == "looking", "j didn't start at the looks"
+    keyboard.press("1")
     assert section_of_the_cursor(system_page) == "machine-1"
     keyboard.press("2")
     assert section_of_the_cursor(system_page) == "machine-2"
@@ -177,6 +181,142 @@ def test_the_keys_and_places_move_the_cursor(system_page: Page) -> None:
     keyboard.press("y")
     expect(system_page.locator("#note"), "y off a machine didn't say why").to_have_text(
         re.compile(r"^Nothing to copy here")
+    )
+
+
+# What system.json's sides come to, worst first: whose each is, then what.
+LOOKED_AT = [
+    ("kestrel", "Booted 3 hours ago after a firmware error"),
+    ("osprey", "Code wants a look"),
+    ("Mycelium", "4 sessions say they run with their processes gone"),
+    ("Network", "The attic's radio is busy 53% of the time"),
+    ("Network", "And 3 more worth a look"),
+]
+# The rows' keys a steps through: whose each is, then how many the same came
+# before it, then its own words.
+KESTREL_LOOK = "look:machine:kestrel:0:booted 3 hours ago after a firmware error"
+OSPREY_LOOK = "look:machine:osprey:0:code wants a look"
+MYCELIUM_LOOK = "look:part:mycelium:0:4 sessions say they run with their processes gone"
+
+
+def focused_row(page: Page) -> str | None:
+    """Say which row has focus, by its key, or None."""
+    held = page.evaluate("document.activeElement?.dataset?.row ?? null")
+    return held if isinstance(held, str) else None
+
+
+def test_what_is_worth_a_look_leads_the_page(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    counted(system_page)
+    whose = system_page.locator("#looks .whose").all_inner_texts()
+    words = system_page.locator("#looks .words").all_inner_texts()
+    assert list(zip(whose, words, strict=True)) == LOOKED_AT, "the looks weren't listed in turn"
+    above = system_page.evaluate(
+        "document.querySelector('#looking').getBoundingClientRect().bottom"
+        " <= document.querySelector('#bridge').getBoundingClientRect().top"
+    )
+    assert above is True, "the looks weren't over the machines"
+    network = system_page.locator("#looks a[data-row^='look:part:network:']").first
+    expect(network, "a part's look didn't lead to its site").to_have_attribute(
+        "href", "../network/"
+    )
+    keyboard = system_page.keyboard
+    keyboard.press("a")
+    assert focused_row(system_page) == KESTREL_LOOK, "a didn't go to the first look"
+    keyboard.press("a")
+    assert focused_row(system_page) == OSPREY_LOOK, "a didn't go to the next"
+    keyboard.press("Enter")
+    assert section_of_the_cursor(system_page) == "machine-2", "osprey's look didn't go to it"
+    assert system_page.evaluate("location.hash") == "", "a look's way there was left in the URL"
+    # Off the list, a starts again at the first; a press for each look then
+    # passes the last and comes round to it.
+    keyboard.press("a")
+    assert focused_row(system_page) == KESTREL_LOOK, "a off the list didn't start over"
+    for _ in LOOKED_AT:
+        keyboard.press("a")
+    assert focused_row(system_page) == KESTREL_LOOK, "a didn't go round to the first"
+    # A look clearing before the cursor's leaves it on its own look, not on
+    # whichever now stands where it stood.
+    keyboard.press("a")
+    system_daemon.tell("machine", changed=[{"key": "machine:kestrel", "side": []}])
+    expect(
+        system_page.locator("#looks a[data-row^='look:machine:kestrel:']"), "kestrel's look stayed"
+    ).to_have_count(0, timeout=PACE_MS)
+    # The machines part still names it until its own record changes.
+    expect(
+        system_page.locator("#looks a", has_text="booted 3 hours ago"),
+        "kestrel's look stayed as the machines part's",
+    ).to_have_count(0)
+    assert focused_row(system_page) == OSPREY_LOOK, "the cursor left a look that still stands"
+    # One that clears under the cursor leaves it on the one now in its place.
+    system_daemon.tell("machine", changed=[{"key": "machine:osprey", "side": []}])
+    system_page.wait_for_function(
+        "row => document.activeElement?.dataset?.row === row", arg=MYCELIUM_LOOK, timeout=PACE_MS
+    )
+    quieted(system_page, system_daemon)
+    # The cursor was on a look; with none left it rests on the list, not a row below.
+    held = system_page.evaluate("document.activeElement?.id ?? null")
+    assert held == "looks", "focus left the emptied list for another region"
+
+
+def quieted(page: Page, daemon: StandIn) -> None:
+    """Clear every side, and see the list say nothing is worth a look, in one line."""
+    quiet: list[dict[str, object]] = [
+        {"key": key, "side": []} for key in ["machine:kestrel", "machine:osprey"]
+    ]
+    daemon.tell("machine", changed=quiet)
+    parts = ["machines", "mycelium", "network"]
+    daemon.tell("part", changed=[{"key": f"part:{part}", "side": []} for part in parts])
+    expect(page.locator("#looks"), "an empty list didn't say so").to_have_text(
+        "Nothing is worth a look.", timeout=PACE_MS
+    )
+
+
+def test_a_says_what_the_list_cannot_know(system_page: Page, system_daemon: StandIn) -> None:
+    says_it_stands(system_page, "live")
+    quieted(system_page, system_daemon)
+    keyboard = system_page.keyboard
+    keyboard.press("a")
+    expect(system_page.locator("#note"), "a with no look didn't say why").to_have_text(
+        "Nothing is worth a look."
+    )
+    # A machine named before its record may hold a look, so the list says that
+    # isn't known yet, a says so, and that goes once the list is known again.
+    named = ["machine:kestrel", "machine:osprey"]
+    coming: list[dict[str, object]] = [{"key": "part:machines", "things": [*named, "machine:wren"]}]
+    system_daemon.tell("part", changed=coming)
+    expect(system_page.locator("#looks"), "a machine to come was taken as nothing").to_have_text(
+        "What is worth a look isn't known yet.", timeout=PACE_MS
+    )
+    expect(system_page.locator("#note"), "a's note outlived what the list said").not_to_have_text(
+        "Nothing is worth a look."
+    )
+    keyboard.press("a")
+    expect(system_page.locator("#note"), "a claimed more than the list knew").to_have_text(
+        "What is worth a look isn't known yet."
+    )
+    system_daemon.tell("part", changed=[{"key": "part:machines", "things": named}])
+    expect(system_page.locator("#looks"), "the list didn't settle again").to_have_text(
+        "Nothing is worth a look.", timeout=PACE_MS
+    )
+    expect(system_page.locator("#note"), "a stale note outlived the list").not_to_have_text(
+        "What is worth a look isn't known yet."
+    )
+    # A record that can't be read leaves the list not known, and a's answer
+    # keeps the note's word on which record it was.
+    system_daemon.tell("machine", changed=[{"key": "machine:wren", "kind": "machine"}])
+    system_daemon.tell("part", changed=coming)
+    unread = system_page.locator("#note")
+    expect(unread, "a record not read went unsaid").to_contain_text(
+        "Couldn't read: machine:wren", timeout=PACE_MS
+    )
+    expect(system_page.locator("#looks"), "a record not read was taken as nothing").to_have_text(
+        "What is worth a look isn't known yet."
+    )
+    keyboard.press("a")
+    expect(unread, "a didn't answer").to_contain_text("What is worth a look isn't known yet.")
+    expect(unread, "a hid which record couldn't be read").to_contain_text(
+        "Couldn't read: machine:wren"
     )
 
 
