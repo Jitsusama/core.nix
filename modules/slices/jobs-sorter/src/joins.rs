@@ -105,6 +105,13 @@ pub fn unit_of(
         .or_else(|| viewed(words, prefix))
 }
 
+/// The host's key and the session a viewer's words attach to, when they
+/// name both.
+pub fn session(words: &[String]) -> Option<(String, String)> {
+    let rest = attached(words)?;
+    Some((host_key(rest)?, flag(rest, "--session")?))
+}
+
 /// The words after mycelium's `attach`, when it's there.
 fn attached(words: &[String]) -> Option<&[String]> {
     let attach = words.iter().position(|word| word == "attach")?;
