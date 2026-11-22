@@ -347,15 +347,16 @@ fn run(context: &Context) -> Result<(), Failure> {
         &took,
         read.unread.as_deref(),
     );
-    let launcher = match &read.unread {
-        // A journal not read whole says why, so nothing gating on the
-        // spans takes it for an hour with none.
-        Some(why) => json!({"unread": why}),
-        // The call's span runs from the run's start, Chromium's own
-        // included, to now: the whole of the load the test put beside
-        // Joel's programs.
-        None => json!(launcher::beside(&read.opens, started, at)),
-    };
+    // The call's span runs from the run's start, Chromium's own included,
+    // to now: the whole of the load the test put beside Joel's programs.
+    let mut launcher = json!(launcher::beside(&read.opens, started, at));
+    if let Some(why) = &read.unread {
+        // A journal not read whole keeps what it gave, but says why and
+        // can't tell, so nothing gating on the spans takes part of an
+        // hour for the whole of it.
+        launcher["worse"] = Value::Null;
+        launcher["unread"] = json!(why);
+    }
     let run = json!({"started": started, "seconds": SECONDS, "call": call, "launcher": launcher});
     hour::write(&folder(), at, &measures, &run).map_err(|error| {
         Failure::new(Exit::Failed, "the hour couldn't be written")
@@ -391,7 +392,8 @@ mod tests {
     fn the_hour_is_said_figure_by_figure_against_its_target() {
         let hour = json!({"measures": [
             {"measure": "call sent fps p10", "now": 29.8, "target": 30.0, "lower_is_better": false},
-            {"measure": "launcher open ms p99", "now": null, "target": 50.0, "lower_is_better": true},
+            {"measure": "launcher open ms p99", "now": null, "target": 50.0,
+             "lower_is_better": true},
         ]});
         assert_eq!(
             said(&hour, 125),

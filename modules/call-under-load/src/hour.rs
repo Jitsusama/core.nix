@@ -240,6 +240,27 @@ mod tests {
     }
 
     #[test]
+    fn a_journal_read_whole_adds_nothing_to_the_launcher_s_note() {
+        let all = measures(
+            &call(),
+            "a fake camera",
+            &Waits::default(),
+            &Waits::default(),
+            &[20.0, 31.0],
+            None,
+        );
+        let launcher = all
+            .iter()
+            .find(|m| m.measure == "launcher open ms p99")
+            .unwrap();
+        assert_eq!(launcher.now, Some(31.0));
+        assert_eq!(
+            launcher.behind,
+            ["2 openings in the last hour, chord or ask to on screen"]
+        );
+    }
+
+    #[test]
     fn the_hour_is_written_in_cadence_s_shape_and_the_run_kept_beside_it() {
         let root =
             std::env::temp_dir().join(format!("call-under-load-hour-{}", std::process::id()));
