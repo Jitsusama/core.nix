@@ -878,7 +878,10 @@ fn a_look_counts_a_finding_naming_no_owner_as_the_orchestrators() {
 
 #[test]
 fn only_a_word_shaped_like_a_repository_names_one_cadence_cant_read() {
-    let repos = Checkouts::from([("core".to_owned(), "/nowhere".into())]);
+    let repos = Checkouts::from([
+        ("core".to_owned(), "/nowhere".into()),
+        ("harness".to_owned(), "/nowhere".into()),
+    ]);
     for note in [
         "Landed core #6000, fixes #5990.",
         "Landed core #6000 (closes #5990).",
