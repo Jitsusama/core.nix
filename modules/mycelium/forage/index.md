@@ -38,7 +38,8 @@ a terminal, `mycelium forage` gathers the realm's.
   around that cell already, and when the cell it's drawn around ends.
   A find that hides the cell you're on moves you to its first match, and
   the floor follows as it does a step; a find that matches nothing keeps
-  you, and the floor, where you were.
+  you, and the floor, where you were. If your cell ends meanwhile, nothing
+  is ringed and the floor stays put.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you

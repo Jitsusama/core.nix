@@ -3898,8 +3898,9 @@
     width and a desk's in both looks, nothing logged but what a test causes, and on 60 cells the
     floor following the cursor to a booked start past the 48th, drawn solid, not drawn again on a
     step it holds, kept on its cells through a find, one matching nothing keeping the cursor and
-    the floor through its end, a record on it drawn with it kept, and drawn again on a step off it
-    over the list the record left
+    the floor through its end, a record on it drawn with it kept, drawn again on a step off it
+    over the list the record left, and a cell ending during a find matching nothing taking its
+    ring but not the floor
   '';
   murmurs-site-holds = ''
     the murmurs page typechecks on the kit at its strictest and builds, its tests passing: murmurs

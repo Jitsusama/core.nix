@@ -337,6 +337,28 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     expect(hollowed, "a step off the floor drew the list from before the record").to_have_count(1)
 
 
+def test_a_cell_gone_during_a_find_matching_nothing_takes_its_ring_not_the_floor(
+    long_page: Page, long_node: StandIn
+) -> None:
+    says_it_stands(long_page, "live")
+    cell(long_page, SHOOT).click()
+    branch = long_page.locator(f'#floor path.hypha[data-cell="{SHOOT}"]')
+    expect(branch, f"the floor didn't follow the cursor to {SHOOT}").to_have_count(1)
+    # The floor around the shoot holds the list's 21st, so a step there keeps it.
+    held = TOPS[20]
+    cell(long_page, held).click()
+    ringed_on_the_floor(long_page, held, "the ring didn't follow a step on the floor")
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill("ZZZZZZ")
+    expect(long_page.locator("#cells .none"), "the find matched a cell").to_have_count(1)
+    long_node.tell("forage", gone=[f"forage:{held}"])
+    expect(
+        long_page.locator(f'#floor rect[data-cell="{held}"]'), "the floor kept a cell gone"
+    ).to_have_count(0, timeout=PACE_MS)
+    expect(branch, "a cell gone during the find moved the floor").to_have_count(1)
+    expect(long_page.locator("#floor rect.on"), "a cell gone stayed ringed").to_have_count(0)
+
+
 # A cell named by its whole link, as a notice or another page gives it.
 LINKED = "TERNAA"
 LINKED_AS = f"mycelium:cell/{LINKED}@kestrel#notice:4"
