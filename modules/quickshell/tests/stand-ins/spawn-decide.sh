@@ -33,6 +33,10 @@ if [ -n "$start" ]; then
 		# An id no viewer's app id could carry.
 		echo "hosted harbour-attended s.dotted"
 		;;
+	QEST-BADHOST)
+		# A host's name mycelium couldn't be given.
+		echo "hosted harbour:attended s-badhost"
+		;;
 	QEST-AWAY)
 		echo "quest-workflow.startHost is attended, but the host isn't listening"
 		exit 3

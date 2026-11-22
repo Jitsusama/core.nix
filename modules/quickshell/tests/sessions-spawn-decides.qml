@@ -6,9 +6,9 @@ pragma ComponentBehavior: Bound
 // opens told why, the one it says nothing of in three seconds opens once
 // it's ended, and the one it fails on opens as before; a saved one opens
 // at once, never asked. Then, with the harness's config saying sessions start
-// in its host, four are started on quests: the one hosted opens only a
-// viewer, the ones kept out open their windows, and one hosted under an
-// id no viewer's app id could carry opens neither, and is said; and once
+// in its host, five are started on quests: the one hosted opens only a
+// viewer, the ones kept out open their windows, and two hosted under an
+// id or host no viewer could carry open neither, and are said; and once
 // the config says
 // nothing, one opens its window never asked. It exits 0 once that holds,
 // and otherwise 1, saying what didn't.
@@ -24,8 +24,12 @@ ShellRoot {
     property string stage: "handing"
     property real handedAt: 0
     property var opened: ({})
-    property string unhosted: ""
-    property string unhostedWhy: ""
+    // Why Sessions said each start by its quest wasn't viewed.
+    property var unhosted: ({})
+    property real startedAt: 0
+    // How long a start the host runs may go unsaid, well past the stand-in
+    // decider's answer and well inside the check's 60 s.
+    readonly property int unsaidFor: 10000
     readonly property string folder: Quickshell.env("HOME")
 
     function spawned(id) {
@@ -119,6 +123,8 @@ ShellRoot {
         Sessions.start("QEST-AWAY", root.folder, false);
         Sessions.start("QEST-PLAIN", root.folder, false);
         Sessions.start("QEST-DOTTED", root.folder, false);
+        Sessions.start("QEST-BADHOST", root.folder, false);
+        root.startedAt = Date.now();
         stage = "starting";
     }
 
@@ -132,16 +138,25 @@ ShellRoot {
     function starting() {
         Expect.expect("one started in pi's host opens no window",
             startedOn("QEST-HOSTED").length === 0, Niri.spawns.join("\n"));
-        // Hosted under an id no viewer's app id could carry, it has no
-        // viewer to open, nor a window, which would begin a second pi on
-        // its quest: it's said instead.
-        Expect.expect("one hosted under an id no viewer can carry opens no viewer, nor a pi",
-            !Niri.spawns.some(command => command.includes("--session s.dotted"))
-            && startedOn("QEST-DOTTED").length === 0, Niri.spawns.join("\n"));
-        if (root.unhosted !== "QEST-DOTTED")
+        // Hosted under an id no viewer's app id could carry, or a host
+        // mycelium couldn't be given, it has no viewer to open, nor a
+        // window, which would begin a second pi on its quest: it's said
+        // started instead.
+        Expect.expect("one hosted under an id or host no viewer can carry opens neither",
+            !Niri.spawns.some(command => /--session s(\.dotted|-badhost)/.test(command))
+            && startedOn("QEST-DOTTED").length === 0 && startedOn("QEST-BADHOST").length === 0,
+            Niri.spawns.join("\n"));
+        const unviewed = ["QEST-DOTTED", "QEST-BADHOST"];
+        if (!unviewed.every(quest => quest in root.unhosted)) {
+            // The decider answers within moments, so one still unsaid
+            // after a few seconds was let go with nothing said.
+            if (Date.now() - root.startedAt > unsaidFor)
+                Expect.fail(`started but never said: ${JSON.stringify(root.unhosted)}`);
             return;
-        Expect.expect("and is said as one no viewer can be named for",
-            root.unhostedWhy === "unnamed", root.unhostedWhy);
+        }
+        Expect.expect("and each is said started, though it can't be viewed",
+            unviewed.every(quest => root.unhosted[quest] === "unviewable"),
+            JSON.stringify(root.unhosted));
         const viewer = Niri.spawns.filter(command => command.includes(
             " mycelium --realm harbour attach --host harbour-attended --session s-begun"));
         if (viewer.length === 0 || startedOn("QEST-AWAY").length === 0
@@ -192,8 +207,7 @@ ShellRoot {
         target: Sessions
 
         function onUnhosted(session, why) {
-            root.unhosted = session.address;
-            root.unhostedWhy = why ?? "";
+            root.unhosted = Object.assign({}, root.unhosted, { [session.address]: why });
         }
     }
 
