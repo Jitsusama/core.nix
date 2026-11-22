@@ -25,8 +25,8 @@ onLinux {
   # 50 and one a notice, a history from before the words were kept keeping its rows,
   # and the conferencing setting is sent as eero takes it and counted only
   # once read back. A device's address is kept or freed only as asked on
-  # the socket, refusing an address another device or eero holds or one
-  # outside the range, and freeing one a port forward may reach, each judged
+  # the socket, refusing to keep one another device or eero holds or one
+  # outside the range, or to free one a port forward may reach, each judged
   # by eero's list read back; each ask is logged whole with who asked
   # before it's done and after, and one that can't be logged isn't done; the
   # socket answers its own account alone; and the session is sealed 600 in

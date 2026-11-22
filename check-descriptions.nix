@@ -1051,8 +1051,8 @@
     eero first answers or on its first answer, and keeps what each said, drawing 30 days of it
     into the model, at most 50, a history from before keeping its rows; it sends the
     conferencing setting as a bare boolean, counted taken only once eero reads it back; it keeps
-    or frees a device's address only as asked on its socket, refusing an address another device
-    or eero holds or outside the range, and freeing one a port forward may reach, judging each
+    or frees a device's address only as asked on its socket, refusing to keep one another device
+    or eero holds or one outside the range, or to free one a port forward may reach, judging each
     by eero's list read back, logging each ask whole with who asked before it's done and after,
     and doing none whose ask can't be logged; its socket answers its own account alone, and the
     session is sealed 600 in a folder of 700; every
