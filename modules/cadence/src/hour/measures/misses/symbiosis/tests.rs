@@ -991,7 +991,7 @@ fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
         number: 6000,
     };
     let (none, merged) = (BTreeSet::new(), BTreeSet::from([fix.clone()]));
-    let main_unread = BTreeSet::from(["core".to_owned()]);
+    let (all_read, main_unread) = (BTreeSet::new(), BTreeSet::from(["core".to_owned()]));
     let (all_run, hosts_unlisted) = (
         BTreeMap::new(),
         BTreeMap::from([(fix, "cadence can't list the pi hosts")]),
@@ -1007,7 +1007,7 @@ fn a_follow_up_beneath_a_fix_the_hour_cant_look_at_stays_folded() {
         },
         Judged {
             merged: &merged,
-            unread: &none,
+            unread: &all_read,
             unrun: &hosts_unlisted,
             here: "here",
         },
