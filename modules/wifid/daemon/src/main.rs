@@ -1913,8 +1913,9 @@ impl Wifid<'_> {
     /// join whichever it hears.
     /// Each is turned on alone, so one that won't doesn't leave the rest
     /// off. One that won't is said and not tried again: one forgotten
-    /// meanwhile needn't be, and the card's next hand-over, at a change
-    /// to what's saved or a stall's nudge, turns every one on again.
+    /// meanwhile needn't be, and every one is turned on again as the card
+    /// comes off the network it's on (`free`) or is handed its networks
+    /// at a change to what's saved (`give_networks`).
     async fn turn_on_networks(&self, card: &str) {
         let listed = async {
             let at = self.supplicant.get_interface(card).await?;
@@ -1931,7 +1932,10 @@ impl Wifid<'_> {
             let on = async { self.joinable(&network).await?.set_enabled(true).await };
             if let Err(error) = on.await {
                 let network = network.as_str();
-                eprintln!("<4>can't turn {card}'s {network} on again: {error}");
+                eprintln!(
+                    "<4>can't turn {card}'s {network} on again, so it may join only what's \
+                     on until it comes off its network or one is saved: {error}"
+                );
             }
         }
     }
@@ -2972,8 +2976,10 @@ impl Wifid<'_> {
         let unreached = self.arrivals.borrow_mut().unreached(now);
         for late in unreached {
             let card = late.card.clone();
-            let left = late.why != Short::Unstarted;
-            if self.arrived(&card, &late.to, free(&card), left, None).await {
+            if self
+                .arrived(&card, &late.to, free(&card), late.why.left(), None)
+                .await
+            {
                 continue;
             }
             if !self.go_back(late, free(&card)).await {
@@ -2981,6 +2987,7 @@ impl Wifid<'_> {
             }
         }
         let stranded = self.arrivals.borrow_mut().stranded(now);
+        // A way back is sent only from a move that left, so has left too.
         for (card, to, going) in stranded {
             if !self
                 .arrived(&card, &to, free(&card), true, Some(going))
@@ -3018,8 +3025,10 @@ impl Wifid<'_> {
             let point = interface.current_access_point().await?;
             let heard = AccessPoint::new(described(self.bus, &point).await?).heard();
             let on = heard.map(|heard| heard.bssid);
-            // Only a point that can't be named needs its network asked.
-            let on_its_network = on.is_none() && Some(interface.current_network().await?) == held;
+            // Only a point that can't be named, of a move that left, needs
+            // its network asked.
+            let on_its_network =
+                on.is_none() && left && Some(interface.current_network().await?) == held;
             Ok(Some((on, on_its_network)))
         };
         let (on, on_its_network) = match there.await {
@@ -3031,8 +3040,13 @@ impl Wifid<'_> {
             }
         };
         if !arrive::reached(on.as_deref(), to, left, on_its_network) {
-            if on.is_none() {
-                println!("<7>{card} is done on a point wifid can't name, not taken as {to}");
+            // One that never left is said so as it's judged where it is
+            // (`under_way`).
+            if on.is_none() && left {
+                println!(
+                    "<7>{card} is done on a point wifid can't name on another network, so isn't \
+                     taken as at {to}"
+                );
             }
             return false;
         }

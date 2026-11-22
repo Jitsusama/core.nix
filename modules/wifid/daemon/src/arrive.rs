@@ -208,6 +208,15 @@ pub enum Short {
     Unstarted,
 }
 
+impl Short {
+    /// Whether the move had left the point it was on, as all but one
+    /// never begun had: what `reached` asks of a card found done on a
+    /// point wifid can't name.
+    pub fn left(self) -> bool {
+        self != Short::Unstarted
+    }
+}
+
 impl Arrivals {
     /// Takes in that the card was asked to move to that access point from
     /// the one it's on, if it's to go back there. One asked again before it
@@ -1364,6 +1373,26 @@ mod tests {
                 left,
                 "{step} on {on:?}: a handshake or a join counts unless on its own point, \
                  and on an unnamed one only a handshake does"
+            );
+        }
+    }
+
+    #[test]
+    fn only_a_move_never_begun_is_short_before_it_left() {
+        for (why, left) in [
+            (
+                Short::Late {
+                    after: Duration::from_secs(1),
+                },
+                true,
+            ),
+            (Short::Off, true),
+            (Short::Unstarted, false),
+        ] {
+            assert_eq!(
+                why.left(),
+                left,
+                "{why:?}: only a move never begun hadn't left"
             );
         }
     }

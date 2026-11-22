@@ -322,16 +322,19 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
         # card wifid finds back only by asking as its 2 s end fails too: its arrival went
         # unheard. In five runs on the builders (2026-11-21) the card was back 1.17 to 1.22 s
         # after it was sent, 1.024 s of it the point's bidden wait, so the bound leaves 0.8 s.
+        # One ended on a point wifid can't name fails too, in its own words: hwsim's are named.
         machine.wait_until_succeeds(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
             " | grep -qE '^wlan2 (reached 02:00:00:00:00:00 [0-9]+ ms after it was asked"
             "|was found at 02:00:00:00:00:00 as its [0-9]+ ms ran out"
+            "|(joined an access point|was found at a point) wifid can.t name"
             "|didn.t get back to 02:00:00:00:00:00 within [0-9]+ ms, so may join any network$)'",
             timeout=timedelta(seconds=30),
         )
         behind = machine.succeed(
             f"journalctl -o cat -u wifid --after-cursor='{since}'"
-            " | grep -E 'so may join any network|as its [0-9]+ ms ran out' || true"
+            " | grep -E 'so may join any network|as its [0-9]+ ms ran out"
+            "|(joined an access point|was found at a point) wifid can.t name' || true"
         )
         # Whether the point bade the card wait to come back, as a WPA3 one does for 1024 ms,
         # says whether a late way back is the point's or wifid's.
