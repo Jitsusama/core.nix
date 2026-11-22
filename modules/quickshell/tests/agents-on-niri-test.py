@@ -2743,6 +2743,14 @@ def sessions_sought(shell: Shell) -> int:
     return int(json.loads(shell.as_account(shell.ipc("made")))["sought"]["agents"])
 
 
+def made_since(shell: Shell, before: int) -> list[str]:
+    """Give the keys of the rows Agents made after it had made `before`, oldest first."""
+    made = made_by_agents(shell) - before
+    assert made <= LATELY_KEPT, f"Agents made {made} rows: {made_lately(shell)}"
+    lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
+    return [key.split(" ")[0] for key in (lately[-made:] if made else [])]
+
+
 def made_lately(shell: Shell) -> str:
     """Say the last rows Agents made, each marked shut or walked as the launcher was then."""
     lately = json.loads(shell.as_account(shell.ipc("made")))["lately"]["agents"]
@@ -2918,6 +2926,130 @@ def test_the_first_letter_typed_at_home_makes_no_rows_after_one_arrived_while_sh
     shell.type_in("tidepool", selecting="Tidepool Quest")
     made = made_by_agents(shell) - opened
     assert made == 0, f"typing at home made {made} of Agents' rows: {made_lately(shell)}"
+
+
+def test_a_step_out_of_now_makes_none_of_agents_rows_as_home_is_held(shell: Shell) -> None:
+    """- out of Now, opened by its chord, makes none of Agents' rows as home is held.
+
+    Joel's - out of Now held 72, 53 and 47 ms, Agents making 6 rows within each, where every
+    other step out held 2 to 4 ms with none (his journal, 2026-11-21 13:13). Home names what
+    Agents holds from the daemon's rows, never from rows made of them, so a row made as it's held
+    is made for nobody (Y2YBTS, 2026-11-21 [8c306245]). The step's line counts them, as
+    stepHolding says.
+    """
+    shell.launcher_closed()
+    # Home read first, as Joel's had been, so what's counted is the step's alone, whichever
+    # cases ran before this one.
+    shell.as_account(shell.ipc("toggle"))
+    shell.launcher_ready()
+    made_settled(shell)
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"] and "For You" in shown["rows"])
+    made_settled(shell)
+    before = made_by_agents(shell)
+    shell.normal()
+    shell.send_chars("-")
+    shell.launcher_until(lambda shown: not shown["held"])
+    holding = json.loads(shell.as_account(shell.ipc("laidOut")))["stepHolding"]
+    made_settled(shell)
+    after = made_by_agents(shell) - before
+    lately = made_lately(shell)
+    shell.close_launcher()
+    assert holding is not None, "- out of Now counted nothing as it held"
+    made = holding["rows"].get("agents", 0)
+    assert made == 0, f"- out of Now made {made} of Agents' rows as it held: {lately}"
+    # Nor in the turns after, where a remake put off from the step's hold would land.
+    assert after == 0, f"- out of Now made {after} of Agents' rows after it held: {lately}"
+
+
+def test_sessions_to_reopen_in_for_you_follows_what_is_to_reopen_as_now_is_held(
+    shell: Shell,
+) -> None:
+    """For You's Sessions to Reopen changes as what's to reopen does, while Now is held.
+
+    Now is the source named "on" (home.nix), and Agents reads Sessions to Reopen there. Asked
+    for as "now", it was never found, and the row For You drew stood as it was last made at
+    home or in Agents.
+    """
+    in_for_you(shell)
+    shell.launcher_until(lambda shown: "Sessions to Reopen" in shown["rows"])
+    shell.down_to("Sessions to Reopen")
+    before = shell.showing()["selected"]["side"]
+    kept = RESTORE.read_text()
+    said = json.loads(kept)
+    said["sessions"].append(
+        {
+            "id": "01b4-tide",
+            "address": "TIDERN",
+            "title": "Tide Return",
+            "cwd": str(KEPT),
+            "lostAt": 1,
+        }
+    )
+    try:
+        RESTORE.write_text(json.dumps(said))
+        shell.launcher_until(
+            lambda shown: (
+                shown["held"] == ["now", "For You"]
+                and (shown["selected"] or {}).get("name") == "Sessions to Reopen"
+                and (shown["selected"] or {}).get("side") != before
+            )
+        )
+    finally:
+        RESTORE.write_text(kept)
+        shell.close_launcher()
+
+
+def test_a_session_landing_while_now_is_held_is_counted_in_landed_once_stepped_out(
+    shell: Shell,
+) -> None:
+    """A landing heard while Now is held makes no Landed there, and - out of Now makes it.
+
+    Agents keeps each of its own rows while what it's made from is as it was, and Now reads
+    only Sessions to Reopen of them, so a part left out of what Landed is kept by would leave
+    its count as it stood before the landing, for as long as nothing else it's made from
+    changed.
+    """
+    # Not by opened(), whose first rows the sessions the cases before this one laid move.
+    shell.as_account(shell.ipc("collection", "agents"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"])
+    shell.down_to("Landed")
+    before = shell.showing()["selected"]["side"]
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "on"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["held"] == ["now"])
+    landing = {"at": datetime.now(UTC).isoformat(), "ref": "core.nix#6037", "what": "Counted"}
+    try:
+        made = made_by_agents(shell)
+        # Heard whole as one arriving shut is, though Now is held.
+        arrived_shut(
+            shell,
+            lambda: lay("NOWLND", "Landed in Now", {"state": "listening", "landings": [landing]}),
+        )
+        in_now = made_since(shell, made)
+        assert "agents:landed" not in in_now, f"Now made Landed as the landing came: {in_now}"
+        made = made_by_agents(shell)
+        shell.normal()
+        shell.send_chars("-")
+        shell.launcher_until(lambda shown: not shown["held"])
+        made_settled(shell)
+        at_home = made_since(shell, made)
+        assert "agents:landed" in at_home, f"- out of Now made no Landed: {at_home}"
+        shell.close_launcher()
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(
+            lambda shown: shown["held"] == ["agents"] and "Landed" in shown["rows"]
+        )
+        shell.down_to("Landed")
+        shell.launcher_until(lambda shown: (shown["selected"] or {}).get("side") != before)
+    finally:
+        shell.close_launcher()
+        (PRESENCE / "nowlnd.json").unlink(missing_ok=True)
 
 
 # How long Agents makes no row before an opening's work is taken as done: many frames.
