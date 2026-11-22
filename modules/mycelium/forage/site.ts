@@ -242,15 +242,17 @@ function openCell(cell: string): void {
 
 function draw(): void {
   const rows = shown();
+  // A find that matches nothing keeps the cursor, so ending it finds it again.
   if (!rows.some((each) => each.cell === cursor)) {
-    cursor = rows[0]?.cell ?? null;
+    cursor = rows[0]?.cell ?? cursor;
   }
   list.innerHTML =
     rows.length === 0 && forages.length > 0
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
   // Worked out for every list, an empty one too, so a step never draws a
-  // floor over a list the page no longer holds.
+  // floor over a list the page no longer holds; an emptied list leaves the
+  // last drawing up, as it always has.
   shownFloor = floorAfter(forages, shownFloor, cursor);
   if (forages.length > 0) {
     floor.innerHTML = floorOf(shownFloor, cursor, machine());

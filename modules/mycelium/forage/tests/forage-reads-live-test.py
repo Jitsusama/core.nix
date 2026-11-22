@@ -314,6 +314,15 @@ def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
     long_page.locator("#find").press("Escape")
     expect(cell(long_page, TOPS[0]), "ending the find didn't bring the list back").to_have_count(1)
     assert on_the_floor(long_page) == drawn, "ending a find moved the floor"
+    # A find that matches nothing, as a typo does, keeps the cursor and the floor through its end.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill("ZZZZZZ")
+    expect(long_page.locator("#cells .none"), "the find matched a cell").to_have_count(1)
+    ringed_on_the_floor(long_page, held, "a find that matched nothing moved the ring")
+    assert on_the_floor(long_page) == drawn, "a find that matched nothing moved the floor"
+    long_page.locator("#find").press("Escape")
+    selected(long_page, held, "ending a find that matched nothing lost the cursor")
+    assert on_the_floor(long_page) == drawn, "ending a find that matched nothing moved the floor"
     # A record hollows a cell the floor draws: it's drawn hollow, and the floor holds still.
     # The floor a step off draws holds that cell too, so it shows which list the step drew.
     recorded = TOPS[30]
