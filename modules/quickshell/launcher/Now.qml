@@ -1372,13 +1372,15 @@ Provider {
     }
 
     // Who asks, in plain words (Looks.js's askerOf), else the title of the
-    // cell Talk goes to (lookCell), never an id: "from Trunkd Disk
-    // Saturation During Compaction (INV-31016) \u00b7 to look at" told Joel
-    // nothing (2026-11-19), and a session Talk won't reach misleads him.
+    // cell Talk goes to (lookCell) where that is the one that left it, never
+    // an id: "from Trunkd Disk Saturation During Compaction (INV-31016)
+    // \u00b7 to look at" told Joel nothing (2026-11-19), and a session Talk
+    // won't reach, or one that never asked, misleads him.
     function lookAsker(one) {
         const title = one.quest ? WaitingOnYou.titles?.[one.quest] : undefined;
+        const cell = lookCell(one);
         return Looks.askerOf(one, title === undefined ? null : { title: title })
-            || lookCell(one)?.title || "";
+            || (cell !== null && ForYou.leftBy(one, cell) ? cell.title ?? "" : "");
     }
 
     // What becomes of a look its session says nothing of: it expires at its

@@ -419,10 +419,18 @@ QtObject {
         const posted = { value: "posted", label: "Posted" };
         const elsewhere = Object.assign({}, choosing, { address: "07HV3N" });
         expect("an answer, to the session that left it, by the address it goes by now",
-            Looks.answer(elsewhere, posted, { address: "m0ved1",
-                presence: { addresses: ["07HV3N"] } }, now),
+            Looks.answer(Object.assign({}, elsewhere, { session: "s-p" }), posted,
+                { address: "m0ved1", presence: { session: "s-p" } }, now),
             { address: "M0VED1", steer: { act: "answer", look: "P", value: "posted",
                 from: "joel", at: "2026-11-08T14:00:00.000Z" } });
+        expect("and to the cell the look names, by its own address",
+            (Looks.answer(Object.assign({}, elsewhere, { cell: "CCCCCC" }), posted,
+                { address: "CCCCCC", presence: { addresses: ["07HV3N"] } }, now) ?? {})
+                .address, "CCCCCC");
+        expect("a cell that only lists the look's address, at the look's own, never its own",
+            (Looks.answer(elsewhere, posted, { address: "DDDDDD",
+                presence: { quest: "QEST-2-XXXXXX", addresses: ["07HV3N"] } }, now) ?? {})
+                .address, "07HV3N");
         expect("and to its quest once it's ended",
             (Looks.answer(elsewhere, posted, null, now) ?? {}).address, "VP50PC");
         expect("and to its quest where its cell is another that didn't leave it",

@@ -82,6 +82,7 @@ import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Held.js" as Held
 import "launcher/Joined.js" as Joined
+import "launcher/Looks.js" as Looks
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
@@ -1630,9 +1631,8 @@ Scope {
     function toldGone(moved) {
         if (inUse())
             return false;
-        const said = Words.of("verb:notice:goTo").said ?? {};
-        const gone = moved === true ? said.moved ?? {} : said;
-        toldThat(gone.gone ?? "", gone.why ?? "");
+        const gone = Looks.goneWords(Words.of("verb:notice:goTo").said, moved);
+        toldThat(gone.gone, gone.why);
         into("agents");
         prompt.linked();
         return true;

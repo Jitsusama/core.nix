@@ -109,11 +109,19 @@ function offers(choices) {
 // look's cell (`cell`, cellFor's), by the address it goes by now, which
 // Talk and Go To reach too, else to its quest's, whose address is the
 // quest's own last part, so the look is answered where the asking goes on
-// (85PKB2, 2026-11-12). Null where neither is known.
+// (85PKB2, 2026-11-12). A cell that is its leaver only by listing the
+// look's address among its own, which any session may claim, takes it at
+// the look's own address, as before cells, never at one of its choosing.
+// Null where neither is known.
 function answer(one, choice, cell, at) {
     const quest = String(one.quest ?? "").split("-").pop();
     const live = cell !== null && cell !== undefined && ForYou.leftBy(one, cell);
-    const address = String((live ? cell.address : quest) || one.address || "").toUpperCase();
+    const upper = name => String(name ?? "").toUpperCase();
+    const itself = live && (leftByItsId(one, cell)
+        || [one.address, one.cell].some(name => upper(name) !== ""
+            && upper(name) === upper(cell.address)));
+    const address = upper((itself ? cell.address : live ? one.address : quest)
+        || one.address);
     if (address === "") {
         return null;
     }
@@ -142,12 +150,12 @@ function cellOf(one, running, parked) {
         ?? on[0] ?? null;
 }
 
-// The quest a session works on, as the agents daemon reads it to place a
-// cell, so the two agree on whose a look is (modules/agents/src/cells.rs
-// `quest_of`): the first quest it owns, else its questInfo's, else its
-// `quest`. Holders.js and Sessions.qml still read questInfo first, so a
-// session owning one quest whose questInfo names another sits under that
-// other there; they move onto this one by Mon 23 Nov 2026.
+// The quest a session works on: the first quest it owns, else its
+// questInfo's, else its `quest`, in the agents daemon's order
+// (modules/agents/src/cells.rs `quest_of`). Only whether it is "" is read
+// here yet, and onQuest decides which quests a session is on; the order is
+// kept for Holders.js and Sessions.qml, which still read questInfo first
+// and move onto this by Mon 23 Nov 2026.
 // Read as cells.rs reads them, a questInfo id or quest that isn't a
 // string is passed over, and a `quest` that isn't one is "".
 function questOf(session) {
@@ -252,6 +260,18 @@ function cellFor(one, cells, running, parked) {
         || (questOf(session) === "" && leftByItsId(one, session)));
     return on.find(session => goes !== null && goes !== "" && session.address === goes)
         ?? cellOf(one, on, []);
+}
+
+// The words a Go To whose session isn't held says, `{ gone, why }`, from
+// its notice's `said` (words/notices.json's verb:notice:goTo): its `moved`
+// pair where the session has `moved` on to another quest, else its own, and
+// its own again where the moved pair says nothing, so the foot is never
+// bare.
+function goneWords(said, moved) {
+    const pair = one => ({ gone: typeof one?.gone === "string" ? one.gone : "",
+        why: typeof one?.why === "string" ? one.why : "" });
+    const onward = pair(said?.moved);
+    return moved === true && onward.gone !== "" ? onward : pair(said);
 }
 
 // Whether the session that left look `one` is still held, running or

@@ -1845,7 +1845,7 @@ ShellRoot {
         // one that left it, by the address it goes by now, else to the
         // quest's own, never to a stranger on another quest that lists the
         // look's address; and who asks, where the look says none, is that
-        // same cell's title.
+        // same cell's title where it is the one that left it, else none.
         const queue = { value: "merge", label: "Queue It" };
         const onQuestOne = { id: "r", kind: "pr", title: "Read R", state: "waiting",
             quest: "QEST-1-ABCDEF", session: "s-1", address: "AAAAAA", cell: "AAAAAA" };
@@ -1872,8 +1872,11 @@ ShellRoot {
             steerOf([lister], [movedOne]), ["NNNNNN"]);
         Sessions.running = [lister, ownOne];
         Sessions.parked = [];
-        expect("who asks, where the look names none, the cell Talk reaches, not a stranger",
-            now.lookAsker(onQuestOne), "Here");
+        expect("who asks, where the look names none, never a cell that didn't leave it",
+            now.lookAsker(onQuestOne) === "", JSON.stringify(now.lookAsker(onQuestOne)));
+        Sessions.running = [lister, ownOne, movedOne];
+        expect("and the cell Talk reaches where it is the one that left it",
+            now.lookAsker(onQuestOne) === "Moved", JSON.stringify(now.lookAsker(onQuestOne)));
         Sessions.running = heldBefore[0];
         Sessions.parked = heldBefore[1];
         // Later cases count the steers the shell itself sends from none.
@@ -2222,6 +2225,7 @@ ShellRoot {
         theLauncher.told = [];
         theLauncher.intoAsked = "";
         theLauncher.goneTold = 0;
+        theLauncher.goneMoved = [];
         const openedGone = now.openLook(goneLook);
         expect("Go on a gone session opens nothing",
             openedGone === false && Sessions.wentTo === null,
@@ -2229,18 +2233,23 @@ ShellRoot {
         expect("and leaves its look waiting as it was",
             now.lookTexts["g.json"] === textGone && now.looksSettling["g.json"] === undefined,
             JSON.stringify([now.lookTexts["g.json"], now.looksSettling["g.json"] ?? null]));
-        expect("and says so through the launcher's toldGone, never opening it bare",
+        expect("and says so through the launcher's toldGone, as ended, never opening it bare",
             theLauncher.goneTold === 1 && theLauncher.told.length === 0
-                && theLauncher.intoAsked === "",
-            JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked]));
+                && theLauncher.intoAsked === ""
+                && JSON.stringify(theLauncher.goneMoved) === "[false]",
+            JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked,
+                theLauncher.goneMoved]));
         now.lookTexts = textsGone;
         theLauncher.goneTold = 0;
+        theLauncher.goneMoved = [];
         now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
             state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
             cell: "GONEQQ" } }, "row:looks-history:q").run();
         expect("a served quiet terminal look whose session is gone opens nothing and says so",
-            Sessions.wentTo === null && theLauncher.goneTold === 1,
-            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneTold]));
+            Sessions.wentTo === null && theLauncher.goneTold === 1
+                && JSON.stringify(theLauncher.goneMoved) === "[false]",
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneTold,
+                theLauncher.goneMoved]));
         // One whose session is still held, on another quest now, says it has
         // moved on, not that it has ended.
         const runningBefore = Sessions.running;

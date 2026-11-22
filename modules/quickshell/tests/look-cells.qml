@@ -267,6 +267,22 @@ QtObject {
         expect("so a cell it names stays written as its own", JSON.parse(Looks.rewritten(
             Looks.doneWith(lentRead), "cleared", "cleared", now)).cell, "BBBBBB");
 
+        // What a Go whose session isn't held says: the moved words where it
+        // has moved on, else its own, and its own where the moved words are
+        // missing, never a bare foot.
+        const said = { gone: "its session isn't here", why: "it has ended",
+            moved: { gone: "its session has moved on", why: "Agents lists it" } };
+        expect("moved on, the moved words; gone, its own",
+            [Looks.goneWords(said, true), Looks.goneWords(said, false)],
+            [{ gone: "its session has moved on", why: "Agents lists it" },
+                { gone: "its session isn't here", why: "it has ended" }]);
+        expect("moved on with no moved words, or empty ones, its own still",
+            [Looks.goneWords({ gone: "g", why: "w" }, true),
+                Looks.goneWords({ gone: "g", why: "w", moved: { gone: "" } }, true)],
+            [{ gone: "g", why: "w" }, { gone: "g", why: "w" }]);
+        expect("no words at all, empty ones rather than a throw",
+            Looks.goneWords(undefined, true), { gone: "", why: "" });
+
         if (failures.length > 0) {
             for (const failure of failures)
                 console.warn(failure);
