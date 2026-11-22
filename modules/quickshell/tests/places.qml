@@ -154,7 +154,8 @@ QtObject {
         // niri keeps a workspace on each screen it has connected, an empty
         // one where Joel has none, and homeward counts a screen there only
         // so. These cases name the screens connected, so each is given the
-        // empty one niri would list; one case below calls it bare.
+        // empty one niri would list; the stale-screen cases below call
+        // Places.homeward bare, listing niri's workspaces themselves.
         function homeward(away, screens, workspaces) {
             const empty = Object.keys(screens).map((output, at) => ({ id: 900 + at, output }));
             return Places.homeward(away, screens, workspaces.concat(empty));
@@ -253,6 +254,12 @@ QtObject {
         expect("the screens connected are those niri lists a workspace on",
             Places.connected({ "Virtual-1": qemu, "Virtual-2": qemu, "eDP-1": panel },
                 [{ id: 21, output: "Virtual-1" }, { id: 22, output: "eDP-1" }]),
+            { "Virtual-1": qemu, "eDP-1": panel });
+        // Before niri lists any workspace, as when Reopen Them All comes
+        // first, nothing says a screen went, and each said keeps its
+        // connector found anew, as before the rule.
+        expect("with no workspace listed yet each screen said is taken for there",
+            Places.connected({ "Virtual-1": qemu, "eDP-1": panel }, []),
             { "Virtual-1": qemu, "eDP-1": panel });
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };

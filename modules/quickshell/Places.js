@@ -139,11 +139,11 @@ function placed(places, screens, inUse, moments) {
     });
 }
 
-// Of `screens` (screensOf), those niri lists a workspace on, as it does on each connected one:
-// screens heard apart from workspaces can predate one going (vm-screens-keep-places, 22 Nov).
+// Of `screens` (screensOf), those niri lists a workspace on, as on each connected one, all while it
+// lists none: screens heard apart from workspaces can predate one going (vm-screens-keep-places).
 function connected(screens, workspaces) {
     const listed = new Set((workspaces ?? []).map(each => each.output));
-    return Object.keys(screens ?? {}).filter(name => listed.has(name))
+    return Object.keys(screens ?? {}).filter(name => listed.size === 0 || listed.has(name))
         .reduce((there, name) => Object.assign(there, { [name]: screens[name] }), {});
 }
 
