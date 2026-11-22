@@ -271,8 +271,11 @@ pub fn itself(ties: &Value, now: i64) -> Said {
 
 /// A machine's last update, as a clause, when its node says one: how long
 /// ago it was, where its time reads and isn't ahead of this clock, and
-/// how it ended, with why when it didn't all go ahead. The tie carries a
-/// why only then (`update_why` in parts/ties.rs), so it is said as it comes.
+/// how it ended, with why when it didn't all go ahead: refused, failed, or
+/// done but booting what it booted before, the only steps `update_why`
+/// (parts/why.rs) carries one for. A why beside any other step, as a node
+/// that knows more steps might send, is left unsaid rather than read as
+/// this one's.
 fn updated(figures: &Value, now: i64) -> Option<String> {
     let at = figures.get("updated_at").and_then(Value::as_str)?;
     let ago = moment(at)
@@ -288,9 +291,9 @@ fn updated(figures: &Value, now: i64) -> Option<String> {
                 .and_then(Value::as_str)
                 .filter(|why| !why.is_empty()),
         ) {
-            (_, None) => ended,
             (Some("done"), Some(why)) => format!("{ended}, but {why}"),
-            (_, Some(why)) => format!("{ended}: {why}"),
+            (Some("refused" | "failed"), Some(why)) => format!("{ended}: {why}"),
+            _ => ended,
         },
     )
 }
@@ -555,6 +558,19 @@ mod tests {
             code(&json!({"code": null}), "kestrel", true),
             said("not read", "repos couldn't be had"),
             "on the machine it's read on, an unread code is a read that failed"
+        );
+    }
+
+    #[test]
+    fn a_why_beside_a_step_that_carries_none_is_left_unsaid() {
+        let now = 1_763_420_718; // 2025-11-17T23:05:18Z
+        let elsewhere = json!({"figures": {"updated_at": "2025-11-17T23:00:18Z",
+                                           "update_step": "building",
+                                           "update_why": "left over"}});
+        assert_eq!(
+            itself(&elsewhere, now).aside,
+            "its update 5 m ago says building",
+            "a why beside a step that carries none is left unsaid"
         );
     }
 

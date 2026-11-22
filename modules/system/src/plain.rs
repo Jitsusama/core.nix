@@ -2,14 +2,19 @@
 //! goes to a terminal, the launcher's rows and the realm's other machines,
 //! so nothing in it may act on a terminal, or move or hide the words around
 //! it. One filter for every such text, so a rule learnt for one reader
-//! holds for all of them.
+//! holds for all of them, and beside it the terminal kit's own list of
+//! what draws nothing (terminal-kit's `one_line`), so nothing the kit keeps
+//! from a terminal reaches one through here.
 
 use std::iter::Peekable;
 use std::str::Chars;
 
+use terminal_kit::layout::one_line;
+
 /// `line` as plain words: a terminal's escape sequences gone whole, as a
 /// coloured or linked complaint writes them; every other control character
-/// a space, so the words either side of a tab or a return stay apart; and
+/// and each line or paragraph separator one space, however many stand
+/// together, so the words either side of a tab or a return stay apart; and
 /// the format characters that turn, hide or break text gone, so a row reads
 /// as it's written.
 pub fn words(line: &str) -> String {
@@ -23,12 +28,16 @@ pub fn words(line: &str) -> String {
             // and reach here as a replacement character, which is harmless.
             '\u{9b}' => control_sequence(&mut chars),
             '\u{90}' | '\u{98}' | '\u{9d}' | '\u{9e}' | '\u{9f}' => string(&mut chars),
+            each if each.is_control() || matches!(each, '\u{2028}' | '\u{2029}') => {
+                if !kept.is_empty() && !kept.ends_with(' ') {
+                    kept.push(' ');
+                }
+            }
             each if hides(each) => {}
-            each if each.is_control() => kept.push(' '),
             each => kept.push(each),
         }
     }
-    kept.trim().to_owned()
+    one_line(&kept).trim().to_owned()
 }
 
 /// Passes over an escape sequence's rest, its escape already taken: a
@@ -56,8 +65,12 @@ fn string(chars: &mut Peekable<Chars>) {
     while let Some(each) = chars.next() {
         match each {
             '\u{7}' | '\u{9c}' => return,
+            // An escape ends the string; one that isn't its terminator
+            // starts a sequence of its own, which goes as any other does.
             '\u{1b}' => {
-                chars.next_if_eq(&'\\');
+                if chars.next_if_eq(&'\\').is_none() {
+                    escape(chars);
+                }
                 return;
             }
             _ => {}
@@ -67,7 +80,9 @@ fn string(chars: &mut Peekable<Chars>) {
 
 /// Whether `each` is a format character that turns, hides or breaks text:
 /// a soft hyphen, direction marks and overrides, joiners and invisible
-/// operators, a line or paragraph separator, annotation marks, and tags.
+/// operators, annotation marks, and tags. Some of these the terminal kit
+/// keeps, since a word or an emoji needs them drawn, but a row of plain
+/// words needs none of them, and each could hide a difference.
 fn hides(each: char) -> bool {
     matches!(
         each,
@@ -75,7 +90,7 @@ fn hides(each: char) -> bool {
             | '\u{61c}'
             | '\u{180e}'
             | '\u{200b}'..='\u{200f}'
-            | '\u{2028}'..='\u{202e}'
+            | '\u{202a}'..='\u{202e}'
             | '\u{2060}'..='\u{206f}'
             | '\u{feff}'
             | '\u{fff9}'..='\u{fffb}'
@@ -116,6 +131,27 @@ mod tests {
                 "\u{7}",
                 "",
                 "a line of only control characters leaves nothing",
+            ),
+            (
+                "a\u{2028}\tb",
+                "a b",
+                "a line separator parts words as a tab does",
+            ),
+            ("a;\t\tb", "a; b", "controls together leave one space"),
+            (
+                "\u{1b}]0;title\u{1b}[31mred",
+                "red",
+                "a sequence that ends a string goes whole too",
+            ),
+            (
+                "said\u{1b}]0;never ended",
+                "said",
+                "a string never ended takes the rest with it",
+            ),
+            (
+                "a\u{3164}\u{1d173}b",
+                "ab",
+                "what the terminal kit keeps from a terminal goes",
             ),
         ] {
             assert_eq!(words(said), shown, "{what}");
