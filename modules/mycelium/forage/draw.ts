@@ -232,13 +232,15 @@ function kinOf(forages: readonly Forage[]): Kin {
     return by === undefined ? undefined : index.get(by);
   });
   const line = (start: number, known: ReadonlySet<number>, most: number): readonly number[] => {
-    const found = new Set<number>();
+    const found: number[] = [];
+    const seen = new Set<number>();
     let at: number | undefined = start;
-    while (at !== undefined && !known.has(at) && !found.has(at) && found.size < most) {
-      found.add(at);
+    while (at !== undefined && !known.has(at) && !seen.has(at) && found.length < most) {
+      found.push(at);
+      seen.add(at);
       at = from[at];
     }
-    return [...found];
+    return found;
   };
   const children = (parent: number): readonly number[] =>
     from.flatMap((by, place) => (by === parent ? [place] : []));
