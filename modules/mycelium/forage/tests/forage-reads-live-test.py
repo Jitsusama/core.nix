@@ -565,7 +565,9 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         small = [each for each in drawn["words"] if each < LEAST_WORD_PX - 0.05]
         assert not small, f"at {size} the floor drew words at {small} px"
         mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])
-        expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text("https://")
+        expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text(
+            "https://", timeout=PACE_MS
+        )
         # Open, so the panel draws the link as well as the row.
         cell(page, "OSPREY").click()
         selected(page, "OSPREY", "a click didn't open the long link's cell")
