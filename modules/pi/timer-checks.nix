@@ -4,6 +4,7 @@
 {
   account,
   bareNixos,
+  graphical,
   holds,
   lib,
   macWorkstation,
@@ -99,11 +100,12 @@ onLinux {
       git = lib.makeBinPath [ home.programs.git.package ];
       profile = "${home.home.profileDirectory}/bin";
       # The slices it runs in, whose hard limit would kill it as its own
-      # would: the machine declares them (modules/slices), and an account
-      # could too, in home-manager's own shape.
+      # would: a graphical machine declares them (modules/slices, which the
+      # workstation alone doesn't import), and an account could too, in
+      # home-manager's own shape.
       noHardLimit =
         name:
-        !((workstation.config.systemd.user.slices.${name}.sliceConfig or { }) ? MemoryMax)
+        !((graphical.config.systemd.user.slices.${name}.sliceConfig or { }) ? MemoryMax)
         && !((home.systemd.user.slices.${name}.Slice or { }) ? MemoryMax);
       # A machine giving provider modules, a git of its own and a realm whose
       # host shows what a host's unit clears and whose folders the sweep's
