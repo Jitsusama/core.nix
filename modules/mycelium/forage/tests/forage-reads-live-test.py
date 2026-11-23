@@ -509,16 +509,24 @@ def test_a_sites_server_that_goes_is_said_stale(
 # The most a first visit's layout may shift, the web vitals' line for good.
 STILL = 0.1
 # Every shift of the page since it began loading that the reader didn't cause, read from the
-# browser's buffer, or none once it has kept none for a moment.
+# browser's buffer, with what moved from where to where so a failure names its cause, or
+# none once it has kept none for a moment.
 SHIFTED = """() => new Promise((done) => {
+  const box = (rect) => `${Math.round(rect.y)}+${Math.round(rect.height)}`;
+  const named = (node) => node?.id || node?.className?.baseVal || node?.className || node?.nodeName;
   new PerformanceObserver((list, observer) => {
     observer.disconnect();
-    done(list.getEntries().reduce((sum, each) => sum + (each.hadRecentInput ? 0 : each.value), 0));
+    const shifts = list.getEntries().filter((each) => !each.hadRecentInput);
+    done({
+      total: shifts.reduce((sum, each) => sum + each.value, 0),
+      moved: shifts.flatMap((each) => each.sources.map((source) =>
+        `${named(source.node)} ${box(source.previousRect)} to ${box(source.currentRect)}`)),
+    });
   }).observe({ type: "layout-shift", buffered: true });
-  setTimeout(() => done(0), 500);
+  setTimeout(() => done({ total: 0, moved: [] }), 500);
 })"""
 # A purpose holding a link with nowhere to break, longer than a phone is wide.
-LINKED = "OSPREY reads https://example.org/tides/outer-buoy/hourly-readings-for-the-whole-season"
+LONG_LINK = "OSPREY reads https://example.org/tides/outer-buoy/hourly-readings-for-the-whole-season"
 
 
 @pytest.mark.parametrize("size", SIZES)
@@ -533,8 +541,10 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         every_cell_drawn(page)
         page.wait_for_timeout(REDRAWN_MS)
         shifted = page.evaluate(SHIFTED)
-        assert shifted < STILL, f"a first visit at {size} shifted {shifted} as the cells arrived"
-        mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LINKED}])
+        assert shifted["total"] < STILL, (
+            f"a first visit at {size} shifted {shifted['total']}: {shifted['moved']}"
+        )
+        mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])
         expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text("https://")
         wider = page.evaluate("() => document.documentElement.scrollWidth - innerWidth")
         assert wider <= 0, f"a long link made the page {wider} px wider than {size}"
