@@ -434,8 +434,9 @@ in
         # git for the three mains, and journalctl for update-to-main's
         # looks at them, as the axes read them. A machine's own git comes
         # first, for a checkout stock git refuses to open. The account's
-        # mycelium, last, says how crowded each realm's machines are and how
-        # its cells stand, and holds the map's check, mycelium-map-check.
+        # mycelium, last, says how crowded each realm's machines are, where
+        # its sessions run and how its cells stand, and holds the map's
+        # check, mycelium-map-check.
         Environment = [
           "PATH=${
             lib.makeBinPath (
