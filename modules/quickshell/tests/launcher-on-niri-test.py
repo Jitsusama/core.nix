@@ -4296,11 +4296,22 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     # on the gap rather than its band, which none of the other landings has. The opening's
     # rows name the list's first twenty, drawn or not, Study among them; that it stands a gap
     # below the row above is test_each_eero_heads_the_devices_on_it's. Its landing starts from
-    # the top itself, so it holds wherever it stands in the list.
+    # the top itself, so it holds wherever it stands in the list. The selection has two
+    # writers: pickOn, as Qt lays the selected row, and pick's fillAt, as a key selects it.
+    # Landing on Study from afar lays it anew, so pickOn has the last word; stepping off it
+    # and back while it's drawn lays nothing, so fillAt's place is the one left standing.
     assert "Study" in opened["rows"], (opened["rows"], *parts(opened))
     study = opened["rows"].index("Study")
     assert study > 0, (opened["rows"], *parts(opened))
-    landings = [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0), (f"gg{study}j", study)]
+    landings = [
+        ("7j", 7),
+        ("5j", 12),
+        ("G", count - 1),
+        ("gg", 0),
+        (f"gg{study}j", study),
+        ("k", study - 1),
+        ("j", study),
+    ]
     for key, at in landings:
         # The cursor's number, absolute, is drawn only beside a row the view draws.
         def landed(shown: Json, at: int = at) -> bool:

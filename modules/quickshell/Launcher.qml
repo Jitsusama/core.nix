@@ -7376,8 +7376,14 @@ Scope {
         // Whether the selection is drawn on its row in this frame, so a
         // check sees the bar and the lit row agree on a key's first frame
         // (Joel, 2026-11-13 23:38: the selection dragged behind its row).
-        const onRow = root.current < 0
-            || Math.abs(list.pickY - list.fillAt(root.current)) < 0.5;
+        // A drawn row is measured where it's drawn, its foot as pickOn
+        // reads it, so a fillAt gone wrong isn't measured against itself;
+        // one Qt hasn't laid yet, which pickOn places as it's laid, only
+        // against fillAt.
+        const selected = root.current < 0 ? null : list.itemAtIndex(root.current);
+        const foot = selected === null ? list.fillAt(root.current)
+            : selected.y + selected.height - root.rowTall;
+        const onRow = root.current < 0 || Math.abs(list.pickY - foot) < 0.5;
         for (const key of keysDrawing.waiting) {
             key.begun = begun;
             key.frame = frame;
