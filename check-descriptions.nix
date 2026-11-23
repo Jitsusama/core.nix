@@ -6444,7 +6444,9 @@
   vm-a-switch-takes-a-plugged-in-brio = ''
     a switch that brings in the MX Brio's sharing over a Brio already plugged in and handed to the
     seat names it for its relay, starts the relay, and takes it back from the seat, with nobody
-    plugging it in again
+    plugging it in again; the sharing drops the seat's give-back, and a switch back to the seat's
+    machine gives the seat the Brio again, tagged for it, unmarked and watched as its own, with
+    another camera left alone
   '';
   vm-lid-shuts-with-the-hinge = ''
     logind hears lid-hinge's switch and not the lid's own: a lid shut with the hinge coming down
