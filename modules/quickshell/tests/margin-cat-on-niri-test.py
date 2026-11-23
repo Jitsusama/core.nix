@@ -1161,22 +1161,51 @@ def test_an_empty_workspace_has_it_fall_to_the_floor_and_climb_back(shell: Shell
     sits_over(shell, there, since)
 
 
-def the_turn(places: list[Json | None]) -> tuple[int, Json | None, Json | None]:
+def the_turn(places: list[Json | None]) -> tuple[int, Json, Json, Json | None]:
     """Find where a move down turned back up, in the places the cat said.
 
-    It gives the second move's first place, by its index, past any step of the first said
-    after the mark and any report between the two that says no move, and the first move's
-    last place, which that is held to. A report with no move still says the place the first
-    left, so taking it for the second would hold the second move to nothing.
+    It gives the second move's first place, by its index, the place said just before it,
+    which that is held to, and the first move's last place, whose reach is the screen's. Past
+    any step of the first said after the mark, a report between the two that says a place but
+    no move is passed over: halted, the cat still sits where the first left it, and cut short,
+    it walks on from there (MarginCatScreen.qml's cut()), so taking either for the second
+    would hold the second move to itself. A report that says nowhere is never passed over, so
+    a cat gone from the screen between the two is the second move's first place, and fails.
     """
     ways = [((one or {}).get("move") or {}).get("way") for one in places]
     down = [way is not None and way > 0 for way in ways]
     assert any(down), "the first move never said where the cat was"
     first = down.index(True)
-    up = (i for i, way in enumerate(ways) if i > first and way is not None and way <= 0)
-    turned = next(up, None)
+    turns = (
+        i
+        for i, way in enumerate(ways)
+        if i > first and (places[i] is None or (way is not None and way <= 0))
+    )
+    turned = next(turns, None)
     assert turned is not None, "the second move never said where the cat was"
-    return turned, places[max(i for i in range(first, turned) if down[i])], places[turned]
+    moved = places[max(i for i in range(first, turned) if down[i])]
+    was = places[turned - 1]
+    # Every place from the first move's first to the turn says somewhere.
+    assert moved is not None and was is not None
+    return turned, was, moved, places[turned]
+
+
+def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> None:
+    """A halt or a cut's walk between two moves is passed over, and the cat gone isn't.
+
+    The second move is held to the place said just before it, where a cut's walk got to, and
+    a cat said nowhere between the two is the second move's first place, which fails its case.
+    """
+    down: Json = {"x": 0, "y": 10, "reach": 800, "move": {"way": 1}}
+    halted: Json = {"x": 0, "y": 10, "reach": 40, "move": None}
+    walked: Json = {"x": 30, "y": 10, "reach": 40, "move": None, "walk": {"t": 8}}
+    up: Json = {"x": 30, "y": 890, "reach": 800, "move": {"way": -1}}
+    assert the_turn([halted, down, halted, walked, up]) == (4, walked, down, up)
+    assert the_turn([down, halted, None, up]) == (2, halted, down, None)
+    with pytest.raises(AssertionError, match="the second move never said"):
+        the_turn([down, halted, walked])
+    with pytest.raises(AssertionError, match="the first move never said"):
+        the_turn([halted, up])
 
 
 def rides_back(place: Json | None) -> TypeGuard[Json]:
@@ -1217,13 +1246,14 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     sits_over(shell, upper, since)
     said, _ = shell.said_since(since)
     places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
-    turned, was, after = the_turn(places)
-    assert was is not None, "the cat was nowhere as the first move went"
+    turned, was, moved, after = the_turn(places)
     assert after is not None, "the cat was nowhere as the second move began"
     # Caught off the screen between workspaces, waiting to drop in, it
     # may ride back in from anywhere else off it, since neither place is
     # seen (the net, 2026-11-16: from y -849 in its unseen beat to -131).
-    off = [one["y"] + one["size"] <= 0 or one["y"] >= one["reach"] for one in (was, after)]
+    # A place said walking has its own layer's reach, so the screen's is the first move's.
+    reach = moved["reach"]
+    off = [one["y"] + one["size"] <= 0 or one["y"] >= reach for one in (was, after)]
     near = STEPS_ON * was["size"]
     gone = math.hypot(after["x"] - was["x"], after["y"] - was["y"])
     # Turned back up before it had a seat, its second move is the ride that takes its window
@@ -1239,7 +1269,7 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # slide is proven frame by frame in Qt's engine (margin-cat-one-screen.qml).
     move = after.get("move") or {}
     scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
-    apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
+    apart = reach + max(1, round(reach * 0.1 * scale)) / scale
     carried = move.get("carried", 0)
     laid = after["y"] - carried - was["y"]
     rode = (
@@ -1248,7 +1278,9 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
         and abs(after["x"] - was["x"]) <= near
         and abs(laid - apart) <= near
     )
-    assert all(off) or gone <= near or rode, f"the second move put it at {after}, from {was}"
+    assert all(off) or gone <= near or rode, (
+        f"the second move put it at {after}, from {was}, the first having got to {moved}"
+    )
     # The ride back, from its first place said after the turn, past any report between the
     # two moves that says no move, to its last. Each place it says lies on the way it was laid,
     # off it by its ground alone, within a pixel of where the place is drawn; and its ground
