@@ -433,6 +433,15 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             page = opened.page
             said_quiet(page, "the quiet day wasn't said")
             opened.passes_the_skills_checks()
+            # A murmur it can't read is still a murmur, so the day isn't called quiet.
+            unreadable = "murmur:GULLSS:1"
+            quiet_node.tell("murmur", changed=[{"key": unreadable, "writer": "GULLSS"}])
+            expect(page.locator("#asof"), "the unread murmur wasn't said").to_contain_text(
+                "Couldn't read: murmur:GULLSS:1", timeout=PACE_MS
+            )
+            expect(page.locator("#quiet"), "an unread murmur was called quiet").to_be_hidden()
+            quiet_node.tell("murmur", gone=[unreadable])
+            said_quiet(page, "the unread murmur going left no quiet line")
             at = int(time.time())
             quiet_node.tell("murmur", changed=[murmur("HERONS", at, "Fog.")])
             the_page_counts(page, "One murmured, all still in the air.", "the murmur went unheard")
@@ -454,8 +463,11 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             options = listed.locator('[role="option"]')
             title = page.locator("#murmurs-title")
             expect(title, "the air filter didn't take").to_have_text("The murmurs still in the air")
-            expect(options, "the air filter showed a settled murmur").to_have_count(1)
             key = f"murmur:HERONS:{at}"
+            expect(options, "the air filter showed a settled murmur").to_have_count(1)
+            expect(options, "the air filter showed the wrong murmur").to_have_attribute(
+                "data-key", key
+            )
             quiet_node.tell("murmur", changed=[{"key": key, "settled": "cleared by noon"}])
             roosts = "Two murmured, every one come to roost."
             the_page_counts(page, roosts, "the settling went unheard")

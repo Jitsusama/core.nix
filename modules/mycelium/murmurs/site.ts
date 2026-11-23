@@ -108,11 +108,12 @@ function select(bringIntoView = false): void {
 
 /**
  * Shows the list while it has rows, and the quiet line once the node has said there
- * are none. A list with no rows is no listbox, since a listbox must hold options.
+ * are none it couldn't read either, since the standing line then says what it holds.
+ * A list with no rows is no listbox, since a listbox must hold options.
  */
 function showList(any: boolean): void {
   list.hidden = !any;
-  quiet.hidden = any || !given;
+  quiet.hidden = any || !given || unread.length > 0;
   if (any) {
     // Only a listbox may be labelled, so its name comes and goes with its role.
     list.setAttribute("role", "listbox");
