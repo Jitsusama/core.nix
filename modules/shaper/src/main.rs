@@ -1923,6 +1923,7 @@ fn applied_held((vpn, agents): (f64, f64), split: &lanes::Split) -> trace::Held 
         } else {
             1.0
         },
+        unsent: split.unsent,
     }
 }
 
@@ -2644,7 +2645,8 @@ mod tests {
             applied_held((0.6, 0.4), &split(Some(900.0))),
             trace::Held {
                 vpn: 0.6,
-                agents: 0.4
+                agents: 0.4,
+                unsent: false,
             },
             "each share where it's taken, by name, and not the cap"
         );
@@ -2652,9 +2654,18 @@ mod tests {
             applied_held((0.6, 0.4), &split(None)),
             trace::Held {
                 vpn: 0.6,
-                agents: 1.0
+                agents: 1.0,
+                unsent: false,
             },
             "agents' share with their lane uncapped held nothing"
+        );
+        let refused = lanes::Split {
+            unsent: true,
+            ..split(Some(900.0))
+        };
+        assert!(
+            applied_held((0.6, 0.4), &refused).unsent,
+            "shares from a split tc refused weren't said unsent"
         );
         let (vpn, agents) = held_shares((true, false, false), (0.6, 0.4));
         assert_eq!(

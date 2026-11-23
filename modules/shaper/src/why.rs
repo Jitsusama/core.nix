@@ -236,9 +236,11 @@ pub fn ceiling(link: &str, up: u64) -> String {
 /// A share in whole percent, rounded down, as the status and a trace say
 /// it: a hold under one never reads as 100%. Rounded down from a billionth
 /// over, since a double keeps a share such as 0.29 as 28.999... percent,
-/// which would otherwise read a percent tighter than it was.
+/// which would otherwise read a percent tighter than it was; a share that
+/// billionth carries to 100 is still under one, so it reads 99.
 pub fn percent(share: f64) -> f64 {
-    (share * 100.0 + 1e-9).floor()
+    let whole = (share * 100.0 + 1e-9).floor();
+    if share < 1.0 { whole.min(99.0) } else { whole }
 }
 
 fn lossless(kbit: u64) -> f64 {
@@ -385,6 +387,7 @@ mod tests {
             (0.58, 58.0),
             (0.814, 81.0),
             (0.996, 99.0),
+            (1.0 - 1e-12, 99.0),
             (1.0, 100.0),
         ] {
             let said = percent(share);

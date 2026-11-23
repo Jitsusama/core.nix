@@ -88,6 +88,10 @@ pub struct Line {
     pub vpn_share: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agents_share: Option<f64>,
+    /// True where tc refused the split's last change, so the shares are
+    /// what main asked, not known to be what the classes hold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held_unsent: Option<bool>,
 }
 
 impl Line {
@@ -111,6 +115,7 @@ impl Line {
             why: None,
             vpn_share: None,
             agents_share: None,
+            held_unsent: None,
         }
     }
 
@@ -124,12 +129,14 @@ impl Line {
 
     /// This line, saying the shares its link's queues were held to, those
     /// under one, rounded down to a hundredth (`why::percent`), so a share
-    /// held under one never reads as one.
+    /// held under one never reads as one, and marked where the split they
+    /// came from wasn't sent.
     pub fn held(self, held: Held) -> Line {
         let under = |share: f64| (share < 1.0).then(|| crate::why::percent(share) / 100.0);
         Line {
             vpn_share: under(held.vpn),
             agents_share: under(held.agents),
+            held_unsent: held.unsent.then_some(true),
             ..self
         }
     }
@@ -137,11 +144,13 @@ impl Line {
 
 /// The shares a link's queues were held to, as main put them there: the
 /// VPN's own queue's of its lane, and agents' lane's of its split, each one
-/// while it held nothing.
+/// while it held nothing; and whether the split's last change failed, so
+/// the classes may hold another than these.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Held {
     pub vpn: f64,
     pub agents: f64,
+    pub unsent: bool,
 }
 
 impl Held {
@@ -149,6 +158,7 @@ impl Held {
     pub const WHOLE: Held = Held {
         vpn: 1.0,
         agents: 1.0,
+        unsent: false,
     };
 }
 
@@ -381,6 +391,7 @@ mod tests {
         let held = line(NOV16, Some(9_500), None).because("tunnel").held(Held {
             vpn: 0.8149,
             agents: 0.996,
+            ..Held::WHOLE
         });
         assert_eq!(held.why.as_deref(), Some("tunnel"), "the kind of reason");
         assert_eq!(
@@ -396,6 +407,7 @@ mod tests {
         let edge = line(NOV16, None, None).held(Held {
             vpn: 0.29,
             agents: 1.0,
+            ..Held::WHOLE
         });
         assert_eq!(
             edge.vpn_share,
@@ -415,6 +427,22 @@ mod tests {
             written.contains(r#""why":"clear""#) && !written.contains("share"),
             "wrote the reason alone: {written}"
         );
+        assert_eq!(
+            held.held_unsent, None,
+            "shares from a split sent were marked unsent"
+        );
+        // A split tc refused leaves the shares what main asked, which the
+        // line says (traces round 2's F13).
+        let refused = line(NOV16, Some(9_500), None).held(Held {
+            vpn: 0.5,
+            agents: 1.0,
+            unsent: true,
+        });
+        let written = serde_json::to_string(&refused).expect("a line");
+        assert!(
+            written.contains(r#""held_unsent":true"#),
+            "shares from a split tc refused weren't marked: {written}"
+        );
     }
 
     #[test]
@@ -430,6 +458,7 @@ mod tests {
         writer.write(&line(NOV16 + 6, None, None).because("tunnel").held(Held {
             vpn: 0.5,
             agents: 1.0,
+            ..Held::WHOLE
         }));
         let read = read(&folder).expect("the folder reads");
         let _ = fs::remove_dir_all(&folder);
