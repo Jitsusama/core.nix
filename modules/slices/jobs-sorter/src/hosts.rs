@@ -64,6 +64,10 @@ use crate::{focus, holds, keep, low};
 /// so a switch that changes them reaches a host that keeps running.
 pub const OWN_FOR: Duration = Duration::from_secs(60);
 
+/// How long a unit that has gone is asked after until systemd says it
+/// stopped ([`Hosts::leave`]).
+pub const PENDING_FOR: Duration = Duration::from_secs(60);
+
 /// A host unit's rank: the properties set on it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Rank {
@@ -305,6 +309,15 @@ pub struct Hosts {
     /// Whether the settings units that no longer run left behind have
     /// been taken back since the sorter started (`crate::own::forget`).
     pub swept: bool,
+    /// Whether a failure to ask which units stopped has been said.
+    pub sweep_failed: bool,
+    /// The units ranked before that have gone, each with when it went,
+    /// whose settings are taken back once systemd says they stopped: one
+    /// just gone may still be stopping ([`Hosts::leave`]).
+    pub pending: HashMap<String, Instant>,
+    /// The units whose settings couldn't all be taken back, so each is
+    /// said once.
+    pub unswept: HashSet<String>,
     /// The units said to hold no one host, ranked by all their roots, so
     /// each is said once.
     pub unclear: HashSet<String>,
@@ -391,10 +404,28 @@ impl Hosts {
         self.failing.iter().filter_map(|unit| self.kept(unit)).sum()
     }
 
-    /// Whether a unit ranked before isn't among `units` now, so it has
-    /// stopped and its settings can be taken back.
-    pub fn leaving(&self, units: &[String]) -> bool {
-        self.set.keys().any(|unit| !units.contains(unit))
+    /// Notes each unit ranked before and not among `units` now as gone at
+    /// `now`, so its settings are taken back once it has stopped, and
+    /// one among them again as no longer gone. One still not stopped
+    /// [`PENDING_FOR`] after it went is asked after no more, as each look
+    /// would ask again while it lasts; the next sorter's first look takes
+    /// back what it left.
+    pub fn leave(&mut self, units: &[String], now: Instant) {
+        for unit in self.set.keys().filter(|unit| !units.contains(unit)) {
+            self.pending.entry(unit.clone()).or_insert(now);
+        }
+        self.pending.retain(|unit, since| {
+            !units.contains(unit) && now.saturating_duration_since(*since) < PENDING_FOR
+        });
+    }
+
+    /// Forgets all this sorter set on `unit`, whose settings were taken
+    /// back, so it's ranked afresh should it start again under its name.
+    pub fn forget(&mut self, unit: &str) {
+        self.set.remove(unit);
+        self.held.remove(unit);
+        self.failing.remove(unit);
+        self.pending.remove(unit);
     }
 
     /// Forgets the units no longer among `units`, whose hosts stopped.
@@ -837,25 +868,46 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_ranked_before_and_gone_now_is_leaving() {
+    fn a_unit_ranked_before_and_gone_now_is_asked_after_for_a_minute() {
         let mut hosts = Hosts::default();
         let rank = wanted(&attended(), Signs::default(), 10);
         hosts.done("a", rank.clone(), 0);
-        hosts.done("b", rank, 0);
-        let both = ["a".to_owned(), "b".to_owned()];
-        assert!(!hosts.leaving(&both), "no unit leaves while both run");
+        hosts.done("b", rank.clone(), 0);
+        let start = Instant::now();
+        let pending = |hosts: &Hosts| {
+            let mut units: Vec<String> = hosts.pending.keys().cloned().collect();
+            units.sort();
+            units
+        };
+        hosts.leave(&["a".to_owned(), "b".to_owned(), "c".to_owned()], start);
         assert!(
-            !hosts.leaving(&["a".to_owned(), "b".to_owned(), "c".to_owned()]),
-            "a unit starting isn't one leaving"
+            pending(&hosts).is_empty(),
+            "no unit has gone while both run, and one starting hasn't"
         );
-        assert!(
-            hosts.leaving(&["a".to_owned()]),
-            "a unit ranked before and gone now is leaving"
+        hosts.leave(&["a".to_owned()], start);
+        assert_eq!(
+            pending(&hosts),
+            ["b"],
+            "a unit ranked before and gone now has gone"
         );
         hosts.keep_only(&["a".to_owned()]);
+        hosts.leave(&["a".to_owned()], start + PENDING_FOR / 2);
+        assert_eq!(
+            pending(&hosts),
+            ["b"],
+            "once forgotten, it's still asked after, from when it went"
+        );
+        hosts.leave(&["a".to_owned()], start + PENDING_FOR);
+        assert!(pending(&hosts).is_empty(), "but no longer than a minute");
+        hosts.done("b", rank.clone(), 0);
+        hosts.leave(&["a".to_owned()], start);
+        hosts.leave(&["a".to_owned(), "b".to_owned()], start);
+        assert!(pending(&hosts).is_empty(), "one back again hasn't gone");
+        hosts.fail("a", || 2);
+        hosts.forget("a");
         assert!(
-            !hosts.leaving(&["a".to_owned()]),
-            "once forgotten, it isn't leaving again"
+            hosts.changed("a", &rank) && hosts.hard_left() == 0,
+            "a unit whose settings were taken back is ranked afresh, keeping nothing"
         );
     }
 

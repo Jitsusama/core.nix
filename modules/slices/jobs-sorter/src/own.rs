@@ -9,6 +9,7 @@
 //! sorter takes its own files of them back ([`left_behind`], [`forget`]).
 
 use std::fs;
+use std::io;
 use std::path::Path;
 
 /// The folder runtime properties set through systemd's manager land in,
@@ -27,12 +28,15 @@ const SET: [&str; 5] = [
 ];
 
 /// The units whose folders in `control`, the runtime control folder,
-/// start with one of `prefixes` and hold a setting the sorter sets, though
-/// `runs` says the unit no longer runs.
-pub fn left_behind(control: &Path, prefixes: &[&str], runs: impl Fn(&str) -> bool) -> Vec<String> {
-    let mut units: Vec<String> = fs::read_dir(control)
-        .into_iter()
-        .flatten()
+/// start with one of `prefixes` and hold a setting the sorter sets. A
+/// control folder not there yet holds none.
+pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>> {
+    let entries = match fs::read_dir(control) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(error),
+    };
+    let mut units: Vec<String> = entries
         .filter_map(Result::ok)
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
@@ -44,28 +48,70 @@ pub fn left_behind(control: &Path, prefixes: &[&str], runs: impl Fn(&str) -> boo
                     .any(|set| entry.path().join(format!("50-{set}.conf")).exists());
             ours.then_some(unit)
         })
-        .filter(|unit| !runs(unit))
         .collect();
     units.sort();
-    units
+    Ok(units)
+}
+
+/// What `systemctl is-active` says of a unit, as far as taking back its
+/// settings goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Active {
+    /// Inactive: stopped, or not loaded at all, so its settings can go.
+    Stopped,
+    /// Failed: stopped, but kept loaded until it's reset, and systemd
+    /// still lists its settings' files, so they stay.
+    Failed,
+    /// Anything else, starting, stopping or running, keeps them.
+    Runs,
+}
+
+/// The words `systemctl` is given to say whether each of `units` runs,
+/// one state a line in their order; `--` ends its options, so a unit's
+/// name, read from a folder, is never taken for one.
+pub fn is_active_call(units: &[String]) -> Vec<String> {
+    ["--user", "is-active", "--"]
+        .iter()
+        .map(|word| (*word).to_owned())
+        .chain(units.iter().cloned())
+        .collect()
+}
+
+/// Each of the `asked` units' states from `systemctl is-active`'s
+/// `stdout`; none when it doesn't say one for each, as when it can't
+/// reach the user manager and says nothing.
+pub fn states(stdout: &str, asked: usize) -> Option<Vec<Active>> {
+    let states: Vec<Active> = stdout
+        .lines()
+        .map(|state| match state.trim() {
+            "inactive" => Active::Stopped,
+            "failed" => Active::Failed,
+            _ => Active::Runs,
+        })
+        .collect();
+    (states.len() == asked).then_some(states)
 }
 
 /// Takes the settings the sorter sets off `unit` in `control`, and its
-/// folder once nothing is left in it, saying how many it took. Another's
-/// settings stay, and the folder with them.
-pub fn forget(control: &Path, unit: &str) -> std::io::Result<usize> {
+/// folder once nothing is left in it, saying how many it took, and the
+/// first error, if any: each file is tried whatever another's removal
+/// did. Another's settings stay, and the folder with them.
+pub fn forget(control: &Path, unit: &str) -> (usize, Option<io::Error>) {
     let folder = control.join(format!("{unit}.d"));
     let mut taken = 0;
+    let mut failed = None;
     for set in SET {
         match fs::remove_file(folder.join(format!("50-{set}.conf"))) {
             Ok(()) => taken += 1,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => {
+                failed.get_or_insert(error);
+            }
         }
     }
     // Another's setting keeps the folder, which then can't be removed, and that's as it should be.
     let _ = fs::remove_dir(&folder);
-    Ok(taken)
+    (taken, failed)
 }
 
 /// A unit's own settings, as far as ranking it goes.
@@ -259,24 +305,22 @@ MemoryLow=10%
         let ours = SET.map(|name| format!("50-{name}.conf"));
         let ours: Vec<&str> = ours.iter().map(String::as_str).collect();
         folder("pi-conversation-w@gone.service", &ours);
-        folder("pi-conversation-w@runs.service", &ours);
         folder(
             "pi-conversation-w@shared.service",
             &[ours[1], "50-TasksMax.conf"],
         );
         folder("pi-conversation-w@other.service", &["50-TasksMax.conf"]);
         folder("kitty-1-2.scope", &ours);
-        let runs = |unit: &str| unit == "pi-conversation-w@runs.service";
         assert_eq!(
-            left_behind(&control, &["pi-conversation-", "pi-host-"], runs),
+            left_behind(&control, &["pi-conversation-", "pi-host-"]).unwrap(),
             [
                 "pi-conversation-w@gone.service",
                 "pi-conversation-w@shared.service"
             ],
-            "only units of the prefixes that no longer run and hold the sorter's settings"
+            "only units of the prefixes that hold the sorter's settings"
         );
         assert_eq!(
-            forget(&control, "pi-conversation-w@gone.service").unwrap(),
+            forget(&control, "pi-conversation-w@gone.service").0,
             5,
             "every one of the sorter's settings is taken"
         );
@@ -285,7 +329,7 @@ MemoryLow=10%
             "and the folder, left empty, goes too"
         );
         assert_eq!(
-            forget(&control, "pi-conversation-w@shared.service").unwrap(),
+            forget(&control, "pi-conversation-w@shared.service").0,
             1,
             "only the sorter's own setting is taken"
         );
@@ -296,11 +340,82 @@ MemoryLow=10%
             "another's setting stays, and its folder with it"
         );
         assert_eq!(
-            forget(&control, "pi-conversation-w@never.service").unwrap(),
+            forget(&control, "pi-conversation-w@never.service").0,
             0,
             "a unit with no folder has nothing to take"
         );
         fs::remove_dir_all(&control).unwrap();
+        assert!(
+            left_behind(&control, &["pi-host-"]).unwrap().is_empty(),
+            "a control folder not there yet holds nothing to take back"
+        );
+    }
+
+    #[test]
+    fn a_failed_removal_still_takes_the_rest_and_says_why() {
+        let control = std::env::temp_dir().join(format!("own-forget-{}", std::process::id()));
+        let folder = control.join("pi-host-x.service.d");
+        fs::create_dir_all(folder.join("50-CPUWeight.conf")).unwrap();
+        fs::write(folder.join("50-MemoryMin.conf"), "[Service]\n").unwrap();
+        let (taken, error) = forget(&control, "pi-host-x.service");
+        let _ = fs::remove_dir_all(&control);
+        assert_eq!(
+            (taken, error.is_some()),
+            (1, true),
+            "a file that can't be removed leaves the others taken, and is said"
+        );
+    }
+
+    #[test]
+    fn only_inactive_counts_as_stopped_and_an_answer_short_of_one_a_unit_is_none() {
+        use Active::{Failed, Runs, Stopped};
+        assert_eq!(
+            states("inactive\n", 1),
+            Some(vec![Stopped]),
+            "inactive is stopped"
+        );
+        assert_eq!(
+            states("failed\n", 1),
+            Some(vec![Failed]),
+            "failed is kept apart, as systemd keeps it loaded"
+        );
+        for running in [
+            "active\n",
+            "activating\n",
+            "deactivating\n",
+            "reloading\n",
+            "\n",
+        ] {
+            assert_eq!(
+                states(running, 1),
+                Some(vec![Runs]),
+                "{running:?} runs, or may, so it keeps its settings"
+            );
+        }
+        assert_eq!(
+            states("inactive\nactive\nfailed\n", 3),
+            Some(vec![Stopped, Runs, Failed]),
+            "one state a line, in the order asked"
+        );
+        assert_eq!(
+            states("", 2),
+            None,
+            "no answer, as with no bus, says nothing"
+        );
+        assert_eq!(
+            states("inactive\n", 2),
+            None,
+            "nor does one short of a unit, which can't be lined up"
+        );
+    }
+
+    #[test]
+    fn is_active_takes_no_unit_for_an_option() {
+        assert_eq!(
+            is_active_call(&["-x.service".to_owned(), "y.service".to_owned()]),
+            ["--user", "is-active", "--", "-x.service", "y.service"],
+            "the units follow --, in the order given"
+        );
     }
 
     #[test]

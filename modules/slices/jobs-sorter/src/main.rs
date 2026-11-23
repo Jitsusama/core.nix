@@ -1442,43 +1442,127 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         &mut ranks.unfitted,
     );
     give_ranks(ranked, &mut ranks.hosts);
-    // Once on the first look, for what units gone before the sorter started left, and again
-    // whenever one it ranked has gone.
-    if !ranks.hosts.swept || ranks.hosts.leaving(&seen) {
-        ranks.hosts.swept = true;
-        let conversations = windows
-            .conversations
-            .map(|(conversations, _)| conversations);
-        take_back_left_settings(prefix, conversations);
-    }
+    let conversations = windows
+        .conversations
+        .map(|(conversations, _)| conversations);
+    take_back_left_settings(prefix, conversations, &seen, &mut ranks.hosts);
     ranks.hosts.keep_only(&seen);
 }
 
 /// Takes back the settings the sorter gave units under `prefix` or
-/// `conversations` that no longer run, which systemd keeps after a unit
-/// stops ([`own::left_behind`]), saying each unit once. A unit
-/// `systemctl` can't say is stopped counts as running, so it keeps them.
-fn take_back_left_settings(prefix: &str, conversations: Option<&str>) {
-    let Some(uid) = kitty::me() else {
+/// `conversations` that no longer run ([`sweep`]), asking systemctl.
+fn take_back_left_settings(
+    prefix: &str,
+    conversations: Option<&str>,
+    seen: &[String],
+    hosts: &mut hosts::Hosts,
+) {
+    let control =
+        kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
+    let prefixes: Vec<&str> = std::iter::once(prefix).chain(conversations).collect();
+    // systemctl answers for every unit even as it leaves with a failure for those not active,
+    // so what it says is read whatever its status; an answer short of a unit is refused below.
+    let ask = |units: &[String]| {
+        Command::new("systemctl")
+            .args(own::is_active_call(units))
+            .output()
+            .map(|output| String::from_utf8_lossy(&output.stdout).into_owned())
+            .map_err(|error| format!("couldn't run systemctl: {error}"))
+    };
+    let now = std::time::Instant::now();
+    sweep(control.as_deref(), &prefixes, seen, hosts, now, ask);
+}
+
+/// Takes back the settings in `control` the sorter gave units under
+/// `prefixes` that no longer run, which systemd keeps after a unit stops
+/// ([`own::left_behind`]): on the first look, those of every unit not
+/// `seen` running, and after it, those of the units ranked before that
+/// have gone ([`hosts::Hosts::leave`]), as `ask` says of them all in one
+/// call. A unit seen has processes, so it runs and isn't asked after.
+/// Each unit's settings taken back are forgotten, so it's ranked afresh
+/// should it start again. A sweep that can't ask is said once and tried
+/// again on the next look.
+fn sweep(
+    control: Option<&Path>,
+    prefixes: &[&str],
+    seen: &[String],
+    hosts: &mut hosts::Hosts,
+    now: std::time::Instant,
+    ask: impl FnOnce(&[String]) -> Result<String, String>,
+) {
+    hosts.leave(seen, now);
+    if hosts.swept && hosts.pending.is_empty() {
+        return;
+    }
+    let mut say = |why: String| {
+        if !std::mem::replace(&mut hosts.sweep_failed, true) {
+            eprintln!("Couldn't take back the settings stopped units left: {why}.");
+        }
+    };
+    let Some(control) = control else {
+        say("no user id to find the runtime control folder by".to_owned());
         return;
     };
-    let control = PathBuf::from(format!("/run/user/{uid}/systemd/user.control"));
-    let prefixes: Vec<&str> = std::iter::once(prefix).chain(conversations).collect();
-    let runs = |unit: &str| {
-        Command::new("systemctl")
-            .args(["--user", "is-active", unit])
-            .output()
-            .map_or(true, |output| {
-                let state = String::from_utf8_lossy(&output.stdout);
-                !matches!(state.trim(), "inactive" | "failed")
-            })
+    let asked: Vec<String> = match own::left_behind(control, prefixes) {
+        Ok(units) => units
+            .into_iter()
+            .filter(|unit| !seen.contains(unit))
+            .filter(|unit| !hosts.swept || hosts.pending.contains_key(unit))
+            .collect(),
+        Err(error) => {
+            say(format!("couldn't read {}: {error}", control.display()));
+            return;
+        }
     };
-    for unit in own::left_behind(&control, &prefixes, runs) {
-        match own::forget(&control, &unit) {
-            Ok(taken) => eprintln!("Took back the {taken} settings {unit} left when it stopped."),
-            Err(error) => eprintln!("Couldn't take back the settings {unit} left: {error}."),
+    // A unit gone with no settings of the sorter's left has nothing to take back.
+    hosts.pending.retain(|unit, _| asked.contains(unit));
+    if !asked.is_empty() {
+        let answer = ask(&asked);
+        let Some(states) = answer
+            .as_deref()
+            .ok()
+            .and_then(|stdout| own::states(stdout, asked.len()))
+        else {
+            say(answer.err().unwrap_or_else(|| {
+                format!(
+                    "systemctl didn't say whether each of {} units runs",
+                    asked.len()
+                )
+            }));
+            return;
+        };
+        for (unit, state) in asked.into_iter().zip(states) {
+            match state {
+                own::Active::Stopped => {
+                    let (taken, error) = own::forget(control, &unit);
+                    hosts.forget(&unit);
+                    match error {
+                        None => {
+                            eprintln!(
+                                "Took back the {taken} settings {unit} left when it stopped."
+                            );
+                        }
+                        Some(error) => {
+                            if hosts.unswept.insert(unit.clone()) {
+                                eprintln!(
+                                    "Couldn't take back all the settings {unit} left, {taken} \
+                                     taken: {error}."
+                                );
+                            }
+                        }
+                    }
+                }
+                // systemd keeps a failed unit loaded, its settings' files listed, until it's
+                // reset, so they stay.
+                own::Active::Failed => {
+                    hosts.pending.remove(&unit);
+                }
+                own::Active::Runs => {}
+            }
         }
     }
+    hosts.swept = true;
+    hosts.sweep_failed = false;
 }
 
 /// Gives each of the `ranked` units the rank it was fitted to, when it
@@ -3351,6 +3435,154 @@ mod tests {
             "a session is said at its second look in a row and once, said cleared when it \
              goes, and said again when it comes back; y, for one look, is never said"
         );
+    }
+
+    /// A runtime control folder under the temporary folder named for `name`, holding each of
+    /// `units`' folders with the five files systemd writes for the sorter's settings.
+    fn control_with(name: &str, units: &[&str]) -> PathBuf {
+        let control = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&control);
+        for unit in units {
+            let folder = control.join(format!("{unit}.d"));
+            fs::create_dir_all(&folder).expect("a unit's folder");
+            for file in [
+                "50-CPUWeight.conf",
+                "50-MemoryLow.conf",
+                "50-MemoryZSwapWriteback.conf",
+                "50-ManagedOOMPreference.conf",
+                "50-MemoryMin.conf",
+            ] {
+                fs::write(folder.join(file), "[Service]\n").expect("a setting's file");
+            }
+        }
+        control
+    }
+
+    #[test]
+    fn a_sweep_asks_once_after_the_units_not_running_and_again_after_those_still_stopping() {
+        let unit = |name: &str| format!("pi-conversation-w@{name}.service");
+        let control = control_with(
+            "sweep-asks-once",
+            &[
+                &unit("runs"),
+                &unit("gone"),
+                &unit("stopping"),
+                &unit("failed"),
+                &unit("old"),
+            ],
+        );
+        let mut hosts = hosts::Hosts::default();
+        let rank = hosts::wanted(&own::Own::default(), hosts::Signs::default(), 10);
+        for name in ["runs", "gone", "stopping", "failed"] {
+            hosts.done(&unit(name), rank.clone(), 0);
+        }
+        let seen = [unit("runs")];
+        let mut asked: Vec<Vec<String>> = Vec::new();
+        let mut states = HashMap::from([
+            (unit("gone"), "inactive"),
+            (unit("stopping"), "deactivating"),
+            (unit("failed"), "failed"),
+            (unit("old"), "inactive"),
+        ]);
+        let look = |hosts: &mut hosts::Hosts,
+                    states: &HashMap<String, &str>,
+                    asked: &mut Vec<Vec<String>>| {
+            let ask = |units: &[String]| {
+                asked.push(units.to_vec());
+                let lines: Vec<&str> = units
+                    .iter()
+                    .map(|unit| *states.get(unit).unwrap_or(&"active"))
+                    .collect();
+                Ok(lines.join("\n"))
+            };
+            let prefixes = ["pi-conversation-", "pi-host-"];
+            sweep(
+                Some(&control),
+                &prefixes,
+                &seen,
+                hosts,
+                std::time::Instant::now(),
+                ask,
+            );
+            // As `rank_hosts` does after it.
+            hosts.keep_only(&seen);
+        };
+        look(&mut hosts, &states, &mut asked);
+        let there = |name: &str| control.join(format!("{}.d", unit(name))).exists();
+        assert_eq!(
+            asked,
+            [[unit("failed"), unit("gone"), unit("old"), unit("stopping")]],
+            "one call asks after every unit with the sorter's settings that isn't seen running"
+        );
+        assert_eq!(
+            ["runs", "gone", "stopping", "failed", "old"].map(there),
+            [true, false, true, true, false],
+            "only the stopped units' settings go: a failed one's stay for systemd, which keeps \
+             it loaded"
+        );
+        assert!(
+            hosts.changed(&unit("gone"), &rank) && !hosts.changed(&unit("runs"), &rank),
+            "a unit whose settings went is forgotten, so its return is ranked afresh"
+        );
+        states.insert(unit("stopping"), "inactive");
+        look(&mut hosts, &states, &mut asked);
+        assert_eq!(
+            asked[1..],
+            [[unit("stopping")]],
+            "a unit that left still stopping is asked after again, alone"
+        );
+        assert!(!there("stopping"), "and once stopped its settings go");
+        look(&mut hosts, &states, &mut asked);
+        assert_eq!(
+            asked.len(),
+            2,
+            "with none left to ask after, nothing is asked"
+        );
+        let _ = fs::remove_dir_all(&control);
+    }
+
+    #[test]
+    fn a_sweep_that_cant_ask_says_so_once_and_is_tried_again() {
+        let gone = "pi-host-work-gone.service".to_owned();
+        let control = control_with("sweep-cant-ask", &[&gone]);
+        let mut hosts = hosts::Hosts::default();
+        let mut asks = 0;
+        for answer in [
+            Err("no bus".to_owned()),
+            Ok(String::new()),
+            Ok("inactive\n".to_owned()),
+        ] {
+            let ask = |_: &[String]| {
+                asks += 1;
+                answer.clone()
+            };
+            let swept = hosts.swept;
+            sweep(
+                Some(&control),
+                &["pi-host-"],
+                &[],
+                &mut hosts,
+                std::time::Instant::now(),
+                ask,
+            );
+            assert!(
+                swept || hosts.swept == answer.as_deref().is_ok_and(|answer| !answer.is_empty()),
+                "a sweep counts as done only once systemctl answers for every unit: {answer:?}"
+            );
+        }
+        assert_eq!(
+            asks, 3,
+            "a sweep that couldn't ask is tried on the next look"
+        );
+        assert!(
+            !hosts.sweep_failed,
+            "and the failure is said again once one works"
+        );
+        assert!(
+            !control.join(format!("{gone}.d")).exists(),
+            "the settings went once it could ask"
+        );
+        let _ = fs::remove_dir_all(&control);
     }
 
     #[test]
