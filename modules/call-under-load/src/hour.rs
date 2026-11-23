@@ -284,8 +284,9 @@ pub fn real(calls: &[crate::watch::Real], at: u64) -> Measure {
         .filter(|call| call.sending_p99.is_some())
         .max_by(|a, b| p99(a).total_cmp(&p99(b)));
     let mut behind = vec![format!(
-        "Joel's own calls, {} read: each 5 s, the slowest sending thread's wait for a CPU \
-         per second, in his call apps",
+        "Joel's own calls, {} read: the p99 of each 5 s tick's slowest sending thread's wait \
+         for a CPU per second, in his call apps, which in a call under 8 minutes is its worst \
+         tick",
         calls.len()
     )];
     if let Some(call) = worst {
@@ -300,6 +301,19 @@ pub fn real(calls: &[crate::watch::Real], at: u64) -> Measure {
             call.load15_max,
             call.worst_who.as_deref().unwrap_or("unread"),
         ));
+        if call.unsure {
+            behind.push("it was closed when a-call-is-on couldn't tell for 3 min".to_string());
+        }
+        if call.cut {
+            behind.push("it was cut short when the watch stopped".to_string());
+        }
+    }
+    let unread = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_none())
+        .count();
+    if unread > 0 {
+        behind.push(format!("{unread} with no sending thread found"));
     }
     measure(
         REAL,
@@ -320,11 +334,14 @@ mod tests {
             began: ended - 600,
             ended,
             ticks: 120,
+            read: 110,
             flagged: 3,
             sending_p99: p99,
-            worst_ms: p99.unwrap_or(0.0),
+            worst_ms: p99,
             worst_who: Some(who.to_string()),
             load15_max: 121.4,
+            unsure: false,
+            cut: ended == 2_000,
         };
         let calls = [
             call(1_000, Some(40.0), "chrome:renderer:Compositor"),
@@ -340,6 +357,14 @@ mod tests {
             "the worst ended 10 min ago, 3 of 120 ticks past 300 ms/s or load 80, its \
              15-minute load up to 121, its slowest thread chrome:renderer:CodecWorker",
             "the figure doesn't say which call and thread it is"
+        );
+        assert_eq!(
+            figure.behind[2..],
+            [
+                "it was cut short when the watch stopped",
+                "1 with no sending thread found"
+            ],
+            "a call cut short or unread wasn't said"
         );
         assert_eq!(real(&[], 0).now, None, "no call watched read as a figure");
     }

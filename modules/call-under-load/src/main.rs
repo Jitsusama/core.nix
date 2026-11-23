@@ -363,10 +363,10 @@ fn run(context: &Context) -> Result<(), Failure> {
         &took,
         read.unread.as_deref(),
     );
-    measures.push(hour::real(
-        &watch::heard(&lines, at.saturating_sub(3600)),
-        at,
-    ));
+    // Joel's own calls since the last hour written, so calls in hours a
+    // meeting or a call skipped still reach cadence.
+    let since = ran.iter().map(|&(_, ended)| ended).max().unwrap_or(0);
+    measures.push(hour::real(&watch::heard(&lines, since, at), at));
     // The call's span runs from the run's start, Chromium's own included,
     // to now: the whole of the load the test put beside Joel's programs.
     let launcher = launcher::written(&read, started, at);

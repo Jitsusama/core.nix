@@ -44,12 +44,13 @@ in
       ExecStart = "${lib.getExe package} watch";
       Restart = "on-failure";
       RestartSec = "30s";
-      # Beside the apps, not in their slice, so the watch's own reads
-      # never count against the call it watches. It reads a few dozen
-      # files each 5 s during a call and asks one question each 30 s,
-      # well under 1% of a core; the quota keeps a fault from costing more.
-      Slice = "background.slice";
-      CPUQuota = "5%";
+      # In the apps' slice, at the least weight there, so under the
+      # heaviest load, when a call is most worth reading, its asks of
+      # a-call-is-on still get a CPU before agents' work, while Joel's
+      # own apps go first. It reads a few files each 5 s during a call
+      # and asks once each 30 s, well under 1% of a core.
+      Slice = "app.slice";
+      CPUWeight = 1;
     };
     Install.WantedBy = [ "default.target" ];
   };
