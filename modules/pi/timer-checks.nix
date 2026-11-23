@@ -99,9 +99,12 @@ onLinux {
       git = lib.makeBinPath [ home.programs.git.package ];
       profile = "${home.home.profileDirectory}/bin";
       # The slices it runs in, whose hard limit would kill it as its own
-      # would.
-      slices = home.systemd.user.slices;
-      noHardLimit = name: !((slices.${name}.sliceConfig or { }) ? MemoryMax);
+      # would: the machine declares them (modules/slices), and an account
+      # could too, in home-manager's own shape.
+      noHardLimit =
+        name:
+        !((workstation.config.systemd.user.slices.${name}.sliceConfig or { }) ? MemoryMax)
+        && !((home.systemd.user.slices.${name}.Slice or { }) ? MemoryMax);
       # A machine giving provider modules, a git of its own and a realm whose
       # host shows what a host's unit clears and whose folders the sweep's
       # PATH takes, written as systemd needs whatever they hold. Its builder
