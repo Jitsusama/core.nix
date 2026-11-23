@@ -1309,20 +1309,30 @@ Provider {
     // Talk reaches, or the look's own where the cell only lists that, never
     // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
-    // leaves what waits at once; one it didn't is no longer shown as given,
-    // so its choices come back.
+    // leaves what waits at once. One with nobody to tell, or that the node
+    // didn't take, says so at its side for a minute (Looks.js's unanswered)
+    // and the journal says why, and its choices come back.
     function answerLook(one, choice) {
         const told = Looks.answer(one, choice, lookCell(one), Date.now());
-        if (told === null)
+        if (told === null) {
+            console.warn(`Now: nobody to tell the answer to look ${JSON.stringify(one.id)}:`
+                + ` address ${JSON.stringify(one.address ?? null)},`
+                + ` quest ${JSON.stringify(one.quest ?? null)}`);
+            lookAnswers = Object.assign({}, lookAnswers,
+                { [one.id]: { label: choice.label, at: Date.now(), failed: "nobody" } });
             return;
+        }
         lookAnswers = Object.assign({}, lookAnswers,
             { [one.id]: { label: choice.label, at: Date.now() } });
         Sessions.steer(told.address, told.steer, put => {
             const left = Object.assign({}, provider.lookAnswers);
-            if (put)
+            if (put) {
                 left[one.id] = Object.assign({}, left[one.id], { taken: true });
-            else
-                delete left[one.id];
+            } else {
+                console.warn(`Now: the node didn't take the answer to look`
+                    + ` ${JSON.stringify(one.id)} for ${told.address}`);
+                left[one.id] = { label: choice.label, at: Date.now(), failed: "untaken" };
+            }
             provider.lookAnswers = left;
         });
     }
@@ -1344,17 +1354,24 @@ Provider {
         const target = ["pr", "page", "diff"].includes(one.kind) ? one.target : "";
         // Its choices and what happens if Joel does nothing, in place of a
         // weight and when it clears, which told him a score and nothing to
-        // do (Joel, 2026-11-19).
-        const choices = lookChoices(one, now).map(choice => choice.label);
-        const facts = [
-            fact("choices", choices.join(" \u00b7 ")),
+        // do (Joel, 2026-11-19): in its second form one fact a choice, its
+        // label and what follows it (QGB4ON's layout of 2026-11-22), else
+        // the labels together.
+        const offered = lookChoices(one, now);
+        const followed = Looks.secondForm(one)
+            ? offered.filter(choice => choice.follows !== "")
+                .map(choice => ({ label: choice.label, value: choice.follows }))
+            : [];
+        const choices = followed.length > 0 ? []
+            : [fact("choices", offered.map(choice => choice.label).join(" \u00b7 "))];
+        const facts = followed.concat(choices, [
             fact("ifNothing", waits ? Looks.ifNothingOf(one) || lookLapses(one, say) : ""),
             fact("since", one.since === null ? "" : say.clock(one.since)),
             fact("resolved", waits ? "" : ForYou.historySide(one, say)),
             // What it points at, short; its whole address with its id in
             // the nerdy bits, where y copies it (Y2YBTS, 2026-11-12).
             fact("target", ForYou.pointsAt(one.kind, target, say))
-        ].filter(each => each.value !== "");
+        ]).filter(each => each.value !== "");
         return Object.assign(lookFrom(one, say), {
             title: one.title,
             facts: facts,
@@ -1430,15 +1447,27 @@ Provider {
             later: true,
             run: () => provider.openLook(one)
         };
+        // A choice's drawer says what follows it, where the look says, so
+        // Joel reads what his Return does before he presses it.
+        const followsOf = choice => choice.follows === "" ? {} : {
+            drawer: () => Object.assign(lookFrom(one, say), {
+                title: choice.label,
+                facts: [],
+                body: choice.follows
+            })
+        };
         const inside = () => choices.map(choice => thing(Object.assign({
             key: `verb:on:look:answer:${one.id}:${choice.value}`,
             name: choice.label,
             glyph: Words.glyph("verb:on:look:answer"),
             hue: "action"
-        }, answering(choice)))).concat([thing({
+        }, answering(choice), followsOf(choice)))).concat([thing({
             key: `verb:on:look:open:${one.id}`,
             verb: Words.verb(opens),
-            name: Words.name(opens),
+            // What Joel presses, in the look's own words where it says them;
+            // the verb stays the launcher's, since the foot and the : line
+            // read a verb as what an act does, never a look's to choose.
+            name: Looks.actOf(one) || Words.name(opens),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
@@ -1468,15 +1497,25 @@ Provider {
     }
 
     // What a look's row says at its side: the answer given, while it may
-    // yet take, else what it asks while it waits, else the strongest reason
-    // it waits, or, in History, how it went and when.
+    // yet take, or that it didn't go, else, while it waits, in its second
+    // form "asks you" where it wants an answer, then the strongest reason it
+    // waits, so those that want something read apart down the column
+    // (QGB4ON's layout), and in its first form what it asks, else that
+    // reason; or, in History, how it went and when.
     function lookSide(one, now, say) {
         const given = Looks.answering(one, lookAnswers, now);
         if (given !== "")
             return waitingSaid("answering", { choice: given });
+        const failed = Looks.unanswered(one, lookAnswers, now);
+        if (failed !== "")
+            return waitingSaid(`unanswered:${failed}`, {});
         if (one.state !== "waiting")
             return ForYou.historySide(one, say);
-        return Looks.askOf(one) || ForYou.reason(lookThing(one), now, say);
+        const reason = ForYou.reason(lookThing(one), now, say);
+        if (Looks.secondForm(one))
+            return [Looks.asksBack(one) ? waitingSaid("asksYou", {}) : "", reason]
+                .filter(part => part !== "").join(" \u00b7 ");
+        return Looks.askOf(one) || reason;
     }
 
     // A look's row, kept while its file reads the same and its side says

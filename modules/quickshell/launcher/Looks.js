@@ -29,6 +29,8 @@ const ANSWER_TAKES = 60 * 1000;
 // of why they exist is lost"), and VKCF3Z's flows say "a look older than
 // three days goes quiet".
 const QUIET_AFTER = 3 * 24 * 60 * 60 * 1000;
+// How a sentence ends, so a second form's parts read as sentences.
+const ENDED = /[.!?]$/u;
 
 // Whether a file's JSON is a look this reads whole: version 1, with what
 // it's about and how it stands.
@@ -62,12 +64,42 @@ function look(text) {
     }
     return Object.assign(kept, {
         why: typeof read.why === "string" ? read.why : "",
-        // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
-        words: [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n"),
+        words: wordsOf(read),
         since: ForYou.when(read.at),
         resolved: ForYou.when(read.resolvedAt),
-        offers: offers(read.choices)
+        offers: offers(read.choices, read.wants)
     });
+}
+
+// Whether a look is said in its second form (85PKB2's harness #2008):
+// what happened, why it matters, what Joel presses and what it wants back,
+// beside the first form's why and ask, which its harness made from them.
+function secondForm(one) {
+    return written(one.happened).trim() !== "";
+}
+
+// What its drawer leads with, to act on hours on (Joel, 2026-11-11): in
+// its second form what happened then why it matters, each ending as a
+// sentence ends, as its harness writes a why; else its why, then its ask.
+function wordsOf(read) {
+    const ended = text => text === "" || ENDED.test(text) ? text : `${text}.`;
+    return secondForm(read)
+        ? [read.happened, read.matters].map(part => ended(written(part).trim()))
+            .filter(part => part !== "").join(" ")
+        : [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n");
+}
+
+// What Joel presses for a look in its second form, in its own words, as
+// "Review It", else "".
+function actOf(one) {
+    return secondForm(one) ? written(one.act).trim() : "";
+}
+
+// Whether a look in its second form asks Joel back: it wants a choice or
+// his own words. One in its first form says what it asks in its ask.
+function asksBack(one) {
+    return secondForm(one) && (one.wants?.words === true
+        || (Array.isArray(one.wants?.choices) && one.wants.choices.length > 0));
 }
 
 // A quest's id as its title ends with it, "(INV-31016)", which says
@@ -97,15 +129,22 @@ function written(value) {
     return typeof value === "string" ? value : "";
 }
 
-// A look's choices as it's offered them, each { value, label }: one
-// naming no value left out, one naming no label labelled by its value,
-// and at most OFFERED.
-function offers(choices) {
+// A look's choices as it's offered them, each { value, label, follows }:
+// one naming no value left out, one naming no label labelled by its value,
+// and at most OFFERED. What follows a choice is its own, else what the look
+// wants back says of its label (`wants`), else "".
+function offers(choices, wants) {
     const named = value => typeof value === "string" && value !== "";
+    const wanted = Array.isArray(wants?.choices) ? wants.choices : [];
+    const follows = (one, label) => named(one.follows) ? one.follows
+        : written(wanted.find(each => each?.label === label)?.follows);
     return (Array.isArray(choices) ? choices : [])
         .filter(one => one !== null && typeof one === "object" && named(one.value))
         .slice(0, OFFERED)
-        .map(one => ({ value: one.value, label: named(one.label) ? one.label : one.value }));
+        .map(one => {
+            const label = named(one.label) ? one.label : one.value;
+            return { value: one.value, label, follows: follows(one, label) };
+        });
 }
 
 // Joel's answer to a look, as the steer that tells it to the session that
@@ -321,7 +360,18 @@ function doneWith(one) {
 // { [look id]: { label, at } }, while it may yet take, or "".
 function answering(one, answered, now) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && given && now - given.at < ANSWER_TAKES ? given.label : "";
+    return one.state === "waiting" && given && !given.failed && now - given.at < ANSWER_TAKES
+        ? given.label : "";
+}
+
+// Why Joel's answer to a look still waiting didn't go, "nobody" to tell
+// or "untaken" by the node, for as long as one given would show, else "":
+// its choices coming back unsaid left him no way "to in any way follow
+// through" (Joel, 2026-11-22).
+function unanswered(one, answered, now) {
+    const given = answered?.[one.id];
+    return one.state === "waiting" && typeof given?.failed === "string"
+        && now - given.at < ANSWER_TAKES ? given.failed : "";
 }
 
 // The looks as `looks` splits them, with each waiting one whose answer the

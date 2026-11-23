@@ -394,6 +394,47 @@ QtObject {
             (choosing.offers ?? []).map(one => [one.value, one.label]),
             [["posted", "Posted"], ["later", "later"], ["c", "c"], ["d", "d"]]);
         expect("an older look, offering none", read.waiting[1].offers, []);
+        // A look said in its second form (85PKB2's harness #2008) says what
+        // happened and why it matters in place of its why and ask, which its
+        // harness made from them; what it presses, and what follows each
+        // choice, from the choice itself, else what it wants back by label.
+        // It asks Joel back only where it wants a choice or his own words.
+        const second = fields => Looks.looks([{ file: "s.json", text: lookOf(Object.assign({
+            id: "S", why: "The bar keeps the branch. You couldn't see a cost.",
+            ask: "Review It: Keep It, or Roll It Back.",
+            happened: "The bar keeps the branch at narrow widths",
+            matters: "At 76 columns you couldn't see what a session cost.",
+            act: "Review It",
+            choices: [{ value: "Keep It", label: "Keep It", follows: "It stays as it is." },
+                { value: "Roll It Back", label: "Roll It Back" }],
+            wants: { choices: [{ label: "Keep It", follows: "Not this one." },
+                { label: "Roll It Back", follows: "The old bar comes back tonight." }] },
+            about: { kind: "pr", target: "https://github.com/o/r/pull/1",
+                title: "Review the change" }
+        }, fields)) }], {}, now).waiting[0];
+        const secondly = second({});
+        expect("a second form's words, what happened then why it matters, never its ask",
+            secondly.words, "The bar keeps the branch at narrow widths. At 76 columns you"
+                + " couldn't see what a session cost.");
+        expect("what follows each choice, its own, else what it wants back by label",
+            secondly.offers.map(one => [one.label, one.follows]),
+            [["Keep It", "It stays as it is."],
+                ["Roll It Back", "The old bar comes back tonight."]]);
+        expect("a first form's choices follow with nothing",
+            choosing.offers.map(one => one.follows), ["", "", "", ""]);
+        expect("what it presses, in the second form only",
+            [Looks.actOf(secondly), Looks.actOf(read.waiting[1])], ["Review It", ""]);
+        expect("it asks back wanting a choice or his words, not a first form's choices",
+            [Looks.asksBack(secondly), Looks.asksBack(second({ wants: { words: true } })),
+                Looks.asksBack(second({ wants: undefined, choices: undefined })),
+                Looks.asksBack(second({ wants: { choices: [] } })), Looks.asksBack(choosing)],
+            [true, true, false, false, false]);
+        const secondBack = JSON.parse(Looks.rewritten(secondly, "opened", "opened", now));
+        expect("written back, its second form as its session wrote it",
+            [secondBack.happened, secondBack.act, secondBack.wants.choices[1].follows,
+                secondBack.about.title, "follows" in secondBack.choices[1]],
+            ["The bar keeps the branch at narrow widths", "Review It",
+                "The old bar comes back tonight.", "Review the change", false]);
         // Who asks, in plain words, and what happens if Joel does nothing, as
         // its session writes them, else from what's known (Joel, 2026-11-19:
         // "i almost never know what I am supposed to do with it").
@@ -446,6 +487,17 @@ QtObject {
             [Looks.answering(choosing, given, now + 59 * 1000),
                 Looks.answering(choosing, given, now + 61 * 1000),
                 Looks.answering(choosing, {}, now)], ["Posted", "", ""]);
+        // An answer nobody could be told, or the node didn't take, says so
+        // for as long as one given would show, rather than its choices just
+        // coming back (Joel, 2026-11-22: "to in any way follow through").
+        const failed = how => ({ P: { label: "Posted", at: now, failed: how } });
+        expect("an answer that failed, said so for a minute, and never as given",
+            [Looks.unanswered(choosing, failed("nobody"), now + 59 * 1000),
+                Looks.unanswered(choosing, failed("untaken"), now),
+                Looks.unanswered(choosing, failed("nobody"), now + 61 * 1000),
+                Looks.unanswered(choosing, given, now),
+                Looks.answering(choosing, failed("nobody"), now)],
+            ["nobody", "untaken", "", "", ""]);
         const saying = label => `answered ${label}`;
         // Once the node takes it, the look leaves what waits for History at once
         // (VKCF3Z, 2026-11-12), though its file waits until its session writes it.

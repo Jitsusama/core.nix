@@ -1884,6 +1884,81 @@ ShellRoot {
             now.lookAsker(namedOne) === "Named", JSON.stringify(now.lookAsker(namedOne)));
         Sessions.running = heldBefore[0];
         Sessions.parked = heldBefore[1];
+        // A look in its second form (85PKB2's harness #2008) says at its side
+        // that it asks him, then why it waits, and one asking nothing back
+        // only why; its drawer leads with what happened and why it matters,
+        // a fact a choice saying what follows it; its act is named in its
+        // own words, keeping the launcher's verb; and each choice's drawer
+        // says what follows it (QGB4ON's layout of 2026-11-22).
+        const secondText = (id, fields) => JSON.stringify(Object.assign({ v: 1, id: id,
+            kind: "pr", at: root.lookedAt, target: "https://example.com/pull/2",
+            title: "The bar at narrow widths", state: "waiting", address: "lefts",
+            why: "The bar keeps the branch at narrow widths. You couldn't see a cost.",
+            ask: "Review It: Keep It, or Roll It Back.",
+            happened: "The bar keeps the branch at narrow widths",
+            matters: "At 76 columns you couldn't see what a session cost.", act: "Review It",
+            choices: [{ value: "Keep It", label: "Keep It", follows: "It stays as it is." },
+                { value: "Roll It Back", label: "Roll It Back",
+                    follows: "The old bar comes back tonight." }],
+            wants: { choices: [{ label: "Keep It", follows: "It stays as it is." },
+                { label: "Roll It Back", follows: "The old bar comes back tonight." }] }
+        }, fields));
+        const textsFirst = now.lookTexts;
+        now.lookTexts = Object.assign({}, textsFirst, { "s.json": secondText("s", {}),
+            "i.json": secondText("i", { choices: [], wants: undefined,
+                ask: "Review It." }) });
+        const secondRow = () => looked().find(row => row.key === "on:look:s");
+        const seconds = secondRow();
+        const informing = looked().find(row => row.key === "on:look:i");
+        expect("a second form's side says it asks you, then why, never its ask; one asking"
+            + " nothing back says only why",
+            String(seconds?.side).startsWith("asks you \u00b7 ")
+                && seconds?.side === `asks you \u00b7 ${informing?.side}`
+                && informing?.side !== "" && !String(informing?.side).includes("Review It"),
+            JSON.stringify([seconds?.side, informing?.side]));
+        const secondDrawer = seconds?.drawer() ?? {};
+        const secondFacts = (secondDrawer.facts ?? []).map(each => [each.label, each.value]);
+        expect("its drawer, what happened then why it matters, a fact a choice and what follows",
+            secondDrawer.body === "The bar keeps the branch at narrow widths. At 76 columns"
+                + " you couldn't see what a session cost."
+                && JSON.stringify(secondFacts.slice(0, 2)) === JSON.stringify([
+                    ["Keep It", "It stays as it is."],
+                    ["Roll It Back", "The old bar comes back tonight."]])
+                && !secondFacts.some(each => each[0] === "Choices"),
+            JSON.stringify([secondDrawer.body, secondFacts]));
+        const secondActs = seconds?.verbs() ?? [];
+        const firstOpen = (looked().find(row => row.key === "on:look:a")?.verbs() ?? [])
+            .find(act => act.key === "verb:on:look:open:a");
+        const secondOpen = secondActs.find(act => act.key === "verb:on:look:open:s");
+        expect("its act named in its own words, its verb the launcher's",
+            secondOpen?.name === "Review It" && secondOpen?.verb === firstOpen?.verb
+                && firstOpen?.name !== "Review It",
+            JSON.stringify([secondOpen?.name, secondOpen?.verb, firstOpen?.name]));
+        const keepDrawer = secondActs[0]?.drawer?.() ?? {};
+        expect("a choice's drawer says what follows it",
+            secondActs[0]?.key === "verb:on:look:answer:s:Keep It"
+                && keepDrawer.title === "Keep It" && keepDrawer.body === "It stays as it is.",
+            JSON.stringify([secondActs[0]?.key, keepDrawer.title, keepDrawer.body]));
+        // An answer the node didn't take, or with nobody to tell, says so at
+        // its side for a minute, its choices back, rather than silently
+        // nothing (Joel, 2026-11-22: "to in any way follow through").
+        Sessions.puts = false;
+        secondActs[0]?.run();
+        Sessions.puts = true;
+        const untaken = secondRow();
+        expect("an answer the node didn't take says so, its choices back",
+            untaken?.side === "not answered \u00b7 it didn't reach the session"
+                && (untaken?.verbs() ?? [])[0]?.key === "verb:on:look:answer:s:Keep It",
+            JSON.stringify([untaken?.side, (untaken?.verbs() ?? []).map(act => act.key)]));
+        const nobody = { id: "n", kind: "page", title: "Read N", state: "waiting" };
+        const steersNobody = Sessions.steered.length;
+        now.answerLook(nobody, { value: "Keep It", label: "Keep It" });
+        expect("an answer with nobody to tell steers nothing and says so",
+            Sessions.steered.length === steersNobody
+                && now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))
+                    === "not answered \u00b7 no session to tell",
+            JSON.stringify(now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))));
+        now.lookTexts = textsFirst;
         // Later cases count the steers the shell itself sends from none.
         Sessions.steered = Sessions.steered.slice(0, steeredBefore);
         now.lookAnswers = {};
