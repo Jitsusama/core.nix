@@ -3,6 +3,7 @@
 {
   bareNixos,
   holds,
+  lib,
   onLinux,
   passesClippy,
   pkgs,
@@ -10,12 +11,101 @@
   ...
 }:
 let
-  services = (bareNixos [ self.nixosModules.shaper ]).config.systemd.services;
+  bare = bareNixos [ self.nixosModules.shaper ];
+  services = bare.config.systemd.services;
   named =
     (bareNixos [
       self.nixosModules.shaper
       { jitsusama.shaper.controller = "one-way"; }
     ]).config.systemd.services;
+  # A machine whose two networks each name a house, one reporting over
+  # IPv4 and one over IPv6.
+  housed =
+    (bareNixos [
+      self.nixosModules.shaper
+      {
+        jitsusama.shaper.networks =
+          lib.mapAttrs
+            (_: address: {
+              up = 12000;
+              house = {
+                most = 7000;
+                from = address;
+              };
+            })
+            {
+              "00:00:5e:00:53:01" = "192.0.2.7";
+              "00:00:5e:00:53:02" = "2001:db8::7";
+            };
+      }
+    ]).config.networking.firewall;
+  # The port src/house.rs listens on, read from it so the two can't part.
+  port = lib.pipe ./src/house.rs [
+    builtins.readFile
+    (lib.splitString "\n")
+    (map (builtins.match "pub const PORT: u16 = ([0-9_]+);"))
+    (lib.findFirst (found: found != null) (
+      throw "shaper-hears-only-the-house: no `pub const PORT: u16` line in src/house.rs"
+    ))
+    lib.head
+    (lib.replaceStrings [ "_" ] [ "" ])
+  ];
+  # The machine's input rules, which must be the houses' two alone, and
+  # no port, range or interface left open to all that takes the port in.
+  rules = lib.filter (line: line != "") (lib.splitString "\n" housed.extraInputRules);
+  houseRules =
+    rules == [
+      "ip saddr 192.0.2.7 udp dport ${port} accept"
+      "ip6 saddr 2001:db8::7 udp dport ${port} accept"
+    ];
+  takesThePort =
+    open:
+    lib.elem (lib.toInt port) open.allowedUDPPorts
+    || lib.any (
+      range: range.from <= lib.toInt port && lib.toInt port <= range.to
+    ) open.allowedUDPPortRanges;
+  opened =
+    houseRules
+    && !lib.any takesThePort ([ housed ] ++ lib.attrValues housed.interfaces)
+    # Loopback is trusted on every machine, and reaches no other.
+    && lib.subtractLists [ "lo" ] housed.trustedInterfaces == [ ];
+  # The check a house's address is held to, read from the module's own
+  # option, against addresses Rust's parse takes and refuses alike, and
+  # IPv4 ones written as IPv6, in each spelling.
+  address =
+    (
+      (bare.options.jitsusama.shaper.networks.type.getSubOptions [ ])
+      .house.type.nestedTypes.elemType.getSubOptions
+        [ ]
+    ).from.type;
+  taken = [
+    "192.0.2.7"
+    "10.0.0.255"
+    "2001:db8::7"
+    "fe80::1"
+    "1:2:3:4:5:6:7:8"
+    "1::ffff:a:b"
+  ];
+  refused = [
+    "the mac"
+    "1.2.3"
+    "10.0.0.256"
+    "192.168.001.007"
+    "1::2::3"
+    "1:2:3:4:5:6:7:8:9"
+    "1:2:3:4:5:6:7::8"
+    "12345::1"
+    "::ffff:192.0.2.7"
+    "::ffff:c000:207"
+    "::FFFF:C000:207"
+    "0:0:0:0:0:ffff:c000:207"
+    "0:0:0:0:0:ffff:c000::"
+    "::ffff:0:207"
+    "::c000:207"
+    "0:0:0:0:0:0:c000:207"
+    "::"
+  ];
+  misread = lib.filter (text: !address.check text) taken ++ lib.filter address.check refused;
   unasked = services.shaper.wantedBy == [ ];
   asked = builtins.elem "multi-user.target" named.shaper.wantedBy;
   recorded = builtins.elem "multi-user.target" services.shaper-record.wantedBy;
@@ -45,6 +135,22 @@ onLinux {
         && services.shaper-record.restartIfChanged
         && !services.shaper-record.stopIfChanged
       );
+
+  # A network's house opens the port the shaper hears its reports on to
+  # the house's address alone, over IPv4 or IPv6 as it is written: the
+  # machine's input rules are the houses' two alone, and no port, range or
+  # trusted interface opens it to all. A house's address is held to what
+  # the shaper's own parse takes, and an IPv4 address written as IPv6,
+  # mapped or compatible, which would open the port to no report, is
+  # refused.
+  shaper-hears-only-the-house = holds "shaper-hears-only-the-house" (
+    if !houseRules then
+      "The input rules aren't the houses' two alone: ${lib.concatStringsSep "; " rules}"
+    else if !opened then
+      "UDP port ${port} is open to all, by a port, a range or a trusted interface"
+    else
+      "A house's address check misreads: ${lib.concatStringsSep ", " misread}"
+  ) (opened && misread == [ ]);
 
   # Only a machine that names the controller shapes from boot: every
   # graphical machine imports the module, and one that never asked for
