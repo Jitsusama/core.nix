@@ -183,6 +183,44 @@ fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
     }
 }
 
+/// A failed build's code comes first and hides a part no builder took, so
+/// the gate's words name only some of what it broke: each of these says
+/// part of it went unbuilt, and a red beside one isn't whole.
+#[test]
+fn a_red_whose_words_say_a_part_went_unbuilt_isnt_whole() {
+    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
+                  failed with exit code 1.\n";
+    for unbuilt in [
+        "nix-offload: 3 checks were named, but no builder took their build, so nothing was \
+         built",
+        "nix-offload: 2 VM tests were named, but no builder took their build, so they \
+         weren't built",
+        "nix-offload: no lent builder builds 1 of what mac nearby was to take, so it waits \
+         for mac",
+        "nix-offload: mac's part, checks.aarch64-darwin.a, ended 75",
+        "nix-offload: mac's part, checks.aarch64-darwin.a, ended 69",
+    ] {
+        assert_eq!(
+            gated(Some(100), &format!("{failed}{unbuilt}\n")),
+            Gated::Red { whole: false },
+            "a red that left a part unbuilt read as whole: {unbuilt}"
+        );
+    }
+    assert_eq!(
+        gated(
+            Some(100),
+            &format!("{failed}nix-offload: mac's part, checks.aarch64-darwin.a, ended 1\n")
+        ),
+        Gated::Red { whole: true },
+        "a nearby part that ran and failed read as one left unbuilt"
+    );
+    assert_eq!(
+        gated(Some(100), &format!("{failed}a-check> weren't built\n")),
+        Gated::Red { whole: true },
+        "a check's own words read as nix-offload's"
+    );
+}
+
 /// A builder's words can hold any byte, and nix-offload sets aside a
 /// replay onto a newer main that failed, running the change again on its
 /// own base: the gate is read by what its last run said.

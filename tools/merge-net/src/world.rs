@@ -1097,10 +1097,15 @@ pub fn mac_args(base: &str) -> Vec<String> {
 }
 
 /// How `nix-offload` run with `args`, building at `commit` into `log`,
-/// ended, held to the watch's own clock: none when it couldn't be started
-/// or ran past `LONGEST` or `SILENT`, which stops it with its process
-/// group, as `ended` says.
-pub fn bounded(args: &[String], commit: &str, log: &Path) -> Option<i32> {
+/// ended, held to the watch's own clock: none when it couldn't be started,
+/// ran past `LONGEST` or `SILENT`, or `dropped` said to let it go, which
+/// stops it with its process group, as `ended` says.
+pub fn bounded(
+    args: &[String],
+    commit: &str,
+    log: &Path,
+    dropped: &dyn Fn() -> bool,
+) -> Option<i32> {
     let output = file(log).ok()?;
     let mut clock = Clock::new(log, Instant::now());
     let child = Command::new("nix-offload")
@@ -1112,7 +1117,7 @@ pub fn bounded(args: &[String], commit: &str, log: &Path) -> Option<i32> {
         .stderr(output)
         .spawn()
         .ok()?;
-    ended(child, &mut clock, commit, log, &|| false)
+    ended(child, &mut clock, commit, log, dropped)
 }
 
 /// How `child`, building at `commit` into `log`, ended; none when it was

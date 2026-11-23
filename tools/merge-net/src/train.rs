@@ -35,14 +35,15 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A red is main's own when its gate ran whole and every check it broke
-//! fails at the base the candidate was cut on too, every line the
-//! candidate's build of it printed printed there: the candidate lands,
-//! and its line in `train/landed.jsonl` names those checks
+//! A red says nothing of its riders when its gate ran whole and every
+//! check it broke either fails alike at the base the candidate was cut
+//! on, or passes when run again alone at the candidate: the candidate
+//! lands, and its line in `train/landed.jsonl` names those checks
 //! (`excused.rs`). Any other candidate that fails splits: the train
 //! takes the first half of its riders to board, and halves again while
-//! they fail, so the riders that broke nothing land together and the one that breaks it is found alone,
-//! five riders in five runs at most (`Splitting`). A train red for more
+//! they fail, so the riders that broke nothing land together and the
+//! one that breaks it is found alone, five riders in five runs at most
+//! (`Splitting`). A train red for more
 //! than its riders gives up, and every rider runs again alone. A candidate
 //! no builder or evaluator took says nothing of its riders, unless its
 //! words name a failed check: the train cuts again a minute on, keeping
@@ -529,10 +530,18 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             Gated::Passed => splitting.taken(),
             Gated::Red { whole } => {
                 splitting.taken();
-                let mains = whole
-                    .then(|| excused::mains_own(&root, &slug, &base, &candidate, &log))
+                let red = excused::Red {
+                    root: &root,
+                    slug: &slug,
+                    checkout: &checkout,
+                    base: &base,
+                    candidate: &candidate,
+                    log: &log,
+                };
+                let excuse = whole
+                    .then(|| excused::excuse(&red, &crate::world::bounded))
                     .flatten();
-                let Some(checks) = mains else {
+                let Some(checks) = excuse else {
                     way(&root, &Ended::Otherwise);
                     red(&root, &candidate, &log, &done.merged, &mut splitting);
                     continue;
@@ -569,7 +578,8 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
 }
 
 /// A candidate's run: the riders it merged, when it began, and the checks
-/// that failed in it at main's own commit too, which excused its red.
+/// that failed in it but excused its red, failing at main alike or
+/// passing run again.
 struct Run<'a> {
     heads: &'a [String],
     began: u64,

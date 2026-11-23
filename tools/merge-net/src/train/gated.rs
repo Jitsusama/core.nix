@@ -44,14 +44,41 @@ pub(super) enum Gated {
 /// machine's uploads were held, one made a rider fall that broke nothing.
 /// But nix-offload ends with the first part that failed, a VM part no
 /// builder took coming first, so words naming a failed check outrank it.
+/// For the same reason a failed build's code can hide a part no builder
+/// took, so a red is whole only when no line says one went unbuilt.
 pub(super) fn gated(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
         _ if crate::watch::untaken(code) && !names_a_failure(words) => Gated::Unsent,
         _ => Gated::Red {
-            whole: code.is_some() && !crate::watch::untaken(code),
+            whole: code.is_some() && !crate::watch::untaken(code) && !left_unbuilt(words),
         },
     }
+}
+
+/// What nix-offload says of a part of its run that no builder took or
+/// built, whatever code the run ended with.
+const UNBUILT: [&str; 5] = [
+    "but no builder took their build",
+    "weren't built",
+    "no lent builder builds",
+    "no lent builder takes",
+    "no lent builder took",
+];
+
+/// Whether a gate's `words` say nix-offload left part of it unbuilt: a
+/// part no builder took, or a nearby machine's part that ended untaken.
+fn left_unbuilt(words: &str) -> bool {
+    words
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("nix-offload: "))
+        .any(|said| {
+            UNBUILT.iter().any(|unbuilt| said.contains(unbuilt))
+                || (said.contains("'s part, ")
+                    && said
+                        .rsplit_once(" ended ")
+                        .is_some_and(|(_, code)| crate::watch::untaken(code.parse().ok())))
+        })
 }
 
 /// Whether a gate's `words` say a check failed: changed-checks' verdict,
