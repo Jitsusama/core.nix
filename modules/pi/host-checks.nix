@@ -510,8 +510,9 @@ in
                 environment.PROXY_ORIGIN = "https://proxy.example.com";
               };
               # A realm that tunes its own allocator, one that names its
-              # own trim threshold beside other tuning, and one that names
-              # it in glibc's older variable.
+              # own trim threshold beside other tuning, one that names it in
+              # glibc's older variable, and one that names it there beside
+              # other tuning.
               hosts.tuned = {
                 inherit pi node proof;
                 environment.GLIBC_TUNABLES = "glibc.malloc.arena_max=2";
@@ -522,6 +523,11 @@ in
               };
               hosts.aliased = {
                 inherit pi node proof;
+                environment.MALLOC_TRIM_THRESHOLD_ = "65536";
+              };
+              hosts.both = {
+                inherit pi node proof;
+                environment.GLIBC_TUNABLES = "glibc.malloc.arena_max=2";
                 environment.MALLOC_TRIM_THRESHOLD_ = "65536";
               };
               # Where pi's SSH agent proxy runs.
@@ -575,6 +581,19 @@ in
         )
         && tunablesOf unit == [ ]
         && loginAllocatorOf unit == [ "GLIBC_TUNABLES" ];
+      # One naming it there beside other tuning keeps both as given, with no
+      # threshold added and nothing kept from the login, since it sets both.
+      keepsBoth =
+        kind:
+        let
+          unit = "pi-conversation-both-${kind}@";
+        in
+        services ? ${unit}
+        && lib.elem ''"MALLOC_TRIM_THRESHOLD_=65536"'' (
+          lib.toList (services.${unit}.Service.Environment or [ ])
+        )
+        && tunablesOf unit == [ ''"GLIBC_TUNABLES=glibc.malloc.arena_max=2"'' ]
+        && loginAllocatorOf unit == [ ];
       runsApart =
         kind:
         let
@@ -652,6 +671,7 @@ in
                   "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=65536"
                   kind
               && keepsAlias kind
+              && keepsBoth kind
             )
             [
               "attended"
