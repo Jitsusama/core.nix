@@ -58,9 +58,10 @@ pub const FAINTER: i32 = 6;
 /// not there by then never got there (choose.rs).
 pub const BETWEEN: Duration = Duration::from_secs(30);
 
-/// How long a call keeps off the point it last gave way from: loss every
-/// point shares, as the gateway's own, would otherwise move it back and
-/// forth every `BETWEEN`.
+/// How long a call keeps off each point it gave way from, and holds where
+/// it lost again after giving way for loss: loss every point shares, as
+/// the gateway's own, would otherwise move it from point to point every
+/// `BETWEEN`.
 pub const AWAY: Duration = Duration::from_secs(120);
 
 /// How often a fading call with nowhere to give way to has the card look
@@ -111,9 +112,17 @@ pub enum Way {
 /// fading: the loudest other access point of its network it hears, kept
 /// off none (`kept_off`), loud enough to be worth the move. `lost` is how
 /// many echoes it lost within `WINDOW`, and `signal` how loud the kernel
-/// lately heard its point, else how loud its look did. A faint link on a
-/// wider band gives way to a narrower one only `choose::ACROSS` louder
-/// still, as the same access point is heard louder on its narrower band.
+/// lately heard its point, else how loud a look heard it within `WINDOW`:
+/// a look's level older than that says nothing of a link fading now. A
+/// faint link on a wider band gives way to a narrower one only
+/// `choose::ACROSS` louder still, as the same access point is heard
+/// louder on its narrower band; a lossy one gives way to a narrower band
+/// only where it hears none as wide within reach, as 2.4 GHz brought the
+/// 17 Nov 2026 downloads down to 54 to 76% (choose.rs), and a give-way
+/// settles where it lands. A point that says another security than the
+/// card's own is never given way to: the card's network can't be joined
+/// there, and a radio in range naming itself the network could otherwise
+/// pull a call off its point with a loud beacon alone.
 pub fn giving_way(
     point: &str,
     (lost, signal): (usize, Option<i32>),
@@ -121,7 +130,8 @@ pub fn giving_way(
     kept_off: impl Fn(&str) -> bool,
 ) -> Way {
     let own = around.iter().find(|heard| heard.bssid == point);
-    let signal = signal.or_else(|| own.map(|heard| i32::from(heard.signal)));
+    let looked = own.filter(|heard| u64::from(heard.age) <= WINDOW.as_secs());
+    let signal = signal.or_else(|| looked.map(|heard| i32::from(heard.signal)));
     let frequency = own.map_or(0, |heard| heard.frequency);
     let lossy = lost >= DROPPED;
     let faint = signal.filter(|signal| *signal < FADED);
@@ -146,8 +156,9 @@ pub fn giving_way(
     let best = around
         .iter()
         .filter(|heard| heard.bssid != point && !kept_off(&heard.bssid))
+        .filter(|heard| own.is_none_or(|own| heard.security == own.security))
         .filter_map(|heard| Some((why(heard)?, heard)))
-        .max_by_key(|(_, heard)| heard.signal);
+        .max_by_key(|(_, heard)| (!choose::wider(frequency, heard.frequency), heard.signal));
     match (best, faint) {
         (Some((why, heard)), _) => Way::To(Giving {
             to: heard.bssid.clone(),
@@ -345,6 +356,72 @@ mod tests {
             giving.map(|giving| giving.to),
             Some(ROOM.into()),
             "the hall is kept off, so the room"
+        );
+    }
+
+    #[test]
+    fn a_look_s_level_older_than_the_window_says_nothing_of_a_fading_link() {
+        let fresh = [heard(DESK, -78), heard(HALL, -60)];
+        let stale = [
+            Heard {
+                age: 11,
+                ..heard(DESK, -78)
+            },
+            heard(HALL, -60),
+        ];
+
+        let faded = to(giving_way(DESK, (0, None), &fresh, none));
+        let unknown = giving_way(DESK, (0, None), &stale, none);
+
+        assert_eq!(
+            faded.map(|giving| giving.why),
+            Some(Why::Faint(-78)),
+            "heard faint within 10 s"
+        );
+        assert_eq!(unknown, Way::Holds, "heard faint 11 s ago may be loud now");
+    }
+
+    #[test]
+    fn a_lossy_wide_link_gives_way_to_its_own_band_before_a_louder_narrower_one() {
+        const NEAR: &str = "6c:ae:f6:c1:84:27";
+        let both = [
+            heard(DESK, -50),
+            heard_on(NEAR, -40, 2437),
+            heard(HALL, -54),
+        ];
+        let narrower = [heard(DESK, -50), heard_on(NEAR, -40, 2437)];
+
+        let wide = to(giving_way(DESK, (2, Some(-50)), &both, none));
+        let only = to(giving_way(DESK, (2, Some(-50)), &narrower, none));
+
+        assert_eq!(
+            wide.map(|giving| giving.to),
+            Some(HALL.into()),
+            "the hall's 5 GHz, though the desk's 2.4 GHz is louder"
+        );
+        assert_eq!(
+            only.map(|giving| giving.to),
+            Some(NEAR.into()),
+            "2.4 GHz where it hears nothing as wide"
+        );
+    }
+
+    #[test]
+    fn a_call_gives_way_to_no_point_saying_another_security() {
+        let around = [
+            heard(DESK, -78),
+            Heard {
+                security: Security::Open,
+                ..heard(HALL, -40)
+            },
+        ];
+
+        let way = giving_way(DESK, (5, Some(-78)), &around, none);
+
+        assert_eq!(
+            way,
+            Way::Nowhere(Why::Lossy(5)),
+            "an open point naming itself the network isn't it"
         );
     }
 

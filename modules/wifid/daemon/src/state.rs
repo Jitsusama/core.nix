@@ -1164,11 +1164,13 @@ mod tests {
         let before = state.looking("wlan0");
 
         state.scanning("wlan0", true);
+        state.scanning("wlan0", true);
         state.scanning("wlan0", false);
         let after = state.looking("wlan0");
         let later = state.looking("wlan0");
 
         assert!(before.looked_until(after), "a look came between");
+        assert_eq!(after.begun, 1, "said looking twice, it's one look");
         assert!(!after.looked_until(later), "none came after");
     }
 

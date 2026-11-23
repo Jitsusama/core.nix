@@ -346,6 +346,14 @@ pub struct Chooser {
     joined: Option<(String, Instant)>,
     /// The card's last give-way during a call (fading.rs).
     gave: Option<Gave>,
+    /// Each access point a call gave way from, and when, kept off by a
+    /// call for `fading::AWAY`: loss every point shares, as the gateway's
+    /// own, would otherwise move it from point to point every `BETWEEN`,
+    /// back to the first once its last give-way named another.
+    left: HashMap<String, Instant>,
+    /// Whether the call's link was last found losing as the point it gave
+    /// way from for loss did, so that's said once a spell.
+    shared: bool,
     /// When a fading call last had the card look for a point to give way
     /// to.
     looked_in_call: Option<Instant>,
@@ -360,6 +368,8 @@ struct Gave {
     from: String,
     to: String,
     at: Instant,
+    /// Whether it gave way for loss, rather than a faint link.
+    lossy: bool,
     /// When the card last moved before this one, which counts again where
     /// this one never got there.
     moved_before: Option<Instant>,
@@ -559,9 +569,12 @@ impl Chooser {
         // for one kept off past its first hour (`Kept::firm`).
         let resting = resting(measured);
         let may_narrow = queued && !used(measured);
+        // A failing call keeps off each point it lately gave way from, as
+        // its give-ways do, lest the minute send it back there.
         let untried = others.iter().filter(|other| {
             other.point != point
                 && self.may_try(&other.point, failing && !young, now)
+                && !(calling && self.left_lately(&other.point, now))
                 && (wide(other.frequency) || !holds_wide)
                 && ((bad && !queued)
                     || resting
@@ -907,14 +920,38 @@ impl Chooser {
     }
 
     /// Whether a call keeps off that access point: one the card keeps off,
-    /// or the one it last gave way from, within `fading::AWAY`, as loss
-    /// every point shares would otherwise send it back and forth.
+    /// or one a call gave way from within `fading::AWAY`, as loss every
+    /// point shares would otherwise send it from point to point.
     pub fn call_keeps_off(&self, point: &str, now: Instant) -> bool {
-        let left = self
-            .gave
+        self.keeps_off(point, now) || self.left_lately(point, now)
+    }
+
+    /// Whether a call gave way from that access point within
+    /// `fading::AWAY`.
+    fn left_lately(&self, point: &str, now: Instant) -> bool {
+        self.left
+            .get(point)
+            .is_some_and(|at| now.duration_since(*at) < fading::AWAY)
+    }
+
+    /// The access point the card gave way from for loss within
+    /// `fading::AWAY`, where it's on the one it gave way to: losing there
+    /// too, the loss is likely the network's, as the gateway's own, which
+    /// no move escapes, so the call holds rather than move again.
+    pub fn shares_loss(&self, point: &str, now: Instant) -> Option<String> {
+        self.gave
             .as_ref()
-            .is_some_and(|gave| gave.from == point && now.duration_since(gave.at) < fading::AWAY);
-        self.keeps_off(point, now) || left
+            .filter(|gave| gave.lossy && gave.to == point)
+            .filter(|gave| now.duration_since(gave.at) < fading::AWAY)
+            .map(|gave| gave.from.clone())
+    }
+
+    /// Whether the call's link now loses as the point it gave way from
+    /// did, answering whether that began now, so it's said once a spell.
+    pub fn loss_shared(&mut self, shared: bool) -> bool {
+        let begun = shared && !self.shared;
+        self.shared = shared;
+        begun
     }
 
     /// Keeps off an access point a move never reached, as
@@ -990,22 +1027,29 @@ impl Chooser {
     /// figures are the fading link's, and one it isn't on is kept off as
     /// never reached, as `judge` would, unless it's where the card gives
     /// way to, which is followed as the give-way.
-    pub fn gave_way(&mut self, now: Instant, from: &str, to: &str) {
+    pub fn gave_way(&mut self, now: Instant, (from, to): (&str, &str), why: fading::Why) {
         let mut moved_before = self.moved;
         if let Some(trial) = self.trial.take()
             && trial.to != from
-            && trial.to != to
         {
+            // A trial the card never left for counts as no move, as
+            // `judge` would count it, the give-way to its point included.
             if trial.from == from && !trial.stood {
                 moved_before = trial.moved_before;
             }
-            self.never_reached(trial.to, now);
+            if trial.to != to {
+                self.never_reached(trial.to, now);
+            }
         }
         self.moved = Some(now);
+        self.left
+            .retain(|_, at| now.duration_since(*at) < fading::AWAY);
+        self.left.insert(from.to_owned(), now);
         self.gave = Some(Gave {
             from: from.to_owned(),
             to: to.to_owned(),
             at: now,
+            lossy: matches!(why, fading::Why::Lossy(_)),
             moved_before,
             stood: false,
         });
@@ -1014,8 +1058,10 @@ impl Chooser {
     /// Takes in which access point the card is on while its last give-way
     /// is followed. Found on the one it gave way to, it stood. Not there
     /// within `fading::BETWEEN`, never having stood, it never got there, so
-    /// that point is kept off as one a move never reached is, and the move
-    /// doesn't hold the card from choosing for a settle.
+    /// that point is kept off as one a move never reached is. Found back
+    /// on the point it gave way from, the card never moved, so the move
+    /// doesn't hold it from choosing for a settle; found on a third, it
+    /// did, as `judge` takes a trial.
     pub fn followed(&mut self, now: Instant, point: &str) {
         let Some(gave) = self.gave.as_mut() else {
             return;
@@ -1027,7 +1073,9 @@ impl Chooser {
             return;
         }
         if let Some(gave) = self.gave.take() {
-            self.moved = gave.moved_before;
+            if gave.from == point {
+                self.moved = gave.moved_before;
+            }
             self.never_reached(gave.to, now);
         }
     }
@@ -1517,6 +1565,9 @@ pub(crate) mod tests {
     const HALL: &str = "6c:ae:f6:c1:84:28";
     /// The desk's access point's own 2.4 GHz radio.
     const NEAR: &str = "6c:ae:f6:c1:84:27";
+    /// A call's link given way from for loss, and for a faint signal.
+    const LOSING: fading::Why = fading::Why::Lossy(2);
+    const FADED: fading::Why = fading::Why::Faint(-75);
     const CH52: u32 = 5260;
     const CH149: u32 = 5745;
     const CH6: u32 = 2437;
@@ -2871,7 +2922,7 @@ pub(crate) mod tests {
         let start = Instant::now();
         let first = chooser.may_give_way(start);
 
-        chooser.gave_way(start, DESK, HALL);
+        chooser.gave_way(start, (DESK, HALL), LOSING);
         chooser.followed(start + Duration::from_secs(1), HALL);
         let soon = chooser.may_give_way(start + Duration::from_secs(29));
         let later = chooser.may_give_way(start + fading::BETWEEN);
@@ -2893,22 +2944,60 @@ pub(crate) mod tests {
     fn a_give_way_never_reached_is_kept_off_and_holds_no_settle() {
         let mut chooser = Chooser::default();
         let start = Instant::now();
-        chooser.gave_way(start, DESK, HALL);
+        chooser.gave_way(start, (DESK, HALL), LOSING);
 
         let later = start + fading::BETWEEN;
         chooser.followed(later, DESK);
 
         assert_eq!(chooser.unreached().as_deref(), Some(HALL), "said once");
         assert!(chooser.keeps_off(HALL, later), "the hall is kept off");
-        assert!(chooser.may_give_way(later), "it may give way again");
         assert!(chooser.settled(later), "and the move holds no settle");
+    }
+
+    #[test]
+    fn a_give_way_never_reached_leaves_the_move_before_it_to_settle() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        chooser.followed(start + Duration::from_secs(1), HALL);
+
+        let again = start + Duration::from_secs(100);
+        chooser.gave_way(again, (HALL, NEAR), LOSING);
+        let later = again + fading::BETWEEN;
+        chooser.followed(later, HALL);
+
+        assert!(
+            chooser.keeps_off(NEAR, later),
+            "the one never reached is kept off"
+        );
+        assert!(
+            !chooser.settled(later),
+            "the move that landed still settles"
+        );
+        assert!(chooser.settled(start + SETTLE), "from when it landed");
+    }
+
+    #[test]
+    fn a_give_way_that_ends_on_a_third_point_still_settles() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+
+        let later = start + fading::BETWEEN;
+        chooser.followed(later, NEAR);
+
+        assert!(chooser.keeps_off(HALL, later), "the hall was never reached");
+        assert!(
+            !chooser.settled(later),
+            "but the card moved, to the near point"
+        );
     }
 
     #[test]
     fn a_call_keeps_off_the_point_it_gave_way_from_a_while() {
         let mut chooser = Chooser::default();
         let start = Instant::now();
-        chooser.gave_way(start, DESK, HALL);
+        chooser.gave_way(start, (DESK, HALL), LOSING);
         chooser.followed(start + Duration::from_secs(1), HALL);
 
         let within = chooser.call_keeps_off(DESK, start + fading::AWAY - Duration::from_secs(1));
@@ -2916,6 +3005,83 @@ pub(crate) mod tests {
 
         assert!(within, "loss both share doesn't send it straight back");
         assert!(!past, "after two minutes it may");
+    }
+
+    #[test]
+    fn a_call_keeps_off_every_point_it_lately_gave_way_from() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), FADED);
+        chooser.followed(start + Duration::from_secs(1), HALL);
+        let next = start + fading::BETWEEN;
+        chooser.gave_way(next, (HALL, NEAR), FADED);
+        chooser.followed(next + Duration::from_secs(1), NEAR);
+
+        let then = next + fading::BETWEEN;
+
+        assert!(
+            chooser.call_keeps_off(DESK, then),
+            "the first it left, though its last give-way left the hall"
+        );
+        assert!(chooser.call_keeps_off(HALL, then), "and the hall");
+    }
+
+    #[test]
+    fn a_call_losing_where_it_gave_way_for_loss_shares_the_loss() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        let mut faded = Chooser::default();
+        faded.gave_way(start, (DESK, HALL), FADED);
+
+        let then = start + fading::BETWEEN;
+
+        assert_eq!(
+            chooser.shares_loss(HALL, then).as_deref(),
+            Some(DESK),
+            "it lost on the desk as it does in the hall"
+        );
+        assert_eq!(
+            chooser.shares_loss(DESK, then),
+            None,
+            "not on another point"
+        );
+        assert_eq!(
+            chooser.shares_loss(HALL, start + fading::AWAY),
+            None,
+            "nor once two minutes are past"
+        );
+        assert_eq!(
+            faded.shares_loss(HALL, then),
+            None,
+            "a faint link lost nothing"
+        );
+    }
+
+    #[test]
+    fn a_failing_call_isnt_chosen_back_to_the_point_it_gave_way_from() {
+        let mut chooser = Chooser::default();
+        let start = Instant::now();
+        chooser.gave_way(start, (DESK, HALL), LOSING);
+        chooser.followed(start + Duration::from_secs(1), HALL);
+        let failing = carried(400, 15.0);
+        let desk = Other {
+            point: DESK.into(),
+            ..hall(-45, Some(20), None)
+        };
+        let near = Other {
+            point: NEAR.into(),
+            ..hall(-53, Some(20), None)
+        };
+
+        let later = start + Duration::from_secs(40);
+        let choice = chooser.choose(later, (HALL, &failing, -50, CH52), &[desk, near], true);
+
+        assert_eq!(
+            choice,
+            Choice::Try(NEAR.into()),
+            "the near point, though the desk is louder, as it lost as the hall does"
+        );
     }
 
     #[test]
@@ -2928,18 +3094,37 @@ pub(crate) mod tests {
         let tried = chooser.choose(start, on, &[near], false);
         assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
 
-        let gave = start + Duration::from_secs(5);
-        chooser.gave_way(gave, DESK, NEAR);
+        // A give-way waits out a move's `BETWEEN`, the chooser's own included.
+        let gave = start + fading::BETWEEN;
+        chooser.gave_way(gave, (DESK, NEAR), LOSING);
 
         assert_eq!(chooser.unreached().as_deref(), Some(HALL), "the try ends");
         assert!(chooser.keeps_off(HALL, gave), "kept off as never reached");
     }
 
     #[test]
+    fn a_give_way_to_a_trial_never_reached_counts_as_no_move_either() {
+        let mut chooser = after_a_bad_minute(DESK);
+        let start = Instant::now();
+        let badly = carried(119, 0.5);
+        let near = hall(-53, Some(20), None);
+        let tried = chooser.choose(start, (DESK, &badly, -50, CH52), &[near], false);
+        assert_eq!(tried, Choice::Try(HALL.into()), "the hall is tried");
+
+        let gave = start + fading::BETWEEN;
+        chooser.gave_way(gave, (DESK, HALL), LOSING);
+        let later = gave + fading::BETWEEN;
+        chooser.followed(later, DESK);
+
+        assert!(chooser.keeps_off(HALL, later), "never reached either way");
+        assert!(chooser.settled(later), "so neither holds a settle");
+    }
+
+    #[test]
     fn a_failing_call_just_moved_stays_while_the_move_lands() {
         let mut chooser = Chooser::default();
         let start = Instant::now();
-        chooser.gave_way(start, DESK, HALL);
+        chooser.gave_way(start, (DESK, HALL), LOSING);
         let failing = carried(400, 15.0);
         let near = Other {
             point: NEAR.into(),

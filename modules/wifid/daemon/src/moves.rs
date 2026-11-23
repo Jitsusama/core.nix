@@ -179,14 +179,37 @@ fn given(
         return None;
     }
     let kept_off = |point: &str| chooser.call_keeps_off(point, now);
-    match fading::giving_way(&on.point, measured, around, kept_off) {
+    let way = fading::giving_way(&on.point, measured, around, kept_off);
+    // Losing on the point it gave way to for loss, as on the one it left,
+    // the card holds and looks for no other: no move escapes the network's
+    // own loss, and each takes the call off its link a while.
+    if let Way::To(Giving {
+        why: Why::Lossy(lost),
+        ..
+    })
+    | Way::Nowhere(Why::Lossy(lost)) = way
+        && let Some(from) = chooser.shares_loss(&on.point, now)
+    {
+        if chooser.loss_shared(true) {
+            println!(
+                "<6>{} stays on {} during a call though it lost {lost} echoes in {} s, as it \
+                 gave way from {from} losing them too, so the loss is likely the network's",
+                on.card,
+                on.point,
+                fading::WINDOW.as_secs()
+            );
+        }
+        return None;
+    }
+    chooser.loss_shared(false);
+    match way {
         Way::Holds => {
             chooser.stranded(false);
             None
         }
         Way::To(giving) => {
             println!("<6>{}", gave_way(on, &giving));
-            chooser.gave_way(now, &on.point, &giving.to);
+            chooser.gave_way(now, (&on.point, &giving.to), giving.why);
             chooser.stranded(false);
             Some(Next::Move(giving.to))
         }
@@ -1132,6 +1155,47 @@ mod tests {
             "still on the desk, the hall was never reached"
         );
         assert_eq!(next, Some(Next::Look), "with nowhere else, it looks");
+    }
+
+    #[test]
+    fn a_call_losing_where_it_gave_way_for_loss_holds_rather_than_move_or_look() {
+        const ROOM: &str = "6c:ae:f6:c1:84:29";
+        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let around = [heard(DESK, -50), heard(HALL, -48), heard(ROOM, -50)];
+        given(&mut chooser, start, &joined(DESK), &around, LOSING);
+
+        let later = start + fading::BETWEEN;
+        let next = given(&mut chooser, later, &joined(HALL), &around, LOSING);
+        let alone = [heard(HALL, -50)];
+        let nowhere = given(&mut chooser, later, &joined(HALL), &alone, LOSING);
+
+        assert_eq!(
+            next, None,
+            "the room would lose as the desk and the hall do"
+        );
+        assert_eq!(nowhere, None, "nor does it look for another");
+    }
+
+    #[test]
+    fn a_fading_call_goes_back_to_no_point_it_lately_left() {
+        const ROOM: &str = "6c:ae:f6:c1:84:29";
+        let (mut chooser, start) = (Chooser::default(), Instant::now());
+        let around = [heard(DESK, -50), heard(HALL, -55), heard(ROOM, -60)];
+        let faded = (0, Some(-75));
+
+        let first = given(&mut chooser, start, &joined(DESK), &around, faded);
+        let next = start + fading::BETWEEN;
+        let second = given(&mut chooser, next, &joined(HALL), &around, faded);
+        let then = next + fading::BETWEEN;
+        let third = given(&mut chooser, then, &joined(ROOM), &around, faded);
+
+        assert_eq!(first, Some(Next::Move(HALL.into())), "the hall");
+        assert_eq!(
+            second,
+            Some(Next::Move(ROOM.into())),
+            "the room, not the desk"
+        );
+        assert_eq!(third, Some(Next::Look), "it looks rather than go back");
     }
 
     #[test]

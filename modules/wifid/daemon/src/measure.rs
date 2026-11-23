@@ -153,6 +153,11 @@ struct Point {
     /// The look the card was last seen in, by how many it had begun, and
     /// when it was first seen in it.
     look: Option<(u32, Instant)>,
+    /// When each echo couldn't be sent as the card's link was down, kept
+    /// apart from the echoes: lost to a call's link, they say nothing of
+    /// how the point carries, and right after a resume, a join or a roam
+    /// they'd read as a failing minute, learned for its hour.
+    unsent: VecDeque<(Instant, ())>,
 }
 
 impl Measures {
@@ -221,6 +226,14 @@ impl Measures {
         video(&echoes)
     }
 
+    /// Takes in that a best-effort echo through the access point couldn't
+    /// be sent then, as the card's link was down.
+    pub fn unsent(&mut self, point: &str, at: Instant) {
+        let kept = self.points.entry(point.to_owned()).or_default();
+        kept.unsent.push_back((at, ()));
+        forget_before(&mut kept.unsent, at);
+    }
+
     /// Takes in that the echo sent then was taken while its card
     /// was in this look for networks, by how many it had begun. It's left
     /// out of a call's fading only within `fading::LOOK` of the look.
@@ -246,10 +259,11 @@ impl Measures {
 
     /// How many best-effort echoes through the access point were lost
     /// within `within` of now, those taken while its card looked for
-    /// networks aside, and its signal as the kernel last said it within
-    /// then, its average where it says one, for whether a call's link is
-    /// fading (fading.rs). A reading older than that says nothing of the
-    /// link now.
+    /// networks aside and those that couldn't be sent as its link was down
+    /// among them, and its signal as the kernel last said it within then,
+    /// its average where it says one, for whether a call's link is fading
+    /// (fading.rs). A reading older than that says nothing of the link
+    /// now.
     pub fn lately(&self, point: &str, now: Instant, within: Duration) -> (usize, Option<i32>) {
         let Some(kept) = self.points.get(point) else {
             return (0, None);
@@ -261,6 +275,12 @@ impl Measures {
             .filter(|(at, echo)| now.duration_since(*at) <= within && *echo == Echo::Lost)
             .filter(|(at, _)| !looking(at))
             .count();
+        let unsent = kept
+            .unsent
+            .iter()
+            .filter(|(at, ())| now.duration_since(*at) <= within)
+            .count();
+        let lost = lost + unsent;
         let signal = kept
             .counts
             .back()
@@ -606,13 +626,15 @@ async fn measure(
                         on.card,
                         class.name()
                     );
-                    sockets.close(class);
-                    // A best-effort echo that couldn't be sent is lost as
-                    // surely as one unanswered, and a call's fading counts
-                    // it so.
-                    if class == Class::BestEffort {
-                        measures.echoed_as(class, &on.point, Instant::now(), Echo::Lost);
+                    // A best-effort echo that couldn't be sent as the link
+                    // is down is lost to a call as surely as one
+                    // unanswered, so a call's fading counts it, and nothing
+                    // else does. Refused for another reason, as by a
+                    // firewall, it says nothing of the link.
+                    if class == Class::BestEffort && link_down(&error) {
+                        measures.unsent(&on.point, Instant::now());
                     }
+                    sockets.close(class);
                 }
             }
         }
@@ -744,6 +766,15 @@ fn said(
         measured.retried,
         measured.failed,
         if call { ", during a call" } else { "" },
+    )
+}
+
+/// Whether an echo couldn't be sent as the card's link was down, rather
+/// than refused for another reason.
+fn link_down(error: &std::io::Error) -> bool {
+    matches!(
+        error.raw_os_error(),
+        Some(libc::ENETDOWN | libc::ENETUNREACH | libc::EHOSTUNREACH | libc::ENODEV)
     )
 }
 
@@ -1021,6 +1052,37 @@ pub(crate) mod tests {
         let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
 
         assert_eq!(lost, 0, "two looks of 5 s each are both left out whole");
+    }
+
+    #[test]
+    fn an_echo_unsent_as_the_link_was_down_is_lost_to_a_call_alone() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        for second in 0..10 {
+            let at = start + Duration::from_secs(second);
+            if second < 3 {
+                kept.unsent(DESK, at);
+            } else {
+                kept.echoed(DESK, at, Echo::Answered(Duration::from_millis(5)));
+            }
+        }
+        let now = start + Duration::from_secs(9);
+
+        let (lost, _) = kept.lately(DESK, now, Duration::from_secs(10));
+        let minute = kept.of(DESK, now).expect("answered echoes were measured");
+
+        assert_eq!(lost, 3, "a call's link lost all three");
+        assert_eq!(minute.echoes, 7, "the minute holds only the echoes sent");
+        assert!(minute.lost < f64::EPSILON, "and lost none of them");
+    }
+
+    #[test]
+    fn only_an_echo_refused_for_a_link_down_counts_as_unsent() {
+        let down = std::io::Error::from_raw_os_error(libc::ENETUNREACH);
+        let refused = std::io::Error::from_raw_os_error(libc::EPERM);
+
+        assert!(link_down(&down), "no route is the link down");
+        assert!(!link_down(&refused), "a firewall's refusal isn't");
     }
 
     #[test]

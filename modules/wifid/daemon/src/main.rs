@@ -1338,6 +1338,9 @@ impl<'a> Air<'a> {
             if under(card, path) {
                 self.stalls.gone(name);
                 self.arrivals.borrow_mut().forget(name);
+                // A look it was in when wpa_supplicant let it go never says
+                // it ended, and would hide the next one begun.
+                change(&self.state, |state| state.scanning(name, false));
                 self.gone.push(name.clone());
             }
         }
