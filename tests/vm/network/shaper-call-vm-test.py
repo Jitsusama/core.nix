@@ -76,11 +76,15 @@ UP_DROPPED_MOST = DOWN_MOST
 # there. Any other may have been lost in the shaper's IFB, so it's excused only when the IFB
 # dropped nothing meanwhile.
 HANDSHAKES = 2
-# What iperf3 says when a stream's handshake timed out unanswered. A reply that came back as
-# something else ends with whatever errno an earlier call left, so it's taken for unanswered
-# only when that was this one; the counters read it as lost going up when it was 4 bytes, and
-# coming down otherwise.
-UNANSWERED = "unable to read from stream socket: Resource temporarily unavailable"
+# What iperf3 says when a stream's handshake went unanswered, before the call's first second.
+# It sends a stream's connect once and takes the first datagram back for the reply
+# (iperf_udp_connect in 3.21's iperf_udp.c). With none in 30 s the error ends "Resource
+# temporarily unavailable". But the server starts the call once it hears every connect, so a
+# reply lost coming down leaves the call's own data to come first, and the error ends with
+# whatever errno an earlier call left: "No such file or directory" on 22 November, the server
+# having heard both connects. Either is a handshake lost, which the counters read as lost
+# going up when the server heard no connect, and coming down otherwise.
+UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
