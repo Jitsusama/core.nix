@@ -187,11 +187,12 @@ fn every_archive_is_unpacked_in_turn_into_one_tree() {
         })
         .collect();
     let _ = std::fs::remove_dir_all(&made);
-    let sizes: String = texts
+    let lines: Vec<_> = texts
         .iter()
-        .map(|(name, text)| format!("{}\t{name}\n", text.len()))
+        .map(|(name, text)| format!("{}\t{name}", text.len()))
+        .chain(["end".to_owned()])
         .collect();
-    let list = format!("{sizes}end\n");
+    let list = lines.join("\n") + "\n";
     let files: Vec<_> = texts
         .iter()
         .map(|(name, text)| (name.as_str(), text.as_str()))
