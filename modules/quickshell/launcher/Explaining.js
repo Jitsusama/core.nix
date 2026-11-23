@@ -94,13 +94,22 @@ function plain(value) {
 }
 
 // What the quick model is told of `cell`, a line each, only those it says.
-function facts(cell) {
+// One waiting on Joel says what it asks him, its want's own words, and
+// then the names of `beside`, the acts on its row he can answer it by
+// (Talk, Go To), so the answer says what it waits on and which to press;
+// one asking nothing names none, since nothing waits on a press.
+function facts(cell, beside) {
     const plan = cell?.plan ?? {};
+    const asks = plain(cell?.asks);
+    const presses = asks === "" || !Array.isArray(beside) ? []
+        : beside.map(plain).filter(name => name !== "");
     return [
         ["Its title", cell?.title],
         ["Its repository", cell?.repo],
         ["Its machine", cell?.machine],
         ["How it stands", cell?.standing],
+        ["It asks the person", asks],
+        ["The person can press", presses.join(", ")],
         ["Doing now", cell?.doing],
         ["Running since", cell?.since],
         ["Latest in its plan", plan.chose],
@@ -111,9 +120,10 @@ function facts(cell) {
 }
 
 // The question for `cell`: `asks`, the act's words, with its facts where
-// they say {facts}, or after them when they don't.
-function message(cell, asks) {
-    const told = facts(cell).join("\n");
+// they say {facts}, or after them when they don't; `beside` names the acts
+// on its row (facts).
+function message(cell, asks, beside) {
+    const told = facts(cell, beside).join("\n");
     const words = String(asks ?? "");
     // A replacer, so a $ in the facts is never read as a pattern.
     return words.includes(FACTS) ? words.replace(FACTS, () => told) : `${words}\n\n${told}`;

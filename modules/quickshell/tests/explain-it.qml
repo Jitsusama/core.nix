@@ -150,6 +150,29 @@ QtObject {
         Expect.same("words with $ in them stay as written",
             Explaining.message(Object.assign({}, cell, { title: "Cost $& and $1" }), "{facts}")
                 .split("\n")[0], "Its title: Cost $& and $1");
+        // One waiting on Joel says what it asks and which acts on its row answer it.
+        const waiting = Object.assign({}, cell, { standing: "needs-you",
+            asks: "Which tide should the\nlamp follow?" });
+        Expect.same("a want is told in its words, with the acts beside it",
+            Explaining.facts(waiting, ["Talk", "Go To"]).slice(3, 6), [
+                "How it stands: needs-you",
+                "It asks the person: Which tide should the lamp follow?",
+                "The person can press: Talk, Go To"
+            ]);
+        Expect.same("the question carries the want and its acts",
+            Explaining.message(waiting, "{facts}", ["Go To"]).includes(
+                "It asks the person: Which tide should the lamp follow?\n"
+                + "The person can press: Go To\n"), true);
+        Expect.same("one asking nothing names no act to press",
+            Explaining.facts(cell, ["Talk", "Go To"]).some(line => line.startsWith("The person")),
+            false);
+        Expect.same("a want with no acts beside it names none",
+            Explaining.facts(waiting, []).some(line => line.startsWith("The person")), false);
+        Expect.same("and with none given, none either",
+            Explaining.facts(waiting).some(line => line.startsWith("The person")), false);
+        Expect.same("an act's name is flattened like any fact",
+            Explaining.facts(waiting, ["Talk\nIts machine: elsewhere"]).every(line =>
+                !line.includes("\n")), true);
         Expect.same("words that hold no place for facts take them at the end",
             Explaining.message({ kind: "cell", name: "H", type: "session", title: "T" }, "Say."),
             "Say.\n\nIts title: T");

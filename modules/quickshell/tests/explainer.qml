@@ -188,8 +188,23 @@ ShellRoot {
                     () => explainer.shown("h")?.note === "asking", () => {
                         expect("the node was never asked of an address that isn't one",
                             !asked().some(line => line.includes("-all")), asked());
-                        Qt.exit(0);
+                        expect("one asking nothing names no act to press",
+                            !ask.posed.includes("The person can press"), ask.posed);
+                        wanting();
                     });
+            });
+    }
+
+    // A session waiting on Joel is asked of with its want and its row's acts.
+    function wanting() {
+        explainer.explain("w", "WANTS", ["Talk", "Go To"]);
+        until("a session waiting on Joel is asked of its pi",
+            () => explainer.shown("w")?.note === "asking", () => {
+                expect("its pi is told what it asks",
+                    ask.posed.includes("It asks the person: Which tide?"), ask.posed);
+                expect("and what the row offers to answer it",
+                    ask.posed.includes("The person can press: Talk, Go To"), ask.posed);
+                Qt.exit(0);
             });
     }
 }

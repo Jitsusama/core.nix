@@ -48,7 +48,9 @@ Scope {
     // Told whenever what an act shows changes, so its place is said again.
     signal changed
 
-    function explain(key, address) {
+    // Explains the session at `address` on `key`'s row, whose acts Joel
+    // could answer it by are named `beside` (Explaining.facts).
+    function explain(key, address, beside) {
         const command = Explaining.command(realm, address);
         const before = explaining;
         explaining = key;
@@ -67,7 +69,8 @@ Scope {
             return;
         if (asker === null)
             asker = own();
-        reading.createObject(explainer, { key: key, command: command, patience: patience });
+        reading.createObject(explainer, { key: key, command: command, patience: patience,
+            beside: Array.isArray(beside) ? beside : [] });
     }
 
     // Its own Ask, made as the launcher makes each source, or null where it
@@ -93,7 +96,8 @@ Scope {
     // What the node said of the session at `address`, for `key`'s row,
     // `out` and `errors`, or null when it gave no answer in time: it's this
     // row's only while the row is the one explained and still reads.
-    function heard(key, address, out, errors) {
+    // `beside` names the row's acts, as explain was given them.
+    function heard(key, address, out, errors, beside) {
         if (key !== explaining || explained[key]?.stage !== "reading")
             return;
         const ended = out === null ? { stage: "failed" }
@@ -104,7 +108,7 @@ Scope {
             stands(key, { stage: ended.stage ?? "failed" });
             return;
         }
-        const message = Explaining.message(ended.cell, said.asks);
+        const message = Explaining.message(ended.cell, said.asks, beside);
         stands(key, { stage: "asking", message: message });
         asker.pose(message);
     }
@@ -139,6 +143,7 @@ Scope {
 
             required property string key
             required property int patience
+            required property var beside
             property var out: undefined
             property var errors: undefined
             property bool done: false
@@ -149,7 +154,7 @@ Scope {
                     return;
                 one.done = true;
                 // The address is the fifth word asked (Explaining.command).
-                explainer.heard(one.key, one.command[4], one.out, one.errors);
+                explainer.heard(one.key, one.command[4], one.out, one.errors, one.beside);
                 one.destroy();
             }
 
