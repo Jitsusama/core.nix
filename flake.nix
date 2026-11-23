@@ -225,6 +225,7 @@
         health = ./modules/health/home.nix;
         home-manager = ./modules/home-manager/home.nix;
         homebrew = ./modules/homebrew/home.nix;
+        house-report = ./modules/house-report/home.nix;
         identity = ./modules/identity/home.nix;
         inkscape = moduleFrom ./modules/inkscape/home.nix {
           inherit (self.homeModules) niri quickshell;

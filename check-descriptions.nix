@@ -1614,6 +1614,14 @@
     kind's first claim, passes a page that links none of a pattern's things, fails with no row home
     to anything, and reads a shortened name's tail as no mention
   '';
+  house-report-passes-clippy = ''
+    clippy finds nothing in house-report or its tests
+  '';
+  house-report-says-what-the-link-sent = ''
+    house-report's tests pass: a report reads as the shaper parses it, its total starts at nothing
+    and grows by what the counter counts, a 32-bit counter that wraps counts on, one made again
+    counts from nothing, and an interface's count is read from its statistics alone
+  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows

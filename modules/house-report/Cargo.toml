@@ -1,0 +1,17 @@
+# house-report: says each second what this machine's uplink has sent, to
+# the shaped machine on the same line, so it holds its upload under what
+# the two may send between them (src/main.rs says how).
+[package]
+name = "house-report"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+terminal-kit = { path = "../terminal-kit" }
+
+# A Mac's interface counters are read through getifaddrs, whose types libc
+# spells for it.
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
