@@ -13,9 +13,10 @@
 //! names it, and again as zoxide writes it while its key is watched, so
 //! nothing is read at rest.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::time::Duration;
@@ -25,9 +26,10 @@ use serde_json::{Value, json};
 /// The one version of zoxide's database this reads.
 const VERSION: u64 = 3;
 
-/// What was last said of a database that couldn't be read, so each
-/// trouble is told once in the log, not on every pass that meets it.
-static TOLD: Mutex<Option<String>> = Mutex::new(None);
+/// What was last said of each database that couldn't be read, by its
+/// path, so each trouble is told once in the log, not on every pass that
+/// meets it, however many databases kitty's page and Code read.
+static TOLD: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
 
 /// The record a key names, or none for a key of another kind or a path
 /// that isn't whole.
@@ -66,35 +68,36 @@ pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
                 .map(|version| {
                     format!("zoxide's database at {shown} is version {version}, not {VERSION}")
                 });
-            tell(&TOLD, other);
+            tell(&TOLD, database, other);
             visits(&bytes)
         }
         Err(why) if why.kind() == ErrorKind::NotFound => {
-            tell(&TOLD, None);
+            tell(&TOLD, database, None);
             Vec::new()
         }
         Err(why) => {
             let why = format!("zoxide's database at {shown} couldn't be read: {why}");
-            tell(&TOLD, Some(why));
+            tell(&TOLD, database, Some(why));
             Vec::new()
         }
     }
 }
 
-/// Says `trouble` in the log once it differs from the last `told`, so a
-/// database left unreadable is told once, and again only once it changes;
-/// true when it said it.
-fn tell(told: &Mutex<Option<String>>, trouble: Option<String>) -> bool {
+/// Says `trouble` in the log once it differs from the last `told` of
+/// `database`, so a database left unreadable is told once, and again only
+/// once it changes; true when it said it.
+fn tell(told: &Mutex<BTreeMap<PathBuf, String>>, database: &Path, trouble: Option<String>) -> bool {
     let mut told = told.lock().unwrap_or_else(PoisonError::into_inner);
-    if *told == trouble {
+    if told.get(database) == trouble.as_ref() {
         return false;
     }
-    let said = trouble
-        .as_ref()
-        .inspect(|why| eprintln!("{why}, so no visits order anything"));
-    let said = said.is_some();
-    *told = trouble;
-    said
+    let Some(why) = trouble else {
+        told.remove(database);
+        return false;
+    };
+    eprintln!("{why}, so no visits order anything");
+    told.insert(database.to_owned(), why);
+    true
 }
 
 /// `visits` with each folder's links resolved, since zoxide keeps the path
@@ -139,12 +142,15 @@ pub fn within<T: Send + 'static>(
     // has ended or the caller has stopped waiting, sees it set, so `late`
     // is raised once for a run past its deadline and lowered once as it ends.
     let ended = Arc::new(AtomicBool::new(false));
-    let (late_here, ended_here) = (Arc::clone(late), Arc::clone(&ended));
+    let ending = Ending {
+        late: Arc::clone(late),
+        ended: Arc::clone(&ended),
+    };
     std::thread::spawn(move || {
+        // Dropped as the work ends, or as it panics, so `late` is lowered
+        // either way.
+        let _ending = ending;
         let answered = work();
-        if ended_here.swap(true, Ordering::SeqCst) {
-            late_here.fetch_sub(1, Ordering::SeqCst);
-        }
         // A caller gone past its deadline no longer hears it.
         let _ = sent.send(answered);
     });
@@ -156,6 +162,20 @@ pub fn within<T: Send + 'static>(
         late.fetch_sub(1, Ordering::SeqCst);
     }
     fallback
+}
+
+/// The end of a run `within` its deadline, as its thread sees it.
+struct Ending {
+    late: Arc<AtomicUsize>,
+    ended: Arc<AtomicBool>,
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        if self.ended.swap(true, Ordering::SeqCst) {
+            self.late.fetch_sub(1, Ordering::SeqCst);
+        }
+    }
 }
 
 /// A database's bytes, read from the front.
@@ -283,20 +303,22 @@ mod tests {
 
     #[test]
     fn a_trouble_is_told_once_and_again_only_once_it_changes() {
-        let told = Mutex::new(None);
+        let told = Mutex::new(BTreeMap::new());
+        let (code, kitty) = (Path::new("/code/db.zo"), Path::new("/kitty/db.zo"));
         let unread = || Some("unread".to_owned());
         let said = [
-            tell(&told, unread()),
-            tell(&told, unread()),
-            tell(&told, Some("version 4".to_owned())),
-            tell(&told, None),
-            tell(&told, None),
-            tell(&told, unread()),
+            tell(&told, code, unread()),
+            tell(&told, kitty, None),
+            tell(&told, code, unread()),
+            tell(&told, code, Some("version 4".to_owned())),
+            tell(&told, code, None),
+            tell(&told, code, None),
+            tell(&told, code, unread()),
         ];
         assert_eq!(
             said,
-            [true, false, true, false, false, true],
-            "a trouble wasn't told once per change"
+            [true, false, false, true, false, false, true],
+            "a trouble wasn't told once per change of its own database"
         );
     }
 
@@ -362,6 +384,20 @@ mod tests {
             within(Duration::from_secs(30), &late, 0, || 9),
             9,
             "work once the late run ended wasn't started again"
+        );
+    }
+
+    #[test]
+    fn work_that_panics_leaves_the_next_run_free_to_start() {
+        let late = Arc::new(AtomicUsize::new(0));
+        let panicked = within(Duration::from_secs(30), &late, 0, || -> u32 {
+            panic!("a resolving that panics, as a stand-in")
+        });
+        assert_eq!(panicked, 0, "work that panicked didn't fall back");
+        assert_eq!(
+            within(Duration::from_secs(30), &late, 0, || 9),
+            9,
+            "work that panicked kept every later run from starting"
         );
     }
 

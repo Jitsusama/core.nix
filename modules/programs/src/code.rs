@@ -34,7 +34,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -108,10 +108,13 @@ pub struct Code {
     /// How many resolutions of zoxide's folders ran past `RESOLVING` and
     /// haven't ended, so no pass starts another while one is held.
     late: Arc<AtomicUsize>,
-    /// Held from reading zoxide's visits to taking the rows made with
-    /// them, so a pass that read them earlier never takes its order over
-    /// one read after it. The daemon's lock is taken only within it.
-    turn: Mutex<()>,
+    /// The number the next pass making Code's rows is given as it begins
+    /// to read zoxide's visits, and the latest whose rows were taken, kept
+    /// under the daemon's lock: a pass that began earlier than the one
+    /// last taken lets its rows go, so no order read before another is
+    /// taken after it, and no lock is held while the disk is read.
+    passes: AtomicU64,
+    taken: AtomicU64,
     /// The checkouts a Pull, a switch or a tending is under way in, so a
     /// second waits for none and none races another.
     busy: Mutex<BTreeSet<String>>,
@@ -166,7 +169,8 @@ impl Code {
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
             late: Arc::new(AtomicUsize::new(0)),
-            turn: Mutex::new(()),
+            passes: AtomicU64::new(1),
+            taken: AtomicU64::new(0),
             busy: Mutex::new(BTreeSet::new()),
             listing: Mutex::new(()),
             uncommitted: Mutex::new(BTreeMap::new()),
@@ -345,14 +349,29 @@ fn again(shared: &Arc<Shared>) {
     });
 }
 
-/// Takes `record`'s rows ordered by zoxide's visits as they stand, read
-/// with the daemon's lock let go, and in turn, so no order read before
-/// another is taken after it.
+/// Takes `record`'s rows ordered by zoxide's visits as they stand, made
+/// with every lock let go, unless a pass that began after this one has
+/// taken its rows already, so no order read before another is taken
+/// after it.
 fn ordered(shared: &Shared, record: &Arc<Record>) {
     let code = &shared.code;
-    let _turn = lock(&code.turn);
+    let pass = code.passes.fetch_add(1, Ordering::SeqCst);
     let rows = code.made(record, &code.visits(record));
-    take(shared, &mut lock(&shared.daemon), rows);
+    let mut daemon = lock(&shared.daemon);
+    if newest(&code.taken, pass) {
+        take(shared, &mut daemon, rows);
+    }
+}
+
+/// Whether `pass` began after every pass `taken` says was taken, marking
+/// it taken if so. Called with the daemon's lock held, so two passes
+/// never both read `taken` before either marks it.
+fn newest(taken: &AtomicU64, pass: u64) -> bool {
+    if taken.load(Ordering::SeqCst) > pass {
+        return false;
+    }
+    taken.store(pass, Ordering::SeqCst);
+    true
 }
 
 /// Keeps the rows read, telling each watch only what moved.
@@ -665,6 +684,22 @@ fn branches(shared: &Shared, path: &str) -> Option<Vec<Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pass_begun_before_the_one_last_taken_takes_nothing() {
+        let taken = AtomicU64::new(0);
+        let took = [
+            newest(&taken, 2),
+            newest(&taken, 1),
+            newest(&taken, 2),
+            newest(&taken, 3),
+        ];
+        assert_eq!(
+            took,
+            [true, false, true, true],
+            "a pass that began earlier took its rows over a later one's"
+        );
+    }
 
     #[test]
     fn a_count_git_couldnt_read_keeps_the_last_and_one_no_longer_counted_goes() {
