@@ -604,7 +604,9 @@
         real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
         cgroup = "cgroup";
       };
-      patched = pkgs.runCommandLocal "a-patched-systemd" { } "mkdir $out";
+      patched = pkgs.runCommandLocal "a-patched-systemd" {
+        inherit (pkgs.systemd) version;
+      } "mkdir $out";
       # A regex may not name a store path, so the stand-in's is matched as text.
       patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
       heldToPatched = lib.hasInfix patchedRun (
