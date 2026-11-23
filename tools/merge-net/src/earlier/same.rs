@@ -44,7 +44,9 @@ pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(),
 
 /// [`read_by_a_round`] of `head`, its commit, main and files, in the repo
 /// at `repo`, with this machine's `rounds`, the `mirrors`, and `asks` to
-/// put a pin's questions to.
+/// put a pin's questions to. Rounds that can't be read are taken as
+/// reading nothing, so a pin is still asked after, and a pin turned down
+/// is refused naming both why the rounds didn't do and why it doesn't.
 fn read_in_repo(
     repo: &Path,
     (commit, main, files): (&str, &str, &[String]),
@@ -244,13 +246,72 @@ mod tests {
         asks: &pins::tests::Fake,
     ) -> Result<(), String> {
         let rounds: HashSet<seen::Read> = read.iter().map(|one| round(one, None)).collect();
+        gated_with(repo, head, Ok(rounds), &[], asks)
+    }
+
+    /// What the review gate says of `head` in `repo`, given `rounds` here
+    /// and a mirror that read `mirrored`, asking `asks` about a pin.
+    fn gated_with(
+        repo: &Path,
+        head: &str,
+        rounds: Result<HashSet<seen::Read>, String>,
+        mirrored: &[&str],
+        asks: &pins::tests::Fake,
+    ) -> Result<(), String> {
         read_in_repo(
             repo,
             (head, "main", &[]),
-            || Ok(rounds),
-            || mirror(&[], &[], &[]),
+            || rounds,
+            || mirror(mirrored, &["equilibrius"], &[]),
             asks,
         )
+    }
+
+    /// A fake that finds no pull request for any commit.
+    fn unmerged() -> pins::tests::Fake {
+        let mut asks = pins::tests::Fake::vouching();
+        asks.pulls.clear();
+        asks
+    }
+
+    // A head only a mirror's round read passes on that round, asking
+    // GitHub nothing, whatever its pin would have been told.
+    #[test]
+    fn a_pin_a_mirrored_round_read_passes_asking_nothing() {
+        let (repo, head) = pins::tests::pinned_to_b("gate-mirrored", None);
+        let asks = unmerged();
+        assert_eq!(
+            gated_with(&repo, &head, Ok(HashSet::new()), &[&head], &asks),
+            Ok(()),
+            "a pin a mirrored round read was refused"
+        );
+        assert!(
+            asks.asked().is_empty(),
+            "a pin a mirrored round read was asked after"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // Rounds that can't be read leave a pin to be asked after: one vouched
+    // for passes, and one turned down is refused saying both reasons.
+    #[test]
+    fn a_pin_beside_rounds_that_cant_be_read_is_asked_after() {
+        let (repo, head) = pins::tests::pinned_to_b("gate-unread-rounds", None);
+        let broken = || Err("the rounds folder can't be read".to_owned());
+        assert_eq!(
+            gated_with(&repo, &head, broken(), &[], &pins::tests::Fake::vouching()),
+            Ok(()),
+            "a vouched pin was refused because the rounds couldn't be read"
+        );
+        let refused = gated_with(&repo, &head, broken(), &[], &unmerged());
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|why| why.contains("the rounds folder can't be read")
+                    && why.contains("moves only flake.lock, but no pull request")),
+            "a pin turned down beside unread rounds didn't say both why: {refused:?}"
+        );
+        fs::remove_dir_all(&repo).unwrap();
     }
 
     // A pin the pass vouches for needs no round at all.
@@ -270,11 +331,6 @@ mod tests {
     #[test]
     fn a_pin_a_round_read_passes_asking_nothing_and_a_turned_down_one_is_refused() {
         let (repo, head) = pins::tests::pinned_to_b("gate-declined", None);
-        let unmerged = || {
-            let mut asks = pins::tests::Fake::vouching();
-            asks.pulls.clear();
-            asks
-        };
         let read = unmerged();
         assert_eq!(
             gated(&repo, &head, &[&head], &read),
