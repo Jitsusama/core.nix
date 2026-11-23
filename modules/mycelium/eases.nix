@@ -43,9 +43,9 @@ in
         kept and told but never made. It never carries a session the person
         has written in or one leading others, nor one whose harness doesn't
         say which, and reads its limits back from what it keeps, so a
-        restart lifts none. Those guards are mycelium's from its #381 on:
-        where the source the node is built from has no line of code naming
-        them, the node isn't told to carry and the switch warns, rather
+        restart lifts none. The two that keep the person's and the leading
+        sessions came in mycelium's #381: where the source the node is built
+        from has no line of code for either, the node isn't told to carry and the switch warns, rather
         than the machine refusing to update. Off, the node only writes what
         it would do. To stop at once, set it false and switch, which
         restarts the node; a carry it already asked for is the harness's, so

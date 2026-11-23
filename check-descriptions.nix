@@ -2206,10 +2206,11 @@
   mycelium-carries-only-with-its-guards = ''
     a workstation's node is told to carry only where the mycelium it is built from has a line of
     code, not a line comment, for each guard that keeps the person's and the leading sessions,
-    each tried alone, and keeps carrying where both are written in forms the patterns accept;
-    where one is missing the switch warns, in the system's warnings, naming that mycelium and the
-    files lacking one, rather than refusing the machine, and a machine that doesn't carry or runs
-    no node is never warned
+    each tried alone and with neither file there, and a node built from one writing both in
+    forms the patterns accept carries; where one is missing the switch warns once, in the
+    system's warnings on Linux and a Mac, naming that mycelium and only the files lacking one
+    and how, rather than refusing the machine, and a machine that doesn't carry or runs no node
+    is never warned
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
