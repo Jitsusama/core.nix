@@ -1903,6 +1903,11 @@
     entry on another partition for it, makes it active and first in BootOrder, and writes nothing
     once it is
   '';
+  local-name-answers-by-a-job = ''
+    a Mac with a local name advertises itself as a workstation by that name, on port 9, with
+    macOS's own dns-sd, as nobody, from its start and again whenever it ends, so its name keeps
+    answering after mDNSResponder restarts, and a Mac with none advertises nothing
+  '';
   local-name-comes-back = ''
     a Mac macOS renamed gets its declared local name back, said once with what it was, at most
     once in five minutes by the time its stamp holds, a time still to come counting as old; a
