@@ -14,7 +14,6 @@
   "modules/guide/tests/stick.rs" = 1;
   "modules/machine/tests/daemon.rs" = 1;
   "modules/mpv/keys-test.sh" = 2;
-  "modules/nix-offload/offload/tests/there.rs" = 1;
   "modules/people/tests/daemon.rs" = 2;
   "modules/pi-packages/tests/inuse.rs" = 1;
   "modules/swayimg/tests/swayimg-moves-by-its-keys.sh" = 2;

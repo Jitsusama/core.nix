@@ -605,6 +605,104 @@ fn a_copy_up_waits_its_turn_while_three_go_up() {
 }
 
 #[test]
+fn a_turn_that_cant_be_opened_leaves_the_rest_to_wait_on() {
+    // Every turn once had to open for any to be waited on, so one
+    // unopenable file sent every copy up at once.
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let turns = folder.path().join("nix-offload-there");
+    fs::create_dir_all(turns.join("uplink-2")).unwrap();
+    let held: Vec<fs::File> = [1, 3]
+        .into_iter()
+        .map(|turn| {
+            let file = fs::File::create(turns.join(format!("uplink-{turn}"))).unwrap();
+            file.lock().unwrap();
+            file
+        })
+        .collect();
+    let letting_go = std::thread::spawn(move || {
+        // The held turns stay held 3 s, which the send must wait out:
+        // that wait is what this proves.
+        std::thread::sleep(Duration::from_secs(3));
+        drop(held);
+    });
+    let began = std::time::Instant::now();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .output()
+        .unwrap();
+    let took = began.elapsed();
+    letting_go.join().unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(said.contains("2 copies already go up"), "{said}");
+    assert!(
+        took >= Duration::from_secs(3),
+        "sent before a turn was free: {took:?}"
+    );
+}
+
+#[test]
+fn a_copy_up_takes_whichever_turn_frees_first() {
+    // On 21 November sixteen runs waited on two held turns for over half an
+    // hour while the third stood free, since each waited on one turn its
+    // process id chose.
+    use std::io::{BufRead, BufReader, Read};
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    let turns = folder.path().join("nix-offload-there");
+    fs::create_dir_all(&turns).unwrap();
+    let mut held: Vec<Option<fs::File>> = (1..=3)
+        .map(|turn| {
+            let file = fs::File::create(turns.join(format!("uplink-{turn}"))).unwrap();
+            file.lock().unwrap();
+            Some(file)
+        })
+        .collect();
+    let began = std::time::Instant::now();
+    let mut running = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    // The turn the run would have waited on alone, and another to free.
+    let its_own = usize::try_from(running.id() % 3).unwrap();
+    let mut said = BufReader::new(running.stderr.take().unwrap());
+    let mut heard = String::new();
+    while !heard.contains("waits its turn to send") {
+        assert_ne!(said.read_line(&mut heard).unwrap(), 0, "{heard}");
+    }
+    held[(its_own + 1) % 3] = None;
+    // The rest are let go once the run ends, or after 30 s, so a run that
+    // waits on a held turn fails here rather than hanging.
+    let (ended, ending) = std::sync::mpsc::channel::<()>();
+    let letting_go = std::thread::spawn(move || {
+        let _ = ending.recv_timeout(Duration::from_secs(30));
+        drop(held);
+    });
+    said.read_to_string(&mut heard).unwrap();
+    let ran = running.wait().unwrap();
+    let took = began.elapsed();
+    // Spent when the 30 s ran out first, which the assert below reports.
+    let _ = ended.send(());
+    letting_go.join().unwrap();
+    assert_eq!(ran.code(), Some(0), "{heard}");
+    assert!(
+        took < Duration::from_secs(30),
+        "waited on a held turn while another was free: {took:?}"
+    );
+}
+
+#[test]
 fn a_copy_up_sent_first_takes_no_turn() {
     let (ran, took) = sent_up_while_the_uplink_is_taken(&["--first"], Duration::from_secs(20));
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
@@ -4993,6 +5091,8 @@ fn gone_pid() -> u32 {
 fn vm_lender_back(vm: &Path) -> std::thread::JoinHandle<()> {
     let vm = vm.to_owned();
     std::thread::spawn(move || {
+        // The lender is away a second, as one a switch restarts is,
+        // while the send waits for it to stand again.
         std::thread::sleep(std::time::Duration::from_secs(1));
         fs::write(
             vm.join("store"),
