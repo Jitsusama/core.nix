@@ -256,6 +256,32 @@ fn a_turn_asked_for_within_a_turn_runs_in_it() {
     );
 }
 
+// A holder's note outlives it, and its pid can come again as one of a
+// later turn's parents, here this test's own, which holds no lock.
+#[test]
+fn a_turn_below_a_pid_a_gone_holder_noted_takes_the_lock_itself() {
+    let account = Account::new();
+    let runtime = account.path("runtime/night-shift");
+    fs::create_dir_all(&runtime).unwrap();
+    fs::write(
+        runtime.join("holder"),
+        format!("gone\t{}\t0\n", std::process::id()),
+    )
+    .unwrap();
+    let output = account.turn("eval", &[], "touch ran").output().unwrap();
+    let said = warned(&output);
+    assert!(output.status.success(), "the turn failed: {said}");
+    assert!(account.path("ran").exists(), "the command never ran");
+    assert!(
+        !said.contains("runs in the turn"),
+        "it ran in a turn nobody held: {said}"
+    );
+    assert!(
+        fs::read_to_string(runtime.join("holder")).is_ok_and(|noted| noted.starts_with("eval\t")),
+        "it didn't note itself as the turn's holder"
+    );
+}
+
 #[test]
 fn a_night_job_tried_beside_a_heavy_job_by_day_leaves_it_the_turn() {
     let account = Account::new();

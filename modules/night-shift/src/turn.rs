@@ -164,8 +164,8 @@ pub fn holder(runtime: &Path) -> String {
 /// has the turn already, and waiting for the lock its own parent holds
 /// would wait for ever, as a cargo test an agent ran in its turn did once
 /// nix-offload asked for a turn of its own. A pid noted by a job long
-/// gone and taken again by another process is above this one only by
-/// chance too slight to matter, and then the turn is held anyway.
+/// gone and taken again by one of this process's parents is told apart
+/// by the lock, which nobody holds then.
 fn held_above(runtime: &Path) -> Option<String> {
     let noted = fs::read_to_string(runtime.join("holder")).ok()?;
     let holder = noted.trim().split('\t').nth(1)?.parse::<i32>().ok()?;
@@ -474,17 +474,30 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
             &error,
         )
     })?;
-    if let Some(holder) = held_above(runtime) {
-        say(
-            &turn.name,
-            &format!("runs in the turn {holder} already has, being part of its job"),
-        );
-        return run(turn);
-    }
     // Opened close-on-exec, as std opens every file, so it stays here,
     // and held until this process ends, however it ends.
     let lock = File::create(runtime.join("lock"))
         .map_err(|error| failed(&turn.name, "can't open the lock", &error))?;
+    if let Some(holder) = held_above(runtime) {
+        // The holder noted is above this process, but its note outlives
+        // it, and its pid can come again as one of this process's
+        // parents: only a lock still held makes it the turn's.
+        match lock.try_lock() {
+            Err(TryLockError::WouldBlock) => {
+                say(
+                    &turn.name,
+                    &format!("runs in the turn {holder} already has, being part of its job"),
+                );
+                return run(turn);
+            }
+            Ok(()) => lock
+                .unlock()
+                .map_err(|error| failed(&turn.name, "can't let the lock go", &error))?,
+            Err(TryLockError::Error(error)) => {
+                return Err(failed(&turn.name, "can't take the lock", &error));
+            }
+        }
+    }
     wait_for(turn, runtime, &lock)?;
     note(runtime, &turn.name);
     run(turn)
