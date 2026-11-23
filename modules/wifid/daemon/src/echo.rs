@@ -5,13 +5,13 @@
 //! group in `net.ipv4.ping_group_range` open, so wifid needs no capability
 //! for it: its bounding set stays empty. The socket is bound to the card,
 //! so a VPN's routes or a cable can't carry the echo another way, and to
-//! an identifier drawn at random, which the kernel sets in each echo with
-//! its checksum; it hands back only the answers to this socket's, so an
-//! answer is told by its sequence alone. One answer counted needs the
-//! gateway's address, the identifier and a sequence waited on, the first
-//! of them drawn at random too, so a station on the same network that
-//! can't read the card's frames has the identifier's 65,535 to guess
-//! before a forged answer counts. One that can read them, holding the
+//! an identifier drawn at random (the kernel's choice when that one is
+//! taken), which the kernel sets in each echo with its checksum; it hands
+//! back only the answers to this socket's, so an answer is told by its
+//! sequence alone. One answer counted needs the gateway's address, the
+//! identifier and a sequence waited on, the first of them drawn at random
+//! too, so a station on the same network that can't read the card's frames
+//! has the identifier's 65,535 to guess before a forged answer counts. One that can read them, holding the
 //! network's password, can deauthenticate the card as easily where
 //! management frames go unprotected.
 //!
@@ -185,12 +185,12 @@ impl Echoer {
         }
         mark(&owned, class)?;
         // An identifier and a first sequence drawn at random, so answering
-        // an echo in the gateway's place means guessing them. An identifier
-        // another socket holds fails the bind, and the next second draws
-        // another.
+        // an echo in the gateway's place means guessing them. Not 0, which
+        // asks the kernel to choose, in order: that is left for when the
+        // one drawn is taken, so a user holding most identifiers can't
+        // leave the card unmeasured, though they can then guess its own.
         let [low, high, first, second, ..] = RandomState::new().hash_one(card).to_le_bytes();
-        // Not 0, which would ask the kernel to choose, in order.
-        identify(&owned, u16::from_le_bytes([first, second]).max(1))?;
+        claim(&owned, u16::from_le_bytes([first, second]).max(1))?;
         Ok(Echoer {
             socket: AsyncFd::with_interest(owned, Interest::READABLE)?,
             sequence: u16::from_le_bytes([low, high]),
@@ -313,6 +313,15 @@ fn mark(socket: &OwnedFd, class: Class) -> io::Result<()> {
     Ok(())
 }
 
+/// Binds the socket to the identifier drawn, or to one the kernel chooses
+/// when another socket holds it.
+fn claim(socket: &OwnedFd, drawn: u16) -> io::Result<()> {
+    match identify(socket, drawn) {
+        Err(taken) if taken.kind() == io::ErrorKind::AddrInUse => identify(socket, 0),
+        bound => bound,
+    }
+}
+
 /// Binds the socket to the identifier its echoes carry.
 fn identify(socket: &OwnedFd, identifier: u16) -> io::Result<()> {
     let address = libc::sockaddr_in {
@@ -355,33 +364,60 @@ fn answered(read: &[u8]) -> Option<u16> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_socket_is_bound_to_its_identifier_and_refused_one_taken() {
-        // A datagram socket's port is where a ping socket's identifier
-        // is kept, bound alike.
-        let udp = || {
-            // SAFETY: it takes only numbers.
-            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
-            assert!(fd >= 0, "a socket: {}", io::Error::last_os_error());
-            // SAFETY: the descriptor was just made, and nothing else holds it.
-            unsafe { OwnedFd::from_raw_fd(fd) }
-        };
-        // The kernel's choice is one free wherever the test runs.
-        let first = udp();
-        identify(&first, 0).expect("the kernel chooses one free");
+    /// A datagram socket, whose port is where a ping socket's identifier
+    /// is kept, bound alike.
+    fn udp() -> OwnedFd {
+        // SAFETY: it takes only numbers.
+        let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+        assert!(fd >= 0, "a socket: {}", io::Error::last_os_error());
+        // SAFETY: the descriptor was just made, and nothing else holds it.
+        unsafe { OwnedFd::from_raw_fd(fd) }
+    }
+
+    /// The identifier the socket is bound to, as the kernel reads it.
+    fn identifier_of(socket: &OwnedFd) -> u16 {
         // SAFETY: all zeros is an address, which the kernel fills.
         let mut bound: libc::sockaddr_in = unsafe { mem::zeroed() };
         let mut length = libc::socklen_t::try_from(mem::size_of_val(&bound)).unwrap();
         // SAFETY: the address and its length outlive the call.
         let named = unsafe {
-            libc::getsockname(first.as_raw_fd(), (&raw mut bound).cast(), &raw mut length)
+            libc::getsockname(socket.as_raw_fd(), (&raw mut bound).cast(), &raw mut length)
         };
         assert_eq!(named, 0, "its name: {}", io::Error::last_os_error());
-        let identifier = u16::from_be(bound.sin_port);
+        u16::from_be(bound.sin_port)
+    }
+
+    #[test]
+    fn a_socket_is_bound_to_its_identifier_and_refused_one_taken() {
+        // The kernel's choice is one free wherever the test runs.
+        let first = udp();
+        identify(&first, 0).expect("the kernel chooses one free");
+        let identifier = identifier_of(&first);
 
         // Bound in the wrong order, it would land on another, free one.
         let taken = identify(&udp(), identifier).expect_err("one taken is refused");
         assert_eq!(taken.kind(), io::ErrorKind::AddrInUse, "as taken: {taken}");
+    }
+
+    #[test]
+    fn an_identifier_drawn_that_is_taken_gives_way_to_the_kernel_s_choice() {
+        let first = udp();
+        identify(&first, 0).expect("the kernel chooses one free");
+        let taken = identifier_of(&first);
+
+        let second = udp();
+        claim(&second, taken).expect("another is claimed");
+        let claimed = identifier_of(&second);
+        assert_ne!(claimed, 0, "bound");
+        assert_ne!(claimed, taken, "elsewhere");
+
+        let third = udp();
+        claim(&third, 0).expect("the kernel chooses one free");
+        let free = identifier_of(&third);
+        drop(third);
+        let fourth = udp();
+        claim(&fourth, free).expect("a free one drawn is claimed");
+        assert_eq!(identifier_of(&fourth), free, "as drawn");
     }
 
     #[test]
