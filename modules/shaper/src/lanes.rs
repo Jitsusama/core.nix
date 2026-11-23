@@ -62,8 +62,12 @@
 //!
 //! While the VPN's flow waits past our queues beside what agents straight
 //! send (src/oneway.rs), and they wait, they're held to a share of what
-//! they'd get, never under their part of the quarter, and that is all
-//! their class may borrow. The VPN's own CAKE keeps it from taking what
+//! they'd get, never under the whole quarter, and that is all their class
+//! may borrow. Held so, the quarter is theirs alone, taken from the VPN's
+//! agents rather than Joel: what waits then is the VPN's own flow, which
+//! more room inside it would only feed, while a copy straight to a builder
+//! held to half the quarter carried about 130 kB/s of an 11 Mbit/s line on
+//! 23 November. The VPN's own CAKE keeps it from taking what
 //! they give up, so only Joel straight may, who goes first; otherwise it
 //! goes unsent and the queue past us drains. It's the one class whose
 //! ceiling isn't the whole rate, and only while agents straight wait.
@@ -373,7 +377,8 @@ impl Lanes {
         // held to V: the classes beside it borrow what it leaves.
         let left = rate - straight_now - joel_vpn;
         let (to_vpn, straight_floor) = match (beside, within) {
-            (true, true) => (left / 2.0, floor / 2.0),
+            (true, true) if seen.agents_held.is_none() => (left / 2.0, floor / 2.0),
+            (true, true) => (left / 2.0, floor),
             (true, false) => (0.0, floor),
             (false, _) => (left, 0.0),
         };
@@ -433,7 +438,8 @@ impl Lanes {
             self.joel = held / rate;
         }
         // Held for the VPN's wait while they wait, agents straight keep a
-        // share of their split, never under their part of the floor, and
+        // share of their split, never under the floor, all of it theirs
+        // while they're held (`straight_floor`), and
         // borrow nothing past it. The VPN's own CAKE holds it to V, so
         // only Joel, who borrows first, may send what they give up; else
         // it goes unsent, and the queue past us the VPN's flow waits in
@@ -1848,15 +1854,14 @@ mod tests {
     }
 
     // Held for the VPN's wait, agents straight waiting get less than they
-    // would, never under their part of the floor (half the quarter beside
-    // the VPN's agents, all of it alone), and borrow nothing past it. The
-    // other lanes keep what they had, so the three add up to less.
+    // would, never under the whole quarter, beside the VPN's agents or
+    // alone, and borrow nothing past it. Joel keeps what he had, and the
+    // VPN gives up at most the half of the quarter its agents had, so the
+    // three add up to no more than the rate.
     #[test]
     fn a_held_share_caps_agents_straight_never_under_their_floor() {
-        for (agents, floor) in [
-            ((waiting(4), waiting(4)), RATE * AGENTS_FLOOR / 2.0),
-            ((waiting(4), Agents::default()), RATE * AGENTS_FLOOR),
-        ] {
+        for agents in [(waiting(4), waiting(4)), (waiting(4), Agents::default())] {
+            let floor = RATE * AGENTS_FLOOR;
             let free = Lanes::default().split(&seen((1_000.0, 2_000.0), agents), 1.0);
             assert_eq!(free.agents_most, None, "agents not held were capped");
             for share in [0.5, 0.1] {
@@ -1884,9 +1889,15 @@ mod tests {
                     "held agents may borrow past their rate"
                 );
                 assert!(
-                    near(held.joel, free.joel) && near(held.vpn, free.vpn),
-                    "holding agents straight moved Joel {} or the VPN {}",
-                    held.joel,
+                    near(held.joel, free.joel),
+                    "holding agents straight moved Joel from {} to {}",
+                    free.joel,
+                    held.joel
+                );
+                assert!(
+                    held.vpn <= free.vpn + 1.0 && held.vpn >= free.vpn - floor / 2.0 - 1.0,
+                    "holding agents straight moved the VPN from {} to {}, past its agents' part",
+                    free.vpn,
                     held.vpn
                 );
                 assert!(
@@ -1905,19 +1916,19 @@ mod tests {
         let free = Lanes::default().split(&seen((0.0, 0.0), agents), 1.0);
         let held = Lanes::default().split(
             &Seen {
-                agents_held: held_to(0.5),
+                agents_held: held_to(0.8),
                 ..seen((0.0, 0.0), agents)
             },
             1.0,
         );
         assert!(
-            free.agents * 0.5 > RATE * AGENTS_FLOOR / 2.0 + 1.0,
+            free.agents * 0.8 > RATE * AGENTS_FLOOR + 1.0,
             "the case lands on the floor: agents free had {}",
             free.agents
         );
         assert!(
-            near(held.agents, free.agents * 0.5),
-            "held to half, agents straight had {} of {}",
+            near(held.agents, free.agents * 0.8),
+            "held to four fifths, agents straight had {} of {}",
             held.agents,
             free.agents
         );
