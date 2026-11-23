@@ -62,6 +62,7 @@
   "launcher/Flash.js"
   "launcher/Makings.js"
   "launcher/Presented.js"
+  "launcher/ChangesPresented.js"
   "launcher/Spots.js"
   "launcher/Wanted.js"
   "launcher/Standing.js"

@@ -566,9 +566,9 @@ QtObject {
         holds("a late refusal after Joel typed on goes to the journal alone, its code whole",
             SetWords.later("scale", refused, false, { code: "unread", whole: false }),
             { journal: "launcher: scale refused after Joel typed on: unread, 33 letters" });
-        holds("its words quoted only while reports are on",
+        holds("its code kept and its words quoted only while reports are on",
             SetWords.later("scale", refused, false, { code: "unread", whole: true }),
-            { journal: `launcher: scale refused after Joel typed on: "${refused}"` });
+            { journal: `launcher: scale refused after Joel typed on: unread, "${refused}"` });
         holds("and by how many letters its words held where it's given no code",
             SetWords.later("scale", refused, false),
             { journal: "launcher: scale refused after Joel typed on: 33 letters" });

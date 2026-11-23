@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Reads what the shell said running tests/wifi-acts.qml with reports off, given as $1: a join
 # wifid refused is said by its act and code, and no launcher line says the network's name, the
-# passwords typed, or wifid's own words (Y2YBTS, 2026-11-20, 41ca61c4).
+# passwords typed, or wifid's own words (Y2YBTS, 2026-11-20, 41ca61c4). wifid keys a join as
+# verb:wifi-join whatever the network, so its line reads the same with reports on: this guards
+# that nothing typed into a join reaches the journal, not how the two modes differ, which is
+# refusal-lines-heard.sh's.
 set -euo pipefail
 said=$1
 failed=0

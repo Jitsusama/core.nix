@@ -161,6 +161,27 @@ in
         };
       });
 
+  # With reports off, an ask from outside (a link, a catalogue run or a
+  # terminal's do) says the words it was given by kind and how many letters,
+  # and the shell's own failure by its error's name, since a page or a source
+  # wrote them (modules/quickshell/tests/asked-from-outside-on-niri-test.py).
+  the-launcher-says-asks-from-outside-by-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-asks-from-outside-by-kind-on-niri";
+    tests = ../tests/asked-from-outside-on-niri-test.py;
+    shell.reports = lib.mkForce false;
+  };
+
+  # With reports off, a lagging key's line says an arrow whole and a step by
+  # its arrow and its row's letters, as each of keyTimed's callers in
+  # Launcher.qml says its key is, a key listed without an answer and the
+  # answer late count its letters, and a program's lagging drawer says its
+  # row's kind, not its id (modules/quickshell/tests/lagging-keys-on-niri-test.py).
+  the-launcher-says-a-lagging-keys-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-a-lagging-keys-kind-on-niri";
+    tests = ../tests/lagging-keys-on-niri-test.py;
+    shell.reports = lib.mkForce false;
+  };
+
   # Each of Super+E's groups has its emoji centred on its name as niri shows
   # the launcher, at 1.5 and 2 (modules/quickshell/tests/emoji-marks-on-niri-test.py).
   # It reads the launcher's own rows, which kept each emoji's measure with no
@@ -591,9 +612,9 @@ in
   # things whose stamp moved, and only the newest yank's frame starts its
   # flash, and an opening the collector stalled says where the heap stood
   # as it was asked, as modules/quickshell/tests/pacing.qml holds
-  # launcher/Collector.js, launcher/Flash.js, launcher/Pacing.js,
-  # launcher/Presented.js, launcher/Spots.js, launcher/Thread.js and
-  # launcher/Wanted.js to it in Qt's own engine.
+  # launcher/ChangesPresented.js, launcher/Collector.js, launcher/Flash.js,
+  # launcher/Pacing.js, launcher/Presented.js, launcher/Spots.js,
+  # launcher/Thread.js and launcher/Wanted.js to it in Qt's own engine.
   the-launcher-paces-its-refreshes =
     let
       qt = pkgs.qt6.qtdeclarative;
@@ -602,6 +623,7 @@ in
     # cases, or sets what Qt's engine runs them with.
     pkgs.runCommandLocal "the-launcher-paces-its-refreshes" { } ''
       cp ${../tests/pacing.qml} pacing.qml
+      cp ${../launcher/ChangesPresented.js} ChangesPresented.js
       cp ${../launcher/Collector.js} Collector.js
       cp ${../launcher/Flash.js} Flash.js
       cp ${../launcher/Makings.js} Makings.js

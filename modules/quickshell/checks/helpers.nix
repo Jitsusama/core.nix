@@ -470,12 +470,14 @@ let
   # Now itself in Quickshell, offscreen, `test` its shell.qml, with the
   # margin's pieces, the agents' waiting list, the weather and the calendar
   # stood in, and Location.qml's own, reading whereabouts over its socket.
-  # `before` readies the home a case needs, before the shell starts.
+  # `before` readies the home a case needs, before the shell starts, and
+  # `after` reads what the shell said, in said.log, once it has passed.
   nowShown =
     {
       name,
       test,
       before ? "",
+      after ? "",
     }:
     let
       facts = singleton "Facts.qml" ''
@@ -562,7 +564,16 @@ let
       export FONTCONFIG_FILE=${noFonts}
       ${before}
       ${shellFolderLint}
-      timeout 60 ${qs} -p shell.qml
+      ${
+        if after == "" then
+          "timeout 60 ${qs} -p shell.qml"
+        else
+          ''
+            timeout 60 ${qs} -p shell.qml > said.log 2>&1 || { cat said.log; exit 1; }
+            cat said.log
+            ${after}
+          ''
+      }
       touch $out
     '';
 in

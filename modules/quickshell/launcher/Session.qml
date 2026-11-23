@@ -11,6 +11,7 @@ import "Power.js" as Power
 import "Interfaces.js" as Interfaces
 import "Awake.js" as Awake
 import "Captured.js" as Captured
+import "Presented.js" as Presented
 import "../pieces/Drawers.js" as Drawers
 
 Provider {
@@ -403,7 +404,7 @@ Provider {
         provider.profileReadFor = null;
         if (picked === null || picked !== provider.profilePicked)
             return;
-        const why = Power.profileRefusal(picked.daemon, heard, {
+        const told = {
             holds: Array.from(PowerProfiles.holds ?? []).map(hold => ({
                 profile: profileChoices.find(choice => choice.profile === hold.profile)?.daemon
                     ?? "",
@@ -413,12 +414,19 @@ Provider {
                 [choice.daemon]: Words.of(`session:power:${choice.was}`).part
             }), {}),
             said: Words.of("session:profile").said
-        });
+        };
+        const why = Power.profileRefusal(picked.daemon, heard, told);
         provider.profileHeard = heard;
         if (why === "") {
             console.info(`launcher: power profile ${picked.option} taken`);
         } else {
-            console.warn(`launcher: power profile ${picked.option} not taken: ${why}`);
+            // A hold's program names itself with any words it likes, so with
+            // reports off the journal says it as a window's app is.
+            const holds = told.holds.map(hold => ({ profile: hold.profile,
+                app: Presented.appShown(hold.app, Options.reports) }));
+            const whySaid = Power.profileRefusal(picked.daemon, heard,
+                Object.assign({}, told, { holds }));
+            console.warn(`launcher: power profile ${picked.option} not taken: ${whySaid}`);
             provider.profileRefused = { daemon: picked.daemon, why };
             // Said while the pick's still held, so the foot says it too.
             refused(`session:power:${picked.was}`, why);

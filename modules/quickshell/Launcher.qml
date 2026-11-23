@@ -89,6 +89,7 @@ import "launcher/Pacing.js" as Pacing
 import "launcher/Collector.js" as Collector
 import "launcher/Makings.js" as Makings
 import "launcher/Presented.js" as Presented
+import "launcher/ChangesPresented.js" as ChangesPresented
 import "launcher/Wanted.js" as Wanted
 import "launcher/Order.js" as Order
 import "launcher/PlaceRow.js" as PlaceRow
@@ -1550,7 +1551,9 @@ Scope {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const talk = agents ? agents.talkFor(said) : null;
         const whom = talk?.whom ?? { to: "none", said: String(said ?? "") };
-        console.info(`launcher: asked from outside to talk to ${JSON.stringify(whom)}`);
+        // A link is a page's words, so its line says whom by kind with reports off.
+        console.info("launcher: asked from outside to talk to "
+            + Presented.whomShown(whom, Options.reports));
         if (whom.to === "none")
             return { error: `the launcher has nothing called ${whom.said}` };
         if (inUse())
@@ -1586,8 +1589,14 @@ Scope {
             return inUseSaid;
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const offer = agents ? agents.newWorkFor(words, from) : null;
-        console.info(`launcher: asked from outside to start new work, ${offer === null
-            ? "offering no plain words" : `from ${offer.from?.address ?? "no session here"}`}`);
+        // A link names the session it's from, so with reports off its address is counted, as
+        // talkTo's is (Presented.whomShown).
+        const linkedFrom = offer?.from?.address;
+        const whence = linkedFrom === undefined ? "from no session here"
+            : Options.reports ? `from ${linkedFrom}`
+            : `from a session, ${Presented.typedShown(linkedFrom, false)}`;
+        console.info("launcher: asked from outside to start new work, "
+            + (offer === null ? "offering no plain words" : whence));
         if (offer === null)
             return { error: "the link offered no plain words to start new work with" };
         const told = toldWhence(offer.said);
@@ -1610,7 +1619,8 @@ Scope {
     // did as JSON, as talkTo does. Not goTo, which is a spot's within the launcher.
     function goToCell(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
-        console.info(`launcher: asked from outside to go to ${JSON.stringify(String(said ?? ""))}`);
+        console.info("launcher: asked from outside to go to "
+            + Presented.typedShown(String(said ?? ""), Options.reports));
         if (inUse())
             return inUseSaid;
         const session = agents ? agents.goToFor(said) : null;
@@ -1661,7 +1671,8 @@ Scope {
     function showNetwork(said) {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const walk = agents ? agents.networkWalk(said) : { name: String(said ?? ""), rows: [] };
-        console.info(`launcher: asked from outside to show the network ${walk.name}`);
+        console.info("launcher: asked from outside to show the network "
+            + Presented.typedShown(walk.name, Options.reports));
         if (walk.rows.length === 0)
             return { error: `the launcher has nothing called ${walk.name}` };
         if (inUse())
@@ -1703,7 +1714,8 @@ Scope {
         if (machines === null)
             return { error: "the launcher has no Machines" };
         const { name, key } = machines.linked(said);
-        console.info(`launcher: asked from outside to show the machine ${JSON.stringify(name)}`);
+        console.info("launcher: asked from outside to show the machine "
+            + Presented.typedShown(name, Options.reports));
         if (inUse())
             return inUseSaid;
         if (key === null) {
@@ -1727,7 +1739,8 @@ Scope {
         if (code === null)
             return { error: "the launcher has no Code" };
         const { key, row, unlisted } = code.linked(said);
-        console.info(`launcher: asked from outside to show the repository ${JSON.stringify(key)}`);
+        console.info("launcher: asked from outside to show the repository "
+            + Presented.typedShown(key, Options.reports));
         if (inUse())
             return inUseSaid;
         if (unlisted) {
@@ -1778,7 +1791,8 @@ Scope {
         const target = path[path.length - 1];
         const said = path.map(row => row.name).join(" \u203a ");
         const ids = path.map(row => steadyId(row));
-        console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} ${said}`);
+        console.info(`launcher: asked from outside to ${Catalogue.kindOf(target)} `
+            + Presented.pathShown(path, Options.reports));
         // One held still, as an ask hidden while Joel shares, is refused,
         // saying why, rather than run or said done for nothing: any step on
         // the way, or the last one's Return's act, asked first, so a held
@@ -2020,7 +2034,8 @@ Scope {
         } catch (error) {
             // The shell's own failure, said in its log in the engine's words;
             // the terminal says it in words.json's (Y2YBTS's review of #2421).
-            console.warn(`launcher: a terminal's do failed: ${error}`);
+            console.warn("launcher: a terminal's do failed: "
+                + Presented.failureShown(error, Options.reports));
             return { failed: true };
         } finally {
             cataloguing = false;
@@ -2055,8 +2070,8 @@ Scope {
         const holder = trail.length > 1 ? trail[trail.length - 2] : null;
         const names = trail.map(one => one.name);
         const ids = trail.map(one => steadyId(one));
-        console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)}`
-            + ` ${names.join(" \u203a ")}`);
+        console.info(`launcher: asked from a terminal to ${Catalogue.kindOf(target)} `
+            + Presented.pathShown(trail, Options.reports));
         // One held still on the way, or as the last step's Return's act, is
         // refused, saying why, as the walk refuses it: first, so it's never
         // opened or asked about, and never said done.
@@ -5804,7 +5819,8 @@ Scope {
             return;
         const place = source.settings.name;
         const was = updatesWaiting[place];
-        updatesWaiting = Presented.heard(updatesWaiting, place, line + KeyTimes.now() - Date.now());
+        updatesWaiting = ChangesPresented.heard(updatesWaiting, place,
+            line + KeyTimes.now() - Date.now());
         if (updatesWaiting[place] !== was) {
             updatesHeard[place] = KeyTimes.now();
             updatesBy[place] = Hearing.heardBy();
@@ -5818,7 +5834,7 @@ Scope {
         // find, which makes it in the slice after, not on the pace. Only
         // till home's found: one after is made at once or in that slice,
         // a frame or so on, and one asked again (reanswer) waits on nothing.
-        updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+        updatesHeld = ChangesPresented.heldFrom(updatesHeld, updatesHeard, {
             places: [source.settings.name], at: KeyTimes.now(),
             holding: fillFinding && refreshHeld });
         // A collection's note is read as the corpus is joined, so a source
@@ -6069,7 +6085,7 @@ Scope {
         // nothing's held, so a shut stopped short leaves no source waiting.
         if (fillFinding && open) {
             refreshHeld = true;
-            updatesHeld = Presented.heldFrom(updatesHeld, updatesHeard, {
+            updatesHeld = ChangesPresented.heldFrom(updatesHeld, updatesHeard, {
                 places: refreshing.map(source => source.settings.name), at: KeyTimes.now(),
                 holding: true });
             return;
@@ -6573,10 +6589,8 @@ Scope {
         }
         if (answersLate !== null && answersLate.sources.includes(source)) {
             const late = Date.now() - answersLate.began;
-            console.info(`launcher: ${source.settings?.name ?? ""} answered`
-                + ` ${Presented.typedShown(answersLate.text, Options.reports)} ${late} ms after its`
-                + ` key, past the`
-                + ` ${answersWaitedFor} ms its list waited`);
+            console.info(`launcher: ${Presented.answeredLateSaid(source.settings?.name ?? "",
+                answersLate.text, { late, waited: answersWaitedFor, whole: Options.reports })}`);
             Report.say(`answered late ${source.settings?.name ?? ""}`);
             answersLate.sources = answersLate.sources.filter(one => one !== source);
             if (answersLate.sources.length === 0)
@@ -8217,10 +8231,9 @@ Scope {
             root.answersLate = { text: waited.text, sources: waited.sources,
                 began: waited.began };
             // The words as Trials's slow key says them (Presented.typedShown).
-            const words = Presented.typedShown(waited.text, Options.reports);
-            console.info(`launcher: ${words} listed without`
-                + ` ${waited.sources.map(one => one.settings?.name ?? "").join(", ")},`
-                + ` which hadn't answered in ${root.answersWaitedFor} ms`);
+            const places = waited.sources.map(one => one.settings?.name ?? "");
+            console.info(`launcher: ${Presented.listedWithoutSaid(waited.text, places,
+                root.answersWaitedFor, Options.reports)}`);
             Report.say("listed without answers");
             root.searchAwaited();
         }
@@ -13208,7 +13221,7 @@ Scope {
             return;
         const one = { place, from, heard: updatesHeard[place], held: updatesHeld[place],
             refreshed, by: updatesBy[place] };
-        updatesWaiting = Presented.drawn(updatesWaiting, place);
+        updatesWaiting = ChangesPresented.drawn(updatesWaiting, place);
         delete updatesHeard[place];
         delete updatesBy[place];
         delete updatesHeld[place];
@@ -13227,7 +13240,7 @@ Scope {
     function keysPresentedSaid() {
         const first = Presented.keysSaid("presented", keysPresented, true);
         const clock = Presented.keysClockSaid(keysPresented);
-        const updates = Presented.changesSaid(updatesPresented)
+        const updates = ChangesPresented.changesSaid(updatesPresented)
             .concat(Presented.drawersSaid(drawersPresented));
         // Each key's own time goes with the opening's trial, where health
         // pools a day's keys for their p99 (1JQPPC, 2026-11-12).

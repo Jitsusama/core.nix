@@ -1375,6 +1375,11 @@
     answers JSON of facts and names with every key in every record; and finds a boot by any way
     its id is written, refusing what isn't an id
   '';
+  firmware-installs-once-for-each-sure = ''
+    Firmware's step asking if Joel's sure asks the machine daemon to install on that device once,
+    its row drawn at once as installing, and neither that row nor the step the daemon then serves
+    offers a second Return anything to run, so pressing it again only closes the launcher
+  '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
   '';
@@ -4676,6 +4681,19 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
+  the-launcher-says-a-lagging-keys-kind-on-niri = ''
+    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
+    Return, out by - and in by a word and a space by its arrow and how many letters its row's name
+    has, never the name; a key listed without the notices' answer, and their answer late, say
+    what was typed by how many letters; and a program's lagging drawer is said by its row's kind,
+    never the program's id
+  '';
+  the-launcher-says-asks-from-outside-by-kind-on-niri = ''
+    on niri with reports off, a link to a session, a network, a machine or a repository says in
+    the journal the words it was given by how many letters, a catalogue run and a terminal's do
+    say the rows they walked by kind, never whole, and a terminal's do that fails says only its
+    error's name
+  '';
   the-launcher-says-how-each-session-stands = ''
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
@@ -4848,10 +4866,11 @@
   '';
   the-launcher-puts-back-a-look-it-couldnt-write = ''
     a look cleared in For You shows cleared in the act's own frame, and when its file can't be
-    written is put back as it read, its failure said in the journal, the shut launcher keeping
-    the looks it read, the daemon's word on one it settled, the same look written its own way,
-    leaves the text the act showed, and a served look whose session is gone is never settled and
-    Now tells the launcher once that it's gone
+    written is put back as it read, its failure said in the journal with reports off by the
+    file's letters and the daemon's code, never their words, the shut launcher keeping the looks
+    it read, the daemon's word on one it settled, the same look written its own way, leaves the
+    text the act showed, and a served look whose session is gone is never settled and Now tells
+    the launcher once that it's gone
   '';
   the-launcher-reads-spec-from-its-daemon = ''
     the launcher's Spec reads what the cadence-spec daemon serves: the head as the daemon says it,
