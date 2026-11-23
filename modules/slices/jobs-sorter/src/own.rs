@@ -6,7 +6,8 @@
 //! Those runtime settings are files, and systemd keeps them after the unit
 //! stops: on 22 November 40 of the 124 folders pi's conversation units had
 //! there were for units long gone. So once a unit no longer runs, the
-//! sorter takes its own files of them back ([`left_behind`], [`forget`]).
+//! sorter takes its own files of them back ([`left_behind`], [`forget`]),
+//! from the folders it marked as it set them ([`mark`]).
 
 use std::fs;
 use std::io;
@@ -19,7 +20,7 @@ const RUNTIME_CONTROL: &str = "/systemd/user.control/";
 /// The properties the sorter sets on a host's or a conversation's unit
 /// (`crate::hosts::rank_call`), each kept by systemd as `50-<name>.conf`
 /// in the unit's folder under the runtime control folder.
-const SET: [&str; 5] = [
+pub const SET: [&str; 5] = [
     "CPUWeight",
     "MemoryLow",
     "MemoryZSwapWriteback",
@@ -27,8 +28,17 @@ const SET: [&str; 5] = [
     "MemoryMin",
 ];
 
-/// The units whose folders in `control`, the runtime control folder,
-/// start with one of `prefixes` and hold a setting the sorter sets. A
+/// The file the sorter leaves in a unit's folder under the runtime
+/// control folder once its settings land there, so a sweep takes back
+/// only what it set: systemd writes the same files for a setting Joel
+/// gives with `systemctl set-property --runtime`, and reads only those
+/// ending `.conf`, so this one is the sorter's alone.
+pub const MARK: &str = "jobs-sorter-set-these";
+
+/// The units whose folders in `control`, the runtime control folder, the
+/// sorter marked ([`mark`]) and start with one of `prefixes`: services
+/// alone, never a template, whose settings every instance shares, and
+/// never a folder reached through a link, which could point anywhere. A
 /// control folder not there yet holds none.
 pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>> {
     let entries = match fs::read_dir(control) {
@@ -41,16 +51,37 @@ pub fn left_behind(control: &Path, prefixes: &[&str]) -> io::Result<Vec<String>>
         .filter_map(|entry| {
             let name = entry.file_name().to_string_lossy().into_owned();
             let unit = name.strip_suffix(".d")?.to_owned();
-            let ours = prefixes.iter().any(|prefix| unit.starts_with(prefix))
+            // The entry's own type, which a link doesn't pass on.
+            let folder = entry.file_type().is_ok_and(|kind| kind.is_dir());
+            let ours = folder
+                && prefixes.iter().any(|prefix| unit.starts_with(prefix))
                 && unit.ends_with(".service")
-                && SET
-                    .iter()
-                    .any(|set| entry.path().join(format!("50-{set}.conf")).exists());
+                && !unit.ends_with("@.service")
+                && entry.path().join(MARK).exists();
             ours.then_some(unit)
         })
         .collect();
     units.sort();
     Ok(units)
+}
+
+/// Marks `unit`'s folder in `control` as holding settings the sorter set,
+/// once they've landed there; a folder not there, or reached through a
+/// link, is left unmarked, so its settings are never taken back.
+pub fn mark(control: &Path, unit: &str) -> io::Result<()> {
+    let folder = control.join(format!("{unit}.d"));
+    if !fs::symlink_metadata(&folder)?.is_dir() {
+        return Ok(());
+    }
+    let mark = folder.join(MARK);
+    if mark.exists() {
+        return Ok(());
+    }
+    fs::write(
+        mark,
+        "The jobs sorter set this unit's 50-*.conf settings here, and takes them back once it \
+         stops.\n",
+    )
 }
 
 /// What `systemctl is-active` says of a unit, as far as taking back its
@@ -93,11 +124,15 @@ pub fn states(stdout: &str, asked: usize) -> Option<Vec<Active>> {
 }
 
 /// Takes the settings the sorter sets off `unit` in `control`, and its
-/// folder once nothing is left in it, saying how many it took, and the
-/// first error, if any: each file is tried whatever another's removal
-/// did. Another's settings stay, and the folder with them.
+/// mark and folder once nothing else is left in it, saying how many it
+/// took, and the first error, if any: each file is tried whatever
+/// another's removal did. Another's settings stay, and the folder with
+/// them. A folder reached through a link is left whole.
 pub fn forget(control: &Path, unit: &str) -> (usize, Option<io::Error>) {
     let folder = control.join(format!("{unit}.d"));
+    if !fs::symlink_metadata(&folder).is_ok_and(|folder| folder.is_dir()) {
+        return (0, None);
+    }
     let mut taken = 0;
     let mut failed = None;
     for set in SET {
@@ -108,6 +143,10 @@ pub fn forget(control: &Path, unit: &str) -> (usize, Option<io::Error>) {
                 failed.get_or_insert(error);
             }
         }
+    }
+    // The mark stays while a setting does, so the next sorter's first look tries again.
+    if failed.is_none() {
+        let _ = fs::remove_file(folder.join(MARK));
     }
     // Another's setting keeps the folder, which then can't be removed, and that's as it should be.
     let _ = fs::remove_dir(&folder);
@@ -293,60 +332,91 @@ MemoryLow=10%
     }
 
     #[test]
-    fn a_gone_units_settings_are_taken_back_and_anothers_left() {
+    fn only_a_gone_units_settings_the_sorter_marked_are_taken_back_and_anothers_left() {
         let control = std::env::temp_dir().join(format!("own-control-{}", std::process::id()));
-        let folder = |unit: &str, files: &[&str]| {
+        let _ = fs::remove_dir_all(&control);
+        // The five files systemd writes for the settings the sorter sets, spelled as it does.
+        let ours = [
+            "50-CPUWeight.conf",
+            "50-MemoryLow.conf",
+            "50-MemoryZSwapWriteback.conf",
+            "50-ManagedOOMPreference.conf",
+            "50-MemoryMin.conf",
+        ];
+        let folder = |unit: &str, files: &[&str], marked: bool| {
             let dir = control.join(format!("{unit}.d"));
             fs::create_dir_all(&dir).unwrap();
             for file in files {
                 fs::write(dir.join(file), "[Service]\n").unwrap();
             }
+            if marked {
+                mark(&control, unit).unwrap();
+            }
         };
-        let ours = SET.map(|name| format!("50-{name}.conf"));
-        let ours: Vec<&str> = ours.iter().map(String::as_str).collect();
-        folder("pi-conversation-w@gone.service", &ours);
+        folder("pi-conversation-w@gone.service", &ours, true);
+        folder("pi-host-work-gone.service", &ours, true);
         folder(
             "pi-conversation-w@shared.service",
             &[ours[1], "50-TasksMax.conf"],
+            true,
         );
-        folder("pi-conversation-w@other.service", &["50-TasksMax.conf"]);
-        folder("kitty-1-2.scope", &ours);
+        folder("pi-conversation-w@reverted.service", &[], true);
+        folder("pi-conversation-w@by-hand.service", &ours, false);
+        folder("pi-conversation-w@.service", &ours, true);
+        folder("pi-conversation-x.scope", &ours, true);
+        folder("pi-host-work.slice", &ours, true);
+        folder("kitty-1-2.scope", &ours, true);
+        let elsewhere = control.join("elsewhere");
+        folder("elsewhere/pi-host-work-linked.service", &ours, true);
+        std::os::unix::fs::symlink(
+            elsewhere.join("pi-host-work-linked.service.d"),
+            control.join("pi-host-work-linked.service.d"),
+        )
+        .unwrap();
+        let found = left_behind(&control, &["pi-conversation-", "pi-host-"]);
+        let taken = [
+            "pi-conversation-w@gone.service",
+            "pi-conversation-w@reverted.service",
+            "pi-conversation-w@shared.service",
+            "pi-host-work-gone.service",
+        ]
+        .map(|unit| forget(&control, unit).0);
+        let linked = forget(&control, "pi-host-work-linked.service").0;
+        let there = |path: &str| control.join(path).exists();
+        let left = [
+            "pi-conversation-w@gone.service.d",
+            "pi-conversation-w@reverted.service.d",
+            "pi-conversation-w@shared.service.d/50-TasksMax.conf",
+            "pi-conversation-w@shared.service.d/50-MemoryLow.conf",
+            "elsewhere/pi-host-work-linked.service.d/50-MemoryMin.conf",
+        ]
+        .map(there);
+        let _ = fs::remove_dir_all(&control);
         assert_eq!(
-            left_behind(&control, &["pi-conversation-", "pi-host-"]).unwrap(),
+            found.unwrap(),
             [
                 "pi-conversation-w@gone.service",
-                "pi-conversation-w@shared.service"
+                "pi-conversation-w@reverted.service",
+                "pi-conversation-w@shared.service",
+                "pi-host-work-gone.service",
             ],
-            "only units of the prefixes that hold the sorter's settings"
+            "only services of the prefixes the sorter marked, no template, no other kind of \
+             unit, none set by hand and none through a link"
         );
         assert_eq!(
-            forget(&control, "pi-conversation-w@gone.service").0,
-            5,
-            "every one of the sorter's settings is taken"
-        );
-        assert!(
-            !control.join("pi-conversation-w@gone.service.d").exists(),
-            "and the folder, left empty, goes too"
+            (taken, linked),
+            ([5, 0, 1, 5], 0),
+            "every one of the sorter's settings is taken, and none through a link"
         );
         assert_eq!(
-            forget(&control, "pi-conversation-w@shared.service").0,
-            1,
-            "only the sorter's own setting is taken"
+            left,
+            [false, false, true, false, true],
+            "a folder left empty goes, its mark with it, while another's setting stays, and \
+             what a link points to"
         );
         assert!(
-            control
-                .join("pi-conversation-w@shared.service.d/50-TasksMax.conf")
-                .exists(),
-            "another's setting stays, and its folder with it"
-        );
-        assert_eq!(
-            forget(&control, "pi-conversation-w@never.service").0,
-            0,
-            "a unit with no folder has nothing to take"
-        );
-        fs::remove_dir_all(&control).unwrap();
-        assert!(
-            left_behind(&control, &["pi-host-"]).unwrap().is_empty(),
+            left_behind(&control, &["pi-host-"]).unwrap().is_empty()
+                && forget(&control, "pi-host-work-never.service").0 == 0,
             "a control folder not there yet holds nothing to take back"
         );
     }

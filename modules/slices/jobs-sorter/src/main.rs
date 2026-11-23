@@ -1441,24 +1441,32 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         &ranks.hosts,
         &mut ranks.unfitted,
     );
-    give_ranks(ranked, &mut ranks.hosts);
+    let control =
+        kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
+    give_ranks(ranked, &mut ranks.hosts, control.as_deref());
     let conversations = windows
         .conversations
         .map(|(conversations, _)| conversations);
-    take_back_left_settings(prefix, conversations, &seen, &mut ranks.hosts);
+    take_back_left_settings(
+        control.as_deref(),
+        prefix,
+        conversations,
+        &seen,
+        &mut ranks.hosts,
+    );
     ranks.hosts.keep_only(&seen);
 }
 
 /// Takes back the settings the sorter gave units under `prefix` or
-/// `conversations` that no longer run ([`sweep`]), asking systemctl.
+/// `conversations` that no longer run, in the runtime control folder,
+/// `control` ([`sweep`]), asking systemctl.
 fn take_back_left_settings(
+    control: Option<&Path>,
     prefix: &str,
     conversations: Option<&str>,
     seen: &[String],
     hosts: &mut hosts::Hosts,
 ) {
-    let control =
-        kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
     let prefixes: Vec<&str> = std::iter::once(prefix).chain(conversations).collect();
     // systemctl answers for every unit even as it leaves with a failure for those not active,
     // so what it says is read whatever its status; an answer short of a unit is refused below.
@@ -1470,7 +1478,7 @@ fn take_back_left_settings(
             .map_err(|error| format!("couldn't run systemctl: {error}"))
     };
     let now = std::time::Instant::now();
-    sweep(control.as_deref(), &prefixes, seen, hosts, now, ask);
+    sweep(control, &prefixes, seen, hosts, now, ask);
 }
 
 /// Takes back the settings in `control` the sorter gave units under
@@ -1491,11 +1499,11 @@ fn sweep(
     ask: impl FnOnce(&[String]) -> Result<String, String>,
 ) {
     hosts.leave(seen, now);
-    if hosts.swept && hosts.pending.is_empty() {
+    if hosts.sweep.done && hosts.sweep.pending.is_empty() {
         return;
     }
     let mut say = |why: String| {
-        if !std::mem::replace(&mut hosts.sweep_failed, true) {
+        if !std::mem::replace(&mut hosts.sweep.failed, true) {
             eprintln!("Couldn't take back the settings stopped units left: {why}.");
         }
     };
@@ -1507,7 +1515,7 @@ fn sweep(
         Ok(units) => units
             .into_iter()
             .filter(|unit| !seen.contains(unit))
-            .filter(|unit| !hosts.swept || hosts.pending.contains_key(unit))
+            .filter(|unit| !hosts.sweep.done || hosts.sweep.pending.contains_key(unit))
             .collect(),
         Err(error) => {
             say(format!("couldn't read {}: {error}", control.display()));
@@ -1515,7 +1523,7 @@ fn sweep(
         }
     };
     // A unit gone with no settings of the sorter's left has nothing to take back.
-    hosts.pending.retain(|unit, _| asked.contains(unit));
+    hosts.sweep.pending.retain(|unit, _| asked.contains(unit));
     if !asked.is_empty() {
         let answer = ask(&asked);
         let Some(states) = answer
@@ -1543,7 +1551,7 @@ fn sweep(
                             );
                         }
                         Some(error) => {
-                            if hosts.unswept.insert(unit.clone()) {
+                            if hosts.sweep.unswept.insert(unit.clone()) {
                                 eprintln!(
                                     "Couldn't take back all the settings {unit} left, {taken} \
                                      taken: {error}."
@@ -1555,27 +1563,41 @@ fn sweep(
                 // systemd keeps a failed unit loaded, its settings' files listed, until it's
                 // reset, so they stay.
                 own::Active::Failed => {
-                    hosts.pending.remove(&unit);
+                    hosts.sweep.pending.remove(&unit);
                 }
                 own::Active::Runs => {}
             }
         }
     }
-    hosts.swept = true;
-    hosts.sweep_failed = false;
+    hosts.sweep.done = true;
+    hosts.sweep.failed = false;
 }
 
 /// Gives each of the `ranked` units the rank it was fitted to, when it
 /// differs from the one `hosts` last gave it, through busctl, saying once
-/// when it can't ([`give_ranks_by`]).
-fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
+/// when it can't ([`give_ranks_by`]). Each unit whose rank lands has its
+/// folder in `control`, the runtime control folder, marked as holding
+/// settings the sorter set ([`own::mark`]), so they're taken back once it
+/// stops, and a mark that can't be left is said once.
+fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts, control: Option<&Path>) {
+    let mut unmarked = None;
+    let mut marked = false;
     give_ranks_by(ranked, hosts, |unit, rank| {
         match Command::new("busctl")
             .args(hosts::rank_call(unit, rank))
             .stdout(Stdio::null())
             .output()
         {
-            Ok(output) if output.status.success() => Ok(()),
+            Ok(output) if output.status.success() => {
+                match control.map(|control| own::mark(control, unit)) {
+                    Some(Ok(())) => marked = true,
+                    Some(Err(error)) => {
+                        unmarked.get_or_insert(format!("{unit}: {error}"));
+                    }
+                    None => {}
+                }
+                Ok(())
+            }
             Ok(output) => Err(format!(
                 "Couldn't rank {unit}: {}",
                 String::from_utf8_lossy(&output.stderr).trim()
@@ -1583,6 +1605,14 @@ fn give_ranks(ranked: Vec<Ranked>, hosts: &mut hosts::Hosts) {
             Err(error) => Err(format!("Couldn't run busctl to rank {unit}: {error}")),
         }
     });
+    // A failure after a mark that was left is said again.
+    let still = unmarked.is_some() || (hosts.sweep.unmarked && !marked);
+    let said = std::mem::replace(&mut hosts.sweep.unmarked, still);
+    if let Some(why) = unmarked
+        && !said
+    {
+        eprintln!("Couldn't mark the settings the sorter set on {why}, so they'll stay.");
+    }
 }
 
 /// Gives each of the `ranked` units the rank it was fitted to, when it
@@ -3438,7 +3468,8 @@ mod tests {
     }
 
     /// A runtime control folder under the temporary folder named for `name`, holding each of
-    /// `units`' folders with the five files systemd writes for the sorter's settings.
+    /// `units`' folders with the five files systemd writes for the sorter's settings, and
+    /// the sorter's mark.
     fn control_with(name: &str, units: &[&str]) -> PathBuf {
         let control = std::env::temp_dir().join(format!("{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&control);
@@ -3454,6 +3485,7 @@ mod tests {
             ] {
                 fs::write(folder.join(file), "[Service]\n").expect("a setting's file");
             }
+            own::mark(&control, unit).expect("the sorter's mark");
         }
         control
     }
@@ -3556,7 +3588,7 @@ mod tests {
                 asks += 1;
                 answer.clone()
             };
-            let swept = hosts.swept;
+            let swept = hosts.sweep.done;
             sweep(
                 Some(&control),
                 &["pi-host-"],
@@ -3566,7 +3598,8 @@ mod tests {
                 ask,
             );
             assert!(
-                swept || hosts.swept == answer.as_deref().is_ok_and(|answer| !answer.is_empty()),
+                swept
+                    || hosts.sweep.done == answer.as_deref().is_ok_and(|answer| !answer.is_empty()),
                 "a sweep counts as done only once systemctl answers for every unit: {answer:?}"
             );
         }
@@ -3575,7 +3608,7 @@ mod tests {
             "a sweep that couldn't ask is tried on the next look"
         );
         assert!(
-            !hosts.sweep_failed,
+            !hosts.sweep.failed,
             "and the failure is said again once one works"
         );
         assert!(

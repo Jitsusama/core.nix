@@ -306,11 +306,25 @@ pub struct Hosts {
     failing: HashSet<String>,
     /// Whether a failure to rank a host has been said.
     pub failed: bool,
-    /// Whether the settings units that no longer run left behind have
-    /// been taken back since the sorter started (`crate::own::forget`).
-    pub swept: bool,
+    /// How far the settings units that stopped left behind have been
+    /// taken back (`crate::sweep`).
+    pub sweep: Sweep,
+    /// The units said to hold no one host, ranked by all their roots, so
+    /// each is said once.
+    pub unclear: HashSet<String>,
+}
+
+/// How far the settings units that no longer run left behind have been
+/// taken back (`crate::own::forget`), and what of it has been said.
+#[derive(Default)]
+pub struct Sweep {
+    /// Whether every unit's have been since the sorter started.
+    pub done: bool,
     /// Whether a failure to ask which units stopped has been said.
-    pub sweep_failed: bool,
+    pub failed: bool,
+    /// Whether a failure to mark a unit's settings as the sorter's
+    /// (`crate::own::mark`) has been said.
+    pub unmarked: bool,
     /// The units ranked before that have gone, each with when it went,
     /// whose settings are taken back once systemd says they stopped: one
     /// just gone may still be stopping ([`Hosts::leave`]).
@@ -318,9 +332,6 @@ pub struct Hosts {
     /// The units whose settings couldn't all be taken back, so each is
     /// said once.
     pub unswept: HashSet<String>,
-    /// The units said to hold no one host, ranked by all their roots, so
-    /// each is said once.
-    pub unclear: HashSet<String>,
 }
 
 impl Hosts {
@@ -412,9 +423,9 @@ impl Hosts {
     /// back what it left.
     pub fn leave(&mut self, units: &[String], now: Instant) {
         for unit in self.set.keys().filter(|unit| !units.contains(unit)) {
-            self.pending.entry(unit.clone()).or_insert(now);
+            self.sweep.pending.entry(unit.clone()).or_insert(now);
         }
-        self.pending.retain(|unit, since| {
+        self.sweep.pending.retain(|unit, since| {
             !units.contains(unit) && now.saturating_duration_since(*since) < PENDING_FOR
         });
     }
@@ -425,7 +436,7 @@ impl Hosts {
         self.set.remove(unit);
         self.held.remove(unit);
         self.failing.remove(unit);
-        self.pending.remove(unit);
+        self.sweep.pending.remove(unit);
     }
 
     /// Forgets the units no longer among `units`, whose hosts stopped.
@@ -875,7 +886,7 @@ mod tests {
         hosts.done("b", rank.clone(), 0);
         let start = Instant::now();
         let pending = |hosts: &Hosts| {
-            let mut units: Vec<String> = hosts.pending.keys().cloned().collect();
+            let mut units: Vec<String> = hosts.sweep.pending.keys().cloned().collect();
             units.sort();
             units
         };
@@ -1012,6 +1023,12 @@ mod tests {
                 "0"
             ],
             "the call gives back the unit's own floors and preference"
+        );
+        let properties: Vec<&str> = tail[2..].iter().step_by(3).copied().collect();
+        assert_eq!(
+            properties,
+            crate::own::SET,
+            "what the call sets is what a sweep takes back, or one's file would stay"
         );
     }
 }
