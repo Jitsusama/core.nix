@@ -24,13 +24,23 @@
 //! would make accounts of and no OS Login, unless the builder sets its
 //! own, and no OS Config, nor any of its agent's settings, that would run
 //! jobs. Keys are read with their case folded, as the agents' Go decoding
-//! folds it. A builder seen under a boot script is trusted no more,
-//! whether root trusted it yet or not, since the script may have run at a
-//! boot the cloud doesn't count as a start, as a reboot from inside the
-//! guest is; seen under the rest, which act on a running builder, a
-//! trusted builder is trusted no more and one not yet trusted waits for
-//! the setting to go. Either way every builder root trusts goes with it,
-//! since the project is every builder's. Any other project key is let
+//! folds it. The cloud allows a key only `[a-zA-Z0-9_-]`, which ASCII's
+//! fold covers whole; one outside it, which Go's fold could read as
+//! another (`ſ` as `s`), counts as a setting too. The ssh-key and OS Login
+//! checks can't fire for a builder [`vetted`] passed, which turns both
+//! off, and stay as a second line.
+//!
+//! A builder seen under any such setting is trusted no more, whether root
+//! trusted it yet or not: a boot script may have run at a boot the cloud
+//! doesn't count as a start, as a reboot from inside the guest is, and
+//! what an OS Config job ran as root stays on its disk once the setting
+//! goes, logged under the project rather than the instance. Every builder
+//! root trusts goes with it, since the project is every builder's. So VM
+//! Manager or OS inventory turned on project-wide, as another product
+//! might, takes every builder away: each comes back as its lender replaces
+//! it, within a lease, or at once if root, or the service's own account,
+//! empties the spoiled file and restarts the service. That cost is taken
+//! over trusting what a job may have changed. Any other project key is let
 //! through and said, since a cloud product such as GKE writes keys of its
 //! own there that no guest agent reads, and refusing on one stopped every
 //! builder on 22 November.
@@ -313,9 +323,12 @@ pub fn project_unknown(described: &Value) -> Vec<String> {
 pub struct Sits {
     /// What it sets and what that would do, to follow the builder's name.
     pub why: String,
-    /// Whether it acts at a boot, as a script does, so a builder that
-    /// booted under it may hold what it ran whether root trusted it or not.
-    pub at_boot: bool,
+}
+
+/// Whether `key` is one the cloud's metadata allows, `[a-zA-Z0-9_-]`.
+fn plain(key: &str) -> bool {
+    key.bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
 }
 
 /// Whether the project `described` sets no boot script, ssh keys, OS Login
@@ -325,36 +338,42 @@ pub struct Sits {
 /// sets, since no builder may carry `enable-osconfig` of its own.
 pub fn project_holds(described: &Value, instance: &Value) -> Result<(), Sits> {
     let (project, builder) = (&folded(described), &instance["metadata"]["items"]);
-    let sits = |key: &str, what: &str, at_boot: bool| {
+    let sits = |key: &str, what: &str| {
         Err(Sits {
             why: format!("sits in a project setting {key}, {what}"),
-            at_boot,
         })
     };
+    // Folded only in case, as a defence: [`vetted`] lets a builder carry
+    // none but its maker's own keys, as they're spelt.
     let own: Vec<String> = keys(builder)
         .iter()
         .map(|key| key.to_ascii_lowercase())
         .collect();
     for key in keys(project) {
         let named = key.as_str();
+        if !plain(named) {
+            let what =
+                "whose name the cloud allows no key, so what an agent reads it as is unknown";
+            return sits(named, what);
+        }
         if OS_CONFIG_SETTINGS
             .iter()
             .any(|setting| named.starts_with(setting))
             || (OS_CONFIG_SWITCHES.contains(&named) && !only_said(project, named, go_false))
         {
             let what = "which could let OS Config run jobs on every builder";
-            return sits(named, what, false);
+            return sits(named, what);
         }
         if PROJECT_SCRIPTS.contains(&named) && !own.contains(&key) {
-            return sits(named, "which every builder would run", true);
+            return sits(named, "which every builder would run");
         }
         if PROJECT_SSH_KEYS.contains(&named) && !said(builder, "block-project-ssh-keys", go_true) {
-            return sits(named, "whose keys every builder would take", false);
+            return sits(named, "whose keys every builder would take");
         }
     }
     if said(project, "enable-oslogin", go_true) && !said(builder, "enable-oslogin", go_false) {
         let what = "which would let OS Login make accounts on a builder not turning it off";
-        return sits("enable-oslogin", what, false);
+        return sits("enable-oslogin", what);
     }
     Ok(())
 }
@@ -647,8 +666,8 @@ mod tests {
         {
             let refused = project_holds(&project(&["ssh-keys", script]), &builder());
             assert!(
-                refused.is_err_and(|sits| sits.at_boot && sits.why.contains(script)),
-                "a project's {script} was let run, or not said to run at a boot"
+                refused.is_err_and(|sits| sits.why.contains(script)),
+                "a project's {script} was let run"
             );
         }
         assert!(
@@ -667,7 +686,7 @@ mod tests {
         ] {
             assert!(
                 project_holds(&project(&[setting]), &builder())
-                    .is_err_and(|sits| !sits.at_boot && sits.why.contains(setting)),
+                    .is_err_and(|sits| sits.why.contains(setting)),
                 "a project's OS Config setting {setting} was let through"
             );
         }
@@ -687,7 +706,7 @@ mod tests {
         for on in ["TRUE", "true", "1", "t"] {
             assert!(
                 project_holds(&setting("enable-oslogin", on), &open())
-                    .is_err_and(|sits| !sits.at_boot && sits.why.contains("enable-oslogin")),
+                    .is_err_and(|sits| sits.why.contains("enable-oslogin")),
                 "a project's OS Login, said {on}, reached a builder not turning it off"
             );
             assert_eq!(
@@ -755,6 +774,23 @@ mod tests {
             project_holds(&both, &builder()).is_err(),
             "a project saying OS Config is off and on, in two cases, was let through"
         );
+        assert!(
+            project_holds(&setting("Enable-OSLogin", "TRUE"), &open())
+                .is_err_and(|sits| sits.why.contains("enable-oslogin")),
+            "a project's Enable-OSLogin reached a builder not turning OS Login off"
+        );
+        assert_eq!(
+            project_holds(&setting("Enable-OsConfig", "FALSE"), &builder()),
+            Ok(()),
+            "a project's Enable-OsConfig, said false, was refused"
+        );
+        for key in ["\u{17f}sh-keys", "ssh-\u{212a}eys", "startup script"] {
+            assert!(
+                project_holds(&project(&[key]), &builder())
+                    .is_err_and(|sits| sits.why.contains("allows no key")),
+                "a project's {key}, which the cloud allows no key, was let through"
+            );
+        }
         assert_eq!(
             project_unknown(&project(&["GKE-Range"])),
             ["GKE-Range"],

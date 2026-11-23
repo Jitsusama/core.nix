@@ -435,9 +435,8 @@ struct Asked {
     reread: bool,
     /// Whether it's trusted no more, which is for good, outliving the
     /// service in [`SPOILED`]: refused once root had trusted it, or seen
-    /// under a project setting that acts on it, whether trusted yet or not
-    /// for a boot script. What it ran while changed may still be there once
-    /// it's set back.
+    /// under a project setting that acts on it, whether trusted yet or not.
+    /// What it ran while changed may still be there once it's set back.
     spoiled: bool,
     /// Whether only [`LENT`] names it, no file root's Nix reads, so it's
     /// asked of every [`ASK_LENT`].
@@ -470,12 +469,9 @@ enum Unvouched {
     /// cloud answers again.
     Unanswered(String),
     /// It answered, and the instance sits under a project setting that
-    /// would run something on it or make accounts there. A trusted builder
-    /// is trusted no more, and so is one never trusted under a boot script,
-    /// since what that ran stays on its disk once the setting goes, and a
-    /// boot script runs at a reboot from inside the guest, which the cloud
-    /// doesn't count as a start. One never trusted under the rest, which act
-    /// on a running builder alone, lends nothing while the setting stays.
+    /// would run something on it or make accounts there. It's trusted no
+    /// more, whether root trusted it yet or not, since what that ran stays
+    /// on its disk once the setting goes, out of sight of its audit log.
     Project(vet::Sits),
     /// It answered, and the instance isn't as made.
     Refused(String),
@@ -493,8 +489,8 @@ impl From<String> for Unvouched {
 fn spoiled_line(name: &str, zone: &str, why: &str, file: &Path) -> String {
     format!(
         "{name} in {zone} {why}, so root trusts it no more until the lender replaces it; \
-         root alone can trust it again, by taking its line out of {} and restarting \
-         nix-offload-lines",
+         it's trusted again only once root, or the service's own account, takes its line \
+         out of {} and nix-offload-lines restarts",
         file.display()
     )
 }
@@ -545,15 +541,37 @@ pub struct HostKeys {
     told: usize,
     /// The project as the cloud last described it, and when that was asked.
     project: Option<(Instant, Value)>,
+    /// Why [`SPOILED`] couldn't be read at the start, when it couldn't:
+    /// then root trusts no builder, and the file is never written, so the
+    /// builders it names aren't forgotten.
+    unread: Option<String>,
+    /// Whether [`SPOILED`] lacks a builder spoiled since, its write having
+    /// failed, so each pass writes it again until one holds.
+    unkept: bool,
 }
 
 /// The file beside gcloud's state naming each instance root trusts no
 /// more, by name and zone, one to a line, so a restart of the service,
 /// after which first trust can't see a project setting gone since, doesn't
 /// trust it again. A builder's name is its own for good, so the file grows
-/// only by the builders spoiled, and only root, who may write it, can take
-/// one out.
+/// only by the builders spoiled, and only root, or the service's own
+/// account, which owns the folder, can take one out.
 const SPOILED: &str = "spoiled";
+
+/// The builders, by name and zone, the [`SPOILED`] file's `text` names,
+/// or the first line that names none, by its number.
+fn spoiled_in(text: &str) -> Result<Vec<(String, String)>, usize> {
+    let mut spoiled = Vec::new();
+    for (number, line) in text.lines().enumerate() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words[..] {
+            [] => {}
+            [name, zone] => spoiled.push((name.to_owned(), zone.to_owned())),
+            _ => return Err(number + 1),
+        }
+    }
+    Ok(spoiled)
+}
 
 impl HostKeys {
     /// None asked yet but those [`SPOILED`] beside `config` names, with
@@ -566,17 +584,29 @@ impl HostKeys {
             #[cfg(test)]
             told: 0,
             project: None,
+            unread: None,
+            unkept: false,
         };
-        let kept = fs::read_to_string(keys.spoiled_file()).unwrap_or_default();
-        for line in kept.lines() {
-            if let Some((name, zone)) = line.split_once(' ') {
-                let spoiled = Asked {
-                    spoiled: true,
-                    ..Asked::default()
-                };
-                keys.asked
-                    .insert((name.to_owned(), zone.to_owned()), spoiled);
+        let file = keys.spoiled_file();
+        // Only a file that isn't there names nothing: one unread, or a line
+        // naming no builder, might name any, so root trusts none until it
+        // reads.
+        let kept = match fs::read_to_string(&file) {
+            Ok(text) => spoiled_in(&text).map_err(|line| format!("line {line} names no builder")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(error.to_string()),
+        };
+        match kept {
+            Ok(spoiled) => {
+                for key in spoiled {
+                    let spoiled = Asked {
+                        spoiled: true,
+                        ..Asked::default()
+                    };
+                    keys.asked.insert(key, spoiled);
+                }
             }
+            Err(why) => keys.unread = Some(format!("{} can't be read: {why}", file.display())),
         }
         keys
     }
@@ -587,8 +617,14 @@ impl HostKeys {
     }
 
     /// Writes every instance root trusts no more, `also` among them, to
-    /// [`SPOILED`], whole and then named, saying when it can't.
+    /// [`SPOILED`], whole, flushed to disk and then named, so neither a
+    /// reader nor a lost power finds half of it, saying when it can't and
+    /// trying again each pass until it can. A file that couldn't be read
+    /// at the start is never written over.
     fn keep_spoiled(&mut self, also: Option<(&str, &str)>) {
+        if self.unread.is_some() {
+            return;
+        }
         let mut spoiled: Vec<String> = self
             .asked
             .iter()
@@ -604,11 +640,24 @@ impl HostKeys {
         if !text.is_empty() {
             text.push('\n');
         }
-        let kept = fs::write(&writing, text).and_then(|()| fs::rename(&writing, &file));
+        let kept = fs::File::create(&writing)
+            .and_then(|mut draft| {
+                std::io::Write::write_all(&mut draft, text.as_bytes())?;
+                draft.sync_all()
+            })
+            .and_then(|()| fs::rename(&writing, &file))
+            .and_then(|()| {
+                file.parent()
+                    .map_or(Ok(()), |folder| fs::File::open(folder)?.sync_all())
+            });
+        self.unkept = kept.is_err();
+        if kept.is_err() {
+            let _ = fs::remove_file(&writing);
+        }
         let unkept = kept.err().map(|error| {
             format!(
                 "couldn't keep the builders root trusts no more in {} ({error}), so a restart \
-                 would trust them again",
+                 now would trust them again; it's tried again each pass",
                 file.display()
             )
         });
@@ -616,9 +665,8 @@ impl HostKeys {
     }
 
     /// Trusts no more every other instance root trusts, as the project's
-    /// setting `why` reaches every builder alike, and journals each;
-    /// whether there was one.
-    fn spoil_trusted(&mut self, why: &str) -> bool {
+    /// setting `why` reaches every builder alike, and journals each.
+    fn spoil_trusted(&mut self, why: &str) {
         let file = self.spoiled_file();
         let mut spoiled = Vec::new();
         for ((name, zone), asked) in &mut self.asked {
@@ -627,43 +675,30 @@ impl HostKeys {
                 spoiled.push((name.clone(), zone.clone()));
             }
         }
-        let any = !spoiled.is_empty();
         for (name, zone) in spoiled {
             let line = spoiled_line(&name, &zone, why, &file);
             self.say(&name, Some(line));
         }
-        any
     }
 
     /// What instance `name` in `zone` is once the project's setting `sits`
-    /// reaches it, `before` being what was said of it last: spoiled when
-    /// the setting acts at a boot or root trusted it already, and lending
-    /// nothing while it stays otherwise, every builder root trusts being
-    /// spoiled with it, since the project is every builder's.
+    /// reaches it, `before` being what was said of it last: spoiled,
+    /// whether root trusted it yet or not, and every builder root trusts
+    /// with it, since the project is every builder's.
     fn under_project(
         &mut self,
         (name, zone): (&str, &str),
         sits: &vet::Sits,
         before: Asked,
     ) -> Asked {
-        let spread = self.spoil_trusted(&sits.why);
-        let spoiled = sits.at_boot || before.started.is_some();
-        let said = if spoiled {
-            spoiled_line(name, zone, &sits.why, &self.spoiled_file())
-        } else {
-            format!(
-                "{name} in {zone} {}, so it lends nothing while that stays",
-                sits.why
-            )
-        };
+        self.spoil_trusted(&sits.why);
+        let said = spoiled_line(name, zone, &sits.why, &self.spoiled_file());
         self.say(name, Some(said));
-        if spoiled || spread {
-            self.keep_spoiled(spoiled.then_some((name, zone)));
-        }
+        self.keep_spoiled(Some((name, zone)));
         Asked {
             host_key: None,
             at: Some(Instant::now()),
-            spoiled,
+            spoiled: true,
             ..before
         }
     }
@@ -770,7 +805,24 @@ impl HostKeys {
         before: Asked,
     ) -> Asked {
         let now = Instant::now();
+        if let Some(why) = self.unread.clone() {
+            let said = format!(
+                "root trusts no builder while {why}; once it reads, restart nix-offload-lines"
+            );
+            self.say(SPOILED, Some(said));
+            return Asked {
+                host_key: None,
+                at: Some(now),
+                ..before
+            };
+        }
         if before.spoiled {
+            // Said once after a start, when only the file says why.
+            if !self.said.contains_key(name) {
+                let why = "was trusted no more before nix-offload-lines last started";
+                let said = spoiled_line(name, zone, why, &self.spoiled_file());
+                self.say(name, Some(said));
+            }
             return Asked {
                 at: Some(now),
                 ..before
@@ -1243,6 +1295,9 @@ fn put(path: &Path, text: &str) -> std::io::Result<()> {
 
 /// Copies what passes once: each of the lender's files into root's.
 pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
+    if keys.unkept {
+        keys.keep_spoiled(None);
+    }
     let texts: Vec<String> = settings
         .files
         .iter()
@@ -1826,11 +1881,17 @@ mod tests {
             "",
             "a builder first seen under a project script was trusted once it went"
         );
-        copy_once(&settings, &mut HostKeys::new(dir.path().join("config")));
+        let mut started = HostKeys::new(dir.path().join("config"));
+        copy_once(&settings, &mut started);
         assert_eq!(
             lent_to_root(&dir),
             "",
             "a builder seen under a project script was trusted once the service started again"
+        );
+        let restarted = started.said.get("offload-1a2b");
+        assert!(
+            restarted.is_some_and(|said| said.contains("before nix-offload-lines last started")),
+            "a builder kept out after a start wasn't said to be: {restarted:?}"
         );
         let said = keys.said.get("offload-1a2b");
         assert!(
@@ -1840,29 +1901,109 @@ mod tests {
         );
     }
 
-    // OS Config acts on a running builder, not at a boot, so a builder root
-    // never trusted waits while the project turns it on, and is lent once
-    // it's gone, where a VM Manager rollout would otherwise take every
-    // builder away for good.
+    // What an OS Config job ran as root stays on a builder's disk once the
+    // setting goes, logged under the project rather than the instance, so a
+    // builder seen under it, trusted yet or not, is trusted no more, and is
+    // kept for a restart.
     #[test]
-    fn an_untrusted_builder_under_os_config_lends_once_it_goes() {
+    fn a_builder_under_os_config_stays_out_once_it_goes() {
+        for trusted in [false, true] {
+            let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+            if trusted {
+                copy_once(&settings, &mut keys);
+                assert_eq!(
+                    lent_to_root(&dir),
+                    format!("{}\n", line(URI, KEY, HOST)),
+                    "never trusted"
+                );
+            }
+            project_in(&dir, &json!([{"key": "ENABLE-OSCONFIG", "value": "TRUE"}]));
+            keys.project = None;
+            due(&mut keys);
+            copy_once(&settings, &mut keys);
+            assert_eq!(lent_to_root(&dir), "", "a builder under OS Config was lent");
+            cleared(&dir, &mut keys);
+            due(&mut keys);
+            copy_once(&settings, &mut keys);
+            assert_eq!(
+                lent_to_root(&dir),
+                "",
+                "a builder seen under OS Config, trusted before: {trusted}, was lent once it went"
+            );
+            assert_eq!(
+                fs::read_to_string(dir.path().join(SPOILED)).unwrap_or_default(),
+                "offload-1a2b us-east1-b\n",
+                "a builder seen under OS Config, trusted before: {trusted}, wasn't kept"
+            );
+        }
+    }
+
+    // Only a spoiled file that isn't there names nothing: one that can't be
+    // read, or holds a line naming no builder, might name any, so root
+    // trusts none and never writes over it, and a line spaced otherwise
+    // still names its builder.
+    #[test]
+    fn a_spoiled_file_that_cant_be_read_trusts_nothing() {
+        for (kept, said) in [
+            (None, "can't be read"),
+            (
+                Some("offload-1a2b us-east1-b x\n"),
+                "line 1 names no builder",
+            ),
+            (
+                Some("offload-1a2b\tus-east1-b \n"),
+                "before nix-offload-lines",
+            ),
+        ] {
+            let (dir, settings, _) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+            let file = dir.path().join(SPOILED);
+            match kept {
+                Some(text) => fs::write(&file, text).expect("the spoiled file"),
+                None => fs::create_dir(&file).expect("a spoiled file unread"),
+            }
+            let mut keys = HostKeys::new(dir.path().join("config"));
+            copy_once(&settings, &mut keys);
+            assert_eq!(
+                lent_to_root(&dir),
+                "",
+                "a builder was lent beside a spoiled file reading {kept:?}"
+            );
+            assert!(
+                keys.said.values().any(|line| line.contains(said)),
+                "a spoiled file reading {kept:?} wasn't said: {:?}",
+                keys.said
+            );
+            if let Some(text) = kept {
+                assert_eq!(
+                    fs::read_to_string(&file).expect("the spoiled file"),
+                    text,
+                    "the spoiled file was written over"
+                );
+            }
+        }
+    }
+
+    // A spoil the file couldn't take is written at the next pass that can,
+    // so a restart after it doesn't trust the builder again.
+    #[test]
+    fn a_spoil_that_couldnt_be_kept_is_kept_once_it_can_be() {
         let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
-        project_in(&dir, &json!([{"key": "ENABLE-OSCONFIG", "value": "TRUE"}]));
+        let blocking = dir.path().join(SPOILED).with_extension("writing");
+        fs::create_dir(&blocking).expect("a draft that can't be written");
+        scripted(&dir);
         copy_once(&settings, &mut keys);
-        assert_eq!(lent_to_root(&dir), "", "a builder under OS Config was lent");
-        let said = keys.said.get("offload-1a2b");
         assert!(
-            said.is_some_and(|said| said.contains("lends nothing while that stays")),
-            "the wait wasn't said to last while the setting stays: {said:?}"
+            keys.unkept && !dir.path().join(SPOILED).exists(),
+            "a spoil was kept though its draft couldn't be written"
         );
-        cleared(&dir, &mut keys);
-        due(&mut keys);
+        fs::remove_dir(&blocking).expect("the draft unblocked");
         copy_once(&settings, &mut keys);
         assert_eq!(
-            lent_to_root(&dir),
-            format!("{}\n", line(URI, KEY, HOST)),
-            "a builder never trusted stayed out once OS Config went"
+            fs::read_to_string(dir.path().join(SPOILED)).unwrap_or_default(),
+            "offload-1a2b us-east1-b\n",
+            "a spoil once unkept wasn't kept once it could be"
         );
+        assert!(!keys.unkept, "a spoil kept was still said to be unkept");
     }
 
     // The project is every builder's, so what spoils one spoils every
@@ -1985,7 +2126,11 @@ mod tests {
                 {"key": "came-with-it", "value": "x"},
             ]),
         );
-        keys.project = None;
+        // Root's read of the project runs out as it would, by its age.
+        keys.project = keys.project.take().map(|(at, described)| {
+            let aged = at.checked_sub(ASK_AGAIN).expect("a time past");
+            (aged, described)
+        });
         due(&mut keys);
         copy_once(&settings, &mut keys);
         assert_eq!(
@@ -2006,6 +2151,36 @@ mod tests {
             lent_to_root(&dir),
             "",
             "a builder seen under a project script was trusted again once it went"
+        );
+    }
+
+    // A trusted builder's read of the project stands for ASK_AGAIN, so the
+    // cloud is asked it once in a while, not at every look.
+    #[test]
+    fn a_trusted_builder_reads_the_project_again_only_once_its_read_runs_out() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        let read = || {
+            fs::read_to_string(dir.path().join("asked"))
+                .expect("gcloud's log")
+                .matches("project-info describe")
+                .count()
+        };
+        let before = read();
+        scripted(&dir);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            read(),
+            before,
+            "the project was asked again within its read's time"
+        );
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "a read still standing wasn't used"
         );
     }
 
@@ -2049,6 +2224,12 @@ mod tests {
             lent_to_root(&dir),
             "",
             "its first fingerprint trusted it again"
+        );
+        copy_once(&settings, &mut HostKeys::new(dir.path().join("config")));
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an instance changed and set back was trusted once the service started again"
         );
     }
 
