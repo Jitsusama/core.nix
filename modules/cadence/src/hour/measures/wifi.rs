@@ -55,7 +55,7 @@ pub fn journal(now: i64) -> [String; 7] {
 /// best-effort figures: `wlp0s20f3 on <bssid>: gateway ...; video 881.0 ms
 /// at p95, 38.3% of 120 echoes lost; ...`, ending `, during a call` while
 /// one is on. Best effort's p95 is kept beside it, since wifid times its
-/// own echoes, so a minute with optimus starved of CPU reads slow in both,
+/// own echoes, so a minute with the machine starved of CPU reads slow in both,
 /// where one held in the air leaves best effort quick.
 #[derive(Debug, PartialEq)]
 struct Minute {
