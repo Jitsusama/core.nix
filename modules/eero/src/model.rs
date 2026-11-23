@@ -1,5 +1,5 @@
 //! The home network as one record, the shape `home-network.json` holds:
-//! what the daemon keeps for the shell and what the CLI's views read.
+//! what the daemon keeps for the desktop and what the CLI's views read.
 //!
 //! Every figure is one eero gives, in the unit its key names; one eero
 //! leaves out is `None`, never a guess. Times are RFC 3339 in UTC, as

@@ -103,6 +103,11 @@ impl Schedule {
         self.unreached = !reached;
     }
 
+    /// Makes `read` due now, as after an act changes what it reads.
+    pub fn again(&mut self, read: Read) {
+        self.last[read.index()] = None;
+    }
+
     /// Forgets every read but the network's, so all are due at once: once
     /// eero answers again after it couldn't, what was missed is read
     /// rather than waiting its turn.
@@ -310,5 +315,15 @@ mod tests {
             schedule.due(start + secs(1), true),
             [Read::Connections, Read::Rest, Read::Usage]
         );
+    }
+
+    #[test]
+    fn a_read_asked_again_is_due_at_once_and_alone() {
+        let start = Instant::now();
+        let mut schedule = all_done(start);
+
+        schedule.again(Read::Rest);
+
+        assert_eq!(schedule.due(start + secs(1), true), [Read::Rest]);
     }
 }

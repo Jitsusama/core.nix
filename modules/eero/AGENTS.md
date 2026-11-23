@@ -2,8 +2,8 @@
 
 The home network's eero, read from eero's cloud, since the eero has no
 local API. A Rust program, `eero`, signs in once (`src/session.rs` seals
-the session), reads, and changes one setting, Optimize for Conferencing
-and Gaming. Joel's bar for it (2026-11-07): "i want insanely nerdy
+the session), reads, and makes the few changes What It Changes lists.
+Joel's bar for it (2026-11-07): "i want insanely nerdy
 integration with the eero": every figure eero knows that is true and
 useful, shown where he looks, never a summary that hides them.
 
@@ -138,6 +138,118 @@ The model's `cloud.state` says whether the figures are current:
 - `signed-out`: the session aged past refreshing; `reason` says to run
   `eero sign-in`, and the next read opens the newly sealed session.
 
+## What It Changes
+
+The daemon makes four changes, and only these ([`src/acts/mod.rs`][acts]):
+start eero's speed test, turn Optimize for Conferencing and Gaming on or
+off, keep an address for a device, and stop keeping one. Each is an ask
+`act` on its socket; an act it doesn't name is refused as `bad-act`, so
+no DNS, port forward, firewall, admin or account change goes through
+that door. The socket's folder is 0700, and the daemon answers only its
+own account, by the connection's peer credentials, closing any other at
+once with one line saying so, `not-ours`, so its asker knows nothing was
+read. The fence gives its commands an empty runtime folder of their
+own, so no fenced or strict session reaches the socket at all.
+`eero devices <MAC> reserve <address>` and `eero devices <MAC> unreserve`
+ask the daemon ([`src/asking.rs`][asking]) rather than opening the
+session, so the session is opened by the daemon and by `eero sign-in`,
+`eero internet sqm on|off` and `eero speeds run` alone.
+
+An ask written to the socket by hand keeps its connection open both
+ways until it's answered, since a listener whose side has closed
+counts as gone and its act is let go; the CLI's acts do so.
+
+The socket is the door agents are meant to use, not a wall: a process
+running as the account, unfenced, can open the session itself as those
+three commands do. Only the fence keeps an agent from it, by keeping
+systemd's credential service out as well as the socket: `session.cred`
+opens only through that service, so its ciphertext alone is no use.
+The fence also binds an empty file over `session.cred`, but the daemon
+renames each refreshed session into place, which may leave a fenced
+shell the new file, so the line rests on the service. The fence is the
+agent harness's, not this tree's, and its own tests prove what it
+hides, so a change to that is made and checked there.
+
+A reservation changes which device DHCP gives which address, so each
+refuses rather than guesses ([`src/acts/reservations.rs`][reservations]). A
+reservation crossing one eero keeps is refused, not replaced, and so is
+an address a device or an eero holds now, or one outside the range the
+home subnet gives out, where a device set up by hand may keep its own.
+An unreservation is refused where a port forward may reach the
+reservation, by its address, its url, its device's url or its MAC,
+where eero keeps more than one for the device, where its address is
+outside the range eero gives out, since keeping it again couldn't undo
+it, or where its reservation lives anywhere but under the network's
+reservations. No forward has
+been seen, so the whole answer is searched for any of those. A list
+this can't read whole, reservations, devices, eeros or forwards,
+refuses too. Each change is judged by reading eero's reservations after
+it rather than by eero's answer, whose shape for a change was taken
+from an open-source client rather than seen. Only eero's own refusal of
+a change it then doesn't keep is said refused: a send that timed out may
+still land, and eero's list may lag its answer, so a change that
+doesn't show yet is unknown. The CLI then exits 75, never saying it
+was done or refused, and says to wait for `eero internet`, which lists
+every reservation, a device off now included, to show whether it
+stands: an ask again before eero's list shows it reads the same list,
+so it sends the change twice and may call eero's answer a refusal.
+Where the
+daemon says it's unknown, an unreservation's answer says the address it
+kept, which keeping again undoes it; where the CLI stops waiting
+first, the act's last line in the change log holds it once the act
+ends. A reservation
+that already stood changed nothing, so it's said with no undo. An act
+whose asker has gone before the daemon reaches it is let go undone.
+The CLI's six minutes of patience leave room for a reservation behind
+the daemon's longest read; a slow cloud through every read falling due
+at once can take longer, and the act is then said unknown and let go,
+logged `gone`, unless the daemon had begun it. The daemon reads its
+reservations again as it answers, so reading them once that read ends,
+a few seconds on, shows an unknown outcome unless eero's list still
+lags, when the next read, fifteen minutes on, does; until that read
+ends it shows the list from before the act. Where the CLI stopped
+waiting, the act may still be under way, and its last line in the
+change log says what it came to once it ends; where the daemon hung
+up, it stopped, and the log may hold only the ask.
+
+Each act the daemon is asked is logged as asked before it's done and
+with its result after, as JSON lines in
+`$XDG_STATE_HOME/eero/changes.jsonl` ([`src/acts/changes.rs`][changes]), and
+one whose ask can't be logged isn't done ([`src/acts/carried.rs`][carried]).
+That holds for all four acts asked of it, the speed test and
+conferencing too. `eero internet sqm on|off` and `eero speeds run` open
+the session themselves rather than ask the daemon, so what they change
+leaves no line. One unlogged is answered `unlogged`, which the
+CLI says as the daemon's own fault, exit 69, never as eero's refusal. A
+line holds when, the act and the MAC and address it names, the asking
+process's pid and uid from the socket's peer credentials, the unit or
+scope it ran in as it connected, and its result by kind alone. An
+unreservation's last line names the address eero kept for it, its undo,
+whatever it came to, unless the daemon stopped between sending it and
+logging its end. An act let go because its asker left is logged as
+`gone`, and an ask refused as no act is logged too, its act's name cut
+short: `bad-act` for an act the daemon doesn't know, which the CLI says
+as a daemon older than itself, exit 69, and `bad-ask` for one it knows
+asked with fields it can't read, which the CLI checks first, so it says
+that as a bug, exit 70. A connection asking no act eight times is let
+go, and nothing more it sent is answered, logged or done, so one asking
+in a loop writes eight lines at most. One connecting again starts
+again; any process of the account could fill the disk anyway, so this
+bounds a mistake, not an attack. Each line is written whole in one write, on the disk before the
+act goes ahead. The log holds no session and nothing eero answered, whose refusals
+can carry their whole body. Nothing trims it, since it grows by a line
+or two an act. It's a record the daemon keeps, not an audit: any
+process running as the account can write the file, and a process can
+ask through another.
+
+The session sealed in `session.cred` is the account's alone: the file is
+made mode 600 from the start and its folder 700, never narrowed after
+writing, and one an older eero sealed open is narrowed as the daemon
+starts. Nothing in the code waits on Joel: an agent asks for a speed
+test or conferencing and gaming on its own, and asks for a reservation
+or an unreservation only after Joel's yes on that one change, with what
+it changes and its undo.
+
 ## What It Tells
 
 The daemon tells Joel what changed on the home network as desktop
@@ -244,6 +356,11 @@ the views and for the nodes, devices and profiles the record holds now,
 each by the name its view finds it by: a device two share a name with is
 offered by its hardware address.
 
+[acts]: src/acts/mod.rs
+[asking]: src/asking.rs
+[carried]: src/acts/carried.rs
+[changes]: src/acts/changes.rs
+[reservations]: src/acts/reservations.rs
 [contract]: contract/README.md
 [model]: home-network.json
 [read]: src/read/mod.rs

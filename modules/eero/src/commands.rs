@@ -118,6 +118,75 @@ fn run() -> Help {
         .exit(Exit::Refused, "not signed in")
 }
 
+/// Keep an address for one device, asked of the daemon, which alone opens
+/// eero's session.
+fn reserve() -> Help {
+    Help::new(
+        "reserve",
+        "keep an address for a device; <name> is its MAC, such as 02:00:00:00:00:01",
+    )
+    .example(
+        "eero devices 02:00:00:00:00:01 reserve 192.168.4.20",
+        "DHCP gives it that address from now on",
+    )
+    .example(
+        "eero devices 02:00:00:00:00:01 reserve 192.168.4.20 --json",
+        "the same, said as eero.reservation/1",
+    )
+    .argument(
+        "<address>",
+        "the IPv4 address to keep for it, in the range the home subnet gives out and \
+         held by no other device",
+    )
+    .exit(
+        Exit::Failed,
+        "eero refused, or the address or the device is another's",
+    )
+    .exit(
+        Exit::TryAgain,
+        "eero couldn't be reached, or whether it took it isn't known",
+    )
+    .exit(
+        Exit::Refused,
+        "not signed in to eero, or not eero-daemon's own account",
+    )
+    .exit(
+        Exit::Unavailable,
+        "eero-daemon isn't answering, couldn't log the ask, or doesn't know the act",
+    )
+    .exit(Exit::Bug, "eero-daemon couldn't read this command's ask")
+}
+
+/// Stop keeping an address for one device.
+fn unreserve() -> Help {
+    Help::new(
+        "unreserve",
+        "stop keeping an address for a device; <name> is its MAC",
+    )
+    .example(
+        "eero devices 02:00:00:00:00:01 unreserve",
+        "DHCP may give it any address again",
+    )
+    .exit(
+        Exit::Failed,
+        "eero refused, a port forward may reach the address, or it's outside the range \
+         eero gives out",
+    )
+    .exit(
+        Exit::TryAgain,
+        "eero couldn't be reached, or whether it took it isn't known",
+    )
+    .exit(
+        Exit::Refused,
+        "not signed in to eero, or not eero-daemon's own account",
+    )
+    .exit(
+        Exit::Unavailable,
+        "eero-daemon isn't answering, couldn't log the ask, or doesn't know the act",
+    )
+    .exit(Exit::Bug, "eero-daemon couldn't read this command's ask")
+}
+
 /// The whole tree, from `eero` down.
 pub fn help() -> Help {
     let root = Help::new(
@@ -210,7 +279,9 @@ fn resources() -> Vec<Help> {
                 ("eero devices Pixel", "one device, every figure eero has"),
                 ("eero devices --json", "every device as eero.devices/1"),
             ],
-        ),
+        )
+        .subcommand(reserve())
+        .subcommand(unreserve()),
         collection(
             "profiles",
             "profile",
@@ -297,7 +368,7 @@ fn more() -> Vec<Help> {
             .argument("<email or phone>", "what eero knows you by")
             .exit(Exit::Failed, "eero didn't sign you in")
             .exit(Exit::Refused, "no terminal to type the code in"),
-        Help::new("daemon", "keep the home network for the shell")
+        Help::new("daemon", "keep the home network for the desktop")
             .example("systemctl --user status eero-daemon", "its unit runs it")
             .exit(Exit::Failed, "the daemon stopped")
             .exit(Exit::Config, "XDG_RUNTIME_DIR isn't set"),

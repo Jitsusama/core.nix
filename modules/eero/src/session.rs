@@ -8,7 +8,8 @@
 
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt, PermissionsExt};
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 /// The name the token is sealed under, which systemd checks on opening it.
@@ -61,16 +62,25 @@ pub fn open() -> io::Result<String> {
 }
 
 /// Seals the token in its file, replacing any before it only once the new
-/// one is whole.
+/// one is whole and on the disk. The daemon and a command may both seal
+/// at once, as when each refreshes an aged session, so each seals into a
+/// file named for its own process, and neither moves or removes the
+/// other's half-written one.
 pub fn keep(token: &str) -> io::Result<()> {
     let file = file()?;
-    let folder = file.parent().ok_or_else(|| io::Error::other("no folder"))?;
-    fs::create_dir_all(folder)?;
-    let fresh = file.with_extension("cred.new");
+    let fresh = sealing(&file, std::process::id());
+    let sealed = private(&fresh)?;
+    let whole = sealed.try_clone()?;
     let mut seal = Command::new("systemd-creds")
-        .args(["--user", "encrypt", &format!("--name={SEALED_AS}"), "-"])
-        .arg(&fresh)
+        .args([
+            "--user",
+            "encrypt",
+            &format!("--name={SEALED_AS}"),
+            "-",
+            "-",
+        ])
         .stdin(Stdio::piped())
+        .stdout(sealed)
         .stderr(Stdio::inherit())
         .spawn()?;
     seal.stdin
@@ -81,5 +91,183 @@ pub fn keep(token: &str) -> io::Result<()> {
         let _ = fs::remove_file(&fresh);
         return Err(io::Error::other("systemd-creds couldn't seal the session"));
     }
-    fs::rename(&fresh, &file)
+    whole.sync_all()?;
+    fs::rename(&fresh, &file)?;
+    let _ = forget_unfinished(&file);
+    Ok(())
+}
+
+/// The file process `pid` seals a new session into, beside `file`.
+fn sealing(file: &Path, pid: u32) -> PathBuf {
+    file.with_extension(format!("cred.{pid}.new"))
+}
+
+/// Removes what a sealer that died partway left beside `file`: its
+/// process is gone, so it will never finish or move it.
+fn forget_unfinished(file: &Path) -> io::Result<()> {
+    let folder = file.parent().ok_or_else(|| io::Error::other("no folder"))?;
+    for entry in fs::read_dir(folder)? {
+        let name = entry?.file_name();
+        let pid = name
+            .to_str()
+            .and_then(|name| name.strip_prefix("session.cred."))
+            .and_then(|rest| rest.strip_suffix(".new"))
+            .and_then(|pid| pid.parse::<u32>().ok());
+        if let Some(pid) = pid
+            && !Path::new(&format!("/proc/{pid}")).exists()
+        {
+            let _ = fs::remove_file(folder.join(&name));
+        }
+    }
+    Ok(())
+}
+
+/// A fresh file at `path`, and its folder, the account's alone from the
+/// moment they exist, never opened up and narrowed after, so no other
+/// account ever has a moment to read what's written to it. A folder an
+/// older eero left open is narrowed, and a file a failed seal left is
+/// replaced rather than written through.
+fn private(path: &Path) -> io::Result<fs::File> {
+    own_folder(path.parent().ok_or_else(|| io::Error::other("no folder"))?)?;
+    let _ = fs::remove_file(path);
+    fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+}
+
+/// Makes `folder` the account's alone from the moment it exists, and
+/// narrows one an older eero left open.
+pub fn own_folder(folder: &Path) -> io::Result<()> {
+    fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(folder)?;
+    fs::set_permissions(folder, fs::Permissions::from_mode(0o700))
+}
+
+/// Narrows a session an older eero sealed open, and its folder, to the
+/// account alone, so it isn't left readable until eero next ages it.
+pub fn narrow() -> io::Result<()> {
+    narrow_at(&file()?)
+}
+
+/// Narrows the session sealed at `file`, if there's one, and its folder.
+fn narrow_at(file: &Path) -> io::Result<()> {
+    own_folder(file.parent().ok_or_else(|| io::Error::other("no folder"))?)?;
+    match fs::set_permissions(file, fs::Permissions::from_mode(0o600)) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
+        narrowed => narrowed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mode(path: &Path) -> u32 {
+        fs::metadata(path).expect("it exists").permissions().mode() & 0o777
+    }
+
+    #[test]
+    fn the_sealed_file_and_its_folder_are_the_accounts_alone_from_the_start() {
+        let root = std::env::temp_dir().join(format!("eero-session-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let new = root.join("new").join("session.cred.new");
+        private(&new).expect("a file in a new folder");
+        assert_eq!(
+            (mode(new.parent().expect("its folder")), mode(&new)),
+            (0o700, 0o600),
+            "a new folder or file is open to other accounts"
+        );
+        let open = root.join("open");
+        fs::create_dir_all(&open).expect("an open folder");
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).expect("it opens");
+        let stale = open.join("session.cred.new");
+        fs::write(&stale, "a failed seal").expect("a stale file");
+        fs::set_permissions(&stale, fs::Permissions::from_mode(0o644)).expect("it opens");
+        private(&stale).expect("a file over a stale one");
+        assert_eq!(
+            (
+                mode(&open),
+                mode(&stale),
+                fs::read(&stale).expect("it reads").len()
+            ),
+            (0o700, 0o600, 0),
+            "an open folder wasn't narrowed, or a stale file was written through"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_session_an_older_eero_sealed_open_is_narrowed_and_none_is_no_failure() {
+        let root = std::env::temp_dir().join(format!("eero-session-narrow-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let open = root.join("eero");
+        fs::create_dir_all(&open).expect("an open folder");
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o755)).expect("it opens");
+        let file = open.join("session.cred");
+        fs::write(&file, "a session").expect("a session");
+        fs::set_permissions(&file, fs::Permissions::from_mode(0o644)).expect("it opens");
+        narrow_at(&file).expect("it narrows");
+        assert_eq!(
+            (mode(&open), mode(&file), fs::read(&file).expect("it reads")),
+            (0o700, 0o600, b"a session".to_vec()),
+            "an open session or its folder wasn't narrowed, or the session changed"
+        );
+        let none = root.join("none").join("session.cred");
+        narrow_at(&none).expect("no session is no failure");
+        assert_eq!(
+            (mode(none.parent().expect("its folder")), none.exists()),
+            (0o700, false),
+            "a folder with no session was left open, or a session was made"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn the_daemons_folder_is_the_accounts_alone_and_an_open_one_is_narrowed() {
+        let root = std::env::temp_dir().join(format!("eero-session-own-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let new = root.join("new");
+        own_folder(&new).expect("a new folder");
+        let open = root.join("open");
+        fs::create_dir_all(&open).expect("an open folder");
+        fs::set_permissions(&open, fs::Permissions::from_mode(0o777)).expect("it opens");
+        own_folder(&open).expect("it narrows");
+        assert_eq!(
+            (mode(&new), mode(&open)),
+            (0o700, 0o700),
+            "the socket's folder is open to other accounts"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn each_sealer_seals_apart_and_only_a_dead_ones_leftover_is_removed() {
+        let root = std::env::temp_dir().join(format!("eero-session-apart-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("the test's folder");
+        let file = root.join("session.cred");
+        let ours = std::process::id();
+        assert_ne!(
+            sealing(&file, ours),
+            sealing(&file, ours + 1),
+            "two sealers share a file"
+        );
+        // A pid past the kernel's largest is never running.
+        let dead = sealing(&file, 4_194_305);
+        for leftover in [&dead, &sealing(&file, ours)] {
+            fs::write(leftover, "half a seal").expect("a leftover");
+        }
+        fs::write(root.join("session.cred"), "the session").expect("the session");
+        forget_unfinished(&file).expect("the folder reads");
+        assert_eq!(
+            (dead.exists(), sealing(&file, ours).exists(), file.exists()),
+            (false, true, true),
+            "a running sealer's file or the session went, or a dead one's stayed"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
 }

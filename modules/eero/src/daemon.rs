@@ -1,4 +1,4 @@
-//! `eero daemon`: the home network kept current for the shell and the CLI.
+//! `eero daemon`: the home network kept current for the desktop and the CLI.
 //!
 //! It keeps `$XDG_RUNTIME_DIR/eero/home-network.json`, written whole and
 //! only when it changes, for the CLI, and tells its socket's listeners
@@ -25,18 +25,19 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use jiff::tz::TimeZone;
 use serde_json::Value;
 
-use crate::acts::{self, Act};
+use crate::acts::carried::{Carried, carried, unlogged_line};
+use crate::acts::{self, Act, Came, changes};
 use crate::api;
 use crate::cloud::{self, Failure};
 use crate::day;
 use crate::desktop::Notifier;
 use crate::history::History;
-use crate::listeners::{Call, Listeners};
+use crate::listeners::{Asked, Call, Listeners};
 use crate::model::{Cloud, CloudState, HomeNetwork};
 use crate::notices::{self, Watch};
 use crate::probe::{self, Targets};
@@ -59,7 +60,16 @@ const NET_LOOK: Duration = Duration::from_secs(5);
 pub fn run() -> Result<(), String> {
     let runtime = runtime()?;
     let folder = runtime.join("eero");
-    fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    // The socket that changes the home network lives here, so no other
+    // account may reach it even by a path, and a folder an older daemon
+    // left open is closed before the socket is made.
+    session::own_folder(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+    // A session an older eero sealed open is narrowed now, not when eero
+    // next ages it; failing that leaves it as it was, which is no reason
+    // to stop keeping the network.
+    if let Err(error) = session::narrow() {
+        eprintln!("eero: couldn't narrow the sealed session: {error}");
+    }
     let file = folder.join("home-network.json");
     let (wake, woken) = mpsc::channel();
     // net writes its record beside eero's (modules/net), which the map is
@@ -94,10 +104,7 @@ pub fn run() -> Result<(), String> {
         match woken.recv_timeout(daemon.wait(Instant::now(), listeners.listening())) {
             Ok(Call::Read) => daemon.schedule.ask(),
             // Done before the next cycle, which reads what it changed.
-            Ok(Call::Act(asked)) => {
-                let done = daemon.act(asked.act);
-                listeners.answer_act(&asked, done);
-            }
+            Ok(Call::Act(asked)) => act(&mut daemon, &listeners, &asked),
             Ok(Call::Joined | Call::Left | Call::Looked) | Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => return Err("the socket stopped".into()),
         }
@@ -368,28 +375,36 @@ impl Daemon {
                 self.cloud = None;
                 Heard::SignedOut(reason)
             }
-            Failure::Unreachable(reason) | Failure::Refused(reason) => Heard::Unreachable(reason),
+            Failure::Unreachable(reason) | Failure::Refused(reason) | Failure::Unknown(reason) => {
+                Heard::Unreachable(reason)
+            }
         }
     }
 
     /// Does an act the shell asked for, and has the network read at once
-    /// after, so the row it changed is served as eero now says it. A
-    /// session eero refuses is let go, as a read's is.
-    fn act(&mut self, act: Act) -> Result<(), String> {
-        let done = session(&mut self.cloud, &mut self.network)
-            .and_then(|(cloud, network)| acts::done(cloud, &network, act));
+    /// after, so the row it changed is served as eero now says it; after a
+    /// reservation, its routing too, which holds the reservations, so
+    /// `eero internet` can show an outcome said unknown. A session
+    /// eero refuses is let go, as a read's is.
+    fn act(&mut self, act: Act) -> Came {
+        let came = match session(&mut self.cloud, &mut self.network) {
+            Ok((cloud, network)) => acts::done(cloud, &network, act),
+            Err(failure) => Came::of(Err(failure)),
+        };
         self.schedule.ask();
-        if done.is_ok() && act == Act::SpeedTest {
+        if matches!(act, Act::Reserve { .. } | Act::Unreserve { .. }) {
+            self.schedule.again(Read::Rest);
+        }
+        if came.done.is_ok() && act == Act::SpeedTest {
             self.testing = Some(now_unix());
         }
-        done.map_err(|failure| {
-            let said = failure.to_string();
+        if let Err(failure) = &came.done {
             if matches!(failure, Failure::SignedOut(_)) {
                 self.cloud = None;
             }
-            eprintln!("eero: {act:?} wasn't done: {said}");
-            said
-        })
+            eprintln!("{}", journal_line(&act, failure));
+        }
+        came
     }
 
     fn read(&mut self, read: Read) -> Result<(), Failure> {
@@ -552,14 +567,66 @@ fn write(file: &Path, contents: &str) -> io::Result<()> {
 }
 
 fn now_unix() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs().try_into().unwrap_or(i64::MAX))
+    changes::now()
+}
+
+/// Does an act a listener asked for and answers it, logged as asked
+/// before it's done and with its result after, so a daemon stopped
+/// partway still leaves a line. One whose asker has gone is let go
+/// undone, since no one would hear how it went and it would hold up the
+/// reads behind it; one whose ask can't be logged isn't done, since a
+/// change no line names couldn't be found again.
+fn act(daemon: &mut Daemon, listeners: &Listeners, asked: &Asked) {
+    let log = changes::file();
+    let log = log.as_deref();
+    match carried(log, listeners.waits(asked), asked, |act| daemon.act(act)) {
+        Carried::Gone => {}
+        Carried::Unlogged(error) => {
+            eprintln!("{}", unlogged_line(asked, &error));
+            listeners.answer_unlogged(asked, &error);
+        }
+        Carried::Came(came) => listeners.answer_act(asked, &came),
+    }
+}
+
+/// What the journal says of an act that wasn't done, or isn't known to
+/// be. A reason can hold a name a device on the network gave itself, so
+/// it's kept to one line, and no line break in it writes a journal entry
+/// of its own; the MAC reads as the CLI and the change log write it.
+fn journal_line(act: &Act, failure: &Failure) -> String {
+    let why = terminal_kit::layout::one_line(&failure.to_string()).into_owned();
+    if matches!(failure, Failure::Unknown(_)) {
+        format!("eero: whether {act:?} was done isn't known: {why}")
+    } else {
+        format!("eero: {act:?} wasn't done: {why}")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_journal_line_names_the_mac_as_written_and_stays_one_line() {
+        let act = Act::Reserve {
+            mac: acts::Mac::parse("02:00:00:00:00:01").expect("a MAC"),
+            address: "10.0.0.31".parse().expect("an address"),
+        };
+        for failure in [
+            Failure::Refused("held by kitchen\neero: forged".into()),
+            Failure::Unknown("held by kitchen\neero: forged".into()),
+        ] {
+            let line = journal_line(&act, &failure);
+            assert!(
+                !line.contains('\n'),
+                "a reason's line break wrote a journal entry of its own: {line:?}"
+            );
+            assert!(
+                line.contains("02:00:00:00:00:01"),
+                "the journal wrote the MAC otherwise than the CLI does: {line:?}"
+            );
+        }
+    }
 
     fn contract(file: &str) -> Value {
         let path = format!("{}/contract/{file}", env!("CARGO_MANIFEST_DIR"));

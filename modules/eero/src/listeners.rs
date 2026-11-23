@@ -26,8 +26,9 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{self, BufRead, BufReader, ErrorKind, Write};
 use std::net::Shutdown;
+use std::os::fd::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread;
@@ -35,7 +36,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::acts::Act;
+use crate::acts::{Act, Came, Done, changes};
+use crate::cloud::Failure;
 use crate::model::HomeNetwork;
 use crate::served::{self, Mapped, Said, Vocabularies};
 
@@ -54,13 +56,75 @@ pub enum Call {
 }
 
 /// An act a listener asked for: who asked, the ask's id its answer is
-/// said under, and the act.
+/// said under, the act, and the process that asked, so each act is logged
+/// by who did it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Asked {
     pub listener: u64,
     pub id: Value,
     pub act: Act,
+    pub peer: Option<Peer>,
 }
+
+/// The process at the other end of a listener's connection, as the kernel
+/// says it, which no listener can tell otherwise, and the unit it ran in
+/// as it joined, read then rather than once an act is done, when the
+/// process may have gone and its pid be another's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Peer {
+    /// None where the kernel can't say: one in a pid namespace the
+    /// daemon can't see is said as 0.
+    pub pid: Option<i32>,
+    pub uid: u32,
+    pub unit: Option<String>,
+}
+
+impl Peer {
+    /// Who connected on `stream`, or none where the kernel won't say.
+    fn of(stream: &UnixStream) -> Option<Peer> {
+        let mut said = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut length = libc::socklen_t::try_from(std::mem::size_of::<libc::ucred>()).ok()?;
+        // SAFETY: SO_PEERCRED writes one ucred into a buffer of the size
+        // `length` gives, and the socket is open for the call. It's read
+        // through libc rather than rustix, whose pid can't hold the 0 the
+        // kernel says for a pid it can't map.
+        let read = unsafe {
+            libc::getsockopt(
+                stream.as_raw_fd(),
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                (&raw mut said).cast(),
+                &raw mut length,
+            )
+        };
+        if read != 0 || usize::try_from(length).ok()? != std::mem::size_of::<libc::ucred>() {
+            return None;
+        }
+        let pid = (said.pid > 0).then_some(said.pid);
+        Some(Peer {
+            pid,
+            uid: said.uid,
+            unit: pid.and_then(changes::unit),
+        })
+    }
+}
+
+/// Whether the daemon answers `peer`: only its own account, `ours`, since
+/// what it tells holds the home network's devices and what it's asked can
+/// change it. One the kernel won't say is refused.
+fn admits(peer: Option<&Peer>, ours: u32) -> bool {
+    peer.is_some_and(|peer| peer.uid == ours)
+}
+
+/// What a refused connection is told before it's closed, so its asker
+/// knows nothing it sent was read, let alone done. It says nothing of who
+/// the daemon is.
+pub const NOT_OURS: &str =
+    r#"{"error":{"code":"not-ours","message":"eero-daemon answers only its own account"}}"#;
 
 /// The kind of the one record, and its key.
 pub const KIND: &str = "home-network";
@@ -68,6 +132,16 @@ pub const KIND: &str = "home-network";
 /// How long a write to a listener may take before it's dropped, so one
 /// that stopped reading can't hold up the others or the daemon.
 const WRITE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// How many asks that are no act one connection may make before it's let
+/// go, each logged: they're answered without the daemon's loop, so one
+/// asking in a loop would otherwise grow the change log as fast as it
+/// wrote, and a full disk refuses every act, since each must be logged.
+/// Nothing it sent after is answered or logged, even what was already
+/// read. A process connecting again starts again; any process of the
+/// account could fill its disk anyway, so this bounds a mistake, not an
+/// attack.
+const UNASKED_KEPT: u32 = 8;
 
 /// Everyone connected, and the record each newcomer is answered with.
 #[derive(Clone)]
@@ -83,6 +157,10 @@ struct Hub {
     vocabularies: Vocabularies,
     listeners: Vec<Listener>,
     next_id: u64,
+    /// The change log an ask refused as no act is written to, if any.
+    log: Option<PathBuf>,
+    /// The account answered (`admits`): the daemon's own but in tests.
+    ours: u32,
 }
 
 /// A watch of the rows: its id, the vocabulary they're said in, and the
@@ -104,6 +182,8 @@ impl RowWatch {
 struct Listener {
     id: u64,
     stream: UnixStream,
+    /// Who connected, read once as it joined.
+    peer: Option<Peer>,
     /// Whether it watches the record, so it's told each change.
     watching: bool,
     /// Whether it watches the record ahead, which is looking at it.
@@ -114,6 +194,8 @@ struct Listener {
     /// an ask naming none takes.
     words: Option<String>,
     numbers: Option<String>,
+    /// How many asks it made that were no act (`UNASKED_KEPT`).
+    unasked: u32,
 }
 
 impl Listeners {
@@ -121,15 +203,24 @@ impl Listeners {
     /// tells `wake` whenever a listener joins, leaves, looks or asks for a
     /// read. Its rows offer the network map's page, `map`, if any.
     pub fn listen(path: &Path, wake: Sender<Call>, map: Option<Mapped>) -> io::Result<Listeners> {
-        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map))
+        let log = changes::file()
+            .inspect_err(|error| eprintln!("eero: asks refused as no act won't be logged: {error}"))
+            .ok();
+        // SAFETY: getuid has no failure and touches no memory.
+        let ours = unsafe { libc::getuid() };
+        Listeners::listen_within(path, wake, Vocabularies::default().mapped(map), log, ours)
     }
 
     /// Listens as `listen` does, reading vocabularies as `vocabularies`
-    /// allows: from the Nix store, but in tests.
+    /// allows, from the Nix store but in tests, logging an ask refused as
+    /// no act to `log`, the account's change log but in tests, and
+    /// answering only account `ours`, the daemon's own but in tests.
     fn listen_within(
         path: &Path,
         wake: Sender<Call>,
         vocabularies: Vocabularies,
+        log: Option<PathBuf>,
+        ours: u32,
     ) -> io::Result<Listeners> {
         match fs::remove_file(path) {
             Err(e) if e.kind() != ErrorKind::NotFound => return Err(e),
@@ -139,6 +230,8 @@ impl Listeners {
         let listeners = Listeners {
             hub: Arc::new(Mutex::new(Hub {
                 vocabularies,
+                log,
+                ours,
                 ..Hub::default()
             })),
         };
@@ -230,14 +323,54 @@ impl Listeners {
         });
     }
 
-    /// Answers an act a listener asked for, done (`Ok`) or refused with
-    /// why, as every daemon answers one: `done`, or an error the shell
-    /// says in its own words. One gone since it asked hears nothing.
-    pub fn answer_act(&self, asked: &Asked, done: Result<(), String>) {
-        let answer = match done {
-            Ok(()) => json!({"id": asked.id, "done": true}),
-            Err(why) => json!({"id": asked.id, "error": {"code": "refused", "message": why}}),
+    /// Whether the listener that asked for `asked` is still connected to
+    /// hear its answer.
+    pub fn waits(&self, asked: &Asked) -> bool {
+        self.hub()
+            .listeners
+            .iter()
+            .any(|listener| listener.id == asked.listener)
+    }
+
+    /// Answers an act a listener asked for, done or not and why, as every
+    /// daemon answers one: `done`, and `unchanged` where it already stood,
+    /// or an error the shell says in its own words, coded by what mends
+    /// it. An unreservation's says the address eero kept, `held`, either
+    /// way, which keeping again undoes it. One gone since it asked hears
+    /// nothing.
+    pub fn answer_act(&self, asked: &Asked, came: &Came) {
+        let mut answer = match &came.done {
+            Ok(Done::Made) => json!({"id": asked.id, "done": true}),
+            Ok(Done::Unchanged) => json!({"id": asked.id, "done": true, "unchanged": true}),
+            Err(failure) => {
+                let code = match failure {
+                    Failure::SignedOut(_) => "signed-out",
+                    Failure::Unreachable(_) => "unreachable",
+                    Failure::Refused(_) => "refused",
+                    Failure::Unknown(_) => "unknown",
+                };
+                json!({"id": asked.id, "error": {"code": code, "message": failure.to_string()}})
+            }
         };
+        if let Some(held) = came.held {
+            answer["held"] = json!(held.to_string());
+        }
+        self.answer_asker(asked, &answer);
+    }
+
+    /// Answers an act the daemon didn't do because it couldn't log the ask,
+    /// coded `unlogged`, so it's never put down to eero.
+    pub fn answer_unlogged(&self, asked: &Asked, error: &io::Error) {
+        let message = format!("eero-daemon couldn't log the ask, so nothing was done: {error}");
+        self.answer_asker(
+            asked,
+            &json!({"id": asked.id, "error": {"code": "unlogged", "message": message}}),
+        );
+    }
+
+    /// Writes `answer` to the listener that asked `asked`, if it's still
+    /// there.
+    fn answer_asker(&self, asked: &Asked, answer: &Value) {
         let mut hub = self.hub();
         let Some(listener) = hub
             .listeners
@@ -256,6 +389,18 @@ impl Listeners {
         if stream.set_write_timeout(Some(WRITE_TIMEOUT)).is_err() {
             return;
         }
+        let peer = Peer::of(&stream);
+        let ours = self.hub().ours;
+        if !admits(peer.as_ref(), ours) {
+            eprintln!(
+                "eero: refused a listener of uid {:?}, which isn't the daemon's",
+                peer.map(|peer| peer.uid)
+            );
+            let mut stream = stream;
+            let _ = write_line(&mut stream, NOT_OURS);
+            let _ = stream.shutdown(Shutdown::Both);
+            return;
+        }
         let Ok(reading) = stream.try_clone() else {
             return;
         };
@@ -265,12 +410,14 @@ impl Listeners {
             hub.next_id += 1;
             hub.listeners.push(Listener {
                 id,
+                peer,
                 stream,
                 watching: false,
                 looking: false,
                 rows: Vec::new(),
                 words: None,
                 numbers: None,
+                unasked: 0,
             });
             id
         };
@@ -295,20 +442,29 @@ impl Listeners {
 
     /// Answers one line from listener `id`, saying what it asks of the
     /// daemon, if anything. The answer is written under the hub's lock, so
-    /// a watch's answer comes before any change told after it.
+    /// a watch's answer comes before any change told after it; an ask
+    /// refused as no act is logged once the lock is let go, so a slow disk
+    /// holds up no other listener.
     fn answer(&self, id: u64, line: &str) -> Option<Call> {
         let asked: Value = serde_json::from_str(line).ok()?;
         let said = asked.get("id").cloned().unwrap_or(Value::Null);
+        let mut refusal = None;
         let mut hub = self.hub();
         let Hub {
             record,
             network,
             vocabularies,
             listeners,
+            log,
             ..
         } = &mut *hub;
         let records: Vec<Value> = record.iter().cloned().collect();
         let listener = listeners.iter_mut().find(|listener| listener.id == id)?;
+        // Let go: what it sent before the stream shut is still read, and
+        // is neither answered, nor logged, nor done.
+        if listener.unasked >= UNASKED_KEPT {
+            return None;
+        }
         let ask = asked["ask"].as_str();
         let (answer, call) = match ask {
             Some("get" | "list" | "watch") if served::asks_rows(&asked) => (
@@ -357,20 +513,36 @@ impl Listeners {
                         listener: id,
                         id: said,
                         act,
+                        peer: listener.peer.clone(),
                     }));
                 }
-                Err(why) => (
-                    json!({"id": said, "error": {"code": "bad-act", "message": why}}),
-                    None,
-                ),
+                Err(unasked) => {
+                    listener.unasked += 1;
+                    refusal = log
+                        .clone()
+                        .map(|log| (log, listener.peer.clone(), unasked.code()));
+                    (
+                        json!({"id": said, "error":
+                            {"code": unasked.code(), "message": unasked.why()}}),
+                        None,
+                    )
+                }
             },
             _ => (
                 json!({"id": said, "error": "the eero daemon doesn't know that ask"}),
                 None,
             ),
         };
-        if write_line(&mut listener.stream, &answer.to_string()).is_err() {
+        if write_line(&mut listener.stream, &answer.to_string()).is_err()
+            || listener.unasked >= UNASKED_KEPT
+        {
             let _ = listener.stream.shutdown(Shutdown::Both);
+        }
+        drop(hub);
+        if let Some((log, peer, code)) = refusal
+            && let Err(error) = changes::refused(&log, peer.as_ref(), &asked, code, changes::now())
+        {
+            eprintln!("eero: couldn't log a refused act: {error}");
         }
         call
     }
