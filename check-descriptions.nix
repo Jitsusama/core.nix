@@ -6278,13 +6278,15 @@
     clippy finds nothing in vm-first or its tests
   '';
   chunks-are-given-back-each-night = ''
-    the root's empty data chunks are given back from a unit on a 03:00 timer that isn't caught up
-    on, bounded to two hours and weighted behind other work
+    the root's empty data chunks are given back from a oneshot unit on a 03:00 timer that starts
+    with the machine and isn't caught up on, bounded to two hours and weighted behind other work in
+    the background slice
   '';
   chunks-are-given-back-only-while-short = ''
-    Btrfs's data chunks are balanced only by night and while too little of the disk is in no
-    chunk, stopping at the first step that frees enough, going past a step that fails, stopping at
-    half-full chunks, and failing when the disk stays short or its usage can't be read
+    Btrfs's data chunks are balanced only from 01:00 to 06:00 and while too little of the disk is
+    in no chunk, each step ended at 06:00, stopping at the first step that frees enough, going past
+    a step that fails, stopping at half-full chunks, and failing when the disk stays short or its
+    usage can't be read
   '';
   swap-file-grows-only-when-it-may = ''
     a swap file smaller than asked for grows as the machine starts, and one in use, holding a

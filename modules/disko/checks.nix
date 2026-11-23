@@ -83,12 +83,16 @@
         }
       ];
       service = machine.config.systemd.services.chunks-given-back.serviceConfig;
-      inherit (machine.config.systemd.timers.chunks-given-back) timerConfig;
+      timer = machine.config.systemd.timers.chunks-given-back;
+      inherit (timer) timerConfig;
     in
     holds "chunks-are-given-back-each-night"
       "The root's empty data chunks aren't given back by night, bounded and behind other work."
       (
         lib.hasSuffix "/bin/chunks-given-back /" service.ExecStart
+        && service.Type == "oneshot"
+        && service.Slice == "background.slice"
+        && lib.elem "timers.target" timer.wantedBy
         && timerConfig.OnCalendar == "*-*-* 03:00"
         && !(timerConfig.Persistent or false)
         && service.TimeoutStartSec == "2h"

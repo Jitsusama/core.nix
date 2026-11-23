@@ -30,6 +30,7 @@ let
     name = "chunks-given-back";
     runtimeInputs = [
       pkgs.btrfs-progs
+      pkgs.coreutils
       pkgs.gawk
     ];
     text = builtins.readFile ./chunks-given-back.sh;
@@ -242,9 +243,10 @@ in
   # free, and then fail writes as full (chunks-given-back.sh says how). It
   # runs at night, so a balance's reads and writes never land on a call:
   # the timer fires at 03:00, and the script itself balances only from
-  # 01:00 to 06:00, since a laptop asleep at 03:00 fires it on waking and
-  # a switch can fire it at any hour. Two hours bound it, and stopping it
-  # cancels the balance once the chunk in hand is moved. The weights put
+  # 01:00 to 06:00, ending a step still running at 06:00, since a laptop
+  # asleep at 03:00 fires it on waking and a switch can fire it at any
+  # hour. Two hours bound it, and stopping it cancels the balance, as
+  # the kernel does for a balance whose process is dying. The weights put
   # it behind other work wherever io.cost or the processor's shares hold;
   # an NVMe disk's own scheduler honours no I/O class.
   config.systemd.services.chunks-given-back = {
