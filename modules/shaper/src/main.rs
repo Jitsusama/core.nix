@@ -3581,6 +3581,7 @@ mod tests {
             networks::House {
                 most: 7_000,
                 from: vec![mac],
+                key: None,
             },
         )]);
         let at = Instant::now();
@@ -3662,6 +3663,7 @@ mod tests {
             networks::House {
                 most: 7_000,
                 from: vec![wifi, cable],
+                key: None,
             },
         )]);
         let ear = house::Ear::default();
