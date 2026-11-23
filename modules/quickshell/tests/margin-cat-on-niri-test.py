@@ -1164,8 +1164,9 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     """A move between workspaces as the last still holds moves it on from where it got to.
 
     It's never put anywhere it didn't get to (WCJQSG, 2bd7c7c6): its first place said after
-    the second move is made is a step from its last before, or both are off the screen, where
-    neither is seen, and the second move is one of its own, back the other way. A step of the
+    the second move is made is a step from its last before, carried there by its ground sliding
+    back, or both are off the screen, where neither is seen, and the second move is one of its
+    own, back the other way. A step of the
     first move said as the second is made may come after the mark, and is a step on too. Under
     load the first may not yet have left its seat, and the cat says it sits there before the
     second's first step (2026-11-14), so the second is waited for by its own steps rather than
@@ -1204,10 +1205,19 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # may ride back in from anywhere else off it, since neither place is
     # seen (the net, 2026-11-16: from y -849 in its unseen beat to -131).
     off = [one["y"] + one["size"] <= 0 or one["y"] >= one["reach"] for one in (was, after)]
+    step = STEPS_ON * was["size"]
     gone = math.hypot(after["x"] - was["x"], after["y"] - was["y"])
-    assert all(off) or gone <= STEPS_ON * was["size"], (
-        f"the second move put it at {after}, from {was}"
-    )
+    # Its ground slides back under it as the second move turns the first, by up to niri's
+    # whole gap between workspaces, a tenth of the screen past its height (MarginCatStacked.js's
+    # apart()), so a loaded builder's frames, 87 ms apart, said it where its ground had carried
+    # it: peeking 3 of its 8 rows down from the gap over the lower workspace at y -5, it was
+    # next said at 816, the gap gone off the screen's foot (the net, 2026-11-22). So a place a
+    # step from where it got to, carried the second move's way, is where it got to too.
+    way = ((after.get("move") or {}).get("way")) or 0
+    apart = was["reach"] + max(1, round(was["reach"] * 0.1))
+    carried = -way * (after["y"] - was["y"])
+    rode = way != 0 and abs(after["x"] - was["x"]) <= step and -step <= carried <= apart + step
+    assert all(off) or gone <= step or rode, f"the second move put it at {after}, from {was}"
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
     assert again, "the second move set it on its seat, moving it no more"
 
