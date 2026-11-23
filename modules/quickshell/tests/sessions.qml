@@ -363,8 +363,16 @@ ShellRoot {
         // while that window comes; one whose entry gives none is said.
         const view = ["mycelium", "--realm", "harbour", "attach", "--host", "harbour-attended",
             "--session", "s-row-waiting"];
+        // Reopen Them All kept a place for its viewer, Joel being on its
+        // workspace then, as reopenViewer keeps one.
+        Sessions.keepPlaces({ "s-row-waiting": { workspace: 3, column: 1, asked: true,
+            there: true, waiting: view, named: "pi-hosted.s-row-waiting", title: "Reef" } });
         Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
         const rowAsk = asked(Niri.spawned.join(" "));
+        expect("a row's Reopen lets go the place the walk kept for its viewer, so none opens "
+            + "by itself after Joel closes this one",
+            Sessions.keptPlaces["s-row-waiting"] === undefined,
+            JSON.stringify(Sessions.keptPlaces));
         expect("a row's Reopen with no host views it by its entry's words, to wait",
             Niri.spawns.length === before + 2 && rowAsk !== null
             && rowAsk.classed === "pi-hosted.s-row-waiting"
