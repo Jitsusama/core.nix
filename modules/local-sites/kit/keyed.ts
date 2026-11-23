@@ -215,17 +215,23 @@ function inside(node: Placed | null, row: object): boolean {
   return false;
 }
 
-/** What a control does, where its markup says: where it goes, or its name. */
-const DOES = ["href", "name"] as const;
+/** A link whose href runs a script, which says nothing of where it goes. */
+const SCRIPTED = /^javascript:/iu;
 
+/**
+ * What a control does, where its markup says it of this control alone:
+ * where it goes, unless that's "#" or a script, which many links share;
+ * else its name with its value, since a form's buttons and a group's radios
+ * share a name and differ by value. Null where it says neither.
+ */
 function does(control: Placed): string | null {
-  for (const attribute of DOES) {
-    const value = control.getAttribute?.(attribute);
-    if (value !== null && value !== undefined && value !== "") {
-      return `${attribute} ${value}`;
-    }
+  const href = control.getAttribute?.("href")?.trim() ?? "";
+  if (href !== "" && href !== "#" && !SCRIPTED.test(href)) {
+    return `href ${href}`;
   }
-  return null;
+  const name = control.getAttribute?.("name") ?? "";
+  const value = control.getAttribute?.("value") ?? "";
+  return name !== "" && value !== "" ? `name ${name} ${value}` : null;
 }
 
 /**

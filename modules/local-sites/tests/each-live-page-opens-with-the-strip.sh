@@ -131,13 +131,9 @@ copied "${work}/unended"
 sed -i '\|fonts/monaspace.woff2|s|^|<!-- |' "${work}/unended/index.html"
 refused "${work}/unended" "index.html doesn't preload monaspace.woff2" \
   "a page preloading its mono only in a comment never ended"
-copied "${work}/banged"
-sed -i '\|fonts/monaspace.woff2|{s|^|<!-- |;s|$| --!>|}' "${work}/banged/index.html"
-refused "${work}/banged" "index.html doesn't preload monaspace.woff2" \
-  "a page preloading its mono only in a comment ended with --!>"
 
-# A comment HTML ends at --!>, or at once as <!-->, hides nothing after it,
-# though another comment follows the preloads.
+# A comment HTML ends at --!>, or at once as <!--> or <!--->, hides nothing
+# after it, though another comment follows the preloads.
 copied "${work}/noted"
 sed -i -e '\|fonts/fraunces.woff2|s|^|<!-- a note --!> |' \
   -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/noted/index.html"
@@ -146,6 +142,10 @@ copied "${work}/empty"
 sed -i -e '\|fonts/fraunces.woff2|s|^|<!--> |' \
   -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/empty/index.html"
 builds "${work}/empty" "a page with an empty comment, <!-->, before its preloads"
+copied "${work}/dashes"
+sed -i -e '\|fonts/fraunces.woff2|s|^|<!---> |' \
+  -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/dashes/index.html"
+builds "${work}/dashes" "a page with an empty comment, <!--->, before its preloads"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still

@@ -94,26 +94,41 @@
     return element.getAttribute("aria-label");
   };
   // A keycap the kit makes pressable sits in a line of keys that says what
-  // it does, as "? lists every key" does: the words that follow it there,
-  // up to the next keycap, are the word beside its mark. A button holding
-  // only a keycap reads the line it sits in the same way.
+  // it does, as "? lists every key" does: the words on screen that follow it
+  // there, up to the next keycap, are the word beside its mark, so long as
+  // one says more than a joining word such as "or". A comment, or words kept
+  // for a screen reader, aren't on screen. A button holding only a keycap
+  // reads the line it sits in the same way.
   const capped = (control, all) =>
     control.localName === "kbd" ||
     (control.children.length === 1 &&
       control.firstElementChild.localName === "kbd" &&
       control.firstElementChild.textContent.trim() === all.trim());
+  const joining = new Set(["a", "an", "and", "or", "the", "then", "to"]);
+  const onScreen = (element) => {
+    const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const words = [];
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      if (shown(node.parentElement) && !forEarsOnly(node.parentElement)) {
+        words.push(node.textContent);
+      }
+    }
+    return words.join(" ");
+  };
   const follows = (control) => {
     const words = [];
     for (let at = control.nextSibling; at !== null; at = at.nextSibling) {
-      const element = at.nodeType === Node.ELEMENT_NODE;
-      if (element && (at.localName === "kbd" || at.querySelector("kbd") !== null)) {
-        break;
-      }
-      if (!element || shown(at)) {
+      if (at.nodeType === Node.TEXT_NODE) {
         words.push(at.textContent);
+      } else if (at.nodeType === Node.ELEMENT_NODE) {
+        if (at.localName === "kbd" || at.querySelector("kbd") !== null) {
+          break;
+        }
+        words.push(onScreen(at));
       }
     }
-    return said(words.join(" "));
+    const line = said(words.join(" "));
+    return line.some((word) => !joining.has(word)) ? line : [];
   };
   const controls = page.querySelectorAll(
     "button, a[href], summary, [role=button], [role=link], [role=tab], [role=menuitem], " +
@@ -122,9 +137,9 @@
   // A name left empty is no name: the browser names the control by its
   // words, as if the markup gave none, so it starts with them. A mark alone
   // is named however it's named, since dropping its label leaves the mark
-  // as its name, unless it's a keycap whose line says what it does. A
-  // control showing nothing but a keycap shows that key as its word, as a
-  // keycap that is the control does.
+  // as its name, unless it's a keycap whose line says what it does, which a
+  // name it's given must start with. A control showing nothing but a keycap
+  // shows that key as its word, as a keycap that is the control does.
   const misnamed = [];
   for (const control of controls) {
     const name = labelled(control);
@@ -135,10 +150,16 @@
     const own = shows(control, false);
     const words = said(own).length === 0 ? said(all) : said(own);
     const unnamed = name === null || name.trim() === "";
-    if (words.length === 0 && !(capped(control, all) && follows(control).length > 0)) {
+    const line = words.length === 0 && capped(control, all) ? follows(control) : [];
+    if (words.length === 0 && line.length === 0) {
       misnamed.push(
         `a control showing only "${quoted(all)}"${unnamed ? "" : `, named "${quoted(name)}"`}`,
         "show its word beside the mark, its name starting with that word",
+      );
+    } else if (words.length === 0 && !(unnamed || begins(said(name), line))) {
+      misnamed.push(
+        `a keycap "${quoted(all)}" beside "${quoted(line.join(" "))}" named "${quoted(name)}"`,
+        "start its name with the words its line shows beside it, or drop the aria-label",
       );
     } else if (!(unnamed || words.length === 0 || begins(said(name), words))) {
       misnamed.push(

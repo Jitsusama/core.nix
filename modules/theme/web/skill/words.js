@@ -33,8 +33,9 @@
   // a picture:
   const pictures = ["url", "image-set", "cross-fade", "element", "paint"];
   const picture = new RegExp(String.raw`\b(?:${pictures.join("|")})\(`, "u");
-  // A ground's layer repeated so it tiles its whole box:
-  const tiles = new Set(["repeat", "round"]);
+  // A ground's layer repeated so it tiles its whole box, on each axis:
+  const tiles = new Set(["repeat", "round", "space"]);
+  const sides = { "repeat-x": "repeat no-repeat", "repeat-y": "no-repeat repeat" };
   // Each colour a gradient names, as the browser writes it back, a mix of
   // colours whole, so the colours inside it aren't read at full strength:
   const spaces = ["rgba?", "hsla?", "hwb", "lab", "lch", "oklab", "oklch", "color"];
@@ -269,33 +270,37 @@
     parts.push(list.slice(from).trim());
     return parts;
   };
-  // Whether a layer lies under every word in its box: tiled across it, or
-  // sized to it or past it, as a shimmer's twice-wide gradient is.
-  const covers = (size, repeat) => {
-    const axes =
-      { "repeat-x": ["repeat", "no-repeat"], "repeat-y": ["no-repeat", "repeat"] }[repeat] ??
-      repeat.split(" ");
-    return (
-      axes.every((axis) => tiles.has(axis)) ||
-      size === "cover" ||
-      size
-        .split(" ")
-        .every((part) => part === "auto" || (part.endsWith("%") && Number.parseFloat(part) >= 100))
-    );
+  // Whether a layer, as its size, repeat and place across and down, lies
+  // under every word in its box: on each axis tiled, or sized to the box or
+  // past it and placed to leave no strip bare. A gradient has no size of its
+  // own, so contain fills as cover does; a calc() size or place doesn't.
+  const along = (repeat, size, place, length) => {
+    const [reach, from] = [Number.parseFloat(size), Number.parseFloat(place)];
+    const reaches = size.endsWith("%") ? reach >= 100 : size.endsWith("px") && reach >= length;
+    const placed = place.endsWith("%") ? from >= 0 && from <= 100 : place === "0px";
+    return tiles.has(repeat) || ((size === "auto" || reaches) && placed);
   };
-  // Where a stop sits, as the percentages written after its colour, up to
-  // the comma or bracket ending it.
+  const covers = ([size, repeat, x, y], box) => {
+    const [across, down = across] = (sides[repeat] ?? repeat).split(" ");
+    const whole = size === "cover" || size === "contain";
+    const [wide, tall = "auto"] = whole ? ["100%", "100%"] : size.split(" ");
+    return along(across, wide, x, box.width) && along(down, tall, y, box.height);
+  };
+  const placing = ["Size", "Repeat", "PositionX", "PositionY"].map((part) => `background${part}`);
+  // Where a stop sits, as the percentages or pixels written after its
+  // colour, up to the comma or bracket ending it, each kept with its unit.
   const placesOf = (after) => {
     const ends = [after.indexOf(","), after.indexOf(")")].filter((at) => at >= 0);
     return after
       .slice(0, ends.length === 0 ? after.length : Math.min(...ends))
       .trim()
       .split(" ")
-      .filter((word) => word.endsWith("%"))
-      .map((word) => Number.parseFloat(word));
+      .filter((word) => word.endsWith("%") || word.endsWith("px"))
+      .map((word) => ({ at: Number.parseFloat(word), unit: word.endsWith("%") ? "%" : "px" }));
   };
   // A gradient's colours: each stop, and eighths between each pair it
-  // blends, but not across a hard stop, which starts where the last ends.
+  // blends, but not across a hard stop, which starts where the last ends,
+  // in the same unit, or is placed nowhere after one at 100%.
   const gradient = (layer, style) => {
     const stops = [];
     for (const found of layer.matchAll(colourWords)) {
@@ -314,7 +319,10 @@
     for (let at = 1; at < stops.length; at += 1) {
       const [before, after] = [stops[at - 1], stops[at]];
       const hard =
-        before.last !== undefined && after.first !== undefined && after.first <= before.last;
+        before.last !== undefined &&
+        (after.first === undefined
+          ? before.last.unit === "%" && before.last.at >= 100
+          : after.first.unit === before.last.unit && after.first.at <= before.last.at);
       for (let eighth = hard ? 8 : 1; eighth <= 8; eighth += 1) {
         colours.push(between(before.colour, after.colour, eighth / 8));
       }
@@ -322,32 +330,31 @@
     return colours;
   };
   // The colours a box may paint under words: its own colour with each layer
-  // over it, the last listed lowest, but a layer that doesn't cover its box,
-  // a line or a mark, is drawn beside the words; null for a picture.
-  const paints = (style) => {
+  // over it, the last listed lowest. A layer that may not cover its box, a
+  // line or a mark, keeps the colours under it beside its own, since it may
+  // lie under some words and not others. Null for a picture.
+  const paints = (style, box) => {
     const image = style.backgroundImage;
     let colours = [rgba(style.backgroundColor)];
-    if (image === "none") {
-      return colours;
-    }
     if (picture.test(image)) {
       return null;
     }
     const layers = layered(image);
-    const sizes = layered(style.backgroundSize);
-    const repeats = layered(style.backgroundRepeat);
+    const lists = placing.map((name) => layered(style[name]));
     for (let at = layers.length - 1; at >= 0 && colours.length <= ways; at -= 1) {
+      if (layers[at] === "none") {
+        continue;
+      }
       const own = gradient(layers[at], style);
       if (own === null) {
         return null;
       }
-      if (covers(sizes[at % sizes.length], repeats[at % repeats.length])) {
-        const under = colours;
-        colours = [];
-        for (const below of under) {
-          for (const paint of own) {
-            colours.push(over(paint, below));
-          }
+      const under = colours;
+      const layer = lists.map((list) => list[at % list.length]);
+      colours = covers(layer, box) ? [] : [...under];
+      for (const below of under) {
+        for (const paint of own) {
+          colours.push(over(paint, below));
         }
       }
     }
@@ -366,17 +373,20 @@
   // when it sits on a picture, NaN when its paint can't be worked out, and
   // undefined when it has no ink to read.
   const worst = (element, pseudo, colour) => {
+    // Each box from the page down, its style and its size, which says
+    // whether a layer it paints reaches across it.
     const styles = [];
     for (let at = element.parentElement; at !== null; at = at.parentElement) {
-      styles.unshift(getComputedStyle(at));
+      styles.unshift({ style: getComputedStyle(at), box: at.getBoundingClientRect() });
     }
-    // The box the words are drawn in: the element, or what a style writes
-    // into it, last in the chain.
+    // The box the words are drawn in, last: the element, or what a style
+    // writes into it, measured as the element, since it has no box of its own.
     const own = pseudo === null ? getComputedStyle(element) : getComputedStyle(element, pseudo);
+    const drawn = element.getBoundingClientRect();
     if (pseudo !== null) {
-      styles.push(getComputedStyle(element));
+      styles.push({ style: getComputedStyle(element), box: drawn });
     }
-    styles.push(own);
+    styles.push({ style: own, box: drawn });
     // A stroke draws the glyphs' edges in a colour of its own.
     if (Number.parseFloat(own.webkitTextStrokeWidth || "0") > 0) {
       return Number.NaN;
@@ -384,8 +394,12 @@
     const written = rgba(colour);
     let inks = [written];
     const boxes = [];
-    for (const style of styles) {
-      const choices = paints(style);
+    for (const { style, box: size } of styles) {
+      // A box drawn as its children alone paints nothing of its own.
+      if (style.display === "contents") {
+        continue;
+      }
+      const choices = paints(style, size);
       if (choices === null) {
         return null;
       }
@@ -481,6 +495,5 @@
         "contrast went unmeasured: paint them and their grounds plainly",
     );
   }
-
   return missing;
 })()
