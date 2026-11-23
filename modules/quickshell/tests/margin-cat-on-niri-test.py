@@ -1250,6 +1250,47 @@ def rides_back(place: Json | None) -> TypeGuard[Json]:
     return move.get("way") == -1 and move.get("beats") == ["rides"]
 
 
+def back_from_where_it_got_to(was: Json, after: Json, apart: float) -> bool:
+    """Say whether the second move's first place is where the first got to, a gap below.
+
+    Turned back up, the workspace it was on lies a gap below the one sliding back, so where it
+    got to is drawn `apart` lower, off by as far as niri's slide still has its ground
+    (`carried`). That holds for the ride, with nowhere yet to sit, and for the way across to a
+    seat, which sets off from that same place (MarginCatStacked.js's moves() and crosses()):
+    a builder's run at 56b7a7b8 began its way across with a fall, laid 2 px off the gap.
+    """
+    move = after.get("move") or {}
+    near = STEPS_ON * was["size"]
+    laid = after["y"] - move.get("carried", 0) - was["y"]
+    return (
+        move.get("way") == -1 and abs(after["x"] - was["x"]) <= near and abs(laid - apart) <= near
+    )
+
+
+def test_the_way_back_sets_off_from_where_it_got_to_a_gap_below() -> None:
+    """A ride or a way across, laid a gap below where the cat got to, sets off from there."""
+    was = {"x": 636, "y": -5, "size": 8}
+
+    def back(x: float, y: float, beats: list[str], way: int = -1) -> Json:
+        return {"x": x, "y": y, "move": {"way": way, "beats": beats, "carried": -1.6}}
+
+    assert back_from_where_it_got_to(was, back(636, 849.38, ["falls", "unseen"]), 854), (
+        "a way across that set off where it got to was refused"
+    )
+    assert back_from_where_it_got_to(was, back(636, 847.4, ["rides"]), 854), (
+        "a ride that set off where it got to was refused"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 700, ["falls"]), 854), (
+        "a way across set off well short of the gap was taken"
+    )
+    assert not back_from_where_it_got_to(was, back(400, 849.38, ["falls"]), 854), (
+        "a way across set off from elsewhere along was taken"
+    )
+    assert not back_from_where_it_got_to(was, back(636, 849.38, ["falls"], way=1), 854), (
+        "a move down was taken as the way back up"
+    )
+
+
 def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> None:
     """A move between workspaces as the last still holds moves it on from where it got to.
 
@@ -1300,22 +1341,15 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # slide still has its ground. Peeking 3 of its 8 rows down from the gap at y -5, it was
     # next said at 816 and 845 a millisecond into that ride (the net, 2026-11-22). So on the
     # ride, a place a step from the gap below where it got to, off by its ground, is where it
-    # got to too. The second move is always up here, so only that way is held to it.
-    # `carried` is the cat's own word, so this holds only where the ride began; that the rest
-    # of the ride keeps to its way is held below, and how far its ground is off over niri's
-    # slide is proven frame by frame in Qt's engine (margin-cat-one-screen.qml).
-    move = after.get("move") or {}
+    # got to too, and so on a way across to a seat, which sets off from there. The second move
+    # is always up here, so only that way is held to it. `carried` is the cat's own word, so
+    # this holds only where the move began; that the rest of a ride keeps to its way is held
+    # below, and how far its ground is off over niri's slide is proven frame by frame in Qt's
+    # engine (margin-cat-one-screen.qml).
     scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
     apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
-    carried = move.get("carried", 0)
-    laid = after["y"] - carried - was["y"]
-    rode = (
-        move.get("way") == -1
-        and move.get("beats") == ["rides"]
-        and abs(after["x"] - was["x"]) <= near
-        and abs(laid - apart) <= near
-    )
-    assert all(off) or gone <= near or rode, f"the second move put it at {after}, from {was}"
+    back = back_from_where_it_got_to(was, after, apart)
+    assert all(off) or gone <= near or back, f"the second move put it at {after}, from {was}"
     # The ride back, from its first place said after the turn, past any report between the
     # two moves that says no move, to its last. Each place it says lies on the way it was laid,
     # off it by its ground alone, within a pixel of where the place is drawn; and its ground
