@@ -27,36 +27,33 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// machine's read nothing for the head, so a mirror that's broken or slow
 /// never holds back a head reviewed here.
 ///
-/// A head that only pins newer commits of repos our rounds already review
-/// needs none of its own (`pins.rs`), and is told so, or why it needs one
-/// after all.
+/// A head no round read that only pins newer commits of repos our rounds
+/// already review needs none of its own (`pins.rs`), and is told so, or
+/// why it needs one after all. It's asked after only once the rounds
+/// found nothing, for the same reason as the mirrors: its asks go to
+/// GitHub and Nix, which may be slow.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    read_in_repo(Path::new("."), commit, main, files, &pins::Live)
+    read_in_repo(
+        Path::new("."),
+        (commit, main, files),
+        || seen::witnessed(&seen::rounds_folder()),
+        || seen::mirrored(&seen::mirrors_folder()),
+        &pins::Live,
+    )
 }
 
-/// [`read_by_a_round`] in the repo at `repo`, asking `asks` about pins.
+/// [`read_by_a_round`] of `head`, its commit, main and files, in the repo
+/// at `repo`, with this machine's `rounds`, the `mirrors`, and `asks` to
+/// put a pin's questions to.
 fn read_in_repo(
     repo: &Path,
-    commit: &str,
-    main: &str,
-    files: &[String],
+    (commit, main, files): (&str, &str, &[String]),
+    rounds: impl FnOnce() -> Result<HashSet<seen::Read>, String>,
+    mirrors: impl FnOnce() -> seen::Mirrored,
     asks: &impl pins::Asks,
 ) -> Result<(), String> {
-    match pins::ours_alone(repo, commit, main, asks) {
-        Some(pins::Pinned::Alone(said)) => {
-            eprintln!("merge-net: {said}");
-            return Ok(());
-        }
-        Some(pins::Pinned::Declined(why)) => eprintln!(
-            "merge-net: {} moves only flake.lock, but {why}, so it needs a round",
-            short(commit)
-        ),
-        None => {}
-    }
-    here_or_mirrored(
-        seen::witnessed(&seen::rounds_folder())?,
-        || seen::mirrored(&seen::mirrors_folder()),
-        |rounds| {
+    let read = rounds().and_then(|rounds| {
+        here_or_mirrored(rounds, mirrors, |rounds| {
             read_in(
                 commit,
                 rounds,
@@ -64,8 +61,22 @@ fn read_in_repo(
                 |witnessed| candidates(commit, main, files, witnessed).unwrap_or_default(),
                 |read| same_patch(repo, commit, main, read, read_patch_id),
             )
-        },
-    )
+        })
+    });
+    let Err(unread) = read else {
+        return Ok(());
+    };
+    match pins::ours_alone(repo, commit, main, asks) {
+        Some(pins::Pinned::Alone(said)) => {
+            eprintln!("merge-net: {said}");
+            Ok(())
+        }
+        Some(pins::Pinned::Declined(why)) => Err(format!(
+            "{unread}; {} moves only flake.lock, but {why}",
+            short(commit)
+        )),
+        None => Err(unread),
+    }
 }
 
 /// Whether `ask` finds the head read among this machine's `rounds`, or,
@@ -224,15 +235,70 @@ mod tests {
     use super::*;
     use crate::tests::{commit, git_in};
 
-    // A pin the pass vouches for is let through before any round is looked
-    // for, so a head that's only a pin of ours needs no rounds at all.
+    /// What the review gate says of `head` in `repo`, given the rounds of
+    /// `read` and no mirror, asking `asks` about a pin.
+    fn gated(
+        repo: &Path,
+        head: &str,
+        read: &[&str],
+        asks: &pins::tests::Fake,
+    ) -> Result<(), String> {
+        let rounds: HashSet<seen::Read> = read.iter().map(|one| round(one, None)).collect();
+        read_in_repo(
+            repo,
+            (head, "main", &[]),
+            || Ok(rounds),
+            || mirror(&[], &[], &[]),
+            asks,
+        )
+    }
+
+    // A pin the pass vouches for needs no round at all.
     #[test]
     fn a_pin_of_ours_passes_the_review_gate_without_a_round() {
         let (repo, head) = pins::tests::pinned_to_b("gate", None);
         assert_eq!(
-            read_in_repo(&repo, &head, "main", &[], &pins::tests::Fake::vouching()),
+            gated(&repo, &head, &[], &pins::tests::Fake::vouching()),
             Ok(()),
             "a lock-only pin of a merged mycelium commit was refused at the review gate"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // The rounds are asked first, so a head a round read passes without
+    // GitHub or Nix asked, and only an unread one is asked about as a pin.
+    #[test]
+    fn a_pin_a_round_read_passes_asking_nothing_and_a_turned_down_one_is_refused() {
+        let (repo, head) = pins::tests::pinned_to_b("gate-declined", None);
+        let unmerged = || {
+            let mut asks = pins::tests::Fake::vouching();
+            asks.pulls.clear();
+            asks
+        };
+        let read = unmerged();
+        assert_eq!(
+            gated(&repo, &head, &[&head], &read),
+            Ok(()),
+            "a pin a round read was refused"
+        );
+        assert!(
+            read.asked.borrow().is_empty(),
+            "a pin a round read was asked after"
+        );
+        let refused = gated(&repo, &head, &[], &unmerged());
+        assert!(
+            refused
+                .as_ref()
+                .is_err_and(|why| why.contains(&seen::unread(short(&head)))
+                    && why.contains("moves only flake.lock, but no pull request")),
+            "an unread pin turned down wasn't refused, saying why: {refused:?}"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+        let (repo, head) = pins::tests::pinned_to_b("gate-beside", Some("module.nix"));
+        assert_eq!(
+            gated(&repo, &head, &[], &pins::tests::Fake::vouching()),
+            Err(seen::unread(short(&head))),
+            "an unread head beside a pin wasn't refused as unread"
         );
         fs::remove_dir_all(&repo).unwrap();
     }
