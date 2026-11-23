@@ -32,8 +32,9 @@ rustPlatform.buildRustPackage rec {
       ../daemon-client/src
       ../daemon-serve/Cargo.toml
       ../daemon-serve/src
-      # The address cases three copies of the rule are held to, read by the
-      # tests (src/notice.rs).
+      # The address cases three copies of the rule are held to, and their
+      # reader, which the tests take in (src/notice.rs).
+      ../mycelium/site/tests/addresses.rs
       ../mycelium/site/tests/addresses.txt
       ../programs/Cargo.toml
       ../programs/src

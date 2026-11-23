@@ -37,8 +37,10 @@ each test reading it, and each reader has a case seeing it refuse them.
 Three copies of the rule read it in their tests, so none drifts from the
 others unseen: the map's `isAddress` (`../sprout.ts`), the notices daemon's
 `address_shaped` (`modules/notices/src/notice.rs`) and mycelium-link's
-`addressed` (`modules/quickshell/mycelium-link/src/main.rs`). It holds the
-bare rule alone, never the `@machine` and `#anchor` a whole cell link adds.
+`addressed` (`modules/quickshell/mycelium-link/src/main.rs`). The two Rust
+copies share one reader of it, `addresses.rs` beside it, which their tests
+take in with `include!`. It holds the bare rule alone, never the `@machine`
+and `#anchor` a whole cell link adds.
 
 Other copies don't read it yet. A grep under `modules/` for the `[A-Z0-9]`
 patterns and `is_ascii_uppercase` found these, so there may be more:
