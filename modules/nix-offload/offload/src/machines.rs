@@ -1324,7 +1324,10 @@ mod tests {
             asked.set(asked.get() + 1);
             answer
         };
-        assert!(reached_lately(Some(folder.path()), "mac", || ask(true)));
+        assert!(
+            reached_lately(Some(folder.path()), "mac", || ask(true)),
+            "a machine ssh reached wasn't said to be reached"
+        );
         assert!(
             reached_lately(Some(folder.path()), "mac", || ask(false)),
             "what ssh said a moment ago wasn't kept"
@@ -1471,7 +1474,7 @@ mod tests {
         // one every other test binds may be taken by one of them at once.
         let listening = TcpListener::bind("127.0.0.3:0").expect("a port");
         let address = listening.local_addr().expect("its address").to_string();
-        assert!(answers(&address));
+        assert!(answers(&address), "a builder listening didn't answer");
         drop(listening);
         // A child another test forks holds the listener open until it
         // execs, which beside the proofs' tests took long enough to be
@@ -1480,8 +1483,14 @@ mod tests {
         while answers(&address) && std::time::Instant::now() < ending {
             std::thread::sleep(Duration::from_millis(20));
         }
-        assert!(!answers(&address));
-        assert!(!answers("not an address"));
+        assert!(
+            !answers(&address),
+            "a builder answered after it stopped listening"
+        );
+        assert!(
+            !answers("not an address"),
+            "something that isn't an address answered"
+        );
     }
 
     #[test]
@@ -2169,12 +2178,10 @@ mod tests {
         );
         machines.show(None);
         assert_eq!(read(&alone), format!("{line}\n"));
-        assert!(left_out(
-            &mut machines.kept,
-            line,
-            &nix,
-            began + proof::EVERY
-        ));
+        assert!(
+            left_out(&mut machines.kept, line, &nix, began + proof::EVERY),
+            "a failure a proof's while after the first wasn't left out"
+        );
         machines.show(None);
         assert_eq!(read(&alone), "");
         assert_eq!(read(&every), "");
@@ -2182,12 +2189,10 @@ mod tests {
         assert_eq!(health[0].builder, "work");
         assert_eq!(health[0].state(), State::Dropped);
         fs::write(&status, "0").expect("write");
-        assert!(!left_out(
-            &mut machines.kept,
-            line,
-            &nix,
-            began + proof::EVERY * 2
-        ));
+        assert!(
+            !left_out(&mut machines.kept, line, &nix, began + proof::EVERY * 2),
+            "a builder whose proof passed again stayed left out"
+        );
         machines.show(None);
         assert_eq!(read(&alone), format!("{line}\n"), "back once one passes");
         drop(listening);
