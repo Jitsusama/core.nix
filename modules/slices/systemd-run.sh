@@ -51,6 +51,14 @@
 # last Slice= a unit is given, so an added --slice-inherit put the units
 # of a night's runs back in agents.slice, made for jobs.slice that way.
 #
+# Only systemd-run's own options are read, as its parser reads them: up to
+# `--` or the command, each option's value skipped. The words after belong
+# to the command, so `curl -H` or `grep -H` there is no other host, and a
+# command's own `--user`, as in `pip install --user`, is no user manager's
+# call. Read as options, the first passed such a call through unsliced,
+# to land among Joel's apps, and the second gave a system call a --slice
+# from jobs-work.slice.
+#
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand. It answers --help alone; -h, or --help with anything beside it,
 # reaches systemd's own, since that's where its flags are.
@@ -69,7 +77,7 @@ systemd-run  run a unit, an agent's kept in its own slice
 EXAMPLES
   systemd-run --user --scope true  in the caller's slice, or
                                    jobs-work.slice from an
-                                   agent's place in jobs
+                                   agent's place
   systemd-run -h                   systemd's own help
 
 EXIT
@@ -77,19 +85,33 @@ EXIT
 EOF
   exit 0
 fi
+# The options systemd 262's systemd-run takes a value for, which may come
+# as the next word. --slice, --host, --machine and --capsule pass the call
+# through before their value is reached.
+valued='^(-[HMCupE]|--(host|machine|capsule|unit|property|description|slice|'
+valued+='expand-environment|service-type|uid|gid|nice|working-directory|'
+valued+='root-directory|setenv|output|json|job-mode|background|path-property|'
+valued+='socket-property|timer-property|on-active|on-boot|on-startup|'
+valued+='on-unit-active|on-unit-inactive|on-calendar))$'
 user=false
 before=""
 for arg in "$@"; do
   if [[ "${before}" == -p || "${before}" == --property ]] && [[ "${arg}" == Slice=* ]]; then
     exec "${real}" "$@"
   fi
+  if [[ "${before}" =~ ${valued} ]]; then
+    before=""
+    continue
+  fi
   case "${arg}" in
     --slice | --slice=* | --slice-inherit | -pSlice=* | --property=Slice=* | -M* | --machine* | \
-      -H* | --host*)
+      -H* | --host* | -C* | --capsule*)
       exec "${real}" "$@"
       ;;
     --user) user=true ;;
-    *) ;;
+    --) break ;;
+    -*) ;;
+    *) break ;;
   esac
   before=${arg}
 done

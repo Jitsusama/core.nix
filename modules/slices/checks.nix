@@ -539,8 +539,10 @@
   # systemd-run, in front of a stand-in that says what it was given, adds
   # --slice-inherit for an agent's --user call alone: not Joel's terminal
   # or launcher, nor a call naming a slice, nor one to the system manager.
-  # One from agents' places in jobs.slice, jobs.service and the spawners'
-  # scopes, is given jobs-work.slice instead.
+  # One from agents' places, jobs.service and the spawners' scopes in
+  # jobs.slice and pi's host and conversation units in agents.slice, is
+  # given jobs-work.slice instead. Only systemd-run's own options are read,
+  # never the command's.
   an-agents-run-stays-in-its-slice =
     let
       run = pkgs.callPackage ./systemd-run.nix {

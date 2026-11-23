@@ -1,6 +1,8 @@
 # shellcheck shell=bash
 # Proves systemd-run.sh adds --slice-inherit for an agent's --user call
-# alone, and jobs-work.slice for one from directly inside jobs. Usage:
+# alone, and jobs-work.slice for one from agents' own places: jobs.service
+# and the spawner scopes directly inside jobs, and pi's host and
+# conversation units in agents.slice. Usage:
 # systemd-run-test <wrapper>, where the wrapper was built in front of a
 # stand-in that echoes what it's given and reads its caller's cgroup from
 # ./cgroup.
@@ -32,12 +34,40 @@ says() {
 for place in jobs.slice/jobs.service jobs.slice/jobs.service/sub \
   jobs.slice/jobs.service/x.slice/y jobs.slice/pi-spawner-9-a1.scope \
   jobs.slice/pi-spawner-9-a1.scope/sub agents.slice/pi-host-work-attended.service \
+  agents.slice/pi-host-work-attended.service/sub \
   agents.slice/pi-conversation-work-background@01a1f76b-7f2d.service; do
   says "${manager}/${place}" "--slice=jobs-work.slice --user --scope true" \
     --user --scope true
-  # An explicit --slice-inherit is the caller's own choice, and still inherits.
-  says "${manager}/${place}" "--user --slice-inherit true" --user --slice-inherit true
 done
+# An explicit --slice-inherit is the caller's own choice, and still inherits;
+# so does a slice named, as the kitty windows a host opens name agents.slice.
+host="${manager}/agents.slice/pi-host-work-attended.service"
+says "${host}" "--user --slice-inherit true" --user --slice-inherit true
+says "${host}" "--user --scope --slice=agents.slice kitty" \
+  --user --scope --slice=agents.slice kitty
+# Beside pi's units in agents.slice, the rest keep inheriting: the windows'
+# kitty, the node, the scopes it holds sessions in, a near name or another
+# kind of unit, and a pi unit's name further down, inside another's scope.
+for place in agents.slice/sessions-kitty.service agents.slice/mycelium.service \
+  agents.slice/mycelium-pi-3f2a.scope agents.slice/pi-hostess.service \
+  agents.slice/pi-host-a.scope agents.slice/kitty-1-3.scope/agents.slice/pi-host-a.service \
+  background.slice/pi-host-down@x.service; do
+  says "${manager}/${place}" "--slice-inherit --user --scope true" --user --scope true
+done
+# Only systemd-run's own options are read: the command's words after them,
+# or after --, name no host and no manager, and an option's value is no
+# option of systemd-run's.
+says "${host}" "--slice=jobs-work.slice --user --scope curl -H X:y" \
+  --user --scope curl -H X:y
+says "${host}" "--slice=jobs-work.slice --user -- grep --slice=x" --user -- grep --slice=x
+says "${manager}/agents.slice/kitty-1-3.scope" "--slice-inherit --user ssh -M h" \
+  --user ssh -M h
+says "${host}" "--scope pip install --user x" --scope pip install --user x
+says "${host}" "--slice=jobs-work.slice --user --description --host true" \
+  --user --description --host true
+says "${host}" "--slice=jobs-work.slice -u --user --user true" -u --user --user true
+says "${host}" "-u --user true" -u --user true
+says "${host}" "--user -C c true" --user -C c true
 # One from a slice inside jobs keeps that slice: Joel's terminal work and
 # timed work stay free, and pi's sorted work stays where it was sorted. So
 # do Joel's own services sitting in jobs.slice, and a place that only names
