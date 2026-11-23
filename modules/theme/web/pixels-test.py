@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 
 PROBE = (Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text()
 PHONE: ViewportSize = {"width": 390, "height": 844}
+ORIGIN = "http://pixels.test/"
 # The kit's own text-for-the-ear rule, so a case can hide words as a page does.
 STYLE = """
 body { margin: 0; font: 16px serif; }
@@ -41,8 +42,14 @@ def tab(browser: Browser) -> Iterator[Page]:
 
 
 def probed(tab: Page, body: str, settle_ms: int = 0) -> list[str]:
-    """Set `body` as the page, let it settle `settle_ms`, and give what the probe answers."""
-    tab.set_content(f"<!doctype html><style>{STYLE}</style><body>{body}</body>")
+    """Open `body` as a page, let it settle `settle_ms`, and give what the probe answers.
+
+    The page comes by a real navigation, not `set_content`, whose written
+    document keeps no layout shifts in its timeline as a loaded page does.
+    """
+    page = f"<!doctype html><style>{STYLE}</style><body>{body}</body>"
+    tab.route(ORIGIN, lambda route: route.fulfill(content_type="text/html", body=page))
+    tab.goto(ORIGIN)
     if settle_ms:
         tab.wait_for_timeout(settle_ms)
     found = tab.evaluate(PROBE)
@@ -129,7 +136,8 @@ def test_a_drawings_scale_sets_its_labels_size(tab: Page) -> None:
 SHIFTING = """
 <main><div id="above"></div><p>Each cell, and what it works on.</p></main>
 <script>
-  setTimeout(() => {{ document.getElementById("above").style.height = "{height}"; }}, 100);
+  const grow = () => {{ document.getElementById("above").style.height = "{height}"; }};
+  requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(grow, 100)));
 </script>
 """
 

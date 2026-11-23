@@ -137,7 +137,9 @@
     const size = onScreen(element);
     const enlarges = element.closest("svg [data-enlarges], svg[data-enlarges]") !== null;
     const bar = enlarges ? least : floor;
-    if (size < bar - 0.25 && (smallest === null || size - bar < smallest.short)) {
+    // A twentieth of a pixel covers the float a scaled box's measure carries,
+    // and no more: 11.76 px, a 15 px root's least step, is short by a quarter.
+    if (size < bar - 0.05 && (smallest === null || size - bar < smallest.short)) {
       smallest = { element, size, enlarges, short: size - bar };
     }
   }
