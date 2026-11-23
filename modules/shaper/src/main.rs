@@ -47,6 +47,7 @@ mod record;
 mod reflectors;
 mod replay;
 mod restart;
+mod room;
 #[cfg(test)]
 mod sim;
 mod stamp;
@@ -366,6 +367,8 @@ struct Shaped {
     told_at: Option<Instant>,
     /// How what the link receives comes in.
     download: Download,
+    /// Whether its download is held under the line for a call.
+    room: room::Room,
     /// The bytes the upload's CAKE had sent at its last good read, and at
     /// the last good read before the controller was last told, each with
     /// when it was read: what crossed the line, apart from the home
@@ -693,6 +696,7 @@ fn start(
         dropped: 0,
         told_at: None,
         download: Download::Turned,
+        room: room::Room::default(),
         sent_read: None,
         sent_told: None,
         lanes,
@@ -1245,7 +1249,8 @@ fn run(options: &Options) -> Result<(), Failure> {
         }
         hear_echoes(&echoes, &mut shaped);
         let (house, steady) = most.house(Instant::now());
-        step_links(&mut shaped, &mut live, (&most.written, &house, steady));
+        let ceilings = (&most.written, &house, steady);
+        step_links(&mut shaped, &mut live, ceilings, (call.on, &most.lines));
         hold_followers(&mut shaped);
         let heard = live.heard().map(|(link, mut h)| {
             h.up_tins_kbit = up_tins.kbit();
@@ -1710,11 +1715,15 @@ fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
 }
 
 /// One step of the controller, `live`, over every uplink that leads its
-/// router: a follower takes its leader's rates after.
+/// router: a follower takes its leader's rates after. While a call is on,
+/// `calling`, a link whose network declares its download's line in
+/// `lines` is given the call's room under it (src/room.rs), under
+/// whatever the controller asks.
 fn step_links(
     shaped: &mut BTreeMap<String, Shaped>,
     live: &mut live::Live,
     (ceilings, house, steady): (&networks::Ceilings, &HouseHolds, networks::Ceilings),
+    (calling, lines): (bool, &networks::Lines),
 ) {
     // Every link's upload CAKE is read, followers' too, for whose queue
     // each is when the controller is next told (`Shaped::ours`).
@@ -1738,6 +1747,10 @@ fn step_links(
     let why = live.why(now);
     let share = live.vpn_share(now);
     let agents = live.agents_share(now);
+    // What the link the recorder follows carried down its last second.
+    let carried = live
+        .heard()
+        .map(|(link, h)| (link.to_string(), h.down_kbit));
     for (name, s) in shaped.iter_mut() {
         let held = link.as_deref() == Some(name.as_str());
         // The VPN is held only while the upload is: a recorder gone
@@ -1756,11 +1769,20 @@ fn step_links(
             ceilings.get(&s.network).copied().map(rate::whole),
             house.get(&s.network).map(|&(_, most)| most),
         );
-        if held {
-            hold(s, led(rates, true, most), &why);
-        } else {
-            hold(s, led(rates, false, most), &why::Judged::Nothing);
+        let its = carried.as_ref().filter(|(link, _)| link == name);
+        let declared = lines.get(&s.network).copied();
+        let (room, said) = s
+            .room
+            .step(name, calling, its.map(|&(_, kbit)| kbit), declared);
+        if let Some(said) = said {
+            eprintln!("{said}");
         }
+        let rates = led(rates, held, most);
+        let rates = replay::Rates {
+            down: lower(rates.down, room),
+            ..rates
+        };
+        hold(s, rates, if held { &why } else { &why::Judged::Nothing });
     }
 }
 
@@ -1812,6 +1834,9 @@ struct NetworkCeilings {
     /// says only when that changes.
     held: bool,
     steady: house::Steady,
+    /// Each network's download line, under which a call is given room
+    /// (src/room.rs).
+    lines: networks::Lines,
 }
 
 impl NetworkCeilings {
@@ -1832,6 +1857,7 @@ impl NetworkCeilings {
             houses,
             held: false,
             steady: house::Steady::default(),
+            lines: file.map(networks::lines).unwrap_or_default(),
         }
     }
 
@@ -1868,6 +1894,7 @@ fn traced(
     let network = its.map(|s| s.network.clone());
     let mut line = second.held(its.map_or(trace::Held::WHOLE, Shaped::held));
     house_traced(&mut line, network.as_deref(), house);
+    line.room = its.and_then(|s| s.room.held());
     line
 }
 

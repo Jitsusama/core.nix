@@ -111,6 +111,9 @@ HEARING = dt.timedelta(seconds=10)
 STANDS = 5
 # The file the client's stand-in for a-call-is-on reads: a call is on while it's there.
 CALL_FLAG = "/run/call-is-on"
+# What the shaper's journal says as it holds the download for a call: nine tenths of the
+# line's declared 90 Mbit/s (ROOM in src/room.rs).
+ROOM_HELD = "held to 81000 kbit/s, where its own queue puts the call first"
 # What systemctl exits with when it's asked to stop a unit that isn't loaded.
 NOT_LOADED = 5
 
@@ -485,13 +488,19 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
 
 
 def under_load(
-    rig: Rig, *, shaped: bool, app_uploads: int = 0, names: list[str] | None = None
+    rig: Rig,
+    *,
+    shaped: bool,
+    app_uploads: int = 0,
+    names: list[str] | None = None,
+    room: bool = False,
 ) -> dict[str, dict[str, int]]:
     """Hold the calls named, both unless named, while the jobs and an app fill the connection.
 
     What each call lost each way before its receiving socket is given, as the machines on its
     path counted it, and where each was met is printed. With app_uploads, the app uploads too,
-    filling Joel's lane rather than the agents'.
+    filling Joel's lane rather than the agents'. With room, the calls wait for the shaper to
+    hold the download under the line for a call that's on.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
@@ -531,6 +540,16 @@ def under_load(
                     now=rig.holding(),
                     last_try=last_try,
                     otherwise="the controller never held the link",
+                ),
+                timeout=FILLING,
+            )
+        if room:
+            retry(
+                lambda last_try: met(
+                    rig,
+                    now=ROOM_HELD in said(rig.client, "journalctl -u shaper -o cat --no-pager"),
+                    last_try=last_try,
+                    otherwise="the download was never held under the line for the call",
                 ),
                 timeout=FILLING,
             )
@@ -639,15 +658,24 @@ def test_a_call_loses_little(rig: Rig) -> None:
     The bar counts what was lost from the server to the client's input hook; what overflows
     the client's socket, which a starved builder causes, is only printed.
 
-    While the controller sets no download limit, downloads go straight in, past the IFB's
-    CAKE: at the link's ceiling it dropped four in five of the best-effort call's datagrams.
-    Once it limits the download, CAKE drops a few of the calls' datagrams as it brings the
-    queue home.
+    A call is on, as Joel's would be, so the shaper holds the download under the line's
+    declared 90 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
+    Left straight in, the download queued in the router's fq_codel, and on 23 November the
+    media call lost 332 of 5,213 datagrams there, as one shares a bulk flow's queue about
+    one run in fifty.
     """
     ifb = rig.ifb()
     before = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
-    lost = under_load(rig, shaped=True)
+    try:
+        rig.client.succeed(f"touch {CALL_FLAG}")
+        lost = under_load(rig, shaped=True, room=True)
+    finally:
+        # A call left on would put the next tests' calls in the video tin by the flag alone.
+        rig.client.succeed(f"rm -f {CALL_FLAG}")
     after = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat | grep -q 'no longer held for a call'", timeout=HEARING
+    )
     dropped = {
         dev: dict(
             zip(TINS, (a - b for a, b in zip(after[dev], before[dev], strict=True)), strict=True)

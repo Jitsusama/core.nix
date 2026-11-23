@@ -138,9 +138,31 @@ in
     type = lib.types.attrsOf (
       lib.types.submodule {
         options.up = lib.mkOption {
-          type = lib.types.ints.positive;
+          type = lib.types.nullOr lib.types.ints.positive;
+          default = null;
           example = 12000;
-          description = "What the network's line carries up, in kbit/s.";
+          description = ''
+            What the network's line carries up, in kbit/s, or null where
+            it isn't known, which leaves the upload unguarded there.
+          '';
+        };
+        options.down = lib.mkOption {
+          # Under 6 Mb/s a value is most likely written in Mb/s, and a
+          # call's room under one that low would fall to the download's
+          # floor.
+          type = lib.types.nullOr (lib.types.ints.between 6000 10000000);
+          default = null;
+          example = 90000;
+          description = ''
+            What the network's line carries down, in kbit/s, or null where
+            it isn't known. While a call is on and the download carries
+            nine tenths of it, the download is held there, under the
+            router's queue, so it queues in this machine's CAKE, which puts
+            the call first, rather than in a router's flow queues, where a
+            call that shares one with a bulk download loses what it loses.
+            The controller may hold it lower, and the hold goes when the
+            call ends.
+          '';
         };
         options.most = lib.mkOption {
           # Under 4 Mb/s a value is most likely written in Mb/s, and one

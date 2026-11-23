@@ -70,6 +70,12 @@ pub struct Line {
     pub house_sent: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub house_most: Option<u64>,
+    /// What the download was held to for a call that second, in kbit/s,
+    /// while one was (src/room.rs): a hold of the shaper's own, under the
+    /// line, apart from the controller's `down`, so a replay doesn't read
+    /// it as a cut the controller judged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub room: Option<u64>,
     /// The kind of reason the upload held where it did (`Why::kind`), and
     /// the shares the VPN's own queue and agents' lane were held to on the
     /// link, as main put them there, down to a hundredth, while under one:
@@ -101,6 +107,7 @@ impl Line {
             ceiling: heard.ceiling.map(crate::rate::whole),
             house_sent: None,
             house_most: None,
+            room: None,
             why: None,
             vpn_share: None,
             agents_share: None,
