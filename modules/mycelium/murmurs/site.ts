@@ -47,8 +47,14 @@ const crest = sky.innerHTML;
 let murmurs: readonly Murmur[] = [];
 let unread: readonly string[] = [];
 let standing: Standing | undefined;
-// The last thing the watch couldn't read, said until it reads another.
+// The last thing the watch couldn't read, said until a reading takes cleanly.
 let heard: string | undefined;
+// Whether `heard` came with the reading now being taken: the kit says a
+// reading's keyless records in the same task as the reading, so that reading
+// keeps the problem and only a later one clears it. The sites' server passes
+// no keyless record, so a problem here is a fault of the server's own, which
+// shouldn't hide a quiet day once a reading takes cleanly again.
+let heardNow = false;
 // Whether the node has given any records yet, so a refusal before the first
 // never leaves the page saying it's still asking.
 let given = false;
@@ -114,7 +120,9 @@ function select(bringIntoView = false): void {
 /**
  * Shows the list while it has rows, and the quiet line once the node has said there
  * are none and nothing it told went unread, since the standing line then says so.
- * A list with no rows is no listbox, since a listbox must hold options.
+ * A broken or stale node keeps the line, as it keeps a list, since the standing
+ * line then says the page is how it stood. A list with no rows is no listbox, since
+ * a listbox must hold options.
  */
 function showList(any: boolean): void {
   list.hidden = !any;
@@ -174,6 +182,9 @@ function sayWhole(): void {
 
 function heardAll(held: Held): void {
   given = true;
+  if (!heardNow) {
+    heard = undefined;
+  }
   ({ murmurs, unread } = murmursOf(held));
   sayWhole();
   sayWhen();
@@ -190,7 +201,13 @@ follow(
     },
     problem: (what) => {
       heard = what;
+      heardNow = true;
+      // Any reading it came with is taken in this task, before this runs.
+      queueMicrotask(() => {
+        heardNow = false;
+      });
       sayWhen();
+      // A line that isn't an answer brings no reading to draw the quiet line again.
       draw();
     },
   },

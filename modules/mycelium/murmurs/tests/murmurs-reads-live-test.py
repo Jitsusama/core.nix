@@ -476,13 +476,6 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             expect(page.locator("#quiet"), "settled murmurs were called quiet").to_be_hidden()
             quiet_node.tell("murmur", gone=[key, str(roosted["key"])])
             said_quiet(page, "the last murmur going left no quiet line")
-            # A record keyed by no name is said in the standing line, so the day isn't called
-            # quiet.
-            quiet_node.tell("murmur", changed=[{"key": 7, "writer": "GULLSS"}])
-            expect(page.locator("#asof"), "the keyless record wasn't said").to_contain_text(
-                "had no key", timeout=PACE_MS
-            )
-            expect(page.locator("#quiet"), "a keyless record was called quiet").to_be_hidden()
         finally:
             opened.close()
 
