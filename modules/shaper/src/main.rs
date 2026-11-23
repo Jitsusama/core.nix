@@ -996,6 +996,34 @@ fn may_sweep<V>(read: bool, order: Option<&[String]>, shaped: &BTreeMap<String, 
     read && !shaped.is_empty() && order.is_some_and(|o| o.iter().all(|n| shaped.contains_key(n)))
 }
 
+/// The link the VPNs ride after a look that read `order`, the routed links
+/// best first, from the links taken up, `shaped`, and the one they rode,
+/// `was`. The first routed link once it's taken up; while it isn't yet,
+/// the one they rode if it still routes and is shaped, since moving them
+/// tears their queues down, and if it doesn't, the first routed link that
+/// is shaped, so they never ride a link that's gone while another serves.
+/// With none of those, or no routes read, the one they rode.
+fn primary_after<V>(
+    order: Option<&[String]>,
+    shaped: &BTreeMap<String, V>,
+    was: Option<String>,
+) -> Option<String> {
+    let Some(order) = order else {
+        return was;
+    };
+    let taken = |name: &&String| shaped.contains_key(*name);
+    if let Some(first) = order.first().filter(taken) {
+        return Some(first.clone());
+    }
+    if was
+        .as_ref()
+        .is_some_and(|w| order.contains(w) && shaped.contains_key(w))
+    {
+        return was;
+    }
+    order.iter().find(taken).cloned().or(was)
+}
+
 /// The links the shaper holds and what each reaches without the router.
 fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> classes::Local {
     let mut local = classes::Local::default();
@@ -1240,12 +1268,8 @@ fn run(options: &Options) -> Result<(), Failure> {
             // not taken up yet, since letting them go would tear them down.
             if let Some(order) = &order {
                 follow_leaders(&mut shaped, order);
-                primary = order
-                    .first()
-                    .filter(|f| shaped.contains_key(*f))
-                    .cloned()
-                    .or(primary);
             }
+            primary = primary_after(order.as_deref(), &shaped, primary);
             let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
             let read = follow_vpns(&mut vpns, &options.vpns, rides, (up_tins.kbit(), t));
             // A restart left the old shaper's queues; once this one has
@@ -3096,6 +3120,76 @@ mod tests {
         assert!(
             !may_sweep(true, Some(&[][..]), &shaped(&[])),
             "no link taken up"
+        );
+    }
+
+    // The VPNs move to the first routed link once it's taken up, stay on
+    // theirs while it waits or the routes are unread, and leave a link
+    // that's gone for another that serves (round 6's F66, F67 and F69).
+    #[test]
+    fn the_vpns_ride_the_first_link_taken_up_and_never_one_gone() {
+        let shaped = |names: &[&str]| -> BTreeMap<String, u8> {
+            names.iter().map(|n| ((*n).to_string(), 0)).collect()
+        };
+        let order =
+            |names: &[&str]| -> Vec<String> { names.iter().map(|n| (*n).to_string()).collect() };
+        let was = Some("wlan0".to_string());
+        let both = shaped(&["eth0", "wlan0"]);
+        let cases = [
+            (
+                Some(order(&["eth0", "wlan0"])),
+                both.clone(),
+                "eth0",
+                "the first taken up",
+            ),
+            (
+                Some(order(&["eth0", "wlan0"])),
+                shaped(&["wlan0"]),
+                "wlan0",
+                "the first waiting, theirs still routed",
+            ),
+            (None, shaped(&["eth0"]), "wlan0", "the routes unread"),
+            (
+                Some(order(&["eth0", "usb0"])),
+                shaped(&["wlan0", "usb0"]),
+                "usb0",
+                "theirs gone and the first waiting, another routed and shaped",
+            ),
+            (
+                Some(order(&["eth0"])),
+                shaped(&["wlan0"]),
+                "wlan0",
+                "theirs gone with nothing else shaped",
+            ),
+        ];
+        for (order, shaped, rides, why) in cases {
+            assert_eq!(
+                primary_after(order.as_deref(), &shaped, was.clone()).as_deref(),
+                Some(rides),
+                "the VPNs rode the wrong link with {why}"
+            );
+        }
+        assert_eq!(
+            primary_after(Some(&order(&[])[..]), &shaped(&[]), None),
+            None,
+            "the VPNs were given a link with none routed or shaped"
+        );
+    }
+
+    // A command that fails is said on one line, its own lines joined, so
+    // the journal reads it as one failure (round 6's F68).
+    #[test]
+    fn a_failed_command_is_said_on_one_line() {
+        let script = |text: &str| vec!["sh".to_string(), "-c".to_string(), text.to_string()];
+        assert_eq!(
+            sh(&script("echo one >&2; echo two >&2; exit 1")),
+            Err("sh -c echo one >&2; echo two >&2; exit 1: one two".to_string()),
+            "a failed command's lines weren't joined after its words"
+        );
+        assert_eq!(
+            sh(&script("echo fine")),
+            Ok("fine\n".to_string()),
+            "a command's answer wasn't given as it said it"
         );
     }
 
