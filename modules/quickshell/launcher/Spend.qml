@@ -231,9 +231,9 @@ Provider {
         return now === "unsure" ? undefined : null;
     }
 
-    // How Spend stands, as SpendNow.js reads it, each read only once it's
-    // asked, so a binding asking rowNow while these rows are wanted waits
-    // on nothing more than that.
+    // How Spend stands, as SpendNow.js reads it: whether its rows are
+    // wanted at once, and each of the rest only once it's asked, so a
+    // binding asking rowNow while they're wanted waits on nothing more.
     function standingNow() {
         return {
             wanted: provider.wanted,
