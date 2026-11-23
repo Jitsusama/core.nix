@@ -31,9 +31,10 @@ pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
 pub(super) enum Gated {
     /// Every check it reached passed.
     Passed,
-    /// A check failed, so a rider among them breaks it. `whole` when every
-    /// part of the gate ran to its end, so its words name all it broke;
-    /// not when a part no builder took, or a signal, cut it short.
+    /// A check failed, so a rider among them breaks it. `whole` when
+    /// nix-offload said every part of the gate ran to its end, so its
+    /// words name all it broke; not when a part no builder took, a lost
+    /// builder or a signal cut it short, or nix-offload didn't say.
     Red { whole: bool },
     /// No builder or evaluator took it, so it says nothing of its riders.
     Unsent,
@@ -44,16 +45,34 @@ pub(super) enum Gated {
 /// machine's uploads were held, one made a rider fall that broke nothing.
 /// But nix-offload ends with the first part that failed, a VM part no
 /// builder took coming first, so words naming a failed check outrank it.
-/// For the same reason a failed build's code can hide a part no builder
-/// took, so a red is whole only when no line says one went unbuilt.
+/// For the same reason a failed build's code can hide a part that never
+/// ran to its end, so a red is whole only when nix-offload says every
+/// part did, and no line says one went unbuilt: a list of the ways a
+/// part is cut short would miss one it doesn't name (round 3, 23
+/// November), where a missing line, reworded or never printed, fails
+/// closed.
 pub(super) fn gated(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
         _ if crate::watch::untaken(code) && !names_a_failure(words) => Gated::Unsent,
         _ => Gated::Red {
-            whole: code.is_some() && !crate::watch::untaken(code) && !left_unbuilt(words),
+            whole: code.is_some()
+                && !crate::watch::untaken(code)
+                && ran_whole(words)
+                && !left_unbuilt(words),
         },
     }
+}
+
+/// What nix-offload says once a run on a lent builder ends with every
+/// part of it run to its end (`RAN_WHOLE` in
+/// `modules/nix-offload/offload/src/main.rs`), word for word.
+const RAN_WHOLE: &str = "nix-offload: every part of the run ran to its end";
+
+/// Whether a gate's `words` hold nix-offload's word that every part of
+/// its run ran to its end.
+fn ran_whole(words: &str) -> bool {
+    words.lines().any(|line| line.trim() == RAN_WHOLE)
 }
 
 /// What nix-offload says of a part of its run that no builder took or

@@ -137,6 +137,9 @@ pub(super) fn broken(words: &str) -> Option<Vec<String>> {
         if let Some(rest) = line.strip_prefix(CANNOT_BUILD) {
             let (path, _) = rest.split_once(".drv'")?;
             let (_, name) = path.split_once('-')?;
+            if !store_named(name) {
+                return None;
+            }
             let reason = lines.get(at + 1).copied().unwrap_or_default();
             if reason.starts_with(BUILDER_FAILED) {
                 failed.insert(name);
@@ -161,6 +164,19 @@ pub(super) fn broken(words: &str) -> Option<Vec<String>> {
         })
         .collect();
     Some(checks.into_iter().collect())
+}
+
+/// Whether `name` is one nix gives a derivation: only its store-name
+/// characters, never starting with a dot. A check's name goes into its
+/// log's path, and a rider's evaluation can print any line, a `Cannot
+/// build` naming `/home/u/notes` or `../x` among them, so a red naming
+/// any other is none the train can read.
+fn store_named(name: &str) -> bool {
+    !name.is_empty()
+        && !name.starts_with('.')
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || b"+._?=-".contains(&byte))
 }
 
 /// The check `name` is a part of, when it is named as a part is.

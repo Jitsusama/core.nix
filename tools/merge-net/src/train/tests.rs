@@ -5,6 +5,10 @@ use super::gated::{gated, words_of};
 use super::installed::newer;
 use super::*;
 
+/// What nix-offload says once every part of a run ran to its end, as its
+/// own test pins it (`modules/nix-offload/offload/src/main.rs`).
+const WHOLE: &str = "nix-offload: every part of the run ran to its end";
+
 /// A state folder of the test's own.
 pub(super) fn root(name: &str) -> PathBuf {
     let root = std::env::temp_dir().join(format!("merge-net-train-{name}-{}", std::process::id()));
@@ -144,7 +148,7 @@ fn rider(head: &str, at: u64) -> Rider {
 fn a_gate_no_builder_took_says_nothing_of_its_riders() {
     assert_eq!(gated(Some(0), ""), Gated::Passed, "a gate that passed");
     assert_eq!(
-        gated(Some(1), ""),
+        gated(Some(1), &format!("{WHOLE}\n")),
         Gated::Red { whole: true },
         "a check that failed"
     );
@@ -202,7 +206,7 @@ fn a_red_whose_words_say_a_part_went_unbuilt_isnt_whole() {
         "nix-offload: mac's part, checks.aarch64-darwin.a, ended 69",
     ] {
         assert_eq!(
-            gated(Some(100), &format!("{failed}{unbuilt}\n")),
+            gated(Some(100), &format!("{failed}{unbuilt}\n{WHOLE}\n")),
             Gated::Red { whole: false },
             "a red that left a part unbuilt read as whole: {unbuilt}"
         );
@@ -210,15 +214,49 @@ fn a_red_whose_words_say_a_part_went_unbuilt_isnt_whole() {
     assert_eq!(
         gated(
             Some(100),
-            &format!("{failed}nix-offload: mac's part, checks.aarch64-darwin.a, ended 1\n")
+            &format!(
+                "{failed}nix-offload: mac's part, checks.aarch64-darwin.a, ended 1\n{WHOLE}\n"
+            )
         ),
         Gated::Red { whole: true },
         "a nearby part that ran and failed read as one left unbuilt"
     );
     assert_eq!(
-        gated(Some(100), &format!("{failed}a-check> weren't built\n")),
+        gated(
+            Some(100),
+            &format!("{failed}a-check> weren't built\n{WHOLE}\n")
+        ),
         Gated::Red { whole: true },
         "a check's own words read as nix-offload's"
+    );
+}
+
+/// A part can be cut short in more ways than a list of them names: VM
+/// tests kept here, a builder ssh lost, a signal, each hidden behind a
+/// failed build's code and saying nothing on any list. A red is whole
+/// only beside nix-offload's word that every part ran to its end.
+#[test]
+fn a_red_is_whole_only_when_nix_offload_says_every_part_ran() {
+    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
+                  failed with exit code 1.\n";
+    for cut in [
+        "",
+        "nix-offload: it takes x from this machine alone, so no builder can build it\n",
+        "nix-offload: couldn't send the VM tests on: gone\n",
+        "nix-offload: the build of 2 VM tests was cut short\n",
+        // Said by a check rather than nix-offload, or not word for word.
+        "a-check> nix-offload: every part of the run ran to its end, it said\n",
+    ] {
+        assert_eq!(
+            gated(Some(100), &format!("{failed}{cut}")),
+            Gated::Red { whole: false },
+            "a red nix-offload didn't say ran whole read as whole: {cut}"
+        );
+    }
+    assert_eq!(
+        gated(Some(100), &format!("{failed}  {WHOLE}\n")),
+        Gated::Red { whole: true },
+        "a red nix-offload said ran whole read as cut short"
     );
 }
 
