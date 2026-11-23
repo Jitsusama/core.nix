@@ -174,14 +174,13 @@ function waits(row, its, headed) {
     return its === null && headed && !pressing(row);
 }
 
-// A row as it's shown, no longer marked as waiting unseen.
+// A row as it's shown, no longer marked as waiting unseen: a copy holding
+// all else it holds, so the row that was given keeps its mark.
 function asSeen(row) {
     if (row.unseen !== true) {
         return row;
     }
-    const shown = Object.assign({}, row);
-    delete shown.unseen;
-    return shown;
+    return Object.fromEntries(Object.entries(row).filter(([name]) => name !== "unseen"));
 }
 
 // The heading the end of `rows` reads as under: the last one, unless a row
