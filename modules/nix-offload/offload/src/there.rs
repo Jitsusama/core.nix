@@ -158,7 +158,7 @@ impl Alone {
     /// How its command is sent far.
     fn wrap(self) -> fn(&str) -> String {
         match self {
-            Alone::Ends => far,
+            Alone::Ends => far_saying_where,
             Alone::GoesOn => outliving,
         }
     }
@@ -2691,16 +2691,57 @@ const GRACE: u32 = 300;
 /// November three of one Mac's 516 such claims named its daemons, so a
 /// watcher would hold that run for callers long gone.
 pub fn far(command: &str) -> String {
-    far_within(command, &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"), false)
+    far_within(
+        command,
+        &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"),
+        Far::Asks,
+    )
 }
 
-/// `command` as `far` sends it, ending once its caller has been gone 15
-/// seconds, or `NIX_OFFLOAD_RUN_GRACE`'s: a command run with `--run` builds
-/// nothing another run could wait on, so there's nothing to keep it for,
-/// and a suite left running holds a builder others wait for.
-pub fn far_brief(command: &str) -> String {
-    far_within(command, "${NIX_OFFLOAD_RUN_GRACE:-15}", false)
+/// `command` as `far` sends it, saying as it starts and as it ends which
+/// machine it runs on ([`Far::Runs`]): for a build or a run a person
+/// reads, where `far` is for the asks a lender makes every minute.
+pub fn far_saying_where(command: &str) -> String {
+    far_within(
+        command,
+        &format!("${{NIX_OFFLOAD_GRACE:-{GRACE}}}"),
+        Far::Runs,
+    )
 }
+
+/// `command` as `far_saying_where` sends it, ending once its caller has
+/// been gone 15 seconds, or `NIX_OFFLOAD_RUN_GRACE`'s: a command run with
+/// `--run` builds nothing another run could wait on, so there's nothing to
+/// keep it for, and a suite left running holds a builder others wait for.
+/// A lost link reattaches by sending again, so each reattach says where
+/// the run is too.
+pub fn far_brief(command: &str) -> String {
+    far_within(command, "${NIX_OFFLOAD_RUN_GRACE:-15}", Far::Runs)
+}
+
+/// What a command sent far is, for what its shell says of itself.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Far {
+    /// An ask, as a lender's of its builder's load, which says nothing.
+    Asks,
+    /// A build or a run, which says as it starts and as it ends which
+    /// machine it runs on, by that machine's own name: a lender's builder
+    /// lines name its alias, which each new instance takes over, so a log
+    /// that names only the alias can't say which instance a run was on.
+    Runs,
+    /// A run as `Runs` says, that runs to its end even once every caller
+    /// is gone ([`outliving`]).
+    Outlives,
+}
+
+/// What a run's far shell says as it starts, to its stderr: the machine's
+/// own name, which on a lent builder is its instance's.
+const RUNNING_ON: &str = "echo \"nix-offload: running on $(uname -n)\" >&2;";
+
+/// What it says as it ends, in its `EXIT` trap, with the status it ends
+/// with. It's said in a shell of its own, so a caller gone, whose stderr
+/// no longer takes it, ends that shell rather than the trap.
+const RAN_ON: &str = "(echo \"nix-offload: ran on $(uname -n), ending $ended\" >&2);";
 
 /// How long, at most, a run asked to outlive its callers goes on alone: as
 /// long as a builder lives.
@@ -2715,7 +2756,7 @@ pub fn outliving(command: &str) -> String {
     far_within(
         command,
         &format!("${{NIX_OFFLOAD_OUTLIVE:-{OUTLIVE}}}"),
-        true,
+        Far::Outlives,
     )
 }
 
@@ -2743,12 +2784,18 @@ pub fn outlives_on(store: &str, scratch: &Path, ssh: &str) -> bool {
 }
 
 /// `far`'s wrapper, ending what's left once no caller has lived for `grace`
-/// seconds, as the far shell reads them. One `outlives` names itself for
+/// seconds, as the far shell reads them. A run, as `far` says, says where
+/// it runs, and one that outlives its callers names itself for
 /// `OUTLIVING_ASKED` while it runs.
-fn far_within(command: &str, grace: &str, outlives: bool) -> String {
+fn far_within(command: &str, grace: &str, far: Far) -> String {
     let named_for = crate::running::stable_digest(&[command.as_bytes()]);
     let claims = format!("${{TMPDIR:-/tmp}}/nix-offload-run-{named_for:016x}");
-    let (named, unnamed) = if outlives {
+    let (running_on, ran_on) = if far == Far::Asks {
+        ("", "")
+    } else {
+        (RUNNING_ON, RAN_ON)
+    };
+    let (named, unnamed) = if far == Far::Outlives {
         (
             "outliving=\"${TMPDIR:-/tmp}/nix-offload-outliving-$$\"; : > \"$outliving\"; ",
             "rm -f \"$outliving\"; ",
@@ -2775,8 +2822,8 @@ fn far_within(command: &str, grace: &str, outlives: bool) -> String {
          </dev/null >/dev/null 2>&1 & \
          {ROOM_SAID} saying=$!; \
          nix_offload_given() {{ kill $saying 2>/dev/null; {unnamed}rm -f \"$claims/$PPID\"; rmdir \"$claims\" 2>/dev/null; }}; \
-         trap 'ended=$?; nix_offload_given || :; exit $ended' EXIT; \
-         trap 'exit 143' HUP TERM; {command}"
+         trap 'ended=$?; nix_offload_given || :; {ran_on} exit $ended' EXIT; \
+         trap 'exit 143' HUP TERM; {running_on} {command}"
     )
 }
 
@@ -3091,7 +3138,13 @@ fn captured_on(
     let (mut command, known, said) = reach(lent, scratch, ssh)?;
     command
         .arg(&lent.host)
-        .arg(far(&sending.command))
+        // Only a run passed on as it comes says where it runs: one whose
+        // print is kept is an ask, read by its caller, not a person.
+        .arg(if tee {
+            far_saying_where(&sending.command)
+        } else {
+            far(&sending.command)
+        })
         .stdout(Stdio::piped());
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
@@ -4968,7 +5021,7 @@ fn sent_nearby(
     let mut reached = reaching(ssh, &said);
     reached
         .arg(&machine.host)
-        .arg(far(&in_turn_nearby(&command)));
+        .arg(far_saying_where(&in_turn_nearby(&command)));
     let unrun = |error: std::io::Error| format!("couldn't run {ssh}: {error}");
     let status = if asked.print {
         // What a machine nearby built comes here only signed by a key Nix
@@ -5929,6 +5982,48 @@ mod tests {
             "ran\n",
             "zsh said: {said}"
         );
+    }
+
+    // On 23 November a lent builder's alias was taken over by a new
+    // instance mid-trial, and no log could say which instance a run was
+    // on. A build says its machine's own name as it starts and as it ends,
+    // with how it ended, in sh and zsh alike, and leaves what it prints
+    // alone; an ask says neither, since a lender makes one every minute.
+    #[test]
+    fn a_build_says_which_machine_it_runs_on_and_an_ask_says_nothing() {
+        let named = Command::new("uname").arg("-n").output().unwrap();
+        let machine = String::from_utf8_lossy(&named.stdout).trim().to_owned();
+        for shell in ["sh", "zsh"] {
+            for (sent, says) in [
+                (far_saying_where("echo ran; exit 3"), true),
+                (far_brief("echo ran; exit 3"), true),
+                (far("echo ran; exit 3"), false),
+            ] {
+                let folder = tempfile::tempdir().unwrap();
+                let (out, err) = (folder.path().join("out"), folder.path().join("err"));
+                let ran = Command::new(shell)
+                    .args(["-c", &sent])
+                    .process_group(0)
+                    .stdout(fs::File::create(&out).unwrap())
+                    .stderr(fs::File::create(&err).unwrap())
+                    .status()
+                    .unwrap();
+                let said = fs::read_to_string(&err).unwrap_or_default();
+                assert_eq!(ran.code(), Some(3), "{shell} said: {said}");
+                assert_eq!(
+                    fs::read_to_string(&out).unwrap(),
+                    "ran\n",
+                    "{shell} changed what the run printed: {said}"
+                );
+                let started = said.contains(&format!("nix-offload: running on {machine}\n"));
+                let ended = said.contains(&format!("nix-offload: ran on {machine}, ending 3\n"));
+                assert_eq!(
+                    (started, ended),
+                    (says, says),
+                    "{shell} said where it ran, or didn't, against what was asked: {said}"
+                );
+            }
+        }
     }
 
     /// The boot this machine's shells name a turn's holder in.
