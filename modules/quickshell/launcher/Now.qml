@@ -1251,12 +1251,12 @@ Provider {
     // offers it: where it has a window, or is parked and wakes into one;
     // then Explain It, which says what the cell works on in a sentence or
     // two and, where it waits on Joel, which act on the row answers it
-    // (explainAct), where the machine has Ask's pi to answer it: the row's
-    // `own`, the names of its acts before these (its choices and Open), and
-    // Talk and Go To, never an ending act like Clear It, which answers
-    // nothing. None while no cell is held for it, or Agents isn't there to
-    // talk through.
-    function cellActs(one, own) {
+    // (explainAct), where the machine has Ask's pi to answer it: Talk and Go
+    // To, which reach the cell. A look's own choices and Open answer the
+    // look, not what the cell asks now, which may be another question, and
+    // Clear It answers nothing. None while no cell is held for it, or
+    // Agents isn't there to talk through.
+    function cellActs(one) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
@@ -1275,8 +1275,7 @@ Provider {
             run: () => provider.goToCell(one)
         })]);
         return source("ask") === null ? acts : acts.concat([explainAct(
-            `verb:on:waiting:explain:on:look:${one.id}`, cell,
-            (own ?? []).concat(acts.map(act => act.name)))]);
+            `verb:on:waiting:explain:on:look:${one.id}`, cell, acts.map(act => act.name))]);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
@@ -1570,8 +1569,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openLook(one)
-        })], provider.cellActs(one, choices.map(choice => choice.label)
-            .concat([Words.name(opens)])), waits ? [thing(Object.assign({
+        })], provider.cellActs(one), waits ? [thing(Object.assign({
             key: `verb:on:look:clear:${one.id}`,
             verb: Words.verb("verb:on:look:clear"),
             name: Words.name("verb:on:look:clear"),
@@ -1858,7 +1856,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openServed(one())
-        })].concat(provider.cellActs(one(), [Words.name(opens)]));
+        })].concat(provider.cellActs(one()));
         return {
             key: `on:look:${held.id}`,
             look: held.id,

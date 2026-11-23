@@ -114,8 +114,9 @@ function presses(cell, beside) {
 // What the quick model is told of `cell`, a line each, only those it says.
 // One waiting on Joel says what it asks him, its want's own words quoted,
 // so none of them reads as a fact of the launcher's, and then the acts on
-// its row he can answer it by (presses), so the answer says what it waits
-// on and which to press.
+// its row he can answer it by (presses), each quoted, so a name holding a
+// comma stays one act, and the answer says what it waits on and which to
+// press.
 function facts(cell, beside) {
     const plan = cell?.plan ?? {};
     return [
@@ -124,7 +125,7 @@ function facts(cell, beside) {
         ["Its machine", cell?.machine],
         ["How it stands", cell?.standing],
         [ASKS, cell?.asks],
-        ["The person can press", presses(cell, beside)],
+        ["The person can press", presses(cell, beside).map(name => JSON.stringify(name))],
         ["Doing now", cell?.doing],
         ["Running since", cell?.since],
         ["Latest in its plan", plan.chose],

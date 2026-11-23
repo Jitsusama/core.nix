@@ -209,7 +209,7 @@ ShellRoot {
                 expect("its pi is told what it asks, quoted",
                     ask.posed.includes("It asks the person: \"Which tide?"), ask.posed);
                 expect("and what the row offers to answer it",
-                    ask.posed.includes("The person can press: Open, Go To"), ask.posed);
+                    ask.posed.includes("The person can press: \"Open\", \"Go To\""), ask.posed);
                 expect("and to end with the one that answers",
                     ask.posed.startsWith("Say what this is, ending with what answers it."),
                     ask.posed);
