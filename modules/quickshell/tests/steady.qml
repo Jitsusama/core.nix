@@ -372,6 +372,28 @@ QtObject {
                 failures.push(`${what}: "${readHeaded(got.rows)}" with ${got.waiting} waiting, `
                     + `not "${want}" with ${waiting}`);
         }
+        // Kept unseen at a held step's end while it says no, as Held.js's
+        // keep lays it, and handed back once it says yes, it comes in as
+        // the row it was, all else it holds kept and no longer marked, and
+        // the step's own row keeps its mark; with nothing shown, as a list
+        // laid afresh from the step's rows is, it comes in unmarked too.
+        critical.now = false;
+        const keptUnseen = Steady.kept(underHeadings("#A=a1 a1"), asking, id);
+        critical.now = true;
+        const cameIn = Steady.refreshed(underHeadings("#A=a1 a1"), keptUnseen, id).rows
+            .find(row => row.key === "notices");
+        const stepOwn = keptUnseen.find(row => row.key === "notices");
+        const asSeenRead = row => row === undefined ? "none" : JSON.stringify([
+            "unseen" in row, row.side, row.pressing === asking[2].pressing,
+            Steady.seen([row]).rows.length]);
+        if (asSeenRead(cameIn) !== JSON.stringify([false, "", true, 1])
+                || stepOwn?.unseen !== true)
+            failures.push(`a row kept unseen comes in as it was: ${asSeenRead(cameIn)}, `
+                + `the step's own ${stepOwn?.unseen}`);
+        const laidAfresh = Steady.refreshed([], keptUnseen, id).rows
+            .find(row => row.key === "notices");
+        if (asSeenRead(laidAfresh) !== JSON.stringify([false, "", true, 1]))
+            failures.push(`a row kept unseen, laid afresh: ${asSeenRead(laidAfresh)}`);
         // A row of no cell that comes while a held step's rows are made again,
         // and leaves before it's shown, stops being counted once it's gone.
         const waitedFrom = underHeadings("#A=a1 a1");
