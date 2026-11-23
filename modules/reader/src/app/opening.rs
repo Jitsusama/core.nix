@@ -76,6 +76,7 @@ impl App {
             last_jump: None,
             selected: None,
             words: None,
+            landed: Vec::new(),
             incoming: None,
             next_version: 1,
             reloaded: false,

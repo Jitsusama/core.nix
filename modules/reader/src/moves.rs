@@ -23,6 +23,22 @@ pub fn top_of(line: &Line) -> f64 {
     line.baseline_pt - line.size_pt
 }
 
+/// A line's top and baseline, in points down the page, as place/mod.rs finds
+/// the block it's in.
+pub fn ends_of(line: &Line) -> (f64, f64) {
+    (top_of(line), line.baseline_pt)
+}
+
+/// The top and baseline of the line a mark or the cursor stands on, by
+/// its top `pt`; one set where no line is, before the page's lines are
+/// read, stands for both.
+pub fn line_topped(lines: &[Line], pt: f64) -> (f64, f64) {
+    lines
+        .iter()
+        .find(|line| (top_of(line) - pt).abs() < 0.5)
+        .map_or((pt, pt), ends_of)
+}
+
 /// Where a line's foot is, its descenders' room in, as a match's is.
 pub fn foot_of(line: &Line) -> f64 {
     line.baseline_pt + line.size_pt * 0.3
@@ -397,6 +413,18 @@ pub fn written_paths(line: &Line) -> Vec<(String, f64, f64)> {
 mod tests {
     use super::*;
     use crate::text::test_line as line;
+
+    #[test]
+    fn a_mark_stands_on_the_line_whose_top_it_is_or_alone() {
+        let lines = [line(20.0, "one"), line(40.0, "two")];
+        let top = top_of(&lines[1]);
+        assert_eq!(line_topped(&lines, top + 0.2), (top, 40.0), "its line");
+        assert_eq!(
+            line_topped(&lines, 25.0),
+            (25.0, 25.0),
+            "between lines, it stands for both"
+        );
+    }
 
     /// The eyebrow's label, the words and a section's heading, at the
     /// theme's sizes: the rule beside each is the page's pitch tall,

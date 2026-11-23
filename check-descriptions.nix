@@ -562,8 +562,11 @@
   '';
   cadence-reads-the-keys-spend-watch-writes = ''
     each finding key cadence's budget measures copy from spend-watch, and each field of
-    budgets.json its budget alarm reads, is still the one spend-watch writes, and is a
-    line of cadence's own rather than of a test's fixture
+    budgets.json its budget alarm reads, with its file and the folder spend-watch
+    writes it in unless its config names another, from the variable each side reads,
+    is still the one spend-watch writes, and is a line of cadence's own rather than of
+    a test's fixture; each struct written derives Serialize and none is written by
+    hand; and copies renamed as each guard means are refused by that guard
   '';
   cadence-spec-passes-clippy = ''
     clippy finds nothing in cadence-spec or its tests
@@ -2138,8 +2141,10 @@
     make, as a user service on Linux signing in with the agents' key,
     or the key its realm names, through that key's agent rather than one the account's SSH config
     names, lending that key to no machine and adding no key file to its agent, and an agent on a Mac whose sessions sign commits with that key,
-    finding the system's ssh before the account's programs; the home realm's node writes how it
-    would ease the machine, and a further realm's doesn't; one naming none runs it dialling
+    finding the system's ssh before the account's programs; the node may hold 65536 open files
+    on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
+    the home realm's node writes how it would ease the machine, asking the harness to park
+    sessions only where told to, and a further realm's doesn't; one naming none runs it dialling
     nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''
@@ -2269,11 +2274,13 @@
     a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
     call is on there through a-call-is-on alone, what a held session outlives, whether work
     costs money, its taints, its agents by realm, the fences its agent sessions run in) has it
-    written where mycelium reads it, in mycelium's words; a fence it doesn't say is left out, a
-    fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
-    profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
-    off, a machine of either system declaring every fence evaluates, one declaring nothing has
-    no file, and agents in a realm it doesn't join are refused
+    written where mycelium reads it, in mycelium's words; a fence it doesn't say is left out, the
+    doors a fence accepts for another machine are written only when named and refused for a
+    machine no realm could name, a fenced or strict one says its system's launcher for an
+    agent's run, which runs pi's strict profile, and an unfenced one none, no fence says a
+    launcher when agents' runs are turned off, a machine of either system declaring every fence
+    evaluates, one declaring nothing has no file, and agents in a realm it doesn't join are
+    refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3114,7 +3121,7 @@
     environment, proof, node, frame flag and SSH agent, the browser its account names in
     place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
-    agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
+    agents.slice slowed past 12 GB, no core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
@@ -3130,7 +3137,7 @@
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers and
+    with it, keeping no core, sixteen codemode workers and
     sixteen libuv threads for its conversations to share, Chromium as its browser, the account's
     home realm, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
@@ -3396,8 +3403,14 @@
     without MiTeX, links to markdown set in place, labels on their links' baselines, Neovim's
     counts and keys, visual mode's motions, text objects and copies of the file's markdown, where
     vi's paragraph, heading, view, bracket and file moves land, whole-word search, the command line
-    read as Neovim reads it, gO's outline, and the window's title from the document's title or else
-    its file's name
+    read as Neovim reads it, gO's outline, the window's title from the document's title or else
+    its file's name, code in a table's column counted by the stretches Typst breaks it into, math
+    in a cell measured as its words, a place or a mark landing as far through its block at another
+    width and on a line of its own block, kept marks waiting on the first screen for their block's
+    height and written back as read, landed again from what was kept unless the file was edited,
+    one kept without a height taking its block's, a set saying the file was edited only when its
+    words changed, the first width from the window kept, and the first screen setting the block
+    after a long one
   '';
   reader-takes-its-keys = ''
     the reader draws a long page in the theme and takes Neovim's keys, G, gg, a count, Ctrl+F, Ctrl+O,
@@ -3628,6 +3641,13 @@
     and rough, from a known base, none or a wrong one, it holds the review's bar against the same
     connection unshaped: a p95 delay of 100 ms or half the unshaped one, 75% of each way carried,
     and no direction under half 30 s longer
+  '';
+  shaper-hears-only-the-house = ''
+    a network's house opens the port the shaper hears its reports on, the one src/house.rs names,
+    to the house's address alone, over IPv4 or IPv6 as it's written: the input rules are the
+    houses' two alone, and no port, range or trusted interface opens it to all; and a house's
+    address is held to well-formed IPv4 or IPv6, an IPv4 one written as IPv6, mapped or
+    compatible, refused in each spelling tried
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
@@ -6284,14 +6304,15 @@
   '';
   vm-cores-kept-from-their-owner = ''
     the cores' folder is root's alone from boot and after each crash, so an account that aborts
-    two of its own processes, a stand-in pi host named node and sleep, can neither open nor dump
-    either core, while the journal still shows it, in wheel, each crash's stack trace; the
-    removal keeps a node's core five hours on and takes it seven hours on, leaving the other's
+    three of its own processes, stand-ins named pi and node and sleep, can neither open nor dump
+    a core, while the journal still shows it, in wheel, each crash's stack trace; the removal
+    keeps a pi's and a node's cores five hours on and takes them seven hours on, leaving sleep's
   '';
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
-    killed by the watchdog and started again once its loop stops pinging, its abort's core kept by
-    systemd-coredump, and killed 10 s on when it ignores that abort, and one that
+    killed by the watchdog and started again once its loop stops pinging, its abort's core refused
+    by systemd-coredump under a hard core limit of 0, and killed 10 s on when it ignores that
+    abort, and one that
     crashes
     at every start is started three times, then left failed with start-limit-hit, and one that
     refuses what it was given is left down at once, each saying which host is down and why, and

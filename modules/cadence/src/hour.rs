@@ -93,6 +93,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         now,
         checkouts,
         &mut kept.fetched,
+        to,
     )?;
     for m in measures
         .iter_mut()
@@ -205,8 +206,9 @@ fn card_to<'a>(to: &'a str, keeper: Option<&'a str>) -> Vec<(&'a str, &'static s
 }
 
 /// Reads every measure from the machine: the orchestrator's misses and
-/// asks, the net's quarantine, reverts and results, the tick's card, the
-/// three mains, code health's hourly read, and the realm's balance.
+/// asks, the work system's findings on the mesh, the net's quarantine,
+/// reverts and results, the tick's card, the three mains, code health's
+/// hourly read, and the realm's balance.
 fn gather(
     folder: &Path,
     state_home: &Path,
@@ -214,6 +216,7 @@ fn gather(
     now: i64,
     checkouts: &[String],
     fetched: &mut Vec<i64>,
+    orchestrator: Option<&str>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
@@ -231,13 +234,19 @@ fn gather(
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let asks = text(&mission.join("asks.jsonl"));
+    let switches = text(&state_home.join("integration/switches.jsonl"));
+    // The work system's findings count against their owners, and one
+    // naming none is the orchestrator's to assign.
+    let findings = measures::findings(
+        &state_home.join("pi/agentic-harness.pi"),
+        folder,
+        now,
+        orchestrator,
+    );
+    let (misses, found) =
+        measures::checked_beside(misses, folder, checkouts, &switches, findings.as_ref(), now)?;
     let mut all = vec![
-        measures::checked(
-            misses,
-            folder,
-            checkouts,
-            &text(&state_home.join("integration/switches.jsonl")),
-        )?,
+        misses,
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
@@ -253,6 +262,7 @@ fn gather(
         ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(found);
     all.extend(rounds_per_merge(
         state_home,
         &core,

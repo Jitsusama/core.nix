@@ -28,6 +28,7 @@ mod cost;
 mod cpu;
 mod day;
 mod first;
+mod house;
 mod icmp;
 mod lanes;
 mod links;
@@ -328,8 +329,8 @@ struct Shaped {
     follows: Option<String>,
     /// Whether the journal has been told of a spell of limits now.
     told: bool,
-    /// Whether the spell told is held by a ceiling alone, a trial's or the
-    /// network's, with nothing the controller judged holding it.
+    /// Whether the spell told is held by a ceiling alone, a trial's, the
+    /// network's or its house's, with nothing the controller judged holding it.
     ceiling: bool,
     /// Whether a call's or a screen share's traffic crosses the link, and
     /// whether it did at the last look.
@@ -934,12 +935,8 @@ fn run(options: &Options) -> Result<(), Failure> {
     let mut call = Call::default();
     let mut live = started_live(options);
     // Each network's ceiling holds its links whatever the controller asks,
-    // or before it asks anything (`led`).
-    let ceilings = options
-        .networks
-        .as_deref()
-        .map(networks::ceilings)
-        .unwrap_or_default();
+    // or before it asks anything (`led`), and so does its house's.
+    let mut most = NetworkCeilings::of(options);
     // What the controller heard and held each second, which the
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
@@ -1011,14 +1008,17 @@ fn run(options: &Options) -> Result<(), Failure> {
                 s.trips.heard(&echo.host, echo.rtt_ms);
             }
         }
-        step_links(&mut shaped, &mut live, &ceilings);
+        let (house, steady) = most.house(Instant::now());
+        step_links(&mut shaped, &mut live, (&most.written, &house, steady));
         hold_followers(&mut shaped);
         let heard = live.heard().map(|(link, mut h)| {
             h.up_tins_kbit = up_tins.kbit();
             (link, h)
         });
         write_status(&options.runtime, &shaped, heard.as_ref());
-        if let Some(line) = live.traced() {
+        if let Some(mut line) = live.traced() {
+            let network = shaped.get(&line.link).map(|s| s.network.clone());
+            house_traced(&mut line, network.as_deref(), &house);
             traces.write(&line);
         }
         thread::sleep(STEP);
@@ -1480,13 +1480,17 @@ fn hold_followers(shaped: &mut BTreeMap<String, Shaped>) {
 fn step_links(
     shaped: &mut BTreeMap<String, Shaped>,
     live: &mut live::Live,
-    ceilings: &networks::Ceilings,
+    (ceilings, house, steady): (&networks::Ceilings, &HouseHolds, networks::Ceilings),
 ) {
     // Every link's upload CAKE is read, followers' too, for whose queue
     // each is when the controller is next told (`Shaped::ours`).
     for s in shaped.values_mut() {
         s.read_upload();
     }
+    // The controller holds its own rate under what the house leaves, as
+    // under a trial's ceiling, the highest of the last few seconds' so it
+    // holds still; the link is held to each second's below.
+    live.house(steady);
     // The one-way controller holds the link the recorder follows; any
     // other goes at its whole rate, its traffic still sorted by CAKE.
     // One moment for all three, after the poll reads what's new, so the
@@ -1514,7 +1518,10 @@ fn step_links(
         if s.follows.is_some() {
             continue;
         }
-        let most = ceilings.get(&s.network).copied().map(rate::whole);
+        let most = lower(
+            ceilings.get(&s.network).copied().map(rate::whole),
+            house.get(&s.network).map(|&(_, most)| most),
+        );
         if held {
             hold(s, led(rates, true, most), &why);
         } else {
@@ -1535,6 +1542,118 @@ fn held_shares(
         (vpn, agents)
     } else {
         (1.0, 1.0)
+    }
+}
+
+/// What each network's house holds its links to this step, by network:
+/// what the other machine last said it sent and the most the ceiling
+/// leaves this one, in kbit/s.
+type HouseHolds = BTreeMap<String, (u64, u64)>;
+
+/// Each network's ceilings: the one it's written with, and its house's,
+/// which holds this machine under what another on the line leaves while
+/// that one says what it sends (src/house.rs).
+struct NetworkCeilings {
+    written: networks::Ceilings,
+    houses: networks::Houses,
+    ear: Option<house::Ear>,
+    /// Whether a house held anything at the last step, so the journal
+    /// says only when that changes.
+    held: bool,
+    steady: house::Steady,
+}
+
+impl NetworkCeilings {
+    fn of(options: &Options) -> Self {
+        let file = options.networks.as_deref();
+        let houses = file.map(networks::houses).unwrap_or_default();
+        let from = || house::Ear::start(houses.values().map(|h| h.from).collect());
+        Self {
+            written: file.map(networks::ceilings).unwrap_or_default(),
+            ear: (!houses.is_empty()).then(from),
+            houses,
+            held: false,
+            steady: house::Steady::default(),
+        }
+    }
+
+    /// What each network's house holds its links to at `now`, said in the
+    /// journal as it starts or stops holding, and the ceiling it gives
+    /// the controller there (`house::Steady`).
+    fn house(&mut self, now: Instant) -> (HouseHolds, networks::Ceilings) {
+        let house = house_holds(&self.houses, self.ear.as_ref(), now);
+        if house.is_empty() == self.held {
+            self.held = !self.held;
+            eprintln!("{}", house_said(&house));
+        }
+        let held = house
+            .iter()
+            .map(|(network, &(_, most))| (network.clone(), most))
+            .collect();
+        let steady = self
+            .steady
+            .of(&held, now)
+            .into_iter()
+            .map(|(network, most)| (network, rate::float(most)));
+        (house, steady.collect())
+    }
+}
+
+/// Puts in the traced `line` what its link's house heard and held, when
+/// one holds it: the house of `network`, the link's. The house held the
+/// link to this second's, under the steady ceiling the controller was
+/// given, so it is the second's ceiling where lower: the bars and a held
+/// replay set a rate held there apart as the ceiling's.
+fn house_traced(line: &mut trace::Line, network: Option<&str>, house: &HouseHolds) {
+    if let Some(&(sent, most)) = network.and_then(|n| house.get(n)) {
+        (line.house_sent, line.house_most) = (Some(sent), Some(most));
+        line.ceiling = Some(line.ceiling.map_or(most, |ceiling| ceiling.min(most)));
+    }
+}
+
+/// What each network's house holds its links to at `now`: none where the
+/// other machine hasn't said lately what it sends, or none is heard, and
+/// never under the least a trial may set, where a call still fits. The
+/// address alone says a report is the other machine's, so this bounds what
+/// one forged on the line can do to what a trial may.
+fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant) -> HouseHolds {
+    let Some(ear) = ear else {
+        return HouseHolds::new();
+    };
+    let least = rate::whole(oneway::MOST_KBIT_LEAST);
+    houses
+        .iter()
+        .filter_map(|(network, h)| {
+            let sent = ear.sent(h.from, now);
+            let most = house::held(h.most, sent, least)?;
+            Some((network.clone(), (rate::whole(sent?.0), most)))
+        })
+        .collect()
+}
+
+/// The journal's line as the house's ceiling starts holding, `house`, or
+/// stops, with no report fresh.
+fn house_said(house: &HouseHolds) -> String {
+    if house.is_empty() {
+        return "the house's other machine went quiet, so its ceiling holds nothing".to_string();
+    }
+    house
+        .iter()
+        .map(|(network, (sent, most))| {
+            format!(
+                "the house's ceiling holds {network}'s upload under {most} kbit/s, the other \
+                 machine sending {sent}"
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The lower of two ceilings, either of which may be unset.
+fn lower(a: Option<u64>, b: Option<u64>) -> Option<u64> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(a.min(b)),
+        (a, b) => a.or(b),
     }
 }
 
@@ -2386,6 +2505,131 @@ mod tests {
         assert!(
             !may_sweep(true, Some(&[][..]), &shaped(&[])),
             "no link taken up"
+        );
+    }
+
+    // The house's ceiling and the network's own both hold a link, the
+    // lower of the two, and either alone holds it by itself.
+    #[test]
+    fn the_lower_of_two_ceilings_holds() {
+        assert_eq!(lower(Some(9_500), Some(4_500)), Some(4_500));
+        assert_eq!(lower(Some(4_000), Some(4_500)), Some(4_000));
+        assert_eq!(lower(None, Some(4_500)), Some(4_500), "the house's alone");
+        assert_eq!(lower(Some(9_500), None), Some(9_500), "the network's alone");
+        assert_eq!(lower(None, None), None);
+    }
+
+    // The trace says what the house heard and held only on a link of the
+    // network it holds.
+    #[test]
+    fn a_link_s_trace_says_its_own_network_s_house_alone() {
+        let house = HouseHolds::from([("00:00:5e:00:53:01".to_string(), (2_500, 4_500))]);
+        let mut line = trace::Line::default();
+        house_traced(&mut line, Some("00:00:5e:00:53:01"), &house);
+        assert_eq!(
+            (line.house_sent, line.house_most, line.ceiling),
+            (Some(2_500), Some(4_500), Some(4_500)),
+            "its network's house, whose hold is the second's ceiling"
+        );
+        let mut line = trace::Line {
+            ceiling: Some(5_250),
+            ..trace::Line::default()
+        };
+        house_traced(&mut line, Some("00:00:5e:00:53:01"), &house);
+        assert_eq!(
+            line.ceiling,
+            Some(4_500),
+            "the second's hold, under the steady ceiling the controller had"
+        );
+        let mut line = trace::Line {
+            ceiling: Some(4_000),
+            ..trace::Line::default()
+        };
+        house_traced(&mut line, Some("00:00:5e:00:53:01"), &house);
+        assert_eq!(line.ceiling, Some(4_000), "a trial's lower ceiling kept");
+        let mut line = trace::Line::default();
+        house_traced(&mut line, Some("00:00:5e:00:53:02"), &house);
+        assert_eq!(
+            (line.house_sent, line.house_most, line.ceiling),
+            (None, None, None),
+            "another network's"
+        );
+        house_traced(&mut line, None, &house);
+        assert_eq!(line.house_sent, None, "a link not shaped");
+    }
+
+    // A network's house holds its links only while the other machine has
+    // said lately what it sends, and only from the address named.
+    #[test]
+    fn a_house_holds_only_while_its_other_machine_says_what_it_sends() {
+        let mac: std::net::IpAddr = "192.0.2.7".parse().expect("an address");
+        let houses = networks::Houses::from([(
+            "00:00:5e:00:53:01".to_string(),
+            networks::House {
+                most: 7_000,
+                from: mac,
+            },
+        )]);
+        let at = Instant::now();
+        assert!(house_holds(&houses, None, at).is_empty(), "none heard");
+        let ear = house::Ear::default();
+        assert!(
+            house_holds(&houses, Some(&ear), at).is_empty(),
+            "nothing said"
+        );
+        ear.hear(mac, house::Report { bytes: 0, ms: 0 }, at);
+        assert!(
+            house_holds(&houses, Some(&ear), at).is_empty(),
+            "one report says no rate"
+        );
+        ear.hear(
+            mac,
+            house::Report {
+                bytes: 312_500,
+                ms: 1_000,
+            },
+            at,
+        );
+        let held = house_holds(&houses, Some(&ear), at);
+        assert_eq!(
+            held.get("00:00:5e:00:53:01"),
+            Some(&(2_500, 4_500)),
+            "the Mac sending 2.5 Mb/s leaves 4.5 of 7"
+        );
+        let said = house_said(&held);
+        assert!(said.contains("under 4500 kbit/s"), "{said}");
+        let other: std::net::IpAddr = "192.0.2.8".parse().expect("an address");
+        ear.hear(other, house::Report { bytes: 0, ms: 0 }, at);
+        let report = house::Report {
+            bytes: 1_000_000,
+            ms: 1_000,
+        };
+        ear.hear(other, report, at);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), at),
+            held,
+            "another address heard beside it holds nothing"
+        );
+        ear.hear(
+            mac,
+            house::Report {
+                bytes: 1_312_500,
+                ms: 2_000,
+            },
+            at,
+        );
+        assert_eq!(
+            house_holds(&houses, Some(&ear), at).get("00:00:5e:00:53:01"),
+            Some(&(8_000, 4_000)),
+            "the Mac sending past the ceiling holds this one at the least, where a call fits"
+        );
+        let later = at + house::FRESH + Duration::from_secs(1);
+        let quiet = house_holds(&houses, Some(&ear), later);
+        assert!(quiet.is_empty(), "a report past its time holds nothing");
+        assert!(
+            house_said(&quiet).contains("holds nothing"),
+            "{}",
+            house_said(&quiet)
         );
     }
 }

@@ -8,6 +8,23 @@
   pkgs,
   ...
 }:
+let
+  # The files the keys check reads: cadence's copies of spend-watch's keys,
+  # then spend-watch's own, then the main.rs that hands cadence its runtime
+  # folder, in the order reads-the-keys.sh takes them.
+  keysRead = builtins.concatStringsSep " " [
+    "${./src/hour/measures/unbilled.rs}"
+    "${./src/hour/measures/unresolved.rs}"
+    "${./src/watch/budgets.rs}"
+    "${../spend-watch/src/collection.rs}"
+    "${../spend-watch/src/detect.rs}"
+    "${../spend-watch/src/standing.rs}"
+    "${../spend-watch/src/status.rs}"
+    "${../spend-watch/src/config.rs}"
+    "${../spend-watch/src/daemon.rs}"
+    "${./src/main.rs}"
+  ];
+in
 # cadence reads Linux's pressure files and systemd's journal, and builds
 # only there.
 onLinux {
@@ -70,15 +87,16 @@ onLinux {
   # from it, and its budget alarm reads budgets.json by spend-watch's field
   # names, so one renamed there would read as no budget unbilled, missed or
   # near its allowance rather than as an error: reads-the-keys.sh finds
-  # each copy on both sides. It reads the files alone, so neither package
-  # rebuilds for the other.
+  # each copy on both sides. It passes only by finding each line, so one
+  # whose parser broke would pass while proving nothing:
+  # reads-the-keys-catches.sh runs it on the files as they are, then on
+  # copies renamed as each guard means, and each must be refused by its
+  # own guard. It reads the files alone, so neither package rebuilds for
+  # the other.
   cadence-reads-the-keys-spend-watch-writes =
     pkgs.runCommand "cadence-reads-the-keys-spend-watch-writes" { }
       ''
-        bash ${./reads-the-keys.sh} ${./src/hour/measures/unbilled.rs} \
-          ${./src/hour/measures/unresolved.rs} ${./src/watch/budgets.rs} \
-          ${../spend-watch/src/collection.rs} ${../spend-watch/src/detect.rs} \
-          ${../spend-watch/src/standing.rs} ${../spend-watch/src/status.rs}
+        bash ${./reads-the-keys-catches.sh} ${./reads-the-keys.sh} ${keysRead}
         touch "$out"
       '';
   # cadence-spec's tests run as it builds: a watch of Spec is served the

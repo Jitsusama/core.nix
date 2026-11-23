@@ -47,10 +47,19 @@ pub fn drawers(records: &[&Value], top: &[Value], words: &Words, spent: Spent) -
         .iter()
         .filter_map(|record| Some((record["name"].as_str()?, *record)))
         .collect();
+    // Said as its row says it, needing Joel for each cell wearing his mark.
     records
         .iter()
         .filter(|record| networks::shown(record))
-        .map(|record| drawer(record, &named, &rows, words, spent))
+        .map(|record| {
+            drawer(
+                &networks::as_marked(record, &rows),
+                &named,
+                &rows,
+                words,
+                spent,
+            )
+        })
         .collect()
 }
 
@@ -165,7 +174,10 @@ fn busiest(cells: &[String], rows: &HashMap<String, &Value>) -> String {
     let working: Vec<&str> = cells
         .iter()
         .filter_map(|cell| rows.get(cell))
-        .filter(|row| row["held"]["state"] == "working")
+        .filter(|row| {
+            let held = &row["held"];
+            held["putOffAs"].as_str().or_else(|| held["state"].as_str()) == Some("working")
+        })
         .filter_map(|row| row["name"].as_str())
         .take(BUSIEST)
         .collect();
@@ -279,6 +291,45 @@ mod tests {
                 &json!(true),
             ],
             "its name as the mesh names it is its eyebrow, set as written"
+        );
+    }
+
+    #[test]
+    fn a_networks_busiest_names_one_working_whose_want_joel_put_off() {
+        let repo = record("repo.world", "repository", &["KELP01", "REEF02"]);
+        let mut put_off = session("REEF02", "needs");
+        put_off["held"]["putOffAs"] = json!("working");
+        let top = [session("KELP01", "working"), put_off];
+        let drawn = drawers(&[&repo], &top, &words(), &nothing_spent);
+        let busiest = facts(&drawn[0])
+            .into_iter()
+            .find(|(label, _)| label == "Busiest")
+            .map(|(_, value)| value);
+        assert_eq!(
+            busiest,
+            Some(json!("KELP01's Quest \u{b7} REEF02's Quest")),
+            "REEF02 works on while its want is put off, as Home counts it"
+        );
+    }
+
+    #[test]
+    fn a_networks_drawer_says_how_it_stands_as_its_row_does() {
+        let repo = record("repo.world", "repository", &["KELP01", "REEF02", "TIDE03"]);
+        let mut lead = session("KELP01", "working");
+        lead["kind"] = json!("orchestration");
+        lead["held"]["anyWaitsOnJoel"] = json!(true);
+        let mut put_off = session("REEF02", "needs");
+        put_off["held"]["putOff"] = json!(true);
+        let top = [lead, put_off, session("TIDE03", "working")];
+        let drawn = drawers(&[&repo], &top, &words(), &nothing_spent);
+        assert_eq!(
+            facts(&drawn[0])[0],
+            (
+                "Standing".to_owned(),
+                json!("1 needs you \u{b7} 1 moving \u{b7} 1 quiet")
+            ),
+            "the node counted REEF02 needing Joel and KELP01 moving; his put-off quiets one, his \
+             mark on the lead lights the other, as the network's row says"
         );
     }
 

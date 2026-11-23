@@ -209,6 +209,60 @@ fn a_card_that_cant_be_sent_keeps_last_hour_as_it_was() {
     );
 }
 
+/// One of the work system's findings, two days open and sent to its
+/// owner, counts on the card beside Joel's misses rather than among them,
+/// and its owner is owed its drag, whatever else leads the hour.
+#[test]
+fn a_finding_two_days_open_counts_apart_and_is_owed_to_its_owner() {
+    let account = account();
+    let sent = std::time::SystemTime::now() - std::time::Duration::from_hours(48);
+    let ms = sent
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock past 1970")
+        .as_millis();
+    let id = format!("{ms}-IKQ63G-1-ab12");
+    let file = account
+        .path()
+        .join("state/pi/agentic-harness.pi/mesh-workflow/messages")
+        .join(format!("{id}.json"));
+    fs::write(
+        &file,
+        format!(
+            r##"{{"id": "{id}", "from": "IKQ63G", "to": ["#v2-symbiosis", "@A2VLJN"],
+                "intent": "finding", "text": "IKQ63G: the slots stay held"}}"##
+        ),
+    )
+    .expect("a finding");
+    fs::File::options()
+        .write(true)
+        .open(&file)
+        .and_then(|open| open.set_modified(sent))
+        .expect("written two days ago");
+
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {said}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("open: A2VLJN 1 (1 past a day): 1, at most 0"),
+        "the finding wasn't counted against its owner: {card}"
+    );
+    assert!(
+        card.contains("to catch the next: 1, at most 0"),
+        "the finding was counted among Joel's misses, or the miss was lost: {card}"
+    );
+    let kept = account.path().join("state/cadence");
+    assert!(
+        kept.join("symbiosis.json").exists(),
+        "the reading of the mesh wasn't kept"
+    );
+    let ledger = fs::read_to_string(kept.join("findings.jsonl")).expect("the ledger");
+    assert!(
+        ledger.contains("\"owner\":\"A2VLJN\""),
+        "the finding's owner wasn't owed its drag: {ledger}"
+    );
+}
+
 #[test]
 fn the_run_sending_the_card_keeps_the_hour_and_owes_its_drag() {
     let account = account();

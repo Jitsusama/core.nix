@@ -18,9 +18,12 @@ use crate::{axes, command, write_whole};
 
 mod held;
 mod running;
+mod symbiosis;
 
 pub use held::{BLIND, HELD, held};
+use running::LASTING;
 pub use running::{UNRUN, UNSEEN, hosts_started};
+pub use symbiosis::{Findings, KEY as FINDINGS, findings, held_for_good, held_unseen};
 
 /// How far before the oldest miss naming a repository its main is read: a
 /// check may be one that merged a little before Joel found the miss. Two
@@ -40,6 +43,25 @@ pub struct Named {
 /// machine names with `--checkout`.
 pub type Checkouts = BTreeMap<String, PathBuf>;
 
+/// The repository the word ending `before` names, as the word before a
+/// `#N`: lowercased, its quotes and punctuation trimmed and any owner
+/// before a `/` dropped, so "`core`", "Jitsusama/core.nix" and
+/// "core.nix" are one.
+fn repo_word(before: &str) -> String {
+    let word = before
+        .trim_end()
+        .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
+        .next()
+        .unwrap_or_default()
+        .trim_matches(|c: char| !c.is_ascii_alphanumeric())
+        .to_lowercase();
+    match word.rsplit('/').next().unwrap_or_default() {
+        "core.nix" | "core-nix" => "core".to_owned(),
+        "agentic-harness.pi" | "agentic-harness-pi" | "agentic-harness" => "harness".to_owned(),
+        other => other.to_owned(),
+    }
+}
+
 /// The changes `check` names in a repository cadence can read: each `#N`
 /// after its name, as `core #4568`, `core#4500` or `harness #1592`. A
 /// number after any other word, such as a memory's, names nothing here.
@@ -51,19 +73,10 @@ fn named(check: &str, repos: &Checkouts) -> Vec<Named> {
                 .chars()
                 .take_while(char::is_ascii_digit)
                 .collect();
-            let word = check[..at]
-                .trim_end()
-                .rsplit(|c: char| c.is_whitespace() || c == '(' || c == ',')
-                .next()?
-                .to_lowercase();
-            let repo = match word.as_str() {
-                "core.nix" => "core",
-                "agentic-harness.pi" => "harness",
-                other => other,
-            };
-            repos.contains_key(repo).then_some(())?;
+            let repo = repo_word(&check[..at]);
+            repos.contains_key(&repo).then_some(())?;
             Some(Named {
-                repo: repo.to_owned(),
+                repo,
                 number: digits.parse().ok()?,
             })
         })
@@ -182,12 +195,46 @@ fn main_of(path: &str) -> &'static str {
 /// the last of `switches` and the pi hosts' runtimes say. The changes
 /// found merged are kept in `folder`, so a main is never read again for
 /// them, and so are those seen running, so a closed miss stays closed.
-pub fn checked(
+/// The `findings` of the work system are judged in the same pass, so the
+/// mains are walked and what runs here is read once for both: it gives
+/// the misses' measure, and the findings' as of `now`.
+///
+/// # Errors
+///
+/// Where the changes found merged can't be kept.
+pub fn checked_beside(
     text: &str,
     folder: &Path,
     checkouts: &[String],
     switches: &str,
-) -> io::Result<Measure> {
+    findings: Option<&Findings>,
+    now: i64,
+) -> io::Result<(Measure, Option<Measure>)> {
+    let beside = findings.map_or("", Findings::text);
+    let both = if beside.is_empty() {
+        text.to_owned()
+    } else {
+        format!("{text}\n{beside}")
+    };
+    // Each measure judges its own lines, never the two joined, so a
+    // finding can't be read as a miss Joel found himself.
+    judged(&both, folder, checkouts, switches, |repos, judged| {
+        (
+            open_misses(text, repos, judged),
+            findings.map(|found| found.measured(repos, judged, now)),
+        )
+    })
+}
+
+/// What `then` makes of the checks of `text`'s lines, each shaped as a
+/// miss, once they are judged as the misses' are.
+fn judged<T>(
+    text: &str,
+    folder: &Path,
+    checkouts: &[String],
+    switches: &str,
+    then: impl FnOnce(&Checkouts, &Judged<'_>) -> T,
+) -> io::Result<T> {
     let mut repos = Checkouts::from([
         ("core".to_owned(), folder.join("core.git")),
         ("harness".to_owned(), axes::landings::harness_mirror()),
@@ -215,7 +262,7 @@ pub fn checked(
         unrun: &unrun,
         here: here.trim(),
     };
-    Ok(open_misses(text, &repos, &judged))
+    Ok(then(&repos, &judged))
 }
 
 /// The changes the misses' checks name now that have merged: only these
@@ -388,9 +435,15 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
             let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
             // A check merged but not yet running is held, as a measure holds
             // one, so its owner isn't asked again which check would catch it.
+            // A part seen unmerged is still its owner's to land, so nothing
+            // holds the line, and an unread main holds only what it hides.
+            let owed = changes
+                .iter()
+                .any(|change| !merged.contains(change) && !unread.contains(&change.repo));
             let note = changes
                 .iter()
-                .find(|change| unread.contains(&change.repo))
+                .filter(|_| !owed)
+                .find(|change| !merged.contains(*change))
                 .map(|change| {
                     format!(
                         ", though cadence couldn't read {}'s main to see its check",
@@ -398,16 +451,28 @@ fn open_misses(text: &str, repos: &Checkouts, judged: &Judged<'_>) -> Measure {
                     )
                 })
                 .or_else(|| {
-                    let (change, why) = changes
-                        .iter()
-                        .find_map(|change| Some((change, unrun.get(change)?)))?;
+                    // Every part merged here. What its owner can mend speaks
+                    // first, then what an hour can, and a lasting reason only
+                    // when nothing else waits, or one would hide another.
+                    let lasts = |why: &str| LASTING.iter().any(|it| why.starts_with(it));
+                    let waiting = || {
+                        changes
+                            .iter()
+                            .filter(|_| !owed)
+                            .filter_map(|change| Some((change, *unrun.get(change)?)))
+                    };
+                    let (change, why) = waiting()
+                        .find(|&(_, why)| !why.starts_with(UNSEEN))
+                        .or_else(|| waiting().find(|&(_, why)| !lasts(why)))
+                        .or_else(|| waiting().next())?;
                     Some(format!(
                         "{HELD}{} #{}{UNRUN}{why}",
                         change.repo, change.number
                     ))
                 })
                 .or_else(|| {
-                    let (machine, change) = (elsewhere?, changes.iter().find(|c| ran(c))?);
+                    let machine = elsewhere.filter(|_| !owed)?;
+                    let change = changes.iter().find(|c| ran(c))?;
                     Some(format!(
                         "{HELD}{} #{}{UNRUN}its miss was on {machine}, and no one has said \
                          it runs there",

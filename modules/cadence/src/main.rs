@@ -24,6 +24,8 @@
 //! socket reads signed out or doesn't answer, once for each spell
 //! (units.rs). `cadence units [--at SECONDS]` says what that watch reads
 //! and would tell, sending nothing; at a moment past, from the journal.
+//! A machine gone down while it holds work is told Joel by a notice, and
+//! the orchestrator by a finding (watch/down.rs; its journal and down.json).
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day
 //! just ended against the days before it and sends the orchestrator its note
@@ -89,7 +91,7 @@ use terminal_kit::{Context, Exit, Failure};
 use asking::{State, To};
 use mesh::{Mesh, Message};
 use net::Round;
-use watch::{Landing, Snapshot};
+use watch::{Landing, Snapshot, down};
 
 /// The address cadence's questions come from.
 const FROM: &str = "CADENCE";
@@ -296,12 +298,20 @@ fn run(args: &Args) -> io::Result<()> {
     {
         eprintln!("cadence: telling of broken units: {err}");
     }
+    // Read once a tick for each use, within a deadline.
+    let realms = &args.realms;
+    let machines = down::machines(realms);
+    if let Some(to) = &args.orchestrator
+        && let Err(err) = down::run(&mesh, &folder, to, &args.owners, realms, &machines, now)
+    {
+        eprintln!("cadence: telling of machines down: {err}");
+    }
     if let Some(watcher) = &args.watcher
         && let Err(err) = tell_reverted(&mesh, &state_home.join("net"), &folder, watcher, now)
     {
         eprintln!("cadence: telling of reverts: {err}");
     }
-    let mut snapshot = gather(&folder, &state_home, &mesh, args, now)?;
+    let mut snapshot = gather(&folder, &state_home, &mesh, args, &machines, now)?;
     let card = card::card(&snapshot, clock);
     write_whole(&folder.join("card.txt"), &card)?;
 
@@ -539,6 +549,7 @@ fn gather(
     state_home: &Path,
     mesh: &Mesh,
     args: &Args,
+    machines: &BTreeMap<String, String>,
     now: i64,
 ) -> io::Result<Snapshot> {
     let core = Core::fetched(folder)?;
@@ -585,7 +596,7 @@ fn gather(
         now,
         landings,
         follower,
-        failing_elsewhere: failing_elsewhere(&args.realms),
+        failing_elsewhere: elsewhere::failing_in(machines),
         runs: records::parse_runs(
             &fs::read_to_string(state_home.join("nix-offload/there.jsonl")).unwrap_or_default(),
             now - DAY,
@@ -632,19 +643,6 @@ fn gather(
         switcher: switcher(args),
         answered_by: BTreeMap::new(),
     })
-}
-
-/// Each realm's other machines whose newest update failed, as the node
-/// keeping it says; none from a realm whose node doesn't answer.
-fn failing_elsewhere(realms: &[String]) -> Vec<elsewhere::Failing> {
-    // Read as the kit reads it, so it matches mycelium's names as the
-    // other tools' readings do.
-    let this = terminal_kit::environment::machine();
-    realms
-        .iter()
-        .filter_map(|realm| command("mycelium", &["--realm", realm, "machines"]).ok())
-        .flat_map(|answer| elsewhere::failing_elsewhere(&answer, &this))
-        .collect()
 }
 
 /// An alarm as the watcher or the switcher is asked it. An answer ends
@@ -725,9 +723,20 @@ fn fetch_or_keep(fetch: impl Fn() -> io::Result<String>) -> bool {
 }
 
 fn write_whole(path: &Path, text: &str) -> io::Result<()> {
-    let staged = path.with_extension("new");
-    fs::write(&staged, text)?;
-    fs::rename(staged, path)
+    // Staged under this process's name, so an hour run by hand can't write
+    // into the one the timer's renames, removed if it fails, as no later
+    // hour shares it, and synced first, so a crash leaves a file whole: a
+    // kept reading that won't parse holds the hour's findings unjudged.
+    let staged = path.with_extension(format!("new.{}", std::process::id()));
+    let written = fs::File::create(&staged).and_then(|mut file| {
+        io::Write::write_all(&mut file, text.as_bytes())?;
+        file.sync_all()
+    });
+    let done = written.and_then(|()| fs::rename(&staged, path));
+    if done.is_err() {
+        let _ = fs::remove_file(&staged);
+    }
+    done
 }
 
 #[cfg(test)]

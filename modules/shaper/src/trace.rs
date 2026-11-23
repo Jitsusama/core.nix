@@ -1,8 +1,8 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
 //! was, a call's round trip through the VPN, the rates its controller
-//! asked of the upload and the download, and the ceiling, a trial's or its
-//! network's, the upload was held under.
+//! asked of the upload and the download, and the ceiling, a trial's, its
+//! network's or its house's, the upload was held under.
 //! A replay (src/replay.rs)
 //! puts these back into the recorded seconds, so a bite that came
 //! through our own queues or the VPN is replayed rather than passed as
@@ -56,11 +56,18 @@ pub struct Line {
     /// The plateau the upload holds under, in kbit/s.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plateau: Option<u64>,
-    /// The ceiling the upload was held under, a trial's or its network's,
-    /// in kbit/s, while one did: a rate held there is the ceiling's, not
-    /// the controller's.
+    /// The ceiling the upload was held under, a trial's, its network's or
+    /// its house's that second, in kbit/s, while one did: a rate held there
+    /// is the ceiling's, not the controller's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ceiling: Option<u64>,
+    /// What another machine on the line said it sent, and the most the
+    /// house's ceiling left this one, in kbit/s, while it said so lately
+    /// (src/house.rs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house_sent: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub house_most: Option<u64>,
 }
 
 impl Line {
@@ -78,6 +85,8 @@ impl Line {
             vpn_base_ms: heard.vpn_base_ms.map(tenth),
             plateau: heard.plateau.map(crate::rate::whole),
             ceiling: heard.ceiling.map(crate::rate::whole),
+            house_sent: None,
+            house_most: None,
         }
     }
 }

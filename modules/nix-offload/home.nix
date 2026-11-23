@@ -129,11 +129,13 @@ let
       }
     );
   # How many VM lenders past the second there may be, one for each folder
-  # nixos.nix makes, /run/nix-offload-vm-3 to -16, and `there` looks in:
-  # on 9 November eight were full for twenty minutes, and VM runs waited a
-  # median of 7 minutes for them. One lent past those busy costs nothing,
-  # since it's lent only while they're full and goes once idle.
-  extraVmLenders = 14;
+  # nixos.nix makes, /run/nix-offload-vm-3 to the last lane, and `there`
+  # looks in, all three reading offload/last-vm-lane.txt: on 9 November
+  # eight were full for twenty minutes, and VM runs waited a median of 7
+  # minutes for them, and at 06:12 on 22 November 55 of sixteen builders'
+  # 64 VM tests ran while six runs waited. One lent past those busy costs
+  # nothing, since it's lent only while they're full and goes once idle.
+  extraVmLenders = lib.toInt (lib.fileContents ./offload/last-vm-lane.txt) - 2;
   # The lender of the VM builder numbered `number`, from 3, while
   # vmTests.extra has one for it.
   extraVm =
@@ -711,21 +713,6 @@ in
             Install.WantedBy = [ "default.target" ];
           };
 
-      systemd.user.services.nix-offload-vm-3 = extraVm 3;
-      systemd.user.services.nix-offload-vm-4 = extraVm 4;
-      systemd.user.services.nix-offload-vm-5 = extraVm 5;
-      systemd.user.services.nix-offload-vm-6 = extraVm 6;
-      systemd.user.services.nix-offload-vm-7 = extraVm 7;
-      systemd.user.services.nix-offload-vm-8 = extraVm 8;
-      systemd.user.services.nix-offload-vm-9 = extraVm 9;
-      systemd.user.services.nix-offload-vm-10 = extraVm 10;
-      systemd.user.services.nix-offload-vm-11 = extraVm 11;
-      systemd.user.services.nix-offload-vm-12 = extraVm 12;
-      systemd.user.services.nix-offload-vm-13 = extraVm 13;
-      systemd.user.services.nix-offload-vm-14 = extraVm 14;
-      systemd.user.services.nix-offload-vm-15 = extraVm 15;
-      systemd.user.services.nix-offload-vm-16 = extraVm 16;
-
       systemd.user.services.nix-offload-more = lib.mkIf (cfg.helper != null && cfg.more != null) {
         Unit = {
           Description = "Lends another builder while the first is full and a build sent there waits on one";
@@ -745,5 +732,14 @@ in
         Install.WantedBy = [ "default.target" ];
       };
     })
+    # A lender for each VM builder past the second, from 3, each unit
+    # present only while vmTests.extra has one for it.
+    {
+      systemd.user.services = lib.listToAttrs (
+        map (number: lib.nameValuePair "nix-offload-vm-${toString number}" (extraVm number)) (
+          lib.range 3 (extraVmLenders + 2)
+        )
+      );
+    }
   ];
 }

@@ -1,11 +1,11 @@
-"""A crash's core stays root's alone, its stack trace stays its owner's, and a node's goes later.
+"""A crash's core stays root's alone, its stack trace stays its owner's, and a pi's goes later.
 
 cores-kept-from-their-owner.nix, beside this, runs this through pytest inside the driver
-(tests/lib/vm_pytest.py). An account aborts two of its own processes, a program named node
-standing in for a pi host and sleep itself, as any program running as it could abort a host.
-It can't open or dump either core, though the journal still shows it, in wheel as Joel's
-account is, each one's stack trace. Once six hours have passed, the module's removal takes
-the node's core and leaves the other's.
+(tests/lib/vm_pytest.py). An account aborts three of its own processes, programs named pi
+and node standing in for a plain pi and a pi host, and sleep itself, as any program running
+as it could abort a pi. It can't open or dump a core, though the journal still shows it, in
+wheel as Joel's account is, each one's stack trace. Once six hours have passed, the module's
+removal takes the pi's and the node's cores and leaves sleep's.
 """
 
 from __future__ import annotations
@@ -60,11 +60,12 @@ def crash(machine: BaseMachine, program: str) -> tuple[str, str]:
 
 @pytest.fixture(scope="module")
 def cores(machine: BaseMachine) -> Cores:
-    """Boot, then crash the stand-in host and sleep as the account, giving their pids and cores."""
+    """Boot, then crash the stand-ins for a pi and a host, and sleep, as the account."""
     machine.wait_for_unit("multi-user.target")
     booted = mode(machine)
     assert booted == "700 root:root", f"the folder is {booted} before any crash"
     return {
+        "pi": crash(machine, "pi"),
         "node": crash(machine, "node"),
         "sleep": crash(machine, "sleep"),
     }
@@ -99,16 +100,18 @@ def test_the_owner_still_reads_the_stack_trace(machine: BaseMachine, cores: Core
         assert "Stack trace of thread" in said, f"no stack trace for {pid}: {said}"
 
 
-def test_a_nodes_core_goes_six_hours_on_and_no_other(machine: BaseMachine, cores: Cores) -> None:
-    """Six hours after it was kept, the removal takes a node's core and leaves another's."""
+def test_a_pis_core_goes_six_hours_on_and_no_other(machine: BaseMachine, cores: Cores) -> None:
+    """Six hours after they were kept, the removal takes a pi's and a node's cores, not sleep's."""
     machine.succeed("systemctl is-active coredump-forget-node.timer")
-    _, node = cores["node"]
+    pis = [core for name, (_, core) in cores.items() if name != "sleep"]
     _, other = cores["sleep"]
-    both = f"{shlex.quote(node)} {shlex.quote(other)}"
-    machine.succeed(f"touch -d '5 hours ago' {both}")
+    every = " ".join(shlex.quote(core) for core in [*pis, other])
+    machine.succeed(f"touch -d '5 hours ago' {every}")
     machine.succeed("systemctl start coredump-forget-node.service")
-    machine.succeed(f"test -e {shlex.quote(node)}")
-    machine.succeed(f"touch -d '7 hours ago' {both}")
+    for core in pis:
+        machine.succeed(f"test -e {shlex.quote(core)}")
+    machine.succeed(f"touch -d '7 hours ago' {every}")
     machine.succeed("systemctl start coredump-forget-node.service")
-    machine.fail(f"test -e {shlex.quote(node)}")
+    for core in pis:
+        machine.fail(f"test -e {shlex.quote(core)}")
     machine.succeed(f"test -e {shlex.quote(other)}")

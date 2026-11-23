@@ -87,6 +87,10 @@ let
   lendingNode =
     toString
       (linux (both // { lend = lending; })).systemd.user.services.mycelium.Service.ExecStart;
+  # The home realm's node of a machine that asks the harness to park.
+  sleepingNode =
+    toString
+      (linux (links // { easesSleep = true; })).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -177,6 +181,41 @@ let
       secrets = [ ];
     };
   };
+  # An unfenced machine whose sessions carried to another may gain a secret.
+  accepting = declaredAs {
+    fence.none = {
+      builders = [ ];
+      forges = [ ];
+      secrets = [ ];
+      accepts.other-machine.secrets = [ "tokens" ];
+    };
+  };
+  # The same allowance for a machine named as no realm names one.
+  misnamed = builtins.tryEval (
+    builtins.deepSeq (declaredAs {
+      fence.none = {
+        builders = [ ];
+        forges = [ ];
+        secrets = [ ];
+        accepts."Other Machine".secrets = [ "tokens" ];
+      };
+    }) true
+  );
+  # The same name under `mkIf`: dropped before it is read when false, so
+  # it isn't refused, and refused when true, so the false one isn't let
+  # through only because `mkIf` drops everything.
+  misnamedIf =
+    shown:
+    builtins.tryEval (
+      builtins.deepSeq (declaredAs {
+        fence.none = {
+          builders = [ ];
+          forges = [ ];
+          secrets = [ ];
+          accepts."Other Machine" = lib.mkIf shown { secrets = [ "tokens" ]; };
+        };
+      }) true
+    );
   # A machine fenced in the kinds it names, each opening no doors.
   fencedIn =
     bare: kinds: settings:
@@ -314,11 +353,17 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, the home realm's node doesn't write how it would ease the machine or a further realm's does, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
         && !(lib.hasInfix "--eases" otherNode)
+        && !(lib.hasInfix "--eases" (
+          toString
+            (linux (both // { easesSleep = true; })).systemd.user.services.mycelium-other.Service.ExecStart
+        ))
+        && !(lib.hasInfix "--eases-sleep" linuxNode)
+        && lib.hasInfix "--eases --eases-sleep /home/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease" sleepingNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --waiting" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
           "cell:cell-1"
@@ -382,6 +427,9 @@ in
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
+        && (mac links).launchd.agents.mycelium.config.SoftResourceLimits.NumberOfFiles == 10240
+        && (linux links).systemd.user.services.mycelium.Service.LimitNOFILE == "65536:524288"
+        && (mac links).launchd.agents.mycelium.config.HardResourceLimits or null == null
         &&
           (mac links).launchd.agents.mycelium.config.EnvironmentVariables.PATH
           == "/usr/bin:/bin:${(mac links).home.profileDirectory}/bin"
@@ -546,7 +594,14 @@ in
   mycelium-node-takes-its-flags =
     let
       words = lib.splitString " " (
-        builtins.unsafeDiscardStringContext "${linuxNode} ${stimulatingNode} ${lendingNode}"
+        builtins.unsafeDiscardStringContext (
+          lib.concatStringsSep " " [
+            linuxNode
+            stimulatingNode
+            lendingNode
+            sleepingNode
+          ]
+        )
       );
       flags = lib.unique (lib.filter (lib.hasPrefix "--") words);
       locked = self.inputs.mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -848,7 +903,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -887,6 +942,18 @@ in
             };
           }
         )
+        && (
+          accepting.fence.none.accepts or null == {
+            other-machine = {
+              builders = [ ];
+              forges = [ ];
+              secrets = [ "tokens" ];
+            };
+          }
+        )
+        && !misnamed.success
+        && (misnamedIf false).success
+        && !(misnamedIf true).success
         && (launching linux everyKind).fence.fence.runs or null == launcher
         && (launching linux everyKind).fence.strict.runs or null == launcher
         && !((launching linux everyKind).fence.none ? runs)

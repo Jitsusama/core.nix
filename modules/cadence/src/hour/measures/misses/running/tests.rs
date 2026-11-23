@@ -134,24 +134,43 @@ fn a_change_reaching_the_hosts_waits_on_them() {
     );
     // `changed` names core's runtime build only where it changed more than
     // its list of patches, which a runtime built elsewhere may lack beside
-    // the patch.
+    // the patch, though a host seen lacking the patch is its owner's still.
     let beside =
         |_: &str| Some("modules/pi/host-patches/x.patch\nmodules/pi/hosted-pi.nix".to_owned());
     assert_eq!(
         judge("core", at, Some("f00d"), all, beside, lack),
-        Some("cadence can't tell what a pi host loads"),
-        "a patch beside a change to core's runtime build was judged by the patch alone"
+        Some("runtime"),
+        "a host seen lacking a patch beside core's runtime build was held for good"
     );
-    // A fix to how core builds its runtime, with no patch, can't be seen in
-    // a runtime built elsewhere, while a note beside the patches reaches no
-    // host at all.
-    let build =
-        |_: &str| Some("modules/pi/hosted-pi.nix\nmodules/pi/host-patches/README.md".into());
-    assert_eq!(
-        judge("core", at, Some("f00d"), all, build, lack),
-        Some("cadence can't tell what a pi host loads"),
-        "a fix to core's runtime build alone was told fixed"
-    );
+    // Hosts an hour can't list say so, as a reason a passing failure gives
+    // must never last; only hosts lacking nothing leave the build unseen.
+    for (seen, hosts, why) in [
+        (
+            None,
+            "lacking nothing",
+            "cadence can't tell what a pi host loads",
+        ),
+        (
+            Some("cadence can't list the pi hosts"),
+            "unlisted",
+            "cadence can't list the pi hosts",
+        ),
+    ] {
+        let judged = judge(
+            "core",
+            at,
+            Some("f00d"),
+            all,
+            beside,
+            move |_: &str, _: Reaches| seen,
+        );
+        assert_eq!(
+            judged,
+            Some(why),
+            "a patch beside core's runtime build, its hosts {hosts}, was judged wrongly"
+        );
+    }
+    // A note beside the patches reaches no host at all.
     let note = |_: &str| Some("modules/pi/host-patches/README.md".to_owned());
     assert_eq!(
         judge("core", at, Some("f00d"), all, note, lack),
@@ -169,6 +188,43 @@ fn a_change_reaching_the_hosts_waits_on_them() {
         judge("core", at, Some("f00d"), all, home, lack),
         None,
         "a switch alone didn't carry the rest"
+    );
+}
+
+#[test]
+fn a_fix_to_cores_runtime_build_alone_is_unseen_whatever_its_hosts_say() {
+    let all = |_: &str, _: &str| Some(true);
+    let at = Some("a1b2c3d");
+    // A fix to how core builds its runtime, with no patch, can't be seen in
+    // a runtime built elsewhere.
+    let build =
+        |_: &str| Some("modules/pi/hosted-pi.nix\nmodules/pi/host-patches/README.md".into());
+    // It never reads as run, so a host failing in its four weeks, for
+    // whatever cause, would ask its owner, and a blind hour would close and
+    // refile that ask: the hosts aren't asked of it.
+    let unseen = "cadence can't tell what a pi host loads";
+    for (seen, hosts) in [
+        (None, "lacking nothing"),
+        (Some("cadence can't list the pi hosts"), "unlisted"),
+        (Some("a pi host failed and waits on a reset"), "failed"),
+    ] {
+        let judged = judge(
+            "core",
+            at,
+            Some("f00d"),
+            all,
+            build,
+            move |_: &str, _: Reaches| seen,
+        );
+        assert_eq!(
+            judged,
+            Some(unseen),
+            "a fix to core's runtime build alone, its hosts {hosts}, was judged wrongly"
+        );
+    }
+    assert!(
+        LASTING.contains(&"cadence can't tell what a pi host loads"),
+        "a fix to core's runtime build, which no hour can read, held only for the hour"
     );
 }
 
@@ -359,7 +415,7 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
     );
     assert_eq!(
         lack(Some(&[host(Some("new"), None), host(None, None)])),
-        Some("cadence can't tell what a pi host loads"),
+        Some("cadence can't tell whether a pi host applied it"),
         "a runtime keeping no copies counted as carrying it"
     );
     assert_eq!(
@@ -376,9 +432,21 @@ fn every_host_must_load_a_runtime_that_applied_the_patch() {
     let unread = |hosts: &[Host]| hosts_lack(Some(hosts), &runtime, None, |_| None);
     assert_eq!(
         unread(&[host(Some("new"), None)]),
-        Some("cadence can't tell what a pi host loads"),
+        Some("cadence can't tell whether a pi host applied it"),
         "a patch whose merged version went unread counted as loaded"
     );
+    // Git failing or a host between processes mends within the hour, so
+    // neither may give a reason that holds a finding for good.
+    for why in [
+        unread(&[host(Some("new"), None)]),
+        lack(Some(&[host(None, None)])),
+    ] {
+        let why = why.expect("a host cadence couldn't read was told running");
+        assert!(
+            !LASTING.iter().any(|lasting| why.starts_with(lasting)),
+            "a passing failure gave the lasting reason {why}"
+        );
+    }
 }
 
 /// The 19:05 miss of 19 November: #5800 added a patch that the work hosts'

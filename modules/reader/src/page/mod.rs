@@ -92,6 +92,16 @@ impl Width {
         }
     }
 
+    /// The page the first screen is set at: for the window's width when
+    /// the reader last closed, `kept_pt`, which niri most likely opens it
+    /// at again, or else for the one a window has until niri names it,
+    /// `unnamed_pt`, so the first configure finds the page already set for
+    /// it. A window niri opens at another width, with none kept, sets it
+    /// once more.
+    pub fn first(kept_pt: Option<f64>, unnamed_pt: f64) -> Width {
+        Width::for_window(kept_pt.unwrap_or(unnamed_pt))
+    }
+
     /// The page for a window this many points of the page wide at zoom 1.
     /// A wider window than the whole page's widens the measure by half of
     /// what it has past it, three characters at a time, up to 80. A narrower one has no
@@ -241,15 +251,37 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
   }
   text(top-edge: line-top(), code-pieces(s).map(set-piece).join())
 }
+// What an unboxed piece can't break inside: a run up to a space, or up
+// to and taking a hyphen, after which a line may break, but for one
+// before a figure, closing punctuation or a quote, as in -1 or a-), which
+// Typst's line breaking holds to what follows. A bar or a slash it holds
+// to the hyphen before and breaks after, as a-/ then b. A flag's opening
+// hyphens, as in --release, it breaks after.
+#let unbroken = regex("[^ -]*(?:-+[0-9)\\]}.,;:!?'\"][^ -]*)*(?:-+[|/]|-*)")
 // The least room a table's column needs for a span: its widest run of
-// pieces held together, since only between those can it break.
+// pieces held together, since only between those can it break. A piece
+// too wide to box is unboxed, so it breaks where its words or a hyphen
+// let it, and counts its widest stretch between those: a name with
+// nowhere to break counts whole, as the cell can't break it either.
 #let least-code(s) = context {
   let widest = 0pt
   let run = 0pt
   for p in code-pieces(s) {
-    let width = measure(raw(p.piece)).width
-    let by = if p.by == " " { measure(raw(" ")).width } else { 0pt }
-    run = if not p.whole { 0pt } else if p.held { run + by + width } else { width }
+    // A held space is set unbreakable, as code does, and a space alone
+    // measures as nothing.
+    let by = if p.by == " " { measure(raw("\u{a0}")).width } else { 0pt }
+    if p.whole {
+      let width = measure(raw(p.piece)).width
+      run = if p.held { run + by + width } else { width }
+    } else {
+      // Its first stretch joins what's held to it, and its last goes on
+      // to the piece held after.
+      let stretches = p.piece.matches(unbroken).filter(m => m.text != "").map(m => measure(raw(m.text)).width)
+      if stretches.len() == 0 { stretches = (0pt,) }
+      let first = if p.held { run + by + stretches.first() } else { stretches.first() }
+      widest = calc.max(widest, first, ..stretches)
+      run = if stretches.len() == 1 { first } else { stretches.last() }
+    }
     widest = calc.max(widest, run)
   }
   box(width: widest)
@@ -791,7 +823,8 @@ impl Rest {
 /// Sets the file's first blocks, up to about two screens of source, as a
 /// page of their own; the rest comes back to set, unless that was all.
 /// Given a block to open at, it sets as far as that block and about two
-/// screens past it. The rest is set at the same `width`.
+/// screens past it, and the block after it unless that is longer still.
+/// The rest is set at the same `width`.
 pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First, String> {
     let start = Instant::now();
     let mut parts = Vec::new();
@@ -826,7 +859,15 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
         if i >= from {
             chars += block.len();
         }
-        if chars > FIRST_CHARS {
+        // At least the block after the one it opens at, whose top says how
+        // tall that one stands, so a place kept in a long block lands as
+        // far through it, unless that block is itself more than a first
+        // screen, whose marks then wait for the whole page.
+        let next_too = i == from
+            && blocks
+                .get(i + 1)
+                .is_some_and(|next| next.len() <= FIRST_CHARS);
+        if chars > FIRST_CHARS && !next_too {
             all = i + 1 == blocks.len();
             break;
         }
@@ -858,6 +899,10 @@ pub struct Setter {
     pieces: Pieces,
     width: Width,
     title: String,
+    /// The words it last set, hashed, and whether they had changed from
+    /// the set before.
+    words: Option<u64>,
+    edited: bool,
 }
 
 impl Setter {
@@ -868,7 +913,15 @@ impl Setter {
             pieces: Pieces::new(),
             width: Width::whole(),
             title: String::new(),
+            words: None,
+            edited: false,
         }
+    }
+
+    /// Whether the file's words, at its last set, had changed since the
+    /// set before, of the same file.
+    pub fn edited(&self) -> bool {
+        self.edited
     }
 
     /// Sets the page at another width from now on, for a window resized.
@@ -880,6 +933,7 @@ impl Setter {
     /// a link followed costs no fonts read again.
     pub fn open(&mut self, file: &str) {
         file.clone_into(&mut self.file);
+        self.words = None;
     }
 
     /// The file it sets.
@@ -897,6 +951,11 @@ impl Setter {
         let start = Instant::now();
         let markdown =
             std::fs::read_to_string(&self.file).map_err(|e| format!("{}: {e}", self.file))?;
+        let mut words = std::hash::DefaultHasher::new();
+        std::hash::Hash::hash(&markdown, &mut words);
+        let words = std::hash::Hasher::finish(&words);
+        self.edited = self.words.is_some_and(|was| was != words);
+        self.words = Some(words);
         let path = std::path::Path::new(&self.file);
         self.title = crate::title::of(path, &markdown);
         let base = path.parent().map(|dir| {
@@ -967,5 +1026,4 @@ pub fn trim() {
 }
 
 #[cfg(test)]
-#[path = "page_tests.rs"]
 mod tests;

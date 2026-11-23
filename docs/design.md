@@ -1253,6 +1253,7 @@ it. Owners go by layer:
 | A password or one-time code copied                                     | the margin mark, until the clipboard clears it, since the launcher goes as it copies | Passwords' foot; Now |
 | A password reused or breached                                          | nothing, and nothing guessed, until Joel presses Check Every Password, which reads every password, so never on its own | Passwords › Needing Attention, counted, shown again after the vaults in its manager's program; each entry's Health in the warning's colour, "reused in 3 other entries", "seen in 1,204 breaches" |
 | Disk space                                                             | the margin mark, only while a disk is short of room, a writer is frozen or nothing watches it; a notice once a disk is nearly full, again when the guard has made room or can't, and when it freezes a writer, each saying what to do or that nothing is needed | Now |
+| Another machine gone down while it holds work                          | a critical notice from Machines once it has read unreachable for ten minutes, waiting in For You until read, replaced by one saying it's back; nothing for a machine asleep with no work, one with a battery or power unread, or when none still reads ready and this one may be cut off | Machines, where one out of reach dims and says since when |
 | RAM type, speed, maker and part                                        | nothing, since it never changes                    | Memory's Type                |
 | AI spend and its caps                                                  | the margin mark, only while a finding wants a look or nothing watches it; a notice once when one starts to; a line each morning; the launcher's foot | AI spend, a part of Agents (Super+U); Now |
 | AI tokens running out                                                  | the margin mark, only while they run out within four hours at the last hour's rate, or are out; one notice, its words following the minutes in place, rising again only as the time left steps down | Now; AI Spend, a part of Agents |
@@ -1539,7 +1540,10 @@ works the same way everywhere.
   (Joel, 2026-11-20: "no clue how to see from that view that a thing is
   waiting"). An orchestration's row wears it while any session in it
   waits, and so does a session a step in while any under it waits, so
-  the map's shape gives way only then. For You keeps each session's own
+  the map's shape gives way only then. A want Joel put off keeps the
+  person with a clock on its own row, but in the session's own hue, and
+  lights nothing above it until its hour is up, since he chose to leave
+  it for now. For You keeps each session's own
   mark and hue, the warning's as its limit nears, since every row there
   waits and the person with a clock is a to-do's. Its drawer's
   first screen holds what matters of it, never only its title (Joel,
