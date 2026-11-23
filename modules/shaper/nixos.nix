@@ -156,12 +156,13 @@ in
           description = ''
             What the network's line carries down, in kbit/s, or null where
             it isn't known. While a call is on and the download carries
-            nine tenths of it, the download is held there, under the
-            router's queue, so it queues in this machine's CAKE, which puts
-            the call first, rather than in a router's flow queues, where a
-            call that shares one with a bulk download loses what it loses.
-            The controller may hold it lower, and the hold goes when the
-            call ends. Declare the line at its slowest busy hour, and again
+            nine tenths of it, or the controller already holds it, the
+            download is held at nine tenths, under the router's queue, so
+            it queues in this machine's CAKE, which puts the call first,
+            rather than in a router's flow queues, where a call that
+            shares one with a bulk download loses what it loses. The
+            controller may hold it lower, and the hold goes when the call
+            ends. Declare the line at its slowest busy hour, and again
             when it's made faster: held, the download can't show a faster
             line, so each call would hold it at nine tenths of the old one.
           '';

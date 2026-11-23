@@ -1902,7 +1902,7 @@ fn step_links(
             // A follower takes its leader's rates, so a hold it had as
             // leader ends rather than coming back unchecked once it leads
             // again (download hold round 1's F3).
-            if let (_, Some(said)) = s.room.step(name, &s.network, false, None, None) {
+            if let (_, Some(said)) = s.room.step(name, &s.network, false, (None, false), None) {
                 eprintln!("{said}");
             }
             continue;
@@ -1913,11 +1913,14 @@ fn step_links(
         );
         let its = carried.as_ref().filter(|(link, _)| link == name);
         let declared = lines.get(&s.network).copied();
+        // The controller's own cut of this link's download, which it
+        // makes only on a line it judged full.
+        let cut = held && rates.down.is_some();
         let (room, said) = s.room.step(
             name,
             &s.network,
             calling,
-            its.map(|&(_, kbit)| kbit),
+            (its.map(|&(_, kbit)| kbit), cut),
             declared,
         );
         if let Some(said) = said {
