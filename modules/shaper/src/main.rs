@@ -1176,7 +1176,9 @@ impl Call {
     /// Takes a-call-is-on's answer at `now`, none where it couldn't tell,
     /// and gives the journal's line when whether a call is on changes.
     /// What was last known stands through answers missed for under
-    /// `CALL_UNSURE`, and a call is taken to have ended after that.
+    /// `CALL_UNSURE`, and a call is taken to have ended after that. The
+    /// pin's rounds, held off meanwhile, are said to go again once it
+    /// answers that no call is on (download hold round 3's F4).
     fn answered(&mut self, on: Option<bool>, now: Instant) -> Option<&'static str> {
         let Some(on) = on else {
             let since = *self.unsure.get_or_insert(now);
@@ -1185,12 +1187,17 @@ impl Call {
             }
             self.on = false;
             self.unheard = true;
-            return Some("a-call-is-on hasn't answered for a minute, so no call is taken to be on");
+            return Some(
+                "a-call-is-on hasn't answered for a minute, so no call is taken to be on, \
+                 and the VPN's pin starts no round of probes until it answers",
+            );
         };
         self.unsure = None;
-        self.unheard = false;
+        let was_unheard = std::mem::take(&mut self.unheard);
         if on == self.on {
-            return None;
+            return was_unheard.then_some(
+                "a-call-is-on answers again with no call on, so the pin's rounds go again",
+            );
         }
         self.on = on;
         Some(if on {
@@ -1895,7 +1902,7 @@ fn step_links(
             // A follower takes its leader's rates, so a hold it had as
             // leader ends rather than coming back unchecked once it leads
             // again (download hold round 1's F3).
-            if let (_, Some(said)) = s.room.step(name, false, None, None) {
+            if let (_, Some(said)) = s.room.step(name, &s.network, false, None, None) {
                 eprintln!("{said}");
             }
             continue;
@@ -1906,9 +1913,13 @@ fn step_links(
         );
         let its = carried.as_ref().filter(|(link, _)| link == name);
         let declared = lines.get(&s.network).copied();
-        let (room, said) = s
-            .room
-            .step(name, calling, its.map(|&(_, kbit)| kbit), declared);
+        let (room, said) = s.room.step(
+            name,
+            &s.network,
+            calling,
+            its.map(|&(_, kbit)| kbit),
+            declared,
+        );
         if let Some(said) = said {
             eprintln!("{said}");
         }
@@ -2531,7 +2542,27 @@ mod tests {
             up: None,
             down: Some(50_000),
         };
+        // The upload held alone holds the link, but leaves its download
+        // straight unless a call's room holds it (download hold round 3's F8).
+        let up = replay::Rates {
+            up: Some(5_000),
+            down: None,
+        };
         let cases = [
+            (
+                "the upload held, no call",
+                up,
+                2_000_000,
+                None,
+                (2_000_000, State::Holding, true),
+            ),
+            (
+                "the upload held, a call on",
+                up,
+                2_000_000,
+                Some(81_000),
+                (81_000, State::Holding, false),
+            ),
             (
                 "no call, no cut",
                 none,
@@ -2596,8 +2627,11 @@ mod tests {
         assert!(call.on, "answers missed under a minute ended the call");
         assert_eq!(
             call.answered(None, at(62)),
-            Some("a-call-is-on hasn't answered for a minute, so no call is taken to be on"),
-            "a minute unanswered didn't end the call"
+            Some(
+                "a-call-is-on hasn't answered for a minute, so no call is taken to be on, \
+                 and the VPN's pin starts no round of probes until it answers"
+            ),
+            "a minute unanswered didn't end the call, or didn't say the pin waits"
         );
         assert!(!call.on, "the call was said ended but kept");
         assert!(
@@ -2607,12 +2641,17 @@ mod tests {
         assert_eq!(call.answered(None, at(64)), None, "no call ended twice");
         assert_eq!(
             call.answered(Some(false), at(65)),
-            None,
-            "no call said twice"
+            Some("a-call-is-on answers again with no call on, so the pin's rounds go again"),
+            "the pin's rounds went again unsaid"
         );
         assert!(
             !call.may_be_on(),
             "an answer of no call kept the pin's rounds off"
+        );
+        assert_eq!(
+            call.answered(Some(false), at(67)),
+            None,
+            "no call said twice"
         );
 
         // An answer starts the count over.
