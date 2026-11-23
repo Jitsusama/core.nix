@@ -318,7 +318,9 @@ let
         # it. A native fault then leaves no stack trace in the journal either:
         # it is hunted on the live process with /proc and perf, whose call
         # graphs copy raw stack into perf.data, so that file holds the host's
-        # secrets too and is deleted once read.
+        # secrets too: nothing removes it, so whoever records one deletes it
+        # once read. A host started before a switch keeps its old limit until
+        # its next start.
         LimitCORE = "0";
         # The host exits 78 when what it was given is refused (its kind, its
         # realm, a pi missing a host patch), which another start would only

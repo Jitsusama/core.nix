@@ -145,6 +145,8 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
         f" | grep -qF 'Resource limits disable core dumping for process {first} (sleep).'",
         timeout=COMING_BACK,
     )
+    # And none is on disk: a kept core's name carries the process's pid between dots.
+    host.machine.succeed(f"! ls /var/lib/systemd/coredump | grep -qF '.{first}.'")
     assert host.starts()[0] == first
     assert first not in host.starts()[1:]
     # It came back by itself, so nobody is told it's down.

@@ -11,10 +11,12 @@
 
   # A core is root's, with an access list that lets the crashed process's
   # account read it, and it holds whatever that process held: a plain pi's
-  # keys and tokens, a password manager's vault. (A pi host keeps none: its
-  # unit's core limit is 0.) Any program running as the same account can abort another and
-  # read its core seconds later, so the folder is root's alone and the
-  # access lists lead nowhere. coredumpctl's list and each crash's stack
+  # keys and tokens, a password manager's vault. (A pi host started under
+  # its unit's core limit of 0 keeps none; one started before a switch
+  # keeps its old limit until its next start, and the six-hour removal
+  # covers that.) Any program running as the same account can abort
+  # another and read its core seconds later, so the folder is root's alone
+  # and the access lists lead nowhere. coredumpctl's list and each crash's stack
   # trace come from the journal and still reach an account in wheel, though
   # coredumpctl info then fails to reach the core; Joel reads a core
   # through run0. systemd-coredump names the folder as its state directory, which
