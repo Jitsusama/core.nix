@@ -67,9 +67,14 @@ function now(): number {
   return Math.floor(Date.now() / 1000);
 }
 
+/** What the page couldn't read, said in the standing line. */
+function troubles(): readonly string[] {
+  return [...unread, ...(heard === undefined ? [] : [heard])];
+}
+
 /** Says whether what's drawn is live, and what couldn't be read. */
 function sayWhen(): void {
-  const problems = [...unread, ...(heard === undefined ? [] : [heard])];
+  const problems = troubles();
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
   asof.setAttribute("data-state", standing?.state ?? "connecting");
@@ -108,12 +113,12 @@ function select(bringIntoView = false): void {
 
 /**
  * Shows the list while it has rows, and the quiet line once the node has said there
- * are none it couldn't read either, since the standing line then says what it holds.
+ * are none and nothing it told went unread, since the standing line then says so.
  * A list with no rows is no listbox, since a listbox must hold options.
  */
 function showList(any: boolean): void {
   list.hidden = !any;
-  quiet.hidden = any || !given || unread.length > 0;
+  quiet.hidden = any || !given || troubles().length > 0;
   if (any) {
     // Only a listbox may be labelled, so its name comes and goes with its role.
     list.setAttribute("role", "listbox");
@@ -186,6 +191,7 @@ follow(
     problem: (what) => {
       heard = what;
       sayWhen();
+      draw();
     },
   },
 );

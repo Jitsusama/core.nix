@@ -408,7 +408,7 @@ def heard_nothing(page: Page) -> None:
 
 def said_quiet(page: Page, why: str) -> None:
     """Expect the page to say a quiet day: its line, the crest, and no list or flock."""
-    expect(page.locator("#quiet"), why).to_be_visible()
+    expect(page.locator("#quiet"), why).to_be_visible(timeout=PACE_MS)
     expect(page.locator("#quiet"), why).to_contain_text("Nothing murmured in the last day.")
     # A listbox must hold options, so a list with none is no listbox at all.
     expect(page.locator('[role="listbox"]'), "an empty listbox was drawn").to_have_count(0)
@@ -476,6 +476,13 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             expect(page.locator("#quiet"), "settled murmurs were called quiet").to_be_hidden()
             quiet_node.tell("murmur", gone=[key, str(roosted["key"])])
             said_quiet(page, "the last murmur going left no quiet line")
+            # A record keyed by no name is said in the standing line, so the day isn't called
+            # quiet.
+            quiet_node.tell("murmur", changed=[{"key": 7, "writer": "GULLSS"}])
+            expect(page.locator("#asof"), "the keyless record wasn't said").to_contain_text(
+                "had no key", timeout=PACE_MS
+            )
+            expect(page.locator("#quiet"), "a keyless record was called quiet").to_be_hidden()
         finally:
             opened.close()
 
