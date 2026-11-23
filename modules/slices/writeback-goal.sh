@@ -26,21 +26,24 @@ esac
 disk=${1:-}
 goal=${2:-}
 held=/sys/block/$disk/queue/wbt_lat_usec
-# A disk that's gone, or has no throttle, has nothing to set or give back.
-if [ -z "$disk" ] || [ ! -e "$held" ]; then
-  exit 0
-fi
-case $goal in
-kernel)
-  # The kernel reads -1 as its own goal for the disk.
-  echo -1 > "$held"
-  ;;
-'' | *[!0-9]*)
-  printf '%s\n' "writeback-goal sets microseconds or kernel, not ${goal:-nothing}" \
+# What it's asked is checked first, so a wrong call says so whether or not
+# the disk is there.
+if [ -z "$disk" ] || { [ "$goal" != kernel ] && [[ -z $goal || $goal == *[!0-9]* ]]; }; then
+  printf '%s\n' "writeback-goal sets a disk's goal in microseconds, or kernel" \
     "  try  writeback-goal --help" >&2
   exit 64
-  ;;
-*)
-  echo "$goal" > "$held"
-  ;;
-esac
+fi
+if [ ! -e "$held" ]; then
+  # A disk gone by the time it's given back has nothing to give back, but
+  # one that's missing as its goal is set is a name that reaches nothing,
+  # which the unit's failing says rather than the A/B measuring nothing.
+  [ "$goal" = kernel ] && exit 0
+  echo "writeback-goal: $disk has no writeback throttle under /sys/block" >&2
+  exit 1
+fi
+if [ "$goal" = kernel ]; then
+  # The kernel reads -1 as its default goal, set by hand: the goal comes
+  # back, but a later io.cost won't stand it down until the next boot.
+  goal=-1
+fi
+echo "$goal" > "$held"

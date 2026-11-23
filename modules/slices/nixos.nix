@@ -450,13 +450,15 @@ in
     description = ''
       The kernel's writeback throttle's latency goal on each disk named, by
       its name under /sys/block, in microseconds; 0 turns the throttle off.
-      It's set as a switch brings it in and as the disk appears, and taken
-      off, by a switch without it, back to the kernel's own, 2 ms on a solid
-      disk, which a disk not named keeps. The name is the kernel's, which
-      follows the order disks are found in: on a machine with two of a
-      kind, the goal can land on the other one. A disk io.cost shares, in
-      jitsusama.slices.disks, may only be given 0, since the kernel turns
-      the throttle off for io.cost and a goal would throttle it beside it.
+      It's set as a switch brings it in and as the disk appears, and a
+      switch without it gives back the kernel's default goal, 2 ms on a
+      solid disk, set by hand, so io.cost added to that disk later won't
+      stand the throttle down until the next boot. A name that reaches no
+      throttle, such as a partition's, fails its unit. The name is the
+      kernel's, which follows the order disks are found in: on a machine
+      with two of a kind, the goal can land on the other one. A disk
+      io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
+      already turns its throttle off and giving it back would turn it on.
     '';
     default = { };
     example = {
@@ -479,12 +481,13 @@ in
           + "which isn't one system unit's whole name, or is one run0 makes.";
       }) config.jitsusama.slices.agentsMayRepeat
       # The name goes into units' names and a path under /sys/block, so it's
-      # a whole disk's plain name, never a pattern or a path.
-      ++ lib.mapAttrsToList (disk: goal: {
-        assertion = plainDisk disk && (goal == 0 || !(disks ? ${disk}));
+      # a plain name, never a pattern or a path; and it's never a disk
+      # io.cost shares, whose throttle the unit's stop would turn back on.
+      ++ lib.mapAttrsToList (disk: _: {
+        assertion = plainDisk disk && !(disks ? ${disk});
         message =
-          "jitsusama.slices.writebackThrottle names ${disk}, which isn't a whole disk's "
-          + "plain name, or gives a goal to a disk io.cost shares, which may only be given 0.";
+          "jitsusama.slices.writebackThrottle names ${disk}, which isn't a disk's plain "
+          + "name, or is a disk io.cost shares, which turns its throttle off already.";
       }) writebackThrottle
       # The floor below makes the service whatever it's named, so a name no
       # service runs would make an empty unit and protect nothing.
@@ -824,10 +827,10 @@ in
           "dev-${disk}.device"
         ];
         after = [ "dev-${disk}.device" ];
-        unitConfig = {
-          ConditionPathExists = "/sys/block/${disk}/queue/wbt_lat_usec";
-          StopPropagatedFrom = "dev-${disk}.device";
-        };
+        # No condition on the disk being there: a name that reaches no
+        # throttle fails the unit, which a switch reports, rather than
+        # skipping it unseen while an A/B measures nothing.
+        unitConfig.StopPropagatedFrom = "dev-${disk}.device";
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;

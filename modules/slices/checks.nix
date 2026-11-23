@@ -15,16 +15,31 @@
   # A machine turns a disk's writeback throttle off, or sets its goal, by a
   # unit per disk that a switch starts and the disk's arrival wants, and
   # stopping it gives the kernel's goal back; one that names none has no
-  # such unit, and a name that isn't a whole disk's is refused.
+  # such unit, and a name that isn't a disk's plain one, or a disk io.cost
+  # shares, is refused.
   a-disks-writeback-throttle-is-the-machines =
     let
-      machine =
-        throttle:
+      sharing =
+        throttle: disks:
         (bareNixos [
           self.nixosModules.nix-daemon
           self.nixosModules.slices
-          { jitsusama.slices.writebackThrottle = throttle; }
+          {
+            jitsusama.slices = {
+              writebackThrottle = throttle;
+              inherit disks;
+            };
+          }
         ]).config;
+      machine = throttle: sharing throttle { };
+      measured.nvme0n1.model = lib.genAttrs [
+        "rbps"
+        "rseqiops"
+        "rrandiops"
+        "wbps"
+        "wseqiops"
+        "wrandiops"
+      ] (_: 1000);
       two =
         (machine {
           nvme0n1 = 0;
@@ -41,7 +56,8 @@
         && service.RemainAfterExit or false
         && lib.elem "dev-${disk}.device" (unit.wantedBy or [ ])
         && lib.elem "multi-user.target" (unit.wantedBy or [ ]);
-      refuses = throttle: lib.any (a: !a.assertion) (machine throttle).assertions;
+      refusing = config: lib.any (a: !a.assertion) config.assertions;
+      refuses = throttle: refusing (machine throttle);
       unnamed =
         lib.filterAttrs (name: _: lib.hasPrefix "disk-writeback-" name)
           (machine { }).systemd.services;
@@ -55,6 +71,8 @@
         && !(refuses { nvme0n1 = 0; })
         && refuses { "nvme*" = 0; }
         && refuses { "nvme0n1\", RUN+=\"x" = 0; }
+        && !(refusing (sharing { vda = 0; } measured))
+        && refusing (sharing { nvme0n1 = 0; } measured)
       );
 
   # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
