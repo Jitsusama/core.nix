@@ -219,9 +219,13 @@ fn reports(to: SocketAddr, interface: Option<&str>) -> Result<(), Failure> {
             let trouble = count.as_ref().err().map(|error| {
                 format!("{uplink}'s sent bytes can't be read, so nothing is reported: {error}")
             });
-            say(troubles
-                .unread
-                .now(trouble, &format!("{uplink}'s sent bytes read again")));
+            // One trouble stands for every uplink, so a move from one that
+            // can't be read to one that can clears it, and what's said
+            // then names the uplink read now, not the one that failed.
+            say(troubles.unread.now(
+                trouble,
+                &format!("{uplink}'s sent bytes can be read, so reports go again"),
+            ));
             if let Ok(count) = count {
                 total.take(&uplink, count);
                 let text = report(total.bytes, now.duration_since(started).as_millis());

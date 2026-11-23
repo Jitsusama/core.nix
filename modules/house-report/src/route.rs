@@ -88,14 +88,17 @@ mod tests {
     use super::*;
 
     // A Mac's Nix sandbox denies a socket by the loopback, though it lets
-    // the build list /Users, so the denial itself is what's asked: the
-    // sandbox's refusal says so and ends the test, and any other failure
-    // fails it. Linux's sandbox allows the loopback, so it runs there.
+    // the build list /Users, so the denial itself is what's asked: on a
+    // Mac the sandbox's refusal says so and ends the test, a note a Mac's
+    // build shows (package.nix), and any other failure fails it. Linux's
+    // sandbox allows the loopback, so a refusal there fails too.
     #[test]
     fn this_machine_sends_to_itself_by_its_loopback() {
         let (loopback, from) = match toward((Ipv4Addr::LOCALHOST, 47_110).into()) {
             Ok(way) => way,
-            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+            Err(error)
+                if cfg!(target_os = "macos") && error.kind() == io::ErrorKind::PermissionDenied =>
+            {
                 eprintln!("sending by the loopback is denied here ({error}), so it isn't tested");
                 return;
             }

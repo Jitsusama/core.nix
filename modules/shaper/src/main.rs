@@ -1897,12 +1897,18 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
         .iter()
         .filter_map(|(network, h)| {
             // The other machine reports by the interface it sends by, so
-            // from one of its addresses; the freshest says what it sends.
+            // from one of its addresses. Of those fresh, the one that says
+            // the most holds: a report the address alone vouches for can
+            // then only tighten the hold, never loosen it, so one forged
+            // from an address the house isn't sending by takes nothing
+            // from the VPN, and a move's old address stands only until
+            // its last word is stale.
             let sent = h
                 .from
                 .iter()
                 .filter_map(|&address| ear.sent(address, now))
-                .min_by_key(|&(_, age)| age);
+                .filter(|&(_, age)| age <= house::FRESH)
+                .max_by(|a, b| a.0.total_cmp(&b.0));
             let most = house::held(h.most, sent, least)?;
             Some((network.clone(), (rate::whole(sent?.0), most)))
         })
@@ -3008,11 +3014,12 @@ mod tests {
         );
     }
 
-    // A house whose other machine moves to its cable is heard from the
-    // cable's address, its Wi-Fi's last word standing until the cable's
-    // is fresher, and going once it's past its time.
+    // A house whose other machine moves to its cable is heard from either
+    // address while each is fresh, and the one saying the most holds,
+    // wherever it is in the list and however fresh, so a report saying
+    // less, forged or late, never loosens the hold (house round 3).
     #[test]
-    fn a_house_is_heard_from_whichever_of_its_addresses_said_last() {
+    fn a_house_is_held_by_the_most_any_of_its_fresh_addresses_says() {
         let wifi: std::net::IpAddr = "192.0.2.7".parse().expect("an address");
         let cable: std::net::IpAddr = "192.0.2.8".parse().expect("an address");
         let houses = networks::Houses::from([(
@@ -3038,14 +3045,21 @@ mod tests {
         ear.hear(cable, report(437_500, 3_000), next);
         assert_eq!(
             house_holds(&houses, Some(&ear), next).get("00:00:5e:00:53:01"),
-            Some(&(1_000, 6_000)),
-            "the cable's rate, the fresher, didn't say what the other machine sends"
+            Some(&(2_500, 4_500)),
+            "a fresher address saying less loosened the hold"
         );
         let past = at + house::FRESH + Duration::from_secs(1);
+        ear.hear(wifi, report(375_000, 4_000), past);
         assert_eq!(
             house_holds(&houses, Some(&ear), past).get("00:00:5e:00:53:01"),
             Some(&(1_000, 6_000)),
-            "the house went quiet with the Wi-Fi, though the cable spoke lately"
+            "the cable, saying more and second in the list, didn't hold"
+        );
+        let quiet = past + house::FRESH + Duration::from_secs(1);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), quiet).get("00:00:5e:00:53:01"),
+            None,
+            "a house held with neither address fresh"
         );
     }
 }

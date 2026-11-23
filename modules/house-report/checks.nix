@@ -28,17 +28,15 @@ let
       self.nixosModules.house-report
       told
     ]).config.systemd.services.house-report.serviceConfig or { };
-  # Whether a machine told `to` builds, as a module setting it would.
-  takes =
+  # What a machine told `to` runs, and whether it builds, as a module
+  # setting it would.
+  started =
     to:
-    (builtins.tryEval (
-      builtins.deepSeq
-        (bareNixos [
-          self.nixosModules.house-report
-          { jitsusama.house-report.to = to; }
-        ]).config.systemd.services.house-report.serviceConfig.ExecStart
-        true
-    )).success;
+    (bareNixos [
+      self.nixosModules.house-report
+      { jitsusama.house-report.to = to; }
+    ]).config.systemd.services.house-report.serviceConfig.ExecStart;
+  takes = to: (builtins.tryEval (builtins.deepSeq (started to) true)).success;
   taken = [
     "192.0.2.3"
     "2001:db8::3"
@@ -50,6 +48,8 @@ let
     "12345::1"
     "::ffff:c000:203"
     ":"
+    "fe80::3"
+    "FEBF::3"
   ];
   misread = lib.filter (to: !takes to) taken ++ lib.filter takes refused;
 in
@@ -99,7 +99,8 @@ in
   # A Linux machine runs house-report as a service of its own account,
   # writing nothing, started again when it ends but not when it was asked
   # wrongly; and it's told only an address, as the shaper's house reads
-  # one, so a name or a malformed address is refused as it builds.
+  # one, so a name, a malformed address or a link-local one is refused as
+  # it builds, and an IPv6 one is sent to in brackets before its port.
   house-report-is-told-an-address =
     holds "house-report-is-told-an-address"
       (
@@ -107,10 +108,11 @@ in
           "house-report's address check misreads: ${lib.concatStringsSep ", " misread}"
         else
           "house-report doesn't run on Linux as a service of its own account, writing nothing, "
-          + "started again unless it was asked wrongly."
+          + "started again unless it was asked wrongly, sending to an IPv6 address in brackets."
       )
       (
         misread == [ ]
+        && lib.hasInfix "[2001:db8::3]:47110" (started "2001:db8::3")
         && linux.DynamicUser or null == true
         && linux.ProtectSystem or null == "strict"
         && linux.Restart or null == "always"

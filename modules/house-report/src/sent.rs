@@ -171,9 +171,15 @@ mod tests {
     // counted as sent, so the routing socket's list is read for real
     // (sysctl's NET_RT_IFLIST2), not a stand-in. A Mac's Nix sandbox
     // denies the socket, so its refusal says so and ends the test, as
-    // route.rs's loopback test does; any other failure fails it.
+    // route.rs's loopback test does; any other failure fails it. The list
+    // is read before, as it needs no socket, so the sandbox reads it too.
     #[test]
     fn the_loopbacks_count_grows_by_what_it_sends() {
+        assert_eq!(
+            by("none0").map_err(|e| e.kind()),
+            Err(io::ErrorKind::NotFound),
+            "an interface that isn't there read a count"
+        );
         let before = by("lo0").expect("the loopback's count couldn't be read");
         let sent = std::net::UdpSocket::bind("127.0.0.1:0").and_then(|socket| {
             let to = socket.local_addr()?;
@@ -192,11 +198,6 @@ mod tests {
             after.saturating_sub(before) >= 10_000,
             "ten datagrams of 1,000 bytes counted {} bytes",
             after.saturating_sub(before)
-        );
-        assert_eq!(
-            by("none0").map_err(|e| e.kind()),
-            Err(io::ErrorKind::NotFound),
-            "an interface that isn't there read a count"
         );
     }
 }

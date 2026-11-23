@@ -1617,8 +1617,9 @@
   house-report-is-told-an-address = ''
     a Linux machine runs house-report as a service of its own account that writes nothing, started
     again when it ends but not after its usage exit, and is told only an address as the shaper's
-    house reads one: IPv4 and IPv6 taken, and a name, a malformed address or an IPv4 one written
-    as IPv6 refused as the machine builds
+    house reads one: IPv4 and IPv6 taken, an IPv6 one sent to in brackets before its port, and a
+    name, a malformed address, an IPv4 one written as IPv6 or a link-local one refused as the
+    machine builds
   '';
   house-report-passes-clippy = ''
     clippy finds nothing in house-report or its tests

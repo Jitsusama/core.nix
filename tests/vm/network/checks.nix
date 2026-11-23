@@ -65,7 +65,7 @@ onLinux {
   # source port.
   vm-the-vpn-takes-the-quick-way = import ./shaper-pin.nix { inherit self pkgs; };
   # Whether another machine's reports hold the shaper's upload, and stop
-  # holding it, shows only with the reporter run by an account's manager
+  # holding it, shows only with the reporter run as a system service
   # and its datagrams crossing a real network to the shaper's firewall.
   vm-the-house-holds-the-upload = import ./house.nix { inherit self pkgs; };
 }
