@@ -182,6 +182,7 @@
   "launcher/Light.qml" = [ "launcher/Numbers.js" ];
   "launcher/Looks.js" = [
     "launcher/ForYou.js"
+    "launcher/LookForm.js"
     "launcher/Order.js"
   ];
   "launcher/Machine.js" = [ "launcher/Numbers.js" ];
@@ -221,6 +222,7 @@
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Lately.js"
+    "launcher/LookForm.js"
     "launcher/Looks.js"
     "launcher/Moment.js"
     "launcher/NeedsYou.js"

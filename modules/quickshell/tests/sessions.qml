@@ -288,8 +288,13 @@ ShellRoot {
         Sessions.goTo(out);
         expect("one out of reach isn't joined", root.unjoined === "OUTRCH", root.unjoined);
         hosts();
-        Sessions.steer("farawy", { act: "pause" });
+        Sessions.steer("farawy", { act: "pause" }, (put, answer, sent) => {
+            root.farawyTold = [put, answer?.error?.message ?? null, sent];
+        });
     }
+    // What the refused steer's caller was told: not put, the node's
+    // refusal, and sent, so a caller tells it from one never sent.
+    property var farawyTold: null
 
     // One pi's host runs, with no window: Go To views it by its node's
     // words, in a window named for it, once; niri's window by that name is
@@ -939,6 +944,17 @@ ShellRoot {
                     session.address === "FARAWY" && session.machine === "lighthouse"
                     && why === "lighthouse is out of reach, so FARAWY can't be told now", why);
                 root.expect("and names the act it refused, never a wake", act === "pause", act);
+                // Its caller is told after the refusal is said.
+                Qt.callLater(() => {
+                    try {
+                        root.expect("its caller told not put, the refusal, and that it was sent",
+                            JSON.stringify(root.farawyTold) === JSON.stringify([false,
+                                "lighthouse is out of reach, so FARAWY can't be told now", true]),
+                            JSON.stringify(root.farawyTold));
+                    } catch (error) {
+                        root.fail(error.message);
+                    }
+                });
                 const asked = root.steers.find(one => one.ask.address === "FARAWY")?.ask;
                 root.expect("the node is asked with the steer, its address as the mesh writes it",
                     asked?.steer?.act === "pause" && asked?.steer?.from === "joel",

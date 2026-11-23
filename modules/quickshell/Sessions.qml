@@ -2855,14 +2855,17 @@ Singleton {
     // reason, or none, and the act refused where its caller names it
     // ("wake", "pause"), else "", so a row becoming what one act asked is
     // taken back only for that act; `then`, when given, is told whether it
-    // was put.
+    // was put, the node's answer, and whether it was sent: one sent with
+    // no answer is the node gone before answering, perhaps having written
+    // it, and one unsent never left the shell, both apart from a refusal.
     signal unsteered(var session, string why, string act)
     function steer(address, fields, then) {
         const upper = String(address).toUpperCase();
+        const sent = PiSource.reaches();
         PiSource.steer(upper, fields, answer => {
             const put = steered(upper, answer, fields?.act ?? "");
             if (then)
-                then(put);
+                then(put, answer, sent);
         });
     }
     // Says what became of a steer by the node's answer, the agents
