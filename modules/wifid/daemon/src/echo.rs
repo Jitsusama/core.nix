@@ -13,9 +13,17 @@
 //! other runs: on 23 Nov 2026 a mesh node's 5 GHz point held a card's
 //! video and voice answers for 0.9 s at the median, in order, while its
 //! best-effort ones came back in 6 ms, and the chooser, hearing only best
-//! effort, went back to it within 81 s. A gateway answers an echo in the
-//! class it was asked in, so a video echo times the video queue both ways.
+//! effort, went back to it within 81 s. Linux answers an echo in the class
+//! it was asked in, so behind a gateway running it a video echo times the
+//! video queue both ways; one answering unmarked would time it going up
+//! only.
+//!
+//! An answer that comes past [`LOST`] is kept as late, with what it took,
+//! rather than passed over: a queue held for seconds answers late, in
+//! order, where a gateway that drops an echo never answers it, and only
+//! the first says anything of the air.
 
+use std::collections::VecDeque;
 use std::ffi::CString;
 use std::io;
 use std::mem;
@@ -26,7 +34,7 @@ use tokio::io::Interest;
 use tokio::io::unix::AsyncFd;
 use tokio::time::{Duration, Instant, timeout};
 
-use crate::measure::Echo;
+use crate::measure::{Echo, SPAN};
 
 /// How long an echo is waited for before it counts as lost: past what
 /// anyone would bear on a call.
@@ -58,12 +66,32 @@ impl Class {
             Class::Video => 0xa0,
         }
     }
+
+    /// What it's called in the journal.
+    pub fn name(self) -> &'static str {
+        match self {
+            Class::BestEffort => "best effort",
+            Class::Video => "video",
+        }
+    }
+}
+
+/// An answer that came past [`LOST`], to the echo sent at `sent`.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Late {
+    pub sent: Instant,
+    pub took: Duration,
 }
 
 /// A card's own socket for echoes.
 pub struct Echoer {
     socket: AsyncFd<OwnedFd>,
     sequence: u16,
+    /// Echoes not answered within [`LOST`] over the span, by sequence, and
+    /// when each was sent, so an answer to one that comes later is late.
+    unanswered: VecDeque<(u16, Instant)>,
+    /// Late answers read since they were last taken.
+    late: Vec<Late>,
 }
 
 impl Echoer {
@@ -121,12 +149,20 @@ impl Echoer {
         Ok(Echoer {
             socket: AsyncFd::with_interest(owned, Interest::READABLE)?,
             sequence: 0,
+            unanswered: VecDeque::new(),
+            late: Vec::new(),
         })
     }
 
-    /// Echoes the gateway once, saying how long its answer took, or that
-    /// none came within [`LOST`].
-    pub async fn echo(&mut self, gateway: Ipv4Addr) -> io::Result<Echo> {
+    /// Echoes the gateway once, saying when it was sent and how long its
+    /// answer took, or that none came within [`LOST`].
+    pub async fn echo(&mut self, gateway: Ipv4Addr) -> io::Result<(Instant, Echo)> {
+        while let Some(&(_, sent)) = self.unanswered.front() {
+            if sent.elapsed() <= SPAN {
+                break;
+            }
+            self.unanswered.pop_front();
+        }
         self.sequence = self.sequence.wrapping_add(1);
         let sequence = self.sequence;
         let message = request(sequence);
@@ -156,18 +192,30 @@ impl Echoer {
         if sent < 0 {
             return Err(io::Error::last_os_error());
         }
-        match timeout(LOST, self.answer(sequence)).await {
-            Ok(answered) => answered.map(|()| Echo::Answered(sent_at.elapsed())),
-            Err(_) => Ok(Echo::Lost),
+        if let Ok(answered) = timeout(LOST, self.answer(sequence)).await {
+            return answered.map(|()| (sent_at, Echo::Answered(sent_at.elapsed())));
         }
+        self.unanswered.push_back((sequence, sent_at));
+        Ok((sent_at, Echo::Lost))
     }
 
-    /// Waits for the answer to the echo sent with this sequence, passing
-    /// over late answers to earlier ones.
-    async fn answer(&self, sequence: u16) -> io::Result<()> {
+    /// The late answers read since this was last asked.
+    pub fn late(&mut self) -> Vec<Late> {
+        mem::take(&mut self.late)
+    }
+
+    /// Waits for the answer to the echo sent with this sequence, keeping
+    /// any answer to an earlier one counted lost as late.
+    async fn answer(&mut self, sequence: u16) -> io::Result<()> {
+        let Echoer {
+            socket,
+            unanswered,
+            late,
+            ..
+        } = self;
         let mut datagram = [0u8; 64 + CARRIED];
         loop {
-            let mut ready = self.socket.readable().await?;
+            let mut ready = socket.readable().await?;
             let read = ready.try_io(|socket| {
                 // SAFETY: the buffer outlives the call, and the length is
                 // its own.
@@ -184,8 +232,18 @@ impl Echoer {
             let Ok(read) = read else {
                 continue;
             };
-            if answers(&datagram[..read?], sequence) {
-                return Ok(());
+            match answered(&datagram[..read?]) {
+                Some(answered) if answered == sequence => return Ok(()),
+                Some(answered) => {
+                    let held = unanswered.iter().position(|&(asked, _)| asked == answered);
+                    if let Some((_, sent)) = held.and_then(|held| unanswered.remove(held)) {
+                        late.push(Late {
+                            sent,
+                            took: sent.elapsed(),
+                        });
+                    }
+                }
+                None => {}
             }
         }
     }
@@ -200,10 +258,14 @@ fn request(sequence: u16) -> Vec<u8> {
     request
 }
 
-/// Whether what the socket read is the answer to the echo with this
-/// sequence.
-fn answers(read: &[u8], sequence: u16) -> bool {
-    read.first() == Some(&REPLY) && read.get(6..8) == Some(&sequence.to_be_bytes()[..])
+/// The sequence of the echo what the socket read answers, if it's an
+/// answer.
+fn answered(read: &[u8]) -> Option<u16> {
+    if read.first() != Some(&REPLY) {
+        return None;
+    }
+    let sequence = read.get(6..8)?;
+    Some(u16::from_be_bytes([sequence[0], sequence[1]]))
 }
 
 #[cfg(test)]
@@ -222,7 +284,7 @@ mod tests {
 
     #[test]
     fn a_video_echo_goes_in_wi_fis_video_queue_and_best_effort_unmarked() {
-        assert_eq!(Class::Video.tos() >> 5, 5, "user priority 5, video's");
+        assert_eq!(Class::Video.tos(), 0xa0, "CS5: user priority 5, video's");
         assert_eq!(Class::BestEffort.tos(), 0, "best effort carries no mark");
     }
 
@@ -236,12 +298,21 @@ mod tests {
         let mut unreachable = answer.clone();
         unreachable[0] = 3;
 
-        assert!(answers(&answer, 7), "an echo reply with its sequence");
-        assert!(!answers(&earlier, 7), "a late answer to the one before");
-        assert!(
-            !answers(&unreachable, 7),
+        assert_eq!(
+            answered(&answer),
+            Some(7),
+            "an echo reply with its sequence"
+        );
+        assert_eq!(
+            answered(&earlier),
+            Some(6),
+            "a late answer to the one before"
+        );
+        assert_eq!(
+            answered(&unreachable),
+            None,
             "a gateway unreachable isn't an answer"
         );
-        assert!(!answers(&answer[..4], 7), "nor is a header cut short");
+        assert_eq!(answered(&answer[..4]), None, "nor is a header cut short");
     }
 }
