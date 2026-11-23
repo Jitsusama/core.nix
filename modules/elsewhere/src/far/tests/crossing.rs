@@ -109,29 +109,35 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
 fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into(), "logs".into(), "gone".into()];
-    // A folder where the far line lists its names, so it can't.
-    let (code, err, home) = far_line(
-        Left::Whole,
-        &[("x", "x")],
-        "mkdir \"$PWD.back\" out logs && printf a > out/a",
-        &kind,
-        None,
-        &[],
-    );
-    assert!(
-        code == Some(0) && err.contains("couldn't list what to bring back"),
-        "the job didn't run, or the far line didn't say why it lost all ({code:?}): {err}"
-    );
-    let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
-    assert!(
-        matches!(&landed, Err(Missed::Lost(why)) if why.starts_with("out, logs didn't come back")),
-        "names that couldn't be listed weren't each lost, or one never made was: {landed:?}"
-    );
-    assert!(
-        !home.join("near/out/a").exists(),
-        "a file landed though its names were never listed"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    // A folder where the far line lists its names, its losses or its
+    // names sorted, so it can't.
+    for list in [".back", ".back.lost", ".back.in"] {
+        let (code, err, home) = far_line(
+            Left::Whole,
+            &[("x", "x")],
+            &format!("mkdir \"$PWD{list}\" out logs && printf a > out/a"),
+            &kind,
+            None,
+            &[],
+        );
+        assert!(
+            code == Some(0) && err.contains("couldn't list what to bring back"),
+            "the job didn't run, or the far line didn't say why it lost all to a folder at \
+             {list} ({code:?}): {err}"
+        );
+        let landed = bring_back(&handover(&home), &home.join("near"), &kind.brings_back, 1);
+        let lost = "out, logs didn't come back";
+        assert!(
+            matches!(&landed, Err(Missed::Lost(why)) if why.starts_with(lost)),
+            "names that couldn't be listed at {list} weren't each lost, or one never made was: \
+             {landed:?}"
+        );
+        assert!(
+            !home.join("near/out/a").exists(),
+            "a file landed though its names were never listed at {list}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }
 
 /// A stand-in for `step` that, run with arguments `when` matches, does
