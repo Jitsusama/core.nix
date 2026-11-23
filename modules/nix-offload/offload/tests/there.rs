@@ -105,6 +105,8 @@ case "$2" in
     case "$2" in *"/$(cat "$here/kept-$1")-"*) exit 0 ;; esac
     exit 1 ;;
 esac
+# The places claimed in the folder sending-of names, as a run goes.
+[ -f "$here/sending-of" ] && cat "$(cat "$here/sending-of")"/* > "$here/sending-seen"
 printf '%s\n%s\n' "$1" "$2" > "$here/ssh-was-given"
 printf '%s\n' "$2" >> "$here/ssh-commands"
 printf '%s\n' "$1" >> "$here/ssh-hosts"
@@ -6620,6 +6622,69 @@ fn a_run_sent_is_journalled_where_it_ran() {
         "one line for the run: {kept}"
     );
     assert!(line["on"].is_string(), "it names its builder: {kept}");
+}
+
+// A timing-sensitive run asked to go --alone goes to a VM builder with
+// nothing sent to it, holding all its places while it goes, so no VM test
+// lands beside it, and lets them go once it ends. With no VM builder lent,
+// nothing goes, since the general builders are never to itself.
+#[test]
+fn a_run_alone_holds_a_vm_builder_whole_or_goes_nowhere() {
+    let run = RunTree::new();
+    let alone = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
+    run.refused(&run.there(&alone, &[]), "no VM builder is lent");
+
+    // A lender for VM tests runs, as this test does, in the folder the
+    // tree's runs read for the first VM builder, with a VM test of
+    // another run going there.
+    let vm = run.folder.path().join("offload-vm");
+    fs::create_dir_all(vm.join("sending")).unwrap();
+    fs::write(vm.join("lender"), std::process::id().to_string()).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+    let other = vm.join("sending").join(format!("{}.0", std::process::id()));
+    fs::write(&other, "1\n").unwrap();
+    fs::write(
+        run.bin.join("sending-of"),
+        vm.join("sending").to_str().unwrap(),
+    )
+    .unwrap();
+    let went = std::thread::spawn({
+        let other = other.clone();
+        move || {
+            // Long enough for the run to have looked and found the VM
+            // test going, then that test ends.
+            std::thread::sleep(std::time::Duration::from_secs(2));
+            fs::remove_file(other).unwrap();
+        }
+    });
+    let ran = run.there(&alone, &[]);
+    went.join().unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains("so this waits for one with nothing sent to it"),
+        "it went beside another run's VM test: {said}"
+    );
+    let given = fs::read_to_string(run.bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.starts_with("nix-offload-vm"),
+        "it went to a general builder: {given}"
+    );
+    assert_eq!(
+        fs::read_to_string(run.bin.join("sending-seen"))
+            .unwrap()
+            .trim(),
+        "4",
+        "it didn't hold all the builder's places while it went"
+    );
+    assert!(
+        fs::read_dir(vm.join("sending")).unwrap().next().is_none(),
+        "its places were still held once it ended"
+    );
 }
 
 #[test]

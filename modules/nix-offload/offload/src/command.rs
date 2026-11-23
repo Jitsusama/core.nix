@@ -10,9 +10,10 @@
 //! runs on a builder. Its output streams back and its status is this
 //! one's.
 //!
-//! It goes only to the two lent builders, never a nearby machine, an
-//! evaluator or a VM builder, so work code stays on the account's own
-//! cloud. Its ssh names the builder for as long as it runs, which is what
+//! It goes only to the two lent builders, or with `--alone` to a VM
+//! builder held whole, never a nearby machine or an evaluator, so work
+//! code stays on the account's own cloud: the VM builders are lent from
+//! the same project by the same helper. Its ssh names the builder for as long as it runs, which is what
 //! the lender counts a builder in use by, so it isn't given back idle
 //! mid-run. Its paths go as held outputs do, signed or content-addressed,
 //! since the builder trusts no account. Once it has run for `--longest`,
