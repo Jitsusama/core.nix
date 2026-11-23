@@ -406,6 +406,21 @@ def heard_nothing(page: Page) -> None:
     the_page_counts(page, "Nothing murmured yet.", "the quiet page miscounted")
 
 
+def said_quiet(page: Page, why: str) -> None:
+    """Expect the page to say a quiet day: its line, the crest, and no list or flock."""
+    expect(page.locator("#quiet"), why).to_be_visible()
+    expect(page.locator("#quiet"), why).to_contain_text("Nothing murmured in the last day.")
+    # A listbox must hold options, so a list with none is no listbox at all.
+    expect(page.locator('[role="listbox"]'), "an empty listbox was drawn").to_have_count(0)
+    expect(page.locator("#murmurs"), "an empty list was drawn").to_be_hidden()
+    expect(page.locator("#sky svg:not(.crest)"), "a bare sky was drawn").to_have_count(0)
+    expect(page.locator("#sky .crest"), "the crest didn't stand in").to_be_visible()
+    expect(page.locator("#sky-says"), "the legend told of no flock").to_be_hidden()
+    expect(page.locator("figure.dusk"), "the crest was read out").to_have_attribute(
+        "aria-hidden", "true"
+    )
+
+
 def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
     browser: Browser, tmp_path: Path, quiet_node: StandIn
 ) -> None:
@@ -416,20 +431,32 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
         try:
             opened.first(heard_nothing)
             page = opened.page
-            expect(page.locator("#quiet"), "the quiet day wasn't said").to_contain_text(
-                "Nothing murmured in the last day."
-            )
-            # A listbox must hold options, so a list with none is no listbox at all.
-            expect(page.locator('[role="listbox"]'), "an empty listbox was drawn").to_have_count(0)
-            expect(page.locator("#sky svg:not(.crest)"), "a bare sky was drawn").to_have_count(0)
-            expect(page.locator("#sky .crest"), "the crest didn't stand in").to_be_visible()
+            said_quiet(page, "the quiet day wasn't said")
             opened.passes_the_skills_checks()
-            quiet_node.tell("murmur", changed=[murmur("HERONS", int(time.time()), "Fog.")])
+            at = int(time.time())
+            quiet_node.tell("murmur", changed=[murmur("HERONS", at, "Fog.")])
             the_page_counts(page, "One murmured, all still in the air.", "the murmur went unheard")
             listed = page.locator("#murmurs")
             expect(listed, "the first murmur's list").to_have_attribute("role", "listbox")
             expect(listed, "the list went unnamed").to_have_accessible_name("The murmurs")
             expect(page.locator("#quiet"), "the quiet line outlived the quiet").to_be_hidden()
+            expect(page.locator("#sky svg:not(.crest)"), "the flock didn't fly").to_have_count(1)
+            expect(page.locator("#sky-says"), "the flock went unexplained").to_be_visible()
+            expect(page.locator("figure.dusk"), "the flock was hidden").not_to_have_attribute(
+                "aria-hidden", "true"
+            )
+            # Showing only what's in the air, then settling the last of it, shows every
+            # murmur again rather than an empty list the quiet line would call a quiet day.
+            roosted = murmur("OSPREY", at - 60, "Charted.", settled="charted this morning")
+            quiet_node.tell("murmur", changed=[roosted])
+            the_page_counts(page, "Two murmured, one still in the air.", "the roost went unheard")
+            page.locator('#headline a[data-show="air"]').click()
+            key = f"murmur:HERONS:{at}"
+            quiet_node.tell("murmur", changed=[{"key": key, "settled": "cleared by noon"}])
+            expect(listed.locator('[role="option"]'), "the settled murmurs hid").to_have_count(2)
+            expect(page.locator("#quiet"), "settled murmurs were called quiet").to_be_hidden()
+            quiet_node.tell("murmur", gone=[key, str(roosted["key"])])
+            said_quiet(page, "the last murmur going left no quiet line")
         finally:
             opened.close()
 

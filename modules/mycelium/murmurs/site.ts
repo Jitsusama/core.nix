@@ -126,8 +126,9 @@ function showList(any: boolean): void {
 }
 
 function draw(): void {
-  // With nothing left in the air the list shows every murmur, since the headline
-  // then offers no way back to them.
+  // With nothing left in the air the list shows every murmur: the filter would
+  // otherwise hide each settled one, leaving the quiet line to say nothing was
+  // murmured, and the headline then offers no way back to them.
   airOnly = airOnly && murmurs.some((each) => each.settled === null);
   const rows = shown();
   if (!rows.some((each) => each.key === cursor)) {
