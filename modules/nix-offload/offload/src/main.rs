@@ -2286,13 +2286,15 @@ impl Sent<'_> {
         let lent = store.and_then(|store| there::builder(store.lines().next()?.trim()))?;
         // A turn at sending it there, held until the run ends
         // (`changed/turns.rs`); a run that may move is sent on from a full
-        // builder to the next.
-        let turns = env::var_os("XDG_RUNTIME_DIR")
-            .map_or_else(env::temp_dir, PathBuf::from)
-            .join("nix-offload-there");
-        let _turn = match changed::turns::sending(&turns, &lent.host, self.moves, !on_vm) {
-            changed::turns::Turn::Full => return Some(Finished::of(there::BUSY, None)),
-            changed::turns::Turn::Had(held) => held,
+        // builder to the next. They're kept in the account's own folder,
+        // as the uplink's are, so no other account's can hold them; with
+        // none, which is said, the run goes on without one.
+        let turn = there::turns_folder()
+            .map(|turns| changed::turns::sending(&turns, &lent.host, self.moves, !on_vm));
+        let _turn = match turn {
+            Some(changed::turns::Turn::Full) => return Some(Finished::of(there::BUSY, None)),
+            Some(changed::turns::Turn::Had(held)) => held,
+            None => Vec::new(),
         };
         // Sent as `--run`'s `--copy` paths are, as held outputs go, since
         // the builder trusts no account.
