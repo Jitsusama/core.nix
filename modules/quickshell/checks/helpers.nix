@@ -246,14 +246,16 @@ let
           '';
         };
       inherit (pkgs) mesa;
-      # A setting of the account's shell unit, by its name, so the shell here runs as Joel's
-      # does; one the unit no longer sets fails the evaluation rather than going unsaid.
+      # A setting of the account's shell unit, by its name, as systemd takes it: the last of
+      # its assignments. One the unit no longer sets fails the evaluation rather than going
+      # unsaid. Only the settings named below are carried; the unit's others aren't.
       unitSets =
         setting:
         let
           asked = "${setting}=";
-          environment = home.systemd.user.services.quickshell.Service.Environment;
-          said = lib.findFirst (lib.hasPrefix asked) null environment;
+          unit = home.systemd.user.services.quickshell.Service;
+          environment = lib.toList (unit.Environment or [ ]);
+          said = lib.findFirst (lib.hasPrefix asked) null (lib.reverseList environment);
         in
         if said == null then
           throw "The shell's unit no longer sets ${setting}."
@@ -292,7 +294,8 @@ let
           in
           lib.removePrefix asked (lib.findFirst (lib.hasPrefix asked) "" (lib.splitString "\n" unit));
         # Never taking a window for hidden however late niri's frame callback, as the shell's
-        # unit has it (home.nix, its reason there). With Qt's default of 100 ms, a loaded
+        # unit has it (home.nix, its reason there): the one of the unit's settings carried,
+        # since it decides when Qt draws. With Qt's default of 100 ms, a loaded
         # builder's niri answered late, and Qt stopped drawing a window, then drew it again as
         # the answer came: the margin cat drew a frame beside each of the launcher's while held
         # under it, 3 to 8 in five of 66 runs, though Joel's shell never does (2026-11-22).

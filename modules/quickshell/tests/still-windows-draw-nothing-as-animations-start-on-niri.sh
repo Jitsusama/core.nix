@@ -24,6 +24,7 @@ export QT_LOGGING_RULES=qt.scenegraph.renderloop.debug=true
 # longer shown once niri's frame callback is 100 ms late, and on a loaded
 # builder Qt then found one and two windows shown at a stop and a start,
 # and the still window drew one frame over the ten starts (21 November).
+: "${QT_WAYLAND_FRAME_CALLBACK_TIMEOUT:?set by checks/helpers.nix from the shell unit}"
 
 said=$logs/shell.log
 ran=0
