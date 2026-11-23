@@ -311,30 +311,14 @@ pub(super) fn far_line_in(
         std::env::var("PATH").unwrap_or_default()
     );
     let command = ["sh", "-c", run].map(str::to_owned);
-    let waits = format!("-ge {}", super::CROSSES_WITHIN);
-    let line = script("QEST-20261115-ABC123", "1", "s", folder, kind, &command);
-    assert!(line.contains(&waits), "the far line's wait moved:\n{line}");
-    let line = line.replace(&waits, &format!("-ge {WAITS}"));
-    let ceiling = format!(
-        "most=$(({} + bytes / {}))",
-        super::CROSSES_WITHIN,
-        super::CROSSES_AT
-    );
-    assert!(
-        line.contains(&ceiling),
-        "the far line's ceiling moved:\n{line}"
-    );
-    let line = line.replace(&ceiling, &format!("most=$(({WAITS} + bytes / {SLOWEST}))"));
-    let most = format!(
-        "most_files={} most_bytes={}",
-        super::MOST_FILES,
-        super::MOST_BYTES
-    );
-    assert!(line.contains(&most), "the far line's totals moved:\n{line}");
-    let line = line.replace(
-        &most,
-        &format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
-    );
+    let line = quickened(&script(
+        "QEST-20261115-ABC123",
+        "1",
+        "s",
+        folder,
+        kind,
+        &command,
+    ));
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
     let far = std::process::Command::new(sh)
@@ -365,6 +349,41 @@ pub(super) fn far_line_in(
         String::from_utf8_lossy(&said).into_owned(),
         home,
     )
+}
+
+/// The far `line` with these tests' waits and totals for a real
+/// crossing's: `WAITS`, `SLOWEST`, `SHARE_FILES` and `SHARE_BYTES`.
+fn quickened(line: &str) -> String {
+    let mut line = line.to_owned();
+    for (real, quick) in [
+        (
+            format!("-ge {}", super::CROSSES_WITHIN),
+            format!("-ge {WAITS}"),
+        ),
+        (
+            format!(
+                "most=$(({} + bytes / {}))",
+                super::CROSSES_WITHIN,
+                super::CROSSES_AT
+            ),
+            format!("most=$(({WAITS} + bytes / {SLOWEST}))"),
+        ),
+        (
+            format!(
+                "most_files={} most_bytes={}",
+                super::MOST_FILES,
+                super::MOST_BYTES
+            ),
+            format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
+        ),
+    ] {
+        assert!(
+            line.contains(&real),
+            "the far line no longer holds {real}:\n{line}"
+        );
+        line = line.replace(&real, &quick);
+    }
+    line
 }
 
 #[test]
