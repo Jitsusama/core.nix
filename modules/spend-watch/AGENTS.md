@@ -72,6 +72,8 @@ feed speaks.
   It's walked again when a folder the walk read in it changes (a reviewer
   asked again makes one), when the watch hears a write under it, and at
   least every six hours, which finds a log made in a folder that held none.
+  One whose log folder the watch can't follow, as when the account's
+  inotify watches are spent, is walked each pass, said once in the journal.
   `src/ingest.rs` finds them; `src/series.rs` maps them.
 - **Machines.** Another machine is counted as this one is, the only
   difference being where its credentials live: the config names where its

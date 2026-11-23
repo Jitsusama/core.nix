@@ -116,23 +116,27 @@ impl Walks {
 
 #[cfg(test)]
 impl Walks {
-    /// Walks with `top` settled for `pattern`, holding no log, for the
-    /// daemon's tests.
-    pub fn settled_at(pattern: &str, top: &Path) -> Walks {
+    /// Walks with each of `tops` settled for `pattern`, holding no log,
+    /// for the daemon's tests.
+    pub fn settled_at(pattern: &str, tops: &[&str]) -> Walks {
         let mut walks = Walks::default();
-        let walked = Walked {
-            logs: Vec::new(),
-            read: Vec::new(),
-        };
-        walks
-            .settled
-            .insert((pattern.to_owned(), top.to_path_buf()), walked);
+        for top in tops {
+            let walked = Walked {
+                logs: Vec::new(),
+                read: Vec::new(),
+            };
+            walks
+                .settled
+                .insert((pattern.to_owned(), PathBuf::from(top)), walked);
+        }
         walks
     }
 
-    /// Whether any folder is settled.
-    pub fn any_settled(&self) -> bool {
-        !self.settled.is_empty()
+    /// The folders settled, in order.
+    pub fn settled_tops(&self) -> Vec<PathBuf> {
+        let mut tops: Vec<PathBuf> = self.settled.keys().map(|(_, top)| top.clone()).collect();
+        tops.sort();
+        tops
     }
 }
 
@@ -1317,10 +1321,10 @@ mod tests {
         walks.swept = SystemTime::now().checked_sub(SWEEP);
         read(&history, &config, &mut walks);
         assert_eq!(turns(&history), 2, "the sweep didn't walk the run again");
-        // A clock set back sweeps at once rather than waiting to catch up.
         age(&late.join("2026_late.jsonl"));
         read(&history, &config, &mut walks);
         assert_eq!(walks.settled.len(), 1, "the swept run didn't settle again");
+        // A clock set back sweeps at once rather than waiting to catch up.
         let header = HEADER.replace("\"s1\"", "\"later\"");
         std::fs::write(
             later.join("2026_later.jsonl"),
@@ -1476,6 +1480,7 @@ mod tests {
             let first = reviewer(dir.path(), "r1", "a", true);
             let late = empty(dir.path(), "r1", "reviewers", "c", true);
             read(&history, &config, &mut walks);
+            assert_eq!(walks.settled.len(), 1, "the run didn't settle");
             written_in(&late);
             let heard = if overflow {
                 Path::new("/")
@@ -1535,6 +1540,7 @@ mod tests {
         agent(dir.path(), "r1", "agents", "a", true);
         reviewer(dir.path(), "r1", "b", true);
         read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 2, "each pattern's run didn't settle");
         for found in found_kept(&config, &mut walks) {
             let group = found.path.ancestors().nth(3).unwrap().file_name().unwrap();
             let kind = if group == "agents" { "swarm" } else { "review" };
