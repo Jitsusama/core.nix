@@ -502,8 +502,7 @@ fn show(
         let _ = warming.join();
     }
     let first = first?;
-    let starts = place::starts(&first.page.frame);
-    let start_pt = opens_at.and_then(|opens| opens.at(&starts));
+    let start_pt = opens_at.and_then(|opens| opens.at(&place::starts(&first.page.frame)));
     let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
     let page::First {
         page,
@@ -513,7 +512,6 @@ fn show(
         title,
         words,
     } = first;
-
     let (globals, queue) = registry_queue_init::<App>(&conn)?;
     let qh = queue.handle();
     let mut event_loop: EventLoop<App> = EventLoop::try_new()?;

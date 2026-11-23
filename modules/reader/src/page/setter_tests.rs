@@ -3,7 +3,7 @@
 //! read, which say whether the file was edited between two sets, which may
 //! renumber its blocks.
 
-use super::{Setter, Width, set_first};
+use crate::page::{Setter, Width, set_first};
 
 #[test]
 fn the_first_width_is_the_kept_windows_or_else_an_unnamed_ones() {
