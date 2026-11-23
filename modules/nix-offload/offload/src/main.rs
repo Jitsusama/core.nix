@@ -2026,7 +2026,13 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         "nix-offload: {read} is read by a Mac's checks, so they're compared there too: {room}"
     );
     let longest = mac::longest();
-    match compared_within(&mac::for_a_mac(arguments), waiting, longest) {
+    let compared = compared_within(&mac::for_a_mac(arguments), waiting, longest);
+    // A comparison that didn't pass may be the Mac going, which what ssh
+    // said of it within the last minute can't know, so it's asked afresh.
+    if compared.is_some_and(|status| status != 0) {
+        machines::forget_reached(&mac.host);
+    }
+    match compared {
         Some(0) => OnAMac::Passed,
         None => skipped(format!(
             "{}'s comparison ran past {}",

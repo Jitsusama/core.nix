@@ -2046,6 +2046,10 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert_eq!(lines[0]["sent"], 2 * 3812);
     assert_eq!(lines[0]["attributes"][0], "checks.aarch64-darwin.a");
     assert!(lines[1]["on"].is_null());
+    assert!(
+        !bin.join("reach-was-asked").exists(),
+        "ssh was asked whether it reaches a machine whose address answers"
+    );
 }
 
 /// How a run naming a Mac's check and a Linux one is set up: the machine
