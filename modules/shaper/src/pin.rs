@@ -380,7 +380,9 @@ pub fn restored(text: &str, boot: &str) -> Option<Restart> {
         // A network a link names by itself, before its router answers, is
         // "link <name>", so the network is the rest of its line.
         if let Some(on) = line.strip_prefix("on ") {
-            let (link, network) = on.split_once(' ')?;
+            let (link, network) = on
+                .split_once(' ')
+                .filter(|(link, network)| !link.is_empty() && !network.is_empty())?;
             kept.on = Some((link.to_owned(), network.to_owned()));
             continue;
         }
@@ -489,7 +491,13 @@ impl Pinning {
         // network the pin was measured on as it was, so a roam through an
         // unnamed moment to another router still lets go; one answering
         // at last names the network the link was on all along.
-        if was == network || (was_link == link && unnamed(network)) {
+        if was_link == link && unnamed(network) {
+            return None;
+        }
+        // The same network by another link is where the pin is, and the
+        // link it's now on is the one whose unnamed moments are its own.
+        if was == network {
+            self.on = Some(now);
             return None;
         }
         self.on = Some(now);
@@ -1078,6 +1086,17 @@ mod tests {
             Some(30_020),
             "a pin carried through a moment with no router onto another network"
         );
+        // The same network by another link, then that link's own unnamed
+        // moment, is still where the pin was measured (pin round 6's F1).
+        pinning.pinned = Some(pin_at(30_030));
+        for (link, network) in [("eth2", "gg:hh"), ("eth2", "link eth2"), ("eth2", "gg:hh")] {
+            assert_eq!(
+                pinning.network(link, network),
+                None,
+                "the pin let go on {network} by {link}, its own network by another link"
+            );
+        }
+        assert_eq!(pinning.pinned, Some(pin_at(30_030)), "the pin wasn't kept");
     }
 
     #[test]
@@ -1132,6 +1151,9 @@ mod tests {
             "boot b0\npin 40000 192.0.2.2 443 24",
             "boot b0\npin 30031 192.0.2.2 443 24",
             "boot b0\nflow 192.0.2.2 443 41000 29000",
+            "boot b0\non eth1",
+            "boot b0\non eth1 ",
+            "boot b0\non  aa:bb",
             "boot b0\nwhat",
         ] {
             assert_eq!(restored(bad, "b0"), None, "{bad:?} read as something kept");

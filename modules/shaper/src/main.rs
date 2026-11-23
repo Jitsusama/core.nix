@@ -2808,6 +2808,38 @@ mod tests {
             .checked_add(Duration::from_secs(60))
             .expect("a minute on");
         assert_eq!(epoch_of(to_come), None, "a time to come was given seconds");
+        // A restart after the clock stepped back reads seconds to come.
+        assert_eq!(
+            instant_of(at + 600),
+            None,
+            "seconds to come were given an instant"
+        );
+    }
+
+    // What a restart needs is kept whole, and a write that fails takes away
+    // what was kept before, rather than leave it to come back as a pin that
+    // may have let go (pin round 6's F2 and F4).
+    #[test]
+    fn the_pin_is_kept_whole_and_a_failed_write_takes_the_stale_one_away() {
+        let state = std::env::temp_dir().join(format!("shaper-pin-{}", std::process::id()));
+        fs::create_dir_all(&state).expect("the stand-in state folder couldn't be made");
+        let mut pinner = Pinner::new(&state);
+        pinner.pinning.network("eth1", "aa:bb");
+        pinner.keep();
+        let kept = fs::read_to_string(state.join("pin")).expect("nothing was kept");
+        let back = pin::restored(&kept, &pinner.boot).expect("what was kept didn't read back");
+        assert_eq!(
+            back.on,
+            Some(("eth1".to_owned(), "aa:bb".to_owned())),
+            "what was kept isn't the network the pin is on"
+        );
+        // A folder where the new file goes makes the write fail.
+        fs::create_dir_all(state.join("pin.new")).expect("the folder in the way couldn't be made");
+        pinner.pinning.network("eth1", "cc:dd");
+        pinner.keep();
+        let left = state.join("pin").exists();
+        fs::remove_dir_all(&state).expect("the stand-in state folder couldn't be removed");
+        assert!(!left, "a write that failed left what was kept before");
     }
 
     // A restart's sweep waits for the routes, every VPN there and every
