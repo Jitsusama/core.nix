@@ -1352,8 +1352,9 @@ PanelWindow {
                 // from a jump.
                 carried: Math.round((stepped.carried ?? 0) * 10) / 10
             },
-            // The layer's height, which is always the screen's, so a
-            // check can tell a place below it from one on it.
+            // The layer's height, the screen's while it has one and 0
+            // as it goes, so a check can tell a place below it from one
+            // on it.
             reach: window.implicitHeight
         });
         Report.say(`sits cat ${named} ${at} over ${JSON.stringify(column)}`);

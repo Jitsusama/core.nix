@@ -1177,7 +1177,10 @@ def the_turn(places: list[Json | None]) -> tuple[int, Json, Json | None]:
     between the two (arrive()) says neither a move nor a walk, since halt() drops both, so
     each report saying neither is held a step from the place said before it and the jump
     fails here. A walk's reports aren't held to a step: a cut's walk may fall, and a fall
-    across one slow frame of a loaded builder passes a step's bound. A report that says
+    across one slow frame of a loaded builder passes a step's bound. Nor is the walk's own
+    end, which the walker says after halt() too, at the route's end; the walk report before
+    it names that end's x, so a report there saying neither is taken as the walk's. A
+    seat jump at the very x a walk was going to passes that way, unseen. A report that says
     nowhere is never passed over, so a cat gone from the screen between the two is the
     second move's first place, which fails its case.
     """
@@ -1195,7 +1198,8 @@ def the_turn(places: list[Json | None]) -> tuple[int, Json, Json | None]:
     # None of these is nowhere, since a place said nowhere is the turn; this only says so.
     said = [one for one in places[first:turned] if one is not None]
     for before, one in itertools.pairwise(said):
-        if one.get("move") is None and not one.get("walk"):
+        ended = abs(one["x"] - ((before.get("walk") or {}).get("to") or math.inf)) < 1
+        if one.get("move") is None and not one.get("walk") and not ended:
             gone = math.hypot(one["x"] - before["x"], one["y"] - before["y"])
             assert gone <= STEPS_ON * one["size"], (
                 f"between the two moves it was put at {one}, from {before}, saying no move"
@@ -1208,25 +1212,32 @@ def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> N
 
     The second move is held to the place said just before it, where a cut's walk or a late
     step of the first got to; a walk that falls far in one report passes; a halt is held to
-    where the walk before it got to, not to where the first move left off; a cat put on its
-    seat between the two fails; and a cat said nowhere between the two is the second move's
+    where the walk before it got to, not to where the first move left off; a walk's end,
+    said with no walk, passes where its fall ends far below; a cat put on its seat between
+    the two fails, after a walk going elsewhere too; and a cat said nowhere between the two is the second move's
     first place, which fails its case.
     """
     down: Json = {"x": 0, "y": 10, "size": 30, "move": {"way": 1}}
     halted: Json = {"x": 0, "y": 10, "size": 30, "move": None}
-    walked: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8}}
-    fell: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95}}
+    walked: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8, "to": 30}}
+    fell: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95, "to": 30}}
     stopped: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": None}
+    dropped: Json = {"x": 30, "y": 100, "size": 30, "move": None, "walk": {"t": 95, "to": 9}}
+    landed: Json = {"x": 30, "y": 300, "size": 30, "move": None, "walk": None}
+    going: Json = {"x": 30, "y": 10, "size": 30, "move": None, "walk": {"t": 8, "to": 500}}
     later: Json = {"x": 0, "y": 40, "size": 30, "move": {"way": 1}}
     seated: Json = {"x": 0, "y": 700, "size": 30, "move": None}
     up: Json = {"x": 30, "y": 890, "size": 30, "move": {"way": -1}}
     assert the_turn([halted, down, halted, walked, up]) == (4, walked, up)
     assert the_turn([down, later, up]) == (2, later, up)
-    assert the_turn([down, walked, fell, stopped, up]) == (4, stopped, up)
+    assert the_turn([down, walked, dropped, stopped, up]) == (4, stopped, up)
+    assert the_turn([down, walked, fell, landed, up]) == (4, landed, up)
     # The caller fails on a second move whose first place is nowhere.
     assert the_turn([down, halted, None, up]) == (2, halted, None)
     with pytest.raises(AssertionError, match="between the two moves it was put at"):
         the_turn([down, seated, up])
+    with pytest.raises(AssertionError, match="between the two moves it was put at"):
+        the_turn([down, going, seated, up])
     with pytest.raises(AssertionError, match="the second move never said"):
         the_turn([down, halted, walked])
     with pytest.raises(AssertionError, match="the first move never said"):
@@ -1273,6 +1284,9 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
     turned, was, after = the_turn(places)
     assert after is not None, "the cat was nowhere as the second move began"
+    # A reach of 0, said as its screen goes, would count every place as off it.
+    assert was["reach"] > 0, f"the cat said no screen under it before the second: {was}"
+    assert after["reach"] > 0, f"the cat said no screen under it as it began: {after}"
     # Caught off the screen between workspaces, waiting to drop in, it
     # may ride back in from anywhere else off it, since neither place is
     # seen (the net, 2026-11-16: from y -849 in its unseen beat to -131).
