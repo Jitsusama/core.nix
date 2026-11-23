@@ -23,5 +23,7 @@ for the router, access point or server a VM lacks.
 | `shaper-call.nix`, `-vm-test.py`       | a call kept whole on a full connection, even sent to 443      |
 | `shaper-pin.nix`, `-vm-test.py`        | the VPN sent the quick way, or its own way if that's held     |
 
+| `house.nix`, `-vm-test.py`             | the upload held under what another machine on the line sends  |
+
 - `wifi/`: the Wi-Fi test's areas, joining, joining when asked and holding
   on, and the session they share.

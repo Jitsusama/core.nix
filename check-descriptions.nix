@@ -6440,6 +6440,12 @@
     sends; the shaper follows the connection down to 4 Mbit/s and back, and down again when the
     uploads ride a second link to the same router
   '';
+  vm-the-house-holds-the-upload = ''
+    with another machine on the line running house-report from its account through home-manager
+    and sending 3 Mbit/s across the home network, the shaper hears it through its firewall and
+    holds its own upload under what the house's 8 Mbit/s leaves, never under 4, and says so; once
+    the reports stop it says the house went quiet and the upload climbs past the hold
+  '';
   vm-the-cores-stay-out-of-deep-rest = ''
     a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit
     latency at 20 us; stopped, the bound goes at once; started by hand, it holds by the time its
