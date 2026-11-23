@@ -837,12 +837,21 @@ const UPLOAD_MEMORY: &str = "MemoryHigh=1G";
 /// held 5.6 to 12 GB of it, which its windows' memory then paid for. Each
 /// upload runs in a scope of its own beside its caller, where
 /// [`UPLOAD_MEMORY`] reclaims that cache as it goes. With no systemd or no
-/// user manager to ask, it runs as it is. Its ssh has the keepalive
-/// `alive` after what the run's own `NIX_SSHOPTS` says.
+/// user manager to answer, it runs as it is. A bus that's there but
+/// refuses, as inside a fence that sees the runtime folder but not its
+/// manager, counts as none: on 22 November such a run's copies each
+/// failed at once on "Failed to connect to user scope bus". Its ssh has
+/// the keepalive `alive` after what the run's own `NIX_SSHOPTS` says.
 fn upload(nix: &str, alive: &str) -> Command {
     let bus = std::env::var_os("XDG_RUNTIME_DIR")
-        .is_some_and(|runtime| Path::new(&runtime).join("bus").exists());
+        .is_some_and(|runtime| answers(&Path::new(&runtime).join("bus")));
     uploading(nix, SYSTEMD_RUN.filter(|_| bus), alive)
+}
+
+/// Whether a socket at `bus` takes a connection, not only whether it's
+/// there.
+fn answers(bus: &Path) -> bool {
+    std::os::unix::net::UnixStream::connect(bus).is_ok()
 }
 
 /// [`upload`], through `systemd_run` where one may be asked.
@@ -5506,6 +5515,21 @@ mod tests {
             [0, 1, 40].map(waits),
             [0, 1, 40].map(|cuts| u64::from(alive_for(cuts))),
             "what the run says it waits isn't what ssh is given"
+        );
+    }
+
+    #[test]
+    fn a_bus_counts_only_while_something_answers_on_it() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let bus = folder.path().join("bus");
+        assert!(!answers(&bus), "no socket at all answered");
+        let listening = std::os::unix::net::UnixListener::bind(&bus).expect("a socket");
+        assert!(answers(&bus), "a listening socket didn't answer");
+        drop(listening);
+        assert!(bus.exists(), "the socket's file went with its listener");
+        assert!(
+            !answers(&bus),
+            "a socket nothing listens on, as a fence leaves the manager's, answered"
         );
     }
 
