@@ -219,6 +219,22 @@ fn answered(run: &Value) -> bool {
             .is_some_and(|outcomes| outcomes.iter().any(|o| o.get("failure").is_none()))
 }
 
+/// The councils `there`, another machine's records, holds that `here`
+/// doesn't: rounds run elsewhere, whose fixes are kept elsewhere too.
+fn away<'a>(here: &[Reviewed], there: &'a [Reviewed]) -> BTreeSet<&'a str> {
+    let held: BTreeSet<&str> = here
+        .iter()
+        .flat_map(|r| &r.councils)
+        .map(|(id, _)| id.as_str())
+        .collect();
+    there
+        .iter()
+        .flat_map(|r| &r.councils)
+        .map(|(id, _)| id.as_str())
+        .filter(|id| !held.contains(id))
+        .collect()
+}
+
 /// A finding whose fix was committed, or is still queued.
 struct Fix {
     subject: String,
@@ -372,9 +388,12 @@ impl Late {
             1 => ", 1 round's fixes kept on another machine".to_owned(),
             many => format!(", {many} rounds' fixes kept on another machine"),
         };
+        // What a round elsewhere caught is kept there, so nothing caught is
+        // known only of the rounds run here.
+        let here = if *away > 0 { " here" } else { "" };
         match caught.as_slice() {
             _ if !fixes_read => format!("{change}: {n} rounds, what they caught unread"),
-            [] => format!("{change}: {n} rounds, those past five caught nothing{queued}"),
+            [] => format!("{change}: {n} rounds, those past five caught nothing{here}{queued}"),
             [one] => format!(
                 "{change}: {n} rounds, past five caught {}{queued}",
                 short(one)
@@ -414,17 +433,7 @@ pub fn rounds(
 ) -> Vec<Measure> {
     let here: Vec<Reviewed> = records.iter().filter_map(|r| Reviewed::read(r)).collect();
     let there: Vec<Reviewed> = mirrored.iter().filter_map(|r| Reviewed::read(r)).collect();
-    let held: BTreeSet<&str> = here
-        .iter()
-        .flat_map(|r| &r.councils)
-        .map(|(id, _)| id.as_str())
-        .collect();
-    let away: BTreeSet<&str> = there
-        .iter()
-        .flat_map(|r| &r.councils)
-        .map(|(id, _)| id.as_str())
-        .filter(|id| !held.contains(id))
-        .collect();
+    let away = away(&here, &there);
     let reviewed: Vec<&Reviewed> = here.iter().chain(&there).collect();
     let bases: BTreeMap<&str, &str> = reviewed
         .iter()
@@ -498,9 +507,7 @@ pub fn rounds(
         owner: owner.to_owned(),
         behind: each.iter().map(|late| late.line(fixes_read)).collect(),
     };
-    each.retain(|late| {
-        fixes_read && late.caught.is_empty() && late.unread == 0 && late.away == 0
-    });
+    each.retain(|late| fixes_read && late.caught.is_empty() && late.unread == 0 && late.away == 0);
     let landed = if each.is_empty() {
         BTreeMap::new()
     } else {
@@ -891,26 +898,18 @@ mod tests {
         // reload killed the second open with every reviewer failed, the
         // third ended with every reviewer failed, the fourth was closed,
         // and the fifth has no outcomes at all.
-        let killed = started("council-a-open", 500).replace(
-            r#"[{"participantId": "one"}]"#,
-            r#"[{"participantId": "one", "failure": "stopped"}], "open": true"#,
-        );
-        let failed = started("council-a-failed", 400).replace(
-            r#"[{"participantId": "one"}]"#,
-            r#"[{"participantId": "one", "failure": "wall"}]"#,
-        );
-        let closed = started("council-a-closed", 300)
-            .replace(r#""round""#, r#""closed": true, "round""#);
-        let bare =
-            started("council-a-bare", 200).replace(r#"[{"participantId": "one"}]"#, "[]");
+        let ended = |id, ago, outcomes| {
+            started(id, ago).replace(r#"[{"participantId": "one"}]"#, outcomes)
+        };
+        let a = [
+            started("council-a", 600),
+            ended("council-a-open", 500, r#"[{"failure": "stopped"}], "open": true"#),
+            ended("council-a-failed", 400, r#"[{"failure": "wall"}]"#),
+            ended("council-a-closed", 300, r#"[{}], "closed": true"#),
+            ended("council-a-bare", 200, "[]"),
+        ];
         let ours = [
-            record(
-                "github",
-                CORE,
-                "31",
-                "elsewhere",
-                &[started("council-a", 600), killed, failed, closed, bare],
-            ),
+            record("github", CORE, "31", "elsewhere", &a),
             record(
                 "github",
                 CORE,
@@ -951,8 +950,10 @@ mod tests {
         assert_eq!(all[0].now, 4.0, "the median of #31's 1 and #32's 7");
         assert_eq!(
             all[0].behind,
-            ["core.nix#32: 7 rounds, those past five caught nothing, 2 rounds' fixes kept on \
-              another machine"],
+            [concat!(
+                "core.nix#32: 7 rounds, those past five caught nothing here, ",
+                "2 rounds' fixes kept on another machine"
+            )],
             "a round no reviewer answered counted, or one run elsewhere didn't"
         );
         assert_eq!(
