@@ -1,4 +1,4 @@
-// The account's sound services may take real time from rtkit whether or
+// An account's sound services may take real time from rtkit whether or
 // not a session sits at the seat yet. rtkit's own actions grant it to an
 // active session alone (allow_any is no), and the account's manager
 // starts PipeWire, its tuning chains and WirePlumber before greetd opens
@@ -8,11 +8,15 @@
 // waiting 7 ms for a CPU at each wake under load. module-rt says it
 // acquired real time whatever rtkit answers, so nothing showed it.
 //
-// A sound service is one of the account's own units in session.slice or
-// app.slice, where PipeWire's run; an app's scope there, or an agent's
-// pi-jobs scope, is no service, and keeps rtkit's own answer. rtkit still
-// holds each thread to priority 20 and 200 ms at a time. polkit's own
-// engine reads this, in the JavaScript it knows.
+// A sound service is one named here, in session.slice or app.slice of the
+// manager of the account whose slice it is: PipeWire, its PulseAudio
+// server, WirePlumber, and each service that runs a PipeWire of its own,
+// as a tuning chain does, as pipewire/nixos.nix lists them. Anything
+// else there, an app's scope, another service, or a unit an agent starts
+// with systemd-run, keeps rtkit's own answer, and so does a process below
+// one, which a sound service's own never are. rtkit still holds each
+// thread to priority 20 and 200 ms at a time. polkit's own engine reads
+// this, in the JavaScript it knows.
 
 // Where the process asking runs: the cgroup the kernel has it in, or null
 // for one that's gone or can't be read.
@@ -26,8 +30,8 @@ function soundPlaceOf(subject) {
 }
 
 var soundService = new RegExp(
-  "^/user\\.slice/user-[0-9]+\\.slice/user@[0-9]+\\.service/" +
-    "(session|app)\\.slice/[^/]+\\.service(/|$)"
+  "^/user\\.slice/user-([0-9]+)\\.slice/user@\\1\\.service/" +
+    "(session|app)\\.slice/(@services@)\\.service$"
 );
 
 polkit.addRule(function (action, subject) {
@@ -39,6 +43,11 @@ polkit.addRule(function (action, subject) {
   }
   var place = soundPlaceOf(subject);
   if (place !== null && soundService.test(place)) {
+    // A grant leaves a line, as the slices' refusals do, so whether sound
+    // took real time this boot is read from the journal, not its threads.
+    if (typeof record === "function") {
+      record("granted " + action.id + " to pid " + subject.pid + " in " + place);
+    }
     return polkit.Result.YES;
   }
   return polkit.Result.NOT_HANDLED;

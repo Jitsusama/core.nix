@@ -1,10 +1,12 @@
 # The checks of pipewire, which checks.nix gathers with every other folder's;
 # its opening comment says what each kind of check proves.
 {
+  bareNixos,
   graphical,
   holds,
   lib,
   pkgs,
+  self,
   ...
 }:
 {
@@ -30,17 +32,26 @@
         && (units.DefaultLimitRTTIME or null) == manager.LimitRTTIME
       );
 
-  # A workstation's polkit rules, as polkitd assembles them, run in duktape,
-  # polkit's own engine, after polkit's init.js, with the account's manager
-  # asking before the seat has a session: PipeWire's units in session.slice
-  # and app.slice, and what runs below them, are given real time and a high
-  # priority from rtkit, while an app's scope, the system's units and a near
-  # name keep rtkit's own answer and agents' places are still refused
-  # (realtime-test.rules). The slices' stand-in for polkitd serves here too.
+  # A workstation's polkit rules, with a tuning chain's module, as polkitd
+  # assembles them, run in duktape, polkit's own engine, after polkit's
+  # init.js, with an account's manager asking before the seat has a session
+  # and after: PipeWire's three units and the chain, by name in session.slice
+  # or app.slice, are given real time and a high priority from rtkit, and
+  # each grant is logged, while anything else of the account's keeps rtkit's
+  # own answer and agents' places are still refused (realtime-test.rules).
+  # The slices' stand-in for polkitd serves here too. Every placeholder is
+  # filled, since a cat left unnamed would refuse sound in silence.
   sound-takes-real-time-before-the-seat =
     let
-      rules = graphical.config.environment.etc."polkit-1/rules.d/10-nixos.rules".text;
+      machine = bareNixos [
+        self.nixosModules.graphical
+        self.nixosModules.creative-pebble-x-plus
+      ];
+      rules = machine.config.environment.etc."polkit-1/rules.d/10-nixos.rules".text;
     in
+    assert lib.assertMsg (
+      !(lib.hasInfix "@cat@" rules) && !(lib.hasInfix "@services@" rules)
+    ) "realtime.rules is assembled with a placeholder left unfilled";
     pkgs.runCommandLocal "sound-takes-real-time-before-the-seat" { } ''
       ${lib.getExe' pkgs.duktape "duk"} ${../slices/agents-ask-polkit.rules} \
         ${pkgs.polkit.src}/src/polkitbackend/init.js \
