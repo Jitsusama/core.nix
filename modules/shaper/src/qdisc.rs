@@ -592,6 +592,7 @@ mod tests {
             held.before_the_vpn, 3_100,
             "Joel's lane and the VPN's, not agents' behind them or the local class"
         );
+        assert_eq!(held.agents_sent, 2_000, "what agents' CAKE alone sent");
         assert_eq!(holding("[]"), None, "no CAKE");
         assert_eq!(drops(LANES), Some(7), "every lane's drops");
     }

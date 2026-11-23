@@ -336,9 +336,10 @@ struct Shaped {
     /// Whether a call's or a screen share's traffic crosses the link, and
     /// whether it did at the last look.
     real_time: realtime::RealTime,
-    /// What the upload's CAKE held when last read, and of the reads since
-    /// the controller was last told, how many found a queue in it.
-    holding: Option<held::Holding>,
+    /// What the upload's CAKE held when last read, and when, and of the
+    /// reads since the controller was last told, how many found a queue
+    /// in it.
+    holding: Option<(held::Holding, Instant)>,
     queued_reads: (u32, u32),
     /// How long what the upload's queues held before the VPN's packets
     /// takes to leave, in microseconds, over those reads together
@@ -449,12 +450,15 @@ impl Shaped {
         let read = |dev: &str| sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).ok();
         let up = read(&self.uplink.name);
         if let Some(now) = up.as_deref().and_then(held::holding) {
+            let read = (now, Instant::now());
             let (queued, reads) = &mut self.queued_reads;
-            *queued += u32::from(held::queued(self.holding, now));
+            *queued += u32::from(held::queued(self.holding.map(|(was, _)| was), now));
             *reads += 1;
-            self.ahead_us +=
-                held::ahead_us(now, self.applied.0, lanes::agents_assured(&self.split));
-            self.holding = Some(now);
+            let sent = |(h, at): (held::Holding, Instant)| (h.agents_sent, at);
+            let going = sent_kbit(self.holding.map(sent), Some(sent(read))).unwrap_or(0);
+            let assured = lanes::agents_assured(&self.split);
+            self.ahead_us += held::ahead_us(now, self.applied.0, assured, going);
+            self.holding = Some(read);
         }
         if let Some(now) = up.as_deref().and_then(held::drops) {
             self.dropped += since(self.drops.replace(now), now);
