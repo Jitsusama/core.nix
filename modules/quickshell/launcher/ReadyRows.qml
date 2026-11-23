@@ -309,8 +309,9 @@ Scope {
     // the emoji of each of Emoji's groups stepped into were otherwise held
     // for the shell's life. Its rows and their places stand, so nothing is
     // placed again, and a row inside is made again once it's shown. The
-    // launcher keeps its last few lists (RowsKept.js's lately), so a list
-    // of them shown last goes only once four more have been.
+    // launcher keeps its last four lists (RowsKept.js's LATELY), and any a
+    // place is kept on, so a list of them shown last goes only once four
+    // more have been; its view keeps only each row's mark, never the row.
     function letGoInside() {
         for (const key of Ready.madeInside(made, served)) {
             delete madeOf[made[key]?.key];
