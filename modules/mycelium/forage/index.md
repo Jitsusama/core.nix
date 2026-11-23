@@ -40,7 +40,9 @@ a terminal, `mycelium forage` gathers the realm's.
   the floor follows as it does a step; a find that matches nothing keeps
   you, and the floor, where you were. If your cell ends meanwhile, nothing
   is ringed, and the floor stays put unless it was drawn around that cell,
-  when it goes back to the list's first 48.
+  when it goes back to the list's first 48. Opening the cells without
+  purpose while that find holds you on a cell with one lets go of it the
+  same way. Once every cell has gone, the floor holds the page's crest again.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you

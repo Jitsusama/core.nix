@@ -460,16 +460,62 @@ function holds(forage: Forage, query: string): boolean {
     .some((each) => each.includes(sought));
 }
 
+/**
+ * Whether the list's view takes `forage` in before a find narrows it: every
+ * cell does, but while `hollowOnly` asks for the cells with no purpose
+ * written, only those.
+ */
+function inView(forage: Forage, hollowOnly: boolean): boolean {
+  return !hollowOnly || forage.purpose === "";
+}
+
+/** The cells of `forages` the list shows for the find `sought` in its view, in its order. */
+function shownBy(
+  forages: readonly Forage[],
+  sought: string,
+  hollowOnly: boolean,
+): readonly Forage[] {
+  return forages.filter((forage) => holds(forage, sought) && inView(forage, hollowOnly));
+}
+
+/**
+ * The cell the cursor rests on once the list shows `rows` of `forages`:
+ * `cursor` while they show it, else their first. A find that matches
+ * nothing keeps it while its cell lasts and the view still takes it in, so
+ * ending the find finds it again; a cell that ends, or that the view no
+ * longer takes in, takes the cursor with it. With no rows, only a find can
+ * then be what hides it.
+ */
+function cursorAfter(
+  forages: readonly Forage[],
+  rows: readonly Forage[],
+  cursor: string | null,
+  hollowOnly: boolean,
+): string | null {
+  if (rows.some((each) => each.cell === cursor)) {
+    return cursor;
+  }
+  const [first] = rows;
+  if (first !== undefined) {
+    return first.cell;
+  }
+  const open = forages.find((each) => each.cell === cursor);
+  return open !== undefined && inView(open, hollowOnly) ? cursor : null;
+}
+
 export type { Document, Forage, Forages, Headline, Join, Wait };
 export {
   counted,
+  cursorAfter,
   foragesOf,
   grewFrom,
   grewClaimed,
   headline,
   holds,
+  inView,
   keeps,
   lede,
+  shownBy,
   startedFrom,
   steps,
 };
