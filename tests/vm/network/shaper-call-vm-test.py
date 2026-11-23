@@ -564,6 +564,13 @@ def received(result: Json, way: str) -> Json:
     return summary
 
 
+def written(result: Json, way: str) -> int:
+    """Give how many datagrams a call's sender wrote one way: `up` to the server, `down` back."""
+    end: Json = result.get("end", {})
+    summary: Json = end.get("sum_sent" if way == "up" else "sum_sent_bidir_reverse", {})
+    return int(summary.get("packets", 0))
+
+
 def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
     """Give whether a wait is met, saying otherwise with the trace on its last try."""
     if last_try and not now:
@@ -671,8 +678,19 @@ def under_load(
             )
             seen = result["path"][way]
             read = int(summary["packets"]) - int(summary["lost_packets"])
+            wrote = written(result, way)
             steps = ", ".join(f"the {m} {n}" for m, n in zip(order, seen, strict=True))
-            print(f"the {name} call's datagrams {way}, as met: {steps}, iperf3 {read}")
+            print(
+                f"the {name} call's datagrams {way}, as met: {steps},"
+                f" iperf3 wrote {wrote} and read {read}"
+            )
+            # The first machine's counter meets each datagram as iperf3 writes it, before
+            # any queue, so one past what iperf3 wrote took in datagrams not the call's,
+            # which would read as more lost than was.
+            assert seen[0] <= wrote, (
+                f"the first machine counted more of the {name} call's datagrams {way} than"
+                f" iperf3 wrote, so its counter took in others: {steps}, iperf3 wrote {wrote}"
+            )
             # Every datagram iperf3 read passed each machine, so a count under it is a
             # counter that missed the call, which would read as nothing lost.
             assert min(seen) >= read, (
