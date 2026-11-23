@@ -2,8 +2,10 @@
 # while ../mx-brio's relay gives no picture (its header says why). A machine
 # that shared the Brio before keeps it hidden from the seat until it's
 # replugged, so a switch bringing this in, and every boot after, gives back
-# any camera node still held for a relay (give-back.sh), and nobody has to
-# unplug it. A machine importing ../mx-brio drops this, choosing the relay.
+# any of the Brio's nodes still held for a relay (give-back.sh), and nobody
+# has to unplug it. It never fails the switch, which would send a machine
+# that updates itself back to the sharing. A machine importing ../mx-brio
+# drops this, choosing the relay.
 { config, ... }:
 {
   systemd.services.mx-brio-seat = {

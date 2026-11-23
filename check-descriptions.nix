@@ -5151,13 +5151,14 @@
     its loopback under the Brio's name, and starts with its own plugins on the Brio's NV12 at
     1080p and 30 frames a second and on its MJPEG, taken only where NV12 can't be had; the
     loopback's holders file is named as the Brio is and removed when the Brio goes, the shell
-    lists the Brio only while that file is there, and the Brio's own watch writes in the hidden
-    folder, never beside it
+    lists the Brio only while that file is there, the Brio's own watch writes in the hidden
+    folder, never beside it, and the seat's give-back is dropped
   '';
   the-mx-brio-is-the-seats = ''
-    a graphical machine runs no relay on the MX Brio, has no udev rule taking the seat's tag off
-    it, and gives the seat back a Brio a relay held, so the seat opens the Brio itself while its
-    relay gives no picture
+    a graphical machine runs no relay on the MX Brio, has no udev rule marking a camera relayed
+    or taking the Brio's seat tag off, as a search shown to find the sharing's rule says, and
+    starts at every boot and switch, with udevadm to hand, the give-back of a Brio a relay held,
+    so the seat opens the Brio itself while its relay gives no picture
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
