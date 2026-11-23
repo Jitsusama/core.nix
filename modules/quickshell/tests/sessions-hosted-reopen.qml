@@ -825,6 +825,10 @@ ShellRoot {
             if (waiting?.id !== "s-unarranged" || !waiting.classed)
                 return;
             const joels = Object.values(Niri.workspaces).find(one => one.is_focused);
+            if (!joels) {
+                Expect.fail("no workspace is focused for s-unarranged's window to open on");
+                return;
+            }
             opensOnly(91, waiting.classed, joels.id);
             return;
         }
