@@ -51,8 +51,8 @@ What holds it together:
   kit's tsconfig drops them from every site's TypeScript;
   [`site.sh`][sitesh] sends a script written by hand through the same
   compiler and each sheet through esbuild, unminified, so rules and
-  declarations keep their order; the kit's `switch.css` and the theme's
-  `base.css` go the same way. A script or a sheet still holding a
+  declarations keep their order; the kit's `switch.css` and `head.css`
+  and the theme's `base.css` go the same way. A script or a sheet still holding a
   comment marked to stay fails its build, the kit's too
   ([`kept-comments.sh`][kept], [`bare-sheet.sh`][baresheet]). The
   comments stay in the tree. Still sent
@@ -82,8 +82,9 @@ What holds it together:
      lines on `@dark-ground@` and `@light-ground@`, the script that
      restores the theme, `favicon.svg`, the web kit's font preloads, then
      `../local-sites/web/theme.css` (the build refuses a page without it),
-     `base.css` and the kit's `switch.css` before its own styles, and one
-     skip link;
+     `base.css` and the kit's `switch.css` and `head.css` before its own
+     styles, and one skip link, its head built as the web-design skill's
+     `sites.md` gives it;
    - a `favicon.svg` drawn in `@dark-tint@` and `@light-tint@`, which the
      build fills with its tint, as it fills the grounds;
    - its TypeScript on the kit's `feed.ts`, `records.ts` and `status.ts`,

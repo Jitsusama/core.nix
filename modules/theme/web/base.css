@@ -245,10 +245,12 @@ pre,
   font-variation-settings: normal;
 }
 
+/* Code sits a little under the words round it, but never under the sites'
+   12 px floor: a keycap in a small line came out at 10 px. */
 code,
 kbd,
 samp {
-  font-size: 0.85em;
+  font-size: max(0.85em, 12px);
 }
 
 pre {

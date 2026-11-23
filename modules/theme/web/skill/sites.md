@@ -205,8 +205,8 @@ Its parts come in this order, each said once:
   <p class="standing"><span class="glyph" aria-hidden="true"></span>
     <span id="status" role="status">Reaching its daemon.</span></p>
   <div class="quiet">
-    <p class="keys"><kbd>j</kbd> and <kbd>k</kbd> step from site to site, and
-      <kbd>?</kbd> lists every key</p>
+    <p class="keys"><kbd data-tap>j</kbd> and <kbd data-tap>k</kbd> step from
+      site to site, and <kbd>?</kbd> lists every key</p>
     <!-- the three-way switch, centred under the key line -->
   </div>
 </header>
@@ -226,8 +226,10 @@ Its parts come in this order, each said once:
 - **The quiet row** holds the key line and the switch under it, as Joel's
   Crossing has them. On a phone the line's words wait for the first key
   pressed outside a field, which `listen` marks; a page answering its keys
-  its own way calls `watchForKeys`. Keycaps made tappable with `pressable`
-  keep the line showing; a help button alone doesn't.
+  its own way calls `watchForKeys`. Keycaps that act when tapped keep the
+  line showing: mark them `data-tap` in the markup, so the line is there at
+  first paint, and make them act with `pressable`. A `?` or a help button
+  alone doesn't keep it.
 
 `head.css` reads each part only inside `.page-head`, so linking it changes
 nothing until a page moves its head into one; check that move with
@@ -238,7 +240,7 @@ its gutter's edge rather than the centre.
 
 **A long list folds** with `fold.ts`: at most seven rows, ranked by the
 page, then a button saying how many more rows opening shows ("And 13 more
-snapshots"), never more than it opens. A list no longer than the fold has
+trees"), never more than it opens. A list no longer than the fold has
 no button, even opened by the page's key. The page keeps the rows that
 must show wherever they rank, such as the cursor's own, and owns whether
 the fold is open. What Joel never acts on one by one, a repository's

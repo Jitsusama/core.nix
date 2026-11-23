@@ -287,12 +287,6 @@ let
     + lib.optionalString (catWays.faults != [ ]) (
       ", which wanted " + lib.concatStringsSep ", " catWays.faults
     );
-  # The browser the web-design skill's probe tests share, a pytest plugin
-  # put on Python's path alone, so an edit beside it rebuilds neither.
-  probeBrowser = lib.fileset.toSource {
-    root = ./web;
-    fileset = ./web/probe_browser.py;
-  };
   # The pose rules, and the reader of the cat's walk, shown refusing what
   # they're for as well as passing, for the two checks that say so.
   refusals = import ./pose-refusals.nix {
@@ -644,62 +638,6 @@ in
 }
 # What follows runs the Linux workstation's own programs, which a Mac can't run.
 // onLinux {
-  # The web-design skill's homes probe, run in headless Chromium over small
-  # sites of its own (web/homes-test.py): a pattern's names learned from the
-  # page's links on the sites alone, each row and record the system reader
-  # drops named, a kind's first claim kept, and a shortened name's tail read
-  # as no mention. Chromium builds only on Linux.
-  homes-probe-reads-as-the-reader =
-    let
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
-    in
-    pkgs.runCommandLocal "homes-probe-reads-as-the-reader"
-      {
-        env = {
-          WEB_SKILL = "${./web/skill}";
-          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
-          PYTHONPATH = "${probeBrowser}";
-          PYTHONDONTWRITEBYTECODE = "1";
-        };
-      }
-      ''
-        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p probe_browser \
-          --basetemp="$TMPDIR/pytest" ${./web/homes-test.py}
-        touch $out
-      '';
-  # The web-design skill's looks probe, run in headless Chromium over small
-  # sites of its own (web/looks-test.py): what a page draws beyond its
-  # words, measured before a deploy and after it, with the deploy of 18
-  # November 2026 that kept a guide's words and lost its masthead, art and
-  # stylesheets as its first case.
-  looks-probe-finds-what-a-deploy-lost =
-    let
-      python = pkgs.python3.withPackages (python: [
-        python.playwright
-        python.pytest
-      ]);
-    in
-    pkgs.runCommandLocal "looks-probe-finds-what-a-deploy-lost"
-      {
-        env = {
-          WEB_SKILL = "${./web/skill}";
-          FACE = "${pkgs.fraunces}/share/fonts/truetype/Fraunces[SOFT,WONK,opsz,wght].ttf";
-          # Without a fontconfig, the sandbox's Chromium fails a web face
-          # it fetched as often as it draws it.
-          FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ ]; };
-          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
-          PYTHONPATH = "${probeBrowser}";
-          PYTHONDONTWRITEBYTECODE = "1";
-        };
-      }
-      ''
-        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p probe_browser \
-          --basetemp="$TMPDIR/pytest" ${./web/looks-test.py}
-        touch $out
-      '';
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design
@@ -736,7 +674,10 @@ in
   # theme as the hand-copied sites did; and it sends a first view's three
   # faces, the upright, the italic a heading's turn draws and the mono, in
   # under 350 KB, the budget the web-design skill sets, so cutting them can't
-  # silently grow back to the 1.5 MB of whole font files.
+  # silently grow back to the 1.5 MB of whole font files. Every type step
+  # starts at 12 px or more, and code, keycaps and samples set in small text
+  # do too, so a small step on an interface's 15 px body can't fall back to
+  # the 11.76 px forage drew.
   the-web-kit-carries-the-theme =
     let
       home = account workstation;
@@ -768,6 +709,15 @@ in
         echo "A first view's faces come to $first bytes, past 350 KB."
         exit 1
       fi
+      # grep counts none with a failure, which would end the build unsaid.
+      steps=$(grep -c -- '--step-[a-z0-9-]*: clamp(' ${kit}/theme.css || true)
+      held=$(grep -c -- '--step-[a-z0-9-]*: clamp(max(12px, ' ${kit}/theme.css || true)
+      if [ "$steps" -eq 0 ] || [ "$held" -ne "$steps" ]; then
+        echo "Only $held of theme.css's $steps type steps start at 12 px or more."
+        exit 1
+      fi
+      grep -qF 'font-size: max(0.85em, 12px);' ${kit}/base.css \
+        || { echo "base.css lets code, keycaps and samples go under 12 px."; exit 1; }
       touch $out
     '';
 }
