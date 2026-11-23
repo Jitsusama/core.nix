@@ -20,6 +20,10 @@
 //! and the calendar, keeping ten minutes clear of any meeting there. A run
 //! stopped or skipped writes nothing.
 //!
+//! `call-under-load watch` watches Joel's own calls as they happen, and
+//! each hour's figures carry the worst of those since the hour before
+//! (src/watch.rs says how).
+//!
 //! `call-under-load`, or `call-under-load now`, says the last hour's
 //! figures, in the form `--format` asks for (docs/commands.md).
 
@@ -31,6 +35,7 @@ mod history;
 mod hour;
 mod launcher;
 mod managed;
+mod watch;
 
 use serde_json::{Value, json};
 use std::fmt::Write as _;
@@ -93,6 +98,15 @@ fn help() -> Help {
                 )
                 .exit(Exit::Failed, "the call couldn't be made"),
         )
+        .subcommand(
+            Help::new("watch", "Joel's own calls, as its service watches them")
+                .example(
+                    "call-under-load watch",
+                    "adds each call's sending waits to the history as it ends",
+                )
+                .exit(Exit::Unavailable, "the apps' slice can't be found")
+                .exit(Exit::Failed, "a call's line couldn't be written"),
+        )
         .exit(Exit::NotFound, "no hour has been measured yet")
         .exit(Exit::BadInput, "the hour can't be read")
 }
@@ -108,6 +122,7 @@ fn main() -> ExitCode {
         match command {
             "now" => none_after(rest).and_then(|()| now(context)),
             "run" => none_after(rest).and_then(|()| run(context)),
+            "watch" => none_after(rest).and_then(|()| watch()),
             word => Err(flags::unknown("command", word, &commands)),
         }
     })
@@ -120,7 +135,7 @@ fn none_after(rest: &[String]) -> Result<(), Failure> {
         .find(|arg| !matches!(arg.as_str(), "--verbose" | "-v"))
     {
         Some(arg) => Err(Failure::new(Exit::Usage, format!("{arg} isn't taken here"))
-            .because("now and run take nothing more")
+            .because("now, run and watch take nothing more")
             .try_this("call-under-load --help")),
         None => Ok(()),
     }
@@ -334,13 +349,13 @@ fn run(context: &Context) -> Result<(), Failure> {
     let call = figures::call(&mine, &far, &clicks);
     let at = seconds_now();
     let watched = state().join("lag-watch");
-    let ran =
-        history::ran(&std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default());
+    let lines = std::fs::read_to_string(folder().join("history.jsonl")).unwrap_or_default();
+    let ran = history::ran(&lines);
     let chrome_waits = history::waits(&watched, "chrome-ui", started, LONGEST, &ran);
     let slack_waits = history::waits(&watched, "slack-ui", started, LONGEST, &ran);
     let read = launcher::read();
     let took: Vec<f64> = read.opens.iter().map(|(_, ms)| *ms).collect();
-    let measures = hour::measures(
+    let mut measures = hour::measures(
         &call,
         call::STAND_IN,
         &chrome_waits,
@@ -348,6 +363,10 @@ fn run(context: &Context) -> Result<(), Failure> {
         &took,
         read.unread.as_deref(),
     );
+    measures.push(hour::real(
+        &watch::heard(&lines, at.saturating_sub(3600)),
+        at,
+    ));
     // The call's span runs from the run's start, Chromium's own included,
     // to now: the whole of the load the test put beside Joel's programs.
     let launcher = launcher::written(&read, started, at);
@@ -360,6 +379,35 @@ fn run(context: &Context) -> Result<(), Failure> {
     context
         .say(&said(&json!({"measures": measures, "run": run}), 0))
         .map_err(|error| unwritten(&error))
+}
+
+/// Joel's own calls, watched until the service stops.
+fn watch() -> Result<(), Failure> {
+    let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
+    let slice = app_slice(&cgroup).ok_or_else(|| {
+        Failure::new(Exit::Unavailable, "the apps' slice can't be found")
+            .because(format!(
+                "it runs outside a user's manager: {}",
+                cgroup.trim()
+            ))
+            .try_this("systemctl --user status call-under-load-watch")
+    })?;
+    let history = folder().join("history.jsonl");
+    watch::watch(Path::new("/proc"), &slice, &history).map_err(|error| {
+        Failure::new(Exit::Failed, "a call's line couldn't be written")
+            .because(error.to_string())
+            .try_this(format!("ls -ld {}", folder().display()))
+    })
+}
+
+/// The apps' slice of the user's manager this runs under, from its own
+/// line in `/proc/self/cgroup`.
+fn app_slice(cgroup: &str) -> Option<PathBuf> {
+    let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
+    let (manager, _) = path.split_once(".service/")?;
+    manager
+        .contains("/user@")
+        .then(|| PathBuf::from(format!("/sys/fs/cgroup{manager}.service/app.slice")))
 }
 
 /// The first program named `name` on PATH.
@@ -435,6 +483,24 @@ mod tests {
             beside_said(&Value::Null),
             None,
             "an older hour says nothing"
+        );
+    }
+
+    #[test]
+    fn the_watch_finds_the_apps_slice_beside_its_own() {
+        assert_eq!(
+            app_slice(
+                "0::/user.slice/user-1000.slice/user@1000.service/background.slice/\
+                 call-under-load-watch.service\n"
+            ),
+            Some(PathBuf::from(
+                "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice"
+            ))
+        );
+        assert_eq!(
+            app_slice("0::/system.slice/sshd.service\n"),
+            None,
+            "a system service took a slice no user's apps are in"
         );
     }
 

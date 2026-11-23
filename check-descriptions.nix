@@ -611,8 +611,9 @@
     whether the far end heard its sound, the share it made up, its jitter and packets lost, and
     why when it heard none or counted only part, keeps a run ten minutes from any meeting and
     refuses a stale calendar, takes Chrome's and Slack's waits from lag-watch's last hour, sets
-    the launcher's openings during the run against the same span before it, and writes the hour
-    in the shape cadence reads
+    the launcher's openings during the run against the same span before it, writes the hour
+    in the shape cadence reads, and sums Joel's own calls' sending threads' waits for a CPU
+    into a line the hour reads and no test run is taken for
   '';
   calls-are-summed-up-only-where-the-model-runs = ''
     the XPS 14's account gives call-transcripts its summarizer, on the GPU, and a graphical machine

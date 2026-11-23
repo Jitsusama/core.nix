@@ -22,6 +22,8 @@ const HEARD: &str = "call sound heard and counted";
 /// reads it as the p99 of every wakeup.
 const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// Joel's own calls' figure, in ms of waiting per second.
+const REAL: &str = "real call sending wait p99 ms per s";
 /// How far, in tenths, a figure may sit past a whole tenth and still be
 /// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
 /// times carry error near 1e-8 ms, far inside it, and the page's clock
@@ -258,16 +260,89 @@ pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::R
         .map(|m| (m.measure.to_string(), json!(m.now)))
         .collect();
     let line = json!({"at": at, "run": run, "measures": figures});
-    let mut history = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder.join("history.jsonl"))?;
-    writeln!(history, "{line}")
+    append(&folder.join("history.jsonl"), &line)
+}
+
+/// Adds one line to the history, as a single write, so the hour's run
+/// and the call watch can't interleave their lines.
+pub fn append(history: &Path, line: &Value) -> io::Result<()> {
+    if let Some(folder) = history.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(history)?;
+    file.write_all(format!("{line}\n").as_bytes())
+}
+
+/// Joel's own calls' figure: the worst of their sending threads' p99
+/// wait for a CPU, from the calls `heard` names, with the load and the
+/// thread behind it said, as of `at`. Unread when no call was ever
+/// watched.
+pub fn real(calls: &[crate::watch::Real], at: u64) -> Measure {
+    let p99 = |call: &&crate::watch::Real| call.sending_p99.unwrap_or(0.0);
+    let worst = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .max_by(|a, b| p99(a).total_cmp(&p99(b)));
+    let mut behind = vec![format!(
+        "Joel's own calls, {} read: each 5 s, the slowest sending thread's wait for a CPU \
+         per second, in his call apps",
+        calls.len()
+    )];
+    if let Some(call) = worst {
+        behind.push(format!(
+            "the worst ended {} min ago, {} of {} ticks past {} ms/s or load {}, its 15-minute \
+             load up to {:.0}, its slowest thread {}",
+            at.saturating_sub(call.ended) / 60,
+            call.flagged,
+            call.ticks,
+            crate::watch::LATE_MS,
+            crate::watch::HEAVY,
+            call.load15_max,
+            call.worst_who.as_deref().unwrap_or("unread"),
+        ));
+    }
+    measure(
+        REAL,
+        worst.and_then(|call| call.sending_p99),
+        crate::watch::LATE_MS,
+        true,
+        behind,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joel_s_calls_give_their_worst_sending_wait_and_say_whose() {
+        let call = |ended, p99: Option<f64>, who: &str| crate::watch::Real {
+            began: ended - 600,
+            ended,
+            ticks: 120,
+            flagged: 3,
+            sending_p99: p99,
+            worst_ms: p99.unwrap_or(0.0),
+            worst_who: Some(who.to_string()),
+            load15_max: 121.4,
+        };
+        let calls = [
+            call(1_000, Some(40.0), "chrome:renderer:Compositor"),
+            call(2_000, Some(412.5), "chrome:renderer:CodecWorker"),
+            call(2_500, None, "none"),
+        ];
+        let figure = real(&calls, 2_600);
+        assert_eq!(figure.now, Some(412.5));
+        assert!(figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9);
+        assert_eq!(figure.owner, OWNER);
+        assert_eq!(
+            figure.behind[1],
+            "the worst ended 10 min ago, 3 of 120 ticks past 300 ms/s or load 80, its \
+             15-minute load up to 121, its slowest thread chrome:renderer:CodecWorker",
+            "the figure doesn't say which call and thread it is"
+        );
+        assert_eq!(real(&[], 0).now, None, "no call watched read as a figure");
+    }
 
     #[test]
     fn a_figure_is_rounded_toward_its_worse_side() {
