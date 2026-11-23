@@ -159,8 +159,8 @@ fn his(seat: &Seat, unit: &str) -> Option<bool> {
     let Some(pid) = named_pid(unit) else {
         return Some(true);
     };
-    let stat = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).ok()?;
-    let parent = stat
+    let fields = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).ok()?;
+    let parent = fields
         .rsplit_once(')')
         .and_then(|(_, rest)| rest.split_whitespace().nth(1)?.parse::<u32>().ok())?;
     let parents = fs::read_to_string(seat.proc.join(format!("{parent}/cgroup"))).ok()?;
