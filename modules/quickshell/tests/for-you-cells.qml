@@ -59,6 +59,13 @@ QtObject {
         item => item.asks === true);
         expect("what a cell asks leads it, the rest in the order they came",
             led.map(group => group.items.map(item => item.name)), [["ask", "look"], ["own"]]);
+        // Joel's own rows ask nothing of a cell, so they keep their band's
+        // order, as :filter lists them: a lighter one that blocks, as
+        // Sessions to Reopen does, stays under the heavier.
+        expect("Joel's own rows keep their order, whatever blocks",
+            Cells.byCell([{ name: "overdue" }, { name: "reopen", asks: true }], () => null,
+                item => item.asks === true).map(group => group.items.map(item => item.name)),
+            [["overdue", "reopen"]]);
 
         // The groups laid out, each one's rows under its heading, a group
         // whose rows all went as they were made left out, and no heading

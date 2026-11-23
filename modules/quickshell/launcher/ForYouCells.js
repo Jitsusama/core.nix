@@ -13,7 +13,8 @@
 // as a cell is. A cell is one by its address, whatever its case. What a
 // cell asks, `leads(item)`, leads it whatever a look it left weighs, since
 // the ask is what holds the session up, and a look left an hour before
-// can weigh as much.
+// can weigh as much. Joel's own rows hold up no session of theirs, so they
+// keep their band's order, as :filter lists them.
 function byCell(items, cellOf, leads) {
     const groups = [];
     // No prototype, so an address is never taken for one of Object's own.
@@ -28,8 +29,8 @@ function byCell(items, cellOf, leads) {
         groups[at[address]].items.push(item);
     }
     const first = leads ?? (() => false);
-    return groups.map(group => Object.assign(group, { items: group.items.filter(first)
-        .concat(group.items.filter(item => !first(item))) }));
+    return groups.map(group => group.cell === null ? group : Object.assign(group, {
+        items: group.items.filter(first).concat(group.items.filter(item => !first(item))) }));
 }
 
 // The groups' rows, `rowsOf(items)` each, under each one's heading,
