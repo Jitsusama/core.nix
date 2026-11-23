@@ -6474,9 +6474,10 @@
     where a router sends two adjacent source ports a near way to the VPN's far end and every other
     a way 40 ms slower, the shaper probes the ports a hop past the split and says it pinned the
     near two; the VPN's socket from before keeps its port, its next lands on one of the two, and
-    the one after, while that flow still holds its port, on the other; a stopped shaper leaves no
-    pin, and started again puts the same one back and says so; with both held by other flows, the
-    shaper says its pin let go and the VPN's next socket leaves from its own port
+    the one after, while that flow still holds its port, on the other; a restarted shaper keeps the
+    pin and says so, a stopped one leaves none, and started again puts the same one back; with both
+    held by other flows, the shaper says its pin let go and the VPN's next socket leaves from its
+    own port
   '';
   vm-updates-itself-to-signed-main = ''
     an account in update-ask updates the machine to signed main with a real switch, reads how it

@@ -36,6 +36,9 @@ MOVING = dt.timedelta(seconds=15)
 # How long a pin no flow gets through may take to let go: the shaper's look every five
 # seconds, twice, and then the next keepalive.
 LETTING_GO = dt.timedelta(seconds=40)
+# How many times the shaper takes its pin back in the restart subtest: at the restart and at
+# the start after a stop.
+TAKEN_BACK = 2
 # A port the VPN listens on that no pin names.
 ITS_OWN = 41002
 
@@ -147,26 +150,30 @@ def test_a_held_port_yields_the_other(moved: Moved) -> None:
     )
 
 
-def test_a_pin_is_kept_through_a_stop_and_start(moved: Moved) -> None:
-    """A stop lets the pin go with the queues; the start puts it back, as a switch needs.
+def test_a_pin_is_kept_through_a_restart_and_a_stop(moved: Moved) -> None:
+    """A restart keeps the pin in force; a stop lets it go, and the start puts it back.
 
-    A switch stops the shaper and starts the new one, and the VPN's live flow keeps the pair
-    NAT gave it, so the new shaper has to know the pair, or its first round probes that port.
+    A switch restarts the shaper, or stops it and starts the new one, while the VPN's live
+    flows keep the pairs NAT gave them, so the new shaper takes back what the old one kept.
+    Which ports a round leaves out after it is the unit tests' to show.
     """
     rig = moved.rig
+    pinned = f"nft list chain inet shaper pin | grep -q 'masquerade.*{NEAR[0]}-{NEAR[1]}'"
+    kept = f"pin to ports {NEAR[0]} and {NEAR[1]} is kept through the restart"
+    rig.client.succeed("systemctl restart shaper")
+    rig.client.wait_until_succeeds(
+        f"journalctl -u shaper -o cat --no-pager | grep -c '{kept}' | grep -qx 1",
+        timeout=COMING_UP,
+    )
+    rig.client.succeed(pinned)
     rig.client.succeed("systemctl stop shaper")
     assert "masquerade" not in rig.client.succeed("nft list chain inet shaper pin"), (
         "a stopped shaper left the VPN pinned"
     )
     rig.client.succeed("systemctl start shaper")
-    rig.client.wait_until_succeeds(
-        f"nft list chain inet shaper pin | grep -q 'masquerade.*{NEAR[0]}-{NEAR[1]}'",
-        timeout=COMING_UP,
-    )
-    journal = rig.client.succeed("journalctl -u shaper -o cat --no-pager -n 200")
-    assert f"pin to ports {NEAR[0]} and {NEAR[1]} is kept through the restart" in journal, (
-        "the shaper put its pin back without saying so"
-    )
+    rig.client.wait_until_succeeds(pinned, timeout=COMING_UP)
+    journal = rig.client.succeed("journalctl -u shaper -o cat --no-pager")
+    assert journal.count(kept) == TAKEN_BACK, "the shaper put its pin back without saying so"
 
 
 def test_a_pin_no_flow_gets_through_lets_go(moved: Moved) -> None:
@@ -198,7 +205,8 @@ def test_a_pin_no_flow_gets_through_lets_go(moved: Moved) -> None:
         )
     )
     assert "came back unsent" in journal, "the shaper didn't say why its pin let go"
-    # A round may pin again, but only ten minutes after the last, so the rule is gone now.
+    # A round may pin again, but only ten minutes after the last, which a restart keeps,
+    # so the rule is gone now.
     assert rig.client.succeed("nft list chain inet shaper pin").count("masquerade") == 0, (
         "the pin let go but its rule stayed"
     )

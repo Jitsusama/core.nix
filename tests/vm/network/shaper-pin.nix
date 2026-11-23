@@ -7,8 +7,9 @@
 # server is a hop past the split that answers, as on the real line. Once
 # the shaper has probed the ports toward the VPN's end, the VPN's next
 # socket leaves from one of the two near ports, and the one after it from
-# the other, while the first's flow still holds its port. A stop takes the
-# pin away and a start puts it back, as a switch needs. With both ports
+# the other, while the first's flow still holds its port. A restart keeps
+# the pin, and a stop takes it away and a start puts it back, as a switch
+# needs. With both ports
 # held, the pin lets go, and the VPN's next socket leaves from its own. The
 # tests are shaper-pin-vm-test.py, run through pytest.
 { self, pkgs }:

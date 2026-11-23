@@ -771,13 +771,15 @@ struct Pinner {
     /// Whether the journal said the count of flows back can't be read,
     /// so it says so once rather than every look.
     unread: bool,
-    /// Where the pin in force is kept across a restart, so a round after
-    /// it leaves out the pair the VPN's live flow was given, and the pin
-    /// isn't lost to a switch; what was last written there; and this
-    /// boot, which a pin kept there has to be from.
+    /// Where the pin is kept across a restart (`pin::Restart`), so a switch
+    /// doesn't lose it and a round after leaves out every pair the VPN's
+    /// live flows were given; what was last written there; this boot,
+    /// which what's kept there has to be from; and when the last round
+    /// was asked, as an instant and in seconds since the epoch.
     kept_at: PathBuf,
     written: Option<String>,
     boot: String,
+    asked_at: Option<(Instant, u64)>,
 }
 
 impl Pinner {
@@ -787,16 +789,20 @@ impl Pinner {
         let kept_at = state.join("pin");
         let written = fs::read_to_string(&kept_at).ok();
         let mut pinning = pin::Pinning::default();
-        if let Some((pin, network)) = written
+        let mut asked_at = None;
+        if let Some(kept) = written
             .as_deref()
             .and_then(|t| pin::restored(t, boot.trim()))
         {
-            eprintln!(
-                "the VPN's pin to ports {} and {} is kept through the restart",
-                pin.first,
-                pin.first + 1
-            );
-            pinning.resume(pin, network);
+            if let Some(pin) = kept.pin {
+                eprintln!(
+                    "the VPN's pin to ports {} and {} is kept through the restart",
+                    pin.first,
+                    pin.first + 1
+                );
+            }
+            asked_at = kept.asked.and_then(|at| Some((instant_of(at)?, at)));
+            pinning.resume(kept, asked_at.map(|(at, _)| at));
         }
         Pinner {
             pinning,
@@ -808,6 +814,7 @@ impl Pinner {
             kept_at,
             written,
             boot: boot.trim().to_owned(),
+            asked_at,
         }
     }
 
@@ -819,26 +826,26 @@ impl Pinner {
         }
     }
 
-    /// Keeps the pin in force, or that none is, across a restart.
+    /// Keeps what a restart needs of the pin, written whole or not at all,
+    /// each time it changes. A write that fails is said once and tried
+    /// again only at the next change, so it can't fill the journal.
     fn keep(&mut self) {
-        let text = self
-            .pinning
-            .pinned
-            .zip(self.pinning.on())
-            .map(|(p, n)| pin::saved(&p, n, &self.boot));
-        if text == self.written {
+        let asked = self.pinning.asked();
+        if self.asked_at.map(|(at, _)| at) != asked {
+            self.asked_at = asked.and_then(|at| Some((at, epoch_of(at)?)));
+        }
+        let text = pin::saved(
+            &self.pinning.kept(self.asked_at.map(|(_, at)| at)),
+            &self.boot,
+        );
+        if self.written.as_ref() == Some(&text) {
             return;
         }
-        let wrote = match &text {
-            Some(text) => fs::write(&self.kept_at, text),
-            None => fs::remove_file(&self.kept_at).or_else(|e| match e.kind() {
-                std::io::ErrorKind::NotFound => Ok(()),
-                _ => Err(e),
-            }),
-        };
-        match wrote {
-            Ok(()) => self.written = text,
-            Err(e) => eprintln!("the VPN's pin can't be kept across a restart: {e}"),
+        let fresh = self.kept_at.with_extension("new");
+        let wrote = fs::write(&fresh, &text).and_then(|()| fs::rename(&fresh, &self.kept_at));
+        self.written = Some(text);
+        if let Err(e) = wrote {
+            eprintln!("the VPN's pin can't be kept across a restart, so a restart forgets it: {e}");
         }
     }
 
@@ -850,8 +857,8 @@ impl Pinner {
     /// transaction.
     fn step(&mut self, primary: Option<&Shaped>, calling: bool, now: Instant) -> String {
         let uplink = primary.map(|s| (s.uplink.name.as_str(), s.network.as_str()));
-        if let Some((_, network)) = uplink
-            && let Some(first) = self.pinning.network(network)
+        if let Some((link, network)) = uplink
+            && let Some(first) = self.pinning.network(link, network)
         {
             eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
         }
@@ -904,8 +911,7 @@ impl Pinner {
             // A listing that failed says nothing of the VPN's flows, so the
             // pairs they hold are kept and no round goes until one answers.
             let listed = sh(&words(&format!("nft -j list set inet {TABLE} vpn_ends")));
-            if let Ok(listed) = listed {
-                let ends = pin::ends(&listed);
+            if let Some(ends) = listed.ok().as_deref().and_then(pin::ends) {
                 self.pinning.flows(&ends);
                 if let Some(end) = self.pinning.ask(&ends, calling, now) {
                     let (link, held) = (link.to_string(), self.pinning.held());
@@ -917,6 +923,21 @@ impl Pinner {
         self.keep();
         pin::chain(TABLE, self.pinning.pinned.as_ref())
     }
+}
+
+/// The seconds since the epoch at `at`, or nothing where the clock can't
+/// say.
+fn epoch_of(at: Instant) -> Option<u64> {
+    let ago = Instant::now().checked_duration_since(at)?;
+    let then = SystemTime::now().checked_sub(ago)?;
+    Some(then.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs())
+}
+
+/// The instant at `at` seconds since the epoch, or nothing where it's to
+/// come or before this machine's clock began.
+fn instant_of(at: u64) -> Option<Instant> {
+    let then = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(at))?;
+    Instant::now().checked_sub(SystemTime::now().duration_since(then).ok()?)
 }
 
 /// Runs each command, saying what failed, and gives whether all went.
