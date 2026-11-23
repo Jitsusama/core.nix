@@ -19,6 +19,10 @@ let
   );
   # The launcher's vocabulary, which the rows it serves are said in.
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
+  # Where zoxide keeps its database, named once in this module, so the
+  # folder Code reads visits from and the one zoxide is told to write in
+  # can't drift apart here. kitty's module builds the same path itself.
+  zoxideData = "${config.xdg.dataHome}/zoxide";
 in
 {
   imports = [ ../quickshell/recents.nix ];
@@ -50,13 +54,22 @@ in
       # file-preview it keeps for drawers that preview a file
       # (src/preview.rs), and the niri and kitten that go to one of
       # kitty's tabs in Tabs and close it (src/tabs.rs). Code's rows are
-      # read under the folders repos looks under (src/code.rs, modules/repos).
+      # read under the folders repos looks under (src/code.rs, modules/repos),
+      # ordered by when Joel was last in each, by zoxide's database, which
+      # New Terminal Here and Edit Here tell of the folder they open. zoxide
+      # is told its folder, as the service has no XDG_DATA_HOME of the
+      # shell's, so what it writes is what Code reads.
       Environment = [
         "REPOS_ROOTS=${lib.concatStringsSep ":" (config.jitsusama.repos.roots or [ ])}"
         "PROGRAMS_GIT=${lib.getExe pkgs.git}"
         "PROGRAMS_PREVIEW=${lib.getExe (pkgs.callPackage ../open-with/file-preview.nix { })}"
         "PROGRAMS_NIRI=${lib.getExe (osConfig.programs.niri.package or pkgs.niri)}"
         "PROGRAMS_KITTEN=${lib.getExe' pkgs.kitty "kitten"}"
+      ]
+      ++ lib.optionals config.programs.zoxide.enable [
+        "PROGRAMS_ZOXIDE=${lib.getExe config.programs.zoxide.package}"
+        "PROGRAMS_VISITED=${zoxideData}/db.zo"
+        "_ZO_DATA_DIR=${zoxideData}"
       ];
       Restart = "on-failure";
       RestartSec = 5;

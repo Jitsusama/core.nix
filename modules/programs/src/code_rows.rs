@@ -1,7 +1,11 @@
 //! The rows of Code, the launcher's place for every repository on the
 //! machine (docs/glossary.md's Code words), each listed once however many
 //! checkouts of it lie on the disk, as `repos` reads them
-//! (modules/repos). The one written to last comes first, said beside it
+//! (modules/repos). The one Joel was in last comes first, by zoxide's
+//! last visit to a folder of its checkouts or trees (visited.rs), since a
+//! list of things returned to moves by his own acts alone and agents write
+//! in those repositories too (RSCH-20261030-GB56HX); those he hasn't
+//! visited follow A to Z. Each is said beside it
 //! by how many changes are open on its remote, how far the checkout
 //! written to last is behind and ahead of the branch it follows (as repos'
 //! timer last counted), how many of its tracked files that checkout has
@@ -23,10 +27,12 @@
 //! by Return (switch.rs); its drawer names its
 //! key, its trunk and the checkout written to last, at its branch.
 
+use ready_rows::order::by_name;
 use repos::model::{COUNTED_TO, Checkout, Head, Record, Repository};
 use repos::read::shown;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 
 /// The place these rows are of.
@@ -176,22 +182,102 @@ impl Words {
     }
 }
 
-/// Every repository's row, in the record's order, the one written to
-/// last first; paths are said from `home` as `~`, and `uncommitted` says
-/// how many tracked files each checkout counted has changed and not
-/// committed, by its path.
+/// Every repository's row, the one Joel visited last first by `visited`
+/// (zoxide's folders, each with when he was last in it), then those he
+/// hasn't A to Z by name; paths are said from `home` as `~`, and
+/// `uncommitted` says how many tracked files each checkout counted has
+/// changed and not committed, by its path.
 #[must_use]
 pub fn rows(
     record: &Record,
     home: Option<&Path>,
     words: &Words,
     uncommitted: &BTreeMap<String, u32>,
+    visited: &[(String, u64)],
 ) -> Vec<Value> {
-    record
+    let last = last_visits(record, visited);
+    let mut ordered: Vec<(&Repository, Option<u64>)> = record
         .repositories
         .iter()
-        .map(|repository| row(repository, home, words, uncommitted))
+        .map(|repository| (repository, last.get(repository.key.as_str()).copied()))
+        .collect();
+    ordered.sort_by(|(one, one_at), (other, other_at)| {
+        other_at
+            .cmp(one_at)
+            .then_with(|| by_name(&one.name, &other.name))
+            .then_with(|| one.key.cmp(&other.key))
+    });
+    ordered
+        .into_iter()
+        .map(|(repository, _)| row(repository, home, words, uncommitted))
         .collect()
+}
+
+/// When Joel was last in each repository, by its key: each visited folder
+/// counts for the repository whose checkout or tree holds it most
+/// closely, so a checkout nested in another's folder keeps its own visits.
+fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'a str, u64> {
+    let places = places(record);
+    let mut last: BTreeMap<&str, u64> = BTreeMap::new();
+    for (folder, at) in visited {
+        let holder = places
+            .iter()
+            .filter(|(path, _)| holds(path, folder))
+            .max_by_key(|(path, _)| path.len());
+        if let Some((_, key)) = holder {
+            let latest = last.entry(key).or_default();
+            *latest = (*latest).max(*at);
+        }
+    }
+    last
+}
+
+/// The folder of each checkout and of each tree still on the disk, by its
+/// repository's key, as repos wrote it and, where links lead elsewhere, as
+/// they resolve, since repos writes a tree's path as git keeps it, links
+/// and all, while a visit is named by its real path. A folder that can't
+/// be resolved is kept as written, and one that trims to nothing, or
+/// resolves to `/`, is left out, since it would hold every visit.
+#[must_use]
+pub fn places(record: &Record) -> Vec<(String, &str)> {
+    let mut places = Vec::new();
+    for repository in &record.repositories {
+        let key = repository.key.as_str();
+        for checkout in &repository.checkouts {
+            let present = checkout.trees.iter().filter(|tree| tree.present);
+            let paths = std::iter::once(checkout.path.as_str())
+                .chain(present.map(|tree| tree.path.as_str()));
+            for path in paths {
+                let written = path.trim_end_matches('/');
+                if written.is_empty() {
+                    continue;
+                }
+                if let Ok(real) = fs::canonicalize(written) {
+                    let real = real.to_string_lossy().into_owned();
+                    if real != written && real != "/" {
+                        places.push((real, key));
+                    }
+                }
+                places.push((written.to_owned(), key));
+            }
+        }
+    }
+    places
+}
+
+/// Whether any of `places` holds `folder` as it's written, so it needs no
+/// resolving to be counted.
+#[must_use]
+pub fn placed(places: &[(String, &str)], folder: &str) -> bool {
+    places.iter().any(|(path, _)| holds(path, folder))
+}
+
+/// Whether `folder` is `path`, given with no trailing slash, or lies below
+/// it: `/s/beta-old` isn't in `/s/beta`, though its name begins the same.
+fn holds(path: &str, folder: &str) -> bool {
+    folder
+        .strip_prefix(path)
+        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/'))
 }
 
 /// The rows inside the repositories' rows, served beside them: for each
