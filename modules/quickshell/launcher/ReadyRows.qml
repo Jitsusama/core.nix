@@ -224,12 +224,59 @@ Scope {
         return typeof stamp === "function" ? stamp(key, ask) : ask;
     }
 
+    // Whether a row it made, let go as a change told it, is made again ahead, a few a turn,
+    // while the launcher is open and these rows aren't wanted, rather than all at the step back
+    // to them. A step back to Now made 31 to 37 of Quests' rows after 20 minutes of changes to
+    // their sessions, and 224 after its daemon started again (2026-11-23). Never while shut,
+    // with nothing drawn to step back to, and only rows made before. A place whose rows change
+    // each second leaves it off, since each change would be made with nobody seeing it.
+    property bool madeAhead: false
+    // The rows owed so, by key, and how many are made a turn.
+    readonly property var owedAhead: ({})
+    readonly property int aheadEachTurn: 8
+    readonly property bool makingAhead: madeAhead && drawn && maker?.wanted === false
+    onMakingAheadChanged: aheadSoon()
+
+    function owe(key) {
+        if (madeAhead && key in made)
+            owedAhead[key] = true;
+    }
+
+    function aheadSoon() {
+        if (makingAhead && Object.keys(owedAhead).length > 0)
+            aheadTurn.start();
+    }
+
+    // Each turn after the frame it was owed in, so no one frame makes them all.
+    Timer {
+        id: aheadTurn
+        interval: 0
+        onTriggered: ready.makeAhead()
+    }
+
+    function makeAhead() {
+        if (!makingAhead)
+            return;
+        let count = 0;
+        for (const key of Object.keys(owedAhead)) {
+            if (count === aheadEachTurn) {
+                aheadTurn.start();
+                return;
+            }
+            delete owedAhead[key];
+            if (!(key in made) && served(key) !== null) {
+                rowAt(key);
+                count += 1;
+            }
+        }
+    }
+
     // Not watched, nothing is held, so nothing it made stands.
     onActiveChanged: {
         if (active)
             return;
         for (const store of [made, madeOf, madeFrom, drawers, ticking, clocked, repeats, lending,
-            typedHeld]) {
+            typedHeld, owedAhead]) {
             for (const key of Object.keys(store))
                 delete store[key];
         }
@@ -261,10 +308,13 @@ Scope {
         for (const key of dropped)
             delete repeats[key];
         for (const key of said.concat(dropped)) {
-            if (key in drawers)
+            if (key in drawers) {
+                owe(drawers[key]);
                 delete made[drawers[key]];
+            }
             if (moved[key] === true)
                 continue;
+            owe(key);
             delete made[key];
             delete madeFrom[key];
             delete lending[key];
@@ -297,6 +347,7 @@ Scope {
         if (found.words !== null && Found.reranks(before, keys, said.concat(dropped)))
             ended();
         heard(said, dropped);
+        aheadSoon();
     }
 
     // The row the record of `key` holds, as served or typed for, or null.
