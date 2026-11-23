@@ -426,9 +426,9 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             opened.passes_the_skills_checks()
             quiet_node.tell("murmur", changed=[murmur("HERONS", int(time.time()), "Fog.")])
             the_page_counts(page, "One murmured, all still in the air.", "the murmur went unheard")
-            expect(page.locator("#murmurs"), "the first murmur's list").to_have_attribute(
-                "role", "listbox"
-            )
+            listed = page.locator("#murmurs")
+            expect(listed, "the first murmur's list").to_have_attribute("role", "listbox")
+            expect(listed, "the list went unnamed").to_have_accessible_name("The murmurs")
             expect(page.locator("#quiet"), "the quiet line outlived the quiet").to_be_hidden()
         finally:
             opened.close()

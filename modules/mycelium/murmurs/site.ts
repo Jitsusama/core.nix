@@ -114,10 +114,13 @@ function showList(any: boolean): void {
   list.hidden = !any;
   quiet.hidden = any || !given;
   if (any) {
+    // Only a listbox may be labelled, so its name comes and goes with its role.
     list.setAttribute("role", "listbox");
+    list.setAttribute("aria-labelledby", listTitle.id);
     list.tabIndex = 0;
   } else {
     list.removeAttribute("role");
+    list.removeAttribute("aria-labelledby");
     list.removeAttribute("tabindex");
   }
 }
