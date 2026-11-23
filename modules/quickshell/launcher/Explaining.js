@@ -19,6 +19,9 @@
 const ADDRESS = /^[A-Z0-9]{1,12}$/u;
 const REALM = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
 const FACTS = "{facts}";
+const ACTS = "{acts}";
+// The fact saying what a session asks Joel, in its own words, so quoted.
+const ASKS = "It asks the person";
 const SPACES = /\s+/gu;
 const UNKNOWN = /no cell is named/u;
 // The longest a fact is told, in characters: a sentence or two.
@@ -93,50 +96,73 @@ function plain(value) {
     return flat.length <= LONGEST ? flat : `${flat.slice(0, LONGEST - 1).trim()}\u2026`;
 }
 
+// The names of the acts `beside` a row, each on one line and none blank:
+// `beside` may be a list Qt handed through a property, no array of
+// JavaScript's, so it's read as anything with a length, and anything else
+// names none.
+function names(beside) {
+    return typeof beside === "string" || typeof beside?.length !== "number" ? []
+        : Array.from(beside, plain).filter(name => name !== "");
+}
+
+// The acts on its row Joel can answer `cell` by, `beside`'s names: none
+// while it asks him nothing, since nothing then waits on a press.
+function presses(cell, beside) {
+    return plain(cell?.asks) === "" ? [] : names(beside);
+}
+
 // What the quick model is told of `cell`, a line each, only those it says.
-// One waiting on Joel says what it asks him, its want's own words, and
-// then the names of `beside`, the acts on its row he can answer it by
-// (Talk, Go To), so the answer says what it waits on and which to press;
-// one asking nothing names none, since nothing waits on a press. `beside`
-// may be a list Qt handed through a property, no array of JavaScript's,
-// so it's read as anything with a length.
+// One waiting on Joel says what it asks him, its want's own words quoted,
+// so none of them reads as a fact of the launcher's, and then the acts on
+// its row he can answer it by (presses), so the answer says what it waits
+// on and which to press.
 function facts(cell, beside) {
     const plan = cell?.plan ?? {};
-    const asks = plain(cell?.asks);
-    const presses = asks === "" || typeof beside === "string"
-        || typeof beside?.length !== "number" ? []
-        : Array.from(beside, plain).filter(name => name !== "");
     return [
         ["Its title", cell?.title],
         ["Its repository", cell?.repo],
         ["Its machine", cell?.machine],
         ["How it stands", cell?.standing],
-        ["It asks the person", asks],
-        ["The person can press", presses.join(", ")],
+        [ASKS, cell?.asks],
+        ["The person can press", presses(cell, beside)],
         ["Doing now", cell?.doing],
         ["Running since", cell?.since],
         ["Latest in its plan", plan.chose],
         ["Next in its plan", plan.next]
-    ].map(([label, value]) => [label, plain(value)])
+    ].map(([label, value]) => [label, Array.isArray(value) ? value.join(", ") : plain(value)])
         .filter(([, value]) => value !== "")
-        .map(([label, value]) => `${label}: ${value}`);
+        .map(([label, value]) => `${label}: ${label === ASKS ? JSON.stringify(value) : value}`);
 }
 
 // The question for `cell`: `asks`, the act's words, with its facts where
-// they say {facts}, or after them when they don't; `beside` names the acts
-// on its row (facts).
-function message(cell, asks, beside) {
+// they say {facts}, or after them when they don't, and `acts`, the words
+// asking the answer to end with the act that answers it, where they say
+// {acts}, only while its row has one to name (presses): told to end with
+// one when none is listed, the model makes one up. `beside` names the
+// acts on its row.
+function message(cell, asks, beside, acts) {
     const told = facts(cell, beside).join("\n");
-    const words = String(asks ?? "");
-    // A replacer, so a $ in the facts is never read as a pattern.
+    const pressing = presses(cell, beside).length > 0 ? String(acts ?? "") : "";
+    // Replacers, so a $ in the facts is never read as a pattern.
+    const words = String(asks ?? "").replace(ACTS, () => pressing);
     return words.includes(FACTS) ? words.replace(FACTS, () => told) : `${words}\n\n${told}`;
+}
+
+// Whether an answer asked with the acts `asked` still fits a row whose
+// acts are `beside` now: one naming an act the row no longer has, or
+// leaving out one it has since, is asked again.
+function fits(asked, beside) {
+    const then = names(asked);
+    const now = names(beside);
+    return then.length === now.length && then.every((name, at) => name === now[at]);
 }
 
 // What an act explained shows at `now`, from how it stands, `one` ({ stage,
 // message, at }), and its pi (`ask`: posed, said, stage), in the act's
 // words `said`: { name, reads, note, hue }, or null where it's the act as
-// it was: never asked, stale, asked of another question, or stopped as
-// the launcher closed, so Return asks again.
+// it was: never asked, stale, of another question, or stopped as the
+// launcher closed, so Return asks again. One asked with other acts on its
+// row is the act again too, as Explainer.qml's shown holds by fits.
 function shown(one, ask, said, now) {
     if (!one || now - one.at > FRESH) {
         return null;

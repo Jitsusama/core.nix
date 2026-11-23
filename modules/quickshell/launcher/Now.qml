@@ -1250,10 +1250,13 @@ Provider {
     // its window, which a terminal's Open already is, offered as Agents
     // offers it: where it has a window, or is parked and wakes into one;
     // then Explain It, which says what the cell works on in a sentence or
-    // two and, where it waits on Joel, which of those answers it
-    // (explainAct), where the machine has Ask's pi to answer it. None
-    // while no cell is held for it, or Agents isn't there to talk through.
-    function cellActs(one) {
+    // two and, where it waits on Joel, which act on the row answers it
+    // (explainAct), where the machine has Ask's pi to answer it: the row's
+    // `own`, the names of its acts before these (its choices and Open), and
+    // Talk and Go To, never an ending act like Clear It, which answers
+    // nothing. None while no cell is held for it, or Agents isn't there to
+    // talk through.
+    function cellActs(one, own) {
         const cell = lookCell(one);
         const agents = provider.source("agents");
         if (cell === null || !agents)
@@ -1272,16 +1275,18 @@ Provider {
             run: () => provider.goToCell(one)
         })]);
         return source("ask") === null ? acts : acts.concat([explainAct(
-            `verb:on:waiting:explain:on:look:${one.id}`, cell, acts.map(act => act.name))]);
+            `verb:on:waiting:explain:on:look:${one.id}`, cell,
+            (own ?? []).concat(acts.map(act => act.name)))]);
     }
 
     // Explain It on `cell`, under `key`: the machine's quick model asked
     // what the session works on, why and how it stands, its answer then
     // standing in the act's place (Explainer.qml), so Joel needn't open a
     // session to know what a short line is about (WCJQSG, 2026-11-17).
-    // `beside` names the acts on its row, which its answer may point to.
+    // `beside` names the acts on its row, which its answer may point to,
+    // so it goes once they change (Explainer.qml's shown).
     function explainAct(key, cell, beside) {
-        const shown = explainer.shown(key);
+        const shown = explainer.shown(key, beside);
         return thing(Object.assign({
             key: key,
             verb: Words.verb("verb:on:waiting:explain"),
@@ -1565,7 +1570,8 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openLook(one)
-        })], provider.cellActs(one), waits ? [thing(Object.assign({
+        })], provider.cellActs(one, choices.map(choice => choice.label)
+            .concat([Words.name(opens)])), waits ? [thing(Object.assign({
             key: `verb:on:look:clear:${one.id}`,
             verb: Words.verb("verb:on:look:clear"),
             name: Words.name("verb:on:look:clear"),
@@ -1852,7 +1858,7 @@ Provider {
             hue: "action",
             later: true,
             run: () => provider.openServed(one())
-        })].concat(provider.cellActs(one()));
+        })].concat(provider.cellActs(one(), [Words.name(opens)]));
         return {
             key: `on:look:${held.id}`,
             look: held.id,
