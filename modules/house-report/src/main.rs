@@ -4,11 +4,14 @@
 //! machine's packets go out its own link, which the shaped one never sees,
 //! and fill the router's queue its VPN waits in.
 //!
-//! Usage: house-report ADDRESS:PORT [INTERFACE]. Each second it sends one
-//! UDP datagram to ADDRESS:PORT, the text `"<bytes> <ms>"`: the bytes its
-//! uplink has sent since the reporter started, and its own clock in
-//! milliseconds since then. The uplink is INTERFACE, or, without one, the
-//! interface this machine's routes send to ADDRESS by that second, so a
+//! Usage: house-report [--key FILE] ADDRESS:PORT [INTERFACE]. Each second
+//! it sends one UDP datagram to ADDRESS:PORT, the text `"<bytes> <ms>"`:
+//! the bytes its uplink has sent since the reporter started, and its own
+//! clock in milliseconds since then. Given the house's key in FILE, it
+//! signs each (src/signed.rs), reading FILE each second, so a key put
+//! there or swapped while it runs is taken without a restart. The uplink
+//! is INTERFACE, or, without one, the interface this machine's routes
+//! send to ADDRESS by that second, so a
 //! Mac given a cable beside its Wi-Fi is counted by the one it sends by.
 //! A report goes from that interface's address, so the shaped machine's
 //! house names each interface's reserved address, and the log says which
@@ -16,7 +19,8 @@
 //! It reads a counter any account may read, 64 bits wide on Linux and on a
 //! Mac, so a count that went back was made again, never wrapped.
 //!
-//! A second with no route, or whose counter can't be read, sends nothing,
+//! A second with no route, whose counter can't be read, or whose key
+//! can't be read when one is named, sends nothing,
 //! since a count that went back reads as a restart there; a report that
 //! can't be sent, as while the link changes networks, is dropped. Each
 //! trouble is said once in the log as it starts, and again once it has
@@ -28,8 +32,10 @@
 
 mod route;
 mod sent;
+mod signed;
 
 use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::path::Path;
 use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -106,11 +112,12 @@ fn help() -> Help {
         "tells the shaped machine on this line what this one sends up",
     )
     .command(
-        "ADDRESS:PORT [INTERFACE]",
-        "reports the sent bytes of INTERFACE, or of the one sent there by, each second",
+        "[--key FILE] ADDRESS:PORT [INTERFACE]",
+        "reports the sent bytes of INTERFACE, or of the one sent there by, each second, \
+         signed with the key in FILE",
     )
     .example(
-        "house-report 192.0.2.3:47110",
+        "house-report --key /etc/house.key 192.0.2.3:47110",
         "what a machine beside a shaped one runs",
     )
     .exit(Exit::Usage, "the address is missing or isn't one")
@@ -119,13 +126,17 @@ fn help() -> Help {
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let (to, interface) = match context.args.as_slice() {
+        let (key, rest) = match context.args.as_slice() {
+            [flag, file, rest @ ..] if flag == "--key" => (Some(Path::new(file.as_str())), rest),
+            rest => (None, rest),
+        };
+        let (to, interface) = match rest {
             [to] => (to, None),
             [to, interface] => (to, Some(interface.as_str())),
             _ => {
                 return Err(Failure::new(
                     Exit::Usage,
-                    "it takes ADDRESS:PORT, then INTERFACE if any",
+                    "it takes --key FILE if any, ADDRESS:PORT, then INTERFACE if any",
                 )
                 .try_this("house-report --help"));
             }
@@ -134,7 +145,7 @@ fn main() -> ExitCode {
             Failure::new(Exit::Usage, format!("{to} isn't an address and a port"))
                 .try_this("house-report 192.0.2.3:47110")
         })?;
-        reports(to, interface)
+        reports(to, interface, key)
     })
 }
 
@@ -158,6 +169,7 @@ fn moved(
 struct Troubles {
     unrouted: Once,
     unread: Once,
+    unkeyed: Once,
     unsent: Once,
 }
 
@@ -195,8 +207,31 @@ fn uplink(
     Some(uplink)
 }
 
+/// The report's text, signed when a key is named: nothing where the key
+/// or the clock can't be read, said in the log once as it starts and
+/// once as it clears, since an unsigned report would only be refused.
+fn text(bytes: u64, ms: u128, key: Option<&Path>, troubles: &mut Troubles) -> Option<String> {
+    let text = report(bytes, ms);
+    let Some(path) = key else {
+        return Some(text);
+    };
+    let read = signed::key(path).and_then(|key| {
+        let unix_ms = signed::unix_ms().ok_or_else(|| "the clock is set before 1970".to_owned())?;
+        Ok(signed::signed(&text, &key, unix_ms))
+    });
+    let trouble = read
+        .as_ref()
+        .err()
+        .map(|error| format!("no report can be signed, so nothing is reported: {error}"));
+    say(troubles.unkeyed.now(
+        trouble,
+        &format!("the key in {} is read, so reports go again", path.display()),
+    ));
+    read.ok()
+}
+
 /// Sends a report each second, for as long as it runs.
-fn reports(to: SocketAddr, interface: Option<&str>) -> Result<(), Failure> {
+fn reports(to: SocketAddr, interface: Option<&str>, key: Option<&Path>) -> Result<(), Failure> {
     let any: SocketAddr = if to.is_ipv4() {
         ([0, 0, 0, 0], 0).into()
     } else {
@@ -206,6 +241,15 @@ fn reports(to: SocketAddr, interface: Option<&str>) -> Result<(), Failure> {
         .map_err(|error| Failure::new(Exit::Failed, format!("no socket to send from: {error}")))?;
     if let Some(interface) = interface {
         eprintln!("house-report: reports go to {to}, counting {interface}'s sent bytes");
+    }
+    match key {
+        Some(path) => eprintln!(
+            "house-report: reports are signed with the key in {}",
+            path.display()
+        ),
+        None => {
+            eprintln!("house-report: reports go unsigned, so the house takes them by address alone")
+        }
     }
     let started = Instant::now();
     let mut total = Total::default();
@@ -228,14 +272,16 @@ fn reports(to: SocketAddr, interface: Option<&str>) -> Result<(), Failure> {
             ));
             if let Ok(count) = count {
                 total.take(&uplink, count);
-                let text = report(total.bytes, now.duration_since(started).as_millis());
-                let trouble = socket
-                    .send_to(text.as_bytes(), to)
-                    .err()
-                    .map(|error| format!("reports can't reach {to}: {error}"));
-                say(troubles
-                    .unsent
-                    .now(trouble, &format!("reports reach {to} again")));
+                let ms = now.duration_since(started).as_millis();
+                if let Some(text) = text(total.bytes, ms, key, &mut troubles) {
+                    let trouble = socket
+                        .send_to(text.as_bytes(), to)
+                        .err()
+                        .map(|error| format!("reports can't reach {to}: {error}"));
+                    say(troubles
+                        .unsent
+                        .now(trouble, &format!("reports reach {to} again")));
+                }
             }
         }
         // A step that ran late, its process starved, starts the count of
@@ -260,6 +306,38 @@ mod tests {
             report(1_500, 2_000),
             "1500 2000",
             "a report's text isn't the bytes, a space, then the ms, as house.rs reads it"
+        );
+    }
+
+    #[test]
+    fn a_report_is_signed_only_when_a_key_is_named_and_none_goes_while_it_cant_be_read() {
+        let mut troubles = Troubles::default();
+        assert_eq!(
+            text(1_500, 2_000, None, &mut troubles).as_deref(),
+            Some("1500 2000"),
+            "a report with no key named wasn't the plain text"
+        );
+        let folder = std::env::temp_dir().join(format!("house-report-text-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let path = folder.join("house.key");
+        let unread = text(1_500, 2_000, Some(&path), &mut troubles);
+        assert!(
+            troubles.unkeyed.said,
+            "a key that can't be read went unsaid"
+        );
+        std::fs::write(&path, [9_u8; 32]).expect("a key");
+        let signed = text(1_500, 2_000, Some(&path), &mut troubles);
+        std::fs::remove_dir_all(&folder).expect("the folder removed");
+        assert_eq!(
+            unread, None,
+            "a report went unsigned while its key couldn't be read"
+        );
+        assert!(!troubles.unkeyed.said, "a key read again wasn't said to be");
+        let words: Vec<&str> = signed.as_deref().unwrap_or_default().split(' ').collect();
+        assert!(
+            matches!(words.as_slice(), ["1500", "2000", clock, mac]
+                if clock.parse::<u128>().is_ok() && mac.len() == 32),
+            "a report under a key wasn't the text, a clock and a 32-digit mac: {signed:?}"
         );
     }
 

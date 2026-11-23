@@ -226,7 +226,31 @@ in
                   machine sends from: reports from a new lease, or from a
                   temporary IPv6 address, are dropped without a word, and
                   the house holds nothing. house-report sends over IPv4
-                  alone, for that reason.
+                  alone, for that reason. With a `keyFile`, a report from
+                  one of these is taken only when it's signed.
+                '';
+              };
+              options.keyFile = lib.mkOption {
+                type = lib.types.nullOr (
+                  lib.types.pathWith {
+                    inStore = false;
+                    absolute = true;
+                  }
+                );
+                default = null;
+                example = "/var/lib/shaper/house.key";
+                description = ''
+                  A file holding the house's key, at least 16 bytes, which
+                  the other machine's house-report signs each report with
+                  (its `keyFile`), so a device on the line can't forge one
+                  from the other machine's address. Set, only signed
+                  reports are taken, stamped within 3 s of this machine's
+                  clock; while the file can't be read, the house holds
+                  nothing and the journal says why. Unset, a report is
+                  taken by its address alone. The path is read by the
+                  shaper, which runs as root, so make it root's alone:
+                  `head -c 32 /dev/urandom`, the same bytes on both
+                  machines. Never a Nix path or a value in the store.
                 '';
               };
             }

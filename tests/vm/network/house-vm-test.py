@@ -54,6 +54,14 @@ COMING_UP = dt.timedelta(seconds=60)
 HOLDING = dt.timedelta(seconds=60)
 QUIETING = dt.timedelta(seconds=15)
 CLIMBING = dt.timedelta(seconds=120)
+# Where the house's other machine forges its reports from: the first
+# address its house names, which it keeps once its route moves. Each says
+# it sent nothing, which taken would let the hold go.
+FORGED_FROM = "192.168.1.2"
+WRONG_KEY = "not the house's key, but 32 b!!!"
+# The most times the shaper may say forged reports held nothing while they
+# come for under a minute: once, and once more if a minute's turn falls in.
+REFUSALS_SAID = 2
 
 
 @dataclass
@@ -176,6 +184,42 @@ def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
         f"the upload went to {max(readings)} kbit/s once the reports came from {MOVED_TO}"
     )
     assert "went quiet" not in rig.journal(), "the house went quiet as its reporter moved"
+
+
+def test_a_report_forged_without_the_key_holds_nothing(rig: Rig) -> None:
+    """Reports from the house's own address, unsigned or under another key, move no hold."""
+    held(rig)
+    # Ten a second for a while past the readings, each fresh, the house's
+    # counter put at nothing, so taken they'd read as a house sending
+    # nothing and let the hold go.
+    forger = f"""
+for i in $(seq 200); do
+  ms=$(date +%s%3N)
+  text="0 $ms $ms"
+  mac=$(printf %s "$text" | openssl dgst -sha256 -hmac "{WRONG_KEY}" -r | cut -c1-32)
+  for report in "0 $ms" "$text $mac"; do
+    printf %s "$report" | socat -u - UDP:192.168.1.1:47110,bind={FORGED_FROM}
+  done
+  sleep 0.1
+done
+"""
+    rig.house.succeed(f"cat > /root/forger <<'EOF'\n{forger}EOF")
+    rig.house.succeed(f"systemd-run --unit=forger --setenv=PATH={BIN} {BIN}/bash /root/forger")
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat --no-pager"
+        f" | grep -q 'a report from {FORGED_FROM} held nothing for the house'",
+        timeout=QUIETING,
+    )
+    readings = rig.holds()
+    print(f"held at {readings} kbit/s while reports were forged")
+    journal = rig.journal()
+    assert max(readings) <= HELD, (
+        f"the upload went to {max(readings)} kbit/s while reports were forged: {readings}"
+    )
+    assert "went quiet" not in journal, "the house went quiet while its reports were forged"
+    refusals = journal.count(f"a report from {FORGED_FROM} held nothing")
+    assert refusals <= REFUSALS_SAID, f"the journal said {refusals} refusals in under a minute"
+    rig.house.succeed("systemctl stop forger || true")
 
 
 def test_a_house_gone_quiet_lets_the_upload_go(rig: Rig) -> None:

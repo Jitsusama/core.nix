@@ -8,7 +8,7 @@ use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::fs;
 use std::net::IpAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Each network's declared upload rate, its anchor, in kbit/s, by its
 /// router's hardware address, as `jitsusama.shaper.networks` sets them.
@@ -22,11 +22,13 @@ pub type Ceilings = BTreeMap<String, f64>;
 /// A network's house: the most the upload this machine and another on the
 /// same line send between them may come to, in kbit/s, and the addresses
 /// the other reports what it sends from, one for each interface it may
-/// send by (src/house.rs).
+/// send by (src/house.rs), and the file holding the key its reports are
+/// signed with, where it names one.
 #[derive(Clone, Debug, PartialEq)]
 pub struct House {
     pub most: u64,
     pub from: Vec<IpAddr>,
+    pub key: Option<PathBuf>,
 }
 
 /// A house as written, read loosely so one written wrongly loses only
@@ -35,6 +37,8 @@ pub struct House {
 struct Written {
     most: f64,
     from: Addresses,
+    #[serde(default, rename = "keyFile")]
+    key: Option<String>,
 }
 
 /// A house's addresses as written: a list, as nixos.nix writes them, or
@@ -128,7 +132,9 @@ const HOUSE_MOST_KBIT: f64 = 10_000_000.0;
 /// isn't one, or is IPv4's written as IPv6, mapped or compatible
 /// (`Ipv6Addr::to_ipv4`, as nixos.nix refuses), which the firewall and the
 /// ear would read apart, or whose ceiling is under the least a trial may
-/// set or past the most, as nixos.nix refuses too.
+/// set or past the most, as nixos.nix refuses too. One naming a key file
+/// that isn't an absolute path is left out too, so a house meant to take
+/// only signed reports never takes unsigned ones.
 pub fn houses(path: &Path) -> Houses {
     networks(path)
         .into_iter()
@@ -145,11 +151,13 @@ pub fn houses(path: &Path) -> Houses {
             let mapped = from
                 .iter()
                 .any(|from| matches!(from, IpAddr::V6(v6) if v6.to_ipv4().is_some()));
+            let key = house.key.map(PathBuf::from);
+            let keyed = key.as_deref().is_none_or(Path::is_absolute);
             let least = crate::oneway::MOST_KBIT_LEAST;
             let bounded = (least..=HOUSE_MOST_KBIT).contains(&house.most);
-            (bounded && !mapped && !from.is_empty()).then(|| {
+            (bounded && keyed && !mapped && !from.is_empty()).then(|| {
                 let most = crate::rate::whole(house.most);
-                (router, House { most, from })
+                (router, House { most, from, key })
             })
         })
         .collect()
@@ -265,6 +273,7 @@ mod tests {
                 House {
                     most: 7_000,
                     from: vec![address("192.0.2.7"), address("192.0.2.8")],
+                    key: None,
                 },
             )]),
             "as nixos.nix writes them, each address in a list, null where none is set"
@@ -297,6 +306,7 @@ mod tests {
                 House {
                     most: 8_000,
                     from: vec![address("2001:db8::7")],
+                    key: None,
                 },
             )]),
             "one with no address, an empty list, a list holding a name, or a ceiling in Mb/s, is \
@@ -322,6 +332,43 @@ mod tests {
         assert_eq!(anchors(&file).len(), 3, "which loses no anchor");
         assert_eq!(ceilings(&file).len(), 1, "nor a ceiling");
         let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn a_house_s_key_is_read_where_it_names_an_absolute_file_and_the_house_left_out_where_not() {
+        let folder = std::env::temp_dir().join(format!("shaper-keys-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let file = folder.join("networks.json");
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5e:00:53:01": {"up": 12000, "#,
+                r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": "/etc/house.key"}}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "#,
+                r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": null}}, "#,
+                r#""00:00:5e:00:53:03": {"up": 9000, "#,
+                r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": "house.key"}}, "#,
+                r#""00:00:5e:00:53:04": {"up": 9000, "#,
+                r#""house": {"most": 7000, "from": "192.0.2.7", "keyFile": 7}}}"#,
+            ),
+        )
+        .expect("houses with keys");
+        let houses = houses(&file);
+        let _ = fs::remove_dir_all(&folder);
+        let keys: Vec<(&str, Option<&Path>)> = houses
+            .iter()
+            .map(|(router, house)| (router.as_str(), house.key.as_deref()))
+            .collect();
+        assert_eq!(
+            keys,
+            [
+                ("00:00:5e:00:53:01", Some(Path::new("/etc/house.key"))),
+                ("00:00:5e:00:53:02", None),
+            ],
+            "an absolute key file read, a null one none; a relative one, or one that isn't a \
+             path, left the house out rather than taking unsigned reports"
+        );
     }
 
     #[test]

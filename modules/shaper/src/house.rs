@@ -10,7 +10,7 @@
 //! one saying the most says what it sends (src/main.rs's `house_holds`),
 //! so a report from an address it isn't sending by can't loosen the hold.
 //!
-//! The source address alone says a report is the other machine's, so any
+//! A house with no key takes a report by its source address alone, so any
 //! device on the line can forge one by sending from that address: it
 //! holds this machine's upload down to the least a trial may set, or lets
 //! it go, for as long as it keeps sending. Unlike a trial it needs no
@@ -19,17 +19,37 @@
 //! virtual machine's bridge among them, and the firewall's rule names no
 //! interface.
 //!
+//! A house naming a key takes only reports signed with it, which closes
+//! that: `"<bytes> <ms> <unix_ms> <mac>"`, `unix_ms` the reporter's wall
+//! clock and `mac` the first 16 bytes of HMAC-SHA256 over the text before
+//! it, in hex. One stamped more than `FRESH` from this machine's clock,
+//! either way, or no later than the last taken from its address, is
+//! refused, so one caught off the line replays for at most `FRESH`, and
+//! only in place of a newer one. An unsigned report is refused there too,
+//! so a forger can't fall back to the old shape. A house with no key
+//! takes a signed report's first two words, so a reporter given the key
+//! before this machine is heard as before.
+//!
 //! A report is one datagram a second to `PORT`: the bytes the machine's
 //! uplink has sent since it started, and its own clock in milliseconds,
 //! as text, `"<bytes> <ms>"`. Bytes over milliseconds, times eight, is
 //! kbit/s, measured on the machine's clock rather than by when the
-//! datagrams arrive.
+//! datagrams arrive. Signed, `"<bytes> <ms> <unix_ms> <mac>"`, as above.
+//!
+//! Long because its tests, over half of it, walk each way a report is
+//! taken or refused: forged, short, unsigned, stale, repeated and keyless,
+//! and the ear's sockets, which all read the one format, side by side.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fs;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, UdpSocket};
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use hmac::{Hmac, KeyInit, Mac};
+use sha2::Sha256;
 
 /// Where reports are heard, clear of the ports the probes use.
 pub const PORT: u16 = 47_110;
@@ -75,6 +95,14 @@ pub const STEADY: Duration = Duration::from_secs(5);
 /// again only when the house's moves by this much.
 const STEP_KBIT: u64 = 250;
 
+/// The fewest bytes a house's key may hold: a shorter one can be guessed.
+/// The key is made as 32 random bytes; house-report refuses the same.
+const KEY_LEAST: usize = 16;
+
+/// The bytes of the mac a signed report carries, half of SHA-256's. One
+/// carrying fewer is refused, since a mac of a byte or two is guessed.
+const MAC_BYTES: usize = 16;
+
 /// One report: the bytes sent, by the reporter's clock in ms.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Report {
@@ -88,6 +116,160 @@ pub fn report(text: &str) -> Option<Report> {
     let bytes = words.next()?.parse().ok()?;
     let ms = words.next()?.parse().ok()?;
     words.next().is_none().then_some(Report { bytes, ms })
+}
+
+/// Reads a report where its house names no key: the old shape, or a
+/// signed one's first two words, its mac unread.
+fn unkeyed(text: &str) -> Option<Report> {
+    report(text).or_else(
+        || match text.split_whitespace().collect::<Vec<_>>().as_slice() {
+            [bytes, ms, _, _] => report(&format!("{bytes} {ms}")),
+            _ => None,
+        },
+    )
+}
+
+/// Why a report under a house's key is refused.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Refused {
+    /// It isn't signed, as a forger falling back to the old shape sends.
+    Unsigned,
+    /// Its mac isn't the key's: forged, or the machines' keys differ.
+    Forged,
+    /// Stamped more than `FRESH` from this machine's clock.
+    Stale,
+    /// Stamped no later than the last taken from its address.
+    Repeated,
+}
+
+/// The bytes `text` spells in hex, two digits a byte, or nothing where
+/// it spells none.
+fn hex(text: &str) -> Option<Vec<u8>> {
+    if text.len() % 2 != 0 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|at| u8::from_str_radix(text.get(at..at + 2)?, 16).ok())
+        .collect()
+}
+
+/// Reads `text` as a report signed under `key`, at `now_ms` on this
+/// machine's wall clock, when the last report taken from its address was
+/// stamped `last`: the report, and its stamp to take as the next `last`.
+/// The mac is checked in constant time, and before the stamp, so nothing
+/// is said of a stamp a forger chose.
+fn signed(
+    text: &str,
+    key: &[u8],
+    now_ms: u64,
+    last: Option<u64>,
+) -> Result<(Report, u64), Refused> {
+    let (stamped, mac) = text.rsplit_once(' ').ok_or(Refused::Unsigned)?;
+    let (plain, stamp) = stamped.rsplit_once(' ').ok_or(Refused::Unsigned)?;
+    let report = report(plain).ok_or(Refused::Unsigned)?;
+    let stamp: u64 = stamp.parse().map_err(|_| Refused::Unsigned)?;
+    let mac = hex(mac)
+        .filter(|mac| mac.len() == MAC_BYTES)
+        .ok_or(Refused::Forged)?;
+    let mut hash = <Hmac<Sha256>>::new_from_slice(key).expect("any key fits an HMAC");
+    hash.update(stamped.as_bytes());
+    hash.verify_truncated_left(&mac)
+        .map_err(|_| Refused::Forged)?;
+    let fresh = u64::try_from(FRESH.as_millis()).unwrap_or(u64::MAX);
+    if now_ms.abs_diff(stamp) > fresh {
+        return Err(Refused::Stale);
+    }
+    if last.is_some_and(|last| stamp <= last) {
+        return Err(Refused::Repeated);
+    }
+    Ok((report, stamp))
+}
+
+/// The key in `path`, or why it can't be had.
+fn key_in(path: &Path) -> Result<Vec<u8>, String> {
+    let key = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if key.len() < KEY_LEAST {
+        return Err(format!(
+            "{} holds {} bytes, under the {KEY_LEAST} a key needs",
+            path.display(),
+            key.len()
+        ));
+    }
+    Ok(key)
+}
+
+/// The addresses reports are heard from, each with the file holding the
+/// key its reports must be signed with, where its house names one.
+pub type Reporters = BTreeMap<IpAddr, Option<PathBuf>>;
+
+/// Every house's addresses and keys. An address two houses name is held
+/// to a key either names, so naming a key is never undone by another
+/// house leaving it out.
+pub fn reporters(houses: &crate::networks::Houses) -> Reporters {
+    let mut reporters = Reporters::new();
+    for house in houses.values() {
+        for &address in &house.from {
+            let key = reporters.entry(address).or_insert(None);
+            if key.is_none() {
+                key.clone_from(&house.key);
+            }
+        }
+    }
+    reporters
+}
+
+/// Why a datagram held nothing.
+#[derive(Debug, PartialEq)]
+enum Unheard {
+    /// From an address no house names, or no report: nothing to say, as
+    /// a stray datagram is said nothing of.
+    Ignored,
+    /// Its house's key can't be read.
+    Unkeyed(String),
+    /// Refused under its house's key.
+    Refused(Refused),
+}
+
+/// What the journal says the first time reports from `address` go
+/// unheard for `why`.
+fn unheard_said(address: IpAddr, why: &Unheard) -> Option<String> {
+    let why = match why {
+        Unheard::Ignored => return None,
+        Unheard::Unkeyed(why) => format!("the house's key can't be read ({why})"),
+        Unheard::Refused(Refused::Unsigned) => "one came unsigned under the house's key".into(),
+        Unheard::Refused(Refused::Forged) => {
+            "one's mac isn't the house's key's, so it's forged or the two machines' keys differ"
+                .into()
+        }
+        Unheard::Refused(Refused::Stale) => {
+            "one was stamped more than 3 s from this machine's clock, so the two clocks \
+             disagree or it was sent again"
+                .into()
+        }
+        Unheard::Refused(Refused::Repeated) => {
+            "one was stamped no later than the last taken, so it was sent again".into()
+        }
+    };
+    Some(format!(
+        "a report from {address} held nothing for the house, and those like it go unsaid \
+         for a minute: {why}"
+    ))
+}
+
+/// How long after an address's reports are said to hold nothing they go
+/// unsaid, so a forger sending between the true reports writes the
+/// journal a line or two a minute rather than one a second.
+const SAID_APART: Duration = Duration::from_secs(60);
+
+/// This machine's wall clock in milliseconds since 1970, or 0 on a clock
+/// set before it, which refuses every signed report as stale.
+fn unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
+        })
 }
 
 /// The rate between two reports in kbit/s, never past `SENT_MOST_KBIT`,
@@ -155,6 +337,8 @@ impl Steady {
 #[derive(Clone, Default)]
 pub struct Ear {
     heard: Arc<Mutex<BTreeMap<IpAddr, Heard>>>,
+    /// The stamp of the last signed report taken from each address.
+    stamps: Arc<Mutex<BTreeMap<IpAddr, u64>>>,
 }
 
 #[derive(Clone, Copy)]
@@ -166,22 +350,29 @@ struct Heard {
 }
 
 impl Ear {
-    /// Hears reports on `PORT` from `from` alone, on a thread of its own,
-    /// which tries for the port each second until it has it.
-    pub fn start(from: Vec<IpAddr>) -> Self {
+    /// Hears reports on `PORT` from `reporters` alone, each under its
+    /// house's key where it names one, on a thread of its own, which
+    /// tries for the port each second until it has it.
+    pub fn start(reporters: Reporters) -> Self {
         let ear = Ear::default();
         let heard = ear.clone();
         thread::spawn(move || {
+            let from: Vec<IpAddr> = reporters.keys().copied().collect();
             let socket = bound(&from);
-            heard.listen(&socket, &from);
+            heard.listen(&socket, &reporters);
         });
         ear
     }
 
-    fn listen(&self, socket: &UdpSocket, from: &[IpAddr]) {
-        let mut buf = [0_u8; 64];
+    /// Hears reports for as long as it runs. Each address's first report
+    /// taken is said in the journal, and so is a report its key refuses,
+    /// at most once each `SAID_APART`; one taken once that has passed
+    /// says its reports are taken again.
+    fn listen(&self, socket: &UdpSocket, reporters: &Reporters) {
+        let mut buf = [0_u8; 128];
         let mut failed = false;
         let mut first = BTreeSet::new();
+        let mut troubled: BTreeMap<IpAddr, Instant> = BTreeMap::new();
         loop {
             let (n, peer) = match socket.recv_from(&mut buf) {
                 Ok(heard) => heard,
@@ -200,23 +391,63 @@ impl Ear {
                 eprintln!("the house's reports are read again");
             }
             failed = false;
-            let heard = self.take(from, peer.ip(), &buf[..n], Instant::now());
-            if let Some(address) = heard.filter(|&address| first.insert(address)) {
-                eprintln!("the house's first report from {address} was heard");
+            let address = canonical(peer.ip());
+            let now = Instant::now();
+            let said_lately = |troubled: &BTreeMap<IpAddr, Instant>| {
+                troubled
+                    .get(&address)
+                    .is_some_and(|&said| now.saturating_duration_since(said) < SAID_APART)
+            };
+            match self.take(reporters, address, &buf[..n], now, unix_ms()) {
+                Ok(address) => {
+                    if first.insert(address) {
+                        eprintln!("the house's first report from {address} was heard");
+                    }
+                    if !said_lately(&troubled) && troubled.remove(&address).is_some() {
+                        eprintln!("the house's reports from {address} are taken again");
+                    }
+                }
+                Err(why) => {
+                    if let Some(said) = unheard_said(address, &why)
+                        && !said_lately(&troubled)
+                    {
+                        eprintln!("{said}");
+                        troubled.insert(address, now);
+                    }
+                }
             }
         }
     }
 
-    /// Takes a datagram from `peer`, heard `at`, when it comes from an
-    /// address in `from` and reads as a report, giving that address.
-    fn take(&self, from: &[IpAddr], peer: IpAddr, datagram: &[u8], at: Instant) -> Option<IpAddr> {
+    /// Takes a datagram from `peer`, heard `at` and at `now_ms` on this
+    /// machine's wall clock, when it comes from an address `reporters`
+    /// names and reads as a report under its house's key, if any, giving
+    /// that address. The key is read each time, so one put in place or
+    /// swapped is taken without a restart.
+    fn take(
+        &self,
+        reporters: &Reporters,
+        peer: IpAddr,
+        datagram: &[u8],
+        at: Instant,
+        now_ms: u64,
+    ) -> Result<IpAddr, Unheard> {
         let address = canonical(peer);
-        if !from.contains(&address) {
-            return None;
-        }
-        let report = std::str::from_utf8(datagram).ok().and_then(report)?;
+        let key = reporters.get(&address).ok_or(Unheard::Ignored)?;
+        let text = std::str::from_utf8(datagram).map_err(|_| Unheard::Ignored)?;
+        let report = match key {
+            None => unkeyed(text).ok_or(Unheard::Ignored)?,
+            Some(path) => {
+                let key = key_in(path).map_err(Unheard::Unkeyed)?;
+                let mut stamps = self.stamps.lock().unwrap_or_else(PoisonError::into_inner);
+                let last = stamps.get(&address).copied();
+                let (report, stamp) = signed(text, &key, now_ms, last).map_err(Unheard::Refused)?;
+                stamps.insert(address, stamp);
+                report
+            }
+        };
         self.hear(address, report, at);
-        Some(address)
+        Ok(address)
     }
 
     /// Takes a report from `address`, heard `at`. Within `FRESH` of the
@@ -567,18 +798,198 @@ mod tests {
         let other: IpAddr = "192.0.2.8".parse().expect("an address");
         let at = Instant::now();
         let later = at + Duration::from_secs(1);
-        ear.take(&[mac], other, b"0 0", at);
-        ear.take(&[mac], other, b"250000 1000", later);
+        let named = Reporters::from([(mac, None)]);
+        let _ = ear.take(&named, other, b"0 0", at, 0);
+        let _ = ear.take(&named, other, b"250000 1000", later, 0);
         assert_eq!(ear.sent(other, later), None, "an address not named");
-        ear.take(&[mac], mapped, b"0 0", at);
-        ear.take(&[mac], mapped, b"not a report", later);
+        let _ = ear.take(&named, mapped, b"0 0", at, 0);
+        let _ = ear.take(&named, mapped, b"not a report", later, 0);
         assert_eq!(ear.sent(mac, later), None, "no report in it");
-        ear.take(&[mac], mapped, b"250000 1000", later);
+        let _ = ear.take(&named, mapped, b"250000 1000", later, 0);
         assert_eq!(
             ear.sent(mac, later),
             Some((2_000.0, Duration::ZERO)),
             "the named address, heard on the IPv6 socket"
         );
+    }
+
+    /// The key the vector is made under: the bytes 0 to 31.
+    fn vector_key() -> Vec<u8> {
+        (0..32).collect()
+    }
+
+    /// The vector's stamp, and its report signed under `vector_key`, made
+    /// with Python's hmac and openssl's dgst alike and written by
+    /// house-report's own test of the same.
+    const STAMP: u64 = 1_763_920_000_000;
+    const VECTOR: &str = "1500 2000 1763920000000 ad712c900326603c04326ac069041fe5";
+
+    #[test]
+    fn a_report_signed_under_the_key_is_taken_with_its_stamp() {
+        assert_eq!(
+            signed(VECTOR, &vector_key(), STAMP + 500, None),
+            Ok((
+                Report {
+                    bytes: 1_500,
+                    ms: 2_000
+                },
+                STAMP
+            )),
+            "the vector house-report signs wasn't taken"
+        );
+    }
+
+    #[test]
+    fn a_forged_short_or_unsigned_report_is_refused_under_a_key() {
+        let key = vector_key();
+        let at = STAMP;
+        let other_key: Vec<u8> = (1..33).collect();
+        for (text, key, why) in [
+            (
+                "1500 2000 1763920000000 bd712c900326603c04326ac069041fe5",
+                &key,
+                "a mac a digit off",
+            ),
+            (
+                "9500 2000 1763920000000 ad712c900326603c04326ac069041fe5",
+                &key,
+                "more bytes under the true mac",
+            ),
+            (VECTOR, &other_key, "another key"),
+            ("1500 2000 1763920000000 ad", &key, "a mac of one byte"),
+            (
+                "1500 2000 1763920000000 ad712c900326603c04326ac069041f",
+                &key,
+                "a mac a byte short",
+            ),
+            (
+                "1500 2000 1763920000000 +d712c900326603c04326ac069041fe5",
+                &key,
+                "a mac with a sign in it",
+            ),
+        ] {
+            assert_eq!(
+                signed(text, key, at, None),
+                Err(Refused::Forged),
+                "{why} was taken"
+            );
+        }
+        for text in ["1500 2000", "1500 2000 1763920000000", "", "a b c d"] {
+            assert_eq!(
+                signed(text, &key, at, None),
+                Err(Refused::Unsigned),
+                "{text:?} wasn't refused as unsigned"
+            );
+        }
+    }
+
+    #[test]
+    fn a_report_stamped_past_fresh_either_way_or_again_is_refused() {
+        let key = vector_key();
+        let fresh = u64::try_from(FRESH.as_millis()).expect("a few seconds");
+        for (now, last, wanted, why) in [
+            (STAMP + fresh, None, Ok(()), "just in time"),
+            (STAMP - fresh, None, Ok(()), "just ahead in time"),
+            (STAMP + fresh + 1, None, Err(Refused::Stale), "late"),
+            (
+                STAMP - fresh - 1,
+                None,
+                Err(Refused::Stale),
+                "too far ahead",
+            ),
+            (STAMP, Some(STAMP), Err(Refused::Repeated), "sent again"),
+            (
+                STAMP,
+                Some(STAMP + 1),
+                Err(Refused::Repeated),
+                "older than the last",
+            ),
+            (STAMP, Some(STAMP - 1), Ok(()), "newer than the last"),
+        ] {
+            assert_eq!(
+                signed(VECTOR, &key, now, last).map(|_| ()),
+                wanted,
+                "a report stamped {why}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_house_with_no_key_takes_either_shape() {
+        let plain = Report {
+            bytes: 1_500,
+            ms: 2_000,
+        };
+        assert_eq!(unkeyed("1500 2000"), Some(plain), "the old shape");
+        assert_eq!(unkeyed(VECTOR), Some(plain), "a signed one, its mac unread");
+        assert_eq!(unkeyed("1500 2000 1763920000000"), None, "three words");
+    }
+
+    #[test]
+    fn a_keyed_house_hears_only_what_its_key_signed_and_nothing_while_it_can_t_be_read() {
+        let folder = std::env::temp_dir().join(format!("shaper-house-key-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let path = folder.join("house.key");
+        let mac: IpAddr = "192.0.2.7".parse().expect("an address");
+        let keyed = Reporters::from([(mac, Some(path.clone()))]);
+        let ear = Ear::default();
+        let at = Instant::now();
+        let unread = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        fs::write(&path, [7_u8; KEY_LEAST - 1]).expect("a short key");
+        let short = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        fs::write(&path, vector_key()).expect("a key");
+        let unsigned = ear.take(&keyed, mac, b"1500 2000", at, STAMP);
+        let taken = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        let again = ear.take(&keyed, mac, VECTOR.as_bytes(), at, STAMP);
+        let _ = fs::remove_dir_all(&folder);
+        assert!(
+            matches!(&unread, Err(Unheard::Unkeyed(why)) if why.contains("house.key")),
+            "a missing key wasn't said to be unread: {unread:?}"
+        );
+        assert!(
+            matches!(&short, Err(Unheard::Unkeyed(why)) if why.contains("15 bytes")),
+            "a 15-byte key was taken: {short:?}"
+        );
+        assert_eq!(unsigned, Err(Unheard::Refused(Refused::Unsigned)));
+        assert_eq!(taken, Ok(mac), "the signed report wasn't taken");
+        assert_eq!(
+            again,
+            Err(Unheard::Refused(Refused::Repeated)),
+            "the same report taken twice"
+        );
+        assert!(
+            unheard_said(mac, &again).is_some_and(|said| said.contains("192.0.2.7")),
+            "a refusal goes unsaid, or without its address"
+        );
+        assert_eq!(
+            unheard_said(mac, &Unheard::Ignored),
+            None,
+            "a stray datagram is said"
+        );
+    }
+
+    #[test]
+    fn an_address_two_houses_name_is_held_to_either_s_key() {
+        use crate::networks::House;
+        let mac: IpAddr = "192.0.2.7".parse().expect("an address");
+        let key = PathBuf::from("/etc/house.key");
+        let house = |key: Option<PathBuf>| House {
+            most: 7_000,
+            from: vec![mac],
+            key,
+        };
+        for (first, second) in [(None, Some(key.clone())), (Some(key.clone()), None)] {
+            let houses = crate::networks::Houses::from([
+                ("00:00:5e:00:53:01".to_string(), house(first)),
+                ("00:00:5e:00:53:02".to_string(), house(second)),
+            ]);
+            assert_eq!(
+                reporters(&houses),
+                Reporters::from([(mac, Some(key.clone()))]),
+                "one house leaving the key out undid the other's"
+            );
+        }
     }
 
     #[test]

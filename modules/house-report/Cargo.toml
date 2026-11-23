@@ -13,3 +13,8 @@ terminal-kit = { path = "../terminal-kit" }
 # Which interface the routes send by is read through getifaddrs, and a
 # Mac's counters through sysctl, whose types libc spells for each system.
 libc = "0.2"
+# Each report is signed with the house's key, an HMAC-SHA256 the shaper
+# checks, so a device on the line can't forge one from this machine's
+# address (src/signed.rs).
+hmac = "0.13"
+sha2 = "0.11"

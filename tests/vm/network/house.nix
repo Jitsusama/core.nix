@@ -7,8 +7,10 @@
 # can't hold it there: only the reports can. While they come, the client's
 # upload is held under what the house's 8 Mbit/s leaves, and still once the
 # other machine's route moves to another of its addresses, as a Mac's does
-# to its cable's; once they stop, it climbs back to the connection. The
-# tests are house-vm-test.py, run through pytest.
+# to its cable's; once they stop, it climbs back to the connection. Both
+# machines hold one key, so only signed reports are taken: one forged from
+# the house's own address, signed with another key or not at all, holds
+# nothing. The tests are house-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -16,6 +18,16 @@ let
   # one, as the shaper counts only what waits to go past this network.
   server = "203.0.113.3";
   router = "203.0.113.2";
+  # The house's key, a test's alone, 32 bytes as one is made, put in /etc
+  # as root's file rather than named as a store path.
+  key = "a key for the house test, 32 b!!";
+  keyFile = "/etc/house.key";
+  keyed = {
+    environment.etc."house.key" = {
+      text = key;
+      mode = "0400";
+    };
+  };
   public = address: {
     addresses = lib.mkForce [
       {
@@ -32,6 +44,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     imports = [
       self.nixosModules.slices
       self.nixosModules.shaper
+      keyed
     ];
     virtualisation.vlans = [ 1 ];
     networking.useDHCP = false;
@@ -50,6 +63,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
       up = 8000;
       house = {
         most = 8000;
+        inherit keyFile;
         from = [
           "192.168.1.2"
           "192.168.1.12"
@@ -63,9 +77,18 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [ pkgs.jq ];
   };
 
-  # The house's other machine and its reporter.
+  # The house's other machine and its reporter, and socat and openssl to
+  # forge reports with.
   nodes.house = {
-    imports = [ self.nixosModules.house-report ];
+    imports = [
+      self.nixosModules.house-report
+      keyed
+    ];
+    jitsusama.house-report.keyFile = keyFile;
+    environment.systemPackages = [
+      pkgs.openssl
+      pkgs.socat
+    ];
     virtualisation.vlans = [ 1 ];
     networking.useDHCP = false;
     networking.firewall.enable = false;

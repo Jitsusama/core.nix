@@ -59,6 +59,33 @@ in
         makes, which the shaped machine's house can't name.
       '';
     };
+    keyFile = lib.mkOption {
+      type = lib.types.nullOr (
+        lib.types.pathWith {
+          inStore = false;
+          absolute = true;
+        }
+      );
+      default = null;
+      example = "/etc/house-report/house.key";
+      description = ''
+        A file holding the house's key, the same bytes as the shaped
+        machine's house names in its `keyFile`, at least 16, which each
+        report is signed with, so a device on the line can't forge one
+        from this machine's address. It's read each second, so a key put
+        there or swapped is taken without a restart, and while it can't
+        be read nothing is reported and the log says why. On Linux the
+        service reads it through systemd's credentials, so it may be
+        root's alone; on a Mac the service runs as nobody, so the file
+        must be nobody's. Never a Nix path or a value in the store.
+      '';
+    };
+    keyPath = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      internal = true;
+      default = cfg.keyFile;
+      description = "Where the service reads the key: keyFile, or on Linux its credential.";
+    };
     interface = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
@@ -76,8 +103,12 @@ in
       readOnly = true;
       default = [
         (lib.getExe package)
-        to
       ]
+      ++ lib.optionals (cfg.keyPath != null) [
+        "--key"
+        cfg.keyPath
+      ]
+      ++ [ to ]
       ++ lib.optional (cfg.interface != null) cfg.interface;
     };
   };

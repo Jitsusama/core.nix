@@ -8,6 +8,7 @@
 let
   log = "/var/log/house-report.log";
   program = lib.escapeShellArgs config.jitsusama.house-report.arguments;
+  inherit (config.jitsusama.house-report) keyFile;
 in
 {
   imports = [ ./system.nix ];
@@ -15,11 +16,21 @@ in
   # Made before launchd starts the daemon, and nobody's, so the daemon can
   # write its log whether launchd opens it before or after it takes on
   # nobody's account.
-  system.activationScripts.preActivation.text = lib.mkAfter ''
-    touch ${log}
-    chown nobody:nobody ${log}
-    chmod 0644 ${log}
-  '';
+  system.activationScripts.preActivation.text = lib.mkAfter (
+    ''
+      touch ${log}
+      chown nobody:nobody ${log}
+      chmod 0644 ${log}
+    ''
+    # The daemon reads its key as nobody, so a key put in place is made
+    # nobody's alone; until one is there, it reports nothing and says so.
+    + lib.optionalString (keyFile != null) ''
+      if [ -f ${lib.escapeShellArg keyFile} ]; then
+        chown nobody:nobody ${lib.escapeShellArg keyFile}
+        chmod 0400 ${lib.escapeShellArg keyFile}
+      fi
+    ''
+  );
 
   launchd.daemons.house-report.serviceConfig = {
     UserName = "nobody";
