@@ -460,10 +460,8 @@ impl Shaped {
             let (queued, reads) = &mut self.queued_reads;
             *queued += u32::from(held::queued(self.holding.map(|(was, _)| was), now));
             *reads += 1;
-            let sent = |(h, at): (held::Holding, Instant)| (h.agents_sent, at);
-            let going = sent_kbit(self.holding.map(sent), Some(sent(read))).unwrap_or(0);
             let assured = lanes::agents_assured(&self.split);
-            self.ahead_us += held::ahead_us(now, self.applied.0, assured, going);
+            self.ahead_us += ahead_of(self.holding, read, self.applied.0, assured);
             self.holding = Some(read);
         }
         if let Some(now) = up.as_deref().and_then(held::drops) {
@@ -496,6 +494,26 @@ impl Shaped {
             }
         })
     }
+}
+
+/// What a read of the upload's queues, `read`, adds to the VPN's wait, in
+/// microseconds (`held::ahead_us`), on a link applied at `link` kbit/s
+/// whose agents are assured `agents_assured`: agents go at what their lane
+/// sent since the read before, `was`, or not at all with none.
+fn ahead_of(
+    was: Option<(held::Holding, Instant)>,
+    read: (held::Holding, Instant),
+    link: u64,
+    agents_assured: u64,
+) -> u64 {
+    let sent = |(h, at): (held::Holding, Instant)| (h.agents_sent, at);
+    let agents_going = sent_kbit(was.map(sent), Some(sent(read))).unwrap_or(0);
+    let rates = held::Rates {
+        link,
+        agents_assured,
+        agents_going,
+    };
+    held::ahead_us(read.0, rates)
 }
 
 /// What the upload's CAKE sent between two good reads, in kbit/s, over
@@ -3196,6 +3214,37 @@ mod tests {
             primary_after(Some(&order(&[])[..]), &shaped(&[]), None),
             None,
             "the VPNs were given a link with none routed or shaped"
+        );
+    }
+
+    // A read's wait takes agents' rate from what their lane sent since the
+    // read before, so a busy lane holding little still takes its assurance
+    // ahead of the VPN (traces round 5's F2 and F3, round 4's F1).
+    #[test]
+    fn a_reads_wait_takes_agents_going_from_what_their_lane_sent() {
+        let start = Instant::now();
+        let holding = |agents_sent: u64| held::Holding {
+            held: 12_600,
+            before_the_vpn: 12_500,
+            agents_sent,
+            ..held::Holding::default()
+        };
+        let read =
+            |agents_sent: u64, ms: u64| (holding(agents_sent), start + Duration::from_millis(ms));
+        assert_eq!(
+            ahead_of(None, read(1_000, 0), 10_000, 2_500),
+            10_080,
+            "with no read before, agents' 100 bytes took more than themselves"
+        );
+        assert_eq!(
+            ahead_of(Some(read(1_000, 0)), read(63_500, 200), 10_000, 2_500),
+            13_333,
+            "agents sending 2.5 Mbit/s over 200 ms didn't take their assurance ahead of the VPN"
+        );
+        assert_eq!(
+            ahead_of(Some(read(1_000, 0)), read(1_000, 200), 10_000, 2_500),
+            10_080,
+            "agents that sent nothing since the read before were taken for going"
         );
     }
 
