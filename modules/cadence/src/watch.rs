@@ -8,6 +8,7 @@ use crate::stats::spread;
 
 pub mod asleep;
 pub mod budgets;
+pub mod down;
 pub mod held;
 
 /// A merge not on the machine this long after it merged, in minutes.
