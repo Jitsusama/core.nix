@@ -51,7 +51,8 @@ pub struct Heard {
     /// How many sends of it the node never took.
     #[serde(default)]
     pub tries: u32,
-    /// The peer that took it up, by answering or passing on its question.
+    /// The peer that took it up, by answering or passing on its question,
+    /// or the session's own cell, by answering him where he said it.
     #[serde(default)]
     pub taken_by: Option<String>,
     /// The commit that closed it: a landing in its question's thread that
