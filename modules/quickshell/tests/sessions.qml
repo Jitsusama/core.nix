@@ -365,13 +365,13 @@ ShellRoot {
             "--session", "s-row-waiting"];
         // Reopen Them All kept a place for its viewer, Joel being on its
         // workspace then, as reopenViewer keeps one.
-        Sessions.keepPlaces({ "s-row-waiting": { workspace: 3, column: 1, asked: true,
-            there: true, waiting: view, named: "pi-hosted.s-row-waiting", title: "Reef" } });
+        Sessions.keepPlaces({ "s-row-waiting": { workspace: 41, column: 1, at: Date.now(),
+            asked: true, there: true, waiting: view, named: "pi-hosted.s-row-waiting",
+            title: "Reef" } });
         Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
         const rowAsk = asked(Niri.spawned.join(" "));
-        expect("a row's Reopen lets go the place the walk kept for its viewer, so none opens "
-            + "by itself after Joel closes this one",
-            Sessions.keptPlaces["s-row-waiting"] === undefined,
+        expect("the walk's place for it stays while its viewer comes, so one never come "
+            + "leaves a place to open it by", Sessions.keptPlaces["s-row-waiting"] !== undefined,
             JSON.stringify(Sessions.keptPlaces));
         expect("a row's Reopen with no host views it by its entry's words, to wait",
             Niri.spawns.length === before + 2 && rowAsk !== null
@@ -392,6 +392,18 @@ ShellRoot {
         expect("asked again while its viewer comes, it says it's opening",
             Niri.spawns.length === before + 2 && root.unhosted === "s-row-waiting"
             && root.unhostedWhy === "opening", `${root.unhosted} ${root.unhostedWhy}`);
+        // Its viewer comes, and Joel closes it: the walk's place went as
+        // it came, so none opens by itself once he has.
+        const reef = { id: 97, pid: 970, opened: "pi-hosted.s-row-waiting" };
+        const unreefed = Niri.windows;
+        Niri.windows = Object.assign({}, unreefed, { "97": reef });
+        Niri.windowOpenedOrChanged(reef);
+        const reefCame = Sessions.keptPlaces["s-row-waiting"] === undefined;
+        Niri.windows = unreefed;
+        Sessions.viewKept();
+        expect("the walk's place goes as its viewer comes, so none opens by itself after "
+            + "Joel closes it", reefCame && Niri.spawns.length === before + 2,
+            `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.slice(before).join("\n")}`);
         // One with words but an id no app id could carry has no viewer to
         // open, and is said so, not as one with no words.
         Sessions.reopen({ id: "s row spaced", cwd: "/tmp", hosted: true, view });
