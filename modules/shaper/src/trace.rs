@@ -1,8 +1,8 @@
 //! What the live shaper heard and held each second that the recorder's
 //! lines can't say, kept as day files of its own: whose the upload's queue
 //! was, a call's round trip through the VPN, the rates its controller
-//! asked of the upload and the download, and the ceiling, a trial's or its
-//! network's, the upload was held under.
+//! asked of the upload and the download, and the ceiling, a trial's, its
+//! network's or its house's, the upload was held under.
 //! A replay (src/replay.rs)
 //! puts these back into the recorded seconds, so a bite that came
 //! through our own queues or the VPN is replayed rather than passed as

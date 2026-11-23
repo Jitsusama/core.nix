@@ -518,6 +518,7 @@ signed in to and forgotten; Wi-Fi's radio can be turned off.
 | work network | the place in Network saying how the machine's link to work stands, through WARP | | `warp` |
 | firewall | what keeps others' connections out | | nftables |
 | shaper | the program that keeps the network's queue on the machine, sorted by slice, so a call stays quick | | `shaper`, CAKE |
+| house | of the shaper, another machine on the same line out, which says each second what it sends up, and the most the two may send between them, so this machine's upload is held under what the other leaves | | `jitsusama.shaper.networks.<router>.house`, `house.rs` |
 | home network | the network at home, the eero's, its nodes and the devices on them, and its place in the launcher | eero network, mesh network | `eero` |
 | node | one eero of the home network | satellite, extender | `eeros` |
 | gateway node | the node the internet comes in through | base station, primary node | `gateway` |

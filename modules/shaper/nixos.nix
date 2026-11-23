@@ -227,7 +227,10 @@ in
                   link-local one: every link the machine has, a virtual
                   machine's bridge among them, shares a link-local address,
                   and the rule names no interface. An IPv4 address written
-                  as IPv6 is refused.
+                  as IPv6 is refused. Make it a reserved address the other
+                  machine sends from: reports from a new lease, or from a
+                  temporary IPv6 address, are dropped without a word, and
+                  the house holds nothing.
                 '';
               };
             }

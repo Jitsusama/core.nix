@@ -329,8 +329,8 @@ struct Shaped {
     follows: Option<String>,
     /// Whether the journal has been told of a spell of limits now.
     told: bool,
-    /// Whether the spell told is held by a ceiling alone, a trial's or the
-    /// network's, with nothing the controller judged holding it.
+    /// Whether the spell told is held by a ceiling alone, a trial's, the
+    /// network's or its house's, with nothing the controller judged holding it.
     ceiling: bool,
     /// Whether a call's or a screen share's traffic crosses the link, and
     /// whether it did at the last look.

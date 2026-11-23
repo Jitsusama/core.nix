@@ -358,7 +358,7 @@ impl Follow {
         } else {
             self.rates
         };
-        // A ceiling, a trial's or the network's, still holds what nothing
+        // A ceiling, a trial's, the network's or its house's, still holds what nothing
         // else does: a recorder gone silent, or a stay not yet stepped on.
         let most = self.tuning().most_kbit.map(crate::rate::whole);
         let up = rates
