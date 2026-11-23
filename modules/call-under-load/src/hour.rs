@@ -267,8 +267,16 @@ mod tests {
         let now = |x: f64, lower_is_better: bool| {
             measure("x", Some(x), 30.0, lower_is_better, vec![]).now
         };
-        assert_eq!(now(30.04, true), Some(30.1), "30.04 ms showed on a 30 ms target");
-        assert_eq!(now(29.96, false), Some(29.9), "29.96 fps showed on a 30 fps target");
+        assert_eq!(
+            now(30.04, true),
+            Some(30.1),
+            "30.04 ms showed on a 30 ms target"
+        );
+        assert_eq!(
+            now(29.96, false),
+            Some(29.9),
+            "29.96 fps showed on a 30 fps target"
+        );
         assert_eq!(now(1.1, true), Some(1.1), "a whole tenth moved up");
         assert_eq!(now(28.8, false), Some(28.8), "a whole tenth moved down");
         let none = now(0.0, true).unwrap_or(f64::NAN);
@@ -316,7 +324,8 @@ mod tests {
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         for (name, now, target) in [
             (HEARD, 1.0, 1.0),
-            ("call sound concealed %", 0.4, 1.0),
+            // 0.42% made up shows as 0.5, rounded toward the worse side.
+            ("call sound concealed %", 0.5, 1.0),
             ("call sound jitter p99 ms", 24.0, 30.0),
             ("call sound packets lost", 3.0, 0.0),
         ] {
@@ -331,7 +340,8 @@ mod tests {
                 "{name} doesn't say what it heard"
             );
         }
-        assert_eq!(named("call sent fps p10").now, Some(30.0));
+        // 29.96 fps sent is short of 30, so it shows as 29.9, never on target.
+        assert_eq!(named("call sent fps p10").now, Some(29.9));
         // A figure read the wrong way passes cadence at any value.
         for m in &all {
             let higher = m.measure.contains(" fps ") || m.measure == HEARD;
