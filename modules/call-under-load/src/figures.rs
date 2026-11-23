@@ -1,5 +1,8 @@
 //! The call's figures, worked out from the samples each end of the call
 //! took once a second, as `page.html` takes them.
+//!
+//! Long because the picture's and the sound's figures are read from the
+//! same samples by the same helpers, and their tests sit beside them.
 
 use serde::Serialize;
 use serde_json::Value;
