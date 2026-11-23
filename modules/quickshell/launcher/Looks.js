@@ -326,7 +326,8 @@ function doneWith(one) {
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
-// { [look id]: { label, at } }, while it may yet take, or "".
+// { [look id]: { label, at, sent, taken, failed } }, for ANSWER_HEARD
+// while the node may yet say it took it, or "".
 function answering(one, answered, now) {
     const given = answered?.[one.id];
     return one.state === "waiting" && given && !given.failed && now - given.at < ANSWER_HEARD
@@ -347,6 +348,16 @@ function unanswered(one, answered, now) {
         return given.failed;
     }
     return now - given.at >= ANSWER_HEARD ? "unheard" : "";
+}
+
+// Whether Joel's answer to a look still waiting may yet reach its session:
+// given, not said to have failed, nor taken, within ANSWER_TAKES. Its
+// choices stay away meanwhile, so a second answer can't follow one still
+// on its way and the session hear both.
+function awaiting(one, answered, now) {
+    const given = answered?.[one.id];
+    return one.state === "waiting" && !!given && !given.failed && !given.taken
+        && now - given.at < ANSWER_TAKES;
 }
 
 // How long until an answer's side next changes as time passes, or null.

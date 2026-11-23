@@ -613,9 +613,11 @@ Provider {
             { title: title });
     }
 
+    // Each placeholder given by a function, so a `$` in what fills it, as a
+    // look's own choice label may hold, is read as itself, not a pattern.
     function filledIn(words, fill) {
         for (const key of Object.keys(fill))
-            words = words.replace(`{${key}}`, fill[key]);
+            words = words.replace(`{${key}}`, () => String(fill[key]));
         return words;
     }
 
@@ -1320,6 +1322,10 @@ Provider {
         onTriggered: provider.lookAnswers = Object.assign({}, provider.lookAnswers)
     }
 
+    // How long until the sides next change, in ms, or -1 while nothing
+    // waits: for a case to see the timer armed as answers come and go.
+    readonly property int answersDue: answersLapse.running ? answersLapse.interval : -1
+
     // Answers a look with one of its choices where it is, rather than in a
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
     // into a pi sessino that has already moved on from it is a waste of my
@@ -1440,9 +1446,10 @@ Provider {
         return one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
     }
 
-    // The choices a look offers while it waits and none is given yet.
+    // The choices a look offers while it waits and no answer given may yet
+    // reach its session (Looks.js's awaiting).
     function lookChoices(one, now) {
-        return one.state === "waiting" && Looks.answering(one, lookAnswers, now) === ""
+        return one.state === "waiting" && !Looks.awaiting(one, lookAnswers, now)
             ? one.offers : [];
     }
 

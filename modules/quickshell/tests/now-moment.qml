@@ -1988,6 +1988,55 @@ ShellRoot {
                 && now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))
                     === "Keep It not answered \u00b7 no session to tell",
             JSON.stringify(now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))));
+        // An answer the node is slow to say it took: shown as given, its
+        // choices away while it may yet come, so no second follows it, and
+        // the sides redrawn as its 5 s and its minute come; then said not
+        // heard; and a late word for an earlier answer leaves a newer alone.
+        const answers = () => (secondRow()?.verbs() ?? [])
+            .filter(act => act.key.startsWith("verb:on:look:answer:s:"));
+        const aged = by => {
+            now.lookAnswers = Object.assign({}, now.lookAnswers,
+                { s: Object.assign({}, now.lookAnswers.s, { at: now.lookAnswers.s.at - by }) });
+        };
+        now.lookAnswers = {};
+        Sessions.holds = true;
+        Sessions.held = [];
+        answers()[0]?.run();
+        expect("an answer on its way, shown as given, its choices away, redrawn at its 5 s",
+            secondRow()?.side === "answered Keep It" && answers().length === 0
+                && now.answersDue > 4000 && now.answersDue <= 5000,
+            JSON.stringify([secondRow()?.side, answers().length, now.answersDue]));
+        aged(6 * 1000);
+        expect("unheard in 5 s, said so, its choices away still, redrawn at its minute",
+            secondRow()?.side === "Keep It not answered yet \u00b7 no answer"
+                && answers().length === 0 && now.answersDue > 53000 && now.answersDue <= 54000,
+            JSON.stringify([secondRow()?.side, answers().length, now.answersDue]));
+        aged(55 * 1000);
+        const later = answers().find(act => act.key === "verb:on:look:answer:s:Roll It Back");
+        expect("past its minute, its choices back, nothing left to redraw",
+            later !== undefined && now.answersDue === -1,
+            JSON.stringify([answers().map(act => act.key), now.answersDue]));
+        // Each held word given by a plain call: an optional call of one
+        // read from the stand-in's list crashed the shell here (2026-11-23).
+        const heard = (at, put) => {
+            const then = Sessions.held[at];
+            if (typeof then === "function")
+                then(put);
+        };
+        if (later !== undefined)
+            later.run();
+        heard(0, false);
+        expect("the earlier answer's late refusal leaves the newer one alone",
+            now.lookAnswers.s?.label === "Roll It Back" && now.lookAnswers.s?.failed === undefined
+                && Sessions.held.length === 2,
+            JSON.stringify([now.lookAnswers.s, Sessions.held.length]));
+        heard(1, true);
+        expect("and its own late word takes it, nothing left to redraw",
+            now.lookAnswers.s?.taken === true && now.answersDue === -1,
+            JSON.stringify([now.lookAnswers.s, now.answersDue]));
+        Sessions.holds = false;
+        Sessions.held = [];
+        now.lookAnswers = {};
         now.lookTexts = textsFirst;
         // Later cases count the steers the shell itself sends from none.
         Sessions.steered = Sessions.steered.slice(0, steeredBefore);

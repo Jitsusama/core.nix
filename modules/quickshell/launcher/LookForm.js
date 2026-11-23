@@ -10,7 +10,12 @@
 // the harness writes it (ACT_WORDS).
 const ENDED = /[.!?\u2026]["'\u2019\u201d)\]]*$/u;
 const ACT_WORDS = 4;
-const SPACES = /\s+/u;
+const SPACES = /\s+/gu;
+// What draws as nothing, or as a space, which a name may hide in to pass
+// for another; and the stops a name may end in. Ranges rather than
+// property escapes, which Qt's engine may not read.
+const UNSEEN = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/gu;
+const STOPS = /[\s.!?,;:\u2026]+$/u;
 
 // `value` where it's a string, else "".
 function written(value) {
@@ -34,14 +39,24 @@ function wordsOf(read) {
         : [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n");
 }
 
+// A name as it reads, to tell two apart: what draws as nothing gone, its
+// spaces one, its closing stops gone, in small letters.
+function readAs(name) {
+    return String(name).replace(UNSEEN, "").replace(SPACES, " ").replace(STOPS, "").trim()
+        .toLowerCase();
+}
+
 // What Joel presses for a look in its second form, in its own words, as
 // "Review It", else "": never past the harness's four words, a choice's
-// label, or a name another of its acts goes by (`taken`), so it can't pass
-// itself off as Clear It or an answer.
+// label, or a name another of its acts goes by (`taken`), however it's
+// spaced, stopped or hides what draws as nothing, so it can't pass itself
+// off as Clear It or an answer. A letter from another script that draws
+// alike still could; the drawer's eyebrow says whose words they are.
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
-    const same = name => String(name).toLowerCase() === act.toLowerCase();
-    return act.split(SPACES).length > ACT_WORDS || taken.some(same)
+    const read = readAs(act);
+    const same = name => readAs(name) === read;
+    return read === "" || read.split(" ").length > ACT_WORDS || taken.some(same)
         || (one.offers ?? []).some(choice => same(choice.label)) ? "" : act;
 }
 

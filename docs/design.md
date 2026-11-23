@@ -1878,7 +1878,12 @@ works the same way everywhere.
   why: "Home-5G not disconnected · not connected", or "Home-5G not
   disconnected yet · no answer", the yet saying it may still come.
   The failure's mark and what didn't happen are in alert and the why
-  muted, and short of room the why gives way from its end. Going into
+  muted, and short of room the why gives way from its end. A look's
+  answer is the one exception: it's said at the look's side for a
+  minute, "Keep It not answered yet · no answer", since Joel comes back
+  to a look later rather than at the next key, and its choices stay
+  away while the answer may still come, so the session never hears two.
+  Going into
   one lists its acts, led by Return's own, which there does it and
   closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl

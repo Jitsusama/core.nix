@@ -386,7 +386,7 @@ QtObject {
 
         // A look's choices are offered on its row, each answered by a steer to
         // the session that left it, or its quest's once that's ended, and shown
-        // as given for a minute while its file still waits (85PKB2, 2026-11-12).
+        // as given while the node may yet say it took it (85PKB2, 2026-11-12).
         const choosing = Looks.looks([{ file: "p.json", text: lookOf({ id: "P",
             address: "vp50pc", quest: "QEST-20261104-VP50PC", choices: [
                 { value: "posted", label: "Posted" }, { value: "later" }, { label: "no value" },
@@ -422,7 +422,7 @@ QtObject {
             secondly.offers.map(one => [one.label, one.follows]),
             [["Keep It", "It stays as it is."],
                 ["Roll It Back", "The old bar comes back tonight."]]);
-        expect("a first form's choices follow with nothing",
+        expect("a choice saying nothing of what follows, follows with nothing",
             choosing.offers.map(one => one.follows), ["", "", "", ""]);
         expect("its words end as a sentence ends, after a closing quote or bracket too",
             second({ happened: "It said \u201cdone.\u201d", matters: "(It wasn't.)" }).words,
@@ -434,17 +434,29 @@ QtObject {
             [LookForm.actOf(secondly), LookForm.actOf(firstly), LookForm.actOf(read.waiting[1]),
                 LookForm.actOf(second({ act: "keep it" })),
                 LookForm.actOf(secondly, ["Clear It", "review it"]),
-                LookForm.actOf(second({ act: "Read It All the Way" }))],
-            ["Review It", "", "", "", "", ""]);
+                LookForm.actOf(second({ act: "Read It All the Way" })),
+                LookForm.actOf(second({ act: "Read the Whole Diff" })),
+                LookForm.actOf(second({ act: " Review It " }))],
+            ["Review It", "", "", "", "", "", "Read the Whole Diff", "Review It"]);
+        expect("never another's name however it's spaced, stopped or hides what draws as"
+            + " nothing",
+            [LookForm.actOf(second({ act: "Keep It." })),
+                LookForm.actOf(second({ act: "Keep  It" })),
+                LookForm.actOf(second({ act: "Roll It Back\u2060" })),
+                LookForm.actOf(second({ act: "Clear\u00a0It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Clear It\u200b!" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "\u200b" }))],
+            ["", "", "", "", "", ""]);
         expect("it asks back wanting a choice or his words, or offering choices, in the second"
             + " form only",
             [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },
                 choices: undefined })),
                 LookForm.asksBack(second({ wants: undefined })),
+                LookForm.asksBack(second({ choices: undefined })),
                 LookForm.asksBack(second({ wants: undefined, choices: undefined })),
                 LookForm.asksBack(second({ wants: { choices: [] }, choices: undefined })),
                 LookForm.asksBack(firstly), LookForm.asksBack(choosing)],
-            [true, true, true, false, false, false, false]);
+            [true, true, true, true, false, false, false, false]);
         const secondBack = JSON.parse(Looks.rewritten(secondly, "opened", "opened", now));
         expect("written back, its second form as its session wrote it",
             [secondBack.happened, secondBack.act, secondBack.wants.choices[1].follows,
@@ -517,8 +529,20 @@ QtObject {
                 Looks.unanswered(choosing, given, now + 61 * 1000),
                 Looks.unanswered(choosing, { P: { label: "Posted", at: now, taken: true } },
                     now + 6 * 1000),
-                Looks.answering(choosing, failed("nobody"), now)],
-            ["nobody", "untaken", "", "", "unheard", "", "", ""]);
+                Looks.answering(choosing, failed("nobody"), now),
+                Looks.unanswered(Object.assign({}, choosing, { state: "resolved" }), given,
+                    now + 6 * 1000)],
+            ["nobody", "untaken", "", "", "unheard", "", "", "", ""]);
+        // While an answer may yet reach its session its choices stay away, so
+        // a second can't follow it and the session hear both.
+        expect("an answer that may yet go, for a minute, never once failed or taken",
+            [Looks.awaiting(choosing, given, now + 6 * 1000),
+                Looks.awaiting(choosing, given, now + 61 * 1000),
+                Looks.awaiting(choosing, failed("untaken"), now),
+                Looks.awaiting(choosing, { P: { label: "Posted", at: now, taken: true } }, now),
+                Looks.awaiting(Object.assign({}, choosing, { state: "resolved" }), given, now),
+                Looks.awaiting(choosing, {}, now)],
+            [true, false, false, false, false, false]);
         expect("when an answer's side next changes, as its 5 s and its minute come, never"
             + " once taken",
             [Looks.answersChange(given, now + 1000), Looks.answersChange(given, now + 6 * 1000),
