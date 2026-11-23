@@ -157,6 +157,31 @@ impl Measures {
         forget_before(echoes, at);
     }
 
+    /// Takes in what a card heard in a second on the access point it's on:
+    /// the late answers first, as each is to an echo of an earlier second,
+    /// already kept, then this second's echoes, though only if best
+    /// effort's went, so video's share is of the seconds best effort's is.
+    /// Says whether it went, as only then is the card's station read.
+    pub fn took_in(
+        &mut self,
+        point: &str,
+        late: Vec<Late>,
+        echoed: &[(Class, io::Result<(Instant, Echo)>)],
+    ) -> bool {
+        for late in late {
+            self.answered_late(late);
+        }
+        let went = best_effort_went(echoed);
+        if went {
+            for (class, echoed) in echoed {
+                if let Ok((at, echo)) = echoed {
+                    self.echoed_as(*class, point, *at, *echo);
+                }
+            }
+        }
+        went
+    }
+
     /// Takes in a late answer to a video echo counted lost, on whichever
     /// access point it was sent through.
     pub fn answered_late(&mut self, late: Late) {
@@ -328,7 +353,8 @@ pub async fn follow(
 }
 
 /// A card's echo sockets, one for each class, each opened again on its
-/// own once it fails, so the other carries on meanwhile.
+/// own once it fails. Video's carries on while best effort's is down, its
+/// late answers still counted, though its echoes then count for nothing.
 #[derive(Default)]
 struct Echoers {
     best: Option<Echoer>,
@@ -468,26 +494,14 @@ async fn measure(
                 continue;
             }
         };
-        // A second best effort didn't go in keeps nothing of the card's,
-        // so video's share is of the seconds best effort's is.
-        let went = best_effort_went(&echoed);
-        if went {
+        // The late answers are taken before a failing socket is let go, as
+        // what it heard late before failing is heard all the same.
+        if measures.took_in(&on.point, sockets.late(), &echoed) {
             echoed_on.push(on.clone());
-        }
-        // Taken before a failing socket is let go, as what it heard late
-        // before failing is heard all the same. Each is to an echo of an
-        // earlier second, already kept.
-        for late in sockets.late() {
-            measures.answered_late(late);
         }
         for (class, echoed) in echoed {
             match echoed {
-                Ok((at, echo)) => {
-                    sockets.failing.went(class);
-                    if went {
-                        measures.echoed_as(class, &on.point, at, echo);
-                    }
-                }
+                Ok(_) => sockets.failing.went(class),
                 Err(error) => {
                     let level = sockets.failing.failed(class);
                     eprintln!(
@@ -1194,19 +1208,40 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_card_s_station_is_read_only_when_its_best_effort_echo_went() {
-        let at = Instant::now();
-        let went = || Ok((at, Echo::Lost));
+    fn a_second_best_effort_s_echo_didn_t_go_in_keeps_only_late_answers() {
+        let start = Instant::now();
+        let then = start + Duration::from_secs(1);
         let failed = || Err(io::Error::other("unreachable"));
-        assert!(
-            best_effort_went(&[(Class::BestEffort, went()), (Class::Video, failed())]),
-            "best effort went, lost or not"
+        let mut kept = Measures::default();
+        let went = kept.took_in(
+            DESK,
+            Vec::new(),
+            &[
+                (Class::BestEffort, Ok((start, Echo::Lost))),
+                (Class::Video, Ok((start, Echo::Lost))),
+            ],
         );
-        assert!(
-            !best_effort_went(&[(Class::BestEffort, failed()), (Class::Video, went())]),
-            "only video went"
+        assert!(went, "best effort went, lost or not");
+
+        let went = kept.took_in(
+            DESK,
+            vec![Late {
+                sent: start,
+                took: ms(1500),
+            }],
+            &[
+                (Class::BestEffort, failed()),
+                (Class::Video, Ok((then, Echo::Lost))),
+            ],
         );
-        assert!(!best_effort_went(&[]), "neither socket open");
+        assert!(!went, "only video went");
+        assert!(!kept.took_in(DESK, Vec::new(), &[]), "neither socket open");
+
+        let video = kept.video_of(DESK, then).expect("video was echoed");
+        assert_eq!(video.echoes, 1, "only the second best effort went in");
+        assert_eq!(video.answered, 1, "its late answer kept");
+        let measured = kept.of(DESK, then).expect("best effort was echoed");
+        assert_eq!(measured.echoes, 1, "best effort alike");
     }
 
     #[test]

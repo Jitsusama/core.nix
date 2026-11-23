@@ -8,12 +8,13 @@
 //! an identifier drawn at random (the kernel's choice when that one is
 //! taken), which the kernel sets in each echo with its checksum; it hands
 //! back only the answers to this socket's, so an answer is told by its
-//! sequence alone. One answer counted needs the gateway's address, the
-//! identifier and a sequence waited on, the first of them drawn at random
-//! too, so a station on the same network that can't read the card's frames
-//! has the identifier's 65,535 to guess before a forged answer counts. One that can read them, holding the
-//! network's password, can deauthenticate the card as easily where
-//! management frames go unprotected.
+//! sequence alone. One counts only from the gateway's address, to the
+//! socket's identifier and a sequence waited on, and the first sequence is
+//! drawn at random too, so a station on the same network that can't read
+//! the card's frames has the identifier's 65,535 to guess before a forged
+//! answer counts. One that can read them, on an open network or holding
+//! its password, can deauthenticate the card as easily where management
+//! frames go unprotected.
 //!
 //! Each card's gateway is echoed in two classes, best effort and video,
 //! since an access point can hold one of a station's queues while the
