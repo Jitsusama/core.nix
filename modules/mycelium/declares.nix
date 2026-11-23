@@ -169,11 +169,14 @@ rec {
       # realm could give a machine fails here, rather than leaving the
       # carry refused with nothing said; a well-shaped name for a machine
       # that isn't there can't be caught here, since realms are read live.
+      # Every realm's node reads the one declaration, so a name holds in
+      # each realm with a machine of that name, and a mycelium older than
+      # accepted doors ignores them, so the description says both.
       accepts = lib.mkOption {
         type = byMachine accepted;
         default = { };
         example.other-machine.secrets = [ "tokens" ];
-        description = "The doors each other machine, by name, may open beyond these for a session carried from here.";
+        description = "The doors each other machine, by name, may open beyond these for a session carried from here. A name holds in every realm this machine joins, and a mycelium that predates accepted doors ignores them, refusing the carry as before.";
       };
     };
   };

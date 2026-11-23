@@ -8,7 +8,8 @@ let
   # agent's `mycelium run` in a fenced or strict one starts through the
   # fence's launcher, Landlock's on Linux and sandbox-exec's on a Mac; one
   # unfenced takes none, as no agent asks as unfenced. Doors accepted for
-  # another machine are said only where there are some.
+  # other machines are said only once some machine is named, as an empty
+  # allowance means what none does.
   fenced = lib.mapAttrs (
     kind: doors:
     removeAttrs doors [ "accepts" ]

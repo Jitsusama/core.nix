@@ -201,6 +201,21 @@ let
       };
     }) true
   );
+  # The same name under `mkIf`: dropped before it is read when false, so
+  # it isn't refused, and refused when true, so the false one isn't let
+  # through only because `mkIf` drops everything.
+  misnamedIf =
+    shown:
+    builtins.tryEval (
+      builtins.deepSeq (declaredAs {
+        fence.none = {
+          builders = [ ];
+          forges = [ ];
+          secrets = [ ];
+          accepts."Other Machine" = lib.mkIf shown { secrets = [ "tokens" ]; };
+        };
+      }) true
+    );
   # A machine fenced in the kinds it names, each opening no doors.
   fencedIn =
     bare: kinds: settings:
@@ -934,6 +949,8 @@ in
           }
         )
         && !misnamed.success
+        && (misnamedIf false).success
+        && !(misnamedIf true).success
         && (launching linux everyKind).fence.fence.runs or null == launcher
         && (launching linux everyKind).fence.strict.runs or null == launcher
         && !((launching linux everyKind).fence.none ? runs)
