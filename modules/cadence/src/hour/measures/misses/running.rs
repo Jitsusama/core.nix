@@ -17,7 +17,9 @@ use conversations::conversations;
 use hosts::hosts;
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
@@ -145,10 +147,12 @@ pub fn unrun(
         };
         let path = path.to_string_lossy();
         let key = format!("{} #{}", change.repo, change.number);
+        let rev = revs.get(&change.repo).map(String::as_str);
+        let merge = merge_judged(&change.repo, rev, &path, change.number);
         let why = judge(
             &change.repo,
-            revs.get(&change.repo).map(String::as_str),
-            merge_of(&path, change.number).as_deref(),
+            rev,
+            merge.as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
             |sha| {
@@ -556,15 +560,26 @@ fn installed() -> Option<String> {
     is_rev(&name).then_some(name)
 }
 
+/// `merge_of`, only where `judge` reads it, since a merge that isn't found
+/// costs a walk to main's root.
+fn merge_judged(repo: &str, rev: Option<&str>, path: &str, number: u64) -> Option<String> {
+    (rev.is_some() && RUN_HERE.contains(&repo))
+        .then(|| merge_of(path, number))
+        .flatten()
+}
+
 /// The commit on `path`'s main that merged pull request `number`, by its
 /// subject as `merged_numbers` reads it, since git's grep matches a line of
-/// any commit's body too.
+/// any commit's body too. The log is read as it comes and left at the first
+/// merge found, since git would otherwise read every commit's message to
+/// main's root: at 05:10 on 23 November, World's #2511610 had an hour's
+/// run reading 920 MB/s at 3.7 GB for over ten minutes, every hour, on a
+/// machine already short of memory.
 fn merge_of(path: &str, number: u64) -> Option<String> {
     let merged = format!("--grep=^Merge pull request #{number} from ");
     let squashed = format!("--grep=\\(#{number}\\)\\s*$");
-    let found = command(
-        "git",
-        &[
+    let mut log = Command::new("git")
+        .args([
             "-C",
             path,
             "log",
@@ -574,10 +589,25 @@ fn merge_of(path: &str, number: u64) -> Option<String> {
             &merged,
             &squashed,
             main_of(path),
-        ],
-    )
-    .ok()?;
-    subject_merging(&found, number)
+        ])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .ok()?;
+    let found = log.stdout.take().and_then(|out| {
+        // Read as bytes, since a subject that isn't UTF-8 above the merge
+        // would otherwise end the read before it.
+        BufReader::new(out)
+            .split(b'\n')
+            .map_while(Result::ok)
+            .find_map(|line| subject_merging(&String::from_utf8_lossy(&line), number))
+    });
+    // A walk that already ended has nothing to stop, and one stopped here is
+    // only reaped, so neither result says anything the merge found doesn't.
+    log.kill().ok();
+    log.wait().ok();
+    found
 }
 
 /// The newest of `found`, each `SHA SUBJECT`, whose subject says it merged
