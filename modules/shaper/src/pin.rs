@@ -57,6 +57,11 @@ pub const MARGIN_MS: f64 = 10.0;
 /// router, and hops past the provider's edge stop answering.
 pub const MOST_HOPS: u8 = 8;
 
+/// The fewest ports a round must read to move the pin: half the 32 tried.
+/// A round that heard fewer, as with a hop that stopped answering most
+/// probes, would choose from too few to say the line no longer splits.
+pub const HEARD: usize = 16;
+
 /// How many times the VPN's flows may come back to the pin's rule, one
 /// look after another, before the pin lets go. With other flows holding
 /// both pinned ports toward the server, as a third socket in a burst of
@@ -159,12 +164,29 @@ pub fn ends(json: &str) -> Vec<End> {
     seen
 }
 
+/// A pin in force: the first of its two ports, the VPN's server and port
+/// it was measured toward, to which alone its rules give the pair, and the
+/// slower of the pair's delays when a round chose it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pin {
+    pub first: u16,
+    pub to: Ipv4Addr,
+    pub port: u16,
+    pub ms: f64,
+}
+
 /// The rules that give new flows of the VPN's mark leaving by an uplink
-/// the two ports from `first`, flows already open keeping theirs: one
-/// counts a flow that comes back, the other remembers each and gives it
-/// the pair.
-pub fn rules(first: u16) -> [String; 2] {
-    let vpn = "oifname @uplinks meta mark @vpns meta nfproto ipv4 meta l4proto udp";
+/// for the server the pin was measured toward the two ports from its
+/// first, flows already open keeping theirs: one counts a flow that comes
+/// back, the other remembers each and gives it the pair.
+pub fn rules(pin: &Pin) -> [String; 2] {
+    let Pin {
+        first, to, port, ..
+    } = *pin;
+    let vpn = format!(
+        "oifname @uplinks meta mark @vpns meta nfproto ipv4 meta l4proto udp \
+         ip daddr {to} udp dport {port}"
+    );
     let flow = "ip daddr . udp dport . udp sport";
     [
         format!("{vpn} {flow} @pintries counter name \"pinretried\""),
@@ -179,7 +201,7 @@ pub fn rules(first: u16) -> [String; 2] {
 /// The pin chain as `table`'s transaction writes it: emptied, then the
 /// pin's rules where there is one. Written with the sets every few
 /// seconds, since a switch loads the table afresh, the chain empty.
-pub fn chain(table: &str, pinned: Option<u16>) -> String {
+pub fn chain(table: &str, pinned: Option<&Pin>) -> String {
     let mut out = format!("flush chain inet {table} pin\n");
     for rule in pinned.map(rules).into_iter().flatten() {
         let _ = writeln!(out, "add rule inet {table} pin {rule}");
@@ -235,8 +257,8 @@ pub struct Pinning {
     seen: Vec<End>,
     probing: bool,
     asked: Option<Instant>,
-    coming: Option<(Option<u16>, Instant)>,
-    pub pinned: Option<u16>,
+    coming: Option<(Option<Pin>, Instant)>,
+    pub pinned: Option<Pin>,
     retried: Option<u64>,
     failing: u64,
 }
@@ -287,17 +309,38 @@ impl Pinning {
     /// port and the probe would cross the line as some other flow.
     pub fn held(&self) -> Vec<u16> {
         self.pinned
-            .map_or_else(Vec::new, |first| vec![first, first.saturating_add(1)])
+            .map_or_else(Vec::new, |pin| vec![pin.first, pin.first.saturating_add(1)])
     }
 
-    /// Takes what a round read of each port, to take hold from `from`,
-    /// once the round's probes have let their ports go (`settle`). A round
-    /// that heard nothing, as with the network down, keeps the pin it had.
-    pub fn found(&mut self, delays: &BTreeMap<u16, f64>, from: Instant) {
+    /// Takes what a round toward `end` read of each port, to take hold
+    /// from `from`, once the round's probes have let their ports go
+    /// (`settle`). A round that read fewer than `HEARD` ports, as with the
+    /// network down, keeps the pin it had. So does one toward the pin's own
+    /// server that read every port slower than the pin read, since the
+    /// round leaves the pin's pair out (`held`) and so can't tell a line
+    /// that still splits, quick only there, from one that went slow.
+    pub fn found(&mut self, end: End, delays: &BTreeMap<u16, f64>, from: Instant) {
         self.probing = false;
-        if !delays.is_empty() {
-            self.coming = Some((choose(delays), from));
+        if delays.len() < HEARD {
+            return;
         }
+        let quickest = delays.values().copied().fold(f64::INFINITY, f64::min);
+        if let Some(pin) = self.pinned
+            && (pin.to, pin.port) == (end.to, end.port)
+            && quickest > pin.ms + MARGIN_MS
+        {
+            return;
+        }
+        let pin = choose(delays).map(|first| {
+            let ms = |port: u16| delays.get(&port).copied().unwrap_or(f64::INFINITY);
+            Pin {
+                first,
+                to: end.to,
+                port: end.port,
+                ms: ms(first).max(ms(first.saturating_add(1))),
+            }
+        });
+        self.coming = Some((pin, from));
     }
 
     /// Puts the pin a round found in force once its time comes, and says
@@ -308,8 +351,8 @@ impl Pinning {
             return None;
         }
         self.coming = None;
-        let was = std::mem::replace(&mut self.pinned, pin);
-        (was != pin).then_some(Moved { was })
+        let was = std::mem::replace(&mut self.pinned, pin).map(|p| p.first);
+        (was != pin.map(|p| p.first)).then_some(Moved { was })
     }
 
     /// Takes how many flows have come back to the pin's rule, read now,
@@ -319,7 +362,7 @@ impl Pinning {
     /// back.
     pub fn heed(&mut self, retried: u64) -> Option<(Moved, u64)> {
         let was = self.retried.replace(retried);
-        let first = self.pinned?;
+        let first = self.pinned?.first;
         let back = retried.saturating_sub(was?);
         if back == 0 {
             self.failing = 0;
@@ -474,16 +517,22 @@ mod tests {
 
     #[test]
     fn the_chain_gives_new_flows_of_the_vpns_mark_the_two_pinned_ports() {
+        let pin = Pin {
+            first: 30_003,
+            ..pin_at(30_006)
+        };
         assert_eq!(
-            chain("shaper", Some(30_003)),
+            chain("shaper", Some(&pin)),
             "flush chain inet shaper pin\n\
              add rule inet shaper pin oifname @uplinks meta mark @vpns meta nfproto ipv4 \
-             meta l4proto udp ip daddr . udp dport . udp sport @pintries \
-             counter name \"pinretried\"\n\
+             meta l4proto udp ip daddr 192.0.2.2 udp dport 443 \
+             ip daddr . udp dport . udp sport @pintries counter name \"pinretried\"\n\
              add rule inet shaper pin oifname @uplinks meta mark @vpns meta nfproto ipv4 \
-             meta l4proto udp add @pintries { ip daddr . udp dport . udp sport timeout 20s } \
+             meta l4proto udp ip daddr 192.0.2.2 udp dport 443 \
+             add @pintries { ip daddr . udp dport . udp sport timeout 20s } \
              masquerade to :30003-30004\n",
-            "the chain isn't emptied, counting flows that come back, and given the pin's ports"
+            "the chain isn't emptied, counting flows to the pin's server that come back, \
+             and given the pin's ports"
         );
         assert_eq!(
             chain("shaper", None),
@@ -498,6 +547,25 @@ mod tests {
             port: 443,
             from_port,
         }
+    }
+
+    /// A pin of `first` toward `end`'s server, read at 24 ms.
+    fn pin_at(first: u16) -> Pin {
+        Pin {
+            first,
+            to: Ipv4Addr::new(192, 0, 2, 2),
+            port: 443,
+            ms: 24.0,
+        }
+    }
+
+    /// What a round reads of every port tried but `held`: the `quick` ones
+    /// at 24 ms, the rest at `rest`.
+    fn read(quick: &[u16], rest: f64, held: &[u16]) -> BTreeMap<u16, f64> {
+        (FIRST_PORT..FIRST_PORT + PORTS)
+            .filter(|port| !held.contains(port))
+            .map(|port| (port, if quick.contains(&port) { 24.0 } else { rest }))
+            .collect()
     }
 
     #[test]
@@ -526,10 +594,7 @@ mod tests {
             "a round was asked while one was out"
         );
         let settled = later + Duration::from_secs(35);
-        pinning.found(
-            &BTreeMap::from([(30_000, 24.0), (30_001, 25.0), (30_002, 66.0)]),
-            settled,
-        );
+        pinning.found(end(36_284), &read(&[30_000, 30_001], 66.0, &[]), settled);
         assert_eq!(
             pinning.take_hold(later),
             None,
@@ -547,8 +612,8 @@ mod tests {
         );
         assert_eq!(
             pinning.pinned,
-            Some(30_000),
-            "the round's pair wasn't pinned"
+            Some(pin_at(30_000)),
+            "the round's pair wasn't pinned toward its server, at its slower port's delay"
         );
         assert_eq!(
             pinning.held(),
@@ -570,22 +635,56 @@ mod tests {
             Some(end(41_000)),
             "a new socket past the spacing wasn't probed toward"
         );
-        pinning.found(&BTreeMap::new(), later);
-        assert_eq!(
-            pinning.take_hold(later),
-            None,
-            "a round that heard nothing moved the pin"
-        );
-        assert_eq!(
-            pinning.pinned,
-            Some(30_000),
-            "a round that heard nothing lost the pin"
-        );
-        pinning.found(&BTreeMap::from([(30_004, 24.0), (30_005, 24.0)]), later);
+    }
+
+    #[test]
+    fn a_round_keeps_a_pin_it_cant_judge_and_moves_one_it_can() {
+        let later = Instant::now();
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(30_000)),
+            ..Pinning::default()
+        };
+        let held = pinning.held();
+        for (heard, why) in [
+            (BTreeMap::new(), "a round that heard nothing"),
+            (
+                read(&[30_004, 30_005], 66.0, &held)
+                    .into_iter()
+                    .take(HEARD - 1)
+                    .collect(),
+                "a round that heard too few ports",
+            ),
+            (
+                read(&[], 66.0, &held),
+                "a round that read every other port slower than the pin",
+            ),
+        ] {
+            pinning.found(end(41_000), &heard, later);
+            assert_eq!(pinning.take_hold(later), None, "{why} moved the pin");
+            assert_eq!(pinning.pinned, Some(pin_at(30_000)), "{why} lost the pin");
+        }
+        let elsewhere = End {
+            to: Ipv4Addr::new(198, 51, 100, 7),
+            ..end(41_000)
+        };
+        pinning.found(elsewhere, &read(&[], 66.0, &held), later);
         assert_eq!(
             pinning.take_hold(later),
             Some(Moved { was: Some(30_000) }),
-            "a round that read every port alike didn't let the pin go"
+            "a round toward another server, reading one way, kept the old server's pin"
+        );
+        pinning.pinned = Some(pin_at(30_000));
+        pinning.found(end(41_000), &read(&[30_010, 30_011], 66.0, &held), later);
+        assert_eq!(
+            pinning.take_hold(later),
+            Some(Moved { was: Some(30_000) }),
+            "a round that read another quick pair didn't move the pin"
+        );
+        pinning.found(end(41_000), &read(&[], 24.0, &pinning.held()), later);
+        assert_eq!(
+            pinning.take_hold(later),
+            Some(Moved { was: Some(30_010) }),
+            "a round that read every port as quick as the pin didn't let it go"
         );
         assert_eq!(pinning.pinned, None, "a round that read alike kept a pin");
     }
@@ -612,7 +711,7 @@ mod tests {
     /// A pin in force at 30 006, the count of flows back already read once.
     fn pinned_at(retried: u64) -> Pinning {
         let mut pinning = Pinning {
-            pinned: Some(30_006),
+            pinned: Some(pin_at(30_006)),
             ..Pinning::default()
         };
         assert_eq!(pinning.heed(retried), None, "a first read let go");

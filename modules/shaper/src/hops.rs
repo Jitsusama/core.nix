@@ -8,6 +8,7 @@
 //! and a delay is all a round compares.
 
 use crate::pin::{self, Answer};
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io;
@@ -32,7 +33,9 @@ pub fn round(link: &str, to: SocketAddrV4, held: &[u16]) -> BTreeMap<u16, f64> {
     let ports: Vec<u16> = (pin::FIRST_PORT..pin::FIRST_PORT + pin::PORTS)
         .filter(|port| !held.contains(port))
         .collect();
-    let Some(scout) = ports.first().and_then(|&p| Probe::from(link, p, to).ok()) else {
+    // The first port that binds walks, so one some program holds doesn't
+    // leave every round empty.
+    let Some(scout) = ports.iter().find_map(|&p| Probe::from(link, p, to).ok()) else {
         return BTreeMap::new();
     };
     let walked: Vec<Answer> = (1..=pin::MOST_HOPS)
@@ -55,9 +58,10 @@ pub fn round(link: &str, to: SocketAddrV4, held: &[u16]) -> BTreeMap<u16, f64> {
 }
 
 /// A UDP socket bound to `port` on `link`, connected to `to`, whose
-/// errors are kept for reading.
+/// errors are kept for reading, with the number its last probe carried.
 pub struct Probe {
     fd: OwnedFd,
+    sent: Cell<u8>,
 }
 
 fn checked(result: libc::c_int) -> io::Result<()> {
@@ -100,8 +104,15 @@ fn address(at: SocketAddrV4) -> libc::sockaddr_in {
 impl Probe {
     pub fn from(link: &str, port: u16, to: SocketAddrV4) -> io::Result<Probe> {
         // SAFETY: socket(2) with constant arguments; its result is checked
-        // before it's owned.
-        let raw = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, libc::IPPROTO_UDP) };
+        // before it's owned. Closed on exec, since rounds run while the
+        // shaper starts tc, nft and ping, which have no use for it.
+        let raw = unsafe {
+            libc::socket(
+                libc::AF_INET,
+                libc::SOCK_DGRAM | libc::SOCK_CLOEXEC,
+                libc::IPPROTO_UDP,
+            )
+        };
         if raw < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -129,7 +140,10 @@ impl Probe {
         let remote = address(to);
         // SAFETY: the address is a sockaddr_in, of the length given.
         checked(unsafe { libc::connect(fd.as_raw_fd(), (&raw const remote).cast(), length) })?;
-        Ok(Probe { fd })
+        Ok(Probe {
+            fd,
+            sent: Cell::new(0),
+        })
     }
 
     /// Sends one probe to expire at `hop`, and waits at most `wait` for
@@ -139,9 +153,15 @@ impl Probe {
         // An answer to an earlier probe that came after its wait would be
         // taken for this one's, from another hop.
         while self.error()?.is_some() {}
+        // Each probe carries a number of its own, which a hop that quotes
+        // the probe's data hands back, so an answer that came late to an
+        // earlier probe, after the queue was emptied, isn't taken for this
+        // one's. A hop that quotes only the header is believed.
+        let number = self.sent.get().wrapping_add(1);
+        self.sent.set(number);
         let sent = Instant::now();
         // SAFETY: the message is a byte, valid for its length.
-        let wrote = unsafe { libc::send(self.fd.as_raw_fd(), [0_u8].as_ptr().cast(), 1, 0) };
+        let wrote = unsafe { libc::send(self.fd.as_raw_fd(), [number].as_ptr().cast(), 1, 0) };
         if wrote < 0 {
             return Err(io::Error::last_os_error());
         }
@@ -153,7 +173,10 @@ impl Probe {
             if !self.ready(left)? {
                 return Ok(None);
             }
-            if let Some(expired) = self.error()? {
+            if let Some((expired, carried)) = self.error()? {
+                if carried.is_some_and(|n| n != number) {
+                    continue;
+                }
                 let ms = sent.elapsed().as_secs_f64() * 1_000.0;
                 return Ok(expired.then_some(Answer { hop, ms }));
             }
@@ -183,8 +206,9 @@ impl Probe {
     }
 
     /// Reads one entry of the error queue: whether it was a hop saying the
-    /// probe's time ran out, or none where the queue was empty.
-    fn error(&self) -> io::Result<Option<bool>> {
+    /// probe's time ran out, and the number the probe carried where the
+    /// hop quoted it; or none where the queue was empty.
+    fn error(&self) -> io::Result<Option<(bool, Option<u8>)>> {
         let mut data = [0_u8; 64];
         let mut control = [0_u8; 512];
         let mut io = libc::iovec {
@@ -213,6 +237,7 @@ impl Probe {
                 Err(error)
             };
         }
+        let carried = (read > 0).then_some(data[0]);
         // SAFETY: the kernel filled the control buffer with whole cmsgs,
         // up to the length it set, which the macros walk within.
         let mut header = unsafe { libc::CMSG_FIRSTHDR(&raw const message) };
@@ -228,11 +253,11 @@ impl Probe {
                 };
                 let expired =
                     said.ee_origin == libc::SO_EE_ORIGIN_ICMP && said.ee_type == TIME_EXCEEDED;
-                return Ok(Some(expired));
+                return Ok(Some((expired, carried)));
             }
             // SAFETY: as above, within the buffer the kernel filled.
             header = unsafe { libc::CMSG_NXTHDR(&raw const message, header) };
         }
-        Ok(Some(false))
+        Ok(Some((false, carried)))
     }
 }

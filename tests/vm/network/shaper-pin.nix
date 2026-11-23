@@ -1,6 +1,8 @@
 # Runs the shaper on a client whose router sends UDP one of two ways to the
-# server by its source port, as the line past a router can: ports 30006 and
-# 30007 the near way, every other port a way 40 ms slower. The server
+# server by its source port, as the line past a router can: ports 30030 and
+# 30031 the near way, every other port a way 40 ms slower. They are the last
+# two a round probes, so their probes' conntrack entries are the newest, and
+# a pin that didn't wait them out would find both ports held. The server
 # forwards to the VPN's far end, in a network namespace of its own, so the
 # server is a hop past the split that answers, as on the real line. Once
 # the shaper has probed the ports toward the VPN's end, the VPN's next
@@ -57,7 +59,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         tc qdisc replace dev eth3 root netem delay 40ms
         ip route replace 192.168.9.0/24 via 192.168.4.3 dev eth3
         ip route replace 192.168.9.0/24 via 192.168.2.3 dev eth2 table 100
-        ip rule add ipproto udp sport 30006-30007 lookup 100
+        ip rule add ipproto udp sport 30030-30031 lookup 100
       '';
     };
   };

@@ -763,8 +763,8 @@ fn hear_echoes(echoes: &Receiver<Echo>, shaped: &mut BTreeMap<String, Shaped>) {
 /// each read comes back here, kept for the journal.
 struct Pinner {
     pinning: pin::Pinning,
-    send: std::sync::mpsc::Sender<BTreeMap<u16, f64>>,
-    read: Receiver<BTreeMap<u16, f64>>,
+    send: std::sync::mpsc::Sender<(pin::End, BTreeMap<u16, f64>)>,
+    read: Receiver<(pin::End, BTreeMap<u16, f64>)>,
     last: BTreeMap<u16, f64>,
     looked: Option<Instant>,
 }
@@ -787,14 +787,15 @@ impl Pinner {
     /// through, and looks for a new socket of the VPN's to probe for, out
     /// of `link`, the primary uplink. Gives the pin chain's transaction.
     fn step(&mut self, link: Option<&str>, calling: bool, now: Instant) -> String {
-        while let Ok(read) = self.read.try_recv() {
+        while let Ok((end, read)) = self.read.try_recv() {
             let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
-            self.pinning
-                .found(&read, now + pin::settle(&timeout.unwrap_or_default()));
+            let from = now + pin::settle(&timeout.unwrap_or_default());
+            self.pinning.found(end, &read, from);
             self.last = read;
         }
         if let Some(moved) = self.pinning.take_hold(now) {
-            eprintln!("{}", pin::said(moved.was, self.pinning.pinned, &self.last));
+            let first = self.pinning.pinned.map(|p| p.first);
+            eprintln!("{}", pin::said(moved.was, first, &self.last));
         }
         if let Some(link) = link
             && self
@@ -815,10 +816,10 @@ impl Pinner {
             if let Some(end) = self.pinning.ask(&ends, calling, now) {
                 let (link, held, send) = (link.to_string(), self.pinning.held(), self.send.clone());
                 let to = std::net::SocketAddrV4::new(end.to, end.port);
-                thread::spawn(move || send.send(hops::round(&link, to, &held)));
+                thread::spawn(move || send.send((end, hops::round(&link, to, &held))));
             }
         }
-        pin::chain(TABLE, self.pinning.pinned)
+        pin::chain(TABLE, self.pinning.pinned.as_ref())
     }
 }
 
@@ -2127,9 +2128,13 @@ fn unshape_joel(shaped: &BTreeMap<String, Shaped>) {
     }
 }
 
-/// Takes every queue the shaper made away, for when it stops.
+/// Takes away, for when the shaper stops, every queue it made, and the
+/// VPN's pin, which would
+/// otherwise stay in force with nothing to let it go until the table is
+/// loaded again.
 fn stop() {
     sweep(&BTreeSet::new());
+    transact(&pin::chain(TABLE, None));
 }
 
 /// The links, VPNs and IFBs the shaper holds now.

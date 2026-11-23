@@ -16,8 +16,8 @@ import pytest
 if TYPE_CHECKING:
     from test_driver.machine import BaseMachine
 
-# The two ports the router sends the near way.
-NEAR = (30006, 30007)
+# The two ports the router sends the near way, the last two a round probes.
+NEAR = (30030, 30031)
 CLIENT = "192.168.1.1"
 END = "192.168.9.2"
 # The firewall mark the tunnel's own packets carry, and the table it routes the rest by,
