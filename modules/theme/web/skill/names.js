@@ -85,26 +85,28 @@
       "[role=option], [role=switch], [role=checkbox], [role=radio]",
   );
   // A name left empty is no name: the browser names the control by its
-  // words, as if the markup gave none.
+  // words, as if the markup gave none, so it starts with them. A mark alone
+  // is named however it's named, since dropping its label leaves the mark
+  // as its name. A control showing nothing but a keycap shows that key as
+  // its word, as a keycap that is the control does.
   const misnamed = [];
   for (const control of controls) {
     const name = labelled(control);
-    if (name === null || name.trim() === "" || !shown(control)) {
-      continue;
-    }
     const all = shows(control, true);
-    const words = said(shows(control, false));
-    if (all.trim() === "") {
+    if (!shown(control) || all.trim() === "") {
       continue;
     }
+    const own = shows(control, false);
+    const words = said(own).length === 0 ? said(all) : said(own);
+    const unnamed = name === null || name.trim() === "";
     if (words.length === 0) {
       misnamed.push(
-        `a control showing only "${quoted(all)}", named "${quoted(name)}"`,
+        `a control showing only "${quoted(all)}"${unnamed ? "" : `, named "${quoted(name)}"`}`,
         "show its word beside the mark, its name starting with that word",
       );
-    } else if (!begins(said(name), words)) {
+    } else if (!(unnamed || begins(said(name), words))) {
       misnamed.push(
-        `a control showing "${quoted(shows(control, false))}" named "${quoted(name)}"`,
+        `a control showing "${quoted(said(own).length === 0 ? all : own)}" named "${quoted(name)}"`,
         "start its name with the words it shows, or drop the aria-label",
       );
     }

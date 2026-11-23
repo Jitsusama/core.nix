@@ -58,7 +58,9 @@ function answersAt(target: Element): boolean {
  * data-tap in its markup too, so the line is there at first paint rather
  * than arriving with the script and pushing the switch down; a key it marks
  * there that does nothing when tapped loses the mark here, so no finger is
- * offered a dead target.
+ * offered a dead target once the script runs. Until it runs, or where it
+ * never loads, a key marked there is a target that does nothing, so a page
+ * marks only the keys its own script always answers.
  */
 function pressable(
   selector: string,

@@ -22,34 +22,70 @@ class Page {
   }
 }
 
-/** Something inside a row that takes focus, as a row's link does. */
+/**
+ * Something inside a row that takes focus, as a row's link does, saying
+ * what it's given. Taken out, it has no parent and takes no focus, as an
+ * element out of the page doesn't.
+ */
 class Inner implements Placed {
-  readonly parentElement: Placed;
+  parentElement: Placed | null;
   readonly children: Placed[] = [];
+  readonly localName = "a";
+  readonly textContent: string;
   readonly #page: Page;
 
-  constructor(parent: Placed, page: Page) {
+  constructor(parent: Placed, page: Page, says: string) {
     this.parentElement = parent;
     this.#page = page;
+    this.textContent = says;
   }
 
   focus(): void {
-    this.#page.activeElement = this;
+    if (this.parentElement !== null) {
+      this.#page.activeElement = this;
+    }
   }
 }
 
-/** A row as a list holds one: its attributes, its words and two links. */
+/**
+ * A row as a list holds one: its attributes, its words and two links
+ * saying them, and whether it takes focus itself, as a row with a tabindex
+ * does.
+ */
 class Row implements Drawn, Placed {
-  readonly words: string;
+  words: string;
   readonly parentElement = null;
-  readonly children: Inner[];
+  readonly localName = "li";
+  children: Inner[];
   readonly #attributes = new Map<string, string>();
   readonly #page: Page;
+  readonly #focusable: boolean;
 
-  constructor(words: string, page: Page) {
+  constructor(words: string, page: Page, focusable = true) {
     this.words = words;
     this.#page = page;
-    this.children = [new Inner(this, page), new Inner(this, page)];
+    this.#focusable = focusable;
+    this.children = this.#links();
+  }
+
+  get textContent(): string {
+    return this.words;
+  }
+
+  /** Draws its inside again, saying `words`, its old links taken out. */
+  again(words: string): void {
+    for (const link of this.children) {
+      if (this.#page.activeElement === link) {
+        this.#page.activeElement = null;
+      }
+      link.parentElement = null;
+    }
+    this.words = words;
+    this.children = this.#links();
+  }
+
+  #links(): Inner[] {
+    return ["open", "copy"].map((act) => new Inner(this, this.#page, `${act} ${this.words}`));
   }
 
   getAttribute(name: string): string | null {
@@ -61,7 +97,9 @@ class Row implements Drawn, Placed {
   }
 
   focus(): void {
-    this.#page.activeElement = this;
+    if (this.#focusable) {
+      this.#page.activeElement = this;
+    }
   }
 }
 
@@ -264,8 +302,9 @@ it("a key told twice shows once, where it's first told", () => {
 
 it("a drawing that throws on a record leaves the list as it was", () => {
   const list = new List();
-  list.words.push({});
   draw(list, cells("a", "b", "c"));
+  // Words arriving after the first drawing, which the next would take out.
+  list.words.push({});
   const before = [...list.rows];
   const words = [...list.words];
   assert.throws(() =>
@@ -314,6 +353,43 @@ it("a focused row drawn afresh hands focus to the same place in its drawing", ()
   list.rows[1]?.children[1]?.focus();
   draw(list, cells("a", "b", "c"), ["b"]);
   assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
+});
+
+it("a focused row drawn again where it stands hands focus to the same place", () => {
+  const list = new List();
+  draw(list, cells("a", "b"));
+  list.rows[1]?.children[1]?.focus();
+  keyed(list, {
+    rows: cells("a", "b"),
+    key: (cell) => cell.key,
+    draw: (cell, was) => {
+      was?.again(cell.works);
+      return was ?? new Row(cell.works, list.ownerDocument);
+    },
+    moved: ["b"],
+  });
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
+});
+
+it("focus whose place in a new drawing holds another control goes to the row", () => {
+  const list = new List();
+  draw(list, cells("a", "b"));
+  list.rows[1]?.children[1]?.focus();
+  draw(list, [...cells("a"), { key: "b", works: "on b, moved" }], ["b"]);
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+});
+
+it("focus in a row whose new drawing takes none is let go", () => {
+  const list = new List();
+  draw(list, cells("a", "b"));
+  list.rows[1]?.children[1]?.focus();
+  keyed(list, {
+    rows: cells("a", "b"),
+    key: (cell) => cell.key,
+    draw: (cell) => new Row(`${cell.works}, moved`, list.ownerDocument, false),
+    moved: ["b"],
+  });
+  assert.equal(list.ownerDocument.activeElement, null);
 });
 
 it("focus in a row that goes is left where the page puts it", () => {

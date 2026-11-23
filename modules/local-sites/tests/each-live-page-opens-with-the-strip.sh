@@ -114,6 +114,14 @@ copied "${work}/hushed"
 sed -i '\|fonts/monaspace.woff2|{s|^|<!-- |;s|$| -->|}' "${work}/hushed/index.html"
 refused "${work}/hushed" "index.html doesn't preload monaspace.woff2" \
   "a page preloading its mono only in a comment"
+copied "${work}/dashed"
+sed -i '\|fonts/monaspace.woff2|{s|^|<!-- |;s|$| --->|}' "${work}/dashed/index.html"
+refused "${work}/dashed" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono only in a comment ended with three dashes"
+copied "${work}/unended"
+sed -i '\|fonts/monaspace.woff2|s|^|<!-- |' "${work}/unended/index.html"
+refused "${work}/unended" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono only in a comment never ended"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still

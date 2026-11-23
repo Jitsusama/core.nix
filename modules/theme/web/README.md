@@ -26,13 +26,13 @@ What the theme module gives a website, on every machine:
   `homes.js` reads every site's `homes.json`, naming each mention of a thing
   that doesn't link to its home; `looks.js`, run on a live page before
   a deploy and after it, names each look the deploy lost; `pixels.js`
-  names a page wider than its window, a shift as it arrives, text under
-  its floor and faint text; and `names.js`, beside it, a control named
-  apart from what it shows.
+  names a page wider than its window and a shift as it arrives; `words.js`,
+  beside it, text under its floor and faint text; and `names.js`, beside
+  them, a control named apart from what it shows.
 - `homes-test.py` holds `homes.js` to its cases in headless Chromium, as the
   `homes-probe-reads-as-the-reader` check runs it, and `looks-test.py`
   holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does,
-  and `pixels-test.py` holds `pixels.js` and `names.js` to theirs, as
+  and `pixels-test.py` holds `pixels.js`, `words.js` and `names.js` to theirs, as
   `pixels-probe-holds-every-pixel` does; all three read their pages in the
   one Chromium `probe_browser.py` opens. `checks.nix` holds those three
   checks, apart from the theme's own, since they change with the probes.

@@ -3,14 +3,18 @@
 // the browser for 15 s; a feed already says which records moved, by key
 // (records.ts), so the rows of every other record stay as they were drawn,
 // the same elements, where a reader's eye and a screen reader's place stay.
-// Focus stays too: a focused row moved keeps it, and one drawn afresh hands
-// it to the same place in its new drawing.
+// Focus stays too: a focused row moved keeps it, and one drawn again, afresh
+// or where it stands, hands it to the same place in its new drawing when
+// that place holds the same control, and to the row otherwise.
 //
 // The list owns every child of the element it draws into: a row is marked
 // with its key in data-key, and anything else, a "Loading" sentence drawn
 // before the feed spoke, an element or bare words, goes at the first
-// drawing. Every row is drawn before the list is touched, so a drawing that
-// throws on a record leaves the list as it was.
+// drawing. Every row is drawn before the list's children are moved or taken
+// out, so a drawing that throws on a record leaves its rows and their order
+// as they were; a row it brought up to date where it stands before the
+// throw keeps what it was given, and the records the throwing call moved
+// are the page's to draw again, whole, since keyed keeps no note of them.
 
 /** As much of a drawn row as keyed reads: its key, kept on it. */
 interface Drawn {
@@ -18,10 +22,15 @@ interface Drawn {
   setAttribute(name: string, value: string): void;
 }
 
-/** As much of an element as keeping focus reads: where it sits, and focusing it. */
+/**
+ * As much of an element as keeping focus reads: where it sits, what it is
+ * and says, and focusing it.
+ */
 interface Placed {
   readonly parentElement: Placed | null;
   readonly children: ArrayLike<Placed>;
+  readonly localName?: string;
+  readonly textContent?: string | null;
   focus?(options?: FocusOptions): void;
 }
 
@@ -152,7 +161,7 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   if (focus !== null) {
     const now = rows.find((row) => row.key === focus.key);
     if (now !== undefined) {
-      refocus(focused, focus.path, now.item, now.old);
+      refocus(focused, focus.path, now.item);
     }
   }
   return { made, redrawn, kept, removed: stale.length, placed };
@@ -195,14 +204,33 @@ function within(
   return null;
 }
 
+/** Whether `node` is `row` or inside it. */
+function inside(node: Placed | null, row: object): boolean {
+  for (let at = node; at !== null; at = at.parentElement) {
+    if (at === row) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Whether `one` is the same control as `other`: the same element, saying the same. */
+function alike(one: Placed, other: Placed | null): boolean {
+  return (
+    other !== null && one.localName === other.localName && one.textContent === other.textContent
+  );
+}
+
 /**
- * Gives focus back after a drawing: to `focused` itself when its row was
- * moved but kept, and otherwise to the same place in the row's new drawing,
- * or the row itself where that place is gone.
+ * Gives focus back after a drawing: to `focused` itself while it's still in
+ * its row, and otherwise to the same place in the row's new drawing where
+ * that holds the same control, or to the row itself, since by its place
+ * alone another control there would take the next press. A row that takes
+ * no focus lets it go, as the page does when a focused element leaves.
  */
-function refocus(focused: Placed | null, path: number[], item: object, old: object | undefined) {
-  if (item === old) {
-    focused?.focus?.({ preventScroll: true });
+function refocus(focused: Placed | null, path: number[], item: object) {
+  if (focused !== null && inside(focused, item)) {
+    focused.focus?.({ preventScroll: true });
     return;
   }
   if (!walkable(item)) {
@@ -216,7 +244,7 @@ function refocus(focused: Placed | null, path: number[], item: object, old: obje
     }
     target = next;
   }
-  target.focus?.({ preventScroll: true });
+  (target === item || alike(target, focused) ? target : item).focus?.({ preventScroll: true });
 }
 
 export type { Drawing, Drawn, Drew, Holder, Placed };
