@@ -123,11 +123,11 @@ const OWN_ROWS = ["look", "try", "read"];
 // The kinds never lifted however long they've waited, as they ask nothing of Joel: a look
 // only to see (VKCF3Z, 2026-11-12).
 const NEVER_LIFTED = ["read"];
-// The kinds gathered in a row of their own among what needs Joel now, once
-// two or more ask, standing where the heaviest weighs: what agents ask,
-// which stood loose among the to-dos (Joel, 2026-11-18 10:18: "they are all
-// loose amongst other things properly categorized, it is confusing"). One
-// alone stands as itself, so Super+O, Return, Return still reaches it.
+// The kinds gathered in a row of their own among what needs Joel now, once two or more
+// ask, where the heaviest weighs, or first while a cell's heading shows (ForYouCells.js's
+// laidOut): what agents ask (Joel, 2026-11-18 10:18: "they are all loose amongst other
+// things properly categorized, it is confusing"). One alone stands as itself, so
+// Super+O, Return, Return still reaches it.
 const GATHERED = ["agent"];
 const GATHERED_FROM = 2;
 

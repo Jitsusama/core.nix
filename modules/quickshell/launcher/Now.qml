@@ -1999,7 +1999,7 @@ Provider {
     // at, weighed by ForYou.js, the heaviest first, since what blocks a
     // session or is due bubbles up whatever kind it is (VKCF3Z,
     // 2026-11-08); the mark and the drawer's eyebrow say the kind. What
-    // needs him now leads, one by one, and what's to look at or to try
+    // needs him now leads, under the cell behind each (cellRows), and what's to look at or to try
     // and doesn't is each kind's one row after it (waitingRows). Then
     // what's for later and the history, each one row. It counts and
     // colours only what he can do now, its note names the first of
@@ -2555,8 +2555,9 @@ Provider {
     // leads by its order (VKCF3Z, 2026-11-09).
     // Kept while it holds the same rows, each kept as it is (kindsKept).
     // Agents Asking is such a row too, gathering what agents ask of Joel,
-    // though each needs him now, so it stands among what does where its
-    // heaviest weighs, its mark in the hue of what it holds rather than
+    // though each needs him now, so it stands first, above every cell's
+    // heading, while any shows, else among what does where its heaviest
+    // weighs (ForYouCells.js's laidOut), its mark in the hue of what it holds rather than
     // muted (Joel, 2026-11-18 10:18: "they are all loose amongst other
     // things properly categorized").
     function kindRow(kind, rows) {
