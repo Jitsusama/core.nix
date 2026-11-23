@@ -77,8 +77,8 @@ const FLOOR = {
   gills: 5,
   /** The most cells drawn on the floor; the list holds every one. */
   most: 48,
-  /** How much larger than its own units the floor is drawn, where the page has room. */
-  scale: 1.5,
+  /** The most steps a branch drops; the floor is always this deep, so its room never moves. */
+  steps: 3,
 } as const;
 
 /** How `stage` is said. */
@@ -372,7 +372,7 @@ function placed(floor: Floor): Placing {
     if (at > next) {
       skip();
     }
-    const y = FLOOR.hypha + Math.min(forage.depth, 3) * FLOOR.drop;
+    const y = FLOOR.hypha + Math.min(forage.depth, FLOOR.steps) * FLOOR.drop;
     cells.push({ forage, x: end + FLOOR.room / 2, y });
     end += FLOOR.room;
     next = at + 1;
@@ -408,8 +408,8 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
   const forages = floor.of;
   const { cells, gaps, end } = placed(floor);
   const width = Math.max(end + FLOOR.margin, 320);
-  const deepest = cells.reduce((most: number, each) => Math.max(most, each.y), FLOOR.hypha);
-  const height = deepest + 40;
+  // As deep as the deepest branch could be, which site.css's room for the floor is cut to.
+  const height = FLOOR.hypha + FLOOR.steps * FLOOR.drop + 40;
   const at = new Map(cells.map((each) => [each.forage.cell, each]));
   const here = new Set(forages.map((each) => each.cell));
   // The main line breaks at each gap, where a mark stands for the cells left off.
@@ -469,7 +469,7 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
     forages.length > cells.length
       ? `<text class="note" x="${width - FLOOR.margin}" y="${height - 12}" text-anchor="end">and ${forages.length - cells.length} more in the list</text>`
       : "";
-  return `<svg viewBox="0 0 ${width} ${height}" style="--w:${width * FLOOR.scale}px" aria-hidden="true">
+  return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
 ${main}${skipped}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}

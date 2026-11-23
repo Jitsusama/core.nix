@@ -19,10 +19,6 @@
   --open: minmax(20rem, 30rem);
 }
 
-code {
-  font-size: 0.92em;
-}
-
 /* ---- The first screen: the crest, the sentence, and where it stands. ---- */
 
 .hero {
@@ -143,22 +139,29 @@ code {
 
 .floor {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   justify-items: center;
   gap: var(--mark);
   inline-size: 100%;
   margin: 0 0 var(--items);
 }
 
+/* The floor's room is the widest floor's, 1488 by 178 of its units as
+   draw.ts's FLOOR sets them, drawn at most half again as large, and the
+   crest holds the same room until the node speaks. So the cells arriving
+   move nothing under them, and a floor of fewer cells sits in its middle. */
 .drawn {
-  display: grid;
-  justify-items: center;
-  inline-size: 100%;
+  position: relative;
+  inline-size: min(100%, 2232px);
+  aspect-ratio: 1488 / 178;
+  container-type: inline-size;
 }
 
-.drawn svg:not(.crest) {
-  display: block;
-  inline-size: min(100%, var(--w, 30rem));
-  block-size: auto;
+.drawn > svg {
+  position: absolute;
+  inset: 0;
+  inline-size: 100%;
+  block-size: 100%;
   overflow: visible;
 }
 
@@ -257,6 +260,14 @@ rect.hollow {
   font: var(--label-weight) 13px var(--label-face);
   letter-spacing: 0.12em;
   text-transform: lowercase;
+}
+
+/* Narrower than this the floor's words would be drawn under 9 px. The
+   eyebrow names the machine and the list holds every cell, so they go. */
+@container (max-width: 64rem) {
+  .drawn text {
+    display: none;
+  }
 }
 
 /* The standing line's glyph: a cap, lit while the page is live and
@@ -397,9 +408,13 @@ rect.hollow {
   text-align: end;
 }
 
+/* Its one column is no wider than the row gives it, so a purpose holding
+   a long link wraps rather than pushing the page sideways. */
 .cells .line {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--tie);
+  overflow-wrap: anywhere;
 }
 
 .cells .purpose {

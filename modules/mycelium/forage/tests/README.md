@@ -68,8 +68,9 @@ cursor by keys, follows the records as they change, stop and come back,
 draws the crest again once every cell has gone and the floor again once
 one is heard again,
 lets a cell a purpose takes out of the view of cells without purpose
-take the cursor with it, find or not, and keeps the page within its
-budget and passing the web-design skill's page checks. Beside a second
+take the cursor with it, find or not, holds a first visit still at a
+phone's width and a desk's while a long link never widens the page, and
+keeps the page within its budget and passing the web-design skill's page checks. Beside a second
 stand-in holding 60 cells, more than the
 floor draws, it follows the cursor to a booked start past the 48th, drawn
 solid. A step on the floor leaves the floor drawn as it is, and a find
