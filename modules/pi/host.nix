@@ -207,17 +207,20 @@ let
             PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
             # The stop limit below, which it parks within.
             PI_HOST_STOP_USEC = toString (conversationStopSeconds * 1000000);
-            # glibc hands freed heap back to the system once 128 KiB lies
-            # free at its top, rather than holding what a long conversation
-            # once grew to. Measured on 22 November in four runs of 150
-            # prompts each way, a conversation held 71 MB less resident and
-            # swapped on average (493 to 422 MB) and 113 MB less at the end
-            # (605 to 492 MB), for 0.2% more instructions. A fixed threshold also turns off glibc's
-            # dynamic mmap threshold, so the harness keeps this variable
-            # from the commands a conversation runs (host/service/program.ts,
-            # HOST_ONLY), and the hosts, which hold no conversation, go
-            # without it.
-            GLIBC_TUNABLES = "glibc.malloc.trim_threshold=131072";
+            # 128 KiB is glibc's own starting trim threshold, but glibc
+            # raises it, and the size it maps apart, each time a big block
+            # is freed, to 64 MB and 32 MB, so a long conversation keeps
+            # what it once grew to. Naming it fixes both where they start,
+            # so freed heap goes back to the system. Measured on 22 November
+            # in four runs of 150 prompts each way, a conversation held 71
+            # MB less resident and swapped on average (493 to 422 MB) and
+            # 113 MB less at the end (605 to 492 MB), for 0.2% more
+            # instructions. The harness keeps the variable from the
+            # commands a conversation runs (host/service/program.ts,
+            # HOST_ONLY, from its 23 November main on), and the hosts, which
+            # hold no conversation, aren't given it. A realm that tunes its
+            # own allocator keeps its value, for its hosts and here alike.
+            GLIBC_TUNABLES = host.environment.GLIBC_TUNABLES or "glibc.malloc.trim_threshold=131072";
           };
           UnsetEnvironment = unsetEnvironment;
           # Its host decides what comes after an ending: a crash's
