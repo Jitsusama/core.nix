@@ -289,11 +289,16 @@ fn is_commit_id(witness: &str) -> bool {
 
 /// Whether `round` is a council or stack round that was collected, whose
 /// reviewers read the commit it names, and one of whom answered: didn't
-/// fail, and either finished or filed a finding before it was stopped.
-/// One stopped at its wall said what it had only in what it filed, and
-/// one cancelled (`"stopped": {"limit": "cancelled"}`, with no failure)
-/// said nothing, so a round whose reviewers were all cancelled reads no
-/// head, as cadence counts rounds too.
+/// fail, and either finished, leaving its answer's file, or filed a
+/// finding before it was stopped. One stopped at its wall said what it
+/// had only in what it filed, and one cancelled (`"stopped": {"limit":
+/// "cancelled"}`, with no failure) said nothing, so a round whose
+/// reviewers were all cancelled reads no head, as cadence counts rounds
+/// too. An answer is a sign it left, never the lack of a sign it didn't:
+/// of the 38,136 outcomes on this machine on 23 November, each since 15
+/// November with neither a failure nor a stop named its `answerPath` or
+/// filed a finding, so an outcome naming neither, or written in a shape
+/// this doesn't know, reads nothing.
 fn speaks(round: &Value) -> bool {
     let flag = |name: &str| round[name].as_bool().unwrap_or(false);
     let filed = |outcome: &Value| {
@@ -303,7 +308,8 @@ fn speaks(round: &Value) -> bool {
     };
     let answered = round["outcomes"].as_array().is_some_and(|outcomes| {
         outcomes.iter().any(|outcome| {
-            outcome.get("failure").is_none() && (outcome.get("stopped").is_none() || filed(outcome))
+            let finished = outcome.get("stopped").is_none() && outcome["answerPath"].is_string();
+            outcome.get("failure").is_none() && (finished || filed(outcome))
         })
     });
     matches!(round["round"].as_str(), Some("council" | "stack"))
@@ -450,6 +456,23 @@ mod tests {
             [id('a')],
             "a reviewer stopped after filing a finding wasn't counted as answering"
         );
+        let clean = json!({"participantId": "a", "findingIds": [], "answerPath": "/x"});
+        assert_eq!(
+            read(&[round(&json!({"outcomes": [clean]}))]),
+            [id('a')],
+            "a reviewer that finished finding nothing wasn't counted as answering"
+        );
+        for silent in [
+            json!({"participantId": "a"}),
+            json!({"participantId": "a", "findingIds": []}),
+            json!({"participantId": "a", "findingIds": [], "answerPath": null}),
+            json!({"participantId": "a", "findingIds": [], "skipped": true}),
+        ] {
+            assert!(
+                read(&[round(&json!({"outcomes": [silent]}))]).is_empty(),
+                "an outcome leaving no answer, {silent}, was counted as answering"
+            );
+        }
     }
 
     // A judge or critique, which read findings rather than code, a round

@@ -9,12 +9,11 @@ use crate::tests::git_in;
 
 const A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const B: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-/// A commit a pull request carried that B, its merge, brings in too.
+/// The head of every pull request the tests merge, which B, its merge,
+/// brings in too.
 const C: &str = "cccccccccccccccccccccccccccccccccccccccc";
-/// A commit on the trunk that the pin doesn't bring in.
+/// Another commit, a merge or a push as each test has it.
 const D: &str = "dddddddddddddddddddddddddddddddddddddddd";
-/// The head of every pull request the tests merge, a commit of its own.
-const HEAD: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const MYCELIUM: &str = "Jitsusama/mycelium";
 
 /// A lock whose mycelium is at `rev`, beside nixpkgs at `nixpkgs`.
@@ -192,12 +191,12 @@ fn a_lock_of_another_version_or_root_needs_a_round() {
 }
 
 /// A pull request as GitHub's commits/{rev}/pulls gives it, shaped as
-/// `Live` asks for it, its head a commit of its own.
+/// `Live` asks for it, its head C.
 fn pull(sha: &str, merged: bool, base: &str, repo: &str) -> Value {
     json!({
         "merge_commit_sha": sha,
         "merged_at": if merged { json!("2026-11-22T15:18:15Z") } else { Value::Null },
-        "head": HEAD,
+        "head": C,
         "base": {"ref": base, "repo": repo},
     })
 }
@@ -210,9 +209,24 @@ fn pushed(sha: &str) -> Value {
     pushed
 }
 
+/// A commit as `Live` asks a compare to list it.
+fn commit(sha: &str, parents: &[&str]) -> Value {
+    json!({"sha": sha, "parents": parents})
+}
+
+/// [`commit`] as [`brought`] reads it.
+fn read(sha: &str, parents: &[&str]) -> Brought {
+    Brought {
+        sha: sha.to_owned(),
+        parents: parents.iter().map(|&parent| parent.to_owned()).collect(),
+    }
+}
+
 #[test]
-fn only_a_pull_request_merged_into_our_trunk_as_the_commit_vouches_for_it() {
-    let merged = |pulls: Value| merged_as(&pulls, MYCELIUM, B, "main");
+fn only_a_pull_request_merged_into_our_trunk_as_the_merge_from_its_head_vouches() {
+    let merged = |pulls: Value| merged(&pulls, (MYCELIUM, "main"), B, C);
+    let mut from_d = pull(B, true, "main", MYCELIUM);
+    from_d["head"] = json!(D);
     assert!(
         merged(json!([pull(B, true, "main", MYCELIUM)])),
         "a pull request merged into main as the commit didn't vouch for it"
@@ -237,6 +251,10 @@ fn only_a_pull_request_merged_into_our_trunk_as_the_commit_vouches_for_it() {
         ),
         (json!([pushed(B)]), "one whose head was pushed to the trunk"),
         (
+            json!([from_d]),
+            "one merged from another head than the merge's second parent",
+        ),
+        (
             json!({"message": "Not Found"}),
             "an answer that isn't a list",
         ),
@@ -246,64 +264,90 @@ fn only_a_pull_request_merged_into_our_trunk_as_the_commit_vouches_for_it() {
 }
 
 #[test]
-fn a_commit_came_in_merged_only_through_a_pull_request_merged_with_the_pin() {
-    let within = [C.to_owned(), B.to_owned()];
-    let came = |pulls: Value| came_in_merged(&pulls, MYCELIUM, "main", &within);
-    assert!(
-        came(json!([pull(B, true, "main", MYCELIUM)])),
-        "a commit a pull request merged with the pin carried wasn't counted as merged"
+fn only_merges_of_two_parents_lead_along_the_trunk_from_the_old_commit() {
+    let line = [read(D, &[A, C]), read(C, &[A]), read(B, &[D, C])];
+    assert_eq!(
+        merges(&line, A, B),
+        Ok(vec![
+            (B.to_owned(), C.to_owned()),
+            (D.to_owned(), C.to_owned())
+        ]),
+        "two merges along the trunk weren't each asked after with their heads"
     );
-    for (pulls, what) in [
-        (json!([]), "a commit pushed straight to the trunk"),
+    for (commits, says, what) in [
         (
-            json!([pull(B, false, "main", MYCELIUM)]),
-            "one an open pull request carries",
+            vec![read(C, &[A]), read(D, &[A, C]), read(B, &[D])],
+            "bbbbbbbbbbbb on the trunk's line is no merge",
+            "a commit pushed on top of a merge",
         ),
         (
-            json!([pull(B, true, "main", "Elsewhere/mycelium")]),
-            "one merged in a fork",
+            vec![read(D, &[A]), read(C, &[D]), read(B, &[D, C])],
+            "dddddddddddd on the trunk's line is no merge",
+            "a commit pushed to the trunk before a merge carried it",
         ),
         (
-            json!([pull(D, true, "main", MYCELIUM)]),
-            "one whose pull request merged outside the pin",
+            vec![read(C, &[A]), read(B, &[D, C])],
+            "aaaaaaaaaaaa isn't on bbbbbbbbbbbb's trunk line",
+            "a merge whose trunk line leaves what the compare lists",
         ),
         (
-            json!([pushed(B)]),
-            "one whose pull request's head was pushed",
+            vec![read(B, &[A, C, D])],
+            "is no merge",
+            "a merge of three parents",
+        ),
+        (
+            vec![read(B, &[D, C]), read(D, &[B, C])],
+            "in a circle",
+            "a compare that goes round in a circle",
         ),
     ] {
-        assert!(!came(pulls), "{what} was counted as merged");
+        assert!(
+            merges(&commits, A, B).is_err_and(|why| why.contains(says)),
+            "{what} was taken along the trunk"
+        );
     }
 }
 
 #[test]
 fn a_compare_names_what_it_brings_only_when_it_lists_it_all_within_the_cap() {
-    let compared = |total: usize, commits: Vec<String>| {
+    let compared = |total: usize, commits: Vec<Value>| {
         let listed = json!(commits);
         json!({"status": "ahead", "total_commits": total, "commits": listed})
     };
-    let two = vec![C.to_owned(), B.to_owned()];
+    let two = || vec![commit(C, &[A]), commit(B, &[A, C])];
     assert_eq!(
-        brought(&compared(2, two.clone())),
-        Ok(two),
+        brought(&compared(2, two())),
+        Ok(vec![read(C, &[A]), read(B, &[A, C])]),
         "a compare listing all it brings wasn't read"
     );
-    let hundred: Vec<String> = (0..100).map(|n| format!("{n:040x}")).collect();
-    assert_eq!(
-        brought(&compared(100, hundred.clone())),
-        Ok(hundred),
+    let many = |count: usize| -> Vec<Value> {
+        (0..count)
+            .map(|n| commit(&format!("{n:040x}"), &[A]))
+            .collect()
+    };
+    assert!(
+        brought(&compared(100, many(100))).is_ok_and(|read| read.len() == 100),
         "a compare bringing exactly the most a pin may wasn't read"
     );
-    let past: Vec<String> = (0..101).map(|n| format!("{n:040x}")).collect();
     assert!(
-        brought(&compared(101, past)).is_err_and(|why| why.contains("brings in 101 commits")),
+        brought(&compared(101, many(101))).is_err_and(|why| why.contains("brings in 101 commits")),
         "a compare listing all of 101 commits was taken, past the cap"
     );
     assert!(
-        brought(&compared(3, vec![C.to_owned(), B.to_owned()]))
-            .is_err_and(|why| why.contains("lists 2 of the 3")),
+        brought(&compared(3, two())).is_err_and(|why| why.contains("lists 2 of the 3")),
         "a compare listing part of what it brings was taken for all"
     );
+    for unread in [
+        json!(B),
+        json!({"sha": B}),
+        json!({"sha": B, "parents": [1]}),
+    ] {
+        assert!(
+            brought(&compared(1, vec![unread.clone()]))
+                .is_err_and(|why| why.contains("can't be read")),
+            "a compare listing {unread} was read"
+        );
+    }
     assert!(
         ahead(&compared(2, Vec::new())),
         "an ahead compare wasn't read as newer"
@@ -380,19 +424,37 @@ pub(crate) struct Fake {
     pub pulls: HashMap<&'static str, Result<Value, String>>,
     pub prefetched: Result<Value, String>,
     pub asked: RefCell<Vec<String>>,
+    /// How long each pulls ask takes to answer.
+    pub pulls_take: Duration,
+    /// The most any ask was given to answer in.
+    pub given: RefCell<Duration>,
 }
 
 impl Fake {
-    /// A fake saying B is newer, brings in C, which a pull request B
-    /// merged carried, and is locked as the test's lock has it.
+    /// A fake saying B is newer, merging C, a pull request's head, onto
+    /// A, and is locked as the test's lock has it.
     pub(crate) fn vouching() -> Self {
         let merge = json!([pull(B, true, "main", MYCELIUM)]);
         Self {
-            compared: Ok(json!({"status": "ahead", "total_commits": 2, "commits": [C, B]})),
-            pulls: HashMap::from([(B, Ok(merge.clone())), (C, Ok(merge))]),
+            compared: Ok(Self::compare(&[commit(C, &[A]), commit(B, &[A, C])])),
+            pulls: HashMap::from([(B, Ok(merge))]),
             prefetched: Ok(json!({"locked": lock(B, "n")["nodes"]["mycelium"]["locked"]})),
             asked: RefCell::new(Vec::new()),
+            pulls_take: Duration::ZERO,
+            given: RefCell::new(Duration::ZERO),
         }
+    }
+
+    /// An ahead compare listing `commits`, all it brings.
+    fn compare(commits: &[Value]) -> Value {
+        json!({"status": "ahead", "total_commits": commits.len(), "commits": commits})
+    }
+
+    /// Notes `ask`, given `within`.
+    fn ask(&self, ask: String, within: Duration) {
+        self.asked.borrow_mut().push(ask);
+        let mut given = self.given.borrow_mut();
+        *given = (*given).max(within);
     }
 
     /// What it was asked, in order.
@@ -402,28 +464,36 @@ impl Fake {
 }
 
 impl Asks for Fake {
-    fn compared(&self, repo: &str, old: &str, new: &str) -> Result<Value, String> {
+    fn compared(
+        &self,
+        repo: &str,
+        old: &str,
+        new: &str,
+        within: Duration,
+    ) -> Result<Value, String> {
         assert_eq!(
             (repo, old, new),
             (MYCELIUM, A, B),
             "asked for the wrong compare"
         );
-        self.asked.borrow_mut().push("compared".to_owned());
+        self.ask("compared".to_owned(), within);
         self.compared.clone()
     }
 
-    fn pulls(&self, repo: &str, rev: &str) -> Result<Value, String> {
+    fn pulls(&self, repo: &str, rev: &str, within: Duration) -> Result<Value, String> {
         assert_eq!(repo, MYCELIUM, "asked another repo's pulls");
-        self.asked.borrow_mut().push(format!("pulls {}", &rev[..1]));
+        self.ask(format!("pulls {}", &rev[..1]), within);
+        // Standing in for a GitHub slow to answer.
+        std::thread::sleep(self.pulls_take);
         self.pulls
             .get(rev)
             .cloned()
             .unwrap_or_else(|| Ok(json!([])))
     }
 
-    fn prefetched(&self, repo: &str, rev: &str) -> Result<Value, String> {
+    fn prefetched(&self, repo: &str, rev: &str, within: Duration) -> Result<Value, String> {
         assert_eq!((repo, rev), (MYCELIUM, B), "asked Nix wrongly");
-        self.asked.borrow_mut().push("prefetched".to_owned());
+        self.ask("prefetched".to_owned(), within);
         self.prefetched.clone()
     }
 }
@@ -443,7 +513,7 @@ fn declined(repo: &Path, head: &str, asks: &Fake, says: &str, asked: &[&str]) {
     assert_eq!(asks.asked(), asked, "a pin turned down asked otherwise");
 }
 
-const EVERY_ASK: [&str; 4] = ["compared", "pulls b", "pulls c", "prefetched"];
+const EVERY_ASK: [&str; 3] = ["compared", "pulls b", "prefetched"];
 
 #[test]
 fn a_lock_alone_pinning_a_merged_newer_commit_needs_no_round() {
@@ -455,6 +525,10 @@ fn a_lock_alone_pinning_a_merged_newer_commit_needs_no_round() {
         "a lock-only pin of a merged mycelium commit was told {told:?}"
     );
     assert_eq!(asks.asked(), EVERY_ASK, "it didn't ask each in turn");
+    assert!(
+        *asks.given.borrow() <= LIMIT,
+        "an ask was given longer than any may take"
+    );
     fs::remove_dir_all(&repo).unwrap();
 }
 
@@ -500,25 +574,46 @@ fn a_pin_back_unmerged_or_bringing_a_push_says_so_and_asks_no_further() {
         "no pull request into Jitsusama/mycelium's main merged as",
         &["compared", "pulls b"],
     );
-    let mut pushed = Fake::vouching();
-    pushed.pulls.insert(C, Ok(json!([])));
+    let on_top = Fake {
+        compared: Ok(Fake::compare(&[
+            commit(C, &[A]),
+            commit(D, &[A, C]),
+            commit(B, &[D]),
+        ])),
+        ..Fake::vouching()
+    };
     declined(
         &repo,
         &head,
-        &pushed,
-        "cccccccccccc came onto",
-        &["compared", "pulls b", "pulls c"],
+        &on_top,
+        "bbbbbbbbbbbb on the trunk's line is no merge",
+        &["compared"],
     );
-    let mut elsewhere = Fake::vouching();
-    elsewhere
-        .pulls
-        .insert(C, Ok(json!([pull(D, true, "main", MYCELIUM)])));
+    let pushed_first = Fake {
+        compared: Ok(Fake::compare(&[
+            commit(D, &[A]),
+            commit(C, &[D]),
+            commit(B, &[D, C]),
+        ])),
+        ..Fake::vouching()
+    };
     declined(
         &repo,
         &head,
-        &elsewhere,
-        "cccccccccccc came onto",
-        &["compared", "pulls b", "pulls c"],
+        &pushed_first,
+        "dddddddddddd on the trunk's line is no merge",
+        &["compared"],
+    );
+    let mut from_another = Fake::vouching();
+    let mut other = pull(B, true, "main", MYCELIUM);
+    other["head"] = json!(D);
+    from_another.pulls.insert(B, Ok(json!([other])));
+    declined(
+        &repo,
+        &head,
+        &from_another,
+        "merged as bbbbbbbbbbbb from cccccccccccc",
+        &["compared", "pulls b"],
     );
     fs::remove_dir_all(&repo).unwrap();
 }
@@ -527,12 +622,13 @@ fn a_pin_back_unmerged_or_bringing_a_push_says_so_and_asks_no_further() {
 fn a_pin_whose_compare_is_past_the_cap_or_ends_elsewhere_asks_no_further() {
     let (repo, head) = pinned_to_b("compare", None);
     let past = Fake {
-        compared: Ok(json!({"status": "ahead", "total_commits": 101, "commits": [C, B]})),
+        compared: Ok(json!({"status": "ahead", "total_commits": 101,
+            "commits": [commit(C, &[A]), commit(B, &[A, C])]})),
         ..Fake::vouching()
     };
     declined(&repo, &head, &past, "brings in 101", &["compared"]);
     let short = Fake {
-        compared: Ok(json!({"status": "ahead", "total_commits": 1, "commits": [C]})),
+        compared: Ok(Fake::compare(&[commit(C, &[A])])),
         ..Fake::vouching()
     };
     declined(
@@ -550,13 +646,27 @@ fn a_pin_whose_asks_run_past_their_time_needs_a_round() {
     let pin = moved(&lock(A, "n"), &lock(B, "n")).unwrap().pop().unwrap();
     let asks = Fake::vouching();
     assert!(
-        vouched(&pin, &asks, Duration::ZERO).is_err_and(|why| why.contains("took longer than")),
+        vouched(&pin, &asks, Instant::now()).is_err_and(|why| why.contains("took longer than")),
         "a pin whose asks ran past their time was vouched for"
     );
+    assert!(asks.asked().is_empty(), "a pin out of time asked anything");
+    let slow = Fake {
+        pulls_take: Duration::from_millis(300),
+        ..Fake::vouching()
+    };
+    let by = Instant::now() + Duration::from_millis(200);
+    assert!(
+        vouched(&pin, &slow, by).is_err_and(|why| why.contains("took longer than")),
+        "a pin whose time ran out before its prefetch was vouched for"
+    );
     assert_eq!(
-        asks.asked(),
-        ["compared"],
-        "a pin out of time asked on past it"
+        slow.asked(),
+        ["compared", "pulls b"],
+        "a pin out of time asked Nix past it"
+    );
+    assert!(
+        *slow.given.borrow() <= Duration::from_millis(200),
+        "an ask was given longer than the time left"
     );
 }
 
@@ -569,7 +679,7 @@ fn a_pin_github_or_nix_cant_answer_says_which_and_asks_no_further() {
         ..Fake::vouching()
     };
     let mut pulls = Fake::vouching();
-    pulls.pulls.insert(C, Err(failing("pulls")));
+    pulls.pulls.insert(B, Err(failing("pulls")));
     let prefetch = Fake {
         prefetched: Err(failing("prefetch")),
         ..Fake::vouching()
@@ -583,9 +693,9 @@ fn a_pin_github_or_nix_cant_answer_says_which_and_asks_no_further() {
         ),
         (
             pulls,
-            "which pull request brought cccccccccccc",
+            "which pull request bbbbbbbbbbbb merged",
             "pulls",
-            &EVERY_ASK[..3],
+            &EVERY_ASK[..2],
         ),
         (
             prefetch,

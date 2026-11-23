@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::{pins, seen};
-use crate::{candidates, git_at, patch_of, ready, short};
+use crate::{candidates, candidates_at, git_at, patch_of, ready, short};
 
 /// How a change from a base to a head, in a repo, is told from others.
 pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
@@ -60,7 +60,7 @@ fn read_in_repo(
                 commit,
                 rounds,
                 on_main_at(repo, main),
-                |witnessed| candidates(commit, main, files, witnessed).unwrap_or_default(),
+                |witnessed| candidates_at(repo, commit, main, files, witnessed).unwrap_or_default(),
                 |read| same_patch(repo, commit, main, read, read_patch_id),
             )
         })
@@ -361,6 +361,32 @@ mod tests {
             gated(&repo, &head, &[], &pins::tests::Fake::vouching()),
             Err(seen::unread(short(&head))),
             "an unread head beside a pin wasn't refused as unread"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    // A clean rebase of a pin a round read passes on that round, its
+    // candidates read from git in the pin's own repo, with GitHub and Nix
+    // asked nothing.
+    #[test]
+    fn a_rebase_of_a_pin_a_round_read_passes_asking_nothing() {
+        let (repo, read) = pins::tests::pinned_to_b("gate-rebased", None);
+        git_in(&repo, &["checkout", "-q", "main"]);
+        fs::write(repo.join("module.nix"), "{ y = 2; }").unwrap();
+        git_in(&repo, &["commit", "-qam", "main moves on"]);
+        git_in(&repo, &["checkout", "-q", "pin"]);
+        git_in(&repo, &["rebase", "-q", "main"]);
+        let rebased = git_in(&repo, &["rev-parse", "HEAD"]);
+        assert_ne!(rebased, read, "the rebase made no new commit");
+        let asks = unmerged();
+        assert_eq!(
+            gated(&repo, &rebased, &[&read], &asks),
+            Ok(()),
+            "a clean rebase of a pin a round read was refused"
+        );
+        assert!(
+            asks.asked().is_empty(),
+            "a rebase of a pin a round read was asked after"
         );
         fs::remove_dir_all(&repo).unwrap();
     }

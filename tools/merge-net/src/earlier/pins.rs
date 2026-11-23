@@ -9,17 +9,21 @@
 //! Only a node's commit may move: its lock's `rev`, `narHash` and
 //! `lastModified`, every other field as it was, so a lock can't send the
 //! fetch to another host, folder or ref under our repo's name. The new
-//! commit must descend from the old one and be the very commit a pull
-//! request into the repo's trunk merged as, as GitHub says. Being on the
-//! trunk isn't enough: the repo's train merges with merge commits, which
-//! put every commit a pull request carried on the trunk, though a round
-//! read only its head (on 22 November 1,150 of mycelium's 1,543). Every
-//! commit the pin brings in must have come in through a pull request
-//! merged into that trunk as one of those commits, since the trunk takes
-//! pushes too. A pull request whose merge is its own head counts as none:
-//! GitHub marks an open one merged when its head is pushed to its base,
-//! and only the train's merge commits, squashes and rebases make a commit
-//! of their own. Its `narHash`
+//! commit must descend from the old one along the trunk's own line, the
+//! first parent of each commit, and every commit on that line must be a
+//! merge of two parents that a pull request into the trunk merged as, as
+//! GitHub says, its second parent that pull request's head. The repo's
+//! train merges each pull request so, with a merge commit of its own,
+//! which puts every commit it carried on the trunk though a round read
+//! only its head (on 22 November 1,150 of mycelium's 1,543); those come
+//! in through the second parents. A commit of one parent on the line was
+//! pushed there, whether alone or on top of a merge, and a pull request
+//! whose head is pushed to its base is marked merged as that head, which
+//! is no merge. The train merges on this machine and pushes, as Joel
+//! ("Merge <commit> on the merge train", unsigned), so GitHub records a
+//! merge made by hand and pushed the same way: nothing here tells one
+//! from the other, and a round of this repo on the lock would read only
+//! hashes and catch neither. Its `narHash`
 //! and `lastModified` must be what Nix makes of that commit fetched
 //! afresh, since Nix takes a source whose hash it already holds without
 //! fetching it. A branch, a pull request's head, a commit from a fork, a
@@ -53,14 +57,16 @@ const LOCK: &str = "flake.lock";
 /// The fields of a node's lock a pin may move: those naming its commit.
 const MOVES: [&str; 3] = ["rev", "narHash", "lastModified"];
 
-/// The most commits a pin may bring in, each asked after on its own: one
-/// page of GitHub's compare.
+/// The most commits a pin may bring in: one page of GitHub's compare.
 const BROUGHT_AT_MOST: usize = 100;
 
-/// How long a pin's asks may take together before it needs a round: a
-/// GitHub slow to answer each of a hundred would otherwise hold `ready`
-/// for hours.
+/// How long a head's asks may take together before it needs a round: a
+/// GitHub slow to answer each merge would otherwise hold `ready` for
+/// hours. Each ask is given only what's left of it.
 const ASKED_WITHIN: Duration = Duration::from_mins(5);
+
+/// The longest any one ask is given.
+const LIMIT: Duration = Duration::from_mins(2);
 
 /// A node of ours whose lock moved from one commit to another.
 #[derive(Debug, PartialEq, Eq)]
@@ -84,15 +90,17 @@ pub enum Pinned {
 }
 
 /// What's asked about a pin's commits, of GitHub and of Nix, each giving
-/// what was said as it was said, for the functions below to judge.
+/// what was said as it was said, for the functions below to judge, and
+/// each given `within` to answer.
 pub trait Asks {
     /// GitHub's compare of `old` to `new` in `repo`: its status, its count
-    /// of commits and the commits it lists.
-    fn compared(&self, repo: &str, old: &str, new: &str) -> Result<Value, String>;
+    /// of commits and the commits it lists, each with its parents.
+    fn compared(&self, repo: &str, old: &str, new: &str, within: Duration)
+    -> Result<Value, String>;
     /// The pull requests GitHub ties to `rev` in `repo`.
-    fn pulls(&self, repo: &str, rev: &str) -> Result<Value, String>;
+    fn pulls(&self, repo: &str, rev: &str, within: Duration) -> Result<Value, String>;
     /// Nix's prefetch of `rev` of `repo`, fetched afresh.
-    fn prefetched(&self, repo: &str, rev: &str) -> Result<Value, String>;
+    fn prefetched(&self, repo: &str, rev: &str, within: Duration) -> Result<Value, String>;
 }
 
 /// GitHub's API through gh, on github.com, the host a lock's `github`
@@ -100,36 +108,47 @@ pub trait Asks {
 pub struct Live;
 
 impl Asks for Live {
-    fn compared(&self, repo: &str, old: &str, new: &str) -> Result<Value, String> {
+    fn compared(
+        &self,
+        repo: &str,
+        old: &str,
+        new: &str,
+        within: Duration,
+    ) -> Result<Value, String> {
         // Only what's judged comes back: a compare's files and patches
         // can run to megabytes.
         let path = format!("repos/{repo}/compare/{old}...{new}?per_page={BROUGHT_AT_MOST}");
-        let wanted = "{status, total_commits, commits: [.commits[].sha]}";
-        json(&answer(gh(&[&path, "--jq", wanted]))?)
+        let wanted =
+            "{status, total_commits, commits: [.commits[] | {sha, parents: [.parents[].sha]}]}";
+        json(&answer(gh(within, &[&path, "--jq", wanted]))?)
     }
 
-    fn pulls(&self, repo: &str, rev: &str) -> Result<Value, String> {
+    fn pulls(&self, repo: &str, rev: &str, within: Duration) -> Result<Value, String> {
         let path = format!("repos/{repo}/commits/{rev}/pulls");
         let wanted = "[.[] | {merge_commit_sha, merged_at, head: .head.sha, \
                       base: {ref: .base.ref, repo: .base.repo.full_name}}]";
-        json(&answer(gh(&[&path, "--jq", wanted]))?)
+        json(&answer(gh(within, &[&path, "--jq", wanted]))?)
     }
 
-    fn prefetched(&self, repo: &str, rev: &str) -> Result<Value, String> {
+    fn prefetched(&self, repo: &str, rev: &str, within: Duration) -> Result<Value, String> {
         let mut nix = Command::new("timeout");
-        nix.args([LIMIT, "nix", "flake", "prefetch", "--json"])
+        nix.arg(seconds(within))
+            .args(["nix", "flake", "prefetch", "--json"])
             .arg(format!("github:{repo}/{rev}"));
         json(&answer(nix)?)
     }
 }
 
-/// How long, in seconds, each ask is given.
-const LIMIT: &str = "120";
+/// `within` as `timeout` takes it, in whole seconds, at least one.
+fn seconds(within: Duration) -> String {
+    within.as_secs().max(1).to_string()
+}
 
-/// gh asking github.com's API at `args`, given [`LIMIT`].
-fn gh(args: &[&str]) -> Command {
+/// gh asking github.com's API at `args`, given `within`.
+fn gh(within: Duration, args: &[&str]) -> Command {
     let mut gh = Command::new("timeout");
-    gh.args([LIMIT, "gh", "api", "--hostname", "github.com"])
+    gh.arg(seconds(within))
+        .args(["gh", "api", "--hostname", "github.com"])
         .args(args);
     gh
 }
@@ -170,15 +189,33 @@ fn ahead(compared: &Value) -> bool {
     compared["status"].as_str() == Some("ahead")
 }
 
+/// A commit a compare lists, with its parents in their order.
+#[derive(Debug, PartialEq, Eq)]
+struct Brought {
+    sha: String,
+    parents: Vec<String>,
+}
+
 /// The commits `compared` says its head brings in, when it lists them
 /// all and they're no more than [`BROUGHT_AT_MOST`]; why not otherwise.
-fn brought(compared: &Value) -> Result<Vec<String>, String> {
+fn brought(compared: &Value) -> Result<Vec<Brought>, String> {
     let unread = || "GitHub's compare of them can't be read".to_owned();
-    let listed: Vec<String> = compared["commits"]
+    let shas = |list: &Value| -> Option<Vec<String>> {
+        list.as_array()?
+            .iter()
+            .map(|sha| sha.as_str().map(str::to_owned))
+            .collect()
+    };
+    let listed: Vec<Brought> = compared["commits"]
         .as_array()
         .ok_or_else(unread)?
         .iter()
-        .map(|sha| sha.as_str().map(str::to_owned))
+        .map(|commit| {
+            Some(Brought {
+                sha: commit["sha"].as_str()?.to_owned(),
+                parents: shas(&commit["parents"])?,
+            })
+        })
         .collect::<Option<_>>()
         .ok_or_else(unread)?;
     let total = compared["total_commits"]
@@ -200,37 +237,47 @@ fn brought(compared: &Value) -> Result<Vec<String>, String> {
     Ok(listed)
 }
 
-/// The commit `pull` merged into `trunk` of `repo` as, when it's a pull
-/// request merged there that made a commit of its own: one whose merge is
-/// its own head may be only a push of its head to the trunk.
-fn merged_into<'a>(pull: &'a Value, repo: &str, trunk: &str) -> Option<&'a str> {
-    let merge = pull["merge_commit_sha"].as_str()?;
-    (!pull["merged_at"].is_null()
-        && pull["base"]["ref"].as_str() == Some(trunk)
-        && pull["base"]["repo"].as_str() == Some(repo)
-        && pull["head"].as_str().is_some_and(|head| head != merge))
-    .then_some(merge)
+/// The merges on the trunk's line from `new` back to `old`, newest
+/// first, each with its second parent, the head of what it merged, when
+/// `commits`, what a compare lists, hold that whole line and every commit
+/// on it is a merge of two parents; why not otherwise.
+fn merges(commits: &[Brought], old: &str, new: &str) -> Result<Vec<(String, String)>, String> {
+    let mut merges = Vec::new();
+    let mut at = new;
+    while at != old {
+        let Some(commit) = commits.iter().find(|commit| commit.sha == at) else {
+            return Err(format!(
+                "{} isn't on {}'s trunk line",
+                short(old),
+                short(new)
+            ));
+        };
+        let [first, second] = commit.parents.as_slice() else {
+            return Err(format!(
+                "{} on the trunk's line is no merge of a pull request, so it was pushed there",
+                short(at)
+            ));
+        };
+        merges.push((at.to_owned(), second.clone()));
+        if merges.len() > commits.len() {
+            return Err("GitHub's compare of them goes round in a circle".to_owned());
+        }
+        at = first;
+    }
+    Ok(merges)
 }
 
 /// Whether `pulls` holds a pull request merged into `trunk` of `repo` as
-/// one of `within`, which brought the commit they're tied to in with the
-/// pin: one merged elsewhere, as a squash leaves its own commits, didn't.
-fn came_in_merged(pulls: &Value, repo: &str, trunk: &str, within: &[String]) -> bool {
+/// `merge`, from `head`.
+fn merged(pulls: &Value, (repo, trunk): (&str, &str), merge: &str, head: &str) -> bool {
     pulls.as_array().is_some_and(|pulls| {
         pulls.iter().any(|pull| {
-            merged_into(pull, repo, trunk)
-                .is_some_and(|merge| within.iter().any(|in_| in_ == merge))
+            !pull["merged_at"].is_null()
+                && pull["base"]["ref"].as_str() == Some(trunk)
+                && pull["base"]["repo"].as_str() == Some(repo)
+                && pull["merge_commit_sha"].as_str() == Some(merge)
+                && pull["head"].as_str() == Some(head)
         })
-    })
-}
-
-/// Whether `pulls` holds a pull request merged into `trunk` of `repo` as
-/// `rev`: a merge commit, a squash or a rebase's last commit.
-fn merged_as(pulls: &Value, repo: &str, rev: &str, trunk: &str) -> bool {
-    pulls.as_array().is_some_and(|pulls| {
-        pulls
-            .iter()
-            .any(|pull| merged_into(pull, repo, trunk) == Some(rev))
     })
 }
 
@@ -250,8 +297,9 @@ pub fn ours_alone(repo: &Path, commit: &str, main: &str, asks: &impl Asks) -> Op
         Ok(moved) => moved,
         Err(why) => return Some(Pinned::Declined(why)),
     };
+    let by = Instant::now() + ASKED_WITHIN;
     for pin in &moved {
-        if let Err(why) = vouched(pin, asks, ASKED_WITHIN) {
+        if let Err(why) = vouched(pin, asks, by) {
             return Some(Pinned::Declined(why));
         }
     }
@@ -265,23 +313,25 @@ pub fn ours_alone(repo: &Path, commit: &str, main: &str, asks: &impl Asks) -> Op
     )))
 }
 
-/// Whether `pin`'s new commit is newer, brings in only what pull requests
-/// merged with it, is one's merge itself and is locked as Nix makes it,
-/// asking each only once the one before holds, all `within` that long.
-fn vouched(pin: &Moved, asks: &impl Asks, within: Duration) -> Result<(), String> {
+/// Whether `pin`'s new commit is newer, reached from the old one only by
+/// merges of pull requests into the trunk, and locked as Nix makes it,
+/// asking each only once the one before holds, all of them `by` then.
+fn vouched(pin: &Moved, asks: &impl Asks, by: Instant) -> Result<(), String> {
     let (repo, trunk) = (pin.repo.as_str(), pin.trunk.as_str());
     let (old, new) = (short(&pin.old), short(&pin.new));
-    let began = Instant::now();
-    let in_time = || {
-        (began.elapsed() <= within).then_some(()).ok_or_else(|| {
+    // What's left for the next ask, capped at LIMIT, or why there's none.
+    let left = || {
+        let left = by.saturating_duration_since(Instant::now());
+        (!left.is_zero()).then(|| left.min(LIMIT)).ok_or_else(|| {
             format!(
-                "asking after {repo} from {old} to {new} took longer than {} s",
-                within.as_secs()
+                "asking after {repo} from {old} to {new} took longer than the {} s its \
+                 asks have together",
+                ASKED_WITHIN.as_secs()
             )
         })
     };
     let compared = asks
-        .compared(repo, &pin.old, &pin.new)
+        .compared(repo, &pin.old, &pin.new, left()?)
         .map_err(|why| format!("asking GitHub whether {repo} at {new} is newer: {why}"))?;
     if !ahead(&compared) {
         return Err(format!("{repo} at {new} isn't newer than at {old}"));
@@ -289,36 +339,31 @@ fn vouched(pin: &Moved, asks: &impl Asks, within: Duration) -> Result<(), String
     let commits =
         brought(&compared).map_err(|why| format!("from {old} to {new} of {repo}, {why}"))?;
     // The new commit is asked after by name, whatever the compare lists.
-    if commits.last() != Some(&pin.new) {
+    if commits.last().map(|last| &last.sha) != Some(&pin.new) {
         return Err(format!(
             "GitHub's compare of {repo} from {old} to {new} doesn't end at {new}"
         ));
     }
-    for brought in commits.iter().rev() {
-        in_time()?;
-        let pulls = asks.pulls(repo, brought).map_err(|why| {
+    let merges = merges(&commits, &pin.old, &pin.new)
+        .map_err(|why| format!("from {old} to {new} of {repo}, {why}"))?;
+    for (merge, head) in &merges {
+        let pulls = asks.pulls(repo, merge, left()?).map_err(|why| {
             format!(
-                "asking GitHub which pull request brought {} into {repo}: {why}",
-                short(brought)
+                "asking GitHub which pull request {} merged into {repo}: {why}",
+                short(merge)
             )
         })?;
-        if *brought == pin.new && !merged_as(&pulls, repo, brought, trunk) {
+        if !merged(&pulls, (repo, trunk), merge, head) {
             return Err(format!(
-                "no pull request into {repo}'s {trunk} merged as {new}, so no round need have \
-                 read it"
-            ));
-        }
-        if !came_in_merged(&pulls, repo, trunk, &commits) {
-            return Err(format!(
-                "{} came onto {repo}'s {trunk} through no pull request merged there with \
-                 this pin",
-                short(brought)
+                "no pull request into {repo}'s {trunk} merged as {} from {}, so no round need \
+                 have read it",
+                short(merge),
+                short(head)
             ));
         }
     }
-    in_time()?;
     let prefetched = asks
-        .prefetched(repo, &pin.new)
+        .prefetched(repo, &pin.new, left()?)
         .map_err(|why| format!("asking Nix for {repo} at {new}: {why}"))?;
     let fetched = &prefetched["locked"];
     for field in ["narHash", "lastModified"] {
