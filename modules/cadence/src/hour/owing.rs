@@ -1,6 +1,10 @@
 //! What the hour owes: its drag filed in the loop's ledger with each of
 //! its owners, due a day on, and each drag filed before closed once it is
 //! back in.
+//!
+//! Long because each kind of drag, Joel's misses, a merge's rounds, the
+//! work system's findings and each measure's lines by owner, is filed and
+//! closed by rules of its own, and its tests sit beside them.
 
 use std::collections::BTreeMap;
 
@@ -9,7 +13,9 @@ use crate::findings::Entry;
 use crate::owe::{self, Owed};
 
 use super::lines::figure;
-use super::measures::{BLIND, Class, HELD, Measure, UNRUN, UNSEEN, drag, rounds};
+use super::measures::{
+    BLIND, Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag, held_for_good, held_unseen, rounds,
+};
 
 /// One drag as the ledger files it: its key, owner, words, and what its
 /// owner is told.
@@ -42,6 +48,55 @@ fn asked_of_owner(what: &str, held: &str) -> String {
              target. Please reply with what keeps it there."
         )
     }
+}
+
+/// Each finding behind, filed apart as each miss is, so one past a day
+/// reaches its owner though another of theirs is open; one held only by
+/// the hour's blindness isn't put to them.
+fn findings_filed(m: &Measure) -> Vec<Filed> {
+    m.behind
+        .iter()
+        .filter(|line| !held_unseen(line))
+        .filter_map(|line| line.rsplit_once(" · "))
+        .map(|(what, owner)| {
+            let short = what.split(' ').next().unwrap_or_default();
+            // A landing note counts only in its finding's thread, so the
+            // ask names the id to answer, as the mesh shows it, since a
+            // reply to this ask lands on nothing. A first line holding
+            // a doubt word reads as doubting its fix, so the ask says to
+            // keep what was fixed off that line. The finding's words are
+            // quoted, since any sender writes them, so they never read as
+            // cadence's.
+            let closes = format!(
+                "It closes by itself once the changes a landing note answering {short} names \
+                 run here, the note opening as \"Landed core #6000.\" does, naming each \
+                 change with its repository, as \"core #6000 and core #6001\"; a note naming no \
+                 change, or answering this ask, closes nothing, nor does one whose first line \
+                 says still, but, though, although, however, yet, broken, fails, failing or \
+                 failed, so say what it fixed on the lines after."
+            );
+            // One whose fix merged and waits to run has its cause and fix
+            // said already, so only when it runs is asked, as for a miss.
+            let text = match what.split_once(HELD) {
+                Some((name, merged)) if merged.contains(UNRUN) => format!(
+                    "cadence hour: a finding in #v2-symbiosis open past a day is yours: \
+                     \"{name}\". Its fix, {merged}, so it stays open until this machine runs it. \
+                     Please reply with when it will. {closes}"
+                ),
+                _ => format!(
+                    "cadence hour: a finding in #v2-symbiosis open past a day, with no fix \
+                     running here, is yours: \"{what}\". Please reply with its cause and fix \
+                     within a day, or why it can't move. {closes}"
+                ),
+            };
+            Filed {
+                key: format!("hour:{FINDINGS}:{owner}:{short}"),
+                owner: owner.to_owned(),
+                says: format!("a work-system finding open past a day, yours: {what}"),
+                text,
+            }
+        })
+        .collect()
 }
 
 /// What the drag files: one entry for its measure, or, for Joel's misses,
@@ -112,6 +167,9 @@ fn filed(m: &Measure) -> Vec<Filed> {
             ),
             says,
         }];
+    }
+    if m.key == FINDINGS {
+        return findings_filed(m);
     }
     let owners = by_owner(m);
     if !owners.is_empty() {
@@ -205,6 +263,27 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
             .filter_map(|line| line.strip_prefix(&open))
             .any(|by| by.contains(HELD) == held);
     }
+    // A finding's drag carries its owner and its short id, and is back in
+    // once the findings measure, read, holds no line of it but one held for
+    // good, by a change cadence can't read: its owner has done what they
+    // can, so it never goes late beside their name. An hour that can't
+    // look keeps it open, so it isn't closed and filed again.
+    let finding = key
+        .strip_prefix(FINDINGS)
+        .and_then(|rest| rest.strip_prefix(':'))
+        .and_then(|rest| rest.rsplit_once(':'));
+    if let Some((owner, short)) = finding {
+        let (opens, ends) = (format!("{short} from "), format!(" · {owner}"));
+        return measures
+            .iter()
+            .find(|m| m.key == FINDINGS)
+            .is_some_and(|m| {
+                m.target.is_some()
+                    && !m.behind.iter().any(|line| {
+                        line.starts_with(&opens) && line.ends_with(&ends) && !held_for_good(line)
+                    })
+            });
+    }
     measures
         .iter()
         .find_map(|m| {
@@ -233,7 +312,9 @@ fn back_in(key: &str, measures: &[Measure]) -> bool {
 /// miss does, and the drag the rest of the hour would have is filed too:
 /// his misses still reach their owners whatever his apps read. So does a
 /// merge whose rounds past five caught nothing, which WCJQSG asked be filed
-/// to whoever landed it, whatever else leads.
+/// to whoever landed it, whatever else leads, and each owner's findings in
+/// the work system's group open past a day, which WCJQSG ruled count
+/// against them as Joel's misses do.
 pub fn file(
     ledger: &mut Vec<Entry>,
     measures: &[Measure],
@@ -262,12 +343,11 @@ pub fn file(
         );
         dragging.extend(drag(&rest));
     }
-    // Never the lead, which passes them over, so filed whatever leads.
-    dragging.extend(
-        measures
-            .iter()
-            .filter(|m| m.key.starts_with(rounds::FRUITLESS) && m.past().is_some()),
-    );
+    // Never the lead, which passes them over, so filed whatever leads; a
+    // measure filed twice is owed once, as the ledger holds it open.
+    dragging.extend(measures.iter().filter(|m| {
+        (m.key.starts_with(rounds::FRUITLESS) || m.key == FINDINGS) && m.past().is_some()
+    }));
     let mut told = Vec::new();
     for (m, one) in dragging
         .into_iter()
@@ -469,6 +549,125 @@ mod tests {
                 && told[0].1.contains("once none of them is left"),
             "a reports drag spoke of cells, or of a figure it doesn't wait for: {}",
             told[0].1
+        );
+    }
+
+    #[test]
+    fn each_owners_findings_are_filed_as_findings_whatever_leads() {
+        let slips = measure("slips", Class::Slip, 3.0, Some(0.0));
+        let mut found = measure(FINDINGS, Class::Cells, 1.0, Some(0.0));
+        found.behind = vec!["ab12 from IKQ63G: the slots · A2VLJN".to_owned()];
+        let told = file(&mut Vec::new(), &[slips, found], "2026-11-21", 1000);
+        let owners: Vec<&str> = told.iter().map(|(to, _)| to.as_str()).collect();
+        assert_eq!(
+            owners,
+            ["OWNER", "A2VLJN"],
+            "a finding's owner wasn't filed while slips led the drag"
+        );
+        assert!(
+            told[1]
+                .1
+                .contains("is yours: \"ab12 from IKQ63G: the slots\". Please reply")
+                && told[1].1.contains("\"Landed core #6000.\"")
+                && told[1].1.contains("a landing note answering ab12")
+                && told[1].1.contains("say what it fixed on the lines after"),
+            "a finding was put to its owner as a cell, or without what closes it, the id \
+             to answer and the doubt words its note's first line can't hold: {}",
+            told[1].1
+        );
+        // Its fix merged and waiting to run, only when it runs is asked.
+        let mut waits = measure(FINDINGS, Class::Cells, 1.0, Some(0.0));
+        waits.behind = vec![format!(
+            "ab12 from IKQ63G: the slots{HELD}core #6001{UNRUN}the last switch doesn't carry \
+             it · A2VLJN"
+        )];
+        let told = file(&mut Vec::new(), &[waits], "2026-11-21", 1000);
+        assert!(
+            told.len() == 1
+                && told[0]
+                    .1
+                    .contains("is yours: \"ab12 from IKQ63G: the slots\". Its fix, core ")
+                && told[0].1.contains("when it will")
+                && !told[0].1.contains("cause and fix"),
+            "a finding whose fix waits on a switch asked its owner for a fix again: {told:?}"
+        );
+    }
+
+    #[test]
+    fn each_finding_reaches_its_owner_once_and_closes_once_its_line_goes() {
+        let mut found = measure(FINDINGS, Class::Cells, 1.0, Some(0.0));
+        found.behind = vec!["ab12 from IKQ63G: the slots · A2VLJN".to_owned()];
+        let mut ledger = Vec::new();
+        let told = file(&mut ledger, &[found.clone()], "2026-11-21", 1000);
+        assert_eq!(
+            told.len(),
+            1,
+            "a leading finding wasn't told once: {told:?}"
+        );
+        // Another of the same owner's, past a day while the first is open.
+        found
+            .behind
+            .push("cd34 from CIJMZQ: the hosts · A2VLJN".to_owned());
+        found.now = 2.0;
+        let told = file(&mut ledger, &[found.clone()], "2026-11-21", 4600);
+        assert!(
+            told.len() == 1 && told[0].1.contains("cd34 from CIJMZQ"),
+            "a second finding wasn't told while the owner's first was open: {told:?}"
+        );
+        found.behind.remove(0);
+        found.now = 1.0;
+        file(&mut ledger, &[found.clone()], "2026-11-21", 8200);
+        let open: Vec<&str> = ledger
+            .iter()
+            .filter(|e| e.open)
+            .map(|e| e.key.as_str())
+            .collect();
+        assert_eq!(
+            open,
+            ["hour:symbiosis-findings:A2VLJN:cd34"],
+            "a fixed finding's drag stayed open, or another's closed with it"
+        );
+        // Held by an hour that can't look, a main unread or a listing
+        // failed, it stays on the card and its drag open, put to nobody;
+        // so does an hour the mesh went unread.
+        found.now = 0.0;
+        for (blind, at) in [
+            (
+                ", though cadence couldn't read core's main to see its check".to_owned(),
+                11_800,
+            ),
+            (
+                format!("{HELD}core #6000{UNRUN}cadence can't list the pi hosts"),
+                13_600,
+            ),
+        ] {
+            found.behind = vec![format!("cd34 from CIJMZQ: the hosts{blind} · A2VLJN")];
+            assert!(
+                filed(&found).is_empty()
+                    && file(&mut ledger, &[found.clone()], "2026-11-21", at).is_empty()
+                    && ledger.iter().filter(|e| e.open).count() == 1,
+                "a finding held by {blind:?} was put to its owner, or its drag closed"
+            );
+        }
+        found.behind.clear();
+        found.target = None;
+        file(&mut ledger, &[found.clone()], "2026-11-21", 15_400);
+        assert!(
+            ledger.iter().filter(|e| e.open).count() == 1,
+            "a drag closed while the hour couldn't look"
+        );
+        // Held for good, by a change cadence can't read, its owner has done
+        // what they can, so its drag closes rather than going late.
+        found.target = Some(0.0);
+        found.behind = vec![
+            "cd34 from CIJMZQ: the hosts, though cadence can't read a change its landing notes \
+             name · A2VLJN"
+                .to_owned(),
+        ];
+        assert!(
+            file(&mut ledger, &[found], "2026-11-21", 19_000).is_empty()
+                && ledger.iter().all(|e| !e.open),
+            "a finding held for good was put to its owner, or its drag stayed open to go late"
         );
     }
 

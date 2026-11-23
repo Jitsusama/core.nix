@@ -8,7 +8,7 @@ use std::fmt::Write;
 use serde::{Deserialize, Serialize};
 
 use super::lines::{figure, shown_lines};
-use super::measures::{Class, HELD, Measure, UNRUN, UNSEEN, drag};
+use super::measures::{Class, FINDINGS, HELD, Measure, UNRUN, UNSEEN, drag};
 use super::owing::by_owner;
 
 /// How many hours a drag may stay unmoved before the orchestrator is
@@ -90,6 +90,8 @@ pub fn compose(
                 figure(m.target.unwrap_or_default()),
                 if m.class == Class::Miss {
                     "each miss's owner"
+                } else if m.key == FINDINGS {
+                    "each finding's owner"
                 } else if !by_owner(m).is_empty() {
                     if m.class == Class::Cells {
                         "each cell's owner"

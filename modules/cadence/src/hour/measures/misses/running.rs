@@ -3,7 +3,10 @@
 //! 19:05 miss, the background pi host's crash, was fixed on core #5800's
 //! merge, while the last switch predated it and the host still loaded the
 //! older runtime's pi. Whatever cadence can't read counts as not running,
-//! so a blind hour never tells him fixed.
+//! so a blind hour never tells him fixed. Long because each repository's
+//! running revision is read its own way, from the switches, core's lock,
+//! the harness's install and the hosts' patches, and a change's verdict
+//! weighs them together, each with the reason it gives when it can't read.
 
 mod conversations;
 mod hosts;
@@ -32,11 +35,21 @@ pub const UNRUN: &str = " merged, but ";
 /// asked about what only the hour can mend.
 pub const UNSEEN: &str = "cadence can't ";
 
+/// What a host loads can't be read from a fix to how core builds its
+/// runtime, ever, since a runtime built elsewhere copies only its patches.
+const LOADS_UNSEEN: &str = "cadence can't tell what a pi host loads";
+
+/// The reasons of cadence's blindness that no fetch or listing mends, so
+/// a hold on one lasts rather than passing with the hour. Each is given
+/// by one path alone: a reason a passing failure also gives would close a
+/// drag one hour and file it again the next.
+pub const LASTING: [&str; 1] = [LOADS_UNSEEN];
+
 /// The repositories whose running revision cadence reads: core's and
 /// World's from the last switch, mycelium's as that switch's core pins it,
 /// and the harness's from the version installed. A change elsewhere,
 /// deployed apart, is followed no further than its merge.
-const RUN_HERE: &[&str] = &["core", "world", "mycelium", "harness"];
+pub(super) const RUN_HERE: &[&str] = &["core", "world", "mycelium", "harness"];
 
 /// The repositories that run as core's `flake.lock` pins them, by the name
 /// of core's input for each.
@@ -357,15 +370,21 @@ fn judge(
         unit: files.lines().any(|file| file == HOST_UNIT),
         program: false,
     };
+    let lacking = (!reaches.patches.is_empty() || reaches.unit)
+        .then(|| hosts(sha, reaches))
+        .flatten();
     // A fix to how core builds its runtime can't be seen in a runtime built
     // elsewhere, which copies only its patches, so it isn't told fixed;
-    // `changed` leaves the build out where it only listed the patches.
+    // `changed` leaves the build out where it only listed the patches. What
+    // the hosts lack beside it, or an hour can't read of them, speaks
+    // first, as a reason a passing failure gives must never last. The
+    // build alone never asks them: it never reads as run, so any host
+    // failing in its four weeks, for whatever cause, would ask its owner,
+    // and a blind hour would close and refile that ask.
     if files.lines().any(|file| file == HOSTED_PI) {
-        return Some("cadence can't tell what a pi host loads");
+        return lacking.or(Some(LOADS_UNSEEN));
     }
-    (!reaches.patches.is_empty() || reaches.unit)
-        .then(|| hosts(sha, reaches))
-        .flatten()
+    lacking
 }
 
 /// Why the pi hosts lack a change that `reaches` them, if they do: each
@@ -421,9 +440,12 @@ fn hosts_lack(
             "a pi host or conversation keeps its unit from before it"
         });
     }
+    // Git failing, a host between processes or a runtime keeping no copies
+    // each mends with a later hour or restart, so this passes.
     if runtime && loaded.contains(&None) {
-        return Some("cadence can't tell what a pi host loads");
+        return Some("cadence can't tell whether a pi host applied it");
     }
+    // Only `current` moving as the hour reads it leaves no install time.
     if reaches.program && since.is_none() {
         return Some("cadence can't tell when the harness carrying it was installed");
     }
