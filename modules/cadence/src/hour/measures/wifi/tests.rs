@@ -51,9 +51,8 @@ fn journal(entries: &[String]) -> String {
 }
 
 #[test]
-fn a_minute_whose_video_went_mostly_unanswered_is_set_aside_not_clean() {
+fn a_minute_mostly_unanswered_is_judged_only_by_answers_late_past_one_percent() {
     let read = |message: &str| minute(&serde_json::from_str(&entry(AT, message)).ok()?);
-    // Mostly unanswered, judged only by answers late past 1%.
     let few = |late: &str| {
         let clause = format!(
             "none at p95, {late}% of 120 echoes answered past 1 s, 70 unanswered, too few to time"
@@ -90,6 +89,10 @@ fn minutes_not_judged_are_counted_by_why_and_too_many_leave_the_hour_unjudged() 
         on(5, Some(LOST)),
     ]);
     let m = video(Some(&mixed), &TimeZone::UTC);
+    let worst = format!(
+        "on {NEAR}, 1 of 3 minutes held, the worst 300.0 ms at p95 and 0.0% past 1 s at 11:25, \
+         best effort then unanswered"
+    );
     assert_eq!(
         (m.says.as_str(), m.now.to_string(), m.behind.as_slice()),
         (
@@ -97,11 +100,7 @@ fn minutes_not_judged_are_counted_by_why_and_too_many_leave_the_hour_unjudged() 
              this hour, 3 of 6 Wi-Fi minutes judged (1 set aside, their video unanswered; 1 \
              unread; 1 from a wifid writing no video figure)",
             "1".to_owned(),
-            [format!(
-                "on {NEAR}, 1 of 3 minutes held, the worst 300.0 ms at p95 and 0.0% past 1 s at \
-                 11:25, best effort then unanswered"
-            )]
-            .as_slice(),
+            std::slice::from_ref(&worst),
         ),
         "a mixed hour's minutes weren't each counted by why, or its held one misnamed"
     );
@@ -112,13 +111,16 @@ fn minutes_not_judged_are_counted_by_why_and_too_many_leave_the_hour_unjudged() 
         on(3, Some("unmeasured")),
     ]);
     let m = video(Some(&sliver), &TimeZone::UTC);
-    assert!(
-        m.target.is_none()
-            && m.says.ends_with(
-                ": 1 of 4 Wi-Fi minutes judged (2 set aside, their video unanswered; 1 with no \
-                 video echo sent)"
+    assert_eq!(
+        (m.target.is_none(), m.says),
+        (
+            true,
+            format!(
+                "{SAYS}: 1 of 4 Wi-Fi minutes judged (2 set aside, their video unanswered; 1 with \
+                 no video echo sent)"
             ),
-        "an hour judged on under half its minutes was judged: {m:?}"
+        ),
+        "an hour judged on under half its minutes was judged"
     );
     let past: Vec<String> = (0..10)
         .map(|n| if n < 3 { dark(n) } else { on(n, Some(NONE)) })

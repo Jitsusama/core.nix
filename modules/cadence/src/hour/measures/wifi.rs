@@ -95,13 +95,10 @@ impl Minute {
     }
 }
 
-/// A time as wifid writes it, `2400.0 ms` or `none` when nothing was
-/// answered to time, or none for anything else.
-fn time(said: &str) -> Option<Option<f64>> {
-    if said == "none" {
-        return Some(None);
-    }
-    Some(Some(said.strip_suffix(" ms")?.parse().ok()?))
+/// A time as wifid writes it, `2400.0 ms`, or none for anything else,
+/// `none` among them, which it writes when nothing was answered to time.
+fn time(said: &str) -> Option<f64> {
+    said.strip_suffix(" ms")?.parse().ok()
 }
 
 /// A minute read from one journal entry: none for any other line, and for
@@ -123,11 +120,15 @@ fn minute(entry: &Value) -> Option<Minute> {
     let (p95, video) = video.split_once(" at p95, ")?;
     let (late, video) = video.split_once("% of ")?;
     video.split_once(" echoes answered past 1 s")?;
-    let p95 = if timed { Some(time(p95)??) } else { None };
+    let p95 = if timed { Some(time(p95)?) } else { None };
+    let best = match best {
+        "none" => None,
+        best => Some(time(best)?),
+    };
     Some(Minute {
         at: micros / 1_000_000,
         bssid: bssid.to_owned(),
-        best: time(best)?,
+        best,
         p95,
         late: late.parse().ok()?,
         call: message.ends_with(", during a call"),
