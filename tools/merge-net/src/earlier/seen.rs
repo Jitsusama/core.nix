@@ -124,8 +124,11 @@ pub fn mirrored(root: &Path) -> Mirrored {
 /// becomes no base, which is on no main.
 fn as_read_here(read: Read) -> Read {
     let from = read.from.map(|base| {
-        let a_commit = base.len() == 40 && base.bytes().all(|b| b.is_ascii_hexdigit());
-        if a_commit { base } else { String::new() }
+        if is_commit_id(&base) {
+            base
+        } else {
+            String::new()
+        }
     });
     Read { from, ..read }
 }
@@ -261,11 +264,12 @@ fn read_in(text: &str) -> Vec<Read> {
         .iter()
         .filter(|round| speaks(round))
         .flat_map(|round| {
-            let from = named.as_ref().map(|named| {
-                round["from"]
-                    .as_str()
-                    .filter(|from| is_commit_id(from))
-                    .map_or_else(|| named.clone(), str::to_owned)
+            // A recorded base that's no commit is no base, rather than the
+            // range's name, which may be another commit than the round read.
+            let from = named.as_ref().map(|named| match round["from"].as_str() {
+                Some(from) if is_commit_id(from) => from.to_owned(),
+                Some(_) => String::new(),
+                None => named.clone(),
             });
             round["witness"]
                 .as_str()
@@ -514,7 +518,19 @@ mod tests {
         written(
             &folder,
             "github_github_o_r_1.json",
-            &json!({"change": {"provider": "github", "id": "o/r#1"}, "runs": [round(&json!({}))]}),
+            &json!({
+                "change": {"provider": "github", "id": "o/r#1"},
+                "runs": [round(&json!({"from": id('8')}))],
+            }),
+            0,
+        );
+        written(
+            &folder,
+            "local-range_github_o_r_main..c.json",
+            &json!({
+                "change": {"provider": "local-range", "id": "origin/main..c"},
+                "runs": [round(&json!({"witness": id('c'), "from": id('8')}))],
+            }),
             0,
         );
         written(
@@ -529,7 +545,7 @@ mod tests {
         written(
             &folder,
             "notes.txt",
-            &json!({"change": {}, "runs": [round(&json!({"witness": id('c')}))]}),
+            &json!({"change": {}, "runs": [round(&json!({"witness": id('d')}))]}),
             0,
         );
         let seen = witnessed(&folder).unwrap();
@@ -538,7 +554,17 @@ mod tests {
             commit: id('b'),
             from: Some("origin/main".to_owned()),
         };
-        assert_eq!(seen, HashSet::from([change_read('a'), ranged]), "{seen:?}");
+        let recorded = Read {
+            commit: id('c'),
+            from: Some(id('8')),
+        };
+        // A change's round keeps no base even when it records one, since
+        // the host keeps a change's base.
+        assert_eq!(
+            seen,
+            HashSet::from([change_read('a'), ranged, recorded]),
+            "{seen:?}"
+        );
     }
 
     // A folder not made yet holds no round, as before the first is asked;
@@ -601,6 +627,20 @@ mod tests {
             }),
             0,
         );
+        // A range named by commit takes the base its round recorded, and a
+        // recorded base that's no commit is none, not the range's name.
+        written(
+            &root.join("ranges"),
+            "by-commit-recorded.json",
+            &json!({
+                "change": {"provider": "local-range", "id": format!("{}..x", id('9'))},
+                "runs": [
+                    round(&json!({"witness": id('5'), "from": id('8')})),
+                    round(&json!({"witness": id('4'), "from": "origin/main"})),
+                ],
+            }),
+            0,
+        );
         let mirrored = mirrored(&root);
         let gone = super::mirrored(&root.join("gone"));
         fs::remove_dir_all(&root).unwrap();
@@ -635,6 +675,14 @@ mod tests {
                 by_commit,
                 recorded,
                 recorded_by_ref,
+                Read {
+                    commit: id('5'),
+                    from: Some(id('8')),
+                },
+                Read {
+                    commit: id('4'),
+                    from: Some(String::new()),
+                },
             ]),
             "the rounds read, a range's base kept only when it names a commit"
         );
