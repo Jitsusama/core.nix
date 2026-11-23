@@ -3,20 +3,41 @@
 // opens next: "2 folders gone", then how many reopened. Said apart from
 // Agents.qml so tests/session-row.qml holds it in Qt's own engine.
 
-// One Reopen Them All over `asked` sessions: `reopen` is handed what to
-// call for each one it finds gone, whenever it finds it, and `tell` hears
-// how this run reads after each. Each run counts on its own, never on the
-// row's: Agents keeps the row while what's to reopen stands (ownKept), so
-// a count kept there added a second run's to the first's (core.nix#6037's
-// F39), and one reset by each run was cut short by a second pressed while
-// the first still walked, whose finds kept arriving (Sessions' reopenAll
-// joins the second to the first's walk, each keeping its own `gone`).
-function run(asked, reopen, tell) {
-    let gone = 0;
-    reopen(() => {
-        gone += 1;
-        tell({ gone, reopened: asked - gone });
+// The tally a press of Reopen Them All counts in: the walk under way's
+// (`walk`, what the last press returned), while Sessions still walks it,
+// else one of its own. Sessions joins a list given mid-walk to the walk's
+// end, dropping the sessions already queued or begun (Reopening.js's
+// queuedOnce), and Agents' foot says only what was told last, so a press
+// mid-walk adds its sessions to the walk's count rather than telling a
+// count of its own over it. A press once the walk has ended counts afresh,
+// never on the row's: Agents keeps the row while what's to reopen stands
+// (ownKept), so a count kept there added a second run's to the first's
+// (core.nix#6037's F39).
+function joined(walk, walking) {
+    return walk !== null && walking ? walk : { asked: {}, gone: {} };
+}
+
+// One press over the sessions of `ids`, counted in `tally`: `reopen` is
+// handed what to call with each session it finds gone, whenever it finds
+// it, and `tell` hears how the walk reads after each. Each session counts
+// once, by its id, however many presses asked for it. Gives the tally, for
+// the next press to join.
+function run(tally, ids, reopen, tell) {
+    for (const id of ids) {
+        tally.asked[id] = true;
+    }
+    reopen(one => {
+        tally.gone[one.id] = true;
+        tell(reading(tally));
     });
+    return tally;
+}
+
+// How many of a tally's sessions were found gone, and how many of the rest
+// were asked to reopen.
+function reading(tally) {
+    const gone = Object.keys(tally.gone).length;
+    return { gone, reopened: Object.keys(tally.asked).length - gone };
 }
 
 // How a run's reading is said, in `said`'s words: how many folders were

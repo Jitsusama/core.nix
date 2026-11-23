@@ -3573,7 +3573,8 @@
     the one kept above it in its column, and a window already where it goes left there; and those
     that orchestrate are begun first, the next session only while the machine queue says the
     memory and the processors have room and the disk isn't stalling, a queue unread or gone quiet
-    holding nothing back
+    holding nothing back; and a list handed over mid-walk adds only those not queued or begun,
+    each keeping the folder-gone report of the list that asked for it first
   '';
   repos-is-told-every-realms-owners = ''
     the refresh's unit gives repos every realm's declared owners as one word that systemd passes
@@ -4723,8 +4724,9 @@
     a pi session offers its acts in their order, as the agents daemon says how it stands, its
     drawer's times are worded by the clock, the sessions beside the one drawn are found
     to watch their drawers ahead, what it landed is kept past its end, and each Reopen Them All
-    counts the folders it finds gone on its own, a second pressed in turn or mid-walk never
-    changing the first's count, and says one folder gone or many
+    walk counts the folders it finds gone on its own, a second pressed in turn counting afresh
+    and one pressed mid-walk joining the walk's count with whatever sessions it adds, and says
+    one folder gone or many
   '';
   pi-tells-of-its-sessions-as-an-agent-source = ''
     pi, as an agent source, sorts the node's sessions into those running, parked and closed this
