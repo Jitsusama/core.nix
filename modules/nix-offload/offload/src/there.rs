@@ -2735,8 +2735,10 @@ enum Far {
 }
 
 /// What a run's far shell says as it starts, to its stderr: the machine's
-/// own name, which on a lent builder is its instance's.
-const RUNNING_ON: &str = "echo \"nix-offload: running on $(uname -n)\" >&2;";
+/// own name, which on a lent builder is its instance's. It's said in a
+/// shell of its own, as the end is, so a caller already gone ends that
+/// shell rather than the one about to run the command.
+const RUNNING_ON: &str = "(echo \"nix-offload: running on $(uname -n)\" >&2);";
 
 /// What it says as it ends, in its `EXIT` trap, with the status it ends
 /// with. It's said in a shell of its own, so a caller gone, whose stderr
@@ -2784,8 +2786,8 @@ pub fn outlives_on(store: &str, scratch: &Path, ssh: &str) -> bool {
 }
 
 /// `far`'s wrapper, ending what's left once no caller has lived for `grace`
-/// seconds, as the far shell reads them. A run, as `far` says, says where
-/// it runs, and one that outlives its callers names itself for
+/// seconds, as the far shell reads them. A run, as `far_saying_where`
+/// makes it, says where it runs, and one that outlives its callers names itself for
 /// `OUTLIVING_ASKED` while it runs.
 fn far_within(command: &str, grace: &str, far: Far) -> String {
     let named_for = crate::running::stable_digest(&[command.as_bytes()]);
@@ -3063,11 +3065,12 @@ pub fn on(
     scratch: &Path,
     ssh: &str,
 ) -> Result<Ran, String> {
-    on_with(lent, sending, bring, scratch, ssh, far)
+    on_with(lent, sending, bring, scratch, ssh, far_saying_where)
 }
 
-/// Builds as `on` does, with the command sent as `wrap` makes it: `far`,
-/// or `outliving` for a run asked to outlive its caller.
+/// Builds as `on` does, with the command sent as `wrap` makes it:
+/// `far_saying_where`, or `outliving` for a run asked to outlive its
+/// caller.
 pub fn on_with(
     lent: &Builder,
     sending: &Sending,
@@ -5993,7 +5996,7 @@ mod tests {
     fn a_build_says_which_machine_it_runs_on_and_an_ask_says_nothing() {
         let named = Command::new("uname").arg("-n").output().unwrap();
         let machine = String::from_utf8_lossy(&named.stdout).trim().to_owned();
-        for shell in ["sh", "zsh"] {
+        for shell in ["dash", "zsh"] {
             for (sent, says) in [
                 (far_saying_where("echo ran; exit 3"), true),
                 (far_brief("echo ran; exit 3"), true),

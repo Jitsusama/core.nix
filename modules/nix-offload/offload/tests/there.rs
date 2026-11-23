@@ -338,7 +338,7 @@ fn within_far(command: &str) -> &str {
         .map_or_else(
             || panic!("it doesn't end with its caller: {command}"),
             |(_, rest)| {
-                rest.strip_prefix("echo \"nix-offload: running on $(uname -n)\" >&2; ")
+                rest.strip_prefix("(echo \"nix-offload: running on $(uname -n)\" >&2); ")
                     .unwrap_or(rest)
             },
         )
