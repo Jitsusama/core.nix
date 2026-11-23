@@ -345,13 +345,17 @@ fn given_to(folder: &Path) -> String {
     format!("{host}\n{}\n", within_far(command))
 }
 
-/// A command sent far, without what makes it end with its caller.
+/// A command sent far, without what makes it end with its caller, or
+/// what a build or a run says of the machine it runs on.
 fn within_far(command: &str) -> &str {
     command
         .split_once("trap 'exit 143' HUP TERM; ")
         .map_or_else(
             || panic!("it doesn't end with its caller: {command}"),
-            |(_, rest)| rest,
+            |(_, rest)| {
+                rest.strip_prefix("(echo \"nix-offload: running on $(uname -n)\" >&2); ")
+                    .unwrap_or(rest)
+            },
         )
 }
 
