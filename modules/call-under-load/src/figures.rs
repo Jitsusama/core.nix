@@ -1,5 +1,8 @@
 //! The call's figures, worked out from the samples each end of the call
 //! took once a second, as `page.html` takes them.
+//!
+//! Long because the picture's and the sound's figures are read from the
+//! same samples by the same helpers, and their tests sit beside them.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -256,8 +259,28 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
             .zip(first["t"].as_f64())
             .map(|(b, a)| b - a);
         let tenths = span_ms.filter(|ms| *ms > 0.0).unwrap_or(f64::NAN) / 600_000.0;
-        let change = |key: &str| last["in"][key].as_f64().zip(first["in"][key].as_f64());
-        freezes = change("freezeCount").map(|(b, a)| ((b - a) / tenths * 10.0).round() / 10.0);
+        // A count that fell between any two samples came from a stream that
+        // restarted, so it says nothing of the call's freezes rather than
+        // reading as fewer. A restart can start again from 0 and climb past
+        // the first sample's count, so first and last alone can't show it.
+        let fell = |key: &str| {
+            frozen.windows(2).any(|pair| {
+                pair[1]["in"][key]
+                    .as_f64()
+                    .zip(pair[0]["in"][key].as_f64())
+                    .is_some_and(|(b, a)| b < a)
+            })
+        };
+        let change = |key: &str| {
+            last["in"][key]
+                .as_f64()
+                .zip(first["in"][key].as_f64())
+                .filter(|_| !fell(key))
+        };
+        // Rounded up to the tenth, its worse side, as cadence shows it.
+        freezes = change("freezeCount")
+            .map(|(b, a)| (((b - a) / tenths * 10.0 - 1e-9).ceil() + 0.0) / 10.0)
+            .filter(|f| f.is_finite());
         frozen_s = change("totalFreezesDuration").map(|(b, a)| ((b - a) * 100.0).round() / 100.0);
     }
     let sound = heard(far);
@@ -404,6 +427,40 @@ mod tests {
             row["t"] = json!(t * 1200);
         }
         assert_eq!(call(&mine, &far, &[]).freezes, Some(8.5));
+        // Every 1.1 s, the freeze over 64.9 s is 9.245 in ten minutes,
+        // which rounds up to its worse side, never down to 9.2.
+        for (t, row) in far.iter_mut().enumerate() {
+            row["t"] = json!(t * 1100);
+        }
+        assert_eq!(
+            call(&mine, &far, &[]).freezes,
+            Some(9.3),
+            "freezes rounded down"
+        );
+        // Samples with no time between them give no rate at all.
+        let mut still = far.clone();
+        for row in &mut still {
+            row["t"] = json!(0);
+        }
+        let still = call(&mine, &still, &[]);
+        assert_eq!(
+            (still.freezes, still.frozen_s),
+            (None, Some(0.4)),
+            "a call with no time read as a freezes rate"
+        );
+        // A stream that restarted mid-call, its counts back at 0 and then
+        // climbing past the first sample's, is unknown, not fewer freezes.
+        for (t, row) in far.iter_mut().enumerate() {
+            let frozen = t >= 40 && !(50..60).contains(&t);
+            row["in"]["freezeCount"] = json!(u32::from(frozen));
+            row["in"]["totalFreezesDuration"] = json!(if frozen { 0.4 } else { 0.0 });
+        }
+        let restarted = call(&mine, &far, &[]);
+        assert_eq!(
+            (restarted.freezes, restarted.frozen_s),
+            (None, None),
+            "a restarted stream's counts read as a figure"
+        );
     }
 
     #[test]
