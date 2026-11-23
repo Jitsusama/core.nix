@@ -1,6 +1,10 @@
 //! night-shift turn: a heavy job by day waits for the one turn a night job
 //! takes, keeps it while its command runs, and leaves its command's output
 //! and status as they are.
+//!
+//! Long because every case here drives the one turn's lock through the same
+//! account and its helpers, so a split would copy them or move them into
+//! `common`, where the run tests would build what they never use.
 
 mod common;
 
