@@ -640,14 +640,6 @@ Singleton {
         viewWith(words, named, into === null ? null
             : Object.assign({}, into, { focused: true }), title);
         console.info(`sessions: viewing ${lost.id} to wait for its host`);
-        // Asked for by Joel himself, a place the walk kept for its viewer
-        // is done with, as letGoWaitedFor lets the walk's own go: kept,
-        // viewKept would open another by itself once he closes this one.
-        if (keptPlaces[lost.id]?.waiting !== undefined) {
-            const kept = Object.assign({}, keptPlaces);
-            delete kept[lost.id];
-            keepPlaces(kept);
-        }
     }
     // Whether a viewer `named` is held back, as one asked for moments ago
     // that niri hasn't listed yet (viewerComing), said opening. Asked
@@ -2670,9 +2662,24 @@ Singleton {
     // A viewer's window niri lists is no longer opening, so the next ask
     // of it, once it has closed, opens one (viewWith); while it's open,
     // openNamed finds it.
+    // A place kept for a waiting viewer is let go as it comes, whichever
+    // press asked for it: kept, viewKept would open another by itself once
+    // Joel closes this one. Not as it's asked for, as letGoWaitedFor
+    // isn't: one never come would leave nothing to open it.
     function viewerCame(window) {
         const named = window?.opened ?? "";
-        if (!named.startsWith("pi-hosted.") || attaching[named] === undefined)
+        if (!named.startsWith("pi-hosted."))
+            return;
+        const waited = Object.keys(keptPlaces).filter(id => keptPlaces[id]?.named === named
+            && keptPlaces[id]?.waiting !== undefined);
+        if (waited.length > 0) {
+            const kept = Object.assign({}, keptPlaces);
+            for (const id of waited)
+                delete kept[id];
+            keepPlaces(kept);
+            console.info(`sessions: ${waited.join(", ")}'s kept place let go, its viewer come`);
+        }
+        if (attaching[named] === undefined)
             return;
         const still = Object.assign({}, attaching);
         delete still[named];
