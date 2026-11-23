@@ -71,9 +71,11 @@ pub struct Line {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub house_most: Option<u64>,
     /// The kind of reason the upload held where it did (`Why::kind`), and
-    /// the shares the VPN's own queue and agents' lane were held to, down
-    /// to a hundredth, while under one: holds that leave the upload's rate as
-    /// it was, and that the journal says only as they begin or end.
+    /// the shares the VPN's own queue and agents' lane were held to on the
+    /// link, as main put them there, down to a hundredth, while under one:
+    /// holds that leave the upload's rate as it was, and that the journal
+    /// says only as they begin or end. A line with a `why` was written by a
+    /// shaper whose `link_wait_ms` leaves agents' lane out (src/oneway.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -105,18 +107,42 @@ impl Line {
         }
     }
 
-    /// This line, saying the controller's kind of reason and the shares it
-    /// held the VPN's own queue and agents' lane to, those under one.
-    pub fn holding(self, why: &str, vpn_share: f64, agents_share: f64) -> Line {
-        // Rounded down, so a share held under one never reads as one.
-        let held = |share: f64| (share < 1.0).then(|| (share * 100.0).floor() / 100.0);
+    /// This line, saying the controller's kind of reason (`Why::kind`).
+    pub fn because(self, why: &str) -> Line {
         Line {
             why: Some(why.to_owned()),
-            vpn_share: held(vpn_share),
-            agents_share: held(agents_share),
             ..self
         }
     }
+
+    /// This line, saying the shares its link's queues were held to, those
+    /// under one, rounded down to a hundredth (`why::percent`), so a share
+    /// held under one never reads as one.
+    pub fn held(self, held: Held) -> Line {
+        let under = |share: f64| (share < 1.0).then(|| crate::why::percent(share) / 100.0);
+        Line {
+            vpn_share: under(held.vpn),
+            agents_share: under(held.agents),
+            ..self
+        }
+    }
+}
+
+/// The shares a link's queues were held to, as main put them there: the
+/// VPN's own queue's of its lane, and agents' lane's of its split, each one
+/// while it held nothing.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Held {
+    pub vpn: f64,
+    pub agents: f64,
+}
+
+impl Held {
+    /// Nothing held.
+    pub const WHOLE: Held = Held {
+        vpn: 1.0,
+        agents: 1.0,
+    };
 }
 
 /// Writes a line for each recorded second the shaper steps on, once.
@@ -345,7 +371,10 @@ mod tests {
 
     #[test]
     fn a_line_says_why_it_held_and_the_holds_under_its_rate() {
-        let held = line(NOV16, Some(9_500), None).holding("tunnel", 0.8149, 0.996);
+        let held = line(NOV16, Some(9_500), None).because("tunnel").held(Held {
+            vpn: 0.8149,
+            agents: 0.996,
+        });
         assert_eq!(held.why.as_deref(), Some("tunnel"), "the kind of reason");
         assert_eq!(
             held.vpn_share,
@@ -357,7 +386,18 @@ mod tests {
             Some(0.99),
             "agents' share, rounded down under one"
         );
-        let free = line(NOV16, Some(9_500), None).holding("clear", 1.0, 1.0);
+        let edge = line(NOV16, None, None).held(Held {
+            vpn: 0.29,
+            agents: 1.0,
+        });
+        assert_eq!(
+            edge.vpn_share,
+            Some(0.29),
+            "a share a double keeps a hair under its hundredth reads as that hundredth"
+        );
+        let free = line(NOV16, Some(9_500), None)
+            .because("clear")
+            .held(Held::WHOLE);
         assert_eq!(
             (free.vpn_share, free.agents_share),
             (None, None),
@@ -380,7 +420,10 @@ mod tests {
             ..line(NOV16 + 5, Some(10_800), Some(87.0))
         });
         writer.write(&line(NOV16 + 5, Some(1), None));
-        writer.write(&line(NOV16 + 6, None, None));
+        writer.write(&line(NOV16 + 6, None, None).because("tunnel").held(Held {
+            vpn: 0.5,
+            agents: 1.0,
+        }));
         let read = read(&folder).expect("the folder reads");
         let _ = fs::remove_dir_all(&folder);
         assert_eq!(
@@ -407,6 +450,15 @@ mod tests {
             (read[&(NOV16 + 5)].down, read[&(NOV16 + 6)].down),
             (Some(20_000), None),
             "the download's ask, and none: {read:?}"
+        );
+        assert_eq!(
+            (
+                read[&(NOV16 + 6)].why.as_deref(),
+                read[&(NOV16 + 6)].vpn_share,
+                read[&(NOV16 + 6)].agents_share
+            ),
+            (Some("tunnel"), Some(0.5), None),
+            "the reason and the shares under one read back: {read:?}"
         );
         let before: Line = serde_json::from_str(r#"{"at":1,"link":"wlan0","up":5000}"#)
             .expect("a line from before the download was traced reads");

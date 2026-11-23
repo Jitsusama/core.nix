@@ -337,10 +337,10 @@ struct Shaped {
     real_time: realtime::RealTime,
     /// What the upload's CAKE held when last read, and of the reads since
     /// the controller was last told, how many found a queue in it.
-    holding: Option<(u64, u64)>,
+    holding: Option<qdisc::Holding>,
     queued_reads: (u32, u32),
     /// What the upload's queues before the VPN's packets held, in bytes,
-    /// over those reads together (`qdisc::before_the_vpn`).
+    /// over those reads together (`qdisc::Holding::before_the_vpn`).
     held_bytes: u64,
     /// Of the reads of the VPNs riding the link since, how many found a
     /// queue in one: a VPN held under the link holds the queue in its own
@@ -432,6 +432,12 @@ impl Shaped {
         self.split = self.split.after(split, took);
     }
 
+    /// The shares this link's queues are held to now, as a trace says them
+    /// (`applied_held`).
+    fn held(&self) -> trace::Held {
+        applied_held((self.vpn_share, self.agents_share), &self.split)
+    }
+
     /// Reads the upload's CAKE: what it has sent, as CAKE counts it, since
     /// the link's own counts take in copies to this network's machines,
     /// which never cross the connection, and the queue it holds and what it
@@ -444,7 +450,7 @@ impl Shaped {
             let (queued, reads) = &mut self.queued_reads;
             *queued += u32::from(qdisc::queued(self.holding, now));
             *reads += 1;
-            self.held_bytes += up.as_deref().and_then(qdisc::before_the_vpn).unwrap_or(0);
+            self.held_bytes += now.before_the_vpn;
             self.holding = Some(now);
         }
         if let Some(now) = up.as_deref().and_then(qdisc::drops) {
@@ -1017,10 +1023,8 @@ fn run(options: &Options) -> Result<(), Failure> {
             (link, h)
         });
         write_status(&options.runtime, &shaped, heard.as_ref());
-        if let Some(mut line) = live.traced() {
-            let network = shaped.get(&line.link).map(|s| s.network.clone());
-            house_traced(&mut line, network.as_deref(), &house);
-            traces.write(&line);
+        if let Some(second) = live.traced() {
+            traces.write(&traced(second, &shaped, &house));
         }
         thread::sleep(STEP);
     }
@@ -1133,7 +1137,7 @@ struct Vpn {
 /// when last read.
 #[derive(Default)]
 struct Heard {
-    held: Option<(u64, u64)>,
+    held: Option<qdisc::Holding>,
     drops: Option<u64>,
 }
 
@@ -1546,6 +1550,23 @@ fn held_shares(
     }
 }
 
+/// What a link's queues are held to, from the shares `held_shares` gave it,
+/// `(vpn, agents)`, and the split its classes hold: the VPN's share as
+/// given, and agents' only while the split caps their lane, which it does
+/// only while they wait straight (src/lanes.rs). A hold climbing back while
+/// they don't caps nothing, so a trace saying it would read as a hold that
+/// wasn't there.
+fn applied_held((vpn, agents): (f64, f64), split: &lanes::Split) -> trace::Held {
+    trace::Held {
+        vpn,
+        agents: if split.agents_most.is_some() {
+            agents
+        } else {
+            1.0
+        },
+    }
+}
+
 /// What each network's house holds its links to this step, by network:
 /// what the other machine last said it sent and the most the ceiling
 /// leaves this one, in kbit/s.
@@ -1598,6 +1619,20 @@ impl NetworkCeilings {
             .map(|(network, most)| (network, rate::float(most)));
         (house, steady.collect())
     }
+}
+
+/// The traced `second` as its link held it: the shares main put on the
+/// link's queues, and what the link's house heard and held.
+fn traced(
+    second: trace::Line,
+    shaped: &BTreeMap<String, Shaped>,
+    house: &HouseHolds,
+) -> trace::Line {
+    let its = shaped.get(&second.link);
+    let network = its.map(|s| s.network.clone());
+    let mut line = second.held(its.map_or(trace::Held::WHOLE, Shaped::held));
+    house_traced(&mut line, network.as_deref(), house);
+    line
 }
 
 /// Puts in the traced `line` what its link's house heard and held, when
@@ -2060,6 +2095,41 @@ mod tests {
         ] {
             assert_eq!(held_shares(link_is, shares), (1.0, 1.0), "{what} was held");
         }
+    }
+
+    // A trace says the holds the link's queues took, not the controller's
+    // shares: agents' climbing back while they don't wait caps nothing.
+    #[test]
+    fn a_trace_says_agents_hold_only_while_their_lane_is_capped() {
+        let split = |agents_most| lanes::Split {
+            joel: 3_000.0,
+            vpn: 6_000.0,
+            agents: 3_000.0,
+            agents_most,
+            unsent: false,
+        };
+        assert_eq!(
+            applied_held((0.6, 0.4), &split(Some(1_200.0))),
+            trace::Held {
+                vpn: 0.6,
+                agents: 0.4
+            },
+            "each share where it's taken, by name"
+        );
+        assert_eq!(
+            applied_held((0.6, 0.4), &split(None)),
+            trace::Held {
+                vpn: 0.6,
+                agents: 1.0
+            },
+            "agents' share with their lane uncapped held nothing"
+        );
+        let (vpn, agents) = held_shares((true, false, false), (0.6, 0.4));
+        assert_eq!(
+            applied_held((vpn, agents), &split(Some(1_200.0))),
+            trace::Held::WHOLE,
+            "an upload with no limit holds neither"
+        );
     }
 
     #[test]

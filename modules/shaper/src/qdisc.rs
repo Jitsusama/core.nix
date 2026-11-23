@@ -400,10 +400,29 @@ pub fn counted_bytes(json: &str) -> Option<u64> {
     Some(cake["bytes"].as_u64()? + u64::from(VPN_OVERHEAD) * cake["packets"].as_u64()?)
 }
 
-/// What the shaped queues in `tc -s -j qdisc show dev` hold now, in bytes,
-/// and the packets they have dropped or marked, every tin together, or
-/// none without a CAKE.
-pub fn holding(json: &str) -> Option<(u64, u64)> {
+/// What the shaped queues on a link hold now, as one read of them gives it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Holding {
+    /// What every shaped queue holds, in bytes.
+    pub held: u64,
+    /// What the queues the VPN's flow waits behind hold, in bytes: every
+    /// one but agents' lane's CAKE. Agents' lane is a class of its own,
+    /// which borrows the line only after the others (src/lanes.rs), so
+    /// what stands there while it is held waits apart from the VPN's
+    /// packets: counted as the link's wait, it would read as the VPN's
+    /// wait drained by the very hold that only moved it there. Joel's lane
+    /// counts: his CAKE is paced at the connection's rate, never under his
+    /// share, and his class takes turns with the VPN's at one priority, so
+    /// what stands there slows the VPN's packets as the line drains both.
+    pub before_the_vpn: u64,
+    /// The packets every shaped queue has dropped or marked, every tin
+    /// together.
+    pub lost: u64,
+}
+
+/// What the shaped queues in `tc -s -j qdisc show dev` hold now, or none
+/// without a CAKE.
+pub fn holding(json: &str) -> Option<Holding> {
     let all = shaping(json)?;
     let n = |q: &Value, key: &str| q[key].as_u64().unwrap_or(0);
     let marks = |q: &Value| {
@@ -412,25 +431,14 @@ pub fn holding(json: &str) -> Option<(u64, u64)> {
             |tins| tins.iter().map(|t| n(t, "ecn_mark")).sum(),
         )
     };
-    Some(all.iter().fold((0, 0), |(held, lost), q| {
-        (held + n(q, "backlog"), lost + dropped(q) + marks(q))
+    Some(all.iter().fold(Holding::default(), |was, q| {
+        let behind = q["parent"] == crate::lanes::AGENTS_CLASS;
+        Holding {
+            held: was.held + n(q, "backlog"),
+            before_the_vpn: was.before_the_vpn + if behind { 0 } else { n(q, "backlog") },
+            lost: was.lost + dropped(q) + marks(q),
+        }
     }))
-}
-
-/// What the shaped queues the VPN's flow passes through in `tc -s -j qdisc
-/// show dev` hold now, in bytes: every one but agents' lane's CAKE, or
-/// none without a CAKE. Agents' lane is a class of its own, which borrows
-/// the line only after the others (src/lanes.rs), so what stands there
-/// while it is held waits apart from the VPN's packets: counted as the
-/// link's wait, it would read as the VPN's wait drained by the very hold
-/// that only moved it there.
-pub fn before_the_vpn(json: &str) -> Option<u64> {
-    shaping(json).map(|all| {
-        all.iter()
-            .filter(|q| q["parent"] != crate::lanes::AGENTS_CLASS)
-            .map(|q| q["backlog"].as_u64().unwrap_or(0))
-            .sum()
-    })
 }
 
 /// The packets the shaped queues in `tc -s -j qdisc show dev` have
@@ -472,8 +480,8 @@ pub const QUEUED_BYTES: u64 = 3_000;
 /// it now, or a packet it dropped or marked since, from what `holding`
 /// read then and now. A count that starts over, as a link's queues made
 /// again do, says nothing of the drops.
-pub fn queued(before: Option<(u64, u64)>, now: (u64, u64)) -> bool {
-    now.0 >= QUEUED_BYTES || before.is_some_and(|(_, dropped)| now.1 > dropped)
+pub fn queued(before: Option<Holding>, now: Holding) -> bool {
+    now.held >= QUEUED_BYTES || before.is_some_and(|was| now.lost > was.lost)
 }
 
 /// The packets the video tin of the CAKE in `tc -s -j qdisc show dev` has
@@ -573,7 +581,15 @@ mod tests {
         let json = r#"[{"kind":"htb","backlog":99999,"drops":7},
                       {"kind":"cake","backlog":4542,"drops":10,"tins":[
             {"ecn_mark":1},{"ecn_mark":2},{"ecn_mark":0},{"ecn_mark":0}]}]"#;
-        assert_eq!(holding(json), Some((4542, 13)));
+        assert_eq!(
+            holding(json),
+            Some(Holding {
+                held: 4542,
+                before_the_vpn: 4542,
+                lost: 13
+            }),
+            "a lone CAKE at the root, with no lanes, holds all the VPN's flow waits behind"
+        );
         assert_eq!(holding(r#"[{"kind":"fq_codel","backlog":9000}]"#), None);
         assert_eq!(drops(json), Some(10));
         assert_eq!(drops(r#"[{"kind":"fq_codel","drops":9}]"#), None);
@@ -588,7 +604,11 @@ mod tests {
             {"drops":4,"ack_drops":60,"ecn_mark":1},{"drops":6,"ack_drops":40,"ecn_mark":0},
             {"drops":0,"ack_drops":0,"ecn_mark":0},{"drops":0,"ack_drops":0,"ecn_mark":0}]}]"#;
         assert_eq!(drops(json), Some(10), "only what CAKE dropped of a flow");
-        assert_eq!(holding(json), Some((0, 11)), "thinned ACKs aren't a queue");
+        assert_eq!(
+            holding(json).map(|h| (h.held, h.lost)),
+            Some((0, 11)),
+            "thinned ACKs aren't a queue"
+        );
         let thinned = r#"[{"kind":"cake","backlog":0,"drops":160,"tins":[
             {"drops":4,"ack_drops":110,"ecn_mark":1},{"drops":6,"ack_drops":40,"ecn_mark":0},
             {"drops":0,"ack_drops":0,"ecn_mark":0},{"drops":0,"ack_drops":0,"ecn_mark":0}]}]"#;
@@ -606,20 +626,32 @@ mod tests {
         assert_eq!(wait_ms(62_500, 5, 0), 0, "no rate is no CAKE to wait in");
     }
 
+    /// What a link's queues hold and have lost, with none of it before the VPN.
+    fn holds(held: u64, lost: u64) -> Holding {
+        Holding {
+            held,
+            lost,
+            ..Holding::default()
+        }
+    }
+
     #[test]
     fn a_queue_is_something_waiting_in_cake_or_a_packet_it_dropped() {
         assert!(
-            queued(Some((0, 13)), (4542, 13)),
+            queued(Some(holds(0, 13)), holds(4542, 13)),
             "a backlog wasn't a queue"
         );
-        assert!(queued(Some((0, 13)), (0, 14)), "a drop wasn't a queue");
         assert!(
-            !queued(Some((0, 13)), (1514, 13)),
+            queued(Some(holds(0, 13)), holds(0, 14)),
+            "a drop wasn't a queue"
+        );
+        assert!(
+            !queued(Some(holds(0, 13)), holds(1514, 13)),
             "one packet passing was a queue"
         );
         // Queues made again count from nothing.
         assert!(
-            !queued(None, (0, 14)),
+            !queued(None, holds(0, 14)),
             "fresh queues' first count was a queue"
         );
     }
@@ -713,17 +745,17 @@ mod tests {
             Some(16_000),
             "all three lanes, not the local class"
         );
+        let held = holding(LANES).expect("the lanes' CAKEs");
         assert_eq!(
-            holding(LANES),
-            Some((7_100, 11)),
+            (held.held, held.lost),
+            (7_100, 11),
             "every lane's backlog, drops and marks"
         );
         assert_eq!(
-            before_the_vpn(LANES),
-            Some(3_100),
+            held.before_the_vpn, 3_100,
             "Joel's lane and the VPN's, not agents' behind them or the local class"
         );
-        assert_eq!(before_the_vpn("[]"), None, "no CAKE");
+        assert_eq!(holding("[]"), None, "no CAKE");
         assert_eq!(drops(LANES), Some(7), "every lane's drops");
     }
 

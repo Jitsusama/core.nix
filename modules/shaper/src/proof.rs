@@ -248,9 +248,9 @@ fn block(arm: Arm, link: &str, asked: &Asked, stop: &AtomicBool) -> Option<Block
             && let Ok(out) = Command::new("tc")
                 .args(["-s", "-j", "qdisc", "show", "dev", link])
                 .output()
-            && let Some((backlog, _)) = qdisc::holding(&String::from_utf8_lossy(&out.stdout))
+            && let Some(now) = qdisc::holding(&String::from_utf8_lossy(&out.stdout))
         {
-            owned |= backlog >= qdisc::QUEUED_BYTES;
+            owned |= now.held >= qdisc::QUEUED_BYTES;
         }
         // CAKE's queue is read once a second through the block.
         thread::sleep(Duration::from_secs(1));

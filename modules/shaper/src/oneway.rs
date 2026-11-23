@@ -371,8 +371,9 @@ pub struct Ours {
     pub vpn_queued: bool,
     /// How long the link's queues kept what they held, in ms, agents' lane
     /// aside: a wait of ours, which the VPN's flow takes too before it
-    /// reaches the router. A line written before 23 November counts what
-    /// agents' lane held under its hold in it too.
+    /// reaches the router. A trace line with no `why` comes from a shaper
+    /// that counted what agents' lane held under its hold in it too, by
+    /// the build that wrote it, whatever its date (src/trace.rs).
     #[serde(default)]
     pub link_wait_ms: u64,
     pub waiting: bool,

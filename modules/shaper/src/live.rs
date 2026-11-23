@@ -437,9 +437,9 @@ impl Live {
     /// stepped on, once it has stepped on one.
     pub fn traced(&self) -> Option<crate::trace::Line> {
         let (link, heard) = self.follow.heard()?;
-        let c = &self.follow.controller;
         let second = crate::trace::Line::of(self.follow.last_at?, link, &heard);
-        Some(second.holding(c.why_kind(), c.tunnel_share(), c.agents_share()))
+        // The shares are main's to say, as it put them on the link's queues.
+        Some(second.because(self.follow.controller.why_kind()))
     }
 
     /// Probes through the VPN riding the link, or none, and takes what it
