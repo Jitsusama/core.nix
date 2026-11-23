@@ -146,8 +146,8 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
         timeout=COMING_BACK,
     )
     # And none is on disk: a kept core's name carries the process's pid between dots.
-    # The folder is there from boot (modules/coredump's tmpfiles line), so an empty listing
-    # says no core rather than no folder.
+    # The test asks for the folder first, so an empty listing says no core rather than
+    # no folder.
     host.machine.succeed(
         "test -d /var/lib/systemd/coredump"
         f" && ! ls /var/lib/systemd/coredump | grep -qF '.{first}.'"
