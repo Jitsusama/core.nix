@@ -752,12 +752,13 @@ mod tests {
     fn the_shipped_vocabulary_gives_a_word_for_each_its_text_has() {
         // The build names the vocabulary Parakeet ships with (package.nix),
         // so one spaced another way fails here rather than leaving every
-        // call's takes whole; a plain `cargo test` has none to read.
+        // call's takes whole. A plain `cargo test` has none to read, nor
+        // has one in `nix develop`, which sets NIX_BUILD_TOP as a build
+        // does but sets IN_NIX_SHELL beside it.
         let Some(path) = std::env::var_os("PARAKEET_VOCAB") else {
-            assert!(
-                std::env::var_os("NIX_BUILD_TOP").is_none(),
-                "the build named no vocabulary"
-            );
+            let building = std::env::var_os("NIX_BUILD_TOP").is_some()
+                && std::env::var_os("IN_NIX_SHELL").is_none();
+            assert!(!building, "the build named no vocabulary");
             return;
         };
         let vocab = Vocab::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
