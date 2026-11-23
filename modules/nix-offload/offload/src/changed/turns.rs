@@ -52,6 +52,7 @@ pub fn sending(turns: &Path, host: &str, moves: bool, counted: bool) -> Turn {
 fn taken(turns: &Path, host: &str, moves: bool, counted: bool) -> io::Result<Turn> {
     fs::create_dir_all(turns)?;
     let mut held = Vec::new();
+    let mut machines = None;
     if counted {
         let full = format!("{AT_ONCE} changed-checks runs already go out from this machine");
         match turn_of(turns, ("changed", AT_ONCE), moves, &full) {
@@ -59,28 +60,57 @@ fn taken(turns: &Path, host: &str, moves: bool, counted: bool) -> io::Result<Tur
             Ok(None) => return Ok(Turn::Full),
             // The builder's turn is still taken, so its four still hold
             // where only the machine's eight can't.
-            Err(error) => eprintln!(
-                "nix-offload: this machine's turns can't be had ({error}), so this run is \
-                 counted only by {host}'s"
-            ),
+            Err(error) => machines = Some(error),
         }
     }
     let name = format!("changed-{host}");
     let full = format!("{host} already runs {EACH} of this machine's changed-checks runs");
-    match turn_of(turns, (&name, EACH), moves, &full) {
-        Ok(Some(turn)) => held.push(turn),
-        Ok(None) => return Ok(Turn::Full),
-        // The machine's turn, won already, perhaps after a wait, is kept,
-        // so the run is still counted among the machine's.
-        Err(error) if held.is_empty() => eprintln!(
-            "nix-offload: {host}'s turns can't be had ({error}), so this run goes on without one"
-        ),
-        Err(error) => eprintln!(
-            "nix-offload: {host}'s turns can't be had ({error}), so this run holds only the \
-             machine's"
-        ),
+    let builders = match turn_of(turns, (&name, EACH), moves, &full) {
+        Ok(Some(turn)) => {
+            held.push(turn);
+            None
+        }
+        Ok(None) => {
+            if let Some(line) = unhad(host, counted, machines.as_ref(), None) {
+                eprintln!("nix-offload: {line}");
+            }
+            return Ok(Turn::Full);
+        }
+        Err(error) => Some(error),
+    };
+    if let Some(line) = unhad(host, counted, machines.as_ref(), builders.as_ref()) {
+        eprintln!("nix-offload: {line}");
     }
     Ok(Turn::Had(held))
+}
+
+/// What a run to `host`, `counted` among the machine's or not, says when
+/// the machine's turns or the builder's can't be had, why each couldn't
+/// given; said once, after both are known, so it never says one counts a
+/// run that the next line says nothing counts. Nothing when both could.
+fn unhad(
+    host: &str,
+    counted: bool,
+    machines: Option<&io::Error>,
+    builders: Option<&io::Error>,
+) -> Option<String> {
+    Some(match (machines, builders) {
+        (None, None) => return None,
+        (Some(machines), None) => format!(
+            "this machine's turns can't be had ({machines}), so this run is counted only by \
+             its builder's"
+        ),
+        (None, Some(builders)) if counted => format!(
+            "{host}'s turns can't be had ({builders}), so this run holds only the machine's"
+        ),
+        (None, Some(builders)) => {
+            format!("{host}'s turns can't be had ({builders}), so this run goes on without one")
+        }
+        (Some(machines), Some(builders)) => format!(
+            "neither this machine's turns ({machines}) nor {host}'s ({builders}) can be had, \
+             so this run goes on without one"
+        ),
+    })
 }
 
 /// One of the `count` turns named `name`, waited for while all are held,
@@ -390,6 +420,68 @@ mod tests {
             "a fifth run went to a builder running four"
         );
         drop(held);
+    }
+
+    // Where neither side's turns can be had, a counted run goes on with
+    // none, rather than waiting for ever or giving up.
+    #[test]
+    fn a_counted_run_whose_every_turn_is_unusable_goes_on_without_one() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        let names = (1..=AT_ONCE)
+            .map(|turn| format!("changed-{turn}"))
+            .chain((1..=EACH).map(|turn| format!("changed-builder-{turn}")));
+        for name in names {
+            std::os::unix::fs::symlink(&elsewhere, turns.path().join(name)).unwrap();
+        }
+        assert!(
+            matches!(
+                sending(turns.path(), "builder", false, true),
+                Turn::Had(files) if files.is_empty()
+            ),
+            "a counted run whose every turn is unusable held one, or none was given"
+        );
+        assert!(!elsewhere.exists(), "a link was followed");
+    }
+
+    // Each side that can't be had is said once, in one line that holds
+    // with the other side's, so no line says a run is counted by what the
+    // next says can't be had.
+    #[test]
+    fn a_turn_that_cant_be_had_is_said_once_with_what_still_counts() {
+        let (machines, builders) = (io::Error::other("m"), io::Error::other("b"));
+        let said = |counted, machines, builders| unhad("builder", counted, machines, builders);
+        assert_eq!(
+            said(true, None, None),
+            None,
+            "a run with both turns said one"
+        );
+        assert_eq!(
+            said(true, Some(&machines), None).as_deref(),
+            Some(
+                "this machine's turns can't be had (m), so this run is counted only by its \
+                 builder's"
+            ),
+            "a run without the machine's turn didn't say its builder's still counts"
+        );
+        assert_eq!(
+            said(true, None, Some(&builders)).as_deref(),
+            Some("builder's turns can't be had (b), so this run holds only the machine's"),
+            "a counted run without its builder's turn didn't say the machine's holds"
+        );
+        assert_eq!(
+            said(false, None, Some(&builders)).as_deref(),
+            Some("builder's turns can't be had (b), so this run goes on without one"),
+            "an uncounted run without its builder's turn said something holds it"
+        );
+        assert_eq!(
+            said(true, Some(&machines), Some(&builders)).as_deref(),
+            Some(
+                "neither this machine's turns (m) nor builder's (b) can be had, so this run \
+                 goes on without one"
+            ),
+            "a run with neither turn didn't say so in one line"
+        );
     }
 
     #[test]

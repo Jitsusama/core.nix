@@ -1821,20 +1821,25 @@ pub fn turns_folder() -> Option<PathBuf> {
 /// and in `temp` otherwise, or in `temp` where the runtime folder's can't
 /// be used, as one inherited through `sudo -E` or left after its account
 /// logged out, for the account `uid`; why not, of each, when neither is
-/// that account's own folder. A runtime folder is used only when it's a
-/// folder of that account's that no other may write, as logind makes it,
-/// since another account that can write it could move the turns folder
-/// aside and put its own in its place; one others may only read is used,
-/// since the turns folder within is closed to them.
+/// that account's own folder. A runtime folder is used only when its
+/// path is absolute, as the XDG spec asks, and it's a folder of that
+/// account's that no other may write, as logind makes it: an empty or
+/// relative one would keep each working folder's turns apart, and
+/// another account that can write the folder itself could move the
+/// turns folder aside and put its own in its place. One others may only
+/// read is used, since the turns folder within is closed to them. Only
+/// the folder itself is looked at, not those above it, which logind
+/// makes root's alone.
 fn turns_folder_in(runtime: Option<PathBuf>, temp: &Path, uid: u32) -> Result<PathBuf, String> {
     use std::os::unix::fs::MetadataExt;
     let in_temp = || turn_folder_at(&temp.join(format!("nix-offload-there-{uid}")), uid);
     let Some(runtime) = runtime else {
         return in_temp();
     };
-    let open_to_others = fs::symlink_metadata(&runtime)
-        .is_ok_and(|found| !found.is_dir() || found.uid() != uid || found.mode() & 0o022 != 0);
-    let ours = if open_to_others {
+    let alone = runtime.is_absolute()
+        && fs::symlink_metadata(&runtime)
+            .is_ok_and(|found| found.is_dir() && found.uid() == uid && found.mode() & 0o022 == 0);
+    let ours = if !alone {
         Err(format!(
             "{} isn't a runtime folder of this account's alone",
             runtime.display()
@@ -6436,7 +6441,9 @@ mod tests {
 
     // A turn's file that can't be locked at all (here one opened only as a
     // path, which flock refuses) is taken out and said, and the free one
-    // beside it is still taken.
+    // beside it is still taken. Linux alone opens a file only as a path,
+    // and a Mac's libc has no O_PATH, so its tests wouldn't build.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_turn_that_cant_be_locked_is_left_out_for_the_one_beside_it() {
         use std::os::unix::fs::OpenOptionsExt;
@@ -6456,8 +6463,12 @@ mod tests {
             taken.is_some() && files.is_empty() && unlocked.len() == 1,
             "a turn that can't be locked kept the free one from its copy: {unlocked:?}"
         );
+    }
+
+    #[test]
+    fn copies_are_counted_in_words() {
         assert_eq!(
-            (copies(files.len() + 1), copies(3)),
+            (copies(1), copies(3)),
             ("1 copy".to_owned(), "3 copies".to_owned()),
             "the copies counted were said wrong"
         );
@@ -6540,14 +6551,40 @@ mod tests {
         let uid = unsafe { libc::geteuid() };
         let runtime = base.path().join("runtime");
         fs::create_dir(&runtime).expect("a runtime folder");
-        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o775)).expect("opened");
         let temp = tempfile::tempdir().expect("a temp folder");
-        assert_eq!(
-            turns_folder_in(Some(runtime.clone()), temp.path(), uid),
-            Ok(temp.path().join(format!("nix-offload-there-{uid}"))),
-            "a runtime folder others may write was used rather than the temp folder"
-        );
+        let in_temp = Ok(temp.path().join(format!("nix-offload-there-{uid}")));
+        for mode in [0o775, 0o757] {
+            fs::set_permissions(&runtime, fs::Permissions::from_mode(mode)).expect("opened");
+            assert_eq!(
+                turns_folder_in(Some(runtime.clone()), temp.path(), uid),
+                in_temp,
+                "a runtime folder others may write ({mode:o}) was used, not the temp folder"
+            );
+        }
         fs::set_permissions(&runtime, fs::Permissions::from_mode(0o755)).expect("closed");
+        let linked = base.path().join("linked");
+        std::os::unix::fs::symlink(&runtime, &linked).expect("a link to it");
+        let relative = PathBuf::from("runtime");
+        for (unfit, what) in [
+            (linked, "a link to one of its own"),
+            (PathBuf::new(), "empty"),
+            (relative, "relative"),
+        ] {
+            assert_eq!(
+                turns_folder_in(Some(unfit), temp.path(), uid),
+                in_temp,
+                "a runtime folder that's {what} was used, not the temp folder"
+            );
+        }
+        assert!(
+            turns_folder_in(
+                Some(runtime.clone()),
+                base.path().join("gone").as_path(),
+                uid + 1
+            )
+            .is_err_and(|why| why.contains("isn't a runtime folder of this account's alone")),
+            "another account's runtime folder was taken, or not said to be another's"
+        );
         let made = turns_folder_in(Some(runtime.clone()), base.path(), uid).expect("its folder");
         assert_eq!(
             made,
