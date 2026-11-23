@@ -641,9 +641,9 @@ mod tests {
         )
     }
 
-    #[test]
-    fn each_merge_counts_the_councils_on_its_number_branch_or_tree() {
-        let log = format!(
+    /// Four merges this day, one past it, and two reverts.
+    fn merges() -> String {
+        format!(
             "{}\n{}\n{}\n{}\n{}\n",
             format_args!(
                 "aaaa {} Merge pull request #11 from Jitsusama/here/eleven",
@@ -671,7 +671,12 @@ mod tests {
              9999 {} Merge pull request #16 from Jitsusama/merge-net/revert-aaaa\n",
             NOW - 30,
             NOW - 20
-        );
+        )
+    }
+
+    #[test]
+    fn each_merge_counts_the_councils_on_its_number_branch_or_tree() {
+        let log = merges();
         let six: Vec<String> = (0..6)
             .map(|n| started(&format!("council-six-{n}"), 600))
             .collect();
@@ -962,15 +967,19 @@ mod tests {
         let quiet = Records::default();
         let all = rounds(&mains, &unread, &quiet, &quiet, BTreeMap::new, NOW, "ORCH");
         assert!(
-            all[0].says.ends_with("of 0 with a review record, 1 with none, this machine's review \
-                 records unread")
-                && !read_whole(&all[0]),
+            all[0].says.ends_with(
+                "of 0 with a review record, 1 with none, this machine's review \
+                 records unread"
+            ) && !read_whole(&all[0]),
             "{}",
             all[0].says
         );
         let all = rounds(&mains, &quiet, &quiet, &quiet, BTreeMap::new, NOW, "ORCH");
         assert!(
-            all[0].says.ends_with("of 0 with a review record, 1 with none") && read_whole(&all[0]),
+            all[0]
+                .says
+                .ends_with("of 0 with a review record, 1 with none")
+                && read_whole(&all[0]),
             "a day with no round here or in a mirror read as unread: {}",
             all[0].says
         );
@@ -1118,8 +1127,8 @@ mod tests {
         for (said, unread) in [(NO_RUNS, 0), (NO_MIRROR, 1), (NO_FIXES, 2)] {
             let mut each = [kept(&ours.runs), kept(&theirs.runs), kept(&fixed.runs)];
             each[unread].trouble.push("can't be listed".to_owned());
-            let [local, mirrored, fixes] = each;
-            let all = rounds(&mains, &local, &mirrored, &fixes, landed, NOW, "ORCH");
+            let [local, mirrored, kept_fixes] = each;
+            let all = rounds(&mains, &local, &mirrored, &kept_fixes, landed, NOW, "ORCH");
             assert!(
                 all.len() == 1 && !read_whole(&all[0]) && all[0].says.contains(said),
                 "a merge was filed, or its drag closed, while records went unread: {}",

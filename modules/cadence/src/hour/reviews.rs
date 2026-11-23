@@ -41,12 +41,16 @@ fn kept(folder: &Path, since: SystemTime, shaped: fn(&str) -> bool) -> Records {
     let at = folder.display();
     match listed(folder, since) {
         Ok(runs) => Records {
-            trouble: unshaped(&runs, shaped, &format!("at {at}")).into_iter().collect(),
+            trouble: unshaped(&runs, shaped, &format!("at {at}"))
+                .into_iter()
+                .collect(),
             runs,
         },
         Err(error) => Records {
             runs: Vec::new(),
-            trouble: vec![format!("the review records at {at} can't be listed ({error})")],
+            trouble: vec![format!(
+                "the review records at {at} can't be listed ({error})"
+            )],
         },
     }
 }
@@ -143,12 +147,11 @@ pub fn mirrored(root: &Path, since: SystemTime) -> Records {
                 ),
                 Ok(runs) => {
                     let from = format!("mirrored from {name}");
-                    match unshaped(&runs, rounds_shaped, &from) {
-                        Some(why) => why,
-                        None => {
-                            mirrored.runs.extend(runs);
-                            continue;
-                        }
+                    if let Some(why) = unshaped(&runs, rounds_shaped, &from) {
+                        why
+                    } else {
+                        mirrored.runs.extend(runs);
+                        continue;
                     }
                 }
                 Err(error) => format!("the mirror from {name} can't be listed ({error})"),
