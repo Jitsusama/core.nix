@@ -1818,7 +1818,14 @@ impl NetworkCeilings {
     fn of(options: &Options) -> Self {
         let file = options.networks.as_deref();
         let houses = file.map(networks::houses).unwrap_or_default();
-        let from = || house::Ear::start(houses.values().map(|h| h.from).collect());
+        let from = || {
+            house::Ear::start(
+                houses
+                    .values()
+                    .flat_map(|h| h.from.iter().copied())
+                    .collect(),
+            )
+        };
         Self {
             written: file.map(networks::ceilings).unwrap_or_default(),
             ear: (!houses.is_empty()).then(from),
@@ -1889,7 +1896,20 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
     houses
         .iter()
         .filter_map(|(network, h)| {
-            let sent = ear.sent(h.from, now);
+            // The other machine reports by the interface it sends by, so
+            // from one of its addresses. Of those fresh, the one that says
+            // the most holds, so a report forged from an address the other
+            // machine isn't sending by can only tighten the hold, and a
+            // move's old address stands only until its last word is stale.
+            // One forged from the address it is sending by replaces that
+            // address's word, so it can still loosen the hold until reports
+            // are signed.
+            let sent = h
+                .from
+                .iter()
+                .filter_map(|&address| ear.sent(address, now))
+                .filter(|&(_, age)| age <= house::FRESH)
+                .max_by(|a, b| a.0.total_cmp(&b.0));
             let most = house::held(h.most, sent, least)?;
             Some((network.clone(), (rate::whole(sent?.0), most)))
         })
@@ -2929,7 +2949,7 @@ mod tests {
             "00:00:5e:00:53:01".to_string(),
             networks::House {
                 most: 7_000,
-                from: mac,
+                from: vec![mac],
             },
         )]);
         let at = Instant::now();
@@ -2992,6 +3012,63 @@ mod tests {
             house_said(&quiet).contains("holds nothing"),
             "{}",
             house_said(&quiet)
+        );
+    }
+
+    // A house whose other machine moves to its cable is heard from either
+    // address while each is fresh, and the one saying the most holds,
+    // wherever it is in the list and however fresh, so a report saying
+    // less, forged or late, never loosens the hold (house round 3).
+    #[test]
+    fn a_house_is_held_by_the_most_any_of_its_fresh_addresses_says() {
+        let wifi: std::net::IpAddr = "192.0.2.7".parse().expect("an address");
+        let cable: std::net::IpAddr = "192.0.2.8".parse().expect("an address");
+        let houses = networks::Houses::from([(
+            "00:00:5e:00:53:01".to_string(),
+            networks::House {
+                most: 7_000,
+                from: vec![wifi, cable],
+            },
+        )]);
+        let ear = house::Ear::default();
+        let at = Instant::now();
+        let report = |bytes, ms| house::Report { bytes, ms };
+        ear.hear(wifi, report(0, 0), at);
+        ear.hear(wifi, report(312_500, 1_000), at);
+        let moved = at + Duration::from_secs(2);
+        ear.hear(cable, report(312_500, 2_000), moved);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), moved).get("00:00:5e:00:53:01"),
+            Some(&(2_500, 4_500)),
+            "the Wi-Fi's last rate didn't stand while the cable had said none"
+        );
+        let next = moved + Duration::from_secs(1);
+        ear.hear(cable, report(437_500, 3_000), next);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), next).get("00:00:5e:00:53:01"),
+            Some(&(2_500, 4_500)),
+            "a fresher address saying less loosened the hold"
+        );
+        let past = at + house::FRESH + Duration::from_secs(1);
+        ear.hear(wifi, report(375_000, 4_000), past);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), past).get("00:00:5e:00:53:01"),
+            Some(&(1_000, 6_000)),
+            "the cable, saying more and second in the list, didn't hold"
+        );
+        let quiet = past + house::FRESH + Duration::from_secs(1);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), quiet).get("00:00:5e:00:53:01"),
+            None,
+            "a house held with neither address fresh"
+        );
+        // The cable's word, saying more, is stale now, so the Wi-Fi's holds.
+        let stale = next + house::FRESH + Duration::from_secs(1);
+        ear.hear(wifi, report(437_500, 5_000), stale);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), stale).get("00:00:5e:00:53:01"),
+            Some(&(500, 6_500)),
+            "a stale address saying more held over a fresh one"
         );
     }
 }

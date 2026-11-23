@@ -338,6 +338,7 @@
         guide = pkgs.callPackage ../../modules/guide/package.nix { };
         health = pkgs.callPackage ../../modules/health/package.nix { };
         hibernate-unlock = pkgs.callPackage ../../modules/hibernate/unlock/package.nix { };
+        house-report = pkgs.callPackage ../../modules/house-report/package.nix { };
         ir-camera = pkgs.callPackage ../../modules/ir-camera/package.nix { };
         jobs-broker = pkgs.callPackage ../../modules/jobs-broker/package.nix { };
         jobs-sorter = pkgs.callPackage ../../modules/slices/jobs-sorter/package.nix { };

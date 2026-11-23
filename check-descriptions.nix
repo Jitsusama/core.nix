@@ -1614,6 +1614,28 @@
     kind's first claim, passes a page that links none of a pattern's things, fails with no row home
     to anything, and reads a shortened name's tail as no mention
   '';
+  house-report-is-told-an-address = ''
+    a Linux machine runs house-report as a service of its own account that writes nothing, started
+    again when it ends but not after its usage exit, and is told only an address as the shaper's
+    house reads one, IPv4 alone, sent to with the shaper's port: a name, a malformed address, an
+    IPv4 one written as IPv6, or any IPv6 one, which a report would leave from a temporary
+    address no house names, is refused as the machine builds
+  '';
+  house-report-passes-clippy = ''
+    clippy finds nothing in house-report or its tests
+  '';
+  house-report-runs-as-a-macs-daemon = ''
+    a Mac runs house-report as a launchd daemon as nobody, from its start and again whenever it
+    ends, once the store is mounted, at a standard priority, logging to a file in /var/log made
+    nobody's before launchd starts it, and sending to the address it's told with the shaper's port
+  '';
+  house-report-says-what-the-link-sent = ''
+    house-report's tests pass: a report's text is the bytes then the ms, its total starts at
+    nothing and grows by what the counter counts, a counter made again counts from nothing, an
+    uplink that moves counts on from the new one's count, the way reports go is said first and
+    each time its interface or address moves, this machine's own address is sent to by its
+    loopback from a loopback address, and an interface's count is read from its statistics alone
+  '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
     sessions started outside a terminal as it weighs windows
@@ -3667,10 +3689,11 @@
   '';
   shaper-hears-only-the-house = ''
     a network's house opens the port the shaper hears its reports on, the one src/house.rs names,
-    to the house's address alone, over IPv4 or IPv6 as it's written: the input rules are the
-    houses' two alone, and no port, range or trusted interface opens it to all; and a house's
-    address is held to well-formed IPv4 or IPv6, an IPv4 one written as IPv6, mapped or
-    compatible, refused in each spelling tried
+    to the house's addresses alone, one written alone or a list, over IPv4 or IPv6 as each is
+    written: the input rules are the houses' three alone, and no port, range or trusted interface
+    opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
+    IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried, and a
+    list to one address at least
   '';
   shaper-passes-clippy = ''
     clippy finds nothing in the shaper or its tests
@@ -6431,6 +6454,14 @@
     the shaper and passes 300 without; an app's upload leaves the jobs' under a quarter of what it
     sends; the shaper follows the connection down to 4 Mbit/s and back, and down again when the
     uploads ride a second link to the same router
+  '';
+  vm-the-house-holds-the-upload = ''
+    with another machine on the line running house-report as a service, naming no interface, and
+    sending 3 Mbit/s across the home network, the shaper hears it through its firewall, its
+    reports read 2.4 to 3.6 Mbit/s, and it holds its own upload under what the house's 8 Mbit/s
+    leaves, never under 4, and says so; once the reporter's route moves to another address the
+    house names, the reporter says so, the shaper hears the new address and the hold stands; once
+    the reports stop it says the house went quiet and the upload climbs past the hold
   '';
   vm-the-cores-stay-out-of-deep-rest = ''
     a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit

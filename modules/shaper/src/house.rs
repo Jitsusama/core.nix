@@ -5,6 +5,11 @@
 //! November the VPN ran late in 6 to 14% of seconds while the two sent
 //! under 5 Mb/s between them, and in 87% at 11 to 12, whichever sent it.
 //!
+//! The other machine reports from the address of whichever interface it
+//! sends by, so a house names one for each, and of the fresh reports the
+//! one saying the most says what it sends (src/main.rs's `house_holds`),
+//! so a report from an address it isn't sending by can't loosen the hold.
+//!
 //! The source address alone says a report is the other machine's, so any
 //! device on the line can forge one by sending from that address: it
 //! holds this machine's upload down to the least a trial may set, or lets

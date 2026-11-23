@@ -93,53 +93,11 @@ let
   # The port src/house.rs hears another machine's reports on.
   housePort = 47110;
   houses = lib.filter (house: house != null) (lib.catAttrs "house" (lib.attrValues networks));
-  # An address as the firewall and src/networks.rs read it alike: IPv4's
-  # four octets, or IPv6's eight groups with at most one :: for a run of
-  # them. An IPv4 one written as IPv6, mapped or in the old compatible
-  # form, in any spelling, is refused: the firewall would match it as
-  # IPv6, which no IPv4 report is. Rust's to_ipv4 refuses the same.
-  octet = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
-  group = "[0-9a-fA-F]{1,4}";
-  isIpv4 = text: builtins.match "${octet}([.]${octet}){3}" text != null;
-  isIpv6 =
-    text:
-    let
-      halves = lib.splitString "::" text;
-      groups = lib.concatMap (half: lib.optionals (half != "") (lib.splitString ":" half)) halves;
-      each = lib.all (part: builtins.match group part != null) groups;
-      counted =
-        if lib.length halves == 1 then
-          lib.length groups == 8
-        else
-          lib.length halves == 2 && lib.length groups <= 7;
-    in
-    each && counted;
-  # A well-formed IPv6 address's eight groups, its :: written out.
-  groupsOf =
-    text:
-    let
-      halves = lib.splitString "::" (lib.toLower text);
-      parts = half: lib.optionals (half != "") (lib.splitString ":" half);
-      head = parts (lib.head halves);
-      tail = lib.optionals (lib.length halves == 2) (parts (lib.last halves));
-      run = lib.optionals (lib.length halves == 2) (
-        lib.genList (_: "0") (8 - lib.length head - lib.length tail)
-      );
-    in
-    head ++ run ++ tail;
-  isIpv4In6 =
-    text:
-    let
-      groups = groupsOf text;
-      zero = part: builtins.match "0+" part != null;
-      sixth = lib.elemAt groups 5;
-    in
-    lib.all zero (lib.take 5 groups) && (zero sixth || sixth == "ffff");
-  address =
-    lib.types.addCheck lib.types.str (text: isIpv4 text || isIpv6 text && !isIpv4In6 text)
-    // {
-      description = "IPv4 or IPv6 address";
-    };
+  # An address as the firewall and src/networks.rs read it alike.
+  address = import ./address.nix lib;
+  # A house's addresses, one written alone taken as a list of one, so a
+  # machine that named one before names it the same way still.
+  addresses = lib.types.coercedTo address lib.toList (lib.types.nonEmptyListOf address);
 in
 {
   imports = [
@@ -214,12 +172,20 @@ in
                 '';
               };
               options.from = lib.mkOption {
-                type = address;
-                example = "192.0.2.7";
+                type = addresses;
+                example = [
+                  "192.0.2.7"
+                  "192.0.2.8"
+                ];
                 description = ''
-                  The address the other machine reports from, the only one
-                  heard, so a report from anywhere else holds nothing. The
-                  address alone says a report is the other machine's, so any
+                  The addresses the other machine reports from, one or a
+                  list, the only ones heard, so a report from anywhere else
+                  holds nothing. Name one for each interface it may send
+                  by, its Wi-Fi's and its cable's, since it reports by the
+                  one its routes send by: what it sent is read from the
+                  fresh report saying the most, so one from an address it
+                  isn't sending by can only tighten the hold. The address
+                  alone says a report is the other machine's, so any
                   device on the line could forge one by sending from it: for
                   as long as it keeps sending, it holds this machine's
                   upload as low as 4 Mb/s, as a trial may, or lets it go.
@@ -230,7 +196,8 @@ in
                   as IPv6 is refused. Make it a reserved address the other
                   machine sends from: reports from a new lease, or from a
                   temporary IPv6 address, are dropped without a word, and
-                  the house holds nothing.
+                  the house holds nothing. house-report sends over IPv4
+                  alone, for that reason.
                 '';
               };
             }
@@ -308,11 +275,11 @@ in
   # Only the house's other machine reaches the port its reports go to. The
   # rule holds on every network, but a report holds only the links of the
   # network that names the house.
-  config.networking.firewall.extraInputRules = lib.concatMapStrings (house: ''
+  config.networking.firewall.extraInputRules = lib.concatMapStrings (address: ''
     ${
-      if lib.hasInfix ":" house.from then "ip6" else "ip"
-    } saddr ${house.from} udp dport ${toString housePort} accept
-  '') houses;
+      if lib.hasInfix ":" address then "ip6" else "ip"
+    } saddr ${address} udp dport ${toString housePort} accept
+  '') (lib.unique (lib.concatMap (house: house.from) houses));
 
   # The shaper makes the IFBs it needs, one per link; the module's own two
   # would only sit there.
