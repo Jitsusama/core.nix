@@ -8758,17 +8758,10 @@ Scope {
         }
 
         // What the launcher shows, or, where reading it threw, what threw,
-        // in the journal with where and as JSON, since a call once
-        // answered an empty line and kept nothing of why
-        // (vm-desktop-looks, 22 Nov).
+        // its kind and where but never its message (Held.js's answered).
         function showing(): string {
-            try {
-                return root.showing();
-            } catch (error) {
-                const threw = String(error?.message ?? error);
-                console.warn(`launcher: showing threw: ${threw}\n${error?.stack ?? ""}`);
-                return JSON.stringify({ threw: threw });
-            }
+            return Held.answered(() => root.showing(),
+                threw => console.warn(`launcher: showing threw: ${threw}`));
         }
 
         // The catalogue, every place and action by id, as one line of JSON.

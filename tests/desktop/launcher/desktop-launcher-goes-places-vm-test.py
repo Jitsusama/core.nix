@@ -948,6 +948,11 @@ def home_holds_still_as_the_queue_changes(desktop: Desktop) -> None:
     assert "asked again by jobs" not in said, f"the queue asked home again: {said}"
 
 
+# What Machine's drawer names first, as the plain run and the gallery's shots both wait on it,
+# so a change to the drawer fails the run the net reads rather than only a gallery.
+MACHINE_LEADS = ["Lag", "Processor"]
+
+
 def holds(shown: Json, name: str, first: list[str], *, wraps: bool = False) -> bool:
     """Say whether the place named is selected, its drawer out naming what it holds.
 
@@ -1010,7 +1015,7 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["rows"] == home)
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", MACHINE_LEADS, wraps=True))
     desktop.shoot("launcher-home-machine-drawn")
     desktop.close_launcher()
 
@@ -1061,7 +1066,7 @@ def test_the_launchers_home_lists_the_categories_to_browse_each_saying_what_it_h
     # it. A place names the places it holds by their names, never the words its typed
     # commands start with: Network once read "ip, is, split, mac".
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", MACHINE_LEADS, wraps=True))
     desktop.down_to("Network")
     desktop.launcher_until(lambda shown: holds(shown, "Network", ["Wi-Fi"]))
     home_holds_still_as_the_queue_changes(desktop)

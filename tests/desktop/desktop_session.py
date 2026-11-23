@@ -704,10 +704,14 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
 
         That's whether it holds the keys, what's typed and held, and the row Return takes.
         Under load the launcher lags the keys sent to it, so each step waits on this. An answer
-        that isn't the state, or says what threw making it, fails saying so and what the shell's
-        journal holds (heard.shown).
+        that isn't the state, or says what threw making it, fails saying so and the shell's
+        last journal lines (heard.shown). Those leave out its reports, each a whole state the
+        waits already say, which would bury the line saying what threw, and cut short, drop it.
         """
-        journal = "journalctl --user --unit=quickshell --no-pager --output=cat --lines=200"
+        journal = (
+            "journalctl --user --unit=quickshell --no-pager --output=cat --lines=2000"
+            " | grep -avF 'report[' | tail -n 60"
+        )
         return cast(
             "Json",
             shown(

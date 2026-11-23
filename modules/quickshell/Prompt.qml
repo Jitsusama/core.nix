@@ -21,9 +21,9 @@
 // draws it, blinking as his kitty blinks it, and none in normal, where the
 // keys are on the rows.
 // Its type ranks it (docs/design.md, Type): where Joel is at Title, the
-// rows' own size apart by its weight (theme's type.nix), its capitals
-// centred on the field; what's
-// typed at Figure, his letters rather than a name; the hint as typed, muted;
+// same size as the rows but set apart by its weight (theme's type.nix),
+// its capitals centred on the field; what's typed at Figure, his letters
+// rather than a name; the hint as typed, muted;
 // and the aside and the field's keys at Note, a step under the rest.
 pragma ComponentBehavior: Bound
 import QtQuick

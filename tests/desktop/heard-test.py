@@ -6,6 +6,7 @@ keeps of what the launcher showed.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -381,8 +382,12 @@ def test_a_state_passing_at_first_read_hears_nothing() -> None:
 ANSWERED = "the launcher's showing call answered"
 
 
+# What threw, as the launcher says it (launcher/Held.js's thrown): its kind and where.
+THREW = "TypeError: thrown at showing@file:///Launcher.qml:10021"
+
+
 def journal() -> str:
-    return "launcher: showing threw: TypeError: Cannot read property 'y' of null\n"
+    return f"launcher: showing threw: {THREW}\n"
 
 
 def test_a_state_answered_as_json_is_given_back_without_reading_the_journal() -> None:
@@ -397,19 +402,20 @@ def test_a_state_answered_as_json_is_given_back_without_reading_the_journal() ->
 
 @pytest.mark.parametrize("said", ["\n", "", '{"open": tr'])
 def test_an_answer_that_isnt_json_says_what_came_and_what_the_shell_said(said: str) -> None:
-    # A call whose function threw answers an empty line, which once failed vm-desktop-looks
-    # as a bare JSONDecodeError with nothing of why (e73f6fe8, 22 Nov).
-    with pytest.raises(AssertionError) as unsound:
+    # A call once answered an empty line, which failed vm-desktop-looks as a bare
+    # JSONDecodeError with nothing of why (e73f6fe8, 22 Nov). It fails as a RuntimeError,
+    # which the waits that press again on an AssertionError don't press past.
+    with pytest.raises(RuntimeError) as unsound:
         shown(said, journal, ANSWERED)
     wanted = f"{ANSWERED} {said!r}, not a state as JSON\n{journal()}"
     assert str(unsound.value) == wanted, f"{said!r} failed as: {unsound.value}"
 
 
 def test_an_answer_naming_a_throw_says_it_and_what_the_shell_said() -> None:
-    said = '{"threw": "TypeError: Cannot read property \'y\' of null"}\n'
-    with pytest.raises(AssertionError) as threw:
+    said = json.dumps({"threw": THREW}) + "\n"
+    with pytest.raises(RuntimeError) as threw:
         shown(said, journal, ANSWERED)
-    wanted = f"{ANSWERED} that its read threw TypeError: Cannot read property 'y' of null\n"
+    wanted = f"{ANSWERED} that its read threw {THREW}\n"
     assert str(threw.value) == wanted + journal(), f"a throw failed as: {threw.value}"
 
 
