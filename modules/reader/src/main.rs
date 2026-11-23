@@ -469,6 +469,23 @@ fn main() -> ExitCode {
     })
 }
 
+/// Sets `file`'s first screen, reaching as far as `block`, while the GL
+/// driver comes up beside it on `conn`.
+fn set_first_warming(
+    conn: &Connection,
+    file: &str,
+    block: Option<usize>,
+    width: page::Width,
+) -> Result<page::First, String> {
+    // SAFETY: the connection, and so its display, outlives the join below.
+    let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
+    let first = page::set_first(file, block, width);
+    if let Some(warming) = warming {
+        let _ = warming.join();
+    }
+    first
+}
+
 /// Shows `file` in a window until it's closed, or measures its frames.
 fn show(
     measuring: bool,
@@ -495,14 +512,9 @@ fn show(
     let opens_at = opening_at(kept.as_ref(), letter);
     // Connecting before the page is set lets the GL driver come up beside it.
     let conn = Connection::connect_to_env()?;
-    // SAFETY: the connection, and so its display, outlives the join below.
-    let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
-    let first = page::set_first(file, opens_at.map(|opens| opens.block), width);
-    if let Some(warming) = warming {
-        let _ = warming.join();
-    }
-    let first = first?;
-    let start_pt = opens_at.and_then(|opens| opens.at(&place::starts(&first.page.frame)));
+    let first = set_first_warming(&conn, file, opens_at.map(|opens| opens.block), width)?;
+    let starts = place::starts(&first.page.frame);
+    let start_pt = opens_at.and_then(|opens| opens.at(&starts));
     let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
     let page::First {
         page,
