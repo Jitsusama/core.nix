@@ -13,7 +13,7 @@
 
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
@@ -24,16 +24,31 @@ const BLOCK: usize = 512;
 /// What closes an archive: two empty blocks.
 const CLOSE: usize = 2 * BLOCK;
 
-/// What an archive needs around one file's data at most, but for a pax
-/// record of a path past ustar's fields: its header, a pax header, the
-/// padding after each and the archive's close.
-pub const ROOM: u64 = 8 * BLOCK as u64;
+/// What closes an archive, in bytes, as a size is counted.
+pub const CLOSED: u64 = CLOSE as u64;
 
-/// What a file of `size` bytes takes in an archive, but for any pax
-/// header its path needs: a header and its data, padded.
-pub fn taken(size: u64) -> u64 {
+/// What a file at `path` of `size` bytes takes in an archive, just as
+/// `write` puts it in: a pax header and its record where ustar can't hold
+/// the path, then its own header and its data, each padded.
+pub fn taken(path: &str, size: u64) -> u64 {
     let block = BLOCK as u64;
-    block + size.div_ceil(block) * block
+    let pax = if split(path).is_some() {
+        0
+    } else {
+        let record = record("path", path).len() as u64;
+        block + record.div_ceil(block) * block
+    };
+    pax + block + size.div_ceil(block) * block
+}
+
+/// The most the archives of entries taking `taken` bytes in all come to,
+/// each at most `most` bytes, with their closes. An archive is closed
+/// only when the next entry won't fit in it, so any two archives in a
+/// row hold more than one's room, and there are never more than twice
+/// as many as the entries fill, and one.
+pub fn archived(taken: u64, most: u64) -> u64 {
+    let room = most.saturating_sub(CLOSED).max(1);
+    taken + CLOSED * (2 * taken.div_ceil(room) + 1)
 }
 
 /// The longest name, and the longest prefix before it, a ustar header
@@ -61,11 +76,9 @@ pub fn write<'a>(
 ) -> io::Result<Vec<Part>> {
     let mut parts = Vec::new();
     let mut open: Option<(fs::File, u64)> = None;
-    let close = CLOSE as u64;
+    let close = CLOSED;
     for path in paths {
-        let from = root.join(path);
-        let data = fs::read(&from)?;
-        let meta = fs::metadata(&from)?;
+        let (data, meta) = read(&root.join(path))?;
         let entry = entry(path, &data, &meta);
         let length = entry.len() as u64;
         if length + close > most {
@@ -91,6 +104,25 @@ pub fn write<'a>(
         parts.push(closed(open, parts.len())?);
     }
     Ok(parts)
+}
+
+/// The plain file at `path`, read whole through one opening, with what
+/// that opening says of it. A link put where the file was gathered from
+/// is refused, not followed, so nothing outside the tree goes in.
+fn read(path: &Path) -> io::Result<(Vec<u8>, fs::Metadata)> {
+    let mut file = fs::File::open(path)?;
+    let meta = file.metadata()?;
+    let named = fs::symlink_metadata(path)?;
+    if !meta.is_file() || !named.is_file() || (named.dev(), named.ino()) != (meta.dev(), meta.ino())
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{} is no longer a plain file of the tree", path.display()),
+        ));
+    }
+    let mut data = Vec::new();
+    io::Read::read_to_end(&mut file, &mut data)?;
+    Ok((data, meta))
 }
 
 /// The archive numbered `number`'s name.

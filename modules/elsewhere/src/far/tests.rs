@@ -790,28 +790,73 @@ fn refused_as_no_archive(code: Option<i32>, err: &str, home: &Path, named: &str)
 }
 
 #[test]
-fn an_archive_holding_a_link_is_refused_before_the_job_runs() {
-    let made = scratch("linked");
-    std::os::unix::fs::symlink("/etc/passwd", made.join("l")).unwrap();
-    let archive = std::process::Command::new("tar")
-        .args(["-cf", "-", "-C"])
-        .arg(&made)
-        .arg("l")
-        .output()
-        .unwrap();
-    assert!(archive.status.success(), "tar made no archive of a link");
+fn an_archive_holding_a_link_a_pipe_or_a_shared_file_is_refused_before_the_job_runs() {
+    type Made = fn(&Path);
+    let odd: [(&str, Made); 3] = [
+        ("a link", |made| {
+            std::os::unix::fs::symlink("/etc/passwd", made.join("l")).unwrap();
+        }),
+        ("a pipe", |made| {
+            let piped = std::process::Command::new("mkfifo")
+                .arg(made.join("l"))
+                .status()
+                .unwrap();
+            assert!(piped.success(), "mkfifo made no pipe");
+        }),
+        ("a file under two names", |made| {
+            std::fs::write(made.join("k"), "x").unwrap();
+            std::fs::hard_link(made.join("k"), made.join("l")).unwrap();
+        }),
+    ];
+    for (what, make) in odd {
+        let made = scratch("odd");
+        make(&made);
+        let archive = std::process::Command::new("tar")
+            .args(["-cf", "-", "-C"])
+            .arg(&made)
+            .arg(".")
+            .output()
+            .unwrap();
+        assert!(archive.status.success(), "tar made no archive of {what}");
+        let _ = std::fs::remove_dir_all(&made);
+        // Headers and at most a letter, all ASCII and NULs, so its text
+        // holds it.
+        let text = String::from_utf8(archive.stdout).unwrap();
+        let list = format!("{}\t0.tar\nend\n", text.len());
+        let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
+        assert!(
+            code == Some(77) && err.contains("neither a file nor a folder"),
+            "a tree holding {what} wasn't refused ({code:?}): {err}"
+        );
+        assert!(
+            !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
+            "a job ran over a tree holding {what}, or its copy was left"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
+fn an_archive_naming_a_member_outside_its_tree_is_refused_before_it_s_unpacked() {
+    let made = scratch("climbing");
+    std::fs::create_dir_all(made.join("in")).unwrap();
+    std::fs::write(made.join("out"), "no").unwrap();
+    let parts = super::archive::write(&made.join("in"), ["../out"], &made, 1 << 20).unwrap();
+    assert_eq!(parts.len(), 1, "one file made other than one archive");
+    let text = String::from_utf8(std::fs::read(made.join("0.tar")).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&made);
-    // A header and nothing past it, all ASCII and NULs, so its text holds it.
-    let text = String::from_utf8(archive.stdout).unwrap();
     let list = format!("{}\t0.tar\nend\n", text.len());
     let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
     assert!(
-        code == Some(77) && err.contains("neither a file nor a folder"),
-        "a tree holding a link wasn't refused ({code:?}): {err}"
+        code == Some(77) && err.contains("names ../out, outside its tree"),
+        "an archive climbing out of its tree wasn't refused as the tree's fault ({code:?}): {err}"
     );
     assert!(
-        !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
-        "a job ran over a tree holding a link, or its copy was left"
+        !work(&home).join("out").exists()
+            && !work(&home).join("ran").exists()
+            && !work(&home).join("1").exists()
+            && !work(&home).join("1.names").exists(),
+        "an archive climbing out wrote outside its copy, a job ran, or its copy was left"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -819,25 +864,31 @@ fn an_archive_holding_a_link_is_refused_before_the_job_runs() {
 #[test]
 fn a_far_line_stopped_mid_job_takes_its_copy_away() {
     // Mycelium stops a run whose asker let go with the terminate signal
-    // to its whole group; here the job sends it to the far line alone,
-    // then ends, as a job the signal reached would.
-    let (code, err, home) = far_run(
-        Left::Whole,
-        &[("a", "1")],
-        "touch ../ran && kill -TERM $PPID",
-    );
-    assert!(
-        work(&home).join("ran").exists(),
-        "the job never ran ({code:?}): {err}"
-    );
-    assert_eq!(code, Some(143), "a stopped far line ended otherwise: {err}");
-    assert!(
-        !work(&home).join("1").exists() && !handover(&home).join(super::TREE).exists(),
-        "a stopped far line left its copy or the job's archives"
-    );
-    assert!(
-        !handover(&home).join(super::BACK).exists(),
-        "a stopped far line brought something back"
-    );
-    let _ = std::fs::remove_dir_all(&home);
+    // to its whole group; here the job sends a signal to the far line
+    // alone, then ends, as a job the signal reached would.
+    for (signal, ends) in [("TERM", 143), ("HUP", 129), ("INT", 130)] {
+        let (code, err, home) = far_run(
+            Left::Whole,
+            &[("a", "1")],
+            &format!("touch ../ran && kill -{signal} $PPID"),
+        );
+        assert!(
+            work(&home).join("ran").exists(),
+            "the job never ran ({code:?}): {err}"
+        );
+        assert_eq!(
+            code,
+            Some(ends),
+            "a far line stopped by {signal} ended otherwise: {err}"
+        );
+        assert!(
+            !work(&home).join("1").exists() && !handover(&home).join(super::TREE).exists(),
+            "a far line stopped by {signal} left its copy or the job's archives"
+        );
+        assert!(
+            !handover(&home).join(super::BACK).exists(),
+            "a far line stopped by {signal} brought something back"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
 }

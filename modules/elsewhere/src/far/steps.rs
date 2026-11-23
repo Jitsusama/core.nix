@@ -18,11 +18,14 @@ use crate::settings::Kind;
 /// checked before any is unpacked. A job with no file that travels sends
 /// none, and its tree is made empty.
 ///
-/// The near side writes only files and folders, so a tree holding
-/// anything else, as a link, came from no near side and is refused once
-/// unpacked, before the job runs. That an archive can't write outside
-/// the copy is both tars' own refusal of a name climbing out, and the
-/// fence around the far line, which writes only the quest's scratch.
+/// The near side writes only files and folders, each named within the
+/// tree, so an archive naming a member from the root or through `..`
+/// came from no near side and is refused before it's unpacked. So is a
+/// tree holding anything else, a link of either kind, a pipe, a socket
+/// or a device, checked as each archive is unpacked, before the next,
+/// so no archive writes through what one before it made, and none takes
+/// away what one before it made before it's seen. Past that, the fence
+/// around the far line writes only the quest's scratch.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
@@ -35,14 +38,23 @@ pub(super) fn copying() -> String {
   done < "$job/{LEFT}"
   while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
+    tar -tf "$job/{TREE}/$part" > "$work.names" || return 2
+    while IFS= read -r member; do
+      case /$member/ in
+        //*|*/../*)
+          printf "elsewhere: the job's archive %s names %s, outside its tree\n" "$part" "$member" >&2
+          return 1 ;;
+      esac
+    done < "$work.names"
     tar -xf "$job/{TREE}/$part" -C "$work" || return 2
-  done < "$job/{LEFT}"
-  odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c) || return 2
-  [ -z "$odd" ] || {{
-    printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder\n" "${{odd%%
+    odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
+      -o -type f -links +1) || return 2
+    [ -z "$odd" ] || {{
+      printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
 *}}" >&2
-    return 1
-  }}
+      return 1
+    }}
+  done < "$job/{LEFT}"
 }}"#
     )
 }

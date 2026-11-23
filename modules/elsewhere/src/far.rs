@@ -190,14 +190,16 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
         if !meta.is_file() {
             continue;
         }
-        if meta.len() > LARGEST_FILE - archive::ROOM {
+        let taken = archive::taken(path, meta.len());
+        if taken + archive::CLOSED > LARGEST_FILE {
             return Err(format!(
                 "{path} is past the 64 MiB a shared file may be, with its archive's header"
             ));
         }
-        bytes += archive::taken(meta.len());
+        bytes += taken;
         files.push((path.to_owned(), meta.len()));
     }
+    let bytes = archive::archived(bytes, LARGEST_FILE);
     if bytes > MOST_BYTES {
         return Err(format!(
             "its {} files and {bytes} bytes are past what a shared folder carries",
@@ -295,10 +297,15 @@ tick() {{
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
-# Stopped, as mycelium stops a run whose asker let go, it takes its copy
-# and the job's archives away, as a job that ends does, then ends as the
-# signal would have ended it.
-stopped() {{ cd "$HOME" && rm -rf "$work" "$job/{TREE}"; exit "$1"; }}
+# Stopped, as mycelium stops a run whose asker let go, it takes its copy,
+# the files written beside it and the job's archives away, as a job that
+# ends does, then ends as the signal would have ended it. A second signal
+# waits for the first one's clearing.
+stopped() {{
+  trap '' HUP INT TERM
+  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* "$job/{TREE}"
+  exit "$1"
+}}
 trap 'stopped 129' HUP
 trap 'stopped 130' INT
 trap 'stopped 143' TERM
@@ -321,6 +328,7 @@ until arrived; do
   fi
 done
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
+rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
   cd "$HOME" && rm -rf "$work" "$job/{TREE}"
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}

@@ -1,4 +1,4 @@
-use super::{Part, record, write};
+use super::{CLOSED, Part, archived, record, taken, write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -112,6 +112,48 @@ fn a_tree_past_one_archive_is_split_over_several_each_within_the_most() {
             std::fs::read(into.join(name)).unwrap().len(),
             600,
             "{name} didn't come out whole across the archives"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn what_a_file_takes_is_its_entry_and_the_archives_stay_within_their_bound() {
+    let root = crate::far::tests::scratch("archive-taken");
+    let long = format!("d/{}", "f".repeat(300));
+    let files = [("a", 600), ("b", 0), ("c", 513), (long.as_str(), 700)];
+    for (path, size) in files {
+        let at = root.join("tree").join(path);
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, vec![b'x'; size]).unwrap();
+    }
+    let tree = root.join("tree");
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    let takes = |path: &str, size: usize| taken(path, u64::try_from(size).unwrap());
+    // Alone, each file's archive is what it takes and a close, a pax
+    // header and all.
+    for (path, size) in files {
+        let alone = write(&tree, [path], &parts, 1 << 20).unwrap();
+        assert_eq!(
+            alone[0].size,
+            takes(path, size) + CLOSED,
+            "what {path} takes isn't its entry"
+        );
+    }
+    // Two files fit one archive at just their room, and not a byte less.
+    let both = takes("a", 600) + takes("c", 513) + CLOSED;
+    assert_eq!(write(&tree, ["a", "c"], &parts, both).unwrap().len(), 1);
+    assert_eq!(write(&tree, ["a", "c"], &parts, both - 1).unwrap().len(), 2);
+    // However they fall, the archives come to no more than their bound.
+    let all: u64 = files.iter().map(|&(path, size)| takes(path, size)).sum();
+    for most in [both - 1, both, 6 * 1024, 1 << 20] {
+        let written = write(&tree, files.map(|(path, _)| path), &parts, most).unwrap();
+        let came: u64 = written.iter().map(|part| part.size).sum();
+        assert!(
+            came <= archived(all, most),
+            "archives of {came} bytes passed their bound of {} at most {most}",
+            archived(all, most)
         );
     }
     let _ = std::fs::remove_dir_all(&root);
