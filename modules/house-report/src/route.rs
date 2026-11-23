@@ -87,10 +87,20 @@ unsafe fn address_of(address: *const libc::sockaddr) -> Option<IpAddr> {
 mod tests {
     use super::*;
 
+    // A Mac's Nix sandbox denies a socket by the loopback, though it lets
+    // the build list /Users, so the denial itself is what's asked: the
+    // sandbox's refusal says so and ends the test, and any other failure
+    // fails it. Linux's sandbox allows the loopback, so it runs there.
     #[test]
     fn this_machine_sends_to_itself_by_its_loopback() {
-        let (loopback, from) = toward((Ipv4Addr::LOCALHOST, 47_110).into())
-            .expect("no interface was found for this machine's own address");
+        let (loopback, from) = match toward((Ipv4Addr::LOCALHOST, 47_110).into()) {
+            Ok(way) => way,
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                eprintln!("sending by the loopback is denied here ({error}), so it isn't tested");
+                return;
+            }
+            Err(error) => panic!("no interface was found for this machine's own address: {error}"),
+        };
         assert!(
             loopback.starts_with("lo"),
             "this machine's own address was sent to by {loopback}, not its loopback"

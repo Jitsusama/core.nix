@@ -169,16 +169,23 @@ mod tests {
 
     // What the loopback carries for a datagram sent to this machine is
     // counted as sent, so the routing socket's list is read for real
-    // (sysctl's NET_RT_IFLIST2), not a stand-in.
+    // (sysctl's NET_RT_IFLIST2), not a stand-in. A Mac's Nix sandbox
+    // denies the socket, so its refusal says so and ends the test, as
+    // route.rs's loopback test does; any other failure fails it.
     #[test]
     fn the_loopbacks_count_grows_by_what_it_sends() {
         let before = by("lo0").expect("the loopback's count couldn't be read");
-        let socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("no socket to send from");
-        let to = socket.local_addr().expect("the socket has no address");
-        for _ in 0..10 {
-            socket
-                .send_to(&[0; 1_000], to)
-                .expect("a datagram couldn't be sent");
+        let sent = std::net::UdpSocket::bind("127.0.0.1:0").and_then(|socket| {
+            let to = socket.local_addr()?;
+            (0..10).try_for_each(|_| socket.send_to(&[0; 1_000], to).map(|_| ()))
+        });
+        match sent {
+            Ok(()) => {}
+            Err(error) if error.kind() == io::ErrorKind::PermissionDenied => {
+                eprintln!("sending by the loopback is denied here ({error}), so it isn't tested");
+                return;
+            }
+            Err(error) => panic!("ten datagrams couldn't be sent by the loopback: {error}"),
         }
         let after = by("lo0").expect("the loopback's count couldn't be read again");
         assert!(
