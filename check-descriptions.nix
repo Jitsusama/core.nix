@@ -388,10 +388,11 @@
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
     the call comes from jobs.service, a pi-spawner scope or a pi host's or conversation's unit,
     or below one, reading only its own options, bundled and shortened as its parser reads them
-    by a table the wrapped systemd's --help lists the same, and leaves Joel's own calls, his
-    services in jobs.slice, the windows' kitty and the node in agents.slice, a path naming those
-    places only inside another's scope, a call naming a slice and a call to the system manager
-    as they were
+    by a table held to every option the wrapped systemd takes, hidden ones too, keeping the
+    slice for a name or letter no option has, and leaves Joel's own calls, his services in
+    jobs.slice, the windows' kitty and the node in agents.slice, a path naming those places
+    only inside another's scope, a call naming a slice and a call to the system manager as they
+    were; a table short of an option isn't held to
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a

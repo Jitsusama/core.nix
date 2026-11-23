@@ -1,8 +1,9 @@
-# systemd-run's options as the systemd it wraps lists them in --help, one a
-# line: its short letter or -, then its long name, with = when it takes a
-# value. systemd-run.sh reads a call's arguments by this table, and
-# an-agents-run-stays-in-its-slice fails, naming the difference, when the
-# wrapped systemd's --help lists other options.
+# Every option systemd-run takes, as the systemd it wraps lists them in
+# --introspect-cli, hidden ones too, in its order, one a line: its short
+# letter or -, then its long name, with = when it takes a value.
+# systemd-run.sh reads a call's arguments by this table, and the wrapper
+# isn't built, systemd-run-options-hold.sh naming the difference, when the
+# systemd it wraps takes other options.
 h help
 - version
 - no-ask-password
@@ -31,6 +32,7 @@ d same-dir
 - root-directory=
 R same-root-dir
 E setenv=
+- tty
 t pty
 T pty-late
 P pipe
@@ -55,3 +57,4 @@ S shell
 - on-timezone-change
 - on-clock-change
 - timer-property=
+- introspect-cli

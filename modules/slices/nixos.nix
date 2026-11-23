@@ -477,9 +477,11 @@ in
       }) vpnServices;
 
     # A unit an agent starts with systemd-run stays in the agent's slice,
-    # rather than landing among Joel's apps, as systemd-run.sh says.
+    # rather than landing among Joel's apps, as systemd-run.sh says. It reads
+    # calls by the options of the systemd the machine runs, held to them as
+    # it's built.
     environment.systemPackages = [
-      (pkgs.callPackage ./systemd-run.nix { real = "${config.systemd.package}/bin/systemd-run"; })
+      (pkgs.callPackage ./systemd-run.nix { systemd = config.systemd.package; })
     ];
 
     systemd.user.slices.session.sliceConfig = {

@@ -61,11 +61,17 @@
 # long one may be cut short while only one name begins so, as `--desc`;
 # read as whole words alone, `-qu job --user` lost its --user, and
 # `-qu j --slice=x` lost its slice and was given --slice-inherit, which
-# systemd joins with it into a slice of its own. Which options take a
-# value is the wrapped systemd's word, in systemd-run-options.txt, which
-# the check holds to that systemd's --help, so a systemd that adds one
-# fails the build rather than misreading calls. A name it can't be, or
-# two could be, systemd-run refuses, so that call goes there unchanged.
+# systemd joins with it into a slice of its own. Which options there are,
+# and which take a value, is the wrapped systemd's word: its parser lists
+# every one in --introspect-cli, hidden ones too, as the deprecated --tty,
+# and the wrapper is built only once systemd-run-options.txt holds to that
+# list (systemd-run-options-hold.sh), so a machine whose systemd takes
+# another fails its build rather than misreading calls. A name no option
+# has, or two begin, and a letter no option has, are read as an option
+# taking no value, and the reading goes on. systemd-run refuses such a
+# call whatever is added to it, and one a table lacked would still keep
+# the agent's slice, where passed through unchanged, the --tty that --help
+# leaves out would put an agent's unit among Joel's apps.
 #
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand. It answers --help alone; -h, or --help with anything beside it,
@@ -93,14 +99,26 @@ EXIT
 EOF
   exit 0
 fi
-# The short letters taking a value, and every long name, a valued one
+# Each short letter with its long name, and every long name, a valued one
 # ending in =, from systemd-run-options.txt, the wrapped systemd's own.
-valued_short="@valuedShort@"
+shorts=(@shorts@)
 longs=(@longs@)
 
-# The long name `--$1` stands for, = and all, as getopt reads it: the name
-# itself, else the only one it begins. None, for one it can't be, or one
-# two could be.
+# The long name short letter $1 stands for, = and all. None, for a letter
+# no option has.
+short() {
+  local pair
+  for pair in "${shorts[@]}"; do
+    if [[ "${pair%%:*}" == "$1" ]]; then
+      echo "${pair#*:}"
+      return
+    fi
+  done
+}
+
+# The long name `--$1` stands for, = and all, as systemd's own parser
+# reads it (src/shared/options.c): the name itself, else the only one it
+# begins. None, for one it can't be, or one two could be.
 long() {
   local option found=""
   for option in "${longs[@]}"; do
@@ -144,7 +162,6 @@ for arg in "$@"; do
     --*)
       word=${arg#--}
       name=$(long "${word%%=*}")
-      [[ -z "${name}" ]] && exec "${real}" "$@"
       if [[ "${word}" == *=* ]]; then
         names_its_place "${name%=}" "${word#*=}" && exec "${real}" "$@"
       elif names_its_place "${name%=}" ""; then
@@ -161,20 +178,16 @@ for arg in "$@"; do
     -?*)
       letters=${arg#-}
       while [[ -n "${letters}" ]]; do
-        letter=${letters:0:1}
+        name=$(short "${letters:0:1}")
         letters=${letters:1}
-        case "${letter}" in
-          H | M | C) exec "${real}" "$@" ;;
-          *) ;;
-        esac
-        if [[ "${valued_short}" == *"${letter}"* ]]; then
-          option=${letter/p/property}
-          if [[ -z "${letters}" ]]; then
-            owed=${option}
-          else
-            names_its_place "${option}" "${letters}" && exec "${real}" "$@"
-          fi
+        # A valued letter takes the rest of the word as its value, if any.
+        if [[ "${name}" == *= && -n "${letters}" ]]; then
+          names_its_place "${name%=}" "${letters}" && exec "${real}" "$@"
           break
+        fi
+        names_its_place "${name%=}" "" && exec "${real}" "$@"
+        if [[ "${name}" == *= ]]; then
+          owed=${name%=}
         fi
       done
       ;;

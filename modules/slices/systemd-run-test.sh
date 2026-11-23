@@ -3,29 +3,15 @@
 # alone, and jobs-work.slice for one from agents' own places: jobs.service
 # and the spawner scopes directly inside jobs, and pi's host and
 # conversation units in agents.slice, reading a call's options as
-# systemd-run's parser does by the table it's built from, which is the
-# wrapped systemd's own. Usage:
-# systemd-run-test <wrapper> <options table> <systemd's systemd-run>,
-# where the wrapper was built in front of a stand-in that echoes what it's
-# given and reads its caller's cgroup from ./cgroup.
+# systemd-run's parser does by the table it's built from, which is held
+# to the wrapped systemd's own as it's built. Usage:
+# systemd-run-test <wrapper> <options table>, where the wrapper was built
+# in front of a stand-in that echoes what it's given and reads its
+# caller's cgroup from ./cgroup.
 set -euo pipefail
 run=$1
-table=$2
-systemd_run=$3
+rows=$(grep -v '^#' "$2")
 manager=0::/user.slice/user-1000.slice/user@1000.service
-
-# The table is the wrapped systemd's: its --help lists the same options,
-# each with its short letter and whether it takes a value.
-rows=$(grep -v '^#' "${table}")
-printf '%s\n' "${rows}" >table-rows
-"${systemd_run}" --help --no-pager >help
-sed -nE 's/^  (-([A-Za-z]) |   )--([a-z-]+)(=?)[^ ]*.*/\2 \3\4/p' help |
-  sed -E 's/^ /- /' >help-rows
-if ! differs=$(diff table-rows help-rows); then
-  echo "systemd-run-options.txt isn't the wrapped systemd's --help, which lists:"
-  echo "${differs}"
-  exit 1
-fi
 
 # says <cgroup> <what the real one should be given> <the call...>
 says() {
@@ -99,7 +85,7 @@ while read -r letter name; do
     [[ "${option}" == -- ]] && continue
     if [[ "${passes}" == true ]]; then
       if [[ "${name}" != help ]]; then
-        says "${host}" "${option} --user true" "${option}" --user true
+        says "${host}" "--user ${option} v true" --user "${option}" v true
       fi
     elif [[ "${name}" == *= ]]; then
       says "${host}" "${option} --user true" "${option}" --user true
@@ -113,8 +99,11 @@ while read -r letter name; do
 done <<<"${rows}"
 # Short options come bundled, the last letter's value the next word or the
 # rest of it, and a long name may be cut short while it's still the only
-# one it could be. A name two could be is refused by systemd-run itself, so
-# it goes there unchanged; so does --system after --user, which it obeys.
+# one it could be. A name two could be, or none, and a letter none has,
+# are refused by systemd-run itself, and read as taking no value, so the
+# call keeps its slice; so does the hidden --tty, which systemd-run takes.
+# The last of --user and --system is obeyed, and a valued option's value
+# may be --, which ends nothing.
 kitty="${manager}/agents.slice/kitty-1-3.scope"
 says "${kitty}" "--user -qu j --slice=a.slice true" --user -qu j --slice=a.slice true
 says "${host}" "--slice=jobs-work.slice -qu job --user --scope true" \
@@ -123,13 +112,23 @@ says "${host}" "--user -tM h true" --user -tM h true
 says "${kitty}" "--user -qpSlice=a.slice true" --user -qpSlice=a.slice true
 says "${kitty}" "--user -qp Slice=a.slice true" --user -qp Slice=a.slice true
 says "${kitty}" "--slice-inherit --user -qpNice=5 true" --user -qpNice=5 true
+says "${host}" "--slice=jobs-work.slice -qpNice=5 --user true" -qpNice=5 --user true
+says "${host}" "--slice=jobs-work.slice -uHx --user true" -uHx --user true
 says "${host}" "--slice=jobs-work.slice --us true" --us true
 says "${host}" "--slice=jobs-work.slice --desc x --user true" --desc x --user true
-says "${kitty}" "--user --slice-inh true" --user --slice-inh true
-says "${kitty}" "--user --prop Slice=a.slice true" --user --prop Slice=a.slice true
-says "${kitty}" "--user --prop=Slice=a.slice true" --user --prop=Slice=a.slice true
-says "${host}" "--user --s true" --user --s true
+says "${host}" "--user --slice-inh true" --user --slice-inh true
+says "${host}" "--user --prop Slice=a.slice true" --user --prop Slice=a.slice true
+says "${host}" "--user --prop=Slice=a.slice true" --user --prop=Slice=a.slice true
+says "${host}" "--slice=jobs-work.slice --user --prop Nice=5 --scope true" \
+  --user --prop Nice=5 --scope true
+says "${host}" "--slice=jobs-work.slice --user --sl true" --user --sl true
+says "${host}" "--slice=jobs-work.slice --user --frobnicate a.slice true" \
+  --user --frobnicate a.slice true
+says "${host}" "--slice=jobs-work.slice --user -Z true" --user -Z true
+says "${host}" "--slice=jobs-work.slice --user --tty true" --user --tty true
 says "${host}" "--user --system true" --user --system true
+says "${host}" "--slice=jobs-work.slice --system --user true" --system --user true
+says "${host}" "--slice=jobs-work.slice -u -- --user true" -u -- --user true
 # One from a slice inside jobs keeps that slice: Joel's terminal work and
 # timed work stay free, and pi's sorted work stays where it was sorted. So
 # do Joel's own services sitting in jobs.slice, and a place that only names
