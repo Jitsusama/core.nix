@@ -149,10 +149,14 @@ let
       # changed guest, like the clock, so one given nothing stays cached.
       (lib.mkIf changed {
         # The network it asks for is in macOS 26's SDK, not nixpkgs' default.
+        # It's made once a process and reused: each later boot asked for
+        # another on the same subnet, which vmnet refused, so the build that
+        # woke the guest after an idle stop failed (23 November).
         virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [
             ./vzvm-without-dns-proxy.patch
             ./vzvm-own-subnet.patch
+            ./vzvm-keeps-one-network.patch
           ];
           buildInputs = (old.buildInputs or [ ]) ++ [ pkgs.apple-sdk_26 ];
         });

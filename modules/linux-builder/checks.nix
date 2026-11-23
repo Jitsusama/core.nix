@@ -219,6 +219,38 @@ in
         && started { authorizedKeys = [ another ]; } != started narrowly
       );
 
+  # A changed guest's vzvm makes its network once and gives it to every boot:
+  # on 23 November the boot after an idle stop asked vmnet for a second on
+  # the subnet the first still held, was refused, and failed the build that
+  # woke it. The module's patches are applied in its order to the source the
+  # Mac builds, with no fuzz, so one that no longer applies fails here, not
+  # only on a Mac; then the reuse must come before any network is made.
+  # Whether vmnet takes the reused network is what only a Mac shows.
+  linux-builder-boots-again-on-its-own-network =
+    let
+      patches = opened.virtualisation.vz.package.patches or [ ];
+    in
+    pkgs.runCommandLocal "linux-builder-boots-again-on-its-own-network" { } ''
+      cp -r ${pkgs.vzvm.src}/vzvm source
+      chmod -R u+w source
+      cd source
+      for patch in ${lib.concatMapStringsSep " " (patch: "${patch}") patches}; do
+        patch -p1 -F0 --no-backup-if-mismatch --quiet < "$patch"
+      done
+      file=Sources/vzvm/VirtualMachineBuilder.swift
+      reuse='return VZVmnetNetworkDeviceAttachment(network: network)'
+      # grep finding nothing is an answer here, not an error to stop on.
+      reused=$(grep -n "$reuse" $file | cut -d: -f1 || true)
+      made=$(grep -n 'vmnet_network_create(' $file | cut -d: -f1 || true)
+      if [ -z "$reused" ] || [ -z "$made" ] || [ "$(printf '%s\n' "$made" | wc -l)" != 1 ] \
+        || [ "$reused" -ge "$made" ]; then
+        echo "A later boot isn't given the network the process made (reused at line" \
+          "''${reused:-none}, made at ''${made:-none}), so vmnet is asked for another." >&2
+        exit 1
+      fi
+      touch $out
+    '';
+
   # A changed guest collects garbage once a sixth of its disk is free, back
   # to five twelfths, so a build has room: nixpkgs' 1 GiB and 3 GiB left a
   # 60 GiB store 90 to 93% full on 9 November, with builds failing for disk.

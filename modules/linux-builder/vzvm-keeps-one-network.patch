@@ -1,0 +1,26 @@
+--- a/Sources/vzvm/VirtualMachineBuilder.swift
++++ b/Sources/vzvm/VirtualMachineBuilder.swift
+@@ -196,7 +196,8 @@
+     return vmc
+   }
+ 
+-  /// Kept for the process's lifetime, as the attachment's network must outlive the guest.
++  /// Kept for the process's lifetime, as the attachment's network must outlive the guest,
++  /// and given to every guest the process boots.
+   private static var network: vmnet_network_ref?
+ 
+   /// The host's NAT. With its DNS proxy, macOS's Internet Sharing has mDNSResponder
+@@ -218,6 +219,13 @@
+     guard #available(macOS 26.0, *) else {
+       throw VZVMError.config("dnsProxy: false needs macOS 26 or newer")
+     }
++    // Each boot after the first builds its configuration again. On 23 November the one
++    // after an idle stop asked vmnet for a second network on the subnet the first still
++    // held, was refused with status 1001 and the process exited, failing the build that
++    // woke it. So a later boot is put on the first network again.
++    if let network {
++      return VZVmnetNetworkDeviceAttachment(network: network)
++    }
+     var status: vmnet_return_t = .VMNET_SUCCESS
+     guard let shared = vmnet_network_configuration_create(.VMNET_SHARED_MODE, &status) else {
+       throw VZVMError.runtime("vmnet network configuration failed: status \(status.rawValue)")
