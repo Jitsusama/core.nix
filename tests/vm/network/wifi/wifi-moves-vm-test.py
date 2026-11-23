@@ -719,8 +719,8 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
         return alike
 
     retry(hears_both_alike, timeout=timedelta(seconds=90))
-    # The last look asked may have begun as the one before it ended, so the call waits it out:
-    # one under way as the call began ran 19 s as the link lost every frame.
+    # A look wpa_supplicant begins of its own is waited out too: one under way as the call
+    # began ran 19 s as the link lost every frame.
     interface = machine.succeed(
         "busctl call fi.w1.wpa_supplicant1 /fi/w1/wpa_supplicant1 fi.w1.wpa_supplicant1"
         " GetInterface s wlan2 | cut -d'\"' -f2"
@@ -732,12 +732,15 @@ def gives_way_as_it_loses(machine: BaseMachine, wifid: Wifid) -> None:
     )
     machine.log(machine.succeed("wpa_cli -i wlan2 scan_results | grep Lantern"))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
+    # The looks just asked lost echoes as they took the card off its channel. wifid leaves
+    # out a look's first 6 s, a whole look on a real card, but one here ran 16 s on a quiet
+    # link (2026-11-23), and its later losses moved the card as the call began. The call
+    # waits out its 10 s window, so what moves it is the loss below alone.
+    machine.sleep(timedelta(seconds=10))
     quiet = wifid.journal_now()
     answer = wifid.acting({"act": "calling", "on": True})
     assert answer == {"id": 1, "done": True}, answer
-    # The looks just asked lost echoes as they took the card off its channel, and are left
-    # out: counted, they moved the card as the call began (2026-11-20), before any loss.
-    # They're in the call's first second's window, so 5 s of no give-way shows it.
+    # Begun on a quiet link, the call holds where it is; 5 s, five echoes, shows it.
     machine.sleep(timedelta(seconds=5))
     machine.fail(f"journalctl -o cat -u wifid --after-cursor='{quiet}' | grep -q 'gives way'")
     # Nothing the first sends the card arrives, its echoes' answers among it, while what
