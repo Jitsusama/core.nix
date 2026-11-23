@@ -133,6 +133,13 @@ QtObject {
         expect("twins back renumbered share their connectors out",
             Places.placed(twins, { "Virtual-3": twin, "Virtual-4": twin }, "Virtual-3", [twins, twins])
                 .map(at => at.output), ["Virtual-3", "Virtual-4"]);
+        // Windows put back one at a time do the same, each told those given.
+        const bothBack = { "Virtual-3": twin, "Virtual-4": twin };
+        const firstBack = Places.whereKept(twins[0], twins, bothBack, { inUse: "Virtual-3" });
+        expect("twin windows back renumbered share their connectors out",
+            [firstBack.output, Places.whereKept(twins[1], twins, bothBack,
+                { given: [{ at: twins[0], output: firstBack.output }], inUse: "Virtual-3" })
+                .output], ["Virtual-3", "Virtual-4"]);
         expect("one twin back renumbered is the first's, and the other's is gone",
             Places.placed(twins, { "Virtual-3": twin }, "Virtual-3", [twins, twins])
                 .map(at => [at.output, at.away?.others ?? null]),
@@ -340,8 +347,9 @@ QtObject {
             { "eDP-1": panel });
         expect("a window put back on a screen not heard, not in use, is gone",
             Places.whereKept(docked[0], [], fourSoon, { inUse: "eDP-1" }).output, undefined);
-        expect("a window put back on a screen gone is noted for it",
-            Places.whereKept(docked[0], [], fourSoon, { inUse: "eDP-1" }).away?.screen, monitor);
+        expect("a window put back on a screen gone carries the note its session does",
+            Places.whereKept(docked[0], [], fourSoon, { inUse: "eDP-1" }).away,
+            Places.placed([docked[0]], fourSoon, "eDP-1")[0].away);
         // The note a window put back so carries, the same as placed's.
         const panelNote = Places.whereKept(docked[2], [], panelSoon, { inUse: "eDP-1" }).away;
         expect("a window put back on the screen in use not heard yet is noted",
@@ -733,6 +741,16 @@ QtObject {
         // orchestrator's workspace, and sent one kept on the second
         // workspace to its orchestrator's third.
         const keptHere = Object.assign({ leads: false }, here);
+        // A window goes back by the screen in use as its sessions were
+        // placed, while that's connected, else by the one in use now.
+        const twoThere = { "eDP-1": panel, "DP-4": monitor };
+        expect("a window goes by the screen in use as its sessions were placed",
+            Reopening.inUseFor("DP-4", "eDP-1", twoThere), "DP-4");
+        expect("a window goes by the screen in use now once that one is gone",
+            Reopening.inUseFor("DP-5", "eDP-1", twoThere), "eDP-1");
+        expect("with none in use as its sessions were placed, a window goes by the one now",
+            [Reopening.inUseFor(null, "eDP-1", twoThere),
+                Reopening.inUseFor(undefined, "eDP-1", twoThere)], ["eDP-1", "eDP-1"]);
         expect("kept somewhere, it opens there, not at its orchestrator's",
             Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
         expect("kept nowhere, it comes back held without a window",

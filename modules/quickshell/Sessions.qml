@@ -1553,12 +1553,14 @@ Singleton {
         const keptPlaces = here.map(one => kept(one.id));
         const placeable = keptPlaces.map(Reopening.placeOf);
         const inUse = Niri.workspace()?.output ?? null;
-        if (puttingBack !== null)
+        // Only Reopen Them All tells each to carry on, which marks its walk.
+        const walk = told === root.carryOn;
+        // Its windows go back by the screen in use as its own sessions are
+        // placed, not as a hand-over meanwhile places others.
+        if (puttingBack !== null && walk && !("inUse" in puttingBack))
             puttingBack.inUse = inUse;
         const places = Places.placed(placeable, root.screensThere(), inUse,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
-        // Only Reopen Them All tells each to carry on, which marks its walk.
-        const walk = told === root.carryOn;
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
             back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true,
@@ -2287,7 +2289,8 @@ Singleton {
     function reopenThemAll(lost, gone, keptAt) {
         const boot = root.arrangedBefore();
         const kept = Array.isArray(arrangedOthers[boot]) ? arrangedOthers[boot] : [];
-        puttingBack = kept.length > 0 ? { boot, kept, used: [], back: [], seen: [] } : null;
+        puttingBack = kept.length > 0
+            ? { boot, kept, used: [], back: [], seen: [], given: [] } : null;
         root.reopenAll(lost, gone, keptAt, carryOn);
     }
     // Each window but kitty's, as it first shows tiled this boot, matched to
@@ -2321,10 +2324,11 @@ Singleton {
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
-        // The screen in use as its sessions were placed, so a focus moved
-        // since doesn't decide a window apart from them.
-        const inUse = going.inUse ?? Niri.workspace()?.output ?? null;
-        const kept = Places.whereKept(at, going.kept, there, { inUse });
+        const inUse = Reopening.inUseFor(going.inUse, Niri.workspace()?.output ?? null, there);
+        // Each window put back gives its twins' connectors as placed gives
+        // sessions', so twin monitors on new connectors take one each.
+        const kept = Places.whereKept(at, going.kept, there, { given: going.given, inUse });
+        going.given.push({ at, output: kept.output });
         const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);

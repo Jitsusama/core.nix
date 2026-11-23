@@ -201,6 +201,15 @@ function leadersFirst(queue) {
     return queue.filter(leads).concat(queue.filter(entry => !leads(entry)));
 }
 
+// The screen in use to put a window back by (Sessions.qml's putBack): the
+// one in use as Reopen Them All placed its sessions (`placed`), so a focus
+// moved since doesn't set a window apart from them, while that's still
+// connected (`screens`, Places.js's connected), else the one in use `now`,
+// as with none in use then: a window needs a screen to go to.
+function inUseFor(placed, now, screens) {
+    return typeof placed === "string" && placed in (screens ?? {}) ? placed : now;
+}
+
 // Reopen Them All's queue with `more` joined at its end, but for each one
 // it holds already or has `begun`, by id: an orchestrator handing over its
 // own sessions as it comes back, while the queue still holds them, would

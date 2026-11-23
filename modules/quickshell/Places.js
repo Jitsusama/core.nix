@@ -119,15 +119,15 @@ function placed(places, screens, inUse, moments) {
         if (one === null) {
             return null;
         }
-        const { at, output, away } = one;
+        const { at, output, gone, away } = one;
         if (output !== undefined) {
             return Object.assign({}, at, { output }, away ? { away } : {});
         }
         if (inUse === null || inUse === undefined) {
-            return Object.assign({}, one.at);
+            return Object.assign({}, at);
         }
-        const workspace = after[one.gone] + one.at.workspace;
-        return Object.assign({}, one.at, { output: inUse, workspace, away });
+        const workspace = after[gone] + at.workspace;
+        return Object.assign({}, at, { output: inUse, workspace, away });
     });
 }
 
