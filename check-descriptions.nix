@@ -3121,7 +3121,7 @@
     environment, proof, node, frame flag and SSH agent, the browser its account names in
     place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, in
-    agents.slice slowed past 12 GB, its core kept, failing rather than skipped when the
+    agents.slice slowed past 12 GB, no core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
     of its commands for memory, and a Mac gets none
@@ -3137,7 +3137,7 @@
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, with no core limit, soft or hard, until 20 November, sixteen codemode workers and
+    with it, keeping no core, sixteen codemode workers and
     sixteen libuv threads for its conversations to share, Chromium as its browser, the account's
     home realm, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
@@ -6304,14 +6304,15 @@
   '';
   vm-cores-kept-from-their-owner = ''
     the cores' folder is root's alone from boot and after each crash, so an account that aborts
-    two of its own processes, a stand-in pi host named node and sleep, can neither open nor dump
-    either core, while the journal still shows it, in wheel, each crash's stack trace; the
-    removal keeps a node's core five hours on and takes it seven hours on, leaving the other's
+    three of its own processes, stand-ins named pi and node and sleep, can neither open nor dump
+    a core, while the journal still shows it, in wheel, each crash's stack trace; the removal
+    keeps a pi's and a node's cores five hours on and takes them seven hours on, leaving sleep's
   '';
   vm-a-wedged-pi-starts-again = ''
     a realm's background pi host, its unit as the module renders it on a stand-in node, is
-    killed by the watchdog and started again once its loop stops pinging, its abort's core kept by
-    systemd-coredump, and killed 10 s on when it ignores that abort, and one that
+    killed by the watchdog and started again once its loop stops pinging, its abort's core refused
+    by systemd-coredump under a hard core limit of 0, and killed 10 s on when it ignores that
+    abort, and one that
     crashes
     at every start is started three times, then left failed with start-limit-hit, and one that
     refuses what it was given is left down at once, each saying which host is down and why, and
