@@ -550,7 +550,31 @@ in
       keepsTuning =
         realm: own: conversation: kind:
         tunablesOf "pi-host-${realm}-${kind}" == [ ''"GLIBC_TUNABLES=${own}"'' ]
-        && tunablesOf "pi-conversation-${realm}-${kind}@" == [ ''"GLIBC_TUNABLES=${conversation}"'' ];
+        && tunablesOf "pi-conversation-${realm}-${kind}@" == [ ''"GLIBC_TUNABLES=${conversation}"'' ]
+        && loginAllocatorOf "pi-conversation-${realm}-${kind}@" == [ "MALLOC_TRIM_THRESHOLD_" ];
+      # Which of the allocator variables a unit keeps from the login.
+      loginAllocatorOf =
+        unit:
+        lib.filter (
+          name:
+          lib.elem name [
+            "GLIBC_TUNABLES"
+            "MALLOC_TRIM_THRESHOLD_"
+          ]
+        ) (lib.toList (services.${unit}.Service.UnsetEnvironment or [ ]));
+      # A realm naming its threshold only in glibc's older variable keeps it
+      # alone, given no GLIBC_TUNABLES and kept from the login's.
+      keepsAlias =
+        kind:
+        let
+          unit = "pi-conversation-aliased-${kind}@";
+        in
+        services ? ${unit}
+        && lib.elem ''"MALLOC_TRIM_THRESHOLD_=65536"'' (
+          lib.toList (services.${unit}.Service.Environment or [ ])
+        )
+        && tunablesOf unit == [ ]
+        && loginAllocatorOf unit == [ "GLIBC_TUNABLES" ];
       runsApart =
         kind:
         let
@@ -585,8 +609,14 @@ in
         && lib.hasInfix " '--max-old-space-size=3072' /" execStart
         && lib.hasSuffix "/scripts/pi-host.ts --child" execStart
         &&
-          lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ]))
-          == lib.sort lib.lessThan ([ "SSH_TPM_AUTH_SOCK" ] ++ loadsCode)
+          lib.sort lib.lessThan (lib.toList (service.UnsetEnvironment or [ ])) == lib.sort lib.lessThan (
+            [
+              "SSH_TPM_AUTH_SOCK"
+              # The login's older trim variable, which its realm doesn't name.
+              "MALLOC_TRIM_THRESHOLD_"
+            ]
+            ++ loadsCode
+          )
         # The names host/service/child.ts reads, and the slot
         # child-units.ts writes beside the socket.
         && lib.elem ''"PI_HOST_CHILD_KEY=one-${kind}"'' environment
@@ -605,7 +635,7 @@ in
         && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);
     in
     holds "pi-conversations-run-apart"
-      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, browses in Chromium where its machine names its own browser, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, holds on to freed heap, loses its realm's own allocator tuning, can dump a core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
+      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, browses in Chromium where its machine names its own browser, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, holds on to freed heap, loses its realm's own allocator tuning or reads the login's, can dump a core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
       (
         runsApart "attended"
         && runsApart "background"
@@ -621,7 +651,7 @@ in
                 keepsTuning "trimmed" "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=65536"
                   "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=65536"
                   kind
-              && tunablesOf "pi-conversation-aliased-${kind}@" == [ ]
+              && keepsAlias kind
             )
             [
               "attended"
