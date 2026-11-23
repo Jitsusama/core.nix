@@ -6,11 +6,10 @@
 # open one. So the shell raises its soft limit to 8192, or to the hard
 # limit where that's lower. A soft limit already higher is kept, and the
 # hard limit is left where the session put it, so nothing the session
-# allows is taken away. The session's own default stays as it is for
-# everything not started from a shell, since an old program that waits
-# with select() can't watch a file past 1024; the terminal's programs are
-# git, editors and tools that wait with poll. The limits are read in
-# subshells, which start no program.
+# allows is taken away. Where the session already gives more, as core's
+# slices module does for every unit the account starts (its hard limit as
+# its soft one), the shell keeps it. The limits are read in subshells,
+# which start no program.
 () {
   local soft=$(ulimit -Sn) hard=$(ulimit -Hn) want=8192
   [[ $soft == unlimited ]] && return

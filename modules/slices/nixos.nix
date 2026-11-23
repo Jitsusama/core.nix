@@ -83,6 +83,7 @@ let
   sorter = pkgs.callPackage ./jobs-sorter/package.nix { };
   myceliumProgram = lib.getExe mycelium.packages.${pkgs.stdenv.hostPlatform.system}.default;
   asks = pkgs.callPackage ./agents-ask.nix { inherit (config.jitsusama.slices) agentsMayRepeat; };
+  openFiles = "524288:524288";
   limits = {
     LimitRTPRIO = "10";
     LimitNICE = "-10";
@@ -1127,6 +1128,18 @@ in
       DefaultLimitRTPRIO = limits.LimitRTPRIO;
       DefaultLimitNICE = limits.LimitNICE;
       DefaultLimitRTTIME = limits.LimitRTTIME;
+      # A unit's soft limit on open files would be systemd's 1024, against
+      # 524288 in an agent's shell, so the same git command that works in a
+      # shell fails in a unit. In a repository of 265 packs a fetch in a
+      # transient unit died on "Too many open files", then called a sound
+      # object corrupt. Every unit starts with the hard limit as its soft
+      # one. A program that waits with select() can't watch a file past
+      # 1023, and would overrun its set rather than fail to open one; none
+      # of the account's units is known to, and one that does names
+      # LimitNOFILE = "1024:524288" for itself. Units naming their own
+      # limit, as mycelium's and quickshell's do so they hold on a machine
+      # without this module, keep it.
+      DefaultLimitNOFILE = openFiles;
     };
   };
 }
