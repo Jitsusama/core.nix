@@ -552,6 +552,12 @@ def under_load(
             read = int(summary["packets"]) - int(summary["lost_packets"])
             steps = ", ".join(f"the {m} {n}" for m, n in zip(order, seen, strict=True))
             print(f"the {name} call's datagrams {way}, as met: {steps}, iperf3 {read}")
+            # Every datagram iperf3 read passed each machine, so a count under it is a
+            # counter that missed the call, which would read as nothing lost.
+            assert min(seen) >= read, (
+                f"a machine counted fewer of the {name} call's datagrams {way} than iperf3"
+                f" read, so its counter missed them: {steps}, iperf3 {read}"
+            )
             lost[name][way] = seen[0] - seen[-1]
     print(f"lost before the receiving socket, by call and way: {lost}")
     # Last, so a load that wouldn't stop never takes the place of what the calls met.
