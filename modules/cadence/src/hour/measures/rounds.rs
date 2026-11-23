@@ -802,7 +802,6 @@ mod tests {
             ("council-f-0", "a follow-up", None),
             ("council-f-0", "a second follow-up", None),
         ])];
-        let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
         // Each ask of git may fetch, so #25's sixth, queuing two, asks once.
         let asked = std::cell::Cell::new(0);
         let counted = |merge: &str, witness: &str| {
@@ -818,7 +817,7 @@ mod tests {
             &records,
             &[],
             &fixed,
-            || landed,
+            || BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]),
             NOW,
             "ORCH",
         );
@@ -898,12 +897,15 @@ mod tests {
         // reload killed the second open with every reviewer failed, the
         // third ended with every reviewer failed, the fourth was closed,
         // and the fifth has no outcomes at all.
-        let ended = |id, ago, outcomes| {
-            started(id, ago).replace(r#"[{"participantId": "one"}]"#, outcomes)
-        };
+        let ended =
+            |id, ago, outcomes| started(id, ago).replace(r#"[{"participantId": "one"}]"#, outcomes);
         let a = [
             started("council-a", 600),
-            ended("council-a-open", 500, r#"[{"failure": "stopped"}], "open": true"#),
+            ended(
+                "council-a-open",
+                500,
+                r#"[{"failure": "stopped"}], "open": true"#,
+            ),
             ended("council-a-failed", 400, r#"[{"failure": "wall"}]"#),
             ended("council-a-closed", 300, r#"[{}], "closed": true"#),
             ended("council-a-bare", 200, "[]"),
