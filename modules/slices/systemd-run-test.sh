@@ -16,9 +16,12 @@ manager=0::/user.slice/user-1000.slice/user@1000.service
 
 # The table is the wrapped systemd's: its --help lists the same options,
 # each with its short letter and whether it takes a value.
-listed=$("${systemd_run}" --help --no-pager |
-  sed -nE 's/^  (-([A-Za-z]) |   )--([a-z-]+)(=?)[^ ]*.*/\2 \3\4/p' | sed -E 's/^ /- /')
-if ! differs=$(diff <(grep -v '^#' "${table}") <(echo "${listed}")); then
+rows=$(grep -v '^#' "${table}")
+printf '%s\n' "${rows}" >table-rows
+"${systemd_run}" --help --no-pager >help
+sed -nE 's/^  (-([A-Za-z]) |   )--([a-z-]+)(=?)[^ ]*.*/\2 \3\4/p' help |
+  sed -E 's/^ /- /' >help-rows
+if ! differs=$(diff table-rows help-rows); then
   echo "systemd-run-options.txt isn't the wrapped systemd's --help, which lists:"
   echo "${differs}"
   exit 1
@@ -107,7 +110,7 @@ while read -r letter name; do
         "${option}" --user true
     fi
   done
-done < <(grep -v '^#' "${table}")
+done <<<"${rows}"
 # Short options come bundled, the last letter's value the next word or the
 # rest of it, and a long name may be cut short while it's still the only
 # one it could be. A name two could be is refused by systemd-run itself, so
