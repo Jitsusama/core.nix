@@ -340,7 +340,15 @@ QtObject {
                 "#A=a1,a2 a1 a2", "#A a1 #B- b1- #A+ a2", 0],
             ["with headings shown and none now, a new row waits", "#A=a1 a1 #Y=y1 y1",
                 "y1 look", "#A- a1- #Y- y1", 1],
-            ["with no heading, a new row comes in", "a1", "a1 x", "a1 x", 0]
+            ["with no heading, a new row comes in", "a1", "a1 x", "a1 x", 0],
+            ["a row of no cell waits behind a cell's first heading come with it", "a1 a2",
+                "#Y=a1,a2 a1 a2 #C=c1 c1 look", "a1 a2 #C+ c1", 1],
+            ["and behind his own rows' others", "a1 look1", "#Y=a1 a1 #C=c1 c1 look1 look2",
+                "a1 look1 #C+ c1", 1],
+            ["a pressing row shown before ends the heading above it", "#A=a1 a1 #B=b1 b1 asked!",
+                "asked! #A=a1 a1 #B=b1,b2 b1 b2", "#A a1 #B b1 asked #B+ b2", 0],
+            ["a row that left before it was shown is never counted", "#A=a1 a1",
+                "#A=a1 a1 look-", "#A a1", 0]
         ];
         for (const [what, shown, now, want, waiting] of shownAgain) {
             const got = Steady.refreshed(underHeadings(shown), underHeadings(now), id);
@@ -348,6 +356,32 @@ QtObject {
                 failures.push(`${what}: "${readHeaded(got.rows)}" with ${got.waiting} waiting, `
                     + `not "${want}" with ${waiting}`);
         }
+        // A row's pressing may be what it says while asked, as Desktop's and
+        // Lately's rows say it: one that says no waits, and comes in once it
+        // says yes.
+        const critical = { now: false };
+        const asking = underHeadings("#A=a1 a1").concat([{ key: "notices", side: "",
+            pressing: () => critical.now }]);
+        for (const [what, now, want, waiting] of [
+            ["a row whose pressing says no waits", false, "#A a1", 1],
+            ["and comes in once it says yes", true, "#A a1 notices", 0]
+        ]) {
+            critical.now = now;
+            const got = Steady.refreshed(underHeadings("#A=a1 a1"), asking, id);
+            if (readHeaded(got.rows) !== want || got.waiting !== waiting)
+                failures.push(`${what}: "${readHeaded(got.rows)}" with ${got.waiting} waiting, `
+                    + `not "${want}" with ${waiting}`);
+        }
+        // A row of no cell that comes while a held step's rows are made again,
+        // and leaves before it's shown, stops being counted once it's gone.
+        const waitedFrom = underHeadings("#A=a1 a1");
+        const cameStep = Steady.kept(waitedFrom, underHeadings("#A=a1 a1 look"), id);
+        const came = Steady.refreshed(waitedFrom, cameStep, id);
+        const left = Steady.refreshed(came.rows,
+            Steady.kept(cameStep, underHeadings("#A=a1 a1"), id), id);
+        if (came.waiting !== 1 || readHeaded(left.rows) !== "#A a1" || left.waiting !== 0)
+            failures.push(`a row that came and left while waiting: ${came.waiting}, then `
+                + `"${readHeaded(left.rows)}" with ${left.waiting} waiting`);
         // A held step's rows are made again by kept (Held.js's keep), and the
         // list shown is laid from them, so each row is laid twice, and again
         // at each refresh after; a row of a cell is still its cell's, and one
@@ -371,6 +405,37 @@ QtObject {
                     failures.push(`${what}, ${when}: "${readHeaded(got.rows)}" with `
                         + `${got.waiting} waiting, not "${want}" with ${waiting}`);
             }
+        }
+        // A key lists a held step's rows as they stand (Steady.seen), so a
+        // row of no cell kept at their end still waits there, counted, made
+        // again however often, rather than reading as the last cell's; one
+        // of a cell after it still has its heading said, and it comes in
+        // once it's pressing.
+        // [what, the rows shown, each making of the step's rows after, how a
+        // key lists them, how many wait]
+        for (const [what, shown, makings, want, waiting] of [
+            ["a row of no cell kept at the end waits", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look"], "#A a1 #B b1", 1],
+            ["and still waits made again", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1 look"], "#A a1 #B b1", 1],
+            ["with a cell's row come after it", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1,a2 a1 a2 #B=b1 b1 look"],
+                "#A a1 #B b1 #A+ a2", 1],
+            ["and comes in once it's pressing", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1 look!"], "#A a1 #B b1 look", 0],
+            ["and leaves with nothing to dim", "#A=a1 a1 #B=b1 b1",
+                ["#A=a1 a1 #B=b1 b1 look", "#A=a1 a1 #B=b1 b1"], "#A a1 #B b1", 0]
+        ]) {
+            const stepRows = makings.reduce((rows, now) => Steady.kept(rows, underHeadings(now),
+                id), underHeadings(shown));
+            const listed = Steady.seen(Steady.forgotten(stepRows));
+            const shownNow = Steady.refreshed(underHeadings(shown), stepRows, id);
+            if (readHeaded(listed.rows) !== want || listed.waiting !== waiting)
+                failures.push(`${what}, listed by a key: "${readHeaded(listed.rows)}" with `
+                    + `${listed.waiting} waiting, not "${want}" with ${waiting}`);
+            if (readHeaded(shownNow.rows) !== want || shownNow.waiting !== waiting)
+                failures.push(`${what}, refreshed: "${readHeaded(shownNow.rows)}" with `
+                    + `${shownNow.waiting} waiting, not "${want}" with ${waiting}`);
         }
         // While the rows hold still, a heading said again or new is never
         // counted among the rows that wait.
