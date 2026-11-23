@@ -47,16 +47,82 @@ pub fn note(runtime: &Path, name: &str) {
     }
 }
 
+/// How a waiting line names a holder the kernel names nobody for, the
+/// one wording each line that says so uses.
+pub const NOBODY: &str = "a holder the kernel doesn't name";
+
+/// Who holds a turn, as a waiting line says them, and why they can't be
+/// named where they can't, said after the line rather than inside it.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Holder {
+    pub who: String,
+    pub unnamed_as: Option<String>,
+}
+
+impl Holder {
+    /// A holder the kernel names nobody for, looked at twice.
+    pub fn nobody() -> Self {
+        Self {
+            who: NOBODY.into(),
+            unnamed_as: None,
+        }
+    }
+
+    /// Why a job that waits for nobody isn't started, and the line one
+    /// that waits says, with why the holder can't be named at the end.
+    pub fn said(&self) -> (String, String) {
+        let who = &self.who;
+        let because = self
+            .unnamed_as
+            .as_ref()
+            .map_or_else(String::new, |why| format!(", as {why}"));
+        (
+            format!("another heavy job is running, {who}, and only one runs at a time{because}"),
+            format!("waiting for the turn, which {who} has{because}"),
+        )
+    }
+}
+
 /// Who holds `lock` in `runtime`, as the kernel names them: the note's
 /// job when its process is among them, or the processes themselves. It's
 /// nothing when the kernel names no holder this process can see, as when
 /// the holder let go between the caller's look and this read, so the
 /// caller looks again before it says anyone has the turn.
-pub fn holder_of(runtime: &Path, lock: &File) -> Option<String> {
+pub fn holder_of(runtime: &Path, lock: &File) -> Option<Holder> {
     match lock_holders(lock) {
         Ok(holders) if holders.is_empty() => None,
-        Ok(holders) => Some(named(runtime, &holders)),
-        Err(why) => Some(format!("a holder the kernel can't name, as {why}")),
+        Ok(holders) => Some(Holder {
+            who: named(runtime, &holders),
+            unnamed_as: None,
+        }),
+        Err(why) => Some(Holder {
+            who: "a holder the kernel can't name".into(),
+            unnamed_as: Some(why),
+        }),
+    }
+}
+
+/// A wait's looks at who holds the turn: a look naming nobody is taken
+/// again at once, since its holder may have let go between the look and
+/// the kernel's word, and only a second in a row is said. Any look that
+/// names someone, or is said, starts the next pair afresh, so each wait
+/// loop says the same looks the same way.
+#[derive(Debug, Default)]
+pub struct Looks {
+    looked_again: bool,
+}
+
+impl Looks {
+    /// Whether a look that named nobody is taken again rather than said.
+    pub fn again(&mut self) -> bool {
+        self.looked_again = !self.looked_again;
+        self.looked_again
+    }
+
+    /// That a look named someone, or was said, so the next naming nobody
+    /// is taken again.
+    pub fn named(&mut self) {
+        self.looked_again = false;
     }
 }
 
@@ -68,7 +134,7 @@ fn named(runtime: &Path, holders: &[i32]) -> String {
         return described(&noted);
     }
     match holders {
-        [] => "a holder the kernel doesn't name".into(),
+        [] => NOBODY.into(),
         [one] => format!("process {one}"),
         many => {
             let pids: Vec<String> = many.iter().map(i32::to_string).collect();
@@ -226,27 +292,13 @@ fn lock_holders(lock: &File) -> Result<Vec<i32>, String> {
     Ok(holders)
 }
 
-/// `/proc/locks` as the kernel gives it, read in reads of 64 KiB until
-/// it's done. The kernel writes it a page at a time and lets the locks
-/// change between reads, so a line can be said twice or not at all, which
-/// is what the sandbox's [429, 429] on 23 November points at: few reads make that
-/// rarer but not impossible, so what one look reads is good for that look
-/// alone, and a look that finds no holder looks again before saying so.
+/// `/proc/locks` as the kernel gives it, read to its end. The kernel
+/// gives it a page a read, whatever is asked for, and lets the locks
+/// change between pages, so a line can be said twice or not at all: what
+/// one look reads is good for that look alone, and a look that finds no
+/// holder is taken again ([`Looks`]) before it's said.
 fn kernel_locks() -> Result<String, String> {
-    use std::io::Read;
-    let unread = |error: std::io::Error| format!("/proc/locks can't be read: {error}");
-    let mut file = File::open("/proc/locks").map_err(unread)?;
-    let mut read = Vec::new();
-    let mut buffer = vec![0; 64 * 1024];
-    loop {
-        match file.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(count) => read.extend_from_slice(&buffer[..count]),
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(unread(error)),
-        }
-    }
-    Ok(String::from_utf8_lossy(&read).into_owned())
+    fs::read_to_string("/proc/locks").map_err(|error| format!("/proc/locks can't be read: {error}"))
 }
 
 /// The ids `/proc/locks` may name `lock`'s file by, `MAJ:MIN:INODE`, as
@@ -332,6 +384,7 @@ mod tests {
         let other = File::create(folder.join("other")).unwrap();
         let unheld = lock_holders(&other);
         let unread = held_above(&folder, &other);
+        let nobody = holder_of(&folder, &other);
         drop(lock);
         fs::remove_dir_all(&folder).unwrap();
         let own = i32::try_from(std::process::id()).unwrap();
@@ -359,9 +412,56 @@ mod tests {
             "this process wasn't found holding its own lock"
         );
         assert_eq!(unheld, Ok(vec![]), "a file nobody locked was read as held");
+        assert_eq!(
+            nobody, None,
+            "a file nobody locked was said to have a holder"
+        );
         assert!(
             matches!(&unread, Held::Unnamed(why) if why.contains("no holder")),
             "a lock nobody holds wasn't said to be unexplained: {unread:?}"
+        );
+    }
+
+    // Why a holder can't be named is said after the line, never inside
+    // it, so the line still reads as a sentence.
+    #[test]
+    fn a_holder_that_cant_be_named_is_said_with_why_at_the_end() {
+        let unread = Holder {
+            who: "a holder the kernel can't name".into(),
+            unnamed_as: Some("/proc/locks can't be read: denied".into()),
+        };
+        assert_eq!(
+            unread.said().1,
+            "waiting for the turn, which a holder the kernel can't name has, as /proc/locks \
+             can't be read: denied",
+            "why the holder can't be named was put inside the line"
+        );
+        assert_eq!(
+            Holder::nobody().said().0,
+            format!("another heavy job is running, {NOBODY}, and only one runs at a time"),
+            "a holder nobody names was said otherwise"
+        );
+    }
+
+    // Of looks naming nobody, one alone is taken again and a second in a
+    // row is said, and any look naming someone, between, starts afresh.
+    #[test]
+    fn one_look_naming_nobody_is_taken_again_and_a_second_said() {
+        let mut looks = Looks::default();
+        assert!(looks.again(), "a first look naming nobody was said");
+        assert!(
+            !looks.again(),
+            "a second look in a row naming nobody wasn't said"
+        );
+        looks.named();
+        assert!(
+            looks.again(),
+            "a look naming nobody after one said wasn't taken again"
+        );
+        looks.named();
+        assert!(
+            looks.again(),
+            "a look naming nobody after one naming someone wasn't taken again"
         );
     }
 

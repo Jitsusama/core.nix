@@ -227,8 +227,11 @@ fn a_second_heavy_job_waits_its_turn_and_says_whose_it_is() {
         last.contains("waiting for the turn, which stamp (process"),
         "its wait didn't name the job holding the turn: {said}"
     );
+    // Over all it said, not only where it settled: the first job notes
+    // itself before it touches `has`, so every look names it, and one
+    // torn look naming nobody is taken again before it's said.
     assert!(
-        !last.contains("can't be told"),
+        !said.contains("can't be told"),
         "a sibling's wait couldn't tell whether its holder was its parent: {said}"
     );
 }

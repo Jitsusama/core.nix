@@ -388,7 +388,7 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
     let began = Instant::now();
     let mut told: Option<String> = None;
     let mut left = None;
-    let mut looked_again = false;
+    let mut looks = holding::Looks::default();
     loop {
         // A free turn is left a while to a job Joel waits on, waiting for
         // it too.
@@ -396,6 +396,9 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
             Ok(turn::Look::Had) => break,
             Ok(found) => {
                 let (why, waiting) = if let turn::Look::Left(next) = found {
+                    // It names who the turn is left to, so a look after
+                    // it naming nobody is taken again, as in turn.rs.
+                    looks.named();
                     // Left only a while, so even a job that waits for
                     // nobody waits that long.
                     if job.wait_at_most.is_none() {
@@ -412,19 +415,13 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                     // kernel's word leaves no line, so the turn is looked
                     // at again at once, and only a second look naming
                     // nobody is said.
-                    let who = match holding::holder_of(&places.runtime, &lock) {
-                        Some(who) => who,
-                        None if !looked_again => {
-                            looked_again = true;
-                            continue;
-                        }
-                        None => "a holder the kernel doesn't name".into(),
+                    let holder = match holding::holder_of(&places.runtime, &lock) {
+                        Some(holder) => holder,
+                        None if looks.again() => continue,
+                        None => holding::Holder::nobody(),
                     };
-                    looked_again = false;
-                    (
-                        format!("another heavy job is running, {who}, and only one runs at a time"),
-                        format!("waiting for the turn, which {who} has"),
-                    )
+                    looks.named();
+                    holder.said()
                 };
                 let Some(most) = job.wait_at_most else {
                     say(job, &format!("not started: {why}; a later try goes on"));

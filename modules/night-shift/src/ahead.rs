@@ -221,6 +221,35 @@ mod tests {
         }
     }
 
+    // A mark written by hand, as anything of the account may write one,
+    // is made safe to say as it's read, not only when Ahead writes it.
+    #[test]
+    fn a_planted_marks_name_is_made_safe_as_its_read() {
+        let runtime =
+            std::env::temp_dir().join(format!("night-shift-planted-ahead-{}", std::process::id()));
+        fs::create_dir_all(aheads(&runtime)).unwrap();
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .unwrap();
+        let pid = child.id().to_string();
+        let since = started(&pid).unwrap();
+        fs::write(
+            aheads(&runtime).join(&pid),
+            format!("x\u{1b}[2J\u{202e}1\t{since}\n"),
+        )
+        .unwrap();
+        let next = next(&runtime);
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = fs::remove_dir_all(&runtime);
+        assert_eq!(
+            next.map(|waiter| waiter.name),
+            Some("x [2J 1".to_owned()),
+            "a planted mark's name was said as it was written"
+        );
+    }
+
     #[test]
     fn a_process_reads_its_own_start_as_the_kernel_counts_it() {
         // The kernel counts 100 ticks a second, and this test's process

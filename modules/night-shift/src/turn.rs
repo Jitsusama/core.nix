@@ -58,7 +58,7 @@
 //! src/holding.rs says who holds the turn, by the kernel's word.
 
 use crate::ahead::{self, Ahead, Waiter};
-use crate::holding::{Held, held_above, note};
+use crate::holding::{Held, Looks, NOBODY, held_above, note};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::{self, File, TryLockError};
@@ -470,7 +470,7 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
     let began = Instant::now();
     let mut told: Option<String> = None;
     let mut left = None;
-    let mut looked_again = false;
+    let mut looks = Looks::default();
     loop {
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
@@ -480,15 +480,12 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
                 // A holder that let go between the look and the kernel's
                 // word leaves no line, so the turn is looked at again at
                 // once, and only a second look naming nobody is said.
-                Held::Unnamed(_) if !looked_again => {
-                    looked_again = true;
-                    continue;
-                }
+                Held::Unnamed(_) if looks.again() => continue,
                 // Said, since a turn inside its holder's command then
                 // waits on its own parent, and only this line shows it.
                 Held::Unnamed(why) => format!(
-                    "waiting for the turn, which a holder the kernel doesn't name has, though \
-                     whether it's this job's own parent can't be told, as {why}"
+                    "waiting for the turn, which {NOBODY} has, though whether it's this job's \
+                     own parent can't be told, as {why}"
                 ),
                 Held::Unread { why, holder } => format!(
                     "waiting for the turn, which {holder} has, though whether it's this job's \
@@ -498,7 +495,7 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
             Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
             Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
         };
-        looked_again = false;
+        looks.named();
         if told.as_ref() != Some(&said) {
             say(&turn.name, &said);
             told = Some(said);
