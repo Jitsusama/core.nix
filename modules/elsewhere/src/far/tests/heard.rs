@@ -51,6 +51,13 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
         "the wait, or the file it was for, went unsaid: {err}"
     );
     assert!(
+        err.contains(&format!(
+            "none crossing for {}s",
+            super::super::CROSSES_WITHIN
+        )),
+        "a wait with nothing crossing wasn't said to be one: {err}"
+    );
+    assert!(
         !work(&home).join("ran").exists(),
         "the job ran over a file still crossing"
     );
@@ -239,7 +246,7 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
 }
 
 #[test]
-fn a_far_clock_that_steps_back_restarts_the_wait() {
+fn a_far_clock_that_steps_back_spends_nothing_of_the_wait() {
     // Ten seconds back after its first reading, and on a second a pass
     // from there, so a wait that measured from before the step would read
     // it sixteen times rather than seven. Counted by its readings, since
@@ -282,7 +289,7 @@ fn files_crossing_too_slowly_are_given_up_on_however_steadily_they_cross() {
         "touch ../ran",
         &kind(""),
         Some(&|tree| {
-            for at in 0..3 * super::WAITS {
+            for at in 0..2 * super::WAITS {
                 let _ = std::fs::create_dir_all(tree);
                 let _ = std::fs::write(tree.join(format!("trickle-{at}")), "");
                 std::thread::sleep(std::time::Duration::from_secs(1));
@@ -298,6 +305,42 @@ fn files_crossing_too_slowly_are_given_up_on_however_steadily_they_cross() {
     assert!(
         !work(&home).join("ran").exists(),
         "it ran without its files"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_far_clock_that_steps_on_mid_crossing_spends_only_a_pass_of_it() {
+    // An hour on from the fourth reading, as a clock set right or a
+    // machine waking from sleep, while names cross every fifth of a
+    // second and the listed file lands a few seconds in: a wait that took
+    // the hour as spent gives up at once. The ceiling, the wait and a
+    // second for each `SLOWEST` bytes listed, is well past the most a
+    // pass may spend and the seconds the crossing takes.
+    let listed = 25 * super::SLOWEST;
+    let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
+                echo $((n + 1)) > \"$HOME/clock\"\n\
+                t=$(PATH=${PATH#*:} date +%s)\n\
+                if [ \"$n\" -ge 3 ]; then echo $((t + 3600)); else echo \"$t\"; fi";
+    let (code, err, home) = far_line(
+        Left::Listed(&format!("{listed}\tx\nend\n")),
+        &[],
+        "touch ../ran",
+        &kind(""),
+        Some(&|tree| {
+            std::fs::create_dir_all(tree).unwrap();
+            for at in 0..20 {
+                std::fs::write(tree.join(format!("trickle-{at}")), "").unwrap();
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            std::fs::write(tree.join("x"), "x".repeat(usize::try_from(listed).unwrap())).unwrap();
+        }),
+        &[("date", date)],
+    );
+    // What crossed is no archive, so the wait ended with all of it there.
+    assert!(
+        code == Some(77) && err.contains("isn't one of its archives"),
+        "a crossing was given up on for a clock stepping on ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

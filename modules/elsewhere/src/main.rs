@@ -470,8 +470,8 @@ fn send(
     let (quest, id) = (job.quest.as_str(), job.id.as_str());
     let paths = job.files.iter().map(|(path, _)| path.as_str());
     // Held until the job ends here, so no other run takes it for spent.
-    let _held = far::spent::owned(&job.handover, &here())
-        .and_then(|held| far::left(&job.root, paths, &job.handover).map(|()| held))
+    let (_held, bytes) = far::spent::owned(&job.handover, &here())
+        .and_then(|held| far::left(&job.root, paths, &job.handover).map(|bytes| (held, bytes)))
         .map_err(|error| {
             Failure::new(
                 Exit::Failed,
@@ -481,7 +481,7 @@ fn send(
         })?;
     // Shared to the machine and waited for where both ends' mycelium can;
     // otherwise shared, and the far line waits for the files to cross.
-    let within = crosses_within(job.files.iter().map(|(_, size)| size).sum()).to_string();
+    let within = crosses_within(bytes).to_string();
     let shared = mycelium(
         settings,
         &[
@@ -497,6 +497,7 @@ fn send(
     let script = far::script(
         quest,
         id,
+        bytes,
         &settings.scratch,
         &job.within,
         kind,

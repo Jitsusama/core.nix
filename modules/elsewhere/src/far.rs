@@ -244,21 +244,24 @@ pub fn left<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
     job: &Path,
-) -> io::Result<()> {
+) -> io::Result<u64> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
+    let mut bytes = 0;
     for part in archive::write(root, paths, &tree, LARGEST_FILE)? {
         // Writing to a String can't fail.
         let _ = writeln!(list, "{}\t{}", part.size, part.name);
+        bytes += part.size;
     }
     list.push_str(END);
     list.push('\n');
-    fs::write(job.join(LEFT), list)
+    fs::write(job.join(LEFT), list)?;
+    Ok(bytes)
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's archives to cross, unpacks them in `scratch` within the
+/// for the job's archives, `bytes` in all, to cross, unpacks them in `scratch` within the
 /// quest's own scratch there, the one folder a strict fence lets it
 /// write, runs the kind's setup and then the job, its program found on
 /// the far path by its name, in the job's folder `within` the tree, then
@@ -267,6 +270,7 @@ pub fn left<'a>(
 pub fn script(
     quest: &str,
     id: &str,
+    bytes: u64,
     scratch: &str,
     within: &Path,
     kind: &Kind,
@@ -291,7 +295,9 @@ pub fn script(
         .map(|word| quoted(word))
         .collect::<Vec<_>>()
         .join(" ");
+    let untaken = quoted(&Heard::Untaken.line(id));
     let crossing = crossing();
+    let waiting = waiting(bytes, &untaken);
     let copying = copying();
     let stopping = stopping();
     let bringing = bringing(kind);
@@ -305,32 +311,7 @@ tab=$(printf '\t')
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
 {stopping}
-# By the clock, since a pass over a large tree takes long itself, and
-# from the last time more crossed, as the near side waits, or the clock
-# stepped back. A pass counts after its second, so passes are never short.
-# However steadily they cross, the whole wait is held to its ceiling.
-now=0 began=0 started=0 counting=yes listed=; tick; grown
-began=$now had=$got started=$now
-until arrived; do
-  sleep 1
-  tick
-  grown
-  if [ "$got" -gt "$had" ] || [ "$now" -lt "$began" ]; then
-    [ "$now" -lt "$began" ] && started=$((started + now - began))
-    began=$now had=$got
-  fi
-  if [ "$((now - began))" -ge {CROSSES_WITHIN} ]; then
-    printf "elsewhere: the job's files didn't reach %s, none crossing for {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
-    say {untaken}
-    exit {UNTAKEN}
-  fi
-  ceiling
-  if [ "$((now - started))" -ge "$most" ] && ! arrived; then
-    printf "elsewhere: the job's files didn't reach %s within %ss, still crossing too slowly, waiting on %s\n" "$(uname -n)" "$most" "$waiting" >&2
-    say {untaken}
-    exit {UNTAKEN}
-  fi
-done
+{waiting}
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
@@ -357,7 +338,6 @@ rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
 "#,
         started = quoted(&Heard::Started.line(id)),
         refused = quoted(&Heard::Refused.line(id)),
-        untaken = quoted(&Heard::Untaken.line(id)),
         setup = if setup.is_empty() { ":" } else { setup },
     )
 }
@@ -786,7 +766,7 @@ mod landing;
 pub mod spent;
 mod steps;
 
-use steps::{bringing, copying, crossing, stopping};
+use steps::{bringing, copying, crossing, stopping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 
