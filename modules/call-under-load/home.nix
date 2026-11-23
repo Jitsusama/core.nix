@@ -34,6 +34,26 @@ in
     };
   };
 
+  # Joel's own calls, watched as they happen: a test call says what a
+  # call would see, but only his own say what his did. Each call's
+  # sending waits join the history as it ends, and the next hour's
+  # figures carry them for cadence.
+  systemd.user.services.call-under-load-watch = {
+    Unit.Description = "Watches Joel's own calls for sending threads kept from a CPU";
+    Service = {
+      ExecStart = "${lib.getExe package} watch";
+      Restart = "on-failure";
+      RestartSec = "30s";
+      # In the apps' slice, weighted as any app, so under the heaviest
+      # load, when a call is most worth reading, its asks of a-call-is-on
+      # still answer in time ahead of agents' work. It reads a few files
+      # each 5 s during a call and asks once each 30 s, well under 1% of
+      # a core, so Joel's apps lose nothing to it.
+      Slice = "app.slice";
+    };
+    Install.WantedBy = [ "default.target" ];
+  };
+
   systemd.user.timers.call-under-load = {
     Unit.Description = "Measures Joel's calls and apps under load, each hour";
     Timer = {

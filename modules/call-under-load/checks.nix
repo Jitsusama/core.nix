@@ -16,7 +16,8 @@ onLinux {
   # apps' waits come from lag-watch's last hour, the launcher's openings
   # during the run are set against the span before on their medians, or
   # can't be told under three a side or from a journal not read whole,
-  # and the hour is written in cadence's shape.
+  # the hour is written in cadence's shape, and Joel's own calls' sending
+  # waits are summed into a line the hour reads and no test run is taken for.
   call-under-load-tells-the-hour = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in call-under-load, its tests included.
   call-under-load-passes-clippy = passesClippy "call-under-load-passes-clippy" (

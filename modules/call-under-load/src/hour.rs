@@ -22,6 +22,10 @@ const HEARD: &str = "call sound heard and counted";
 /// reads it as the p99 of every wakeup.
 const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// Joel's own calls' figure, in ms of waiting per second.
+const REAL: &str = "real call sending wait p99 ms per s";
+/// How many of them the watch couldn't read.
+const REAL_BLIND: &str = "real calls with no sending thread found";
 /// How far, in tenths, a figure may sit past a whole tenth and still be
 /// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
 /// times carry error near 1e-8 ms, far inside it, and the page's clock
@@ -258,16 +262,156 @@ pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::R
         .map(|m| (m.measure.to_string(), json!(m.now)))
         .collect();
     let line = json!({"at": at, "run": run, "measures": figures});
-    let mut history = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder.join("history.jsonl"))?;
-    writeln!(history, "{line}")
+    append(&folder.join("history.jsonl"), &line)
+}
+
+/// Adds one line to the history, as a single write, so the hour's run
+/// and the call watch can't interleave their lines.
+pub fn append(history: &Path, line: &Value) -> io::Result<()> {
+    if let Some(folder) = history.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(history)?;
+    file.write_all(format!("{line}\n").as_bytes())
+}
+
+/// Joel's own calls' figure: the worst of their sending threads' p99
+/// wait for a CPU, from the calls `heard` names, with the load and the
+/// thread behind it said, as of `at`. Unread when no call was ever
+/// watched.
+pub fn real(calls: &[crate::watch::Real], at: u64) -> Vec<Measure> {
+    let p99 = |call: &&crate::watch::Real| call.sending_p99.unwrap_or(0.0);
+    let worst = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .max_by(|a, b| p99(a).total_cmp(&p99(b)));
+    let mut behind = vec![format!(
+        "Joel's own calls, {} read: the p99 of each 5 s tick's slowest sending thread's wait \
+         for a CPU per second, in his call apps, which in a call under 8 minutes is its worst \
+         tick",
+        calls.len()
+    )];
+    if let Some(call) = worst {
+        behind.push(format!(
+            "the worst ended {} min ago, {} of {} ticks past {} ms/s or load {}, its 15-minute \
+             load up to {:.0}, its slowest thread {}",
+            at.saturating_sub(call.ended) / 60,
+            call.flagged,
+            call.ticks,
+            crate::watch::LATE_MS,
+            crate::watch::HEAVY,
+            call.load15_max,
+            call.worst_who.as_deref().unwrap_or("unread"),
+        ));
+        if call.unsure {
+            behind.push("it was closed when a-call-is-on couldn't tell for 3 min".to_string());
+        }
+        if call.cut {
+            behind.push("it was cut short when the watch stopped".to_string());
+        }
+    }
+    let unread = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_none())
+        .count();
+    if unread > 0 {
+        behind.push(format!("{unread} with no sending thread found"));
+    }
+    // Beside the wait, which is unread when no call's sending threads
+    // were found and so drops off cadence's card, a count that files a
+    // fault when the watch saw a call it couldn't read.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a count of calls is far below f64's exact range"
+    )]
+    let blind = unread as f64;
+    vec![
+        measure(
+            REAL,
+            worst.and_then(|call| call.sending_p99),
+            crate::watch::LATE_MS,
+            true,
+            behind,
+        ),
+        measure(
+            REAL_BLIND,
+            Some(blind),
+            0.0,
+            true,
+            vec![format!(
+                "of {} of Joel's own calls read, those with no sending thread found in his \
+                 call apps, so their waits are unread",
+                calls.len()
+            )],
+        ),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joel_s_calls_give_their_worst_sending_wait_and_say_whose() {
+        let call = |ended, p99: Option<f64>, who: &str| crate::watch::Real {
+            began: ended - 600,
+            ended,
+            ticks: 120,
+            read: 110,
+            flagged: 3,
+            sending_p99: p99,
+            worst_ms: p99,
+            worst_who: Some(who.to_string()),
+            load15_max: 121.4,
+            unsure: false,
+            cut: ended == 2_000,
+        };
+        let calls = [
+            call(1_000, Some(40.0), "chrome:renderer:Compositor"),
+            call(2_000, Some(412.5), "chrome:renderer:CodecWorker"),
+            call(2_500, None, "none"),
+        ];
+        let figures = real(&calls, 2_600);
+        let figure = &figures[0];
+        assert_eq!(figure.now, Some(412.5));
+        assert!(
+            figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9,
+            "a wait is lower-better against the 300 ms/s bar"
+        );
+        assert_eq!(figure.owner, OWNER);
+        assert_eq!(
+            figure.behind[1],
+            "the worst ended 10 min ago, 3 of 120 ticks past 300 ms/s or load 80, its \
+             15-minute load up to 121, its slowest thread chrome:renderer:CodecWorker",
+            "the figure doesn't say which call and thread it is"
+        );
+        assert_eq!(
+            figure.behind[2..],
+            [
+                "it was cut short when the watch stopped",
+                "1 with no sending thread found"
+            ],
+            "a call cut short or unread wasn't said"
+        );
+        assert_eq!(
+            (
+                figures[1].now,
+                figures[1].target,
+                figures[1].lower_is_better
+            ),
+            (Some(1.0), 0.0, true),
+            "a call the watch couldn't read filed no fault"
+        );
+        let none = real(&[], 0);
+        assert_eq!(none[0].now, None, "no call watched read as a wait");
+        assert_eq!(none[1].now, Some(0.0), "no call watched read as one unread");
+        let blind = real(&calls[2..], 2_600);
+        assert_eq!(
+            (blind[0].now, blind[1].now),
+            (None, Some(1.0)),
+            "an hour whose calls were all unread looked like an hour with none"
+        );
+    }
 
     #[test]
     fn a_figure_is_rounded_toward_its_worse_side() {
