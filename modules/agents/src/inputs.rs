@@ -47,6 +47,11 @@ use crate::top;
 use crate::wants;
 use crate::windows;
 
+/// How long after a write of the places fails it's tried again, in ms:
+/// soon enough that a let-go isn't lost to a reboot, seldom enough that
+/// a full disk isn't asked every moment.
+const WRITE_AGAIN_MS: u64 = 10_000;
+
 /// What each source last said.
 #[derive(Default)]
 pub struct Inputs {
@@ -102,6 +107,13 @@ pub struct Inputs {
     pub screens: Held,
     /// Where each session's window sat, as kept.
     pub arrangement: Arrangement,
+    /// Whether `arrangement` holds more than its file does, its last
+    /// write having failed, so the next keep writes it though nothing
+    /// moved.
+    unwritten: bool,
+    /// Whether the windows daemon has said a window this run, after which
+    /// it saying none is every window gone, as when niri goes.
+    windows_heard: bool,
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
     pub kept_places: KeptPlaces,
@@ -262,10 +274,15 @@ impl Inputs {
     /// Keeps where each session's window sits now (arrangement.rs),
     /// writing it to `path` when it moved and saying when it can't. Nothing's kept on a boot
     /// Linux doesn't name, nor before the windows daemon has said a window.
+    /// Once it has, it saying none is kept too: each window gone at once
+    /// is marked orphaned there, so the first viewer back after niri
+    /// returns empty doesn't make the rest read as closed by hand.
     /// It answers when, in ms since the epoch, a place closed by hand is
-    /// to be let go, so it's kept again then.
+    /// to be let go, so it's kept again then, or soon after a write that
+    /// failed, so the file catches up though no window moves.
     pub fn keep_places(&mut self, path: &Path) -> Option<u64> {
-        if self.boot.is_empty() || self.windows.records().next().is_none() {
+        self.windows_heard |= self.windows.records().next().is_some();
+        if self.boot.is_empty() || !self.windows_heard {
             return None;
         }
         let sessions: Vec<Session> = self
@@ -282,21 +299,31 @@ impl Inputs {
         };
         let now = arrangement::now(sessions.iter().copied(), &paired, &desk);
         let unwindowed = arrangement::unwindowed(sessions.iter().copied(), &paired, &desk);
+        let at = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
         let kept = self.arrangement.kept(
             &self.boot,
             self.restoring(),
             now,
             arrangement::others(&desk),
             &unwindowed,
-            u64::try_from(clock::now_ms()).unwrap_or(u64::MAX),
+            at,
         );
-        if kept != self.arrangement {
-            if let Err(why) = kept.write(path) {
+        // Kept in memory either way, so a closed mark keeps the time it
+        // was stamped at: one stamped again at each try would never come
+        // due while the disk stays full.
+        if kept != self.arrangement || self.unwritten {
+            self.unwritten = kept.write(path).is_err_and(|why| {
                 eprintln!("agents: can't keep {}: {why}", path.display());
-            }
+                true
+            });
             self.arrangement = kept;
         }
-        self.arrangement.let_go_at(&self.boot)
+        let let_go = self.arrangement.let_go_at(&self.boot);
+        if self.unwritten {
+            let again = at.saturating_add(WRITE_AGAIN_MS);
+            return Some(let_go.map_or(again, |when| when.min(again)));
+        }
+        let_go
     }
 
     /// Every session there is to reopen, by the sessions running or
@@ -1263,6 +1290,76 @@ mod tests {
              "item": {"title": "Elsewhere", "quest": "QEST-B"}}
         ]}));
         assert_eq!(inputs.needs("QEST-O"), ["Now", "Later"]);
+    }
+
+    #[test]
+    fn every_window_gone_at_once_marks_their_places_orphaned() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        inputs.sessions.took(&json!({"records": [
+            {"key": "session:o", "standing": "running", "here": true,
+             "window": {"terminal": "kitty", "within": "unix:@kitty-4", "id": 2,
+                "app_id": "pi-session.1"},
+             "presence": {"addresses": ["O"], "session": "s-o"}}
+        ]}));
+        let folder =
+            std::env::temp_dir().join(format!("agents-inputs-gone-{}", std::process::id()));
+        let path = folder.join("arrangement.json");
+        assert_eq!(inputs.keep_places(&path), None);
+        assert!(
+            inputs.arrangement.boots.is_empty(),
+            "nothing's kept before the windows daemon says a window"
+        );
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
+        ]}));
+        inputs.keep_places(&path);
+        assert!(
+            inputs.arrangement.boots["this-one"].get("s-o").is_some(),
+            "its window is kept: {}",
+            inputs.arrangement.boots["this-one"]
+        );
+        inputs.windows.took(&json!({"records": []}));
+        inputs.keep_places(&path);
+        assert_eq!(
+            inputs.arrangement.boots["this-one"]["s-o"]["orphaned"],
+            json!(true),
+            "niri gone with every window, its place is marked orphaned, never closed by hand"
+        );
+        // Only this case's own folder, which the next run makes afresh.
+        let _ = std::fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn places_whose_write_failed_are_written_again_soon_though_nothing_moves() {
+        let mut inputs = inputs();
+        inputs.boot = "this-one".into();
+        inputs.windows.took(&json!({"records": [
+            {"key": "window:7", "id": 7, "pid": 4, "opened": "pi-session.1"}
+        ]}));
+        let folder =
+            std::env::temp_dir().join(format!("agents-inputs-keep-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).expect("a folder");
+        let blocked = folder.join("blocked");
+        std::fs::write(&blocked, "").expect("a file where its folder would be");
+        let path = blocked.join("arrangement.json");
+        let before = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        let again = inputs
+            .keep_places(&path)
+            .expect("a failed write is tried again");
+        assert!(
+            (before..=before + WRITE_AGAIN_MS + 1_000).contains(&again),
+            "soon, though no place is closed: {again} from {before}"
+        );
+        std::fs::remove_file(&blocked).expect("the way cleared");
+        assert_eq!(
+            inputs.keep_places(&path),
+            None,
+            "once it can, it's written though nothing moved, and nothing waits"
+        );
+        assert!(path.exists(), "the file holds what memory does");
+        // Only this case's own folder, which the next run makes afresh.
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]
