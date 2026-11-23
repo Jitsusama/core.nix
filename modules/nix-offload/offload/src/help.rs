@@ -154,6 +154,11 @@ fn there() -> Help {
         "with --run, sends the store path PATH's closure first",
     )
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
+    .option(
+        "--alone",
+        "with --run, waits for a VM builder to itself and holds it, nothing \
+         else sent there while it goes",
+    )
     .option("--takes", "names a word each for what this there takes")
     .exit(Exit::Failed, "nix failed, as an evaluation does")
     .exit(

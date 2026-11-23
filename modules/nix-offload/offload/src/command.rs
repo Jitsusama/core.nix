@@ -86,6 +86,25 @@ pub struct Asked {
     pub words: Vec<String>,
 }
 
+/// Whether `--run`'s arguments ask for a builder to the run alone, with
+/// `--alone` anywhere before the command's `--`, and the arguments without
+/// it, for [`asked`]. What follows `--` is the command's, `--alone` too.
+pub fn alone(arguments: &[String]) -> (bool, Vec<String>) {
+    let end = arguments
+        .iter()
+        .position(|word| word == "--")
+        .unwrap_or(arguments.len());
+    let (before, command) = arguments.split_at(end);
+    let alone = before.iter().any(|word| word == "--alone");
+    let kept = before
+        .iter()
+        .filter(|word| *word != "--alone")
+        .chain(command)
+        .cloned()
+        .collect();
+    (alone, kept)
+}
+
 /// Reads `--run`'s arguments: `--copy PATH` as often as wanted, each a
 /// store path, `--longest SECONDS`, then `--` and the command.
 pub fn asked(arguments: &[String]) -> Result<Asked, String> {
@@ -486,6 +505,27 @@ mod tests {
     use std::process::Stdio;
     use std::sync::mpsc;
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_run_asks_for_a_builder_alone_before_its_command() {
+        assert_eq!(
+            alone(&words("--alone --longest 60 -- make test")),
+            (true, words("--longest 60 -- make test"))
+        );
+        assert_eq!(
+            alone(&words("--copy /nix/store/a-bin --alone -- make")),
+            (true, words("--copy /nix/store/a-bin -- make"))
+        );
+        assert_eq!(
+            alone(&words("-- sh -c --alone")),
+            (false, words("-- sh -c --alone")),
+            "an --alone after -- was taken from the command"
+        );
+        assert_eq!(
+            alone(&words("--longest 60 -- make")),
+            (false, words("--longest 60 -- make"))
+        );
+    }
 
     fn words(said: &str) -> Vec<String> {
         said.split_whitespace().map(str::to_owned).collect()

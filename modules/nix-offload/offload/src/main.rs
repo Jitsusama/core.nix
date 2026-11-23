@@ -1527,18 +1527,34 @@ fn say_a_warm_pass_isnt_kept(status: Option<i32>, words: &[String]) {
 /// ends 0 is kept as passed at the commit, with its words and copies
 /// (`passed.rs`), which `nix-offload passed ran COMMIT` says, unless it
 /// went as files cut to its cones (`archived.rs`) or ran a suite in a
-/// warm target (`cargo::runs_warm`).
+/// warm target (`cargo::runs_warm`). One asked to go `--alone` goes to a
+/// VM builder held whole ([`alone_on`]).
 fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failure> {
-    let asked = command::asked(arguments).map_err(|why| ended::asked_wrongly(why, "there"))?;
+    let (alone, arguments) = command::alone(arguments);
+    let asked = command::asked(&arguments).map_err(|why| ended::asked_wrongly(why, "there"))?;
     let not_run = |why: &str| ended::backs_off(taken_nowhere(), format!("{why}, so nothing ran"));
     let dir = env::var_os("NIX_OFFLOAD_DIR").map_or_else(|| PathBuf::from(DIR), PathBuf::from);
     let more = more_dir();
     let lenders = [dir.as_path(), more.as_path()];
+    let vm_dir =
+        env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
+    let vm_dirs = vm_dirs(&vm_dir);
+    let holding: Vec<&Path> = vm_dirs
+        .iter()
+        .filter(|vm| there::lends(vm))
+        .map(PathBuf::as_path)
+        .collect();
     // Before packing, which for a tree off GitHub gzips its whole cone
     // here, only to be thrown away when nothing could take it.
-    if !lenders
-        .iter()
-        .any(|lender| standing(lender).is_some() || there::lends(lender))
+    if alone && holding.is_empty() {
+        return Err(not_run(
+            "no VM builder is lent, and --alone holds only one of those",
+        ));
+    }
+    if !alone
+        && !lenders
+            .iter()
+            .any(|lender| standing(lender).is_some() || there::lends(lender))
     {
         return Err(not_run("no builder is lent"));
     }
@@ -1579,11 +1595,16 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         }
         status
     };
-    let mut status = changed::in_turn(lenders, std::process::id())
-        .iter()
-        .filter_map(|lender| standing(lender))
-        .find_map(|store| on(&store));
-    if status.is_none()
+    let mut status = if alone {
+        alone_on(&holding, &mut on, waiting)
+    } else {
+        changed::in_turn(lenders, std::process::id())
+            .iter()
+            .filter_map(|lender| standing(lender))
+            .find_map(|store| on(&store))
+    };
+    if !alone
+        && status.is_none()
         && let Some(lender) = lenders.into_iter().find(|lender| there::lends(lender))
     {
         eprintln!(
@@ -1626,6 +1647,41 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         }),
         None => Err(not_run("no lent builder took it")),
     }
+}
+
+/// Runs `on` a VM builder of `holding` taken whole, every one of its
+/// places claimed as a run of that many VM tests claims them, so no VM test
+/// and no other run lands there while it goes; none when no builder stood.
+/// The two general builders take every plain build and evaluation sent
+/// their way, 14 at once each, so a timing-sensitive run there never has
+/// one to itself: on 22 November four host-test runs shared one and each
+/// case took 3 to 5 times as long as alone, two failing on their timeouts.
+/// It waits its turn for a builder with nothing sent to it, as VM runs do
+/// ([`there::admitted`]), taking the first of `holding` to empty, then for
+/// that builder to stand.
+fn alone_on(
+    holding: &[&Path],
+    on: &mut impl FnMut(&str) -> Option<i32>,
+    waiting: there::Waiting,
+) -> Option<i32> {
+    let (first, others) = holding.split_first()?;
+    let room = vm_room();
+    eprintln!(
+        "nix-offload: --alone takes a VM builder whole, all {room} of its places, so this \
+         waits for one with nothing sent to it"
+    );
+    let rank = if there::first() {
+        there::Rank::First
+    } else {
+        there::Rank::Plain
+    };
+    let (dir, _whole) = there::admitted(first, others, room, room, rank);
+    let store = standing(dir).or_else(|| there::waited(dir, waiting))?;
+    eprintln!(
+        "nix-offload: this run holds the VM builder in {} alone while it goes",
+        dir.display()
+    );
+    on(&store)
 }
 
 /// How a changed-checks run that went to no builder ends, for `why`: its

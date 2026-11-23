@@ -2196,9 +2196,10 @@ impl Source {
 /// one whose VM tests let others' go first, `--never-ask`, a run
 /// that asks the lender for no builder, `--first`, one that goes ahead of
 /// every other run waiting for room or for a turn, `--run`, a command
-/// run on a lent builder (`command.rs`), and `--lent-only`, a run that
-/// goes to a lent builder or nowhere ([`LENT_ONLY`]).
-pub const TAKES: [&str; 16] = [
+/// run on a lent builder (`command.rs`), `--lent-only`, a run that
+/// goes to a lent builder or nowhere ([`LENT_ONLY`]), and `--alone`, a
+/// `--run` on a builder held for it alone.
+pub const TAKES: [&str; 17] = [
     "tree",
     "apply",
     "out",
@@ -2215,6 +2216,7 @@ pub const TAKES: [&str; 16] = [
     "first",
     "run",
     "lent-only",
+    "alone",
 ];
 
 /// The variable, with its value, that marks a run sent first, as
