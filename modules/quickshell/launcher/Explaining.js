@@ -97,12 +97,15 @@ function plain(value) {
 // One waiting on Joel says what it asks him, its want's own words, and
 // then the names of `beside`, the acts on its row he can answer it by
 // (Talk, Go To), so the answer says what it waits on and which to press;
-// one asking nothing names none, since nothing waits on a press.
+// one asking nothing names none, since nothing waits on a press. `beside`
+// may be a list Qt handed through a property, no array of JavaScript's,
+// so it's read as anything with a length.
 function facts(cell, beside) {
     const plan = cell?.plan ?? {};
     const asks = plain(cell?.asks);
-    const presses = asks === "" || !Array.isArray(beside) ? []
-        : beside.map(plain).filter(name => name !== "");
+    const presses = asks === "" || typeof beside === "string"
+        || typeof beside?.length !== "number" ? []
+        : Array.from(beside, plain).filter(name => name !== "");
     return [
         ["Its title", cell?.title],
         ["Its repository", cell?.repo],
