@@ -77,8 +77,7 @@ fn each_machine_says_its_busy_and_listening_and_this_ones_busy_are_judged() {
         "a machine's sessions were miscounted, or one carrying none was left out"
     );
     assert_eq!(
-        read.says,
-        "sessions busy on this machine, of 4 busy on 3 machines",
+        read.says, "sessions busy on this machine, of 4 busy on 3 machines",
         "the realm's busy sessions were miscounted, or a doubt said where none was"
     );
 }
@@ -297,10 +296,7 @@ fn a_session_with_no_id_counts_once_per_listing_and_never_folds_into_another() {
         session("", "here", "busy", "busy"),
         session("", "here", "busy", "busy"),
     ]);
-    let alike = alone(&[
-        session("work #1", "here", "busy", "busy"),
-        nameless("here"),
-    ]);
+    let alike = alone(&[session("work #1", "here", "busy", "busy"), nameless("here")]);
     for read in [blank, alike] {
         assert_eq!(
             read.now.to_string(),
