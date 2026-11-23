@@ -35,7 +35,10 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A candidate that fails splits: the train takes the first half of its
+//! A red is main's own when every check it broke fails at the base the
+//! candidate was cut on too, each subtest it failed among those failing
+//! there: the candidate lands, and its line in `train/landed.jsonl` names
+//! those checks (`excused.rs`). Any other candidate that fails splits: the train takes the first half of its
 //! riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
@@ -63,6 +66,7 @@ use crate::state::short;
 use right_of_way::Ended;
 pub use right_of_way::gives_way;
 
+mod excused;
 mod gated;
 mod hub;
 mod installed;
@@ -519,13 +523,24 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
+        let mut excused = Vec::new();
         match gate(&checkout, &log) {
             Gated::Passed => splitting.taken(),
             Gated::Red => {
                 splitting.taken();
-                way(&root, &Ended::Otherwise);
-                red(&root, &candidate, &log, &done.merged, &mut splitting);
-                continue;
+                let Some(checks) = mains_own(&root, &slug, &base, &log) else {
+                    way(&root, &Ended::Otherwise);
+                    red(&root, &candidate, &log, &done.merged, &mut splitting);
+                    continue;
+                };
+                println!(
+                    "merge-net: the candidate {} failed changed-checks only on {}, which fail at \
+                     main's {} too, so the train lands it",
+                    short(&candidate),
+                    checks.join(", "),
+                    short(&base)
+                );
+                excused = checks;
             }
             Gated::Unsent => {
                 // The train stays in its ride rather than waiting for a
@@ -547,20 +562,39 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             &mergings,
             &done.merged,
         );
-        after_landing(&root, landing, &done.merged, began, &mut splitting);
+        let run = Run {
+            heads: &done.merged,
+            began,
+            excused: &excused,
+        };
+        after_landing(&root, landing, &run, &mut splitting);
     }
 }
 
-/// After `landing` the `merged` riders of a run begun at `began`: those
-/// that landed alight and are kept, the rest fall saying why, and the
-/// right of way and `splitting` go on from there.
-fn after_landing(
-    root: &Path,
-    landing: Landing,
-    merged: &[String],
+/// The checks that fail at `base` of the repository `slug` as they failed
+/// in the red gate whose words are in `log`, when they excuse it: see
+/// `excused.rs`.
+fn mains_own(root: &Path, slug: &str, base: &str, log: &Path) -> Option<Vec<String>> {
+    let state = crate::state::State::at(root.to_path_buf());
+    let train = folder(root);
+    excused::excused(&words_of(log), |check| {
+        excused::at_base(&train, &state, slug, base, check)
+    })
+}
+
+/// A candidate's run: the riders it merged, when it began, and the checks
+/// that failed in it at main's own commit too, which excused its red.
+struct Run<'a> {
+    heads: &'a [String],
     began: u64,
-    splitting: &mut Splitting,
-) {
+    excused: &'a [String],
+}
+
+/// After `landing` the riders of `run`: those that landed alight and are
+/// kept, the rest fall saying why, and the right of way and `splitting`
+/// go on from there.
+fn after_landing(root: &Path, landing: Landing, run: &Run, splitting: &mut Splitting) {
+    let merged = run.heads;
     let falls = |why: &str| {
         for head in merged {
             let _ = fall(root, head, why);
@@ -574,7 +608,7 @@ fn after_landing(
             for head in merged {
                 alight(root, head);
             }
-            keep_landed(root, &landed, merged, &boarded, crate::state::now() - began);
+            keep_landed(root, &landed, merged, &boarded, run);
             println!("merge-net: the train landed {} on main", short(&landed));
             let left = !riders(root).is_empty();
             way(root, &Ended::Landed { left });
@@ -595,7 +629,7 @@ fn after_landing(
             for head in &kept {
                 alight(root, head);
             }
-            keep_landed(root, &landed, &kept, &boarded, crate::state::now() - began);
+            keep_landed(root, &landed, &kept, &boarded, run);
             let (before, stay) = match kept.len() {
                 1 => ("the rider before it".to_owned(), "stays"),
                 riders => (format!("the {riders} riders before it"), "stay"),

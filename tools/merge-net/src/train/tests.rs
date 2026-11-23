@@ -292,7 +292,7 @@ fn a_partial_landing_keeps_the_landed_drops_the_refused_and_seats_the_rest() {
         refused: "b2".to_owned(),
         why: "GitHub refused #2: it is a draft".to_owned(),
     };
-    after_landing(&root, landing, &merged, 0, &mut Splitting::default());
+    after_landing(&root, landing, &run(&merged), &mut Splitting::default());
     assert_eq!(
         riders(&root),
         vec![rider("c3", 30)],
@@ -375,6 +375,43 @@ fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
     fs::remove_dir_all(&root).unwrap();
 }
 
+/// A run of `heads` begun at the epoch, its red excused by nothing.
+fn run(heads: &[String]) -> Run<'_> {
+    Run {
+        heads,
+        began: 0,
+        excused: &[],
+    }
+}
+
+#[test]
+fn a_landing_keeps_the_checks_that_failed_at_mains_own_commit_too() {
+    let root = root("excused-landing");
+    board(&root, &rider("a1", 10)).unwrap();
+    let merged: Vec<String> = ["a1"].map(str::to_owned).into();
+    let excused: Vec<String> = ["cat-on-niri"].map(str::to_owned).into();
+    let ran = Run {
+        heads: &merged,
+        began: 0,
+        excused: &excused,
+    };
+    after_landing(
+        &root,
+        Landing::Landed("m1".to_owned()),
+        &ran,
+        &mut Splitting::default(),
+    );
+    let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap_or_default();
+    let line: Value = serde_json::from_str(kept.trim()).unwrap_or_default();
+    assert_eq!(
+        line["excused"],
+        json!(["cat-on-niri"]),
+        "a landing whose red main's own commit excused didn't say which checks: {kept}"
+    );
+    assert!(riders(&root).is_empty(), "the excused rider didn't alight");
+    fs::remove_dir_all(&root).unwrap();
+}
+
 #[test]
 fn a_first_rider_github_refuses_falls_alone() {
     let root = root("turned");
@@ -386,7 +423,7 @@ fn a_first_rider_github_refuses_falls_alone() {
         refused: "a1".to_owned(),
         why: "GitHub refused #1: it is a draft".to_owned(),
     };
-    after_landing(&root, landing, &merged, 0, &mut Splitting::default());
+    after_landing(&root, landing, &run(&merged), &mut Splitting::default());
     assert_eq!(
         riders(&root),
         vec![rider("b2", 20)],
@@ -417,14 +454,14 @@ fn a_refused_first_rider_keeps_the_search_and_a_second_in_a_row_empties_the_trai
         why: format!("GitHub refused {refused}: 403"),
     };
     let riding: Vec<String> = ["a1", "b2"].map(str::to_owned).into();
-    after_landing(&root, turned("a1"), &riding, 0, &mut splitting);
+    after_landing(&root, turned("a1"), &run(&riding), &mut splitting);
     assert_eq!(
         splitting.take(),
         1,
         "the search forgot the red lies among the three riders after the refused one"
     );
     let riding: Vec<String> = ["b2"].map(str::to_owned).into();
-    after_landing(&root, turned("b2"), &riding, 0, &mut splitting);
+    after_landing(&root, turned("b2"), &run(&riding), &mut splitting);
     let why = fell(&root, "b2").unwrap_or_default();
     assert!(
         why.contains("refused the train's first rider before"),
