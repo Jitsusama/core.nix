@@ -93,7 +93,8 @@ HANDSHAKES = 2
 # reply lost coming down leaves the call's own data to come first, and the error ends with
 # whatever errno an earlier call left: "No such file or directory" on 22 November, the server
 # having heard both connects. Either is a handshake lost, which the counters read as lost
-# going up when the server heard no connect, and coming down otherwise.
+# coming down when the server heard more connects than replies reached the client, and going
+# up otherwise.
 UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
