@@ -160,11 +160,17 @@ Scope {
 
         // Whether niri gives the prompt the keys, for the journal's line on
         // the ask: held as an ask comes, given while it waits, or taken by
-        // another surface, such as the lock, before it ends.
+        // another surface, such as the lock, before it ends. Keys going as
+        // the agent puts the prompt away are the ask ending, not a loss.
         Item {
             id: keysHeld
             readonly property bool keys: Window.active
-            onKeysChanged: root.askHeard(keys ? "keys" : "keys-gone")
+            onKeysChanged: {
+                if (keys)
+                    root.askHeard("keys");
+                else if (agent.isActive)
+                    root.askHeard("keys-gone");
+            }
         }
 
         Rectangle {
@@ -182,8 +188,11 @@ Scope {
             reason: root.failed ? root.flow.supplementaryMessage : root.why
             failed: root.failed
             secret: !(root.flow && root.flow.responseVisible)
+            // A password counts as sent only while the flow waits for one,
+            // so a Return during a key's touch isn't taken for a try.
             onSubmitted: text => {
-                root.askHeard("tried");
+                if (root.flow.isResponseRequired)
+                    root.askHeard("tried");
                 root.flow.submit(text);
             }
             onRefused: {

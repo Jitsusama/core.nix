@@ -242,7 +242,12 @@ def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop
     # The journal says how each ask ended, and whether niri gave the prompt the keys, so an ask
     # that fails on Joel's machine, where reports are off, is read rather than guessed. The
     # ask's end is heard through the real flow, so none here ends without saying how.
-    ended = "polkit: org.freedesktop.systemd1.manage-units answered after .*; it had the keys"
+    # The keys go as the prompt is put away, which isn't a loss, so the line ends at when it had
+    # them.
+    ended = (
+        "polkit: org.freedesktop.systemd1.manage-units answered after .*;"
+        " it had the keys [0-9]* ms in$"
+    )
     unsaid = "ended without saying how"
     journal = "journalctl --user -u quickshell -o cat"
     machine.wait_until_succeeds(

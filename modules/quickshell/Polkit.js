@@ -370,7 +370,8 @@ function begun(action, at, keys) {
 // refused (wrong), the keys given or gone, or one of the endings. The first
 // ending heard stands, as Joel's Escape cancels the flow too, and that cancel
 // mustn't be taken for polkit's withdrawal. The keys count from when the
-// prompt first had them, and a loss stands until they come back.
+// prompt first had them, and a loss stands until they come back; once the ask
+// has ended, the prompt putting itself away is no loss.
 function heard(ask, what, at) {
     const next = Object.assign({}, ask);
     if (what === "tried" || what === "wrong") {
@@ -378,7 +379,7 @@ function heard(ask, what, at) {
     } else if (what === "keys") {
         next.keysAt = next.keysAt ?? at;
         next.goneAt = null;
-    } else if (what === "keys-gone" && next.keysAt !== null) {
+    } else if (what === "keys-gone" && next.keysAt !== null && next.how === "") {
         next.goneAt = at;
     } else if (endings.has(what) && next.how === "") {
         next.how = what;
