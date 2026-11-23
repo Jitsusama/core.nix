@@ -107,8 +107,9 @@ done"#
 /// it, the job's archives and whatever it had begun to bring back away,
 /// since no one waits for them, then dies by the same signal, so whatever
 /// waits on it sees it stopped rather than ended. The exit with the code a
-/// shell gives such a death, after it, is only a fallback: in dash and in
-/// bash the signal it sent itself ends it first. A closed pipe is a let go
+/// shell gives such a death, after it, is only a fallback: dash and bash 5
+/// die at the signal it sent itself, and bash 3.2, the Mac's sh, reaches
+/// the exit but still dies by that signal. A closed pipe is a let go
 /// too, as when the asker's end goes before its signal comes. A signal
 /// that comes while it clears is dropped, so the clearing runs once, and
 /// one ignored when the far line began is never trapped at all.

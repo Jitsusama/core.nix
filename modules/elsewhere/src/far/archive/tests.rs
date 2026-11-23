@@ -223,22 +223,22 @@ fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
         2,
         "two archives within the total weren't written"
     );
-    // Closed archives alone before the third, and then all three files in
-    // one archive, the third's room a byte short with the two before it
-    // still open.
+    // All three files in one archive, the third's room a byte short with
+    // the two before it still open, and then closed archives alone before
+    // the third.
     let whole = 3 * taken("a", 600) + CLOSED;
     assert_eq!(
         write(&root, names, &parts, 1 << 20, whole).unwrap().len(),
         1,
         "three files in one archive just within the total weren't written"
     );
-    // What lies written when c is refused: two closed archives, or the two
-    // entries in the one still open.
+    // What lies written when c is refused: the two entries in the archive
+    // still open, or two closed archives.
     let two = 2 * taken("a", 600);
     for (most, all, before) in [
+        (1 << 20, whole - 1, two),
         (3000, 2 * one, 2 * one),
         (3000, 3 * one - 1, 2 * one),
-        (1 << 20, whole - 1, two),
     ] {
         let _ = std::fs::remove_dir_all(&parts);
         std::fs::create_dir_all(&parts).unwrap();
