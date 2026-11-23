@@ -1256,16 +1256,28 @@ mod tests {
             said(&here, &there),
             "which copy won made no difference, so the test proves nothing"
         );
-        let named = kept(&[here, r#"{"runs": []}"#.to_owned()]);
-        let all = rounds(
-            &mains,
-            &named,
-            &kept(&[]),
-            &fixed,
-            BTreeMap::new,
-            NOW,
-            "ORCH",
+        // With no fix recorded, #24's rounds past five caught nothing, so
+        // a whole read files it; one beside a record naming no change
+        // mustn't, as that record may hold what they caught.
+        let caught_nothing = kept(&[]);
+        let read = |records: &Records| {
+            rounds(
+                &mains,
+                records,
+                &kept(&[]),
+                &caught_nothing,
+                BTreeMap::new,
+                NOW,
+                "ORCH",
+            )
+        };
+        assert_eq!(
+            read(&kept(std::slice::from_ref(&here))).len(),
+            2,
+            "a whole read didn't file a merge whose rounds caught nothing, so the test proves \
+             nothing"
         );
+        let all = read(&kept(&[here, r#"{"runs": []}"#.to_owned()]));
         assert!(
             all.len() == 1 && all[0].says.contains(NO_RUNS),
             "a record naming no change was left out unsaid, or its merge filed: {}",

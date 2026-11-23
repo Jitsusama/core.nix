@@ -18,6 +18,33 @@ use super::measures::rounds::Records;
 /// each round, so the newest show the shape it writes now.
 const SHAPE_JUDGED_BY: usize = 5;
 
+/// What every record of a kind holds whatever its age, and the trouble's
+/// word for one that doesn't, which is read as unread rather than left
+/// out: a round naming no change, or a fixes record holding no fixes,
+/// would otherwise lose what it holds unsaid.
+struct Kind {
+    holds: fn(&Value) -> bool,
+    lacking: &'static str,
+}
+
+const ROUNDS: Kind = Kind {
+    holds: names_its_change,
+    lacking: "it names no change",
+};
+
+const FIXES: Kind = Kind {
+    holds: holds_fixes,
+    lacking: "it holds no fixes",
+};
+
+fn names_its_change(record: &Value) -> bool {
+    record["change"]["id"].is_string() && record["change"]["repo"]["key"].is_string()
+}
+
+fn holds_fixes(record: &Value) -> bool {
+    record["fixes"].is_array()
+}
+
 /// This machine's records of review rounds in `folder`, written since
 /// `since`. One with no round in that time is quiet, as is one not made
 /// yet, which merge-net reads as holding no round; one that can't be
@@ -25,22 +52,26 @@ const SHAPE_JUDGED_BY: usize = 5;
 /// another shape are said in `trouble`.
 #[must_use]
 pub fn rounds(folder: &Path, since: SystemTime) -> Records {
-    kept(folder, since, rounds_shaped)
+    kept(folder, since, rounds_shaped, &ROUNDS)
 }
 
 /// This machine's records of fixes for findings in `folder`, as `rounds`
 /// reads its rounds.
 #[must_use]
 pub fn fixes(folder: &Path, since: SystemTime) -> Records {
-    kept(folder, since, |text| {
-        serde_json::from_str::<Value>(text).is_ok_and(|record| record["fixes"].is_array())
-    })
+    kept(
+        folder,
+        since,
+        |text| serde_json::from_str::<Value>(text).is_ok_and(|record| holds_fixes(&record)),
+        &FIXES,
+    )
 }
 
-/// The records in `folder` written since `since`, judged by `shaped`.
-fn kept(folder: &Path, since: SystemTime, shaped: fn(&str) -> bool) -> Records {
+/// The records of `kind` in `folder` written since `since`, judged by
+/// `shaped`.
+fn kept(folder: &Path, since: SystemTime, shaped: fn(&str) -> bool, kind: &Kind) -> Records {
     let at = folder.display();
-    match listed(folder, since) {
+    match listed(folder, since, kind) {
         Ok((runs, unread)) => Records {
             trouble: unread
                 .into_iter()
@@ -62,8 +93,8 @@ fn kept(folder: &Path, since: SystemTime, shaped: fn(&str) -> bool) -> Records {
 /// each record that couldn't be read wasn't, or why the folder can't be
 /// listed. A record is a `.json` that is a plain file once a link to it is
 /// followed, so a half-written `.tmp`, a pipe or a device beside it isn't
-/// read.
-fn listed(folder: &Path, since: SystemTime) -> io::Result<(Vec<String>, Vec<String>)> {
+/// read; one that isn't of `kind` can't be read.
+fn listed(folder: &Path, since: SystemTime, kind: &Kind) -> io::Result<(Vec<String>, Vec<String>)> {
     let mut texts: Vec<(SystemTime, String)> = Vec::new();
     let mut unread = Vec::new();
     let paths = fs::read_dir(folder)?
@@ -71,7 +102,7 @@ fn listed(folder: &Path, since: SystemTime) -> io::Result<(Vec<String>, Vec<Stri
         .map(|entry| entry.path())
         .filter(|path| path.extension().is_some_and(|e| e == "json"));
     for path in paths {
-        match record(&path, since) {
+        match record(&path, since, kind) {
             Ok(Some(found)) => texts.push(found),
             Ok(None) => {}
             Err(error) => unread.push(format!(
@@ -87,9 +118,10 @@ fn listed(folder: &Path, since: SystemTime) -> io::Result<(Vec<String>, Vec<Stri
 /// The record at `path`, with when it was written, or none where it isn't
 /// a plain file, was written before `since`, or was removed once listed,
 /// as the harness prunes; else why it can't be read. One that isn't JSON
-/// can't be read either, as its rounds would be left out unsaid, nor can a
-/// link left pointing at nothing, which is no record pruned.
-fn record(path: &Path, since: SystemTime) -> io::Result<Option<(SystemTime, String)>> {
+/// or of `kind` can't be read either, as its rounds would be left out
+/// unsaid, nor can a link left pointing at nothing since `since`, which
+/// is no record pruned; one left before it is as old as a record unread.
+fn record(path: &Path, since: SystemTime, kind: &Kind) -> io::Result<Option<(SystemTime, String)>> {
     let gone = |error: io::Error| {
         if error.kind() == ErrorKind::NotFound {
             Ok(None)
@@ -99,13 +131,20 @@ fn record(path: &Path, since: SystemTime) -> io::Result<Option<(SystemTime, Stri
     };
     let found = match fs::metadata(path) {
         Ok(found) => found,
-        Err(error) if fs::symlink_metadata(path).is_ok() => {
-            return Err(io::Error::new(
-                error.kind(),
-                format!("a link to nothing: {error}"),
-            ));
+        Err(error) => {
+            let left = fs::symlink_metadata(path)
+                .ok()
+                .filter(|link| link.file_type().is_symlink())
+                .and_then(|link| link.modified().ok());
+            return match left {
+                Some(left) if left < since => Ok(None),
+                Some(_) => Err(io::Error::new(
+                    error.kind(),
+                    format!("a link to nothing: {error}"),
+                )),
+                None => gone(error),
+            };
         }
-        Err(error) => return gone(error),
     };
     let written = found.modified()?;
     if !found.is_file() || written < since {
@@ -115,7 +154,10 @@ fn record(path: &Path, since: SystemTime) -> io::Result<Option<(SystemTime, Stri
         Ok(text) => text,
         Err(error) => return gone(error),
     };
-    serde_json::from_str::<Value>(&text).map_err(io::Error::other)?;
+    let read = serde_json::from_str::<Value>(&text).map_err(io::Error::other)?;
+    if !(kind.holds)(&read) {
+        return Err(io::Error::other(kind.lacking));
+    }
     Ok(Some((written, text)))
 }
 
@@ -128,9 +170,7 @@ fn rounds_shaped(text: &str) -> bool {
     let Ok(record) = serde_json::from_str::<Value>(text) else {
         return false;
     };
-    let change = &record["change"];
-    change["id"].is_string()
-        && change["repo"]["key"].is_string()
+    names_its_change(&record)
         && record["runs"]
             .as_array()
             .and_then(|runs| runs.last())
@@ -188,7 +228,7 @@ pub fn mirrored(root: &Path, since: SystemTime) -> Records {
         let node = root.join(&name);
         let said = match fs::metadata(&node).map(|found| found.is_dir()) {
             Ok(false) => continue,
-            Ok(true) => match listed(&node, since) {
+            Ok(true) => match listed(&node, since, &ROUNDS) {
                 Ok((runs, _)) if runs.is_empty() && node.join("runs").is_dir() => format!(
                     "the mirror from {name} holds a runs folder and no rounds, as if mirrored \
                      one folder too high"
@@ -391,22 +431,33 @@ mod tests {
         put(&torn.join("two.json"), "{\"change\": ");
         std::os::unix::fs::symlink(torn.join("gone.json"), torn.join("three.json"))
             .expect("the test's link made");
+        put(&torn.join("four.json"), "{\"runs\": []}");
         let read = rounds(&torn, UNIX_EPOCH);
         let unread = |name: &str| read.trouble.iter().any(|t| t.contains(name));
         assert!(
             read.runs == [round("one")]
-                && read.trouble.len() == 2
+                && read.trouble.len() == 3
                 && unread("two.json can't be read")
-                && unread("three.json can't be read (a link to nothing"),
-            "a record that can't be read, or a link to none, was left out unsaid: {read:?}"
+                && unread("three.json can't be read (a link to nothing")
+                && unread("four.json can't be read (it names no change"),
+            "a record that can't be read, a link to none, or one naming no change was left \
+             out unsaid: {read:?}"
         );
-        put(&runs.join("two.json"), "{\"runs\": []}");
-        put(&scratch.path().join("fixes/one.json"), "{\"fixes\": []}");
-        let fixed = fixes(&scratch.path().join("fixes"), UNIX_EPOCH);
-        let shapeless = fixes(&runs, UNIX_EPOCH);
+        // A link left before the window is as old as any record unread
+        // there, so it stops nothing filing.
+        let later = rounds(&torn, SystemTime::now() + Duration::from_secs(3600));
         assert!(
-            fixed.trouble.is_empty() && !shapeless.trouble.is_empty(),
-            "a fixes record wasn't read, or records of another shape were: {shapeless:?}"
+            later.runs.is_empty() && later.trouble.is_empty(),
+            "a link left pointing at nothing before the window was said unread: {later:?}"
+        );
+        put(&scratch.path().join("fixes/one.json"), "{\"fixes\": []}");
+        put(&scratch.path().join("fixes/two.json"), "{\"change\": {}}");
+        let fixed = fixes(&scratch.path().join("fixes"), UNIX_EPOCH);
+        assert!(
+            fixed.runs.len() == 1
+                && fixed.trouble.len() == 1
+                && fixed.trouble[0].contains("two.json can't be read (it holds no fixes"),
+            "a fixes record wasn't read, or one holding no fixes went unsaid: {fixed:?}"
         );
     }
 }
