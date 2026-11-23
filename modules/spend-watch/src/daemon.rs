@@ -14,6 +14,7 @@ use crate::config::{Config, FeedConfig};
 use crate::feed::{self, Pace};
 use crate::findings::{Finding, Severity};
 use crate::history::History;
+use crate::ingest::Walks;
 use crate::interface::Hub;
 use crate::notices::{self, Buses, Desk};
 use crate::picture::Picture;
@@ -23,8 +24,8 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// What wakes the loop.
@@ -32,6 +33,9 @@ enum Wake {
     Line(String, String),
     Ended(String),
     Moved,
+    /// The folders the watch heard written in, `/` when it may have missed
+    /// some.
+    Touched(Vec<PathBuf>),
     Asked(String, Sender<String>),
     Tick,
 }
@@ -169,12 +173,13 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
     Ok(file)
 }
 
-/// Tells the loop whenever pi's logs change: inotify on the sessions
-/// directory and each directory in it, adding one as it appears, and on
-/// each directory an agent's log or another machine's is in.
+/// Tells the loop whenever pi's logs change, and in which folders:
+/// inotify on the sessions directory and each directory in it, adding one
+/// as it appears, and on each directory in `followed`, which the passes
+/// fill with where an agent's log or another machine's is.
 #[cfg(target_os = "linux")]
-fn watch(config: Config, wake: Sender<Wake>) {
-    use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
+fn watch(config: Config, wake: Sender<Wake>, followed: Arc<Mutex<Vec<PathBuf>>>) {
+    use rustix::fs::inotify::{self, CreateFlags, ReadFlags, WatchFlags};
     std::thread::spawn(move || {
         let sessions = config.sessions.clone();
         // Each machine's logs are watched as this machine's are, a new
@@ -196,12 +201,14 @@ fn watch(config: Config, wake: Sender<Wake>) {
             | WatchFlags::CREATE
             | WatchFlags::MOVED_TO
             | WatchFlags::CLOSE_WRITE;
-        let mut watched: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+        // Each watched directory by its watch, so an event says where it
+        // was heard.
+        let mut watched: std::collections::HashMap<i32, PathBuf> = std::collections::HashMap::new();
         let mut looked: Option<Instant> = None;
         // A directory counts as watched only once inotify has it. The
-        // agents' patterns and other machines' logs are followed again at
-        // most once a pass, since pi's own logs change many times a minute.
-        let add = |watched: &mut std::collections::HashSet<PathBuf>,
+        // folders the passes found are looked at again at most every 30
+        // s, since pi's own logs change many times a minute.
+        let add = |watched: &mut std::collections::HashMap<i32, PathBuf>,
                    looked: &mut Option<Instant>| {
             let mut paths: Vec<PathBuf> = roots
                 .iter()
@@ -218,38 +225,57 @@ fn watch(config: Config, wake: Sender<Wake>) {
                 .collect();
             if looked.is_none_or(|at| at.elapsed() >= BUSY) {
                 *looked = Some(Instant::now());
-                paths.extend(crate::ingest::followed_directories(&config));
+                // A pass that panicked holding it left a list still whole.
+                let followed = match followed.lock() {
+                    Ok(followed) => followed.clone(),
+                    Err(poisoned) => poisoned.into_inner().clone(),
+                };
+                paths.extend(followed);
             }
+            let known: std::collections::HashSet<PathBuf> = watched.values().cloned().collect();
             for path in paths {
-                if !watched.contains(&path) && inotify::add_watch(&fd, &path, flags).is_ok() {
-                    watched.insert(path);
+                if !known.contains(&path)
+                    && let Ok(watch) = inotify::add_watch(&fd, &path, flags)
+                {
+                    watched.insert(watch, path);
                 }
             }
         };
         add(&mut watched, &mut looked);
         // No sessions directory yet, as before pi's first run: polling
         // notices it appear.
-        if !watched.contains(&sessions) {
+        if !watched.values().any(|path| *path == sessions) {
             return poll(&config, &wake);
         }
-        let mut buffer = [0u8; 8192];
+        let mut buffer = [std::mem::MaybeUninit::<u8>::uninit(); 8192];
+        let mut events = inotify::Reader::new(&fd, &mut buffer);
         loop {
-            match rustix::io::read(&fd, &mut buffer) {
-                Ok(_) => {
-                    add(&mut watched, &mut looked);
-                    if wake.send(Wake::Moved).is_err() {
-                        return;
+            let mut touched = Vec::new();
+            loop {
+                match events.next() {
+                    Ok(event) if event.events().contains(ReadFlags::QUEUE_OVERFLOW) => {
+                        touched.push(PathBuf::from("/"));
                     }
+                    Ok(event) => touched.extend(watched.get(&event.wd()).cloned()),
+                    Err(rustix::io::Errno::INTR) => continue,
+                    Err(_) => return poll(&config, &wake),
                 }
-                Err(rustix::io::Errno::INTR) => {}
-                Err(_) => return poll(&config, &wake),
+                if events.is_buffer_empty() {
+                    break;
+                }
+            }
+            add(&mut watched, &mut looked);
+            touched.sort();
+            touched.dedup();
+            if wake.send(Wake::Touched(touched)).is_err() {
+                return;
             }
         }
     });
 }
 
 #[cfg(not(target_os = "linux"))]
-fn watch(config: Config, wake: Sender<Wake>) {
+fn watch(config: Config, wake: Sender<Wake>, _followed: Arc<Mutex<Vec<PathBuf>>>) {
     std::thread::spawn(move || poll(&config, &wake));
 }
 
@@ -363,12 +389,44 @@ pub fn harness(history: &History, config: &Config) {
 
 /// Reads what pi's logs added, all of it, a slice at a time.
 pub fn catch_up(history: &History, config: &Config) -> Result<(), String> {
+    catch_up_kept(history, config, &mut Walks::default()).map(|_| ())
+}
+
+/// Reads what pi's logs added, as `catch_up`, going into no folder
+/// `walks` has settled, then settling what's gone quiet. Answers the
+/// logs the last walk found.
+fn catch_up_kept(
+    history: &History,
+    config: &Config,
+    walks: &mut Walks,
+) -> Result<Vec<crate::ingest::Found>, String> {
     loop {
-        let logs = crate::ingest::found(config);
+        let logs = crate::ingest::found_kept(config, walks);
         let pass = crate::ingest::scan(history, &logs, crate::ingest::Reading::of(config))?;
         if !pass.behind {
-            return Ok(());
+            walks.settle(history, std::time::SystemTime::now());
+            return Ok(logs);
         }
+    }
+}
+
+/// Reads what pi's logs added and tells the watch where they are.
+fn read_logs(
+    history: &History,
+    config: &Config,
+    walks: &mut Walks,
+    followed: &Mutex<Vec<PathBuf>>,
+) {
+    match catch_up_kept(history, config, walks) {
+        Ok(logs) => {
+            let dirs = crate::ingest::followed_directories(config, &logs);
+            // A watch that panicked holding it leaves nothing to keep.
+            match followed.lock() {
+                Ok(mut held) => *held = dirs,
+                Err(poisoned) => *poisoned.into_inner() = dirs,
+            }
+        }
+        Err(error) => eprintln!("reading pi's logs: {error}"),
     }
 }
 
@@ -706,14 +764,14 @@ pub fn run(config: &Config) -> Result<(), String> {
     let hub = hub(config)?;
     hub.doing(doer(config, wake.clone()));
     listen(&config.socket(), wake.clone(), Arc::clone(&hub))?;
-    watch(config.clone(), wake.clone());
+    let followed = Arc::new(Mutex::new(Vec::new()));
+    watch(config.clone(), wake.clone(), Arc::clone(&followed));
     tick(wake.clone());
     harness(&history, config);
     // A log that can't be read is said and passed over, never a reason to
     // stop: the loop tries again each pass.
-    if let Err(error) = catch_up(&history, config) {
-        eprintln!("reading pi's logs: {error}");
-    }
+    let mut walks = Walks::default();
+    read_logs(&history, config, &mut walks, &followed);
     let mut writer = Writer::new();
     let mut desk = Buses::default();
     let mut kept = crate::picture::Kept::default();
@@ -737,15 +795,7 @@ pub fn run(config: &Config) -> Result<(), String> {
     loop {
         let now = time::now();
         pace = repace(&history, &mut feeds, pace, now);
-        for feed in &mut feeds {
-            if feed.child.is_none() && Instant::now() >= feed.next {
-                // Without it, a feed carries on from where it says it read.
-                let kept = feed::kept_line(&history, &feed.config.name)
-                    .map_err(|error| eprintln!("feed {}: {error}", feed.config.name))
-                    .ok();
-                feed.start(&wake, pace, kept);
-            }
-        }
+        start_due(&history, &mut feeds, &wake, pace);
         if last_harness.elapsed() >= HARNESS {
             harness(&history, config);
             last_harness = Instant::now();
@@ -756,9 +806,7 @@ pub fn run(config: &Config) -> Result<(), String> {
             || last_pass.elapsed() >= IDLE
             || (!refresh.waiting.is_empty() && answered);
         if due {
-            if let Err(error) = catch_up(&history, config) {
-                eprintln!("reading pi's logs: {error}");
-            }
+            read_logs(&history, config, &mut walks, &followed);
             match pass(
                 &history,
                 config,
@@ -798,12 +846,32 @@ pub fn run(config: &Config) -> Result<(), String> {
         let stored_at = time::now();
         let began = history.begin().is_ok();
         for wake in arrived {
-            if take(wake, &history, &mut feeds, &mut refresh, stored_at) {
+            if take(
+                wake,
+                &history,
+                &mut feeds,
+                &mut refresh,
+                &mut walks,
+                stored_at,
+            ) {
                 dirty = true;
             }
         }
         if began && let Err(error) = history.commit() {
             eprintln!("keeping what the feeds said: {error}");
+        }
+    }
+}
+
+/// Starts each feed that isn't running and is due to.
+fn start_due(history: &History, feeds: &mut [Feed], wake: &Sender<Wake>, pace: Pace) {
+    for feed in feeds {
+        if feed.child.is_none() && Instant::now() >= feed.next {
+            // Without it, a feed carries on from where it says it read.
+            let kept = feed::kept_line(history, &feed.config.name)
+                .map_err(|error| eprintln!("feed {}: {error}", feed.config.name))
+                .ok();
+            feed.start(wake, pace, kept);
         }
     }
 }
@@ -906,6 +974,7 @@ fn take(
     history: &History,
     feeds: &mut [Feed],
     refresh: &mut Refresh,
+    walks: &mut Walks,
     stored_at: f64,
 ) -> bool {
     match wake {
@@ -935,6 +1004,12 @@ fn take(
             false
         }
         Wake::Moved => true,
+        Wake::Touched(folders) => {
+            for folder in &folders {
+                walks.touched(folder);
+            }
+            true
+        }
         Wake::Asked(what, reply) => {
             match what.as_str() {
                 "refresh" => {

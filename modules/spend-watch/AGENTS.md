@@ -66,8 +66,11 @@ feed speaks.
   run's own total counts only what no log of it covers, as a fleet's,
   which keeps none. Any other agent is its kind's, named by its session's
   name, and serves the quest whose workspace it works in until a quest
-  entry says otherwise. `src/ingest.rs` finds them; `src/series.rs` maps
-  them.
+  entry says otherwise. A folder at a pattern's first `*` (a council's run,
+  a quest's workspace) that has gone a day unwritten, its logs read to
+  their end, is walked no more until the watch hears a write under it, or
+  until the walk every six hours that catches what no watch hears.
+  `src/ingest.rs` finds them; `src/series.rs` maps them.
 - **Machines.** Another machine is counted as this one is, the only
   difference being where its credentials live: the config names where its
   session logs and its agents' logs are brought, and each is read the
@@ -243,7 +246,12 @@ feed speaks.
   ever sent anywhere else.
 - **Pace.** A pass costs about half a second on four months of heavy use
   (700,000 turns), because the history keeps each hour's turns summed as
-  they're added, and a pass reads those rather than the turns. It runs at
+  they're added, and a pass reads those rather than the turns. Finding the
+  logs is the other cost: on 2026-11-22 the reviewers' pattern read 36,295
+  folders for 1,283 logs, 42 seconds a walk on a busy disk and about 4 MB
+  a second all day, almost all of it councils finished weeks before. So a
+  settled folder is left (see Agents), and the watch takes its folders
+  from what the last pass found rather than walking again. It runs at
   most every 30 seconds while the logs grow and every five minutes while
   they don't; the heartbeat alone is written every 30 seconds, so the shell
   can tell a stopped daemon from a quiet one. Every pi session asks
