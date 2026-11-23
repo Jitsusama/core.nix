@@ -10,8 +10,9 @@ case ${1:-} in
 writeback-goal  sets a disk's writeback throttle goal
 
 EXAMPLES
-  writeback-goal DISK MICROSECONDS  hold writeback to that goal, 0 off
-  writeback-goal DISK kernel        the kernel's own goal again
+  writeback-goal nvme0n1 0       turn its throttle off
+  writeback-goal nvme0n1 75000   hold writeback to 75 ms
+  writeback-goal nvme0n1 kernel  the kernel's own goal
 
 EXIT
   0   done

@@ -157,6 +157,10 @@ let
     text = builtins.readFile ./disk-order.sh;
   };
   writebackThrottle = config.jitsusama.slices.writebackThrottle;
+  # A name that isn't a disk's plain one makes no unit, so the assertion
+  # below refuses it in its own words rather than a unit's type failing.
+  plainDisk = disk: builtins.match "[a-z0-9]+" disk != null;
+  throttled = lib.filterAttrs (disk: _: plainDisk disk) writebackThrottle;
   writebackGoal = pkgs.writeShellApplication {
     name = "writeback-goal";
     runtimeInputs = [ pkgs.coreutils ];
@@ -342,7 +346,7 @@ let
   ]
   ++ lib.attrNames systemFloors
   ++ map (disk: "disk-order-${disk}") (lib.attrNames disks)
-  ++ map (disk: "disk-writeback-${disk}") (lib.attrNames writebackThrottle);
+  ++ map (disk: "disk-writeback-${disk}") (lib.attrNames throttled);
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -477,7 +481,7 @@ in
       # The name goes into units' names and a path under /sys/block, so it's
       # a whole disk's plain name, never a pattern or a path.
       ++ lib.mapAttrsToList (disk: goal: {
-        assertion = builtins.match "[a-z0-9]+" disk != null && (goal == 0 || !(disks ? ${disk}));
+        assertion = plainDisk disk && (goal == 0 || !(disks ? ${disk}));
         message =
           "jitsusama.slices.writebackThrottle names ${disk}, which isn't a whole disk's "
           + "plain name, or gives a goal to a disk io.cost shares, which may only be given 0.";
@@ -839,7 +843,7 @@ in
           ];
         };
       }
-    ) writebackThrottle
+    ) throttled
     # A VPN is never one of the services above, which the assertions refuse,
     # since its settings would replace theirs here rather than join them.
     // lib.genAttrs vpnServices (_: {
