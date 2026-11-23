@@ -27,6 +27,11 @@ if TYPE_CHECKING:
 PROBE = (Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text()
 WORDS = (Path(os.environ["WEB_SKILL"]) / "words.js").read_text()
 NAMES = (Path(os.environ["WEB_SKILL"]) / "names.js").read_text()
+# The words probe's line for paint it can't work out, given how many places.
+UNWORKED = (
+    "words in {} drawn through a filter, blend, mask, stroke, shadow alone or too many "
+    "layers to work out, so their contrast went unmeasured: paint them and their grounds plainly"
+)
 # Longest the probe may take on a page that never rests: its three seconds'
 # wait, its last half second of quiet, and a builder's slack.
 RESTLESS_SECONDS = 5
@@ -398,6 +403,37 @@ def test_a_mark_alone_is_named_without_a_label_too(tab: Page) -> None:
     ]
 
 
+def test_the_skills_key_line_passes_once_its_keys_are_pressable(tab: Page) -> None:
+    """The head's key line, its keycaps made buttons as pressable makes them, passes."""
+    key = '<kbd role="button" tabindex="0"{}>{}</kbd>'
+    body = (
+        '<main><p class="keys">'
+        f"{key.format(' data-tap', 'j')} and {key.format(' data-tap', 'k')} step from"
+        f" site to site, and {key.format('', '?')} lists every key</p></main>"
+    )
+    assert named(tab, body) == []
+
+
+def test_a_keycap_whose_line_says_nothing_after_it_is_named(tab: Page) -> None:
+    """A "/" keycap with only another keycap after it, and a "?" ending its line, are named."""
+    key = '<kbd role="button" tabindex="0">{}</kbd>'
+    body = f'<main><p class="keys">{key.format("/")} {key.format("?")}</p></main>'
+    assert named(tab, body) == [
+        (
+            'a control showing only "/" (and 1 more): '
+            "show its word beside the mark, its name starting with that word"
+        )
+    ]
+
+
+def test_a_button_showing_only_a_mark_is_named_whatever_follows(tab: Page) -> None:
+    """An icon button showing "+" beside words is named: only a keycap reads its line."""
+    body = '<main><p><button aria-label="Add">+</button> adds a cell</p></main>'
+    found = named(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('a control showing only "+", named "Add"'), found
+
+
 def test_a_name_given_by_another_element_is_held_to_what_shows(tab: Page) -> None:
     """A button labelled by a heading reading "Cells" while showing "Find" is named."""
     body = '<main><h2 id="cells">Cells</h2><button aria-labelledby="cells">Find</button></main>'
@@ -564,6 +600,66 @@ def test_a_dark_page_with_no_ground_sits_on_a_dark_canvas(tab: Page) -> None:
     assert probed(tab, body) == []
 
 
+def test_a_dark_scheme_named_in_the_head_sits_on_a_dark_canvas(tab: Page) -> None:
+    """#eee words read on the canvas a meta tag's dark scheme sets, the style saying none."""
+    body = (
+        "<script>document.head.append(Object.assign(document.createElement('meta'), "
+        "{ name: 'color-scheme', content: 'dark' }))</script>"
+        '<main><p style="color: #eee">Pale</p></main>'
+    )
+    assert probed(tab, body) == []
+
+
+def test_words_in_a_box_drawn_as_its_children_are_measured(tab: Page) -> None:
+    """#ccc words held by a display: contents span are read where its parent is drawn."""
+    body = '<main><p style="color: #ccc"><span style="display: contents">Faint</span></p></main>'
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Faint" at 1.6'), found
+
+
+def test_a_ground_under_a_mark_beside_the_words_is_still_their_ground(tab: Page) -> None:
+    """#111 words on black are named though a small red mark is drawn over the black."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(#f00, #f00) no-repeat 0 0 / '
+        '4px 4px, linear-gradient(#000, #000)">Dim</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_tiled_layer_is_the_ground_under_the_words(tab: Page) -> None:
+    """An 8 px black tile, repeated across the box, is what #111 words sit on."""
+    body = (
+        '<main><p style="color: #111; background: linear-gradient(#000, #000) 0 0 / 8px 8px">'
+        "Dim</p></main>"
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Dim" at 1.'), found
+
+
+def test_a_hard_stop_is_not_blended_across(tab: Page) -> None:
+    """#757575 passes on white and black halves split by a hard stop, with no grey between."""
+    body = (
+        '<main><div style="background: linear-gradient(90deg, #fff 50%, #000 50%)">'
+        '<p style="color: #757575">Split</p></div></main>'
+    )
+    assert probed(tab, body) == []
+
+
+def test_a_shimmer_twice_its_box_wide_is_measured(tab: Page) -> None:
+    """A clipped gradient sized past its box, as a shimmer is, still paints the words."""
+    body = (
+        '<main><h1 style="background: linear-gradient(90deg, #ddd, #fff, #ddd); '
+        'background-size: 200% 100%; background-clip: text; color: transparent">Shine</h1></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Shine" at 1.'), found
+
+
 def test_a_line_drawn_beside_the_words_is_not_their_ground(tab: Page) -> None:
     """A 1 px black line drawn as a gradient leaves the words on white."""
     body = (
@@ -612,12 +708,19 @@ def test_words_through_a_filter_or_a_blend_are_named_for_a_person(tab: Page) -> 
         '<main><p style="filter: blur(1px)">Blurred</p>'
         '<p style="mix-blend-mode: difference">Blended</p></main>'
     )
-    assert probed(tab, body) == [
-        (
-            "words in 2 places are painted through a filter, a blend or too many layers to "
-            "work out, so their contrast went unmeasured: paint them and their grounds plainly"
-        )
-    ]
+    assert probed(tab, body) == [UNWORKED.format("2 places are")]
+
+
+def test_words_masked_stroked_or_drawn_by_a_shadow_are_named_for_a_person(tab: Page) -> None:
+    """A blended ground, a mask, a stroke and a shadow alone are paint it can't work out."""
+    body = (
+        '<main><p style="background: linear-gradient(#fff, #eee); '
+        'background-blend-mode: multiply">Multiplied</p>'
+        '<p style="-webkit-mask-image: linear-gradient(#000, transparent)">Masked</p>'
+        '<p style="-webkit-text-stroke: 1px #000">Stroked</p>'
+        '<p style="color: transparent; text-shadow: 0 0 2px #000">Shadowed</p></main>'
+    )
+    assert probed(tab, body) == [UNWORKED.format("4 places are")]
 
 
 def test_words_on_too_many_grounds_are_named_for_a_person(tab: Page) -> None:
@@ -625,7 +728,7 @@ def test_words_on_too_many_grounds_are_named_for_a_person(tab: Page) -> None:
     ground = '<div style="background: linear-gradient(#fff, #eee)">'
     found = probed(tab, f"<main>{ground * 3}<p>Deep</p></div></div></div></main>")
     assert len(found) == 1, found
-    assert found[0].startswith("words in 1 place are painted through a filter"), found
+    assert found == [UNWORKED.format("1 place are")], found
 
 
 def test_words_a_style_hides_are_not_measured(tab: Page) -> None:

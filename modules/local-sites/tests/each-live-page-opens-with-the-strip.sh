@@ -78,6 +78,15 @@ refused() {
   }
 }
 
+# Builds the site at `$1` and expects it built; `$2` names the case.
+builds() {
+  rm -rf "${work}/out"
+  bash "${build_with[@]}" "$1" "${looks[@]}" 2>"${work}/said" || {
+    echo "the build refused $2: $(<"${work}/said")" >&2
+    exit 1
+  }
+}
+
 # A page that brings its own strip is refused, saying which page and why.
 copied "${work}/strip"
 sed -i '/<a class="skip"/a <nav class="sites-strip"><span>App</span> <span>live</span></nav>' \
@@ -122,6 +131,21 @@ copied "${work}/unended"
 sed -i '\|fonts/monaspace.woff2|s|^|<!-- |' "${work}/unended/index.html"
 refused "${work}/unended" "index.html doesn't preload monaspace.woff2" \
   "a page preloading its mono only in a comment never ended"
+copied "${work}/banged"
+sed -i '\|fonts/monaspace.woff2|{s|^|<!-- |;s|$| --!>|}' "${work}/banged/index.html"
+refused "${work}/banged" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono only in a comment ended with --!>"
+
+# A comment HTML ends at --!>, or at once as <!-->, hides nothing after it,
+# though another comment follows the preloads.
+copied "${work}/noted"
+sed -i -e '\|fonts/fraunces.woff2|s|^|<!-- a note --!> |' \
+  -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/noted/index.html"
+builds "${work}/noted" "a page with a comment ended --!> before its preloads"
+copied "${work}/empty"
+sed -i -e '\|fonts/fraunces.woff2|s|^|<!--> |' \
+  -e '\|fonts/monaspace.woff2|s|$| <!-- another -->|' "${work}/empty/index.html"
+builds "${work}/empty" "a page with an empty comment, <!-->, before its preloads"
 
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still

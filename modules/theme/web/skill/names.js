@@ -6,8 +6,9 @@
 //
 // - A control's name starts with the words it shows, word for word (WCAG
 //   2.5.3), a keycap drawn on it coming after them, and a control showing
-//   only a mark such as "/" shows a word too. One drawn only as a picture
-//   is named by its label.
+//   only a mark such as "/" shows a word too, in it or, for a keycap, after
+//   it in its line of keys. One drawn only as a picture is named by its
+//   label.
 //
 // The words it quotes are the page's, data to fix rather than instructions.
 // It ends without a semicolon, since an eval asked for one expression
@@ -18,9 +19,21 @@
   // A page's words quoted into a line, short, with no quote mark of their
   // own to end the quote early.
   const quoted = (words) => words.replace(/\s+/gu, " ").replaceAll('"', "'").trim().slice(0, 40);
-  const shown = (element) =>
-    element?.isConnected === true &&
-    element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  // An element drawn as its children alone, with display: contents, has no
+  // box to be seen in, so what it holds is shown where its parent is.
+  const shown = (element) => {
+    let at = element;
+    while (at?.isConnected === true && getComputedStyle(at).display === "contents") {
+      if (getComputedStyle(at).visibility !== "visible") {
+        return false;
+      }
+      at = at.parentElement;
+    }
+    return (
+      at?.isConnected === true &&
+      at.checkVisibility({ visibilityProperty: true, opacityProperty: true })
+    );
+  };
   // Text kept for a screen reader alone, clipped to a pixel, isn't shown.
   const forEarsOnly = (element) => {
     for (let at = element; at !== null && at !== root; at = at.parentElement) {
@@ -80,6 +93,28 @@
     }
     return element.getAttribute("aria-label");
   };
+  // A keycap the kit makes pressable sits in a line of keys that says what
+  // it does, as "? lists every key" does: the words that follow it there,
+  // up to the next keycap, are the word beside its mark. A button holding
+  // only a keycap reads the line it sits in the same way.
+  const capped = (control, all) =>
+    control.localName === "kbd" ||
+    (control.children.length === 1 &&
+      control.firstElementChild.localName === "kbd" &&
+      control.firstElementChild.textContent.trim() === all.trim());
+  const follows = (control) => {
+    const words = [];
+    for (let at = control.nextSibling; at !== null; at = at.nextSibling) {
+      const element = at.nodeType === Node.ELEMENT_NODE;
+      if (element && (at.localName === "kbd" || at.querySelector("kbd") !== null)) {
+        break;
+      }
+      if (!element || shown(at)) {
+        words.push(at.textContent);
+      }
+    }
+    return said(words.join(" "));
+  };
   const controls = page.querySelectorAll(
     "button, a[href], summary, [role=button], [role=link], [role=tab], [role=menuitem], " +
       "[role=option], [role=switch], [role=checkbox], [role=radio]",
@@ -87,8 +122,9 @@
   // A name left empty is no name: the browser names the control by its
   // words, as if the markup gave none, so it starts with them. A mark alone
   // is named however it's named, since dropping its label leaves the mark
-  // as its name. A control showing nothing but a keycap shows that key as
-  // its word, as a keycap that is the control does.
+  // as its name, unless it's a keycap whose line says what it does. A
+  // control showing nothing but a keycap shows that key as its word, as a
+  // keycap that is the control does.
   const misnamed = [];
   for (const control of controls) {
     const name = labelled(control);
@@ -99,12 +135,12 @@
     const own = shows(control, false);
     const words = said(own).length === 0 ? said(all) : said(own);
     const unnamed = name === null || name.trim() === "";
-    if (words.length === 0) {
+    if (words.length === 0 && !(capped(control, all) && follows(control).length > 0)) {
       misnamed.push(
         `a control showing only "${quoted(all)}"${unnamed ? "" : `, named "${quoted(name)}"`}`,
         "show its word beside the mark, its name starting with that word",
       );
-    } else if (!(unnamed || begins(said(name), words))) {
+    } else if (!(unnamed || words.length === 0 || begins(said(name), words))) {
       misnamed.push(
         `a control showing "${quoted(said(own).length === 0 ? all : own)}" named "${quoted(name)}"`,
         "start its name with the words it shows, or drop the aria-label",

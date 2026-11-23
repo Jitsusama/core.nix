@@ -136,11 +136,12 @@ for page in "${out}"/*.html; do
   # screen, so it's left to load when asked. The whole tag is asked for:
   # without crossorigin a preload is never matched to the face's own fetch,
   # and the page is read without its comments, where a preload asks for
-  # nothing: each ends at its first two dashes or more and a >, as HTML ends
-  # one, dashes and a lone -> inside it held, and one never ended runs to the
-  # page's end.
-  ended='s/<!--\([^-]\|-\+[^->]\|->\)*-\{2,\}>//g'
-  bare=$(tr '\n' ' ' <"${page}" | sed -e "${ended}" -e 's/<!--.*$//')
+  # nothing. Each ends as HTML ends one: at once as <!--> or <!--->, or else
+  # at its first two dashes or more and a >, or those and !>, dashes and a
+  # lone -> inside it held; and one never ended runs to the page's end.
+  abrupt='s/<!---\?>//g'
+  ended='s/<!--\([^-]\|-[^->]\|->\|--\+[^->!]\|--\+![^>]\)*--\+!\?>//g'
+  bare=$(tr '\n' ' ' <"${page}" | sed -e "${abrupt}" -e "${ended}" -e 's/<!--.*$//')
   for face in fraunces fraunces-italic monaspace; do
     preload="<link rel=\"preload\" href=\"../local-sites/web/fonts/${face}.woff2\" as=\"font\""
     preload+=" type=\"font/woff2\" crossorigin>"

@@ -31,6 +31,7 @@ interface Placed {
   readonly children: ArrayLike<Placed>;
   readonly localName?: string;
   readonly textContent?: string | null;
+  getAttribute?(name: string): string | null;
   focus?(options?: FocusOptions): void;
 }
 
@@ -214,11 +215,35 @@ function inside(node: Placed | null, row: object): boolean {
   return false;
 }
 
-/** Whether `one` is the same control as `other`: the same element, saying the same. */
+/** What a control does, where its markup says: where it goes, or its name. */
+const DOES = ["href", "name"] as const;
+
+function does(control: Placed): string | null {
+  for (const attribute of DOES) {
+    const value = control.getAttribute?.(attribute);
+    if (value !== null && value !== undefined && value !== "") {
+      return `${attribute} ${value}`;
+    }
+  }
+  return null;
+}
+
+/**
+ * Whether `one` is the same control as `other`: the same element doing the
+ * same, judged by where it goes or its name, since its words may show the
+ * record that just changed. One whose markup says neither is judged by its
+ * words, and one with no words either is no control `one` can be known as.
+ */
 function alike(one: Placed, other: Placed | null): boolean {
-  return (
-    other !== null && one.localName === other.localName && one.textContent === other.textContent
-  );
+  if (other === null || one.localName !== other.localName) {
+    return false;
+  }
+  const did = does(other);
+  if (did !== null) {
+    return does(one) === did;
+  }
+  const words = other.textContent?.trim() ?? "";
+  return words !== "" && does(one) === null && one.textContent?.trim() === words;
 }
 
 /**

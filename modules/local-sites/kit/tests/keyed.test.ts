@@ -33,11 +33,17 @@ class Inner implements Placed {
   readonly localName = "a";
   readonly textContent: string;
   readonly #page: Page;
+  readonly #href: string | null;
 
-  constructor(parent: Placed, page: Page, says: string) {
+  constructor(parent: Placed, page: Page, says: string, href: string | null) {
     this.parentElement = parent;
     this.#page = page;
     this.textContent = says;
+    this.#href = href;
+  }
+
+  getAttribute(name: string): string | null {
+    return name === "href" ? this.#href : null;
   }
 
   focus(): void {
@@ -48,9 +54,10 @@ class Inner implements Placed {
 }
 
 /**
- * A row as a list holds one: its attributes, its words and two links
- * saying them, and whether it takes focus itself, as a row with a tabindex
- * does.
+ * A row as a list holds one: its attributes, its words and a link for each
+ * of its acts saying them (open and copy, unless told), and whether it
+ * takes focus itself, as a row with a tabindex does. An act told as null is
+ * a control showing no words and saying nothing of what it does.
  */
 class Row implements Drawn, Placed {
   words: string;
@@ -60,11 +67,18 @@ class Row implements Drawn, Placed {
   readonly #attributes = new Map<string, string>();
   readonly #page: Page;
   readonly #focusable: boolean;
+  readonly #acts: readonly (string | null)[];
 
-  constructor(words: string, page: Page, focusable = true) {
+  constructor(
+    words: string,
+    page: Page,
+    focusable = true,
+    acts: readonly (string | null)[] = ["open", "copy"],
+  ) {
     this.words = words;
     this.#page = page;
     this.#focusable = focusable;
+    this.#acts = acts;
     this.children = this.#links();
   }
 
@@ -85,7 +99,11 @@ class Row implements Drawn, Placed {
   }
 
   #links(): Inner[] {
-    return ["open", "copy"].map((act) => new Inner(this, this.#page, `${act} ${this.words}`));
+    return this.#acts.map((act) =>
+      act === null
+        ? new Inner(this, this.#page, "", null)
+        : new Inner(this, this.#page, `${act} ${this.words}`, `#${act}`),
+    );
   }
 
   getAttribute(name: string): string | null {
@@ -371,11 +389,33 @@ it("a focused row drawn again where it stands hands focus to the same place", ()
   assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
 });
 
-it("focus whose place in a new drawing holds another control goes to the row", () => {
+it("a focused link whose words show the changed record keeps focus by where it goes", () => {
   const list = new List();
   draw(list, cells("a", "b"));
   list.rows[1]?.children[1]?.focus();
   draw(list, [...cells("a"), { key: "b", works: "on b, moved" }], ["b"]);
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
+});
+
+it("focus whose place in a new drawing holds another control goes to the row", () => {
+  const list = new List();
+  draw(list, cells("a", "b"));
+  list.rows[1]?.children[1]?.focus();
+  keyed(list, {
+    rows: cells("a", "b"),
+    key: (cell) => cell.key,
+    draw: (cell) => new Row(cell.works, list.ownerDocument, true, ["copy", "open"]),
+    moved: ["b"],
+  });
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+});
+
+it("focus on a control saying nothing of itself goes to the row, not its likeness", () => {
+  const list = new List();
+  const blank = (cell: Cell) => new Row(cell.works, list.ownerDocument, true, [null, null]);
+  keyed(list, { rows: cells("a", "b"), key: (cell) => cell.key, draw: blank });
+  list.rows[1]?.children[1]?.focus();
+  keyed(list, { rows: cells("a", "b"), key: (cell) => cell.key, draw: blank, moved: ["b"] });
   assert.equal(list.ownerDocument.activeElement, list.rows[1]);
 });
 
@@ -386,7 +426,7 @@ it("focus in a row whose new drawing takes none is let go", () => {
   keyed(list, {
     rows: cells("a", "b"),
     key: (cell) => cell.key,
-    draw: (cell) => new Row(`${cell.works}, moved`, list.ownerDocument, false),
+    draw: (cell) => new Row(cell.works, list.ownerDocument, false, ["copy", "open"]),
     moved: ["b"],
   });
   assert.equal(list.ownerDocument.activeElement, null);

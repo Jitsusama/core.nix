@@ -11,8 +11,9 @@
 // - Every word reaches 4.5:1 on the ground painted under it, or 3:1 at 24 px
 //   and up, or 18.66 px bold (WCAG 1.4.3), opacity included, a field's
 //   words, its placeholder and what a style writes counted too. A gradient
-//   is measured at its worst colour; words on a picture, or painted through
-//   a filter or a blend, are named, since only a person can read them.
+//   is measured at its worst colour, layer by layer; words on a picture, or
+//   painted through a filter, a blend, a mask, a stroke or only a shadow,
+//   are named, since only a person can read them.
 //
 // It stands apart from pixels.js because it reads the page as it is drawn,
 // at once, where pixels.js waits for the page to rest. The words it quotes
@@ -32,8 +33,8 @@
   // a picture:
   const pictures = ["url", "image-set", "cross-fade", "element", "paint"];
   const picture = new RegExp(String.raw`\b(?:${pictures.join("|")})\(`, "u");
-  // A ground's size that covers its whole box:
-  const covering = new Set(["auto", "auto auto", "cover", "100%", "100% auto", "100% 100%"]);
+  // A ground's layer repeated so it tiles its whole box:
+  const tiles = new Set(["repeat", "round"]);
   // Each colour a gradient names, as the browser writes it back, a mix of
   // colours whole, so the colours inside it aren't read at full strength:
   const spaces = ["rgba?", "hsla?", "hwb", "lab", "lch", "oklab", "oklch", "color"];
@@ -45,9 +46,21 @@
   // A page's words quoted into a line, short, with no quote mark of their
   // own to end the quote early.
   const quoted = (words) => words.replace(/\s+/gu, " ").replaceAll('"', "'").trim().slice(0, 40);
-  const shown = (element) =>
-    element?.isConnected === true &&
-    element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  // An element drawn as its children alone, with display: contents, has no
+  // box to be seen in, so what it holds is shown where its parent is.
+  const shown = (element) => {
+    let at = element;
+    while (at?.isConnected === true && getComputedStyle(at).display === "contents") {
+      if (getComputedStyle(at).visibility !== "visible") {
+        return false;
+      }
+      at = at.parentElement;
+    }
+    return (
+      at?.isConnected === true &&
+      at.checkVisibility({ visibilityProperty: true, opacityProperty: true })
+    );
+  };
 
   // The type floor. Text kept for a screen reader alone, clipped to a pixel,
   // has no size anyone reads. A box's size is its font's times how much it's
@@ -95,6 +108,8 @@
   // unless it says otherwise.
   const inkOf = (style) => style.webkitTextFillColor || style.color;
   const reading = [];
+  const read = (element, pseudo, words, style) =>
+    reading.push({ element, pseudo, size: sizeOf(element, pseudo), words, colour: inkOf(style) });
   const holders = new Set();
   const text = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
   for (let node = text.nextNode(); node !== null; node = text.nextNode()) {
@@ -103,13 +118,7 @@
     }
   }
   for (const element of holders) {
-    reading.push({
-      element,
-      pseudo: null,
-      size: sizeOf(element),
-      words: element.textContent,
-      colour: inkOf(getComputedStyle(element)),
-    });
+    read(element, null, element.textContent, getComputedStyle(element));
   }
   const fields = page.querySelectorAll(
     "input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=hidden], " +
@@ -122,13 +131,7 @@
         ? (field.selectedOptions[0]?.textContent ?? "")
         : field.value || field.getAttribute("placeholder") || "";
     if (words.trim() !== "") {
-      reading.push({
-        element: field,
-        pseudo: null,
-        size: sizeOf(field),
-        words,
-        colour: inkOf(getComputedStyle(field, placeheld ? "::placeholder" : null)),
-      });
+      read(field, null, words, getComputedStyle(field, placeheld ? "::placeholder" : null));
     }
   }
   for (const element of page.body.querySelectorAll("*")) {
@@ -138,13 +141,7 @@
       const drawn =
         style.display !== "none" && style.visibility === "visible" && style.opacity !== "0";
       if (drawn && written.startsWith('"') && written.length > 2) {
-        reading.push({
-          element,
-          pseudo,
-          size: sizeOf(element, pseudo),
-          words: written.slice(1, -1),
-          colour: inkOf(style),
-        });
+        read(element, pseudo, written.slice(1, -1), style);
       }
     }
   }
@@ -184,12 +181,9 @@
   // up through each box holding it, as the browser lays them: a box at less
   // than full opacity fades its ground and everything in it as one picture
   // over what's behind it, and the page over the canvas its colour scheme
-  // paints. A gradient covering its box is read at its colours and an
-  // eighth of the way between each two, so one crossing the words' own
-  // colour is caught, and the worst kept; one sized smaller, a line or a
-  // mark, is drawn beside the words rather than under them. A picture, a
-  // filter or a blend can't be worked out, so its words are named for a
-  // person to read. A drawing's words are svgtext.js's, at 7:1.
+  // paints, and the worst kept. A picture, and paint the probe can't work
+  // out, have their words named for a person to read. A drawing's words
+  // are svgtext.js's, at 7:1.
   const pen = page.createElement("canvas").getContext("2d", { willReadFrequently: true });
   const rgba = (colour) => {
     pen.clearRect(0, 0, 1, 1);
@@ -220,7 +214,13 @@
     const part = (at) => one[at] * one[3] + (other[at] * other[3] - one[at] * one[3]) * by;
     return [0, 1, 2].map((at) => part(at) / alpha).concat(alpha);
   };
-  const scheme = getComputedStyle(root).colorScheme;
+  // The page's scheme, from its style or, where that says nothing, from the
+  // head's meta tag, which sets the canvas as well.
+  const declared = getComputedStyle(root).colorScheme;
+  const scheme =
+    declared === "normal"
+      ? (page.head?.querySelector('meta[name="color-scheme"]')?.content ?? "normal")
+      : declared;
   const night =
     scheme.includes("dark") &&
     (!scheme.includes("light") || matchMedia("(prefers-color-scheme: dark)").matches);
@@ -249,42 +249,119 @@
     };
     return from(0, canvas);
   };
-  // The colours a box may paint under words: its own colour, or each of a
-  // covering gradient's colours over it; null for a picture.
-  const covers = (size) =>
-    size.split(",").every((one) => covering.has(one.trim()));
-  const paints = (style) => {
-    const ground = rgba(style.backgroundColor);
-    const image = style.backgroundImage;
-    if (image === "none") {
-      return [ground];
+  // How many ways a word's pixels are worked out at most before it's left
+  // to a person.
+  const ways = 256;
+  // A list the browser writes back with a part per layer, split at the
+  // commas between them, not those inside a colour.
+  const layered = (list) => {
+    const parts = [];
+    let depth = 0;
+    let from = 0;
+    for (let at = 0; at < list.length; at += 1) {
+      depth += list[at] === "(" ? 1 : 0;
+      depth -= list[at] === ")" ? 1 : 0;
+      if (list[at] === "," && depth === 0) {
+        parts.push(list.slice(from, at).trim());
+        from = at + 1;
+      }
     }
-    if (picture.test(image)) {
-      return null;
-    }
-    if (!covers(style.backgroundSize)) {
-      return [ground];
-    }
-    const stops = (image.match(colourWords) ?? []).map((one) =>
-      over(rgba(one.toLowerCase() === "currentcolor" ? style.color : one), ground),
+    parts.push(list.slice(from).trim());
+    return parts;
+  };
+  // Whether a layer lies under every word in its box: tiled across it, or
+  // sized to it or past it, as a shimmer's twice-wide gradient is.
+  const covers = (size, repeat) => {
+    const axes =
+      { "repeat-x": ["repeat", "no-repeat"], "repeat-y": ["no-repeat", "repeat"] }[repeat] ??
+      repeat.split(" ");
+    return (
+      axes.every((axis) => tiles.has(axis)) ||
+      size === "cover" ||
+      size
+        .split(" ")
+        .every((part) => part === "auto" || (part.endsWith("%") && Number.parseFloat(part) >= 100))
     );
+  };
+  // Where a stop sits, as the percentages written after its colour, up to
+  // the comma or bracket ending it.
+  const placesOf = (after) => {
+    const ends = [after.indexOf(","), after.indexOf(")")].filter((at) => at >= 0);
+    return after
+      .slice(0, ends.length === 0 ? after.length : Math.min(...ends))
+      .trim()
+      .split(" ")
+      .filter((word) => word.endsWith("%"))
+      .map((word) => Number.parseFloat(word));
+  };
+  // A gradient's colours: each stop, and eighths between each pair it
+  // blends, but not across a hard stop, which starts where the last ends.
+  const gradient = (layer, style) => {
+    const stops = [];
+    for (const found of layer.matchAll(colourWords)) {
+      const word = found[0];
+      const places = placesOf(layer.slice(found.index + word.length));
+      stops.push({
+        colour: rgba(word.toLowerCase() === "currentcolor" ? style.color : word),
+        first: places[0],
+        last: places[places.length - 1],
+      });
+    }
     if (stops.length === 0) {
       return null;
     }
-    const colours = [stops[0]];
+    const colours = [stops[0].colour];
     for (let at = 1; at < stops.length; at += 1) {
-      for (let eighth = 1; eighth <= 8; eighth += 1) {
-        colours.push(between(stops[at - 1], stops[at], eighth / 8));
+      const [before, after] = [stops[at - 1], stops[at]];
+      const hard =
+        before.last !== undefined && after.first !== undefined && after.first <= before.last;
+      for (let eighth = hard ? 8 : 1; eighth <= 8; eighth += 1) {
+        colours.push(between(before.colour, after.colour, eighth / 8));
       }
     }
     return colours;
   };
-  // How many ways a word's pixels are worked out at most before it's left
-  // to a person.
-  const ways = 256;
+  // The colours a box may paint under words: its own colour with each layer
+  // over it, the last listed lowest, but a layer that doesn't cover its box,
+  // a line or a mark, is drawn beside the words; null for a picture.
+  const paints = (style) => {
+    const image = style.backgroundImage;
+    let colours = [rgba(style.backgroundColor)];
+    if (image === "none") {
+      return colours;
+    }
+    if (picture.test(image)) {
+      return null;
+    }
+    const layers = layered(image);
+    const sizes = layered(style.backgroundSize);
+    const repeats = layered(style.backgroundRepeat);
+    for (let at = layers.length - 1; at >= 0 && colours.length <= ways; at -= 1) {
+      const own = gradient(layers[at], style);
+      if (own === null) {
+        return null;
+      }
+      if (covers(sizes[at % sizes.length], repeats[at % repeats.length])) {
+        const under = colours;
+        colours = [];
+        for (const below of under) {
+          for (const paint of own) {
+            colours.push(over(paint, below));
+          }
+        }
+      }
+    }
+    return colours;
+  };
   // Paint that changes what's under it in ways the probe doesn't model.
   const reworked = (style) =>
-    style.filter !== "none" || style.backdropFilter !== "none" || style.mixBlendMode !== "normal";
+    style.filter !== "none" ||
+    style.backdropFilter !== "none" ||
+    style.mixBlendMode !== "normal" ||
+    layered(style.backgroundBlendMode).some((mode) => mode !== "normal") ||
+    [style.maskImage, style.webkitMaskImage].some(
+      (mask) => mask !== undefined && mask !== "" && mask !== "none",
+    );
   // The worst ratio a word reaches against every ground it may sit on; null
   // when it sits on a picture, NaN when its paint can't be worked out, and
   // undefined when it has no ink to read.
@@ -300,6 +377,10 @@
       styles.push(getComputedStyle(element));
     }
     styles.push(own);
+    // A stroke draws the glyphs' edges in a colour of its own.
+    if (Number.parseFloat(own.webkitTextStrokeWidth || "0") > 0) {
+      return Number.NaN;
+    }
     const written = rgba(colour);
     let inks = [written];
     const boxes = [];
@@ -322,8 +403,9 @@
       }
     }
     inks = inks.filter((ink) => ink[3] > 0);
+    // Words with no ink of their own may still be drawn by their shadow.
     if (inks.length === 0) {
-      return undefined;
+      return own.textShadow === "none" ? undefined : Number.NaN;
     }
     const count = boxes.reduce((all, box) => all * box.choices.length, inks.length);
     if (count > ways) {
@@ -394,9 +476,9 @@
   }
   if (unworked > 0) {
     missing.push(
-      `words in ${unworked} ${unworked === 1 ? "place are" : "places are"} painted through a ` +
-        "filter, a blend or too many layers to work out, so their contrast went unmeasured: " +
-        "paint them and their grounds plainly",
+      `words in ${unworked} ${unworked === 1 ? "place are" : "places are"} drawn through a ` +
+        "filter, blend, mask, stroke, shadow alone or too many layers to work out, so their " +
+        "contrast went unmeasured: paint them and their grounds plainly",
     );
   }
 
