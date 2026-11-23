@@ -69,7 +69,7 @@ function whereKept(at, moment, screens, given, inUse) {
 // comes. The others (othersAt) are those heard, and its twins (twinsOf) gone or not heard yet;
 // another not heard is left out, as it may be `at`'s own, renumbered, which wayBack refuses.
 function awayOf(at, output, moment, screens) {
-    if (output !== undefined && !(at.screen && screens?.[output] === "")) {
+    if (output !== undefined && !(at.screen && screens[output] === "")) {
         return null;
     }
     const lefts = twinsOf(at, moment).filter(one => !screens[one]);
@@ -79,16 +79,13 @@ function awayOf(at, output, moment, screens) {
     return { screen: at.screen || at.output, workspace: at.workspace, output: at.output, others };
 }
 
-// Where each kept place goes now, in the order given, null for none: on
-// its own screen, wherever it's connected now. One whose screen is gone
-// goes to the screen in use, its workspaces after every workspace the
-// places there use, in their order, as niri moves a gone screen's
-// workspaces, rather than mixed into the same numbers, and says where it
-// belongs (`away`, of awayOf, as one on a screen not heard yet does), so
-// its workspace can go there once the screen comes, each twin (of
-// `moments`, each place's boot's) given a connector of its own. `screens`
-// is connected's; with none, as before niri lists any, or no screen in
-// use, a gone one is left as it was kept.
+// Where each kept place goes now, in the order given, null for none: on its own screen, wherever
+// it's connected now. One whose screen is gone goes to the screen in use, its workspaces after
+// every workspace the places there use, in their order, as niri moves a gone screen's workspaces,
+// rather than mixed into the same numbers, and says where it belongs (`away`, of awayOf, as one
+// on a screen not heard yet does), so its workspace can go there once the screen comes, each twin
+// (of `moments`, each place's boot's) given a connector of its own. `screens` is connected's;
+// with none, as before niri says any, or no screen in use, a gone one is left as it was kept.
 function placed(places, screens, inUse, moments) {
     const known = Object.keys(screens ?? {}).length > 0;
     const given = [];
@@ -137,14 +134,16 @@ function placed(places, screens, inUse, moments) {
     });
 }
 
-// Of `screens` (screensOf), those niri lists a workspace on, as on each connected one, all while it
-// lists none, then each other it lists as "", not heard: heard apart, they can be stale (22 Nov).
+// Of `screens` (screensOf), those niri lists a workspace on, all while it lists none, then, once
+// any is said, each other it lists as "", not heard: heard apart, they can be stale (22 Nov).
 function connected(screens, workspaces) {
     const listed = new Set((workspaces ?? []).map(each => each.output));
-    const heard = Object.keys(screens ?? {}).filter(name => listed.size === 0 || listed.has(name));
-    const unheard = [...listed].filter(name => typeof name === "string" && !heard.includes(name));
+    const said = Object.keys(screens ?? {});
+    const heard = said.filter(name => listed.size === 0 || listed.has(name));
+    const unheard = said.length === 0 ? [] : [...listed]
+        .filter(name => typeof name === "string" && !heard.includes(name));
     return heard.concat(unheard)
-        .reduce((there, name) => Object.assign(there, { [name]: screens?.[name] ?? "" }), {});
+        .reduce((there, name) => Object.assign(there, { [name]: screens[name] ?? "" }), {});
 }
 
 // The moves that take workspaces given in place of a gone screen to it once

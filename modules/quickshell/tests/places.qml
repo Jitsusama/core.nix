@@ -270,6 +270,21 @@ QtObject {
         const onlyThePanel = [{ id: 21, output: "eDP-1" }];
         expect("a screen niri lists a workspace on but wasn't heard yet is there, undescribed",
             Places.connected({ "DP-4": monitor }, onlyThePanel), { "eDP-1": "" });
+        expect("a workspace on no screen names none",
+            Places.connected({ "DP-4": monitor }, [{ id: 20, output: null }].concat(onlyThePanel)),
+            { "eDP-1": "" });
+        // With no screen said at all, as when niri never answered and
+        // Reopen Them All went ahead after screensPatience, nothing says
+        // which screen is which: each place is left as it was kept, as
+        // before, rather than every one off the screen in use taken for
+        // a gone screen's.
+        const bothListed = [{ id: 21, output: "DP-4" }, { id: 22, output: "eDP-1" }];
+        expect("with no screen said, those listed aren't taken for unheard ones",
+            Places.connected({}, bothListed), {});
+        expect("with no screen said, each place is left as kept",
+            Places.placed(docked, Places.connected({}, bothListed), "DP-4")
+                .map(at => [at.output, at.workspace, at.away ?? null]),
+            [["DP-4", 1, null], ["DP-4", 3, null], ["eDP-1", 2, null], ["eDP-1", 1, null]]);
         // Only the screen in use is taken for its own connector's while
         // it isn't heard: it holds a gone screen's places anyway, so no
         // place lands on a screen it wouldn't have. It may be another
@@ -281,15 +296,35 @@ QtObject {
             Places.placed(docked, panelSoon, "eDP-1")
                 .map(at => [at.output, at.workspace, at.away?.others ?? null]),
             [["eDP-1", 3, {}], ["eDP-1", 5, {}], ["eDP-1", 2, {}], ["eDP-1", 1, {}]]);
+        // Each answer below is stale: it names the monitor as it was,
+        // on a connector niri lists no workspace on now.
         const panelAndFour = onlyThePanel.concat([{ id: 22, output: "DP-4" }]);
+        const fourSoon = Places.connected({ "DP-3": monitor }, panelAndFour);
         expect("a place on a screen not heard yet, not in use, is gone",
-            Places.placed([docked[0]], Places.connected({}, panelAndFour), "eDP-1")
+            Places.placed([docked[0]], fourSoon, "eDP-1")
                 .map(at => [at.output, at.away?.screen ?? null]), [["eDP-1", monitor]]);
-        expect("a window put back before any screen is heard stays on the screen in use",
+        expect("a place kept on the screen in use not heard yet is found there",
             Places.whereKept(docked[2], [], panelSoon, [], "eDP-1"), "eDP-1");
+        // Its own screen heard on another connector is where it goes,
+        // as a monitor renumbered while its old connector is now the
+        // screen in use, not heard yet.
+        expect("a place whose screen is heard elsewhere goes there, not to the one in use",
+            Places.placed([docked[2]], { "eDP-1": "", "DP-6": panel }, "eDP-1")
+                .map(at => [at.output, at.workspace, at.away ?? null]), [["DP-6", 2, null]]);
+        // A place kept by its connector alone is found by it, which is all
+        // it has, so it isn't noted for its screen not being heard.
+        expect("a place kept by its connector on the screen in use not heard yet isn't noted",
+            Places.placed(older, { "eDP-1": "" }, "eDP-1").map(at => at.away ?? null), [null]);
+        expect("a window put back by its connector on a screen not heard yet isn't noted",
+            Places.awayOf(older[0], "eDP-1", [], { "eDP-1": "" }), null);
+        // A screen heard as nothing, no make, model or serial, can't be
+        // told from one not heard, so it isn't another screen to a place
+        // gone either: it may be its own, its description not read yet.
+        expect("a screen heard as nothing isn't another screen to a place gone",
+            Places.placed([docked[0]], { "eDP-1": panel, "DP-6": "" }, "eDP-1")[0].away?.others,
+            { "eDP-1": panel });
         expect("a window put back on a screen not heard, not in use, is gone",
-            Places.whereKept(docked[0], [], Places.connected({}, panelAndFour), [], "eDP-1"),
-            undefined);
+            Places.whereKept(docked[0], [], fourSoon, [], "eDP-1"), undefined);
         // The note a window put back so carries, the same as placed's.
         const panelNote = Places.awayOf(docked[2], "eDP-1", [], panelSoon);
         expect("a window put back on the screen in use not heard yet is noted",
@@ -304,8 +339,11 @@ QtObject {
         expect("a place noted on the screen in use is home once that's heard as its own",
             Places.homeward(panelWaits, { "eDP-1": panel }, onlyThePanel),
             { moves: [{ output: "eDP-1", id: 21, there: true }], waiting: {} });
-        expect("a place noted on the screen in use waits once that's heard as another",
+        expect("a place noted on the screen in use waits while that's not heard",
             Places.homeward(panelWaits, { "eDP-1": "" }, onlyThePanel),
+            { moves: [], waiting: panelWaits });
+        expect("a place noted on the screen in use waits once that's heard as another",
+            Places.homeward(panelWaits, { "eDP-1": monitor }, onlyThePanel),
             { moves: [], waiting: panelWaits });
         expect("a place noted on the screen in use goes to its own once heard elsewhere",
             Places.homeward(panelWaits, { "eDP-1": monitor, "DP-6": panel },
@@ -316,13 +354,14 @@ QtObject {
         // it goes home as soon as niri lists a workspace there.
         expect("a place noted by its connector goes home once that's listed, heard or not",
             Places.homeward({ "DP-5": [{ id: 21, workspace: 1, output: "DP-5", others: {} }] },
-                {}, [{ id: 21, output: "eDP-1" }, { id: 22, output: "DP-5" }]),
+                { "eDP-1": panel }, [{ id: 21, output: "eDP-1" }, { id: 22, output: "DP-5" }]),
             { moves: [{ output: "DP-5", id: 21 }], waiting: {} });
         // A screen not heard as a place is found gone may be its own,
         // renumbered, so it isn't noted as another screen: noted so, the
         // monitor back on DP-5 after a boot never took its workspace home.
         const panelAndFive = onlyThePanel.concat([{ id: 22, output: "DP-5" }]);
-        const renumberedSoon = Places.placed([docked[0]], Places.connected({}, panelAndFive),
+        const renumberedSoon = Places.placed([docked[0]],
+            Places.connected({ "DP-4": monitor }, panelAndFive),
             "eDP-1")[0].away ?? null;
         expect("a screen not heard as one is found gone isn't another screen to it",
             renumberedSoon?.others ?? null, {});

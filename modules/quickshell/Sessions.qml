@@ -2171,9 +2171,12 @@ Singleton {
     // so a screen test that fails shows whether the shell waited.
     property var heldSaid: []
     function sayHeld(waiting) {
-        const held = Object.values(waiting).reduce((all, kept) => all.concat(kept), []);
+        // By the screen it waits for, as one noted on the screen in use
+        // before that was heard waits on the connector it left.
+        const held = Object.entries(waiting).reduce((all, [screen, kept]) =>
+            all.concat(kept.map(one => ({ id: one.id, screen }))), []);
         held.filter(one => !heldSaid.includes(one.id)).forEach(one => console.info(
-            `workspace ${one.id} waits for ${one.output ?? "its screen"} to come back`));
+            `workspace ${one.id} waits for ${one.screen} to come back`));
         heldSaid = held.map(one => one.id);
     }
     function noteGone() {
