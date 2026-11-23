@@ -232,7 +232,14 @@ fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
         1,
         "three files in one archive just within the total weren't written"
     );
-    for (most, all) in [(3000, 2 * one), (3000, 3 * one - 1), (1 << 20, whole - 1)] {
+    // What lies written when c is refused: two closed archives, or the two
+    // entries in the one still open.
+    let two = 2 * taken("a", 600);
+    for (most, all, before) in [
+        (3000, 2 * one, 2 * one),
+        (3000, 3 * one - 1, 2 * one),
+        (1 << 20, whole - 1, two),
+    ] {
         let _ = std::fs::remove_dir_all(&parts);
         std::fs::create_dir_all(&parts).unwrap();
         let refused = write(&root, names, &parts, most, all);
@@ -245,6 +252,14 @@ fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
         assert!(
             !parts.join("2.tar").exists(),
             "the archive past the total was begun before it was refused"
+        );
+        let lying: u64 = std::fs::read_dir(&parts)
+            .unwrap()
+            .map(|part| part.unwrap().metadata().unwrap().len())
+            .sum();
+        assert_eq!(
+            lying, before,
+            "c went into the archives before it was refused, in all {all}"
         );
     }
     let _ = std::fs::remove_dir_all(&root);

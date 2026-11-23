@@ -106,10 +106,12 @@ done"#
 /// whole group, so the far line takes its copy, the files written beside
 /// it, the job's archives and whatever it had begun to bring back away,
 /// since no one waits for them, then dies by the same signal, so whatever
-/// waits on it sees it stopped rather than ended; where the signal can't
-/// end it, it exits with the code a shell gives such a death. A closed
-/// pipe is a let go too, as when the asker's end goes before its signal
-/// comes. A second signal waits for the first one's clearing.
+/// waits on it sees it stopped rather than ended. The exit with the code a
+/// shell gives such a death, after it, is only a fallback: in dash and in
+/// bash the signal it sent itself ends it first. A closed pipe is a let go
+/// too, as when the asker's end goes before its signal comes. A signal
+/// that comes while it clears is dropped, so the clearing runs once, and
+/// one ignored when the far line began is never trapped at all.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
