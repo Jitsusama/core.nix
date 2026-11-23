@@ -530,7 +530,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             Gated::Passed => splitting.taken(),
             Gated::Red { whole } => {
                 splitting.taken();
-                let red = excused::Red {
+                let asked = excused::Red {
                     root: &root,
                     slug: &slug,
                     checkout: &checkout,
@@ -539,7 +539,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                     log: &log,
                 };
                 let excuse = whole
-                    .then(|| excused::excuse(&red, &crate::world::bounded))
+                    .then(|| excused::excuse(&asked, &crate::world::bounded))
                     .flatten();
                 let Some(checks) = excuse else {
                     way(&root, &Ended::Otherwise);
