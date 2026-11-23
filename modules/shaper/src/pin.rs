@@ -831,6 +831,29 @@ mod tests {
     }
 
     #[test]
+    fn a_quick_way_spread_past_the_margin_still_pins_a_pair_of_its_own() {
+        // The quick way can read from 22 to 35 ms in one round, wider than
+        // `MARGIN_MS` (pin round 1's F17). A quick port past the margin is
+        // left out as a slow one would be, which costs the pairs it is in,
+        // and the pin is still a pair of the quick way's, never one touching
+        // the slow way's 65 ms.
+        let read = delays(&[
+            (30_000, 35.0),
+            (30_001, 22.0),
+            (30_002, 66.0),
+            (30_003, 34.0),
+            (30_004, 29.0),
+            (30_005, 31.0),
+            (30_006, 65.0),
+        ]);
+        assert_eq!(
+            choose(&read),
+            Some(30_004),
+            "the pair within the margin wasn't pinned"
+        );
+    }
+
+    #[test]
     fn no_pin_where_no_two_adjacent_ports_go_the_quick_way() {
         let read = delays(&[
             (30_000, 24.0),
