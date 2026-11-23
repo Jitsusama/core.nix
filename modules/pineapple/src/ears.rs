@@ -26,6 +26,10 @@ pub const COUNT: u8 = 20;
 /// found by it.
 const FOUND_LATE: u128 = 60 * 1_000_000;
 
+/// How many times one search asks again for fewer after an answer cut
+/// short, before it's said as one that can't be read.
+const CUTS: usize = 4;
+
 /// What a reader hears Slack through.
 pub trait Ears {
     /// The newest messages `query` finds, oldest first; else whether the
@@ -204,15 +208,18 @@ impl Ears for Through {
             Round::Deaf(Deafness::Unreadable)
         };
         let count = usize::from(COUNT);
-        let first = self.newest(query, count)?;
-        // Cut short, it's only a count to ask again for.
-        let asked = gateway::cut_to(&first).unwrap_or(count);
+        let mut answer = self.newest(query, count)?;
+        // Cut short, it's only a count to ask again for, and as the gateway
+        // cuts by size, an ask for as many as it gave may be cut again.
+        let mut asked = count;
+        for _ in 0..CUTS {
+            let Some(given) = gateway::cut_to(&answer).filter(|given| *given < asked) else {
+                break;
+            };
+            asked = given;
+            answer = self.newest(query, asked)?;
+        }
         let cut = asked < count;
-        let answer = if cut {
-            self.newest(query, asked)?
-        } else {
-            first
-        };
         let cut_to = |why: String| {
             if cut {
                 format!("cut to {asked} of {COUNT}, then asked for {asked}, {why}")

@@ -126,6 +126,61 @@ fn a_search_cut_short_is_read_when_it_reaches_back_to_the_last_answer_read() {
 }
 
 #[test]
+fn a_search_cut_again_when_asked_for_as_many_as_it_gave_is_asked_again() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            // Said at the second the case began, so a second passing
+            // mid-case says nothing new.
+            static BEGAN: AtomicU64 = AtomicU64::new(0);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return poisoned();
+            }
+            let began = BEGAN
+                .compare_exchange(0, now, Ordering::SeqCst, Ordering::SeqCst)
+                .map_or_else(|began| began, |_| now);
+            let stop = stop();
+            let limit = asked["limit"].as_u64().unwrap_or(20);
+            let round = if limit == 20 {
+                TAGS.fetch_add(1, Ordering::SeqCst) + 1
+            } else {
+                TAGS.load(Ordering::SeqCst)
+            };
+            if round <= 1 {
+                return tags(asked, &[(began - 300, "a word")], 1);
+            }
+            // Cut by size, as the gateway cuts: three of twenty, then two
+            // of the three asked for, and only two whole.
+            let kept = if limit == 20 { 3 } else { 2 };
+            tags(
+                asked,
+                &[
+                    (began - 60, &stop),
+                    (began - 300, "a word"),
+                    (began - 400, "an older word"),
+                    (began - 500, "the oldest word"),
+                ],
+                kept,
+            )
+        },
+        &Until {
+            judging: 2,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    assert_eq!(
+        each(&came.said, "verdict"),
+        ["nothing", "stop"],
+        "asked again for as many as each cut answer gave, it comes whole and is read: {}",
+        came.journal
+    );
+}
+
+#[test]
 fn a_search_cut_short_is_read_when_it_reaches_back_before_anything_judged() {
     let came = hearing(
         |tool, asked, now| {
