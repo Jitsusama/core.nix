@@ -148,11 +148,7 @@ pub fn unrun(
         let path = path.to_string_lossy();
         let key = format!("{} #{}", change.repo, change.number);
         let rev = revs.get(&change.repo).map(String::as_str);
-        // Only looked for where judge reads it, since a merge that isn't
-        // found costs a walk to main's root.
-        let merge = (rev.is_some() && RUN_HERE.contains(&change.repo.as_str()))
-            .then(|| merge_of(&path, change.number))
-            .flatten();
+        let merge = merge_judged(&change.repo, rev, &path, change.number);
         let why = judge(
             &change.repo,
             rev,
@@ -562,6 +558,14 @@ fn installed() -> Option<String> {
     let current = std::fs::read_link(mirror.parent()?.join("current")).ok()?;
     let name = program::commit_of(&current.file_name()?.to_string_lossy()).to_owned();
     is_rev(&name).then_some(name)
+}
+
+/// `merge_of`, only where `judge` reads it, since a merge that isn't found
+/// costs a walk to main's root.
+fn merge_judged(repo: &str, rev: Option<&str>, path: &str, number: u64) -> Option<String> {
+    (rev.is_some() && RUN_HERE.contains(&repo))
+        .then(|| merge_of(path, number))
+        .flatten()
 }
 
 /// The commit on `path`'s main that merged pull request `number`, by its
