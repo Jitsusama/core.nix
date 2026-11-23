@@ -1732,7 +1732,7 @@ pub fn finished_within(
 
 /// A while, as a person reads it: in seconds under two minutes, else in
 /// minutes, rounded up.
-fn lasting(while_: std::time::Duration) -> String {
+pub fn lasting(while_: std::time::Duration) -> String {
     match while_.as_secs() {
         1 => "1 second".to_owned(),
         seconds if seconds < 120 => format!("{seconds} seconds"),
@@ -2196,9 +2196,10 @@ impl Source {
 /// one whose VM tests let others' go first, `--never-ask`, a run
 /// that asks the lender for no builder, `--first`, one that goes ahead of
 /// every other run waiting for room or for a turn, `--run`, a command
-/// run on a lent builder (`command.rs`), and `--lent-only`, a run that
-/// goes to a lent builder or nowhere ([`LENT_ONLY`]).
-pub const TAKES: [&str; 16] = [
+/// run on a lent builder (`command.rs`), `--lent-only`, a run that
+/// goes to a lent builder or nowhere ([`LENT_ONLY`]), and `--alone`, a
+/// `--run` on a builder held for it alone.
+pub const TAKES: [&str; 17] = [
     "tree",
     "apply",
     "out",
@@ -2215,6 +2216,7 @@ pub const TAKES: [&str; 16] = [
     "first",
     "run",
     "lent-only",
+    "alone",
 ];
 
 /// The variable, with its value, that marks a run sent first, as
@@ -3796,7 +3798,10 @@ fn lender_runs(dir: &Path, waiting: Waiting) -> bool {
 /// again, but a build is most often lost because its lender restarted, as
 /// a switch does, so a lender that stopped, whose pid is left in `dir`'s
 /// `lender`, is waited for up to `waiting.restarting` after `since`, and
-/// one that never ran here up to `waiting.answered`.
+/// one that never ran here up to `waiting.answered`. A lender standing
+/// again as its wait runs out, with no builder root vouches for yet, says
+/// the wait ran out itself, since `waited` would blame root's vouching for
+/// a wait spent on the builder coming back.
 pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> Option<String> {
     loop {
         if since.elapsed() >= waiting.longest {
@@ -3804,7 +3809,22 @@ pub fn stood_again(dir: &Path, waiting: Waiting, since: std::time::Instant) -> O
         }
         std::thread::sleep(AGAIN.min(waiting.answered));
         if lender_stands(dir) {
-            return vouched_store(dir).or_else(|| waited(dir, waiting));
+            // Its wait is what's left after `since`, not a fresh one.
+            let left = Waiting {
+                longest: waiting.longest.saturating_sub(since.elapsed()),
+                ..waiting
+            };
+            return vouched_store(dir).or_else(|| {
+                if left.longest.is_zero() {
+                    eprintln!(
+                        "nix-offload: its lender stood again only as its wait of {} s ran out, \
+                         so this waits no longer",
+                        waiting.longest.as_secs()
+                    );
+                    return None;
+                }
+                waited(dir, left)
+            });
         }
         let bound = if dir.join("lender").exists() {
             waiting.restarting
@@ -4095,8 +4115,24 @@ impl Drop for Claim {
     }
 }
 
+/// How many places a run held whole claims: more than any machine gives a
+/// VM builder, so a run that reads a larger room than the one that held
+/// it still finds none beside it, and few enough that a sum of claims
+/// never comes near overflowing.
+pub const WHOLE: usize = 1000;
+
+/// What a run [`admitted`] claims once it has room: the VM tests it sends,
+/// or the builder whole, [`WHOLE`] places, as an `--alone` run does.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Claiming {
+    Tests,
+    Whole,
+}
+
 /// Says `count` VM tests go to the builder `dir`'s lender lends, for as
-/// long as what's given lives; none when the folder can't be written.
+/// long as what's given lives; none when the folder can't be written. It's
+/// written aside and renamed in, so a reader without the lock never reads
+/// a claim of [`WHOLE`] half written, as none.
 pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
     use std::sync::atomic::{AtomicUsize, Ordering};
     // One run may send two parts to one folder, when a second builder
@@ -4104,12 +4140,20 @@ pub fn claim(dir: &Path, count: usize) -> Option<Claim> {
     static NEXT: AtomicUsize = AtomicUsize::new(0);
     let sending = dir.join("sending");
     fs::create_dir_all(&sending).ok()?;
-    let path = sending.join(format!(
+    let name = format!(
         "{}.{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
-    fs::write(&path, format!("{count}\n")).ok()?;
+    );
+    let draft = sending.join(format!(".{name}.new"));
+    let path = sending.join(name);
+    if fs::write(&draft, format!("{count}\n"))
+        .and_then(|()| fs::rename(&draft, &path))
+        .is_err()
+    {
+        let _ = fs::remove_file(&draft);
+        return None;
+    }
     Some(Claim(path))
 }
 
@@ -4156,7 +4200,8 @@ pub fn admitted<'a>(
     rank: Rank,
     waiting: Waiting,
 ) -> (&'a Path, Option<Claim>, Waiting) {
-    let (dir, claim, held) = admitted_holding(dir, others, count, room, rank, waiting);
+    let wanted = (count, Claiming::Tests);
+    let (dir, claim, held) = admitted_holding(dir, others, wanted, room, rank, waiting);
     let left = Waiting {
         longest: waiting.longest.saturating_sub(held),
         ..waiting
@@ -4164,19 +4209,53 @@ pub fn admitted<'a>(
     (dir, claim, left)
 }
 
-/// [`admitted`], giving how long it held for root rather than what's left.
+/// [`admitted`] for a builder with nothing sent to it, taken whole: its
+/// claim of [`WHOLE`] places is written in the same hold of the folder's
+/// lock that found it empty, so no run reads its room between the two.
+/// Where the lock can't be had, no claim is made, since one made without
+/// it may share the builder with a run admitted as it's written.
+pub fn admitted_whole<'a>(
+    dir: &'a Path,
+    others: &[&'a Path],
+    room: usize,
+    rank: Rank,
+    waiting: Waiting,
+) -> (&'a Path, Option<Claim>, Waiting) {
+    let wanted = (room, Claiming::Whole);
+    let (dir, claim, held) = admitted_holding(dir, others, wanted, room, rank, waiting);
+    let left = Waiting {
+        longest: waiting.longest.saturating_sub(held),
+        ..waiting
+    };
+    (dir, claim, left)
+}
+
+/// [`admitted`], giving how long it held for root rather than what's left,
+/// claiming as `wanted` says once `wanted`'s count has room.
 fn admitted_holding<'a>(
     dir: &'a Path,
     others: &[&'a Path],
-    count: usize,
+    wanted: (usize, Claiming),
     room: usize,
     rank: Rank,
     waiting: Waiting,
 ) -> (&'a Path, Option<Claim>, std::time::Duration) {
     use std::os::fd::AsRawFd;
+    let (count, claiming) = wanted;
     let wants = count.clamp(1, room.max(1));
+    let places = match claiming {
+        Claiming::Tests => wants,
+        Claiming::Whole => WHOLE,
+    };
+    // Without the lock, a run held whole claims nothing rather than share.
+    let unlocked = || {
+        (claiming == Claiming::Tests)
+            .then(|| claim(dir, wants))
+            .flatten()
+    };
     let mut said = false;
     let mut held_said = false;
+    let mut unlocked_said = false;
     let mut place: Option<Claim> = None;
     // Time held for root, counted only while holding, so a run that
     // waited for room before a hand-over is still held its full time.
@@ -4192,25 +4271,13 @@ fn admitted_holding<'a>(
         // still goes back here if root vouches for this one and it has
         // room first.
         if unvouched(dir) {
-            if let Some(vouched) = others
-                .iter()
-                .copied()
-                .find(|other| vouched_store(other).is_some())
-            {
-                eprintln!(
-                    "nix-offload: root doesn't vouch for this VM builder yet, so this waits on \
-                     {} instead, or for root, whichever comes first",
-                    vouched.display()
-                );
+            if let Some((vouched, rest)) = vouched_instead(dir, others) {
                 drop(place);
-                let rest: Vec<&Path> = std::iter::once(dir)
-                    .chain(others.iter().copied().filter(|other| *other != vouched))
-                    .collect();
                 let left = Waiting {
                     longest: waiting.longest.saturating_sub(held),
                     ..waiting
                 };
-                let (dir, claim, more) = admitted_holding(vouched, &rest, count, room, rank, left);
+                let (dir, claim, more) = admitted_holding(vouched, &rest, wanted, room, rank, left);
                 return (dir, claim, held + more);
             }
             // With none vouched, nothing is claimed while root may yet
@@ -4234,19 +4301,22 @@ fn admitted_holding<'a>(
                 continue;
             }
         }
-        let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
-            return (dir, claim(dir, wants), held);
+        let locked = fs::File::create(dir.join("sending.lock"))
+            .ok()
+            // SAFETY: flock only locks the file it's given, open until dropped.
+            .filter(|lock| unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0);
+        let Some(lock) = locked else {
+            if unlocked_waits(dir, claiming, &mut unlocked_said) {
+                continue;
+            }
+            return (dir, unlocked(), held);
         };
-        // SAFETY: flock only locks the file it's given, open until dropped.
-        if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
-            return (dir, claim(dir, wants), held);
-        }
         let busy = claimed(dir);
         let before = ahead(dir, place.as_ref(), rank, busy, room);
         if before == 0 && (busy == 0 || busy + wants <= room) {
             // Claimed, and its place given up, before the lock is let go,
             // as dropping it does.
-            let claimed = claim(dir, wants);
+            let claimed = claim(dir, places);
             drop(place);
             return (dir, claimed, held);
         }
@@ -4262,7 +4332,7 @@ fn admitted_holding<'a>(
         if let Some((other, claimed)) = others
             .iter()
             .filter(|other| !unvouched(other) && (!here_warm || warm(other)))
-            .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
+            .find_map(|other| Some((*other, free(other, (wants, places), room, rank)?)))
         {
             eprintln!(
                 "nix-offload: another VM builder has room now and nothing waiting, so this goes \
@@ -4272,29 +4342,84 @@ fn admitted_holding<'a>(
             return (other, Some(claimed), held);
         }
         if !said {
-            let queue = match before {
-                0 => String::new(),
-                1 => ", and a run waits ahead of this".to_owned(),
-                runs => format!(", and {runs} runs wait ahead of this"),
-            };
-            eprintln!(
-                "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
-                 {room}{queue}, so this waits for room"
-            );
-            if rank == Rank::Bulk {
-                eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
-            }
+            say_waiting_for_room(dir, busy, room, before, rank);
             said = true;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 }
 
-/// A claim of `wants` VM tests on the builder `dir`'s lender lends, taken
-/// under its lock only while no run waits there ahead of a run that's
-/// at its `rank` and it has room for them as [`admitted`] counts it; none
-/// otherwise.
-fn free(dir: &Path, wants: usize, room: usize, rank: Rank) -> Option<Claim> {
+/// The builder among `others` root vouches for, saying so, for a run held
+/// on `dir`, which root doesn't vouch for yet, to queue on instead, with
+/// the builders left to it then: `dir` first, and the rest but that one.
+fn vouched_instead<'a>(dir: &'a Path, others: &[&'a Path]) -> Option<(&'a Path, Vec<&'a Path>)> {
+    let vouched = others
+        .iter()
+        .copied()
+        .find(|other| vouched_store(other).is_some())?;
+    eprintln!(
+        "nix-offload: root doesn't vouch for this VM builder yet, so this waits on {} instead, \
+         or for root, whichever comes first",
+        vouched.display()
+    );
+    let rest = std::iter::once(dir)
+        .chain(others.iter().copied().filter(|other| *other != vouched))
+        .collect();
+    Some((vouched, rest))
+}
+
+/// Whether a run claiming as `claiming` that can't lock `dir` waits there,
+/// having waited a look, saying so once through `said`. Without the lock a
+/// run of VM tests still goes, room being a soft guard, but not beside a
+/// run held whole, whose claim is a promise: it waits for that run to end,
+/// looking again for the lock as it waits.
+fn unlocked_waits(dir: &Path, claiming: Claiming, said: &mut bool) -> bool {
+    if claiming != Claiming::Tests || claimed(dir) < WHOLE {
+        return false;
+    }
+    if !*said {
+        eprintln!(
+            "nix-offload: the VM builder in {} can't be locked, and an --alone run holds it \
+             whole, so this waits for that run to end",
+            dir.display()
+        );
+        *said = true;
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    true
+}
+
+/// Says why a run at `rank` waits for room in `dir`, which has `busy` VM
+/// tests of runs here and `room` for them, `before` runs ahead of it: an
+/// `--alone` run's claim of [`WHOLE`] is named as one, not as a count.
+fn say_waiting_for_room(dir: &Path, busy: usize, room: usize, before: usize, rank: Rank) {
+    let queue = match before {
+        0 => String::new(),
+        1 => ", and a run waits ahead of this".to_owned(),
+        runs => format!(", and {runs} runs wait ahead of this"),
+    };
+    if busy >= WHOLE {
+        eprintln!(
+            "nix-offload: an --alone run holds the VM builder in {} whole{queue}, so this \
+             waits for it to end",
+            dir.display()
+        );
+    } else {
+        eprintln!(
+            "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
+             {room}{queue}, so this waits for room"
+        );
+    }
+    if rank == Rank::Bulk {
+        eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
+    }
+}
+
+/// A claim of `places` on the builder `dir`'s lender lends, for `wants` VM
+/// tests, taken under its lock only while no run waits there ahead of a
+/// run that's at its `rank` and it has room for them as [`admitted`]
+/// counts it; none otherwise.
+fn free(dir: &Path, (wants, places): (usize, usize), room: usize, rank: Rank) -> Option<Claim> {
     use std::os::fd::AsRawFd;
     let lock = fs::File::create(dir.join("sending.lock")).ok()?;
     // SAFETY: flock only locks the file it's given, open until dropped.
@@ -4303,7 +4428,7 @@ fn free(dir: &Path, wants: usize, room: usize, rank: Rank) -> Option<Claim> {
     }
     let busy = claimed(dir);
     if ahead(dir, None, rank, busy, room) == 0 && (busy == 0 || busy + wants <= room) {
-        claim(dir, wants)
+        claim(dir, places)
     } else {
         None
     }
@@ -4442,18 +4567,26 @@ fn holds_back(
 
 /// How many VM tests runs still going have sent the builder `dir`'s
 /// lender lends. A claim whose run ended without taking it away, as one
-/// killed does, is taken away here.
+/// killed does, is taken away here, as is a claim's draft whose run ended
+/// before renaming it in; a draft whose run goes on counts for nothing.
 pub fn claimed(dir: &Path) -> usize {
     let Ok(entries) = fs::read_dir(dir.join("sending")) else {
         return 0;
     };
     let mut sent = 0;
     for entry in entries.filter_map(Result::ok) {
-        let pid = entry
-            .file_name()
-            .to_str()
-            .and_then(|name| name.split('.').next()?.parse().ok());
-        if pid.is_some_and(runs) {
+        let name = entry.file_name();
+        let name = name.to_str().unwrap_or_default();
+        let (draft, name) = match name.strip_prefix('.') {
+            Some(drafted) => (true, drafted),
+            None => (false, name),
+        };
+        let pid = name.split('.').next().and_then(|pid| pid.parse().ok());
+        if draft {
+            if !pid.is_some_and(runs) {
+                let _ = fs::remove_file(entry.path());
+            }
+        } else if pid.is_some_and(runs) {
             sent += fs::read_to_string(entry.path())
                 .ok()
                 .and_then(|text| text.trim().parse::<usize>().ok())
@@ -7614,6 +7747,40 @@ mod tests {
         );
     }
 
+    // A lender standing again with no builder yet gets only what's left of
+    // the wait, never a fresh one, and with none left it waits no more
+    // than its look takes, saying its own wait ran out rather than root's.
+    #[test]
+    fn a_build_lost_waits_for_its_lender_no_longer_than_its_wait() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(stood_again(dir.path(), QUICK, began), None);
+        assert!(
+            began.elapsed() < QUICK.longest + std::time::Duration::from_secs(1),
+            "it waited past its wait, {:?}",
+            began.elapsed()
+        );
+        let spent = std::time::Instant::now()
+            .checked_sub(
+                QUICK
+                    .longest
+                    .saturating_sub(std::time::Duration::from_millis(50)),
+            )
+            .unwrap();
+        let looked = std::time::Instant::now();
+        assert_eq!(stood_again(dir.path(), QUICK, spent), None);
+        assert!(
+            looked.elapsed() < QUICK.answered + std::time::Duration::from_secs(1),
+            "it waited on with no wait left, {:?}",
+            looked.elapsed()
+        );
+    }
+
     #[test]
     fn a_build_lost_with_no_lender_coming_back_stops_waiting() {
         let dir = tempfile::tempdir().unwrap();
@@ -8209,6 +8376,90 @@ mod tests {
         assert_eq!(claimed(dir.path()), 2, "taken away as its run ends");
         drop(other);
         assert_eq!(fs::read_dir(dir.path().join("sending")).unwrap().count(), 0);
+    }
+
+    // A builder taken whole is claimed in the one hold of its lock that
+    // found it empty: while another holds the lock, nothing is claimed,
+    // and every reading under the lock from then on finds none or the
+    // whole, never a smaller claim made in one hold and grown in another,
+    // so no run admitted in between reads room beside it.
+    #[test]
+    fn a_builder_is_taken_whole_in_the_hold_that_found_it_empty() {
+        use std::os::fd::AsRawFd;
+        let dir = tempfile::tempdir().unwrap();
+        let locked = |path: &Path| {
+            let lock = fs::File::create(path.join("sending.lock")).unwrap();
+            // SAFETY: flock only locks the file it's given, open until dropped.
+            assert_eq!(unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) }, 0);
+            lock
+        };
+        let lock = locked(dir.path());
+        let path = dir.path().to_owned();
+        let (taken, took) = std::sync::mpsc::channel();
+        let (letting_go, let_go) = std::sync::mpsc::channel::<()>();
+        let taking = std::thread::spawn(move || {
+            let (_, claim, _) = admitted_whole(&path, &[], VM_ROOM, Rank::Plain, QUICK);
+            taken.send(()).unwrap();
+            let_go.recv().unwrap();
+            drop(claim);
+        });
+        let since = std::time::Instant::now();
+        while since.elapsed() < std::time::Duration::from_millis(300) {
+            assert_eq!(
+                claimed(dir.path()),
+                0,
+                "claimed while another held the lock"
+            );
+            std::thread::yield_now();
+        }
+        drop(lock);
+        let mut readings = Vec::new();
+        loop {
+            let returned = took.try_recv().is_ok();
+            let lock = locked(dir.path());
+            readings.push(claimed(dir.path()));
+            drop(lock);
+            if returned {
+                break;
+            }
+            std::thread::yield_now();
+        }
+        assert!(
+            readings
+                .iter()
+                .all(|&reading| reading == 0 || reading == WHOLE),
+            "a reading under the lock found part of a whole claim: {readings:?}"
+        );
+        assert_eq!(
+            readings.last(),
+            Some(&WHOLE),
+            "the claim wasn't whole once made"
+        );
+        assert!(
+            free(dir.path(), (1, 1), VM_ROOM, Rank::Plain).is_none(),
+            "a VM test found room beside a builder held whole"
+        );
+        letting_go.send(()).unwrap();
+        taking.join().unwrap();
+    }
+
+    // A claim being written is renamed in whole, so a reader without the
+    // lock never reads it as none; a draft left by a run that ended goes.
+    #[test]
+    fn a_claim_being_written_counts_for_nothing_until_whole() {
+        let dir = tempfile::tempdir().unwrap();
+        let sending = dir.path().join("sending");
+        fs::create_dir_all(&sending).unwrap();
+        let mine = sending.join(format!(".{}.0.new", std::process::id()));
+        fs::write(&mine, "").unwrap();
+        let gone = sending.join(".999999999.0.new");
+        fs::write(&gone, "1000\n").unwrap();
+        assert_eq!(claimed(dir.path()), 0, "a draft counted");
+        assert!(mine.exists(), "a draft whose run goes on was taken away");
+        assert!(!gone.exists(), "a draft whose run ended stayed");
+        let held = claim(dir.path(), WHOLE);
+        assert_eq!(claimed(dir.path()), WHOLE, "a renamed claim didn't count");
+        drop(held);
     }
 
     #[test]
