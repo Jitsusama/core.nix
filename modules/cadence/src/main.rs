@@ -22,9 +22,10 @@
 //! tells it and the unit's owner (by `--owner`, else the watcher) of any of
 //! the account's units restarting in a loop, failed, or a daemon whose
 //! socket reads signed out or doesn't answer, once for each spell
-//! (units.rs), and Joel too, by a notice, of another machine gone down
-//! while it holds work (watch/down.rs). `cadence units [--at SECONDS]`
-//! says what that watch reads and would tell, sending nothing; at a moment past, from the journal.
+//! (units.rs). `cadence units [--at SECONDS]` says what that watch reads
+//! and would tell, sending nothing; at a moment past, from the journal.
+//! A machine gone down while it holds work is told Joel by a notice, and
+//! the orchestrator by a finding (watch/down.rs; its journal and down.json).
 //!
 //! `cadence day`, run each evening by a timer of its own, reads the day
 //! just ended against the days before it and sends the orchestrator its note
@@ -90,7 +91,7 @@ use terminal_kit::{Context, Exit, Failure};
 use asking::{State, To};
 use mesh::{Mesh, Message};
 use net::Round;
-use watch::{Landing, Snapshot};
+use watch::{Landing, Snapshot, down};
 
 /// The address cadence's questions come from.
 const FROM: &str = "CADENCE";
@@ -298,17 +299,10 @@ fn run(args: &Args) -> io::Result<()> {
         eprintln!("cadence: telling of broken units: {err}");
     }
     // Read once a tick for each use, within a deadline.
-    let machines = watch::down::machines(&args.realms);
-    if let Some(orchestrator) = &args.orchestrator
-        && let Err(err) = watch::down::run(
-            &mesh,
-            &folder,
-            orchestrator,
-            &args.owners,
-            &args.realms,
-            &machines,
-            now,
-        )
+    let realms = &args.realms;
+    let machines = down::machines(realms);
+    if let Some(to) = &args.orchestrator
+        && let Err(err) = down::run(&mesh, &folder, to, &args.owners, realms, &machines, now)
     {
         eprintln!("cadence: telling of machines down: {err}");
     }
