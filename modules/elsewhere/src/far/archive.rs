@@ -67,18 +67,24 @@ pub struct Part {
 /// each at most `most` bytes, named `0.tar`, `1.tar` and on, and answers
 /// them in order. Each file is read once, whole, so it goes in at the
 /// size it was read at even when it changed after it was gathered. A
-/// file whose own entry is past `most` is refused, as no share carries it.
+/// file whose own entry is past `most` is refused, as no share carries it,
+/// and so is one that would take the archives past `all` bytes in all,
+/// before it is written: a tree that grew after it was gathered leaves
+/// this job's archives no larger than `all` all the same. A refusal
+/// leaves the archives written so far unlisted, for the caller to clear.
 pub fn write<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
     into: &Path,
     most: u64,
+    all: u64,
 ) -> io::Result<Vec<Part>> {
     let mut parts = Vec::new();
     let mut open: Option<(fs::File, u64)> = None;
+    let mut done = 0;
     let close = CLOSED;
     for path in paths {
-        let (data, meta) = read(&root.join(path))?;
+        let (data, meta) = read(&root.join(path), most)?;
         let entry = entry(path, &data, &meta);
         let length = entry.len() as u64;
         if length + close > most {
@@ -91,7 +97,16 @@ pub fn write<'a>(
             .as_ref()
             .is_some_and(|(_, size)| size + length + close > most)
         {
-            parts.push(closed(open.take(), parts.len())?);
+            let part = closed(open.take(), parts.len())?;
+            done += part.size;
+            parts.push(part);
+        }
+        let open_size = open.as_ref().map_or(0, |(_, size)| *size);
+        if done + open_size + length + close > all {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("{path} would take the archives past the {all} bytes a share carries"),
+            ));
         }
         let (file, size) = match &mut open {
             Some(open) => open,
@@ -111,8 +126,10 @@ pub fn write<'a>(
 /// from is refused before any of it is read: one there at the look is never
 /// opened, and one swapped in after it is opened without waiting and
 /// refused as not the file looked at. So nothing outside the tree goes in
-/// and nothing holds the job.
-fn read(path: &Path) -> io::Result<(Vec<u8>, fs::Metadata)> {
+/// and nothing holds the job. A file past `most` bytes, as it is opened or
+/// as it is read, is refused without being read whole, as no share
+/// carries it.
+fn read(path: &Path, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
     let mut file = super::landing::opened_plain(path).map_err(|error| {
         io::Error::new(
             error.kind(),
@@ -120,8 +137,26 @@ fn read(path: &Path) -> io::Result<(Vec<u8>, fs::Metadata)> {
         )
     })?;
     let meta = file.metadata()?;
+    let past = |how: &str| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "{} {how} past the {most} bytes one shared file may be",
+                path.display()
+            ),
+        )
+    };
+    if meta.len() > most {
+        return Err(past(&format!("is {} bytes,", meta.len())));
+    }
     let mut data = Vec::new();
-    io::Read::read_to_end(&mut file, &mut data)?;
+    io::Read::read_to_end(
+        &mut io::Read::take(&mut file, most.saturating_add(1)),
+        &mut data,
+    )?;
+    if data.len() as u64 > most {
+        return Err(past("grew as it was read,"));
+    }
     Ok((data, meta))
 }
 
