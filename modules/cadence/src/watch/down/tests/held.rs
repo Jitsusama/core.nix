@@ -122,6 +122,46 @@ fn said_over_two_spells(battery: Option<bool>) -> Vec<String> {
 }
 
 #[test]
+fn a_battery_only_repeated_while_down_runs_out_after_a_day() {
+    let mut told = Told::default();
+    step(&mut told, NOW, &[powered(Reading::Ready, Some(true))]);
+    let down = [Seen {
+        battery: Some(true),
+        ..lost("yonder", 300)
+    }];
+    let told_at: Vec<i64> = (1..=(BATTERY_FOR + 1_800) / 300)
+        .map(|n| NOW + n * 300)
+        .filter(|&now| !step(&mut told, now, &down).is_empty())
+        .collect();
+    assert_eq!(
+        told_at,
+        [NOW + BATTERY_FOR],
+        "a down repeating a battery a day after the last ready reading wasn't told once"
+    );
+}
+
+#[test]
+fn a_down_realms_repeated_battery_never_passes_as_another_realms_fresh_word() {
+    let stale = Seen {
+        realm: "personal".into(),
+        battery: Some(true),
+        ..lost("yonder", 0)
+    };
+    let ready = powered(Reading::Ready, Some(false));
+    for (case, seen) in [
+        ("the down realm read first", [stale.clone(), ready.clone()]),
+        ("the ready realm read first", [ready, stale]),
+    ] {
+        let (kept, _) = &merged(&seen)["yonder"];
+        assert_eq!(
+            (kept.reading, kept.battery),
+            (Reading::Ready, Some(false)),
+            "{case}: the down realm's battery rode into the ready reading"
+        );
+    }
+}
+
+#[test]
 fn a_busy_machine_held_back_by_its_power_is_said_once_a_spell() {
     for (battery, why) in [
         (None, "its power is unread, which may be a battery"),

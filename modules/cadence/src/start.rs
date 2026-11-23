@@ -388,12 +388,20 @@ pub fn is_host(pid: u32) -> bool {
 /// What the machine's node holds, by `mycelium holds`, or none when it
 /// doesn't answer within the deadline every ask of a node keeps, so a
 /// node stalled on a peer can't hold the tick before its watches run.
+/// Why it didn't answer is said, since a session is then judged held by
+/// the processes here alone.
 fn node_holders(realm: Option<&str>) -> Option<Vec<Holder>> {
     let args = match realm {
         Some(realm) => vec!["--realm", realm, "holds"],
         None => vec!["holds"],
     };
-    let said = down::answer("mycelium", &args, down::ASK_WITHIN).ok()?;
+    let said = down::answer("mycelium", &args, down::ASK_WITHIN)
+        .map_err(|error| {
+            println!(
+                "the node's holds ask: {error}; a session's holders are read from processes here"
+            );
+        })
+        .ok()?;
     Some(revive::holders(&said))
 }
 
