@@ -275,12 +275,18 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       run = if p.held { run + by + width } else { width }
     } else {
       // Its first stretch joins what's held to it, and its last goes on
-      // to the piece held after.
-      let stretches = p.piece.matches(unbroken).filter(m => m.text != "").map(m => measure(raw(m.text)).width)
-      if stretches.len() == 0 { stretches = (0pt,) }
-      let first = if p.held { run + by + stretches.first() } else { stretches.first() }
-      widest = calc.max(widest, first, ..stretches)
-      run = if stretches.len() == 1 { first } else { stretches.last() }
+      // to the piece held after. Of those between, a span crafted of
+      // thousands would cost a measure each, so past eight only the eight
+      // of most characters are measured: in the mono a stretch's width
+      // follows its characters, and eight leave room for a wide one.
+      let texts = p.piece.matches(unbroken).map(m => m.text).filter(t => t != "")
+      if texts.len() == 0 { texts = ("",) }
+      let middle = texts.slice(1, calc.max(1, texts.len() - 1))
+      if middle.len() > 8 { middle = middle.sorted(key: t => -t.clusters().len()).slice(0, 8) }
+      let (head, tail) = (measure(raw(texts.first())).width, measure(raw(texts.last())).width)
+      let first = if p.held { run + by + head } else { head }
+      widest = calc.max(widest, first, tail, ..middle.map(t => measure(raw(t)).width))
+      run = if texts.len() == 1 { first } else { tail }
     }
     widest = calc.max(widest, run)
   }
@@ -784,6 +790,17 @@ pub struct First {
     pub parts: Vec<(&'static str, f64, f64)>,
     /// The window's title for the file.
     pub title: String,
+    /// The file's words it was set from, hashed (`words_of`).
+    pub words: u64,
+}
+
+/// A file's words, hashed, so two sets of it say whether it was edited
+/// between them, which may renumber its blocks, whatever width each was
+/// set at or however many sets came between.
+pub fn words_of(markdown: &str) -> u64 {
+    let mut words = std::hash::DefaultHasher::new();
+    std::hash::Hash::hash(markdown, &mut words);
+    std::hash::Hasher::finish(&words)
 }
 
 /// Times a part of the set into `parts`.
@@ -841,6 +858,7 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
     });
     let about = about(std::path::Path::new(file), &markdown);
     let title = crate::title::of(std::path::Path::new(file), &markdown);
+    let words = words_of(&markdown);
     let program = timed(&mut parts, "walk", || {
         walk::program(&markdown, &about, base, &pieces, &world, width, &mut costs)
     });
@@ -887,6 +905,7 @@ pub fn set_first(file: &str, reach: Option<usize>, width: Width) -> Result<First
         rest,
         parts,
         title,
+        words,
     })
 }
 
@@ -899,10 +918,8 @@ pub struct Setter {
     pieces: Pieces,
     width: Width,
     title: String,
-    /// The words it last set, hashed, and whether they had changed from
-    /// the set before.
-    words: Option<u64>,
-    edited: bool,
+    /// The words it last set, hashed (`words_of`).
+    words: u64,
 }
 
 impl Setter {
@@ -913,15 +930,15 @@ impl Setter {
             pieces: Pieces::new(),
             width: Width::whole(),
             title: String::new(),
-            words: None,
-            edited: false,
+            words: 0,
         }
     }
 
-    /// Whether the file's words, at its last set, had changed since the
-    /// set before, of the same file.
-    pub fn edited(&self) -> bool {
-        self.edited
+    /// The file's words at its last set, hashed (`words_of`), which the
+    /// window holds against the page it shows to know whether the file
+    /// was edited.
+    pub fn words(&self) -> u64 {
+        self.words
     }
 
     /// Sets the page at another width from now on, for a window resized.
@@ -933,7 +950,6 @@ impl Setter {
     /// a link followed costs no fonts read again.
     pub fn open(&mut self, file: &str) {
         file.clone_into(&mut self.file);
-        self.words = None;
     }
 
     /// The file it sets.
@@ -951,11 +967,7 @@ impl Setter {
         let start = Instant::now();
         let markdown =
             std::fs::read_to_string(&self.file).map_err(|e| format!("{}: {e}", self.file))?;
-        let mut words = std::hash::DefaultHasher::new();
-        std::hash::Hash::hash(&markdown, &mut words);
-        let words = std::hash::Hasher::finish(&words);
-        self.edited = self.words.is_some_and(|was| was != words);
-        self.words = Some(words);
+        self.words = words_of(&markdown);
         let path = std::path::Path::new(&self.file);
         self.title = crate::title::of(path, &markdown);
         let base = path.parent().map(|dir| {

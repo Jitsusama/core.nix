@@ -56,6 +56,7 @@ impl App {
             settled_pt: f64::INFINITY,
             held_pt: None,
             whole: opening.whole,
+            shown_words: opening.words,
             stale: HashSet::new(),
             jump: None,
             reduced_motion: std::env::var_os("READER_REDUCED_MOTION").is_some_and(|v| v == "1"),

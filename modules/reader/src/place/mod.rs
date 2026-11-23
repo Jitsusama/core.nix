@@ -539,6 +539,17 @@ pub fn take_kept(
     });
 }
 
+/// Gives each landed mark kept without its block's height the height its
+/// block has on the page starting at `starts`, once that's known. One in
+/// the first screen's last block lands before the block after it is set,
+/// so it learns its height only from the whole page; without it, a resize
+/// would land it unscaled for good.
+pub fn heights_known(landed: &mut [Landed], starts: &[(usize, f64)]) {
+    for one in landed.iter_mut().filter(|one| one.kept.block_pt.is_none()) {
+        one.kept.block_pt = height_of(starts, one.kept.block);
+    }
+}
+
 /// Moves `marks` for the page set again, its blocks starting at `after`:
 /// a kept mark where it landed lands again from what was kept, and the
 /// others go as `moved` takes them. An `edited` file may have renumbered

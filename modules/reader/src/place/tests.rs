@@ -1,7 +1,8 @@
 use super::{
-    Block, Landed, Mark, Opens, Place, Said, as_read, at, heading_of, keep_window_in, kept_at,
-    landed_again, letter, line_in, listed_in, mark, mark_at, moved, on_lines, opening, pt_of,
-    read_in, set_again, still_waiting, take_kept, through, window_in, write_in,
+    Block, Landed, Mark, Opens, Place, Said, as_read, at, heading_of, heights_known,
+    keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark, mark_at, moved,
+    on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept, through, window_in,
+    write_in,
 };
 use std::collections::HashMap;
 
@@ -566,14 +567,24 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
     assert_eq!(
         heights,
         [('a', Some(80.0)), ('b', Some(80.0)), ('c', None)],
-        "b takes its block's height here; c's block's isn't known yet"
+        "b takes its block's height here; c's block's isn't known on the first screen"
     );
-    // Set again at another width, block 1 twice as tall: b scales with it.
-    let after = [(0, 36.0), (1, 120.0), (2, 280.0)];
+    // The whole page, at the same width, has the block after c's.
+    let whole = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 260.0)];
+    heights_known(&mut landed, &whole);
+    let c = landed.iter().find(|one| one.kept.letter == 'c');
+    assert_eq!(
+        c.and_then(|one| one.kept.block_pt),
+        Some(60.0),
+        "c takes its block's height once the whole page has it"
+    );
+    // Set again at another width, blocks 1 and 2 twice as tall: b and c
+    // scale with them.
+    let after = [(0, 36.0), (1, 120.0), (2, 280.0), (3, 400.0)];
     assert_eq!(
         landed_again(&mut landed, &marks, &after),
-        vec![('a', 200.0), ('b', 160.0), ('c', 290.0)],
-        "b lands as far through its block as a does"
+        vec![('a', 200.0), ('b', 160.0), ('c', 300.0)],
+        "b and c land as far through their blocks as a does"
     );
 }
 
@@ -603,9 +614,13 @@ fn a_page_set_again_lands_kept_marks_from_what_was_kept_unless_edited() {
         landed.iter().all(|one| !one.on_line),
         "a goes on a line again"
     );
-    set_again(&mut landed, &mut marks, &after, true, |pt| pt);
+    set_again(&mut landed, &mut marks, &after, true, |pt| pt + 1000.0);
     assert!(landed.is_empty(), "an edit lets the kept marks go");
-    assert_eq!(marks.get(&'a'), Some(&200.0), "and a stays where it stands");
+    assert_eq!(
+        marks,
+        HashMap::from([('a', 1200.0), ('z', 2300.0)]),
+        "and a goes as moved, as z does, not from what was kept"
+    );
 }
 
 #[test]

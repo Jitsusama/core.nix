@@ -17,6 +17,9 @@ mod searching;
 mod view;
 mod wayland;
 
+#[cfg(test)]
+mod reload_tests;
+
 use crate::links::folder_of;
 use crate::painter::{Band, Key};
 use crate::{gl, page, prompt, reading, text, theme};
@@ -114,9 +117,9 @@ pub(crate) struct Incoming {
     opens: Option<std::path::PathBuf>,
     /// The window's title once it shows.
     title: String,
-    /// Whether the file was edited since the page before was set, which
-    /// may have renumbered its blocks.
-    edited: bool,
+    /// The words it was set from, hashed, held against the page shown's
+    /// to know whether the file was edited, which may renumber its blocks.
+    words: u64,
 }
 
 /// A place on the jump list: a file, how far down it the view's top was,
@@ -144,23 +147,43 @@ pub(crate) struct Following {
     landing: Landing,
 }
 
-/// What the reloader is asked: the file saved, or its pictures come from
-/// the web, so set it again, set another file from now on, or set the page
-/// at another width from now on, for a window resized.
+/// What the reloader is asked: set the file again, saved or with its
+/// pictures come from the web, set another file from now on, or set the
+/// page at another width from now on, for a window resized.
 pub(crate) enum Reload {
-    Saved,
-    Fetched,
+    Again,
     Open(String),
     Fit(page::Width),
 }
 
-/// A page the reloader set, of the file it names, whether the file was
-/// edited since the last, with the window's title for it, or why it
-/// couldn't.
+/// What asks that came while one set are taken as: the newest file asked
+/// for and the newest width, each if any asked. Setting again needs no
+/// more than the set itself, since whether the file was edited is judged
+/// by its words against the page shown (`edited`), not by what was heard.
+pub(crate) fn newest(
+    asks: impl IntoIterator<Item = Reload>,
+) -> (Option<String>, Option<page::Width>) {
+    asks.into_iter()
+        .fold((None, None), |(open, fit), ask| match ask {
+            Reload::Again => (open, fit),
+            Reload::Open(file) => (Some(file), fit),
+            Reload::Fit(width) => (open, Some(width)),
+        })
+}
+
+/// Whether a page set from words hashed `set` comes of an edit to the file
+/// shown, whose page was set from `shown`, which then holds `set`. Held
+/// against the page shown rather than the set before, a set let go
+/// unshown, as one for a width the window has left, can't lose an edit.
+pub(crate) fn edited(shown: &mut u64, set: u64) -> bool {
+    std::mem::replace(shown, set) != set
+}
+
+/// A page the reloader set, of the file it names, with the window's title
+/// for it and its words hashed (`page::words_of`), or why it couldn't.
 type Reset = (
     String,
-    bool,
-    Result<(typst_layout::Page, f64, Vec<text::Line>, String), String>,
+    Result<(typst_layout::Page, f64, Vec<text::Line>, String, u64), String>,
 );
 
 /// What the loader is told of a band, to know it again when its texture

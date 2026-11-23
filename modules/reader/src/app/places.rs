@@ -28,14 +28,14 @@ impl App {
     /// the view's top words are on it.
     /// A page the reloader set: the file shown, saved, or the file being
     /// opened in its place. One of a file no longer wanted is let go.
-    pub(crate) fn saved(&mut self, (file, edited, set): Reset) {
+    pub(crate) fn saved(&mut self, (file, set): Reset) {
         let file = std::path::PathBuf::from(file);
         let opens = match &self.following {
             Some(following) if following.file == file => true,
             None if file == self.file => false,
             _ => return,
         };
-        let (page, ms, lines, title) = match set {
+        let (page, ms, lines, title, words) = match set {
             Ok(set) => set,
             Err(error) => {
                 eprintln!("reader: can't set {}: {error}", file.display());
@@ -86,7 +86,7 @@ impl App {
             set_ms: ms,
             opens: opens.then_some(file),
             title,
-            edited,
+            words,
         });
         self.ask_incoming();
     }
@@ -208,6 +208,9 @@ impl App {
         self.jump = None;
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
+        // Held against the page shown, so an edit whose set was let go for
+        // a width the window left still counts once its words show.
+        let edited = super::edited(&mut self.shown_words, incoming.words);
         // Set again at another width, the page's blocks have moved, so each
         // mark, and the cursor's line, goes as far through its block from
         // the line it's on. Set again at the same width, saved or with its
@@ -229,13 +232,7 @@ impl App {
                 }
                 None => pt,
             };
-            place::set_again(
-                &mut self.landed,
-                &mut self.marks,
-                &after,
-                incoming.edited,
-                moved,
-            );
+            place::set_again(&mut self.landed, &mut self.marks, &after, edited, moved);
             if let Some(pt) = self.aim.as_mut() {
                 *pt = moved(*pt);
             }
@@ -331,10 +328,12 @@ impl App {
     /// Takes back the kept marks whose blocks the page has, `whole` when
     /// no block past the page's comes.
     fn take_kept_marks_as(&mut self, whole: bool) {
-        if self.kept_marks.is_empty() {
+        let lacking = self.landed.iter().any(|one| one.kept.block_pt.is_none());
+        if self.kept_marks.is_empty() && !lacking {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
+        place::heights_known(&mut self.landed, &starts);
         place::take_kept(
             &mut self.kept_marks,
             &mut self.marks,

@@ -1,6 +1,6 @@
 // What the reader's provider in the launcher works out (ReaderProgram.qml),
 // kept apart from Quickshell's types so tests/reader-program.qml runs it in
-// Qt's own engine: the places `reader --places` lists (src/place.rs), read;
+// Qt's own engine: the places `reader --places` lists (src/place/), read;
 // what each file's row says beside it, the heading it was left under, how
 // far down the page and when, or that it was read to its end; its drawer's
 // plate; what Programs › Reader's drawer says is still to finish; and the

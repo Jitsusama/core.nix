@@ -62,7 +62,7 @@ LOOKED_AT = {
 }
 
 # Where in the home the reader reads markdown files here, and where it keeps where each was
-# left (modules/reader/src/place.rs).
+# left (modules/reader/src/place/).
 NOTES = "Documents/Harbour"
 PLACES = ".local/state/reader/places"
 # The title of the page left part way, which its row says it was left under; how many lines

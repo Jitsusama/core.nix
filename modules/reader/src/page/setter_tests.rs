@@ -1,8 +1,9 @@
 //! What the page is set at first and what it knows when it's set again:
-//! the first width, from the window kept last time, and whether the file
-//! was edited between two sets, which may renumber its blocks.
+//! the first width, from the window kept last time, and the words each set
+//! read, which say whether the file was edited between two sets, which may
+//! renumber its blocks.
 
-use super::{Setter, Width};
+use super::{Setter, Width, set_first};
 
 #[test]
 fn the_first_width_is_the_kept_windows_or_else_an_unnamed_ones() {
@@ -26,28 +27,33 @@ fn the_first_width_is_the_kept_windows_or_else_an_unnamed_ones() {
 }
 
 #[test]
-fn a_set_says_the_file_was_edited_only_when_its_words_changed() {
+fn a_sets_words_change_only_when_the_file_does() {
     let dir = std::env::temp_dir().join(format!("reader-edited-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
     let (file, other) = (dir.join("page.md"), dir.join("other.md"));
     std::fs::write(&file, "# One\n\nWords.\n").expect("the file");
     std::fs::write(&other, "# Other\n").expect("the other");
-    let mut setter = Setter::new(file.to_str().expect("a path"));
-    let mut edited = |change: &dyn Fn(&mut Setter)| {
+    let path = file.to_str().expect("a path");
+    // The first screen's set, which the window holds the reloader's against.
+    let first = set_first(path, None, Width::for_window(720.0)).expect("the first screen");
+    let mut setter = Setter::new(path);
+    let mut words = |change: &dyn Fn(&mut Setter)| {
         change(&mut setter);
         setter.set().expect("set");
-        setter.edited()
+        setter.words()
     };
-    let seen = [
-        edited(&|_| ()),
-        edited(&|setter| setter.fit(Width::for_window(360.0))),
-        edited(&|_| std::fs::write(&file, "# Two\n\nOne\n\nWords.\n").expect("saved")),
-        edited(&|setter| setter.open(other.to_str().expect("a path"))),
-    ];
+    let (again, wider) = (
+        words(&|_| ()),
+        words(&|setter| setter.fit(Width::for_window(360.0))),
+    );
+    let saved = words(&|_| std::fs::write(&file, "# Two\n\nOne\n\nWords.\n").expect("saved"));
+    let elsewhere = words(&|setter| setter.open(other.to_str().expect("a path")));
     std::fs::remove_dir_all(&dir).expect("cleaned");
     assert_eq!(
-        seen,
-        [false, false, true, false],
-        "the first set, a width, a save, another file"
+        first.words, again,
+        "the first screen and the reloader read alike"
     );
+    assert_eq!(again, wider, "another width is the same words");
+    assert_ne!(again, saved, "a save that changed them");
+    assert_ne!(saved, elsewhere, "another file");
 }

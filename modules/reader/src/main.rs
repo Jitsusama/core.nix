@@ -166,6 +166,9 @@ struct App {
     /// screen's page waiting for the rest, so how far down it the view is
     /// can be said.
     whole: bool,
+    /// The words the page shown was set from, hashed, which a page set
+    /// again is held against to know whether the file was edited.
+    shown_words: u64,
     stale: HashSet<Key>,
     jump: Option<motion::Jump>,
     /// Under reduced motion a move cuts straight there.
@@ -508,6 +511,7 @@ fn show(
         rest,
         parts: set_parts,
         title,
+        words,
     } = first;
 
     let (globals, queue) = registry_queue_init::<App>(&conn)?;
@@ -546,6 +550,7 @@ fn show(
         set_parts,
         width,
         whole: rest.is_none(),
+        words,
     };
     let mut app = App::new(
         &globals,
@@ -700,6 +705,8 @@ struct Opening {
     width: page::Width,
     /// Whether the first set was the whole file.
     whole: bool,
+    /// The words the first set read, hashed.
+    words: u64,
 }
 
 /// Sets the rest of the file on a thread of its own while the first screen
@@ -749,15 +756,9 @@ fn reload_on_save(
         .spawn(move || {
             let mut setter: Option<page::Setter> = None;
             while let Ok(ask) = asks.recv() {
-                let (mut open, mut fit, mut saved) = (None, None, false);
-                for ask in std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())) {
-                    match ask {
-                        Reload::Open(file) => open = Some(file),
-                        Reload::Fit(width) => fit = Some(width),
-                        Reload::Saved => saved = true,
-                        Reload::Fetched => (),
-                    }
-                }
+                let (open, fit) = app::newest(
+                    std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())),
+                );
                 let setter = setter.get_or_insert_with(|| {
                     let mut setter = page::Setter::new(&first);
                     setter.fit(width);
@@ -771,15 +772,9 @@ fn reload_on_save(
                 }
                 let set = setter.set().map(|(page, ms)| {
                     let lines = text::lines(text::runs(&page.frame));
-                    (page, ms, lines, setter.title().to_string())
+                    (page, ms, lines, setter.title().to_string(), setter.words())
                 });
-                // Edited when a save was heard, or when a set for a width
-                // read words a save not heard yet changed.
-                let edited = saved || setter.edited();
-                if reset_to
-                    .send((setter.file().to_string(), edited, set))
-                    .is_err()
-                {
+                if reset_to.send((setter.file().to_string(), set)).is_err() {
                     return;
                 }
             }
@@ -787,11 +782,11 @@ fn reload_on_save(
     // Pictures fetched from the web set the page again, the file unedited.
     let fetched_to = reload_to.clone();
     web::when_fetched(move || {
-        let _ = fetched_to.send(Reload::Fetched);
+        let _ = fetched_to.send(Reload::Again);
     });
     let save_to = reload_to.clone();
     let watch = watch::saves(std::path::Path::new(file), move || {
-        save_to.send(Reload::Saved).is_ok()
+        save_to.send(Reload::Again).is_ok()
     })
     .map_err(|error| eprintln!("reader: can't watch {file} for saves: {error}"))
     .ok();
