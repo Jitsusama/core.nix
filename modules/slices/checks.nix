@@ -594,7 +594,8 @@
   # One from agents' places, jobs.service and the spawners' scopes in
   # jobs.slice and pi's host and conversation units in agents.slice, is
   # given jobs-work.slice instead. Only systemd-run's own options are read,
-  # never the command's.
+  # never the command's, bundled and shortened as its parser takes them, by
+  # a table the systemd it wraps lists the same in its --help.
   an-agents-run-stays-in-its-slice =
     let
       run = pkgs.callPackage ./systemd-run.nix {
@@ -603,7 +604,8 @@
       };
     in
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { } ''
-      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run}
+      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
+        ${./systemd-run-options.txt} ${pkgs.systemd}/bin/systemd-run
       touch $out
     '';
 

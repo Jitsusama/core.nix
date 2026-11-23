@@ -1,0 +1,57 @@
+# systemd-run's options as the systemd it wraps lists them in --help, one a
+# line: its short letter or -, then its long name, with = when it takes a
+# value. systemd-run.sh reads a call's arguments by this table, and
+# an-agents-run-stays-in-its-slice fails, naming the difference, when the
+# wrapped systemd's --help lists other options.
+h help
+- version
+- no-ask-password
+- user
+- system
+H host=
+M machine=
+C capsule=
+- scope
+u unit=
+p property=
+- description=
+- slice=
+- slice-inherit
+- expand-environment=
+- no-block
+r remain-after-exit
+- wait
+- send-sighup
+- service-type=
+- uid=
+- gid=
+- nice=
+- working-directory=
+d same-dir
+- root-directory=
+R same-root-dir
+E setenv=
+t pty
+T pty-late
+P pipe
+q quiet
+v verbose
+- output=
+- json=
+G collect
+S shell
+- job-mode=
+- ignore-failure
+- background=
+- no-pager
+- path-property=
+- socket-property=
+- on-active=
+- on-boot=
+- on-startup=
+- on-unit-active=
+- on-unit-inactive=
+- on-calendar=
+- on-timezone-change
+- on-clock-change
+- timer-property=
