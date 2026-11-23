@@ -7173,9 +7173,15 @@ Scope {
             // went: Machine's and Desktop's said it all as rows (2026-11-11).
             const searchedAt = Date.now();
             gathered = [];
-            root.found = words.length === 0 ? offered.slice() : inCategory(letters);
+            // Listed as they stand, its members leave out those that wait
+            // unseen, counted, as a held step's rows do.
+            const standing = words.length === 0 && (!steadying || ordering)
+                ? Steady.seen(offered) : { rows: offered.slice(), waiting: 0 };
+            root.found = words.length === 0 ? standing.rows : inCategory(letters);
             const foundAt = Date.now();
             compose(!steadying);
+            if (!steadying || ordering)
+                waitingRows = standing.waiting;
             if (steadying)
                 return;
             if (backRow() < 0)
@@ -7197,6 +7203,7 @@ Scope {
             // not counted, so no list changes order as it grows. A part
             // named leads what's found.
             let found = [];
+            let unseen = 0;
             if (from && words.length === 0)
                 found = listedWhole(from);
             else if (from) {
@@ -7214,9 +7221,15 @@ Scope {
             // Meeting makes a time, lists them first. One that finds what's
             // typed past the rows it shows (`finds`), as Capture's Recent
             // finds among everything taken, lists what it finds instead.
-            else if (words.length === 0 && !holdsWords)
-                found = offered.slice();
-            else if (held[held.length - 1].row.finds)
+            // Listed as they stand, its rows leave out those that wait
+            // unseen (Steady.seen), counted, since the step keeps them at
+            // its end, where they'd read as the last cell's; steadied, they
+            // stay in, for the refresh to withhold and count.
+            else if (words.length === 0 && !holdsWords) {
+                const standing = Steady.seen(offered);
+                found = steadying && !ordering ? offered.slice() : standing.rows;
+                unseen = standing.waiting;
+            } else if (held[held.length - 1].row.finds)
                 found = held[held.length - 1].row.finds(letters);
             else
                 found = (held[held.length - 1].row.typed?.(letters) ?? [])
@@ -7231,16 +7244,17 @@ Scope {
             // order it's shown in, and the selection where it is (reshow).
             // What's typed finds rows by rank, where nothing stands under a
             // heading, so it's steadied with none, as it shows none; and a
-            // list in its own order shows all it has, so nothing waits.
+            // list in its own order shows all it has, but for what waits
+            // unseen.
             if (steadying) {
                 if (ordering)
-                    waitingRows = 0;
+                    waitingRows = unseen;
                 matches = unheaded(live(ordering ? found : steadied(unheaded(found))));
                 if (current === -1 && !lined)
                     current = 0;
                 return;
             }
-            waitingRows = 0;
+            waitingRows = unseen;
             const foundAt = Date.now();
             const lived = live(found);
             const livedAt = Date.now();
@@ -10223,7 +10237,8 @@ Scope {
             // A count typed in normal, waiting for its move, and the keys
             // of a sequence begun, as gg's first g.
             counted: prompt.standing.count,
-            // How many rows wait behind rows held still (holdingRows).
+            // How many rows wait unseen (waitingRows): behind rows held still
+            // (holdingRows), or For You's of no cell, until it's shown afresh.
             waiting: root.waitingRows,
             begun: prompt.standing.typed.join(""),
             // The command line, while it's open: what it holds, the line

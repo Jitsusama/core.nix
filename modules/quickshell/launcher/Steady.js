@@ -32,10 +32,13 @@ function standing(shown, gaveWay) {
 // titled alike keep their places. The rows that wait unseen (laidAgain)
 // come in once the list is shown afresh.
 //
-// What waits unseen comes in here, at the end under no heading, since
-// kept is also how a held step's rows are made again (Held.js's keep),
-// which the list shown is then laid from (refreshed): withheld there, a
-// row would be gone before the list could count it.
+// What waits unseen comes in here, at the end under no heading, marked
+// `unseen`, since kept is also how a held step's rows are made again
+// (Held.js's keep), which the list shown is then laid from (refreshed):
+// withheld there, a row would be gone before the list could count it. It
+// stays marked as the step is made again, so a key that lists the step's
+// rows as they stand (seen) still leaves it out and counts it, rather than
+// showing it at the end as the last heading's.
 function kept(shown, now, id) {
     const again = laidAgain(shown, now, id, false);
     return again.lit(again.rows);
@@ -47,6 +50,14 @@ function kept(shown, now, id) {
 function refreshed(shown, now, id) {
     const again = laidAgain(shown, now, id, true);
     return { rows: again.lit(again.rows), waiting: again.late };
+}
+
+// A held step's rows as kept lays them, listed as they stand, as a key
+// lists them: those that wait unseen left out, and how many still there:
+// { rows, waiting }.
+function seen(rows) {
+    return { rows: rows.filter(row => row.unseen !== true),
+        waiting: rows.filter(row => row.unseen === true && row.went !== true).length };
 }
 
 // The rows laid again, `rows`, with `lit(rows)` dimming each heading said
@@ -68,6 +79,10 @@ function refreshed(shown, now, id) {
 // 2026-11-22 [228cdeb9] and [4c5e154a]). One said again among `now`, as a
 // held step's rows hand it back, is no row of the source's, and is said
 // only as here, though it still says what follows it is its heading's.
+// One that waits is withheld and counted in `late` where `withholding`,
+// and else kept at the end marked `unseen`, as a row of no heading: it ends
+// nothing, since it isn't shown, and once it's pressing, or has a heading
+// or none above it, it comes in as any row does.
 function laidAgain(shown, now, id, withholding) {
     const owners = headingsUnder(now, id);
     const fresh = now.filter(row => !row.repeated);
@@ -89,6 +104,7 @@ function laidAgain(shown, now, id, withholding) {
     });
     const taken = fresh.map(() => false);
     const out = [];
+    let late = 0;
     for (const row of shown) {
         if (row.repeated) {
             const again = headingsNow.find(one => id(one) === id(row));
@@ -96,6 +112,22 @@ function laidAgain(shown, now, id, withholding) {
             continue;
         }
         const left = waiting[id(row)];
+        // One that waits unseen was never shown, so it has no place to
+        // keep: it stays waiting while it waits, and else comes in as a new
+        // one does, with its heading said over it, or leaves with nothing
+        // to dim.
+        if (row.unseen === true) {
+            const at = left && left.length > 0 ? left[0] : -1;
+            if (at >= 0 && waits(fresh[at], under[at], headingsNow.length > 0)) {
+                left.shift();
+                taken[at] = true;
+                late += withholding ? 1 : 0;
+                if (!withholding) {
+                    out.push(Object.assign({}, fresh[at], { unseen: true }));
+                }
+            }
+            continue;
+        }
         if (left && left.length > 0) {
             const at = left.shift();
             taken[at] = true;
@@ -105,30 +137,66 @@ function laidAgain(shown, now, id, withholding) {
             out.push(dimmed(row));
         }
     }
-    const headed = out.some(row => row.heading === true);
-    let last = out.filter(row => row.heading === true).pop() ?? null;
-    let late = 0;
+    let headed = out.some(row => row.heading === true);
+    let last = endingHeading(out, owner);
     fresh.forEach((row, at) => {
-        if (taken[at] || row.heading === true) {
+        // One that left before it was ever shown, as a held step's rows
+        // hand it back, has nothing to dim, and never waits to be shown.
+        if (taken[at] || row.heading === true || row.went) {
             return;
         }
         const its = under[at];
-        if (its === null && headed) {
-            if (withholding && !pressing(row)) {
-                late += 1;
-                return;
+        if (waits(row, its, headed)) {
+            late += withholding ? 1 : 0;
+            if (!withholding) {
+                out.push(Object.assign({}, row, { unseen: true }));
             }
+            return;
+        }
+        if (its === null && headed) {
             last = null;
         }
         if (its !== null && (last === null || id(last) !== id(its))) {
             last = Object.assign({}, its, { repeated: true });
             out.push(last);
+            headed = true;
         }
-        const coming = typeof row.ranked === "function" ? row.ranked() : row;
+        const coming = asSeen(typeof row.ranked === "function" ? row.ranked() : row);
         owner.set(coming, its);
         out.push(coming);
     });
     return { rows: out, late, lit };
+}
+
+// Whether a row new to a list waits unseen: one of no heading (`its`)
+// where a heading is said above the end (`headed`), and not pressing.
+function waits(row, its, headed) {
+    return its === null && headed && !pressing(row);
+}
+
+// A row as it's shown, no longer marked as waiting unseen.
+function asSeen(row) {
+    if (row.unseen !== true) {
+        return row;
+    }
+    const shown = Object.assign({}, row);
+    delete shown.unseen;
+    return shown;
+}
+
+// The heading the end of `rows` reads as under: the last one, unless a row
+// of none (`owner`, each row's heading) stands after it, as a pressing one
+// that came in does, which ends it however long ago it came.
+function endingHeading(rows, owner) {
+    let last = null;
+    for (const row of rows) {
+        if (row.heading === true) {
+            last = row;
+        } else if (owner.has(row) && owner.get(row) === null) {
+            last = null;
+        }
+    }
+    return last;
 }
 
 // Whether a row is pressing, so it never waits unseen: its own word, or
