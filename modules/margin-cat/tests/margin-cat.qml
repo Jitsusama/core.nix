@@ -441,6 +441,18 @@ QtObject {
             Shown.begun(140, 100, 6, null), 34);
         expect("a walk told while still held leaves the open hold out too",
             Shown.begun(140, 100, 6, 130), 24);
+        // Every frame of a walk is asked of, but while it's held under
+        // the card, and none once it's done.
+        expect("a walk follows its frames", Shown.follows(true, true, false, false), true);
+        expect("held under the card, it follows none",
+            Shown.follows(true, true, true, false), false);
+        expect("what his hand set off follows under the card",
+            Shown.follows(true, true, true, true), true);
+        expect("done, it follows none", Shown.follows(true, false, false, false), false);
+        expect("done by his hand, it follows none", Shown.follows(true, false, true, true),
+            false);
+        expect("where frames can't be told of, it follows none",
+            Shown.follows(false, true, false, false), false);
         // A walk done is told only once niri has answered for every
         // frame on its way as it sat, it having set off after frame 5
         // and the last begun as it sat being 40 (2026-11-19: told at

@@ -471,18 +471,22 @@ PanelWindow {
     }
 
     // A walk's `plan` played from where it is, from its first step.
+    // A walk's frames are counted from begunAt, read once `going` has
+    // set following, so no frame it counts begins unasked.
     function walks(plan: var): void {
-        if (going === null) {
+        const fresh = going === null;
+        if (fresh) {
             sayWalked();
             shown = [];
             costs = [];
             unseen = 0;
             unheld();
             steps = 0;
-            begunAt = window.FramePresentation.framesBegun;
         }
         byHand = false;
         going = plan;
+        if (fresh)
+            begunAt = window.FramePresentation.framesBegun;
         goes(walker);
     }
 
@@ -683,10 +687,9 @@ PanelWindow {
     // before either reached the render thread went unasked: on Joel's
     // screen 30 of 44 walks, moves and plays from 22:00 to 01:30 on
     // 2026-11-22 told 1 to 7 frames fewer than they drew, each waiting
-    // out its answers. Following draws no frame of its own, so a held
-    // cat stays still.
-    FramePresentation.following: window.FramePresentation.available
-        && (going !== null || moving !== null) && (!Launched.up || byHand)
+    // out its answers (Shown.follows, its cases in Qt's engine).
+    FramePresentation.following: Shown.follows(window.FramePresentation.available,
+        going !== null || moving !== null, Launched.up, byHand)
     // Each frame of it as niri showed it or didn't. Once it's done, the
     // answers still to come are only heard: each frame on its way was
     // asked of as it began.
@@ -955,11 +958,11 @@ PanelWindow {
         unseen = 0;
         unheld();
         steps = 0;
-        begunAt = window.FramePresentation.framesBegun;
         goingTo = wanted;
         under = column;
         byHand = hand;
         going = playing;
+        begunAt = window.FramePresentation.framesBegun;
         goes(walker);
         // Set once it's going, so the seat moving under it is its
         // own walk's end, and sets no walk off.
@@ -1343,7 +1346,11 @@ PanelWindow {
                 turn: stepped.turn,
                 facing: stepped.facing,
                 way: moving.way,
-                beats: moving.beats.map(beat => beat.name)
+                beats: moving.beats.map(beat => beat.name),
+                // How far niri's slide still has its ground off
+                // where its way lies, so a check can tell a ride
+                // from a jump.
+                carried: Math.round((stepped.carried ?? 0) * 10) / 10
             },
             // The layer's height, the screen's on a move, so it's drawn
             // wherever its way takes it.

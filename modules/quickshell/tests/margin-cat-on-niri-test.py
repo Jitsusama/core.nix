@@ -499,8 +499,9 @@ def test_a_walk_set_off_under_the_launcher_waits_for_it_to_close(shell: Shell) -
     after = steps(shell, since)
     told = walked_report(shell, closing)
     assert not under, f"the cat walked under the launcher: {under[:3]}"
-    # Its walk set off under the card is started and held at once, and the start has asked
-    # its window for the one frame niri draws it at its seat (2026-11-19, round 6's run).
+    # Its walk set off under the card is started and held at once, asking niri of nothing. One
+    # frame is still allowed, as when its start asked for the one niri drew it at its seat
+    # (2026-11-19, round 6's run); whether a start that asks nothing draws it isn't yet read.
     assert drew <= 1, f"the cat drew {drew} frames of its own under the launcher: {drawn}"
     assert after, "the cat took no step once the launcher closed"
     assert after[0]["walk"]["t"] <= HELD_AHEAD, (
@@ -1205,19 +1206,27 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # may ride back in from anywhere else off it, since neither place is
     # seen (the net, 2026-11-16: from y -849 in its unseen beat to -131).
     off = [one["y"] + one["size"] <= 0 or one["y"] >= one["reach"] for one in (was, after)]
-    step = STEPS_ON * was["size"]
+    near = STEPS_ON * was["size"]
     gone = math.hypot(after["x"] - was["x"], after["y"] - was["y"])
-    # Its ground slides back under it as the second move turns the first, by up to niri's
-    # whole gap between workspaces, a tenth of the screen past its height (MarginCatStacked.js's
-    # apart()), so a loaded builder's frames, 87 ms apart, said it where its ground had carried
-    # it: peeking 3 of its 8 rows down from the gap over the lower workspace at y -5, it was
-    # next said at 816, the gap gone off the screen's foot (the net, 2026-11-22). So a place a
-    # step from where it got to, carried the second move's way, is where it got to too.
-    way = ((after.get("move") or {}).get("way")) or 0
-    apart = was["reach"] + max(1, round(was["reach"] * 0.1))
-    carried = -way * (after["y"] - was["y"])
-    rode = way != 0 and abs(after["x"] - was["x"]) <= step and -step <= carried <= apart + step
-    assert all(off) or gone <= step or rode, f"the second move put it at {after}, from {was}"
+    # Turned back up before it had a seat, its second move is the ride that takes its window
+    # off the screen's foot (MarginCatStacked.js's moves() with nowhere to go), laid a whole
+    # gap between workspaces below where it got to, a tenth of the screen past its height
+    # (apart()), on the workspace sliding back down, `carried` as far off that as niri's
+    # slide still has its ground. Peeking 3 of its 8 rows down from the gap at y -5, it was next said
+    # at 816 and 845 a millisecond into that ride (the net, 2026-11-22). So on the ride, a
+    # place a step from the gap below where it got to, off by its ground, is where it got to
+    # too. The second move is always up here, so only that way is held to it.
+    move = after.get("move") or {}
+    scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
+    apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
+    laid = after["y"] - move.get("carried", 0) - was["y"]
+    rode = (
+        move.get("way") == -1
+        and move.get("beats") == ["rides"]
+        and abs(after["x"] - was["x"]) <= near
+        and abs(laid - apart) <= near
+    )
+    assert all(off) or gone <= near or rode, f"the second move put it at {after}, from {was}"
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
     assert again, "the second move set it on its seat, moving it no more"
 
