@@ -4,7 +4,7 @@
 use std::fs;
 
 use super::super::tests::root;
-use super::{Gated, gated, words_of};
+use super::{Gated, MARKED, gated, words_of};
 
 /// What nix-offload says once every part of a run ran to its end, as its
 /// own test pins it (`modules/nix-offload/offload/src/main.rs`).
@@ -147,6 +147,15 @@ fn a_red_is_whole_only_when_nix_offload_says_every_part_ran() {
             "a red that ended {code} read as whole"
         );
     }
+    // changed-checks' broken 65 and cut 70 are reds that hold, neither
+    // whole nor untaken (round 6's F10).
+    for code in [65, 70] {
+        assert_eq!(
+            gated(Some(code), &format!("{failed}{WHOLE}\n")),
+            Gated::Red { whole: false },
+            "a red changed-checks ended {code} read as whole or untaken"
+        );
+    }
     for code in [1, 100, 104] {
         assert_eq!(
             gated(Some(code), &format!("{failed}  {WHOLE}\n")),
@@ -175,8 +184,8 @@ fn a_gate_is_read_by_what_its_last_run_said() {
         "a failed check beside a byte that isn't UTF-8 read as untaken"
     );
     let replayed = format!(
-        "{failed}nix-offload: 1234567 over main failed, so the change runs again on its \
-         own base\nnix-offload: no builder took it\n"
+        "{MARKED}{MARK}\n{failed}nix-offload: 1234567 over main failed, so the change runs \
+         again on its own base [{MARK}]\nnix-offload: no builder took it\n"
     );
     fs::write(&log, replayed).unwrap();
     assert_eq!(
@@ -186,14 +195,64 @@ fn a_gate_is_read_by_what_its_last_run_said() {
     );
     // A check that prints the same words sets nothing aside.
     let echoed = format!(
-        "{failed}a-check> nix-offload: x over main failed, so the change runs again on \
-         its own base\nnix-offload: no builder took it\n"
+        "{MARKED}{MARK}\n{failed}a-check> nix-offload: x over main failed, so the change \
+         runs again on its own base [{MARK}]\nnix-offload: no builder took it\n"
     );
     fs::write(&log, echoed).unwrap();
     assert_eq!(
         gated(Some(75), &words_of(&log)),
         Gated::Red { whole: false },
         "a check's own words set aside the failure before them"
+    );
+    fs::remove_dir_all(&root).unwrap();
+}
+
+/// The mark a test's gate log opens with.
+const MARK: &str = "0123456789abcdef0123456789abcdef";
+
+/// A rider's evaluation writes to the gate's log raw, so only a line
+/// signed with the mark the log opens with is nix-offload's own: an
+/// unsigned or wrongly signed line sets no replay aside and says no run
+/// whole, and a log with no mark trusts neither (round 6's F17).
+#[test]
+fn only_lines_signed_with_the_gate_s_mark_are_nix_offload_s() {
+    let root = root("marked");
+    fs::create_dir_all(&root).unwrap();
+    let log = root.join("candidate.log");
+    let failed = "error: Cannot build '/nix/store/x-a-check.drv'.\n       Reason: builder \
+                  failed with exit code 1.\n";
+    let read = |words: &str| {
+        fs::write(&log, words).unwrap();
+        gated(Some(1), &words_of(&log))
+    };
+    assert_eq!(
+        read(&format!("{MARKED}{MARK}\n{failed}{WHOLE} [{MARK}]\n")),
+        Gated::Red { whole: true },
+        "a red nix-offload signed as whole read as cut short"
+    );
+    for forged in [
+        format!("{MARKED}{MARK}\n{failed}{WHOLE}\n"),
+        format!("{MARKED}{MARK}\n{failed}{WHOLE} [{}]\n", "f".repeat(32)),
+        format!("{failed}{WHOLE} [{MARK}]\n"),
+        format!("{failed}{WHOLE}\n"),
+        format!("{failed}{MARKED}{MARK}\n{WHOLE} [{MARK}]\n"),
+    ] {
+        assert_eq!(
+            read(&forged),
+            Gated::Red { whole: false },
+            "a forged word read as whole: {forged}"
+        );
+    }
+    // A replay line the mark doesn't sign hides nothing before it.
+    let hidden = format!(
+        "{MARKED}{MARK}\n{failed}nix-offload: x over main failed, so the change runs again on \
+         its own base\nnix-offload: no builder took it\n"
+    );
+    fs::write(&log, hidden).unwrap();
+    assert_eq!(
+        gated(Some(75), &words_of(&log)),
+        Gated::Red { whole: false },
+        "an unsigned replay line set aside the failure before it"
     );
     fs::remove_dir_all(&root).unwrap();
 }
