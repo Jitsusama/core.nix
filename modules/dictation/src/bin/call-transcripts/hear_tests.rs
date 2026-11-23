@@ -505,7 +505,7 @@ impl Hears for Scripted {
         took(self.text.take())
     }
 
-    fn device(&self) -> &str {
+    fn device(&self) -> &'static str {
         "CPU"
     }
 }
