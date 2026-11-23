@@ -1,4 +1,4 @@
-//! Why the upload holds where it does, in one sentence from a fixed
+//! Why the upload holds where it does, in a sentence or two from a fixed
 //! vocabulary, for `status.json`'s `heard.why`, the launcher's network row
 //! and `shaper status`. Each says the rate, what set it and how long it
 //! has held so, so a night like 15 November, when the upload sat at a
@@ -57,9 +57,30 @@ impl Why {
     pub fn same_kind(self, other: Why) -> bool {
         std::mem::discriminant(&self) == std::mem::discriminant(&other)
     }
+
+    /// This kind of reason in a word, as a trace keeps it each second: the
+    /// sentence `say` makes is too long for every line of a day.
+    pub fn kind(self) -> &'static str {
+        match self {
+            Why::Unmeasured => "unmeasured",
+            Why::Unanswered => "unanswered",
+            Why::GaveUp => "gave-up",
+            Why::Clear => "clear",
+            Why::Line { .. } => "line",
+            Why::Vpn { .. } => "vpn",
+            Why::Far { .. } => "far",
+            Why::Tunnel { .. } => "tunnel",
+            Why::Agents { .. } => "agents",
+            Why::Router { .. } => "router",
+            Why::Guarded => "guarded",
+            Why::Ceiling => "ceiling",
+        }
+    }
 }
 
-/// Says `why` in one sentence: `limit` is what the upload is held to, in
+/// Says `why` in a sentence, or two where agents' hold stands beside the
+/// VPN's own; a share is rounded down, so a hold under one never reads as
+/// 100%. `limit` is what the upload is held to, in
 /// kbit/s, `anchor` the network's declared rate, if it has one, and
 /// `for_s` how long, in seconds, the reason has held.
 pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> String {
@@ -103,15 +124,15 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
         } => format!(
             "Upload {rate}: the VPN waited {delay_ms:.0} ms inside its tunnel, so its own queue \
              is held to {:.0}% of its lane; {held}.{}",
-            share * 100.0,
+            percent(share),
             // Agents' hold is said apart, with no time, since how long the
             // VPN's has held says nothing of theirs, nor whether theirs is
             // rising yet, which it does only once a judgement finds no
-            // wait. Floored, so a share under one never reads as 100%.
+            // wait.
             agents.map_or_else(String::new, |agents| format!(
                 " Agents' lane is still held from an earlier wait, to {:.0}% of its share, or \
                  its floor if more.",
-                (agents * 100.0).floor()
+                percent(agents)
             ))
         ),
         // The lanes never hold agents under their floor, which the
@@ -120,7 +141,7 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
             "Upload {rate}: the VPN waited {delay_ms:.0} ms past our queues beside agents' own \
              uploads, so their lane is held to {:.0}% of its share, or its floor if more; \
              {held}.",
-            share * 100.0
+            percent(share)
         ),
         Why::Router { plateau } => format!(
             "Upload {rate}: held under the router's own queue, which let {} through; {held}.",
@@ -201,6 +222,14 @@ pub fn ceiling(link: &str, up: u64) -> String {
          while the controller holds nothing.",
         mbit(lossless(up))
     )
+}
+
+/// A share in whole percent, rounded down, as the status and a trace say
+/// it: a hold under one never reads as 100%. Rounded down from a billionth
+/// over, since a double keeps a share such as 0.29 as 28.999... percent,
+/// which would otherwise read a percent tighter than it was.
+pub fn percent(share: f64) -> f64 {
+    (share * 100.0 + 1e-9).floor()
 }
 
 fn lossless(kbit: u64) -> f64 {
@@ -293,7 +322,7 @@ mod tests {
         let nearly = say(
             Why::Tunnel {
                 delay_ms: 118.6,
-                share: 0.723,
+                share: 0.997,
                 agents: Some(0.996),
             },
             Some(10_800),
@@ -301,13 +330,26 @@ mod tests {
             8.0,
         );
         assert!(
-            nearly.contains("to 99% of its share"),
+            nearly.contains("to 99% of its lane") && nearly.contains("to 99% of its share"),
             "a share under one read as whole: {nearly}"
         );
     }
 
     #[test]
     fn agents_held_for_the_vpn_say_the_share_their_lane_is_held_to() {
+        let nearly = say(
+            Why::Agents {
+                delay_ms: 80.0,
+                share: 0.996,
+            },
+            Some(10_800),
+            Some(12_000.0),
+            8.0,
+        );
+        assert!(
+            nearly.contains("to 99% of its share"),
+            "agents' share under one read as whole: {nearly}"
+        );
         assert_eq!(
             say(
                 Why::Agents {
@@ -320,6 +362,77 @@ mod tests {
             ),
             "Upload 10.8 Mb/s: the VPN waited 96 ms past our queues beside agents' own uploads, \
              so their lane is held to 61% of its share, or its floor if more; held so for 14 s."
+        );
+    }
+
+    // A double keeps 0.29 as a hair under, and the tunnel's hold climbs from
+    // 0.25 by 0.02 a second, so it lands on such shares; rounded down from
+    // there they'd read a percent tighter than they were.
+    #[test]
+    fn a_share_reads_in_whole_percent_rounded_down_and_never_a_percent_low() {
+        for (share, whole) in [
+            (0.29, 29.0),
+            (0.57, 57.0),
+            (0.58, 58.0),
+            (0.814, 81.0),
+            (0.996, 99.0),
+            (1.0, 100.0),
+        ] {
+            let said = percent(share);
+            assert!(
+                (said - whole).abs() < 1e-12,
+                "{share} read as {said}%, not {whole}%"
+            );
+        }
+    }
+
+    // A trace keeps each reason's word for every second of a day, which a
+    // replay or a look back reads it by, so each word is fixed and is one
+    // reason's alone.
+    #[test]
+    fn each_kind_of_reason_keeps_a_word_of_its_own() {
+        let kinds = [
+            (Why::Unmeasured, "unmeasured"),
+            (Why::Unanswered, "unanswered"),
+            (Why::GaveUp, "gave-up"),
+            (Why::Clear, "clear"),
+            (
+                Why::Line {
+                    delay_ms: 1.0,
+                    eased: false,
+                },
+                "line",
+            ),
+            (Why::Vpn { delay_ms: 1.0 }, "vpn"),
+            (Why::Far { delay_ms: 1.0 }, "far"),
+            (
+                Why::Tunnel {
+                    delay_ms: 1.0,
+                    share: 0.5,
+                    agents: None,
+                },
+                "tunnel",
+            ),
+            (
+                Why::Agents {
+                    delay_ms: 1.0,
+                    share: 0.5,
+                },
+                "agents",
+            ),
+            (Why::Router { plateau: 1.0 }, "router"),
+            (Why::Guarded, "guarded"),
+            (Why::Ceiling, "ceiling"),
+        ];
+        for (why, word) in kinds {
+            assert_eq!(why.kind(), word, "{why:?} took another word");
+        }
+        let words: std::collections::BTreeSet<_> =
+            kinds.iter().map(|(why, _)| why.kind()).collect();
+        assert_eq!(
+            words.len(),
+            kinds.len(),
+            "two reasons share a word: {words:?}"
         );
     }
 

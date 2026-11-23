@@ -369,8 +369,13 @@ pub struct Ours {
     /// link's did.
     #[serde(default)]
     pub vpn_queued: bool,
-    /// How long the link's CAKE kept what it held, in ms: a wait of ours,
-    /// which the VPN's flow takes too before it reaches the router.
+    /// How long what the link's queues held ahead of the VPN's flow took
+    /// to leave, in ms: a wait of ours, which the VPN's flow takes before
+    /// it reaches the router. Agents' lane's bytes stand apart, but while
+    /// it holds or keeps sending any it sends them beside the VPN's turn
+    /// (`held::ahead_us` says how). A trace line with no `why` comes from a shaper
+    /// that counted what agents' lane held under its hold in it too, by
+    /// the build that wrote it, whatever its date (src/trace.rs).
     #[serde(default)]
     pub link_wait_ms: u64,
     pub waiting: bool,
@@ -1629,10 +1634,15 @@ impl Controller {
             .is_none_or(|anchor| carried >= anchor * ANCHOR_HOLD * NEAR_THE_HOLD)
     }
 
-    /// Why the upload holds where it does, in one sentence.
+    /// Why the upload holds where it does, in a sentence or two (`why::say`).
     /// It names the upload's own rate, which letting go hands none of.
     pub fn why(&self) -> String {
         self.why_holding(self.up.limit())
+    }
+
+    /// The kind of the controller's reason, in a word (`Why::kind`).
+    pub fn why_kind(&self) -> &'static str {
+        self.why.kind()
     }
 
     /// The controller's reason, said of the upload held to `up`, for one
