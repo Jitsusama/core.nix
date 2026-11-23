@@ -129,7 +129,8 @@
 }
 
 /* ---- The floor cut through: the one drawing, leading the first screen.
-   Before the node speaks it holds the crest; then the cells themselves. ---- */
+   Before the node speaks it holds the crest, and again once every cell has
+   gone; otherwise the cells themselves. ---- */
 
 .floor {
   display: grid;
@@ -144,8 +145,9 @@
 /* The floor's room is as tall as the widest floor drawn across the page,
    1488 by 178 of its units as draw.ts's FLOOR sets them, at most half again
    as large, and never under 6rem, so a floor of few cells on a phone still
-   reads. The crest holds the same room until the node speaks, so the cells
-   arriving move nothing under them; a floor sits at the room's foot. */
+   reads. The crest holds the same room until the node speaks, and once every
+   cell has gone, so cells arriving or leaving move nothing under them; a floor
+   sits at the room's foot. */
 .drawn {
   position: relative;
   inline-size: 100%;
