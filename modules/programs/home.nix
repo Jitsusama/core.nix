@@ -19,8 +19,9 @@ let
   );
   # The launcher's vocabulary, which the rows it serves are said in.
   words = pkgs.writeText "words.json" (builtins.toJSON config.jitsusama.quickshell.launcher.words);
-  # Where zoxide keeps its database, named once, so the folder Code reads
-  # visits from and the one zoxide is told to write in can't drift apart.
+  # Where zoxide keeps its database, named once in this module, so the
+  # folder Code reads visits from and the one zoxide is told to write in
+  # can't drift apart here. kitty's module builds the same path itself.
   zoxideData = "${config.xdg.dataHome}/zoxide";
 in
 {

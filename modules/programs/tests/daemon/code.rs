@@ -12,6 +12,8 @@
 //! where it won't. Forget Gone Trees and Gather Its Store, which tend a
 //! checkout as git's upkeep does, are tested beside it (tend.rs).
 
+use std::io::Write as _;
+use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -562,7 +564,13 @@ fn a_terminal_niri_refused_or_in_a_folder_code_never_offered_tells_zoxide_nothin
     // zoxide hears, and nothing waits on a refused spawn's silence.
     let niri = running.path("niri");
     let refuses = format!(
-        "#!{}\necho \"$@\" >> \"$0.asked\"\n[ -e \"$0.refused\" ] && exit 0\n: > \"$0.refused\"\nexit 1\n",
+        concat!(
+            "#!{}\n",
+            "echo \"$@\" >> \"$0.asked\"\n",
+            "[ -e \"$0.refused\" ] && exit 0\n",
+            ": > \"$0.refused\"\n",
+            "exit 1\n",
+        ),
         super::shell().display()
     );
     std::fs::write(&niri, refuses).unwrap();
@@ -711,10 +719,26 @@ fn a_database_that_never_answers_holds_no_other_ask() {
     assert!(made.unwrap().success(), "mkfifo failed");
     let mut second = running.client();
     second.send(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "code"}));
+    // A pipe opened to write without waiting opens only once a reader
+    // holds it, so the second watch's read is under way before the third
+    // ask; held open and unwritten, it keeps that read waiting.
+    let writer = std::cell::RefCell::new(None);
+    until("the second watch never read zoxide's database", || {
+        let opened = std::fs::OpenOptions::new()
+            .write(true)
+            .custom_flags(libc::O_NONBLOCK)
+            .open(&database)
+            .ok();
+        let open = opened.is_some();
+        *writer.borrow_mut() = opened;
+        open
+    });
     let mut third = running.client();
     let said = third.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "tabs"}));
     // Freed before asserting, so no thread is left waiting on the pipe.
-    std::fs::write(&database, zoxide_database(&[])).unwrap();
+    let mut writer = writer.into_inner().expect("the pipe was opened to write");
+    writer.write_all(&zoxide_database(&[])).unwrap();
+    drop(writer);
     assert!(
         said.get("error").is_none(),
         "an ask needing the daemon's lock wasn't answered while zoxide's database \

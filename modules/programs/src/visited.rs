@@ -14,12 +14,20 @@
 //! nothing is read at rest.
 
 use std::fs;
+use std::io::ErrorKind;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
 /// The one version of zoxide's database this reads.
 const VERSION: u64 = 3;
+
+/// What was last said of a database that couldn't be read, so each
+/// trouble is told once in the log, not on every pass that meets it.
+static TOLD: Mutex<Option<String>> = Mutex::new(None);
 
 /// The record a key names, or none for a key of another kind or a path
 /// that isn't whole.
@@ -40,20 +48,62 @@ pub fn record(key: &str) -> Option<Value> {
 
 /// Each folder in the database at `database` and when Joel was last in
 /// it, in milliseconds, the one visited last first; none where it can't
-/// be read.
+/// be read, which is told in the log, as one of another version is,
+/// since either leaves nothing ordered by Joel's visits. One missing is
+/// told nothing: zoxide writes none until a folder is first visited.
 #[must_use]
 pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
-    fs::read(database)
-        .map(|bytes| visits(&bytes))
-        .unwrap_or_default()
+    let shown = database.display();
+    match fs::read(database) {
+        Ok(bytes) => {
+            let version = Bytes {
+                bytes: &bytes,
+                at: 0,
+            }
+            .number(4);
+            let other = version
+                .filter(|version| *version != VERSION)
+                .map(|version| {
+                    format!("zoxide's database at {shown} is version {version}, not {VERSION}")
+                });
+            tell(&TOLD, other);
+            visits(&bytes)
+        }
+        Err(why) if why.kind() == ErrorKind::NotFound => {
+            tell(&TOLD, None);
+            Vec::new()
+        }
+        Err(why) => {
+            let why = format!("zoxide's database at {shown} couldn't be read: {why}");
+            tell(&TOLD, Some(why));
+            Vec::new()
+        }
+    }
+}
+
+/// Says `trouble` in the log once it differs from the last `told`, so a
+/// database left unreadable is told once, and again only once it changes;
+/// true when it said it.
+fn tell(told: &Mutex<Option<String>>, trouble: Option<String>) -> bool {
+    let mut told = told.lock().unwrap_or_else(PoisonError::into_inner);
+    if *told == trouble {
+        return false;
+    }
+    let said = trouble
+        .as_ref()
+        .inspect(|why| eprintln!("{why}, so no visits order anything"));
+    let said = said.is_some();
+    *told = trouble;
+    said
 }
 
 /// `visits` with each folder's links resolved, since zoxide keeps the path
 /// the shell named, links and all, and repos names a checkout by its real
 /// one: a folder that can't be resolved, as one gone, is kept as written.
 /// One `placed` says is already within a checkout or tree as written is
-/// kept as it is, so only the rest touch the disk, and a folder on a mount
-/// that no longer answers stalls a read only where it could count.
+/// kept as it is, so only the rest touch the disk. A folder on a mount
+/// that no longer answers stalls this, so a caller that mustn't stall runs
+/// it `within` a deadline.
 #[must_use]
 pub fn resolved(visits: Vec<(String, u64)>, placed: impl Fn(&str) -> bool) -> Vec<(String, u64)> {
     visits
@@ -68,6 +118,44 @@ pub fn resolved(visits: Vec<(String, u64)>, placed: impl Fn(&str) -> bool) -> Ve
             }
         })
         .collect()
+}
+
+/// What `work` answers, run on a thread of its own, or `fallback` when it
+/// hasn't answered within `deadline`, or when one run before it still
+/// hasn't, as `late` counts them. So a folder on a mount that no longer
+/// answers holds one thread, never its caller, and no further thread
+/// starts while it does.
+pub fn within<T: Send + 'static>(
+    deadline: Duration,
+    late: &Arc<AtomicUsize>,
+    fallback: T,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> T {
+    if late.load(Ordering::SeqCst) > 0 {
+        return fallback;
+    }
+    let (sent, answer) = mpsc::channel();
+    // Whichever of the work and its caller comes second, after the work
+    // has ended or the caller has stopped waiting, sees it set, so `late`
+    // is raised once for a run past its deadline and lowered once as it ends.
+    let ended = Arc::new(AtomicBool::new(false));
+    let (late_here, ended_here) = (Arc::clone(late), Arc::clone(&ended));
+    std::thread::spawn(move || {
+        let answered = work();
+        if ended_here.swap(true, Ordering::SeqCst) {
+            late_here.fetch_sub(1, Ordering::SeqCst);
+        }
+        // A caller gone past its deadline no longer hears it.
+        let _ = sent.send(answered);
+    });
+    if let Ok(answered) = answer.recv_timeout(deadline) {
+        return answered;
+    }
+    late.fetch_add(1, Ordering::SeqCst);
+    if ended.swap(true, Ordering::SeqCst) {
+        late.fetch_sub(1, Ordering::SeqCst);
+    }
+    fallback
 }
 
 /// A database's bytes, read from the front.
@@ -194,6 +282,25 @@ mod tests {
     }
 
     #[test]
+    fn a_trouble_is_told_once_and_again_only_once_it_changes() {
+        let told = Mutex::new(None);
+        let unread = || Some("unread".to_owned());
+        let said = [
+            tell(&told, unread()),
+            tell(&told, unread()),
+            tell(&told, Some("version 4".to_owned())),
+            tell(&told, None),
+            tell(&told, None),
+            tell(&told, unread()),
+        ];
+        assert_eq!(
+            said,
+            [true, false, true, false, false, true],
+            "a trouble wasn't told once per change"
+        );
+    }
+
+    #[test]
     fn a_folder_reached_through_a_link_is_named_by_its_real_path() {
         let folder = std::env::temp_dir().join(format!("resolved-{}", std::process::id()));
         let _ = fs::remove_dir_all(&folder);
@@ -220,6 +327,41 @@ mod tests {
             kept,
             [(through, 2)],
             "a folder already within a place as written was resolved all the same"
+        );
+    }
+
+    #[test]
+    fn work_past_its_deadline_holds_its_own_thread_and_starts_no_other() {
+        let late = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            within(Duration::from_secs(30), &late, 0, || 7),
+            7,
+            "work that answered in time wasn't taken"
+        );
+        let (release, held) = mpsc::channel::<()>();
+        let stalled = within(Duration::from_millis(50), &late, 0, move || {
+            let _ = held.recv();
+            7
+        });
+        assert_eq!(stalled, 0, "work past its deadline held its caller");
+        assert_eq!(
+            within(Duration::from_secs(30), &late, 0, || 9),
+            0,
+            "work started while an earlier run was still out"
+        );
+        release.send(()).unwrap();
+        for _ in 0..3000 {
+            if late.load(Ordering::SeqCst) == 0 {
+                break;
+            }
+            // The released thread lowers `late` on its own time; a
+            // millisecond a look keeps this wait from spinning a core.
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(
+            within(Duration::from_secs(30), &late, 0, || 9),
+            9,
+            "work once the late run ended wasn't started again"
         );
     }
 

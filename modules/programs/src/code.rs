@@ -34,7 +34,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
@@ -57,6 +57,12 @@ const AT_ONCE: usize = 4;
 /// How long a count stands before a watch beginning counts again, so the
 /// launcher opened and closed in a run counts each checkout once.
 const FRESH: Duration = Duration::from_secs(10);
+
+/// How long a pass waits for zoxide's folders to be resolved before it
+/// orders Code by them as written: a folder on a mount that no longer
+/// answers would otherwise hold every pass after it, and the order costs
+/// only a link's worth of being wrong.
+const RESOLVING: Duration = Duration::from_secs(2);
 
 /// Hears each watch begin or end, on a thread of its own, and has `ahead`
 /// list what the watches name then. daemon-serve says so with every
@@ -99,6 +105,13 @@ pub struct Code {
     /// Whether the disk is to be read again, asked while a read was under
     /// way, which may have read it before what moved it.
     wanted: AtomicBool,
+    /// How many resolutions of zoxide's folders ran past `RESOLVING` and
+    /// haven't ended, so no pass starts another while one is held.
+    late: Arc<AtomicUsize>,
+    /// Held from reading zoxide's visits to taking the rows made with
+    /// them, so a pass that read them earlier never takes its order over
+    /// one read after it. The daemon's lock is taken only within it.
+    turn: Mutex<()>,
     /// The checkouts a Pull, a switch or a tending is under way in, so a
     /// second waits for none and none races another.
     busy: Mutex<BTreeSet<String>>,
@@ -152,6 +165,8 @@ impl Code {
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
+            late: Arc::new(AtomicUsize::new(0)),
+            turn: Mutex::new(()),
             busy: Mutex::new(BTreeSet::new()),
             listing: Mutex::new(()),
             uncommitted: Mutex::new(BTreeMap::new()),
@@ -182,14 +197,17 @@ impl Code {
     /// zoxide's visits as they stand, each folder outside every checkout
     /// and tree of `record` as written resolved to its real path, read once
     /// a pass. It reads the disk, so it runs before the daemon's lock is
-    /// taken.
-    fn visits(&self, record: &Record) -> Vec<(String, u64)> {
+    /// taken, and resolves them `within` `RESOLVING`, past which they're
+    /// taken as written.
+    fn visits(&self, record: &Arc<Record>) -> Vec<(String, u64)> {
         let Some(database) = self.visited.as_deref() else {
             return Vec::new();
         };
-        let places = code_rows::places(record);
-        visited::resolved(visited::visits_in(database), |folder| {
-            code_rows::placed(&places, folder)
+        let written = visited::visits_in(database);
+        let (visits, record) = (written.clone(), Arc::clone(record));
+        visited::within(RESOLVING, &self.late, written, move || {
+            let places = code_rows::places(&record);
+            visited::resolved(visits, |folder| code_rows::placed(&places, folder))
         })
     }
 
@@ -280,16 +298,14 @@ pub fn begin(shared: &Arc<Shared>) {
     if code.read_once.load(Ordering::Acquire) {
         let found = lock(&code.found).clone();
         if let Some(record) = found {
-            let rows = code.made(&record, &code.visits(&record));
-            take(shared, &mut lock(&shared.daemon), rows);
+            ordered(shared, &record);
         }
         again(shared);
         return;
     }
-    let record = code.record();
-    let rows = code.made(&record, &code.visits(&record));
-    *lock(&code.found) = Some(Arc::new(record));
-    take(shared, &mut lock(&shared.daemon), rows);
+    let record = Arc::new(code.record());
+    *lock(&code.found) = Some(Arc::clone(&record));
+    ordered(shared, &record);
     // Counted behind its answer, which never waits on git.
     again(shared);
 }
@@ -312,15 +328,12 @@ fn again(shared: &Arc<Shared>) {
             while code.wanted.swap(false, Ordering::SeqCst) {
                 // Served before counting, so nothing read waits on git.
                 let record = Arc::new(code.record());
-                // Read first, so zoxide's database is read with the
-                // daemon's lock let go: an argument would be made after it.
-                let visits = code.visits(&record);
-                let rows = code.made(&record, &visits);
                 *lock(&code.found) = Some(Arc::clone(&record));
-                take(&shared, &mut lock(&shared.daemon), rows);
+                ordered(&shared, &record);
+                // Counting takes a while, so its rows are ordered by the
+                // visits as they stand once it ends, not as they stood.
                 if code.count(&record) {
-                    let rows = code.made(&record, &visits);
-                    take(&shared, &mut lock(&shared.daemon), rows);
+                    ordered(&shared, &record);
                 }
             }
             code.reading.store(false, Ordering::SeqCst);
@@ -330,6 +343,16 @@ fn again(shared: &Arc<Shared>) {
             }
         }
     });
+}
+
+/// Takes `record`'s rows ordered by zoxide's visits as they stand, read
+/// with the daemon's lock let go, and in turn, so no order read before
+/// another is taken after it.
+fn ordered(shared: &Shared, record: &Arc<Record>) {
+    let code = &shared.code;
+    let _turn = lock(&code.turn);
+    let rows = code.made(record, &code.visits(record));
+    take(shared, &mut lock(&shared.daemon), rows);
 }
 
 /// Keeps the rows read, telling each watch only what moved.
