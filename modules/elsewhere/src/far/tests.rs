@@ -811,16 +811,18 @@ fn an_archive_holding_a_link_a_pipe_or_a_shared_file_is_refused_before_the_job_r
     for (what, make) in odd {
         let made = scratch("odd");
         make(&made);
+        // Plain ustar, and on a Mac with no AppleDouble members, so the
+        // archive holds no attributes, only headers and at most a letter:
+        // all ASCII and NULs, so its text holds it.
         let archive = std::process::Command::new("tar")
-            .args(["-cf", "-", "-C"])
+            .env("COPYFILE_DISABLE", "1")
+            .args(["--format", "ustar", "-cf", "-", "-C"])
             .arg(&made)
             .arg(".")
             .output()
             .unwrap();
         assert!(archive.status.success(), "tar made no archive of {what}");
         let _ = std::fs::remove_dir_all(&made);
-        // Headers and at most a letter, all ASCII and NULs, so its text
-        // holds it.
         let text = String::from_utf8(archive.stdout).unwrap();
         let list = format!("{}\t0.tar\nend\n", text.len());
         let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");

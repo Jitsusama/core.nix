@@ -264,6 +264,7 @@ pub fn script(
         .collect::<Vec<_>>()
         .join(" ");
     let copying = copying();
+    let stopping = stopping();
     let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
@@ -297,18 +298,7 @@ tick() {{
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
-# Stopped, as mycelium stops a run whose asker let go, it takes its copy,
-# the files written beside it and the job's archives away, as a job that
-# ends does, then ends as the signal would have ended it. A second signal
-# waits for the first one's clearing.
-stopped() {{
-  trap '' HUP INT TERM
-  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* "$job/{TREE}"
-  exit "$1"
-}}
-trap 'stopped 129' HUP
-trap 'stopped 130' INT
-trap 'stopped 143' TERM
+{stopping}
 # By the clock, since a pass over a large tree takes long itself, and
 # from the last time more crossed, as the near side waits, or the clock
 # stepped back. A pass counts after its second, so passes are never short.
@@ -782,7 +772,7 @@ mod landing;
 pub mod spent;
 mod steps;
 
-use steps::{bringing, copying};
+use steps::{bringing, copying, stopping};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

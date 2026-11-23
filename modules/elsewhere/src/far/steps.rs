@@ -11,6 +11,25 @@
 use super::{BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES, MOST_FILES, TREE, quoted};
 use crate::settings::Kind;
 
+/// The far line's answer to being stopped, `stopped`, and the traps that
+/// call it. Mycelium stops a run whose asker let go with a signal to its
+/// whole group, so the far line takes its copy, the files written beside
+/// it and the job's archives away, as a job that ends does, then ends as
+/// the signal would have ended it. A second signal waits for the first
+/// one's clearing.
+pub(super) fn stopping() -> String {
+    format!(
+        r#"stopped() {{
+  trap '' HUP INT TERM
+  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* "$job/{TREE}"
+  exit "$1"
+}}
+trap 'stopped 129' HUP
+trap 'stopped 130' INT
+trap 'stopped 143' TERM"#
+    )
+}
+
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
 /// for this machine's, which another may not. Each name the list holds
@@ -25,7 +44,9 @@ use crate::settings::Kind;
 /// or a device, checked as each archive is unpacked, before the next,
 /// so no archive writes through what one before it made, and none takes
 /// away what one before it made before it's seen. Past that, the fence
-/// around the far line writes only the quest's scratch.
+/// around the far line writes only the quest's scratch. A file under two
+/// names is found as one that isn't a folder yet has more than one link,
+/// not by its type, so this find reads apart from the bring-back step's.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
@@ -48,7 +69,7 @@ pub(super) fn copying() -> String {
     done < "$work.names"
     tar -xf "$job/{TREE}/$part" -C "$work" || return 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
-      -o -type f -links +1) || return 2
+      -o ! -type d -links +1) || return 2
     [ -z "$odd" ] || {{
       printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
 *}}" >&2

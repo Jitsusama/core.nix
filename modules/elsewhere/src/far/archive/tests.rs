@@ -120,7 +120,9 @@ fn a_tree_past_one_archive_is_split_over_several_each_within_the_most() {
 #[test]
 fn what_a_file_takes_is_its_entry_and_the_archives_stay_within_their_bound() {
     let root = crate::far::tests::scratch("archive-taken");
-    let long = format!("d/{}", "f".repeat(300));
+    // Past both of ustar's fields, so it needs a pax record, yet each part
+    // within the 255 bytes a file system takes in one name.
+    let long = format!("{}/{}", "d".repeat(200), "f".repeat(200));
     let files = [("a", 600), ("b", 0), ("c", 513), (long.as_str(), 700)];
     for (path, size) in files {
         let at = root.join("tree").join(path);
