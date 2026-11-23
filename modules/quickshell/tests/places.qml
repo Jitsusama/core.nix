@@ -654,6 +654,41 @@ QtObject {
                 Places.homeToName({ address: "REEF" }, "REEF", null, spaces),
                 Places.homeToName({ address: "REEF" }, "", 3, spaces)],
             ["", "", "", "", ""]);
+        // After the restart on 2026-11-21, WM4KSZ's eleven sessions came
+        // back on workspace 3 by its number, its name gone to an empty
+        // fifth: named workspaces come back from a boot in another order.
+        expect("kept on a named workspace, it goes back to the one named so now",
+            Reopening.namedBack({ workspace: 3, workspaceName: "KELP" }, spaces), { join: 5 });
+        expect("none named so now, the workspace it lands on takes the name",
+            Reopening.namedBack({ workspace: 3, workspaceName: "REEF" }, spaces),
+            { name: "REEF" });
+        expect("kept on one named nothing, it goes by its number",
+            [Reopening.namedBack({ workspace: 3 }, spaces),
+                Reopening.namedBack({ workspace: 3, workspaceName: "" }, spaces),
+                Reopening.namedBack(null, spaces)], [null, null, null]);
+        // Only the empty workspace it found takes the kept name, and only
+        // while unnamed: the last with windows may be one Joel named.
+        const emptied = { id: 9 };
+        const mine = { id: 9, name: "MINE" };
+        expect("the kept name goes only to the empty, unnamed workspace found",
+            [Reopening.keptName({ name: "REEF" }, emptied, emptied),
+                Reopening.keptName({ name: "REEF" }, { id: 4 }, emptied),
+                Reopening.keptName({ name: "REEF" }, { id: 4, name: "MINE" }, null),
+                Reopening.keptName({ name: "REEF" }, mine, mine),
+                Reopening.keptName({ join: 5 }, emptied, emptied),
+                Reopening.keptName(null, emptied, emptied)],
+            ["REEF", "", "", "", "", ""]);
+        // One sent by name to a workspace on another screen than it was
+        // kept on stays there, or placing it would pull it off again.
+        expect("one on the workspace named as kept holds there, on any screen",
+            [Reopening.onNamed({ output: "DP-4", workspaceName: "KELP" },
+                { id: 5, name: "KELP", output: "eDP-1" }),
+                Reopening.onNamed({ output: "DP-4", workspaceName: "KELP" },
+                    { id: 6, name: "REEF", output: "DP-4" }),
+                Reopening.onNamed({ output: "DP-4" }, { id: 7, output: "DP-4" }),
+                Reopening.onNamed({ workspaceName: "" }, { id: 8, name: "" }),
+                Reopening.onNamed(null, { id: 5, name: "KELP" })],
+            [true, false, false, false, false]);
         // One handed over while Reopen Them All already holds it, or has
         // begun it, joins nothing, or two pis would write one log.
         const asked = id => ({ one: { id } });
@@ -679,6 +714,24 @@ QtObject {
             Reopening.broughtBack(true, keptHere, true, true), { window: true, home: false });
         expect("kept nowhere, it comes back held without a window",
             Reopening.broughtBack(true, null, true, true), { window: false, home: true });
+        // A window the agents daemon saw but couldn't place, one floating
+        // or one its kitty drew beside another, is kept as unplaced.
+        expect("kept with a window it couldn't place, it comes back in one, going home",
+            Reopening.broughtBack(true, { unplaced: true }, true, true),
+            { window: true, home: true });
+        expect("and opens at no place, one kept somewhere at its own",
+            [Reopening.placeOf({ unplaced: true }), Reopening.placeOf(keptHere),
+                Reopening.placeOf(null)], [null, keptHere, null]);
+        expect("one sat here only as the last boot's",
+            [{ way: "boot" }, { way: "carried" }, {}, null].map(Reopening.satHere),
+            [true, false, false, false]);
+        // Each of the walk's ways opens one at the same place, its workspace's
+        // name kept, so none goes back by number alone.
+        expect("a place opened at keeps its workspace's name",
+            Reopening.atOf({ output: "DP-4", workspace: 3, workspaceName: "KELP", column: 2,
+                screen: "HP", leads: true }),
+            { output: "DP-4", workspace: 3, workspaceName: "KELP", column: 2, tile: 1 });
+        expect("none to open at, none", Reopening.atOf(null), null);
         expect("with no places known, none is taken for windowless",
             Reopening.broughtBack(true, null, false, true), { window: true, home: true });
         expect("carried or given back, never kept here, it opens as it did",
