@@ -215,12 +215,24 @@ let
             # in four runs of 150 prompts each way, a conversation held 71
             # MB less resident and swapped on average (493 to 422 MB) and
             # 113 MB less at the end (605 to 492 MB), for 0.2% more
-            # instructions. The harness keeps the variable from the
-            # commands a conversation runs (host/service/program.ts,
-            # HOST_ONLY, from its 23 November main on), and the hosts, which
-            # hold no conversation, aren't given it. A realm that tunes its
-            # own allocator keeps its value, for its hosts and here alike.
-            GLIBC_TUNABLES = host.environment.GLIBC_TUNABLES or "glibc.malloc.trim_threshold=131072";
+            # instructions. The harness keeps the variable, a realm's own
+            # value too, from every command and subagent a conversation
+            # runs (host/service/program.ts, HOST_ONLY, from its 23
+            # November main on), and the hosts, which hold no
+            # conversation, aren't given it. A realm that tunes its own
+            # allocator keeps its value, for its hosts and here alike, with
+            # the threshold added here unless it names its own.
+            GLIBC_TUNABLES =
+              let
+                trim = "glibc.malloc.trim_threshold=131072";
+                own = host.environment.GLIBC_TUNABLES or "";
+              in
+              if own == "" then
+                trim
+              else if lib.hasInfix "glibc.malloc.trim_threshold=" own then
+                own
+              else
+                "${own}:${trim}";
           };
           UnsetEnvironment = unsetEnvironment;
           # Its host decides what comes after an ending: a crash's

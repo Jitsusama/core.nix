@@ -509,10 +509,15 @@ in
                 asyncContextFrame = true;
                 environment.PROXY_ORIGIN = "https://proxy.example.com";
               };
-              # A realm that tunes its own allocator.
+              # A realm that tunes its own allocator, and one that names
+              # its own trim threshold.
               hosts.tuned = {
                 inherit pi node proof;
                 environment.GLIBC_TUNABLES = "glibc.malloc.arena_max=2";
+              };
+              hosts.trimmed = {
+                inherit pi node proof;
+                environment.GLIBC_TUNABLES = "glibc.malloc.trim_threshold=65536";
               };
               # Where pi's SSH agent proxy runs.
               agentProxy.builderKey = "/builders/key";
@@ -531,10 +536,16 @@ in
         ])).systemd.user.services;
       first = value: lib.head (lib.toList value);
       tunablesOf =
-        kind:
+        unit:
         lib.filter (lib.hasPrefix ''"GLIBC_TUNABLES='') (
-          lib.toList (services."pi-conversation-tuned-${kind}@".Service.Environment or [ ])
+          lib.toList (services.${unit}.Service.Environment or [ ])
         );
+      # A realm's own tuning reaches its hosts, and its conversations with
+      # the trim threshold beside it unless it names its own.
+      keepsTuning =
+        realm: own: conversation: kind:
+        tunablesOf "pi-host-${realm}-${kind}" == [ ''"GLIBC_TUNABLES=${own}"'' ]
+        && tunablesOf "pi-conversation-${realm}-${kind}@" == [ ''"GLIBC_TUNABLES=${conversation}"'' ];
       runsApart =
         kind:
         let
@@ -589,13 +600,26 @@ in
         && !(lib.any (lib.hasPrefix ''"UV_THREADPOOL_SIZE='') environment);
     in
     holds "pi-conversations-run-apart"
-      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, browses in Chromium where its machine names its own browser, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, holds on to freed heap where its realm doesn't tune its allocator, can dump a core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
+      "A realm-kind pi host has no template for its conversations' own processes named as the harness names it, or one runs other than the host's program as a child of its key, listens outside its slot, misses the host's environment or proof, browses in Chromium where its machine names its own browser, leaves its inspector open or the user manager's code-loading variables in place, runs outside agents.slice, is restarted or watched by systemd, is left listed once failed, is stopped by a switch, its host's restart or one of its commands killed for memory, isn't given 60 s to park or told so, has no memory throttle, holds on to freed heap, loses its realm's own allocator tuning, can dump a core, is skipped silently with no program, misses its realm's heap, frame flag or the agents' SSH agent, takes a host's pools, or a Mac gets one."
       (
         runsApart "attended"
         && runsApart "background"
-        # A realm's own allocator tuning wins, said once.
-        && tunablesOf "attended" == [ ''"GLIBC_TUNABLES=glibc.malloc.arena_max=2"'' ]
-        && tunablesOf "background" == [ ''"GLIBC_TUNABLES=glibc.malloc.arena_max=2"'' ]
+        # A realm's own allocator tuning is kept, said once.
+        &&
+          lib.all
+            (
+              kind:
+              keepsTuning "tuned" "glibc.malloc.arena_max=2"
+                "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=131072"
+                kind
+              &&
+                keepsTuning "trimmed" "glibc.malloc.trim_threshold=65536" "glibc.malloc.trim_threshold=65536"
+                  kind
+            )
+            [
+              "attended"
+              "background"
+            ]
         && lib.filter (lib.hasPrefix "pi-conversation-") (lib.attrNames mac) == [ ]
       );
 
