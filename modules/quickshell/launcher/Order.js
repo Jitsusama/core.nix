@@ -122,8 +122,10 @@ function stream(at, first) {
 // Live states, as Sessions, devices and Wi-Fi: by how each stands, its
 // state's place in the order given (`stands`, the most pressing first), then
 // when it started (`since`), the earliest first so one that starts comes
-// after those there, then by `then` where a kind has one more measure (a
-// network's strength), then A to Z.
+// after those there, then by `then` where a kind has one more measure,
+// then A to Z. Only Nearby has one, its devices' signal, since they're
+// heard afresh at each opening and Return trusts the first (Nearby.js);
+// no other list ordered here takes a measure that moves by itself.
 function live(how) {
     return then(smaller(how.stands), smaller(how.since ?? (() => null)),
         how.then ?? (() => 0), byName(how.name));

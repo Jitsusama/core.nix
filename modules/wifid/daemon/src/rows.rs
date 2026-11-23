@@ -1,7 +1,7 @@
 //! Wi-Fi's rows in the launcher, made ready here so the shell only draws
 //! them: Wi-Fi Off (or On), Sign In while a network wants it, and every
 //! network in the air, the one connected first, then those saved, then the
-//! rest by signal, each worded from the launcher's vocabulary
+//! rest, each by name, each worded from the launcher's vocabulary
 //! (launcher/words.json) as the shell hands it over, so wifid says no word
 //! of its own. Each row is the ready-row form every daemon serves
 //! (QEST-20261023-Y2YBTS attachments/speed/ready-rows.md), sent whole only
@@ -228,8 +228,9 @@ pub fn key(id: &str) -> String {
 }
 
 /// Every network in the air, and the one each card is on even when it
-/// hides its name, the one connected first, then those saved, then by
-/// signal, then A to Z, as launcher/Order.js's live order has it.
+/// hides its name, the one connected first, then those saved, then the
+/// rest, each A to Z as launcher/Order.js's live order has it, then by
+/// their letters as they are, which Order.js has no need of.
 fn networks(described: &Described) -> Vec<Network<'_>> {
     let mut heard: Vec<Network> = described
         .nearby
@@ -255,11 +256,23 @@ fn networks(described: &Described) -> Vec<Network<'_>> {
             2
         }
     };
+    // A live list's order (RSCH-20261030-GB56HX, Order): by how each
+    // stands, then by name, never by strength. Bars rise and fall as Joel
+    // sits still, so ordering by them moved networks between two openings
+    // by nothing he did; how strong each is stays said on its row. Names
+    // by_name reads alike, as Home and HOME, go by their letters as they
+    // are, so not even those fall back to the air's strongest first.
+    // A stranger names a network as they do a Bluetooth device, so with
+    // nothing joined or saved in range, one called "!" heads the list. That
+    // is let be, unlike Nearby's. A network joined is saved and joined again
+    // unasked, as a paired device is, but it carries traffic, where a paired
+    // device may type; and by signal a stranger had only to be loudest. The
+    // guard owed here is asking before joining an open network never met.
     heard.sort_by(|one, other| {
         stands(one)
             .cmp(&stands(other))
-            .then(other.strength.cmp(&one.strength))
             .then_with(|| by_name(one.name, other.name))
+            .then_with(|| one.name.cmp(other.name))
     });
     heard
 }
@@ -436,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn the_one_connected_comes_first_then_those_saved_then_by_signal_and_name() {
+    fn the_one_connected_comes_first_then_those_saved() {
         let rows = rows(&described(), &words());
         assert_eq!(
             names(&rows),
@@ -449,6 +462,82 @@ mod tests {
                 "Wi-Fi Off"
             ]
         );
+    }
+
+    #[test]
+    fn a_stronger_network_stands_no_higher_than_its_name_puts_it() {
+        let mut heard = described();
+        heard.nearby = vec![
+            nearby("Cafe 10", Security::Open, 2),
+            nearby("Cafe 9", Security::Open, 1),
+            nearby("Campus", Security::Enterprise, 4),
+            nearby("Lantern", Security::Personal, 3),
+        ];
+        heard.saved = vec![saved("Lantern")];
+        assert_eq!(
+            names(&rows(&heard, &words())),
+            ["Lantern", "Cafe 9", "Cafe 10", "Campus", "Wi-Fi Off"],
+            "networks heard but not saved go by name, whatever their bars"
+        );
+    }
+
+    #[test]
+    fn the_one_joined_leads_at_one_bar_and_those_saved_go_by_name() {
+        let mut heard = described();
+        heard.nearby = vec![
+            nearby("Zephyr", Security::Personal, 4),
+            nearby("Campus", Security::Enterprise, 4),
+            nearby("Attic", Security::Personal, 1),
+            nearby("Lantern", Security::Personal, 1),
+        ];
+        heard.saved = vec![saved("Lantern"), saved("Zephyr"), saved("Attic")];
+        assert_eq!(
+            names(&rows(&heard, &words())),
+            ["Lantern", "Attic", "Zephyr", "Campus", "Wi-Fi Off"],
+            "the joined first at its one bar, then the saved by name, then the rest"
+        );
+    }
+
+    #[test]
+    fn with_nothing_joined_or_saved_a_strangers_name_can_head_the_list() {
+        let mut heard = described();
+        heard.cards = vec![card(None, None)];
+        heard.saved = Vec::new();
+        heard.nearby = vec![
+            nearby("Cafe", Security::Open, 4),
+            nearby("!free", Security::Open, 1),
+        ];
+        assert_eq!(
+            names(&rows(&heard, &words())),
+            ["!free", "Cafe", "Wi-Fi Off"],
+            "a stranger's name leads by its letters, as rows.rs says it may"
+        );
+    }
+
+    #[test]
+    fn names_alike_but_for_case_keep_one_order_as_their_bars_change() {
+        // The air lists the strongest first (state.rs), so whichever is
+        // stronger comes in first.
+        let listed = |cafe: u8, shouting: u8| {
+            let mut heard = described();
+            let mut alike = vec![
+                nearby("CAFE", Security::Open, shouting),
+                nearby("Cafe", Security::Open, cafe),
+            ];
+            alike.sort_by_key(|network| std::cmp::Reverse(network.strength));
+            heard.nearby = alike;
+            heard.nearby.push(nearby("Lantern", Security::Personal, 3));
+            names(&rows(&heard, &words()))
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            listed(1, 4),
+            listed(4, 1),
+            "two names alike but for case keep one order whatever their bars"
+        );
+        assert_eq!(listed(1, 4), ["Lantern", "CAFE", "Cafe", "Wi-Fi Off"]);
     }
 
     #[test]
