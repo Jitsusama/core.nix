@@ -1183,11 +1183,12 @@ def the_turn(places: list[Json | None]) -> tuple[int, Json, Json, Json | None]:
     )
     turned = next(turns, None)
     assert turned is not None, "the second move never said where the cat was"
-    moved = places[max(i for i in range(first, turned) if down[i])]
+    reached = places[max(i for i in range(first, turned) if down[i])]
     was = places[turned - 1]
-    # Every place from the first move's first to the turn says somewhere.
-    assert moved is not None and was is not None
-    return turned, was, moved, places[turned]
+    # Every place from the first move's first to the turn says somewhere, or it's the turn.
+    assert reached is not None, "the first move's last place said nowhere"
+    assert was is not None, "the cat was nowhere as the second move was made"
+    return turned, was, reached, places[turned]
 
 
 def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> None:
@@ -1246,13 +1247,13 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     sits_over(shell, upper, since)
     said, _ = shell.said_since(since)
     places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
-    turned, was, moved, after = the_turn(places)
+    turned, was, reached, after = the_turn(places)
     assert after is not None, "the cat was nowhere as the second move began"
     # Caught off the screen between workspaces, waiting to drop in, it
     # may ride back in from anywhere else off it, since neither place is
     # seen (the net, 2026-11-16: from y -849 in its unseen beat to -131).
     # A place said walking has its own layer's reach, so the screen's is the first move's.
-    reach = moved["reach"]
+    reach = reached["reach"]
     off = [one["y"] + one["size"] <= 0 or one["y"] >= reach for one in (was, after)]
     near = STEPS_ON * was["size"]
     gone = math.hypot(after["x"] - was["x"], after["y"] - was["y"])
@@ -1279,7 +1280,7 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
         and abs(laid - apart) <= near
     )
     assert all(off) or gone <= near or rode, (
-        f"the second move put it at {after}, from {was}, the first having got to {moved}"
+        f"the second move put it at {after}, from {was}, the first having got to {reached}"
     )
     # The ride back, from its first place said after the turn, past any report between the
     # two moves that says no move, to its last. Each place it says lies on the way it was laid,
