@@ -509,15 +509,20 @@ in
                 asyncContextFrame = true;
                 environment.PROXY_ORIGIN = "https://proxy.example.com";
               };
-              # A realm that tunes its own allocator, and one that names
-              # its own trim threshold.
+              # A realm that tunes its own allocator, one that names its
+              # own trim threshold beside other tuning, and one that names
+              # it in glibc's older variable.
               hosts.tuned = {
                 inherit pi node proof;
                 environment.GLIBC_TUNABLES = "glibc.malloc.arena_max=2";
               };
               hosts.trimmed = {
                 inherit pi node proof;
-                environment.GLIBC_TUNABLES = "glibc.malloc.trim_threshold=65536";
+                environment.GLIBC_TUNABLES = "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=65536";
+              };
+              hosts.aliased = {
+                inherit pi node proof;
+                environment.MALLOC_TRIM_THRESHOLD_ = "65536";
               };
               # Where pi's SSH agent proxy runs.
               agentProxy.builderKey = "/builders/key";
@@ -613,8 +618,10 @@ in
                 "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=131072"
                 kind
               &&
-                keepsTuning "trimmed" "glibc.malloc.trim_threshold=65536" "glibc.malloc.trim_threshold=65536"
+                keepsTuning "trimmed" "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=65536"
+                  "glibc.malloc.arena_max=2:glibc.malloc.trim_threshold=65536"
                   kind
+              && tunablesOf "pi-conversation-aliased-${kind}@" == [ ]
             )
             [
               "attended"
