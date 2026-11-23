@@ -7,6 +7,8 @@
 //! asked is said as the reader counts it: a sign-in refused, none to give,
 //! or a Slack that couldn't be asked this round.
 
+use std::collections::HashMap;
+
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 
@@ -18,12 +20,19 @@ use crate::slack::{self, Message};
 /// How many of the newest messages each search asks for.
 pub const COUNT: u8 = 20;
 
+/// How far before the last read a full answer's oldest message must lie,
+/// in microseconds: Slack's search can find a message a while after a
+/// newer one, so one said just before the last read may not have been
+/// found by it.
+const FOUND_LATE: u128 = 60 * 1_000_000;
+
 /// What a reader hears Slack through.
 pub trait Ears {
     /// The newest messages `query` finds, oldest first; else whether the
-    /// sign-in was refused, missing, or Slack couldn't be asked now. An
-    /// answer cut short is read only when it reaches back to `back_to`, a
-    /// Slack timestamp, so nothing it could find since then goes unread.
+    /// sign-in was refused, missing, or Slack couldn't be asked now.
+    /// `back_to`, a Slack timestamp, is how far back of now an answer must
+    /// reach for nothing it could find since the last read to go unread,
+    /// which a gateway's answers are held to.
     ///
     /// # Errors
     ///
@@ -87,11 +96,32 @@ impl Ears for Api<'_> {
 
 /// A tool gateway reading Slack for Joel, its answers worded for a model
 /// (src/gateway.rs reads them).
+///
+/// Its answers are prose a message's writer can type, so each is read
+/// only when a second ask for one fewer agrees with it: a typed result
+/// is numbered "of" one count, so the same text can't pass for both, as
+/// it could for one answer the gateway cut short where the real results
+/// were dropped. And one full answer is read only when it reaches back to
+/// the last read; one that doesn't is deaf for [`deaf::ROUNDS`] rounds, so
+/// Joel is told, and is then read on past what it left unread, as the
+/// span between can never be asked for again.
 pub struct Through {
-    pub gateway: Gateway,
+    gateway: Gateway,
+    /// How many rounds in a row each search's answer, by its query, left
+    /// unread what was said since the last read.
+    gaps: HashMap<String, u32>,
 }
 
 impl Through {
+    /// Reading Slack through `gateway`.
+    #[must_use]
+    pub fn new(gateway: Gateway) -> Through {
+        Through {
+            gateway,
+            gaps: HashMap::new(),
+        }
+    }
+
     /// Joel's own Slack id, as the gateway says who it reads as.
     ///
     /// # Errors
@@ -158,30 +188,66 @@ impl Ears for Through {
             eprintln!("<4>the gateway's search for {query:?} can't be read: {why}");
             Round::Deaf(Deafness::Unreadable)
         };
-        let results = self.newest(query, usize::from(COUNT))?;
-        let Some(gave) = gateway::cut_to(&results) else {
-            return gateway::found(&results).map_err(unread);
+        let count = usize::from(COUNT);
+        let first = self.newest(query, count)?;
+        // Cut short, it's only a count to ask again for.
+        let asked = gateway::cut_to(&first).unwrap_or(count);
+        let cut = asked < count;
+        let answer = if cut {
+            self.newest(query, asked)?
+        } else {
+            first
         };
-        // Asked again for as many as it gave, an answer whole to that
-        // count is one a typed result can't pass for.
-        let results = self.newest(query, gave)?;
-        let found = gateway::found(&results).map_err(|why| {
-            unread(format!(
-                "cut to {gave} of {COUNT}, then asked for {gave}, {why}"
-            ))
-        })?;
-        let oldest = found.first().map_or("", |message| message.ts.as_str());
-        if slack::micros(oldest).is_none_or(|oldest| Some(oldest) > slack::micros(back_to)) {
-            return Err(unread(format!(
-                "cut to the newest {}, back to {oldest:?}, it leaves unread what was said \
-                 after {back_to} and before then",
-                found.len()
-            )));
+        let cut_to = |why: String| {
+            if cut {
+                format!("cut to {asked} of {COUNT}, then asked for {asked}, {why}")
+            } else {
+                why
+            }
+        };
+        let found = gateway::found(&answer).map_err(|why| unread(cut_to(why)))?;
+        if let Some(fewer) = found.len().checked_sub(1).filter(|fewer| *fewer > 0) {
+            let again = self.newest(query, fewer)?;
+            let again = gateway::found(&again)
+                .map_err(|why| unread(cut_to(format!("then asked for one fewer, {why}"))))?;
+            if again[..] != found[1..] {
+                return Err(unread(cut_to(format!(
+                    "then asked for one fewer, it gives {} other than the newest {fewer} of \
+                     the {}",
+                    again.len(),
+                    found.len()
+                ))));
+            }
         }
-        eprintln!(
-            "<5>the gateway cut its answer for {query:?} to {gave} of {COUNT}, so it read the \
-             newest {gave}, back to {oldest}, which reaches the last read, at {back_to}"
-        );
+        // Fewer than asked for is every message it finds.
+        if found.len() == asked {
+            let oldest = found.first().map_or("", |message| message.ts.as_str());
+            let reaches = slack::micros(oldest).zip(slack::micros(back_to));
+            if reaches.is_none_or(|(oldest, back_to)| oldest.saturating_add(FOUND_LATE) > back_to) {
+                let gaps = self.gaps.entry(query.to_owned()).or_default();
+                *gaps = gaps.saturating_add(1);
+                let unheard = format!(
+                    "back to {oldest:?}, it leaves unread what was said after {back_to} and \
+                     before a minute ahead of then"
+                );
+                if *gaps <= deaf::ROUNDS {
+                    return Err(unread(cut_to(unheard)));
+                }
+                eprintln!(
+                    "<4>the gateway's search for {query:?}, {}, deaf {} rounds and so told, \
+                     reads on: what was said then is never read",
+                    cut_to(unheard),
+                    deaf::ROUNDS
+                );
+            }
+        }
+        self.gaps.remove(query);
+        if cut {
+            eprintln!(
+                "<5>the gateway cut its answer for {query:?} to {asked} of {COUNT}, so it read \
+                 the newest {asked}, back to the last read, at {back_to}"
+            );
+        }
         Ok(found)
     }
 

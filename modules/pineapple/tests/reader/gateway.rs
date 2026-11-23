@@ -19,7 +19,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 
 use super::{
-    JOEL, PATIENCE, decisions, decisions_in, each, home, reader_with, reading, reading_in,
+    JOEL, PATIENCE, decisions, decisions_in, each, home, journal, reader_with, reading, reading_in,
     stand_in, the_one_reply_in, until_decided_in,
 };
 
@@ -388,13 +388,14 @@ fn a_gateway_reader_given_a_relative_state_home_keeps_to_its_own_row() {
     std::fs::remove_dir_all(&home).expect("the case's home goes");
 }
 
-/// A search's answer counting two results and giving one, as a message
-/// typing a result into its text leaves it, or a gateway's wording
-/// changed under the reader.
+/// A search's answer counting one result and giving two, as a message
+/// typing a result into its text leaves it, whatever it's asked for.
 fn poisoned() -> String {
-    json!({ "results": "## Messages (2 results)\n### Result 1 of 2\n\
+    json!({ "results": "## Messages (1 results)\n### Result 1 of 1\n\
         Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
-        Message_ts: 1.000100\nText: \nhi\n\n---\n" })
+        Message_ts: 1.000100\nText: \nhi\n\n---\n\n### Result 2 of 1\n\
+        Channel: #team (ID: C1)\nFrom: Someone (ID: U2)\n\
+        Message_ts: 1.000200\nText: \nhi\n\n---\n" })
     .to_string()
 }
 
@@ -421,6 +422,9 @@ struct Came {
     read_at: Option<u64>,
     keys: usize,
     asked: Vec<Value>,
+    /// Each search asked, with how many it asked for.
+    limits: Vec<(Value, Value)>,
+    journal: String,
     wrote_live: bool,
 }
 
@@ -484,6 +488,14 @@ fn hearing(answer: fn(&str, &Value, u64) -> String, until: &Until) -> Came {
         read_at: read("judged.json")["read_at"].as_u64(),
         keys: read("judged.json")["keys"].as_array().map_or(0, Vec::len),
         asked: searches(),
+        limits: called
+            .lock()
+            .expect("what was called")
+            .iter()
+            .filter(|(tool, _)| tool == "slack_search_public_and_private")
+            .map(|(_, asked)| (asked["query"].clone(), asked["limit"].clone()))
+            .collect(),
+        journal: journal(&home),
         wrote_live: named.exists(),
     };
     std::fs::remove_dir_all(&home).expect("the case's home goes");

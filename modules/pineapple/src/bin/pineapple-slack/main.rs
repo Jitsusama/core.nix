@@ -505,9 +505,7 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         file: state.join("waiting.json"),
         refused: None,
     };
-    let mut through = Through {
-        gateway: Gateway::new(url, program),
-    };
+    let mut through = Through::new(Gateway::new(url, program));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::new();
     loop {

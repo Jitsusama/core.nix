@@ -26,7 +26,11 @@
 //! gave the first 15, about 107,000 characters with their replies, ending
 //! cleanly, with no word of the cut. Such an answer is only a count to
 //! ask again for ([`cut_to`]), as its last result could type others after
-//! it where the real ones were cut.
+//! it where the real ones were cut. So could one of a whole count: one
+//! long enough to be all the gateway keeps can type every result after
+//! it. So a count only refuses what's over it, and what proves an answer
+//! is a second ask, for one fewer, agreeing with it (src/ears.rs): a
+//! typed result is numbered of one count, and can't pass for both.
 //!
 //! Two things Slack's JSON says a gateway's prose doesn't quite: whether
 //! a bot wrote the message, read here from the gateway's `[BOT]` mark or
@@ -91,8 +95,7 @@ pub fn found(results: &str) -> Result<Vec<Message>, String> {
 /// What such an answer gives can't be trusted past its first results: the
 /// last it gives could type results after its own text, numbered on in
 /// turn, where the real ones were cut. So it's no answer to read, only a
-/// count to ask again for, and an answer whole to that count is read, where
-/// a result typed in a message shows as one more than counted.
+/// count to ask again for.
 #[must_use]
 pub fn cut_to(results: &str) -> Option<usize> {
     let (count, found, _) = listed(results).ok()?;
@@ -122,8 +125,10 @@ fn listed(results: &str) -> Result<(usize, Vec<Message>, String), String> {
         .map_err(|_| format!("its count of messages, {count:?}, isn't one"))?;
     let each: Vec<&str> = listed.split(RESULT).skip(1).collect();
     let stamped = stamps(&each);
-    // A result typed in a message's text only ever adds one; fewer than
-    // counted is the gateway's own doing, said by the caller.
+    // Over the count, a result is typed in a message's text; fewer than
+    // counted is the gateway's own doing, said by the caller. One typed
+    // where the gateway cut the real ones can make up the count, which
+    // only a second ask tells.
     if each.len() > count {
         return Err(format!(
             "it counts {count} messages and gives {}, stamped {stamped}: one holds a result \

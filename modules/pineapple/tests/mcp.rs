@@ -648,9 +648,7 @@ fn a_gateway_passing_on_slacks_refusal_counts_as_refused() {
             "tools/call" => tool(&format!("Slack said: {said}"), true),
             _ => status(202),
         });
-        let mut through = Through {
-            gateway: Gateway::new(&url, sign_in(&dir).as_os_str()),
-        };
+        let mut through = Through::new(Gateway::new(&url, sign_in(&dir).as_os_str()));
         assert_eq!(
             through.search("pineapple", "0.000000"),
             Err(round),
