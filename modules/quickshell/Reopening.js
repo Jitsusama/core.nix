@@ -229,7 +229,7 @@ function queuedOnce(queue, more, begun) {
 function tallyOf(walk, ids, tell) {
     const own = walk?.tally ?? null;
     const asked = entry => own.asked[entry.one.afreshFor ?? entry.one.id] === true;
-    const counting = own !== null
+    const counting = false && own !== null
         && (walk.queue.some(asked) || (walk.looking !== null && asked(walk.looking)));
     const tally = counting ? own : { asked: {}, gone: {}, tell };
     const added = ids.filter(id => tally.asked[id] !== true);
