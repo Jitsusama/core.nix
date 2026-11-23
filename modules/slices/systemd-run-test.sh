@@ -5,7 +5,8 @@
 # conversation units in agents.slice, reading a call's options as
 # systemd-run's parser does by the table it's built from, which is held
 # to the wrapped systemd's own as it's built, and that the hold refuses a
-# table short of an option. Usage:
+# table that isn't, and a systemd taking options the table can't say.
+# Usage:
 # systemd-run-test <wrapper> <options table> <the hold> <systemd's systemd-run>,
 # where the wrapper was built in front of a stand-in that echoes what it's
 # given and reads its caller's cgroup from ./cgroup.
@@ -17,13 +18,50 @@ systemd_run=$4
 rows=$(grep -v '^#' "${table}")
 manager=0::/user.slice/user-1000.slice/user@1000.service
 
-# The hold passes the table and refuses one short of its last option.
-bash "${hold}" "${table}" "${systemd_run}" >/dev/null
+# held <what it would refuse> <table>, and refused <what it would pass>
+# <table> <systemd-run>
+held() {
+  if ! bash "${hold}" "$2" "${systemd_run}" >/dev/null; then
+    echo "the hold refused $1"
+    exit 1
+  fi
+}
+refused() {
+  if bash "${hold}" "$2" "$3" >/dev/null; then
+    echo "the hold passed $1"
+    exit 1
+  fi
+}
+# The hold passes the table, in any order, so its refusals below are of
+# what they're given. It refuses one short of its last option, or of the
+# hidden --tty, and one reading a valued option as bare.
+held "the table" "${table}"
+tac "${table}" >reversed
+held "the table in another order" reversed
 sed '$d' "${table}" >short
-if bash "${hold}" short "${systemd_run}" >/dev/null; then
-  echo "the hold passed a table short of an option"
-  exit 1
-fi
+refused "a table short of an option" short "${systemd_run}"
+grep -v '^- tty$' "${table}" >untold
+refused "a table short of the hidden --tty" untold "${systemd_run}"
+sed 's/^u unit=$/u unit/' "${table}" >flipped
+refused "a table reading a valued option as bare" flipped "${systemd_run}"
+# It refuses a systemd whose options the table can't say: a second long
+# name or letter for one, a value that may be left out, or another way of
+# taking one, from stand-ins saying what this one does, so changed.
+"${systemd_run}" --introspect-cli >introspected.json
+saying() {
+  jq "$2" introspected.json >"$1.json"
+  printf '#!%s\ncat %s\n' "${BASH}" "${PWD}/$1.json" >"$1"
+  chmod +x "$1"
+}
+first='.commands[0].options[0]'
+saying aliased "${first}.names += [\"--other-name\"]"
+refused "a second long name" "${table}" ./aliased
+saying lettered "${first}.names += [\"-Y\"]"
+refused "a second letter" "${table}" ./lettered
+saying optional "${first}.argument = \"optional_argument\""
+refused "a value that may be left out" "${table}" ./optional
+saying another "${first}.argument = \"some_argument\""
+refused "another way of taking a value" "${table}" ./another
 
 # says <cgroup> <what the real one should be given> <the call...>
 says() {
@@ -86,7 +124,9 @@ says "${host}" "--user -C c true" --user -C c true
 # Each option in the table is read as taking a value or not, as systemd-run
 # does: a word after a valued one is its value, whatever it looks like, and
 # one after a bare one is read for itself. Those naming a slice or another
-# manager pass the call through.
+# manager pass the call through: that list is names_its_place's again, so
+# it proves each reads as one, not that a new option systemd adds needs no
+# place in it, which the hold asks to be judged when it refuses the table.
 while read -r letter name; do
   passes=false
   case "${name%=}" in
@@ -113,9 +153,10 @@ done <<<"${rows}"
 # rest of it, and a long name may be cut short while it's still the only
 # one it could be. A name two could be, or none, and a letter none has,
 # are refused by systemd-run itself, and read as taking no value, so the
-# call keeps its slice; so does the hidden --tty, which systemd-run takes.
-# The last of --user and --system is obeyed, and a valued option's value
-# may be --, which ends nothing.
+# call keeps its slice, and an option after one is read for itself. The
+# hidden --tty, which systemd-run takes, keeps it too; the hold proves the
+# table has it. The last of --user and --system is obeyed, and a valued
+# option's value may be --, which ends nothing.
 kitty="${manager}/agents.slice/kitty-1-3.scope"
 says "${kitty}" "--user -qu j --slice=a.slice true" --user -qu j --slice=a.slice true
 says "${host}" "--slice=jobs-work.slice -qu job --user --scope true" \
@@ -137,6 +178,9 @@ says "${host}" "--slice=jobs-work.slice --user --sl true" --user --sl true
 says "${host}" "--slice=jobs-work.slice --user --frobnicate a.slice true" \
   --user --frobnicate a.slice true
 says "${host}" "--slice=jobs-work.slice --user -Z true" --user -Z true
+says "${host}" "--slice=jobs-work.slice --frobnicate --user true" --frobnicate --user true
+says "${host}" "--slice=jobs-work.slice -Z --user true" -Z --user true
+says "${host}" "--user --sl --slice=a.slice true" --user --sl --slice=a.slice true
 says "${host}" "--slice=jobs-work.slice --user --tty true" --user --tty true
 says "${host}" "--user --system true" --user --system true
 says "${host}" "--slice=jobs-work.slice --system --user true" --system --user true

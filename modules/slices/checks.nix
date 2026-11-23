@@ -596,7 +596,7 @@
   # given jobs-work.slice instead. Only systemd-run's own options are read,
   # never the command's, bundled and shortened as its parser takes them, by
   # a table the wrapper is built only once it holds to the options of the
-  # systemd it wraps, nixpkgs' here.
+  # systemd it wraps, nixpkgs' here, and isn't built without.
   an-agents-run-stays-in-its-slice =
     let
       run = pkgs.callPackage ./systemd-run.nix {
@@ -604,6 +604,7 @@
         cgroup = "cgroup";
       };
     in
+    assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
       ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
         ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \

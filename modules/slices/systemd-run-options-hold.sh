@@ -11,12 +11,16 @@ table=$1
 systemd_run=$2
 
 "${systemd_run}" --introspect-cli >introspected
-# The table has no row for an option with no long name, or whose value
-# may be left out, which only a joined value gives; one the wrapper would
-# misread is refused here rather than guessed at.
+# The table has a row for each option, a letter and a long name, so it can't
+# say an option with no long name or a second of either, which the wrapper
+# wouldn't know and would read as bare, nor one whose value may be left
+# out, which only a joined value gives, or any other way of taking one.
+# One the wrapper would misread is refused here rather than guessed at.
 odd=$(jq -r '.commands[] | select(.names | index("systemd-run")) | .options[]
-  | select((.names | map(select(startswith("--"))) | length) == 0
-    or .argument == "optional_argument")
+  | select((.names | map(select(startswith("--"))) | length) != 1
+    or (.names | map(select(test("^-[^-]$"))) | length) > 1
+    or (.names | map(select(test("^-[^-]$") or startswith("--") | not)) | length) > 0
+    or (.argument as $taking | ["no_argument", "required_argument"] | index($taking)) == null)
   | .names | join(",")' introspected)
 if [[ -n "${odd}" ]]; then
   echo "systemd-run takes options the table can't say, so systemd-run.sh can't read them:"
@@ -26,9 +30,10 @@ fi
 jq -r '.commands[] | select(.names | index("systemd-run")) | .options[]
   | ((.names | map(select(test("^-[^-]$"))) | first // "--") | ltrimstr("-"))
     + " " + (.names | map(select(startswith("--"))) | first | ltrimstr("--"))
-    + (if .argument == "no_argument" then "" else "=" end)' introspected >taken
+    + (if .argument == "no_argument" then "" else "=" end)' introspected | sort >taken
+# Their order is left out: the wrapper looks names up, never by place.
 rows=$(grep -v '^#' "${table}")
-printf '%s\n' "${rows}" >table-rows
+printf '%s\n' "${rows}" | sort >table-rows
 if ! differs=$(diff table-rows taken); then
   echo "systemd-run-options.txt isn't the options this systemd-run takes, which are:"
   echo "${differs}"

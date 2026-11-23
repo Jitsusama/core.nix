@@ -4,12 +4,16 @@
 # front of a stand-in. It reads a call's arguments by
 # systemd-run-options.txt, each short letter's long name and every long
 # name, given it here, and is built only once that table holds to the
-# options the given systemd takes.
+# options the given systemd takes, where the building machine can run it.
+# A machine built elsewhere, for a platform its builder can't run, has its
+# wrapper read by the table as core's own check holds it, to nixpkgs'
+# systemd, since its systemd-run can't be asked there.
 {
   bash,
   jq,
   lib,
   runCommandLocal,
+  stdenv,
   systemd,
   writeShellApplication,
   real ? "${systemd}/bin/systemd-run",
@@ -41,7 +45,9 @@ in
 lib.hiPrio (writeShellApplication {
   name = "systemd-run";
   # Asked for so the wrapper can't be built while its table doesn't hold.
-  derivationArgs = { inherit holds; };
+  derivationArgs = lib.optionalAttrs (stdenv.buildPlatform.canExecute stdenv.hostPlatform) {
+    inherit holds;
+  };
   text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
     builtins.readFile ./systemd-run.sh
   );

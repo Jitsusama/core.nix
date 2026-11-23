@@ -69,9 +69,11 @@
 # another fails its build rather than misreading calls. A name no option
 # has, or two begin, and a letter no option has, are read as an option
 # taking no value, and the reading goes on. systemd-run refuses such a
-# call whatever is added to it, and one a table lacked would still keep
-# the agent's slice, where passed through unchanged, the --tty that --help
-# leaves out would put an agent's unit among Joel's apps.
+# call whatever is added to it. That keeps the slice for a bare option a
+# table lacked, where passed through unchanged, the --tty that --help
+# leaves out would put an agent's unit among Joel's apps; but a valued one
+# before --user would have its value read as the command, so only the hold
+# keeps a table from lacking one.
 #
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand. It answers --help alone; -h, or --help with anything beside it,

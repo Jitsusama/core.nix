@@ -392,7 +392,8 @@
     slice for a name or letter no option has, and leaves Joel's own calls, his services in
     jobs.slice, the windows' kitty and the node in agents.slice, a path naming those places
     only inside another's scope, a call naming a slice and a call to the system manager as they
-    were; a table short of an option isn't held to
+    were; and that the hold refuses a table short of an option, or reading one as valued that
+    isn't, or an option the table can't say, and the wrapper isn't built without it
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
