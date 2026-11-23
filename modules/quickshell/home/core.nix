@@ -90,6 +90,7 @@
   "launcher/Stepped.js"
   "launcher/Traces.js"
   "launcher/ReadyRows.js"
+  "launcher/EmojiDrawer.js"
   "launcher/ActForms.js"
   "launcher/Moved.js"
   "launcher/Beneath.js"

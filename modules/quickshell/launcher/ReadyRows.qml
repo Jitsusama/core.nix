@@ -80,6 +80,10 @@ Scope {
     // A place's own make of an act, `(key, act, row)` to its row, else null: Agents' Talk
     // asks for words before its ask is sent, which no served act form says.
     property var actMade: null
+    // A place's own make of a row's drawer, `(row)` to its drawer, for a row saying only
+    // `drawer: true` as its row holds all its drawer says: Emoji's, so 1,914 drawers aren't
+    // held for the one shown (EmojiDrawer.js).
+    property var drawerMaker: null
     // Whether a row's acts come before the rows inside it among its verbs, the first of those
     // set apart, as a Wi-Fi network's Connect It and Forget It come before its Signal, so it
     // always holds its parts (2026-11-13); otherwise a row stepping into rows holds only those.
@@ -591,7 +595,7 @@ Scope {
             Qt.callLater(() => {
                 ready.drawersAhead = near;
             });
-        return Ready.drawerOf(Ready.drawerServed(row, held), Date.now(), timeWords);
+        return Ready.drawerOf(Ready.drawerServed(row, held, drawerMaker), Date.now(), timeWords);
     }
 
     // A drawer naming its row's acts by their words, Return's by its mark, never making one a row

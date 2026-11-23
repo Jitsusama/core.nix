@@ -4916,7 +4916,9 @@
     summary beside them never is; each time form is said in the launcher's words as of now, a
     time put into its words where they hold one; a side joins its items by a dot, a drawer's
     facts are drawn as the drawer reads them, its picture and its eyebrow's parts passed through
-    only where served, and a row says whether its words turn by minute, by day or never
+    only where served, and a row says whether its words turn by minute, by day or never; a row
+    saying only that it has a drawer has the one its place makes of it, and an emoji's says its
+    group, name, keywords (none where it has none) and every code point in four hex digits or more
   '';
   the-launchers-graphs-draw-in-braille = ''
     a row's graph is ten braille characters over a dim track, a bar from the left, a spark from the

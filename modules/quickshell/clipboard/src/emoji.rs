@@ -10,6 +10,12 @@
 //! acts beneath it, Return pasting it and y copying it, so it opens no list
 //! of them (Joel, 2026-11-11 22:00), and its drawer, shown as it's
 //! selected, says its group, its keywords and, folded, its code points.
+//! The row holds all its drawer says, so it serves none, saying only
+//! `drawer: true`, and the shell makes it as it's drawn
+//! (launcher/EmojiDrawer.js): served in every row, the 1,914 drawers were
+//! 1.26 of the 4.34 MB the shell's heap kept live for Emoji's records, for
+//! the one drawer shown at a time (the heap lab over Joel's answer,
+//! 2026-11-23).
 //!
 //! Each emoji sits inside its group's row, Unicode's groups being the
 //! place's own rows in the order the list first names them, so Super+E
@@ -62,7 +68,7 @@ pub fn records(list: &str, words: &Words) -> Vec<Value> {
                 keywords,
                 group,
             };
-            let mut row = row(&key, at, &named, words);
+            let mut row = row(&key, at, &named);
             row["parent"] = json!(group_key(at_of[group.as_str()]));
             row["depth"] = json!(1);
             json!({ "key": key, "kind": "row", "row": row })
@@ -115,35 +121,6 @@ struct Named<'a> {
     group: &'a str,
 }
 
-/// An emoji's drawer: its group over its name, set as Unicode writes it,
-/// its keywords as words where it has any, and its code points as
-/// Unicode writes them, raw, folded behind za.
-fn drawer(named: &Named, words: &Words) -> Value {
-    let keywords = named.keywords.split_whitespace().collect::<Vec<_>>();
-    let facts = if keywords.is_empty() {
-        Vec::new()
-    } else {
-        vec![json!({
-            "name": words.name("emoji:keywords"),
-            "said": keywords.join(", "),
-            "words": true,
-        })]
-    };
-    let points = named
-        .emoji
-        .chars()
-        .map(|one| format!("U+{:04X}", u32::from(one)))
-        .collect::<Vec<_>>()
-        .join(" ");
-    json!({
-        "eyebrow": named.group,
-        "eyebrowNames": true,
-        "title": capitalised(named.name),
-        "facts": facts,
-        "nerd": [{ "label": words.name("emoji:code"), "value": points }],
-    })
-}
-
 /// What an emoji's row asks for when it's pasted and when it's copied, in
 /// the one verb order. Each shuts the launcher as it's asked, so a paste's
 /// keys go to the window under it.
@@ -155,12 +132,13 @@ fn acts(emoji: &str) -> Value {
     ])
 }
 
-/// One emoji's row, the `at`th in the list. Its name is given a capital,
-/// as every row's is, and its thing keeps the name as Unicode writes it,
-/// which what's learned of it is kept by. Its copy is asked of the
-/// history, so the shell can't tell from its acts alone that y does it,
-/// and `actsOnly` says so (ready-rows.md).
-fn row(key: &str, at: u64, named: &Named, words: &Words) -> Value {
+/// One emoji's row, the `at`th in the list, its drawer the shell's to
+/// make from it. Its name is given a capital, as every row's is, and its
+/// thing keeps the name as Unicode writes it, which what's learned of it
+/// is kept by. Its copy is asked of the history, so the shell can't tell
+/// from its acts alone that y does it, and `actsOnly` says so
+/// (ready-rows.md).
+fn row(key: &str, at: u64, named: &Named) -> Value {
     json!({
         "key": key,
         "thing": format!("emoji:{}", named.name),
@@ -173,7 +151,7 @@ fn row(key: &str, at: u64, named: &Named, words: &Words) -> Value {
         "keywords": named.keywords.split_whitespace().collect::<Vec<_>>(),
         "acts": acts(named.emoji),
         "actsOnly": true,
-        "drawer": drawer(named, words),
+        "drawer": true,
         "held": { "emoji": named.emoji, "group": named.group },
     })
 }
@@ -321,35 +299,20 @@ mod tests {
     }
 
     #[test]
-    fn its_drawer_says_its_group_keywords_and_code_points() {
-        let drawer = &rows()[1]["drawer"];
-        assert_eq!(drawer["eyebrow"], "People & Body");
-        assert_eq!(
-            drawer["eyebrowNames"], true,
-            "a group is set as Unicode writes it"
+    fn a_row_holds_what_its_drawer_says_and_serves_none() {
+        let records = records(LIST, &words());
+        assert!(
+            records.iter().all(|record| record["kind"] == "row"),
+            "nothing but rows is served: {records:?}"
         );
-        assert_eq!(drawer["title"], "Woman technologist");
-        assert_eq!(
-            drawer["facts"],
-            json!([{ "name": "Keywords", "said": "coder, software", "words": true }])
+        let rows = rows();
+        assert!(
+            rows.iter().all(|row| row["drawer"] == true),
+            "each says it has a drawer, which the shell makes: {rows:?}"
         );
-        assert_eq!(
-            drawer["nerd"],
-            json!([{ "label": "Code Points", "value": "U+1F469 U+200D U+1F4BB" }]),
-            "every code point, as Unicode writes them"
-        );
-    }
-
-    #[test]
-    fn one_with_no_keywords_says_none() {
-        let records = records(
-            "[\"🫠\", \"melting face\", \"\", \"Smileys & Emotion\"]",
-            &words(),
-        );
-        assert_eq!(
-            records[1]["row"]["drawer"]["facts"],
-            json!([]),
-            "after its group's: {records:?}"
-        );
+        assert_eq!(rows[1]["name"], "Woman technologist");
+        assert_eq!(rows[1]["held"]["group"], "People & Body");
+        assert_eq!(rows[1]["held"]["emoji"], "👩‍💻");
+        assert_eq!(rows[1]["keywords"], json!(["coder", "software"]));
     }
 }
