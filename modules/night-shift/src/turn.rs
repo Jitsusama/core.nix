@@ -98,11 +98,6 @@ pub fn parse(args: &[String]) -> Result<Turn, String> {
     let Some(name) = args.get(1) else {
         return Err("night-shift turn takes the job's name".into());
     };
-    // The name heads the turn's tab-separated note, where a tab or a line
-    // of its own would name another holder than this job.
-    if name.contains(['\t', '\n']) {
-        return Err("a job's name holds no tab or newline".into());
-    }
     let split = args
         .iter()
         .position(|arg| arg == "--")
@@ -138,28 +133,28 @@ pub fn parse(args: &[String]) -> Result<Turn, String> {
 }
 
 /// Notes in `runtime` that `name`, this process, has the turn from now,
-/// with when it started, in the kernel's ticks, so a later process given
-/// its number is told apart from it. It's written whole beside the note
-/// and then named, so a reader never finds half of it; a note that can't
-/// be written, or whose start can't be read, is said, since a turn asked
-/// for in this job's command then waits for the lock this job holds.
+/// for those waiting to say who they wait for. It's written whole beside
+/// the note and then named, so a reader never finds half of it, and a
+/// tab or line break in the name, which would shift the note's fields, is
+/// written as a space. Who holds the turn is the kernel's word alone
+/// ([`held_above`]), so a note that can't be written only leaves those
+/// waiting naming nobody, and is said.
 pub fn note(runtime: &Path, name: &str) {
     let since = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
-    let pid = std::process::id().to_string();
+    let pid = std::process::id();
+    let shown = name.replace(['\t', '\n', '\r'], " ");
     let writing = runtime.join(format!(".holder-{pid}"));
-    let written = ahead::started(&pid)
-        .ok_or_else(|| io::Error::other("its own start can't be read"))
-        .and_then(|started| fs::write(&writing, format!("{name}\t{pid}\t{since}\t{started}\n")))
+    let written = fs::write(&writing, format!("{shown}\t{pid}\t{since}\n"))
         .and_then(|()| fs::rename(&writing, runtime.join("holder")));
     if let Err(error) = written {
         let _ = fs::remove_file(&writing);
         say(
             name,
             &format!(
-                "can't note that it has the turn ({error}), so a turn its command asks for \
-                 waits for this one"
+                "can't note that it has the turn ({error}), so those waiting for it can't say \
+                 who has it"
             ),
         );
     }
@@ -168,79 +163,134 @@ pub fn note(runtime: &Path, name: &str) {
 /// Who has the turn, as the last to take it noted, while its process
 /// still runs.
 pub fn holder(runtime: &Path) -> String {
-    let noted = fs::read_to_string(runtime.join("holder")).unwrap_or_default();
-    let mut fields = noted.trim().split('\t');
+    noted(runtime).map_or_else(
+        || "a job that doesn't say".into(),
+        |(name, pid, minutes)| format!("{name} (process {pid}, for {minutes} min)"),
+    )
+}
+
+/// The note's name, process and minutes held, while its process runs.
+/// Only its line break is trimmed, so an empty name shifts no field.
+fn noted(runtime: &Path) -> Option<(String, i32, u64)> {
+    let noted = fs::read_to_string(runtime.join("holder")).ok()?;
+    let mut fields = noted.trim_end_matches('\n').split('\t');
     let (Some(name), Some(pid), Some(since)) = (fields.next(), fields.next(), fields.next()) else {
-        return "a job that doesn't say".into();
+        return None;
     };
-    if !Path::new("/proc").join(pid).exists() {
-        return "a job that doesn't say".into();
+    let pid = pid.parse::<i32>().ok().filter(|pid| *pid > 0)?;
+    if !Path::new("/proc").join(pid.to_string()).exists() {
+        return None;
     }
     let now = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |now| now.as_secs());
     let minutes = now.saturating_sub(since.parse().unwrap_or(now)) / 60;
-    format!("{name} (process {pid}, for {minutes} min)")
+    Some((name.to_owned(), pid, minutes))
 }
 
-/// Who holds the turn in `runtime`, as [`holder`] says, when it's
-/// this process or one above it: a turn asked for inside a turn's command
-/// has the turn already, and waiting for the lock its own parent holds
-/// would wait for ever, as a cargo test an agent ran in its turn did once
-/// nix-offload asked for a turn of its own. A pid noted by a job long
-/// gone and given again to one of this process's parents, or one counted
-/// in another pid namespace, is told apart by when it started. A holder
-/// that let the lock go while it lives, as a night job paused for a job
-/// Joel waits on does, is told apart by the kernel's own word on who holds
-/// `lock`, so a note left standing while the next job takes the lock
-/// names nobody. "Below" is this process's parents alone: a turn asked
+/// Who holds `lock`, as far as the kernel says.
+enum Held {
+    /// This process, or one of its parents, as the process named.
+    Above(String),
+    /// Another process, or nobody.
+    Elsewhere,
+    /// The kernel's word couldn't be read, or named nobody, as given.
+    Unread(String),
+}
+
+/// Whether the turn in `runtime` is held by this process or one above it,
+/// by the kernel's own word on who holds `lock`: a turn asked for inside a
+/// turn's command has the turn already, and waiting for the lock its own
+/// parent holds would wait for ever, as a cargo test an agent ran in its
+/// turn did once nix-offload asked for a turn of its own. The note plays
+/// no part but to name the holder, so one left standing, missing or
+/// unwritten neither runs a turn beside another job nor makes one wait on
+/// its own parent. A holder that let the lock go while it lives, as a
+/// night job paused for a job Joel waits on does, holds nothing the
+/// kernel names. "Above" is this process's parents alone: a turn asked
 /// for by work a turn's command handed elsewhere, to a unit or a terminal
 /// server started before it, waits like any other.
-fn held_above(runtime: &Path, lock: &File) -> Option<String> {
-    let noted = fs::read_to_string(runtime.join("holder")).ok()?;
-    let mut fields = noted.trim().split('\t').skip(1);
-    let holder = fields.next()?.parse::<i32>().ok().filter(|pid| *pid > 1)?;
-    let started = fields.nth(1)?.parse::<u64>().ok()?;
-    let mut at = i32::try_from(std::process::id()).ok()?;
+fn held_above(runtime: &Path, lock: &File) -> Held {
+    let holders = match lock_holders(lock) {
+        Ok(holders) if holders.is_empty() => {
+            // Nobody, or a device the kernel names otherwise, which a
+            // caller that found the lock taken tells apart.
+            return Held::Unread("the kernel names no holder of its lock".into());
+        }
+        Ok(holders) => holders,
+        Err(why) => return Held::Unread(why),
+    };
+    let Ok(mut at) = i32::try_from(std::process::id()) else {
+        return Held::Elsewhere;
+    };
     // pid 1 and the kernel's 0 hold no turn, and a chain longer than any
     // real one is a loop read mid-change.
     for _ in 0..4096 {
-        if at == holder {
-            let same = ahead::started(&at.to_string()) == Some(started);
-            return (same && locked_by(lock, holder)).then(|| self::holder(runtime));
-        }
         if at <= 1 {
-            return None;
+            break;
         }
-        at = ahead::stat(&at.to_string())?.get(1)?.parse().ok()?;
+        if holders.contains(&at) {
+            let named = noted(runtime)
+                .filter(|(_, pid, _)| *pid == at)
+                .map_or_else(|| format!("process {at}"), |_| holder(runtime));
+            return Held::Above(named);
+        }
+        let Some(parent) = ahead::stat(&at.to_string()).and_then(|stat| stat.get(1)?.parse().ok())
+        else {
+            break;
+        };
+        at = parent;
     }
-    None
+    Held::Elsewhere
 }
 
-/// Whether process `pid` holds the flock on `lock`, as the kernel's
-/// `/proc/locks` says: a line `ID: FLOCK ADVISORY WRITE PID MAJ:MIN:INODE`
-/// for the lock's file, a waiter's lines being marked `->`. Unread, it
-/// says no, and the turn waits as any other would.
-fn locked_by(lock: &File, pid: i32) -> bool {
+/// The processes holding a flock on `lock`, as the kernel's `/proc/locks`
+/// says: lines `ID: FLOCK ADVISORY WRITE PID MAJ:MIN:INODE` for the lock's
+/// file, a waiter's lines being marked `->`. The kernel names the file by
+/// its filesystem's device, which stat's needn't be: on a btrfs subvolume
+/// stat gives the subvolume's own (on 23 November, 0:533 for a file the
+/// kernel named 00:22), so the device is the mount's, as mountinfo gives
+/// it, or stat's where that can't be read.
+fn lock_holders(lock: &File) -> Result<Vec<i32>, String> {
     use std::os::unix::fs::MetadataExt;
-    let Ok(held) = lock.metadata() else {
-        return false;
-    };
-    let dev = held.dev();
-    // glibc's gnu_dev_major and gnu_dev_minor, which undo the encoding
-    // stat gives a device in.
-    let major = ((dev >> 8) & 0xfff) | ((dev >> 32) & !0xfff);
-    let minor = (dev & 0xff) | ((dev >> 12) & !0xff);
+    let held = lock
+        .metadata()
+        .map_err(|error| format!("the lock can't be read: {error}"))?;
+    let (major, minor) = mounted_device(lock).unwrap_or_else(|| {
+        // Linux's own encoding of a device in 32 bits, 12 for the major
+        // number and 20 for the minor, split around it.
+        let dev = held.dev();
+        ((dev >> 8) & 0xfff, (dev & 0xff) | ((dev >> 12) & 0xf_ff00))
+    });
     let file = format!("{major:02x}:{minor:02x}:{}", held.ino());
-    let pid = pid.to_string();
-    fs::read_to_string("/proc/locks").is_ok_and(|locks| {
-        locks.lines().any(|line| {
+    let locks = fs::read_to_string("/proc/locks")
+        .map_err(|error| format!("/proc/locks can't be read: {error}"))?;
+    Ok(locks
+        .lines()
+        .filter_map(|line| {
             let words: Vec<&str> = line.split_whitespace().collect();
-            words.get(1) == Some(&"FLOCK")
-                && words.get(4) == Some(&pid.as_str())
-                && words.get(5) == Some(&file.as_str())
+            let theirs = words.get(1) == Some(&"FLOCK") && words.get(5) == Some(&file.as_str());
+            words.get(4).filter(|_| theirs)?.parse().ok()
         })
-    })
+        .collect())
+}
+
+/// The device of the filesystem `lock` is on, as `/proc/self/mountinfo`
+/// gives its mount's: the one `/proc/locks` names it by.
+fn mounted_device(lock: &File) -> Option<(u64, u64)> {
+    use std::os::fd::AsRawFd;
+    let info = fs::read_to_string(format!("/proc/self/fdinfo/{}", lock.as_raw_fd())).ok()?;
+    let mount = info
+        .lines()
+        .find_map(|line| line.strip_prefix("mnt_id:"))?
+        .trim();
+    let mounts = fs::read_to_string("/proc/self/mountinfo").ok()?;
+    let device = mounts.lines().find_map(|line| {
+        let mut words = line.split(' ');
+        (words.next() == Some(mount)).then(|| words.nth(1))?
+    })?;
+    let (major, minor) = device.split_once(':')?;
+    Some((major.parse().ok()?, minor.parse().ok()?))
 }
 
 /// What one look at the turn found.
@@ -537,7 +587,7 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
     // and held until this process ends, however it ends.
     let lock = File::create(runtime.join("lock"))
         .map_err(|error| failed(&turn.name, "can't open the lock", &error))?;
-    if let Some(holder) = held_above(runtime, &lock) {
+    if let Held::Above(holder) = held_above(runtime, &lock) {
         return run_within(turn, &holder);
     }
     if let Some(holder) = wait_for(turn, runtime, &lock)? {
@@ -581,12 +631,19 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
     loop {
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
-            Ok(Look::Taken) => {
-                if let Some(holder) = held_above(runtime, lock) {
-                    return Ok(Some(holder));
+            Ok(Look::Taken) => match held_above(runtime, lock) {
+                Held::Above(holder) => return Ok(Some(holder)),
+                Held::Elsewhere => {
+                    format!("waiting for the turn, which {} has", holder(runtime))
                 }
-                format!("waiting for the turn, which {} has", holder(runtime))
-            }
+                // Said, since a turn inside its holder's command then
+                // waits on its own parent, and only this line shows it.
+                Held::Unread(why) => format!(
+                    "waiting for the turn, which {} has, though whether it's this job's own \
+                     parent can't be told, as {why}",
+                    holder(runtime)
+                ),
+            },
             Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
             Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
         };
@@ -723,6 +780,52 @@ fn watch(top: i32, held: &SignalSet) -> (Option<ExitStatus>, Option<i32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The kernel names a held lock's file by its filesystem's device,
+    // which is read from the mount rather than from stat, so this process
+    // is found holding it on whatever filesystem the temp folder is.
+    #[test]
+    fn a_lock_held_here_is_held_by_this_process_as_the_kernel_says() {
+        let folder = std::env::temp_dir().join(format!("night-shift-held-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let lock = File::create(folder.join("lock")).unwrap();
+        lock.lock().unwrap();
+        let holders = lock_holders(&lock);
+        let unheld = lock_holders(&File::create(folder.join("other")).unwrap());
+        drop(lock);
+        fs::remove_dir_all(&folder).unwrap();
+        let own = i32::try_from(std::process::id()).unwrap();
+        assert_eq!(
+            holders,
+            Ok(vec![own]),
+            "the kernel's word on the lock was misread"
+        );
+        assert_eq!(unheld, Ok(vec![]), "a file nobody locked was read as held");
+    }
+
+    // A tab or line break in a name, as a night job's from its config may
+    // hold, and an empty name, shift none of the note's fields.
+    #[test]
+    fn a_note_names_its_process_whatever_its_name_holds() {
+        let folder = std::env::temp_dir().join(format!("night-shift-note-{}", std::process::id()));
+        fs::create_dir_all(&folder).unwrap();
+        let own = i32::try_from(std::process::id()).unwrap();
+        let mut read = Vec::new();
+        for name in ["x\t1", "x\n1", ""] {
+            note(&folder, name);
+            read.push(noted(&folder));
+        }
+        fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            read,
+            [
+                Some(("x 1".to_owned(), own, 0)),
+                Some(("x 1".to_owned(), own, 0)),
+                Some((String::new(), own, 0)),
+            ],
+            "a name shifted the note's fields"
+        );
+    }
 
     #[test]
     fn a_turn_reads_ahead_and_its_wait() {

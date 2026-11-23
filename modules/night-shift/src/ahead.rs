@@ -27,7 +27,7 @@ pub fn stat(pid: &str) -> Option<Vec<String>> {
 /// When a process started, in the kernel's ticks since boot, the 22nd
 /// field of its stat, which tells it apart from a later one given the
 /// same number.
-pub fn started(pid: &str) -> Option<u64> {
+fn started(pid: &str) -> Option<u64> {
     stat(pid)?.get(19)?.parse().ok()
 }
 
