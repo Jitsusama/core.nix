@@ -28,10 +28,12 @@ a terminal, `mycelium forage` gathers the realm's.
   on until you step to another it draws: that cell, as many of the cells
   that grew straight from it as fit (those the node's book holds first) and those
   nearest it in the list, each with every cell it grew from, so no
-  branch is left hanging. Only that cell's own line, when deeper than
-  48, is cut at its top, leaving room for the cells that grew from it, up
-  to half the floor; another line longer than the room left is left off,
-  unless none fits, as in a ring of starts longer than the room, when the
+  branch is left hanging. Only that cell's own line is cut at its top,
+  whenever it's longer than the room left once the cells the node's book
+  holds as grown from it have theirs, up to half the floor, so even a
+  line shorter than 48 is cut when enough of them grew from its cell.
+  Cells that only claim to have grown from it take what room is left.
+  Another line longer than the room left is left off, unless none fits, as in a ring of starts longer than the room, when the
   floor is filled with lines cut at their tops. Where it skips cells of
   the list, before, between or after those it draws, the main line breaks
   at an ellipsis. A list that grows past 48 is drawn around the cell you're on. As

@@ -14,7 +14,8 @@ import { cellLink } from "../../local-sites/kit/cell.ts";
 import { clockTime } from "../../local-sites/kit/status.ts";
 import { type Join, joined } from "./joins.ts";
 import {
-  bookedFirst,
+  type Brood,
+  byBook,
   cellOrAway,
   claimedCell,
   escaped,
@@ -218,16 +219,22 @@ ${forage.waits.map((wait) => waitRow(wait, forage.quest)).join("\n")}
 `;
 }
 
+/** The children of no cell, as when the floor is drawn around none on its list. */
+const BARREN: Brood = { booked: [], claimed: [] };
+
 /**
  * The cells the floor draws, in the list's order: every one when they fit.
  * Past that, it draws `around`, then the cells that grew from it, then the
  * cells nearest it, so the floor follows the cursor down a list longer
  * than it holds. Each comes with every cell it grew from, or not at all, so
- * no branch drawn hangs from a starter that isn't. Only `around`'s own line,
- * when deeper than the floor, is cut at its top, as the nearest of it beats
- * none, and it leaves room for the cells that grew from it, up to half the
- * floor. When no whole line fits the room left, as in a ring of starts
- * longer than it, the floor is filled with lines cut at their tops. With no
+ * no branch drawn hangs from a starter that isn't. Only `around`'s own line
+ * is cut at its top, as the nearest of it beats none: whenever it's longer
+ * than the room left once the cells the node's book holds as grown from
+ * `around` have theirs, up to half the floor, so a line shallower than the
+ * floor is cut too when enough booked cells grew from its cell. Cells that
+ * only claim to have grown from it come after, in whatever room is left.
+ * When no whole line fits the room left, as in a ring of starts longer
+ * than it, the floor is filled with lines cut at their tops. With no
  * `around` on the list, that's the list's first, as the list puts each cell
  * after its starter, but for a ring cut by the floor's last place.
  */
@@ -238,9 +245,9 @@ function drawn(forages: readonly Forage[], around: string | null): readonly Fora
   }
   const { line, children } = kinOf(forages, grewFrom);
   const found = forages.findIndex((each) => each.cell === around);
-  const kids = found < 0 ? [] : bookedFirst(forages, children(found), grewClaimed);
-  const reach = FLOOR.most - Math.min(kids.length, FLOOR.most / 2);
-  const first = found < 0 ? [] : [found, ...kids];
+  const { booked, claimed } = found < 0 ? BARREN : byBook(forages, children(found), grewClaimed);
+  const reach = FLOOR.most - Math.min(booked.length, FLOOR.most / 2);
+  const first = found < 0 ? [] : [found, ...booked, ...claimed];
   const chosen = new Set<number>();
   for (const whole of [true, false]) {
     for (const start of starts(first, Math.max(found, 0), forages.length)) {
@@ -406,6 +413,8 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
   const at = new Map(cells.map((each) => [each.forage.cell, each]));
   const here = new Set(forages.map((each) => each.cell));
   // The main line breaks at each gap, where a mark stands for the cells left off.
+  // It still runs to the middle of each margin, so a gap before the first cell
+  // drawn or after the last leaves a dash beyond its mark: the list goes on.
   const stops = [
     FLOOR.margin / 2,
     ...gaps.flatMap((gap) => [gap - FLOOR.gap / 2, gap + FLOOR.gap / 2]),
