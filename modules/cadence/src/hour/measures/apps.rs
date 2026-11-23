@@ -20,6 +20,9 @@ const OWNER: &str = "5193FV";
 /// write is forgiven and a stopped one isn't taken for passing.
 const STALE: i64 = 2 * 3600;
 
+/// What each figure's key opens with, before its name in the hour.
+pub const FIGURE: &str = "apps:";
+
 /// The key the one line takes when there's no hour to read.
 const UNREAD: &str = "apps-under-load";
 
@@ -100,7 +103,7 @@ fn figure(m: &Value) -> Option<Measure> {
         _ => (measure.to_owned(), now, target),
     };
     Some(Measure {
-        key: format!("apps:{measure}"),
+        key: format!("{FIGURE}{measure}"),
         class: Class::Apps,
         says,
         now,
