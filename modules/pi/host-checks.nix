@@ -383,7 +383,7 @@ in
   # or cache folder that isn't a whole path, the account's alone, naming it,
   # and otherwise becomes the realm's node in its own place, with its words,
   # its environment's values whole, TMPDIR the temporary folder,
-  # AGENTS_RUNTIME_DIR the cache folder and no XDG_RUNTIME_DIR, the call
+  # AGENTS_RUNTIME_DIR the cache folder and no XDG_RUNTIME_DIR given, the call
   # probe its own restart waits on, and none of loadsCode though each set.
   the-mac-pi-host-starts-as-its-account =
     let

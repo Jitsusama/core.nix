@@ -39,6 +39,7 @@ rm_program=$(command -v rm)
 date_program=$(command -v date)
 sed_program=$(command -v sed)
 tail_program=$(command -v tail)
+realpath_program=$(command -v realpath)
 
 # Prints the temporary or cache folder the test gives it, as getconf prints
 # the account's own, or fails as getconf does when it has none. The cache
@@ -62,11 +63,15 @@ printf '%s\n' "\${GIVEN_UID:-\$(${id_program} -u)}"
 EOF
 
 # A folder's owner and mode, as the Mac's stat prints them, but another
-# account's uid for the folder GIVEN_FOREIGN names.
+# account's uid for the folder GIVEN_FOREIGN names, however the start
+# spells it.
 cat >"${stand}/owner" <<EOF
 #!${BASH}
 read -r uid mode < <(${stat_program} -c '%u %a' "\$1")
-[ "\$1" != "\${GIVEN_FOREIGN:-}" ] || uid=99999
+if [ -n "\${GIVEN_FOREIGN:-}" ] &&
+  [ "\$(${realpath_program} -m "\$1")" = "\$(${realpath_program} -m "\${GIVEN_FOREIGN}")" ]; then
+  uid=99999
+fi
 printf '%s %s\n' "\${uid}" "\${mode}"
 EOF
 
@@ -209,6 +214,10 @@ for shell in "$@"; do
   refused "no temporary folder" ""
   refused "a temporary folder that isn't there" "${work}/not-there/" \
     GIVEN_TEMPORARY="${work}/not-there/"
+  # A file that is the account's with mode 700 passes every other check.
+  touch "${work}/plain"
+  chmod 700 "${work}/plain"
+  refused "a temporary folder that is a file" "${work}/plain" GIVEN_TEMPORARY="${work}/plain"
   ln -sfn "${temporary}" "${work}/link"
   refused "a temporary folder that is a link" "${work}/link/" GIVEN_TEMPORARY="${work}/link/"
   mkdir -p "${work}/open"
@@ -228,6 +237,14 @@ for shell in "$@"; do
     GIVEN_TEMPORARY="${given}" GIVEN_CACHE="${work}/cache-link//"
   refused "a cache folder others may read" "${work}/open/" GIVEN_TEMPORARY="${given}" \
     GIVEN_CACHE="${work}/open/"
+  refused "a cache folder that is a file" "${work}/plain" GIVEN_TEMPORARY="${given}" \
+    GIVEN_CACHE="${work}/plain"
+  # A link named with a dot after it is still a link, though the last part
+  # of its name, the dot, isn't one.
+  refused "a cache folder that is a link named with a dot" "${work}/cache-link/." \
+    GIVEN_TEMPORARY="${given}" GIVEN_CACHE="${work}/cache-link/."
+  refused "a cache folder named through .." "${work}/cache-link/../cache/" \
+    GIVEN_TEMPORARY="${given}" GIVEN_CACHE="${work}/cache-link/../cache/"
   # Only the cache folder is another account's, which the uid alone can't
   # tell, since the temporary folder, checked first, would refuse too.
   refused "another account's cache folder" "${work}/cache/" GIVEN_TEMPORARY="${given}" \
@@ -246,10 +263,11 @@ for shell in "$@"; do
   # Each variable that would run code as node starts is given, as
   # launchd's or a machine's own could be, and none may reach node. The
   # loader's are empty, so Linux's loader, which reads them here, loads
-  # nothing and says nothing; set, they still have to be cleared.
+  # nothing and says nothing; set, they still have to be cleared. An
+  # XDG_RUNTIME_DIR given the same way has to be taken away too.
   "${env_program}" -i NODE_OPTIONS="--require /x.js" NODE_PATH=/x NODE_COMPILE_CACHE=/x \
     LD_PRELOAD= LD_AUDIT= LD_LIBRARY_PATH= OPENSSL_CONF=/x.cnf OPENSSL_MODULES=/x \
-    GIVEN_TEMPORARY="${given}" "${shell}" "${work}/start" &
+    XDG_RUNTIME_DIR=/x GIVEN_TEMPORARY="${given}" "${shell}" "${work}/start" &
   started=$!
   wait "${started}" || fail "under ${name} failed with everything in place"
   pid=$(<"${work}/pid")
@@ -265,7 +283,7 @@ for shell in "$@"; do
   # sits untouched for three days, as it does the temporary folder.
   expect AGENTS_RUNTIME_DIR "${work}/cache/"
   if grep -qz "^XDG_RUNTIME_DIR=" "${work}/environment"; then
-    fail "under ${name} set XDG_RUNTIME_DIR, which disk-guard reads for a folder of its own"
+    fail "under ${name} passed on XDG_RUNTIME_DIR, which disk-guard reads for a folder of its own"
   fi
   # shellcheck disable=SC2016 # the dollar and backquotes are the value, unexpanded
   expect GREETING 'it'"'"'s $HOME, `here`'
