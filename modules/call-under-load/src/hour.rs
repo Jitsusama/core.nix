@@ -22,6 +22,11 @@ const HEARD: &str = "call sound heard and counted";
 /// reads it as the p99 of every wakeup.
 const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// How far, in tenths, a figure may sit past a whole tenth and still be
+/// read as on it. The page's times carry error near 1e-8 ms, and Chrome's
+/// clock steps by at least 5 microseconds, so a ten-thousandth of a tenth (10 ns)
+/// is past any error and short of any step a figure could really take.
+const NOISE: f64 = 1e-4;
 
 /// What stands in for Joel's voice, said beside the sound's figures. The
 /// far end plays on this machine too, under the same load, so what it
@@ -57,9 +62,9 @@ fn measure(
     let tenth = |x: f64| {
         let tenths = x * 10.0;
         let whole = if lower_is_better {
-            (tenths - 1e-9).ceil()
+            (tenths - NOISE).ceil()
         } else {
-            (tenths + 1e-9).floor()
+            (tenths + NOISE).floor()
         };
         (whole + 0.0) / 10.0
     };
@@ -284,6 +289,14 @@ mod tests {
         // 0.1; the nudge keeps each on its tenth.
         assert_eq!(now(0.1 * 3.0, true), Some(0.3), "float error moved up");
         assert_eq!(now(1.0 - 0.9, false), Some(0.1), "float error moved down");
+        // The page's click times come with error near 1e-8 ms: 50.3 ms
+        // arrived as this at 05:37 on 23 November and showed as 50.4.
+        assert_eq!(
+            now(50.300_000_011_920_93, true),
+            Some(50.3),
+            "a click time's error moved it up"
+        );
+        assert_eq!(now(50.301, true), Some(50.4), "a real hundredth was lost");
         assert_eq!(now(f64::NAN, true), None, "NaN read as a figure");
         let none = now(0.0, true).unwrap_or(f64::NAN);
         assert!(
