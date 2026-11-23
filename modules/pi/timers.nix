@@ -209,8 +209,9 @@ in
         # Walking thousands of trees fills the kernel's caches of folders and
         # files, charged to this unit: on 23 November a run peaked at 5.8 GB
         # and the next at 2.9 GB, while the sweep's own memory stayed under
-        # 0.26 GB and file pages under 0.6 GB. Sampled through the second
-        # run, the rest was reclaimable slab (1.35 of 1.47 GB at once). Past
+        # 0.26 GB and file pages under 0.6 GB. The rest is taken to be
+        # reclaimable slab: no sample caught a peak, but the largest, 1.47
+        # GB in the second run, was 1.35 GB of it. Past
         # this mark the kernel takes that back from the sweep rather than
         # from what Joel is using. No hard limit of its own: a kill partway
         # through a take leaves a tree moved aside for the next run to put
