@@ -1214,8 +1214,8 @@ def test_the_turn_passes_over_a_place_said_with_no_move_but_never_nowhere() -> N
     step of the first got to; a walk that falls far in one report passes; a halt is held to
     where the walk before it got to, not to where the first move left off; a walk's end,
     said with no walk, passes where its fall ends far below; a cat put on its seat between
-    the two fails, after a walk going elsewhere too; and a cat said nowhere between the two is the second move's
-    first place, which fails its case.
+    the two fails, after a walk going elsewhere too; and a cat said nowhere between the two is
+    the second move's first place, which fails its case.
     """
     down: Json = {"x": 0, "y": 10, "size": 30, "move": {"way": 1}}
     halted: Json = {"x": 0, "y": 10, "size": 30, "move": None}
