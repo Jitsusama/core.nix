@@ -220,8 +220,8 @@ Provider {
     // wanted: Now's Spend and Tokens borrowing its drawer, and Agents'
     // Budgets, made then as it was served: null for none, undefined when
     // it can't say, as SpendNow.js decides, and Spend's down row, held
-    // while Start runs, as it is. Any reading but can't say is none, so one
-    // not known holds no amount.
+    // while Start runs, as it is. A reading neither served, down nor can't
+    // say is none, so one not known holds no amount.
     function rowNow(key) {
         const now = SpendNow.standing(key, standingNow());
         if (now === "down")
