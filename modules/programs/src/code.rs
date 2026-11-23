@@ -58,10 +58,11 @@ const AT_ONCE: usize = 4;
 /// launcher opened and closed in a run counts each checkout once.
 const FRESH: Duration = Duration::from_secs(10);
 
-/// How long a pass waits for zoxide's folders to be resolved before it
-/// orders Code by them as written: a folder on a mount that no longer
-/// answers would otherwise hold every pass after it, and the order costs
-/// only a link's worth of being wrong.
+/// How long a pass waits for zoxide's database to be read, past which
+/// nothing orders Code, and then for its folders and the checkouts' to be
+/// resolved, past which they're counted as written: a database or folder
+/// on a mount that no longer answers would otherwise hold every pass
+/// after it, and the order costs only a link's worth of being wrong.
 const RESOLVING: Duration = Duration::from_secs(2);
 
 /// Hears each watch begin or end, on a thread of its own, and has `ahead`
@@ -222,40 +223,47 @@ impl Code {
         Some((record, self.passes.fetch_add(1, Ordering::SeqCst)))
     }
 
-    /// zoxide's visits as they stand, each folder outside every checkout
-    /// and tree of `record` as written resolved to its real path, read once
-    /// a pass. It reads the disk, so it runs before the daemon's lock is
-    /// taken: the database `within` `RESOLVING`, past which nothing orders
-    /// Code, and then its folders, past which they're taken as written.
-    fn visits(&self, record: &Arc<Record>) -> Vec<(String, u64)> {
-        let Some(database) = self.visited.as_deref() else {
-            return Vec::new();
+    /// When Joel was last in each repository of `record`, by its key, from
+    /// zoxide's visits as they stand, read once a pass. It reads the disk,
+    /// so it runs before the daemon's lock is taken: the database `within`
+    /// `RESOLVING`, past which nothing orders Code and the log says why,
+    /// and then its folders and the checkouts' resolved to their real
+    /// paths, past which both are counted as written.
+    fn last_visits(&self, record: &Arc<Record>) -> BTreeMap<String, u64> {
+        let Some(database) = self.visited.clone() else {
+            return BTreeMap::new();
         };
         // Read on a thread of its own too, so a database on a mount that
         // stopped answering holds that thread, never the watch.
-        let database = database.to_path_buf();
-        let written = visited::within(RESOLVING, &self.late_reads, Vec::new(), move || {
-            visited::visits_in(&database)
+        let reading = database.clone();
+        let read = visited::within(RESOLVING, &self.late_reads, move || {
+            visited::visits_in(&reading)
         });
-        // None read, or none in time, leaves nothing to resolve.
+        let Some(written) = read else {
+            visited::late(&database, RESOLVING);
+            return BTreeMap::new();
+        };
+        // None read leaves nothing to resolve.
         if written.is_empty() {
-            return written;
+            return BTreeMap::new();
         }
-        let (visits, record) = (written.clone(), Arc::clone(record));
-        visited::within(RESOLVING, &self.late, written, move || {
-            let places = code_rows::places(&record);
-            visited::resolved(visits, |folder| code_rows::placed(&places, folder))
-        })
+        let resolving = Arc::clone(record);
+        let visits = written.clone();
+        let resolved = visited::within(RESOLVING, &self.late, move || {
+            let places = code_rows::places(&resolving);
+            let visits = visited::resolved(visits, |folder| code_rows::placed(&places, folder));
+            code_rows::last_visits(&places, &visits)
+        });
+        resolved
+            .unwrap_or_else(|| code_rows::last_visits(&code_rows::written_places(record), &written))
     }
 
     /// Code's rows from `record`, with the uncommitted files last counted
-    /// and zoxide's `visits`, and the rows inside them. It looks at the
-    /// disk for each checkout's real path, so it runs before the daemon's
-    /// lock is taken.
-    fn made(&self, record: &Record, visits: &[(String, u64)]) -> Vec<Value> {
+    /// and when Joel was `last` in each, and the rows inside them.
+    fn made(&self, record: &Record, last: &BTreeMap<String, u64>) -> Vec<Value> {
         let uncommitted = lock(&self.uncommitted).clone();
         let home = self.home.as_deref();
-        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, visits);
+        let mut rows = code_rows::rows(record, home, &self.words, &uncommitted, last);
         rows.extend(code_rows::inside(record, &self.words));
         rows
     }
@@ -388,7 +396,7 @@ fn again(shared: &Arc<Shared>) {
 /// its rows already, so no order read before another is taken after it.
 fn ordered(shared: &Shared, record: &Arc<Record>, pass: u64) {
     let code = &shared.code;
-    let rows = code.made(record, &code.visits(record));
+    let rows = code.made(record, &code.last_visits(record));
     let mut daemon = lock(&shared.daemon);
     if newest(&code.taken, pass) {
         take(shared, &mut daemon, rows);

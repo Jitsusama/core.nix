@@ -182,9 +182,9 @@ impl Words {
     }
 }
 
-/// Every repository's row, the one Joel visited last first by `visited`
-/// (zoxide's folders, each with when he was last in it), then those he
-/// hasn't A to Z by name; paths are said from `home` as `~`, and
+/// Every repository's row, the one Joel visited last first by `last`
+/// (when he was last in each, by its key, as `last_visits` gives it), then
+/// those he hasn't A to Z by name; paths are said from `home` as `~`, and
 /// `uncommitted` says how many tracked files each checkout counted has
 /// changed and not committed, by its path.
 #[must_use]
@@ -193,9 +193,8 @@ pub fn rows(
     home: Option<&Path>,
     words: &Words,
     uncommitted: &BTreeMap<String, u32>,
-    visited: &[(String, u64)],
+    last: &BTreeMap<String, u64>,
 ) -> Vec<Value> {
-    let last = last_visits(record, visited);
     let mut ordered: Vec<(&Repository, Option<u64>)> = record
         .repositories
         .iter()
@@ -213,19 +212,20 @@ pub fn rows(
         .collect()
 }
 
-/// When Joel was last in each repository, by its key: each visited folder
-/// counts for the repository whose checkout or tree holds it most
+/// When Joel was last in each repository, by its key, from `visited`
+/// (zoxide's folders, each with when he was last in it): each folder
+/// counts for the repository whose place among `places` holds it most
 /// closely, so a checkout nested in another's folder keeps its own visits.
-fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'a str, u64> {
-    let places = places(record);
-    let mut last: BTreeMap<&str, u64> = BTreeMap::new();
+#[must_use]
+pub fn last_visits(places: &[(String, &str)], visited: &[(String, u64)]) -> BTreeMap<String, u64> {
+    let mut last: BTreeMap<String, u64> = BTreeMap::new();
     for (folder, at) in visited {
         let holder = places
             .iter()
             .filter(|(path, _)| holds(path, folder))
             .max_by_key(|(path, _)| path.len());
         if let Some((_, key)) = holder {
-            let latest = last.entry(key).or_default();
+            let latest = last.entry((*key).to_owned()).or_default();
             *latest = (*latest).max(*at);
         }
     }
@@ -236,10 +236,28 @@ fn last_visits<'a>(record: &'a Record, visited: &[(String, u64)]) -> BTreeMap<&'
 /// repository's key, as repos wrote it and, where links lead elsewhere, as
 /// they resolve, since repos writes a tree's path as git keeps it, links
 /// and all, while a visit is named by its real path. A folder that can't
-/// be resolved is kept as written, and one that trims to nothing, or
-/// resolves to `/`, is left out, since it would hold every visit.
+/// be resolved is kept as written, and one that resolves to `/` is left
+/// out, since it would hold every visit. A folder on a mount that no
+/// longer answers stalls this, as it does `visited::resolved`.
 #[must_use]
 pub fn places(record: &Record) -> Vec<(String, &str)> {
+    let mut places = Vec::new();
+    for (written, key) in written_places(record) {
+        if let Ok(real) = fs::canonicalize(&written) {
+            let real = real.to_string_lossy().into_owned();
+            if real != written && real != "/" {
+                places.push((real, key));
+            }
+        }
+        places.push((written, key));
+    }
+    places
+}
+
+/// `places` as repos wrote them alone, touching no disk, for when they
+/// can't be resolved in time: one that trims to nothing is left out.
+#[must_use]
+pub fn written_places(record: &Record) -> Vec<(String, &str)> {
     let mut places = Vec::new();
     for repository in &record.repositories {
         let key = repository.key.as_str();
@@ -249,16 +267,9 @@ pub fn places(record: &Record) -> Vec<(String, &str)> {
                 .chain(present.map(|tree| tree.path.as_str()));
             for path in paths {
                 let written = path.trim_end_matches('/');
-                if written.is_empty() {
-                    continue;
+                if !written.is_empty() {
+                    places.push((written.to_owned(), key));
                 }
-                if let Ok(real) = fs::canonicalize(written) {
-                    let real = real.to_string_lossy().into_owned();
-                    if real != written && real != "/" {
-                        places.push((real, key));
-                    }
-                }
-                places.push((written.to_owned(), key));
             }
         }
     }

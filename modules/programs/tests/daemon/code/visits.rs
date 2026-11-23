@@ -135,8 +135,10 @@ fn a_database_that_never_answers_holds_no_other_ask() {
     let mut second = running.client();
     second.send(&json!({"id": 2, "ask": "watch", "kind": "row", "place": "code"}));
     // A pipe opened to write without waiting opens only once a reader
-    // holds it, so the second watch's read is under way before the third
-    // ask; held open and unwritten, it keeps that read waiting.
+    // holds it, so a read is under way before the third ask, the second
+    // watch's or a pass's behind the first, and either holds the deadline
+    // that every pass after it meets; held open and unwritten, it keeps
+    // that read waiting.
     let writer = std::cell::RefCell::new(None);
     until("the second watch never read zoxide's database", || {
         let opened = std::fs::OpenOptions::new()
@@ -157,7 +159,9 @@ fn a_database_that_never_answers_holds_no_other_ask() {
     // Another of Code's own watches is answered too, its order let go
     // rather than waiting on the database with the second.
     let mut fourth = running.client();
+    let asked = Instant::now();
     let coded = fourth.ask(&json!({"id": 4, "ask": "watch", "kind": "row", "place": "code"}));
+    let coding = asked.elapsed();
     // Freed before asserting, so no thread is left waiting on the pipe.
     let mut writer = writer.into_inner().expect("the pipe was opened to write");
     writer.write_all(&zoxide_database(&[])).unwrap();
@@ -174,5 +178,9 @@ fn a_database_that_never_answers_holds_no_other_ask() {
     assert!(
         coded.get("error").is_none(),
         "a watch of Code's rows waited on zoxide's database: {coded}"
+    );
+    assert!(
+        coding < Duration::from_secs(1),
+        "a watch of Code's rows waited {coding:?} on zoxide's database"
     );
 }

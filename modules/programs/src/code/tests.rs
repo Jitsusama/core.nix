@@ -1,4 +1,78 @@
 use super::*;
+use repos::model::{Checkout, Repository};
+
+/// zoxide's database at version 3 holding one folder, visited at `seconds`.
+fn zoxide(folder: &str, seconds: u64) -> Vec<u8> {
+    let mut bytes = 3_u32.to_le_bytes().to_vec();
+    bytes.extend(1_u64.to_le_bytes());
+    bytes.extend((folder.len() as u64).to_le_bytes());
+    bytes.extend(folder.as_bytes());
+    bytes.extend(1.0_f64.to_le_bytes());
+    bytes.extend(seconds.to_le_bytes());
+    bytes
+}
+
+/// One repository, alpha, checked out at `path`.
+fn alpha_at(path: &str) -> Record {
+    let checkout = Checkout {
+        path: path.to_owned(),
+        bare: false,
+        head: None,
+        written_at: None,
+        trees: Vec::new(),
+        weight: None,
+        branches: None,
+        config_bytes: None,
+    };
+    Record {
+        schema: repos::model::SCHEMA.to_owned(),
+        read_at: 0,
+        machine: "here".to_owned(),
+        roots: Vec::new(),
+        sources: Vec::new(),
+        repositories: vec![Repository {
+            key: "github:someone/alpha".to_owned(),
+            name: "alpha".to_owned(),
+            owner: None,
+            remotes: Vec::new(),
+            trunk: None,
+            written_at: None,
+            checkouts: vec![checkout],
+            changes: Vec::new(),
+            read_through: None,
+        }],
+    }
+}
+
+/// A resolution held past its deadline leaves zoxide's database read and
+/// its visits counted as written, so a folder on a stuck mount never
+/// empties Code's order as a stuck database does, which orders nothing.
+#[test]
+fn reads_and_resolutions_held_late_are_counted_apart() {
+    let folder = std::env::temp_dir().join(format!("code-late-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    let database = folder.join("db.zo");
+    std::fs::write(&database, zoxide("/s/alpha/src", 1_700_000_000)).unwrap();
+    let mut code = Code::new("", &Value::Null);
+    code.visited = Some(database);
+    let record = Arc::new(alpha_at("/s/alpha"));
+    // As a resolution stuck on a mount leaves it.
+    code.late.fetch_add(1, Ordering::SeqCst);
+    let resolving_late = code.last_visits(&record);
+    // As a read stuck on a mount leaves it.
+    code.late_reads.fetch_add(1, Ordering::SeqCst);
+    let reading_late = code.last_visits(&record);
+    std::fs::remove_dir_all(&folder).unwrap();
+    assert_eq!(
+        resolving_late,
+        BTreeMap::from([("github:someone/alpha".to_owned(), 1_700_000_000_000)]),
+        "a resolution held late left the visits uncounted as written"
+    );
+    assert!(
+        reading_late.is_empty(),
+        "a read held late still ordered Code: {reading_late:?}"
+    );
+}
 
 #[test]
 fn a_pass_begun_before_the_one_last_taken_takes_nothing() {
