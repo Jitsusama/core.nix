@@ -158,8 +158,9 @@ trap 'stopped TERM 143' TERM"#
 /// copy stays for good;
 /// one that still can't go is named once, never file by file, since
 /// each far line after it tries again, as an earlier run's. A run's file
-/// goes only once its copy did, and only its first bytes are read, so
-/// one a job filled can't hold the sweep.
+/// goes only once its copy did, and only its first bytes are read, with
+/// any NUL dropped, so one a job filled can't hold the sweep or have a
+/// shell warn of it in the job's output.
 pub(super) fn sweeping() -> String {
     format!(
         r#"runs=${{work%/*}}
@@ -175,7 +176,7 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
     [ -f "$run" ] && [ ! -L "$run" ] || continue
     copy=${{run%{RUN}}}
     case ${{copy##*/}} in ''|*[!0-9-]*) continue ;; esac
-    line=$(head -c 512 "$run" | head -n 1)
+    line=$(head -c 512 "$run" | tr -d '\000' | head -n 1)
     set -f
     set -- $line
     set +f

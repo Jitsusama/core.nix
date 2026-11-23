@@ -383,11 +383,12 @@ exec uname \"$@\"";
 #[test]
 fn a_link_at_the_copies_folder_is_cleared_rather_than_written_through() {
     // A uname that, the first time it's asked, leaves the copies' folder
-    // a link to a folder beyond them.
+    // a link to a folder beyond them, holding a file of its own.
     let uname = "PATH=${PATH#*:}
 runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
 if mkdir \"$HOME/planting\" 2>/dev/null; then
-  mkdir \"$HOME/beyond\" && ln -s \"$HOME/beyond\" \"$runs\" && touch \"$HOME/planted\"
+  mkdir \"$HOME/beyond\" && touch \"$HOME/beyond/kept\" &&
+    ln -s \"$HOME/beyond\" \"$runs\" && touch \"$HOME/planted\"
 fi
 exec uname \"$@\"";
     let (code, err, home) = far_line(
@@ -409,9 +410,10 @@ exec uname \"$@\"";
             && runs.join("ran").exists(),
         "the job didn't run in a copies' folder of its own ({code:?}): {err}"
     );
-    assert!(
-        left_in(&home.join("beyond")).is_empty(),
-        "the far line wrote through the link at the copies' folder"
+    assert_eq!(
+        left_in(&home.join("beyond")),
+        ["kept"],
+        "the far line wrote or cleared through the link at the copies' folder"
     );
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -504,7 +506,8 @@ exec uname \"$@\"";
         code == Some(0) && work(&home).join("ran").exists(),
         "the job never ran ({code:?}): {err}"
     );
-    // Where the job ran, so a copy left anywhere else is seen to miss.
+    // The stand-in's path is where the job ran, so its copy lay where
+    // the far line sweeps, and its going is the sweep's doing.
     assert_eq!(
         std::fs::read_to_string(home.join("left")).unwrap_or_default(),
         work(&home).display().to_string(),
