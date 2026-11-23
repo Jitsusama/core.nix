@@ -295,6 +295,13 @@ tick() {{
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
+# Stopped, as mycelium stops a run whose asker let go, it takes its copy
+# and the job's archives away, as a job that ends does, then ends as the
+# signal would have ended it.
+stopped() {{ cd "$HOME" && rm -rf "$work" "$job/{TREE}"; exit "$1"; }}
+trap 'stopped 129' HUP
+trap 'stopped 130' INT
+trap 'stopped 143' TERM
 # By the clock, since a pass over a large tree takes long itself, and
 # from the last time more crossed, as the near side waits, or the clock
 # stepped back. A pass counts after its second, so passes are never short.

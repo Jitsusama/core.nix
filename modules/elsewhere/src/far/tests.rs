@@ -815,3 +815,29 @@ fn an_archive_holding_a_link_is_refused_before_the_job_runs() {
     );
     let _ = std::fs::remove_dir_all(&home);
 }
+
+#[test]
+fn a_far_line_stopped_mid_job_takes_its_copy_away() {
+    // Mycelium stops a run whose asker let go with the terminate signal
+    // to its whole group; here the job sends it to the far line alone,
+    // then ends, as a job the signal reached would.
+    let (code, err, home) = far_run(
+        Left::Whole,
+        &[("a", "1")],
+        "touch ../ran && kill -TERM $PPID",
+    );
+    assert!(
+        work(&home).join("ran").exists(),
+        "the job never ran ({code:?}): {err}"
+    );
+    assert_eq!(code, Some(143), "a stopped far line ended otherwise: {err}");
+    assert!(
+        !work(&home).join("1").exists() && !handover(&home).join(super::TREE).exists(),
+        "a stopped far line left its copy or the job's archives"
+    );
+    assert!(
+        !handover(&home).join(super::BACK).exists(),
+        "a stopped far line brought something back"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
