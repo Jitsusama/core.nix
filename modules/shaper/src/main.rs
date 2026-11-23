@@ -725,21 +725,25 @@ fn install(
     down: u64,
     straight: bool,
 ) -> bool {
-    let (Some(held), Some(back)) = (queues_of(link), queues_of(ifb)) else {
+    let seen = queues_of(link).zip(queues_of(ifb));
+    let seen = seen
+        .as_ref()
+        .map(|(held, back)| (held.as_str(), back.as_str()));
+    let (Some(adopt), Some((held, back))) = (adopts(seen), seen) else {
         return false;
     };
-    let turned = if lanes::laned(&held) && qdisc::ours(&back) {
+    let turned = if adopt {
         eprintln!("taking back the queues {link} kept through a restart");
         // tc complains of a queue with no filters to take off, which is
         // nothing to tell.
-        for clear in lanes::unfiltered(link, &held)
+        for clear in lanes::unfiltered(link, held)
             .iter()
-            .chain(&lanes::unfiltered(ifb, &back))
+            .chain(&lanes::unfiltered(ifb, back))
         {
             let _ = sh(clear);
         }
         run_all(lanes::adopt(link, ifb, (up, split), down));
-        qdisc::turned(&held)
+        qdisc::turned(held)
     } else {
         let _ = sh(&words(&format!("tc qdisc del dev {link} root")));
         let _ = sh(&qdisc::unturn(link));
@@ -952,6 +956,33 @@ fn epoch_of(at: Instant) -> Option<u64> {
 fn instant_of(at: u64) -> Option<Instant> {
     let then = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(at))?;
     Instant::now().checked_sub(SystemTime::now().duration_since(then).ok()?)
+}
+
+/// Whether `install` takes back the queues it read on a link and its IFB,
+/// `seen`: lanes and our IFB there, as a restart leaves them, are taken
+/// back; anything else is replaced. A read that failed gives nothing, so
+/// nothing is changed.
+fn adopts(seen: Option<(&str, &str)>) -> Option<bool> {
+    seen.map(|(held, back)| lanes::laned(held) && qdisc::ours(back))
+}
+
+/// Whether look puts back a link's queues it read, with its IFB's, as
+/// `seen`: once the lanes, our IFB, or the turn a download that isn't
+/// `straight` needs, are gone. A read that failed gives false, leaving the
+/// queues as they are until one answers, rather than taking them down to
+/// put them back.
+fn queues_gone(seen: Option<(&str, &str)>, straight: bool) -> bool {
+    seen.is_some_and(|(held, back)| {
+        !lanes::laned(held) || !(straight || qdisc::turned(held)) || !qdisc::ours(back)
+    })
+}
+
+/// Whether a VPN counts as taken up, so a restart's sweep may go: one with
+/// no link to ride, or its index unread, only once it's gone, since it's
+/// let go meanwhile; one that rides once its queues were read, since one
+/// whose read failed is left as it was.
+fn vpn_taken_up(rides: bool, there: bool, read: bool) -> bool {
+    if rides { read } else { !there }
 }
 
 /// Runs each command, saying what failed, and gives whether all went.
@@ -1567,9 +1598,7 @@ fn follow_vpns(
         let dir = Path::new("/sys/class/net").join(name);
         let index = read_number(&dir.join("ifindex")).and_then(|i| u32::try_from(i).ok());
         let (Some((up, down, straight)), Some(index)) = (base, index) else {
-            // A VPN that is there isn't taken up, with no link to ride or
-            // its index unread.
-            every_read &= !dir.exists();
+            every_read &= vpn_taken_up(false, dir.exists(), false);
             let_vpn_go(applied, name, &dir);
             continue;
         };
@@ -1583,10 +1612,8 @@ fn follow_vpns(
         }
         let same_ifb = was.is_some_and(|v| v.ifb == ifb);
         let (was_up, was_down) = (was.map(|v| v.up), was.map(|v| v.down).filter(|_| same_ifb));
-        // A read that failed leaves the VPN's queues as they are until one
-        // answers.
         let (Some(json), Some(back)) = (queues_of(name), queues_of(&ifb)) else {
-            every_read = false;
+            every_read &= vpn_taken_up(true, true, false);
             continue;
         };
         let mut kept = Vpn {
@@ -1670,15 +1697,11 @@ fn look(
                 }
             }
             Some(s) => {
-                // A read that failed leaves the link's queues as they are
-                // until one answers, rather than taking them down to put
-                // them back.
                 let seen = queues_of(&s.uplink.name).zip(queues_of(&s.ifb));
-                if let Some((json, ifb)) = seen
-                    && (!lanes::laned(&json)
-                        || !(s.download.straight() || qdisc::turned(&json))
-                        || !qdisc::ours(&ifb))
-                {
+                let seen = seen
+                    .as_ref()
+                    .map(|(held, back)| (held.as_str(), back.as_str()));
+                if queues_gone(seen, s.download.straight()) {
                     eprintln!("{}'s queues were gone; putting them back", s.uplink.name);
                     s.holding = None;
                     s.split = s.lanes.at(float(s.up.rate));
@@ -3173,6 +3196,109 @@ mod tests {
             primary_after(Some(&order(&[])[..]), &shaped(&[]), None),
             None,
             "the VPNs were given a link with none routed or shaped"
+        );
+    }
+
+    // The lanes on a link, turned, and our IFB, as the shaper leaves them.
+    const LANED: &str = r#"[{"kind":"htb","handle":"1:","root":true},
+        {"kind":"cake","handle":"2:","parent":"1:3"},
+        {"kind":"fq_codel","handle":"4:","parent":"1:4"},
+        {"kind":"cake","handle":"5:","parent":"1:5"},
+        {"kind":"ingress","handle":"ffff:","parent":"ffff:fff1"}]"#;
+    const UNTURNED: &str = r#"[{"kind":"htb","handle":"1:","root":true},
+        {"kind":"cake","handle":"2:","parent":"1:3"},
+        {"kind":"fq_codel","handle":"4:","parent":"1:4"},
+        {"kind":"cake","handle":"5:","parent":"1:5"}]"#;
+    const OUR_IFB: &str = r#"[{"kind":"htb","handle":"1:","root":true},
+        {"kind":"cake","handle":"2:","parent":"1:2"}]"#;
+    const THE_KERNELS: &str = r#"[{"kind":"fq_codel","handle":"0:","root":true}]"#;
+
+    // A read that failed changes nothing: install leaves the link, look
+    // doesn't put its queues back, and its VPN isn't counted taken up
+    // (round 5's F58 and F59).
+    #[test]
+    fn a_read_that_failed_leaves_the_queues_as_they_are() {
+        assert_eq!(
+            adopts(None),
+            None,
+            "install changed a link it couldn't read"
+        );
+        assert!(
+            !queues_gone(None, false),
+            "look put back queues it couldn't read"
+        );
+        assert!(
+            !queues_gone(None, true),
+            "look put back a straight link it couldn't read"
+        );
+        assert!(
+            !vpn_taken_up(true, true, false),
+            "a VPN whose queues couldn't be read let the sweep go"
+        );
+    }
+
+    // A restart's queues are taken back; anything else is replaced.
+    #[test]
+    fn install_takes_back_only_lanes_beside_our_ifb() {
+        let cases = [
+            ((LANED, OUR_IFB), Some(true), "a restart's lanes and IFB"),
+            (
+                (UNTURNED, OUR_IFB),
+                Some(true),
+                "a restart's lanes unturned",
+            ),
+            ((THE_KERNELS, OUR_IFB), Some(false), "the kernel's queue"),
+            ((LANED, THE_KERNELS), Some(false), "an IFB not ours"),
+        ];
+        for (seen, adopted, why) in cases {
+            assert_eq!(
+                adopts(Some(seen)),
+                adopted,
+                "install chose wrongly for {why}"
+            );
+        }
+    }
+
+    // Look puts queues back once the lanes, the IFB or a needed turn are
+    // gone, and leaves them while all are there.
+    #[test]
+    fn look_puts_back_only_queues_that_are_gone() {
+        let cases = [
+            ((LANED, OUR_IFB), false, false, "all there"),
+            (
+                (UNTURNED, OUR_IFB),
+                true,
+                false,
+                "a straight download unturned",
+            ),
+            ((UNTURNED, OUR_IFB), false, true, "the turn gone"),
+            ((THE_KERNELS, OUR_IFB), false, true, "the lanes gone"),
+            ((LANED, THE_KERNELS), false, true, "the IFB's queues gone"),
+        ];
+        for (seen, straight, gone, why) in cases {
+            assert_eq!(
+                queues_gone(Some(seen), straight),
+                gone,
+                "look chose wrongly with {why}"
+            );
+        }
+    }
+
+    // A VPN holds a restart's sweep back while it's there and not taken
+    // up, and never once it's gone.
+    #[test]
+    fn a_vpn_holds_the_sweep_only_while_its_there_and_not_taken_up() {
+        assert!(
+            vpn_taken_up(true, true, true),
+            "a VPN whose queues were read"
+        );
+        assert!(
+            vpn_taken_up(false, false, false),
+            "a VPN gone held the sweep"
+        );
+        assert!(
+            !vpn_taken_up(false, true, false),
+            "a VPN there with no link to ride let the sweep go"
         );
     }
 
