@@ -256,10 +256,12 @@ def test_and_measures_how_well_lanterns_access_point_carries(machine: BaseMachin
     """And measures how well Lantern's access point carries, by echoing its gateway."""
     point = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^bssid=//p'").strip()
     assert len(point) == len("02:00:00:00:00:00"), point
-    # wifid says each access point's figures once a minute, so this waits for the next.
+    # wifid says each access point's figures once a minute, so this waits for the next. Its
+    # video echo answered says the marked socket opens with no capability and is heard back.
     machine.wait_until_succeeds(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-        f" | grep -qE '^wlan2 on {point}: gateway [0-9.]+ ms at p50, [0-9.]+ ms at p95, '",
+        f" | grep -qE '^wlan2 on {point}: gateway [0-9.]+ ms at p50, [0-9.]+ ms at p95, "
+        "[0-9.]+% of [0-9]+ echoes lost; video [0-9.]+ ms at p95, '",
         timeout=timedelta(seconds=90),
     )
 
