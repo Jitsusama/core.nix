@@ -87,7 +87,8 @@ impl Minute {
 }
 
 /// A minute read from one journal entry: none for any other line, and for
-/// a minute with no video echo sent, whose line leaves the clause out.
+/// a minute with no video echo sent, whose clause reads `video
+/// unmeasured`, or whose line from an older wifid leaves it out.
 fn minute(entry: &Value) -> Option<Minute> {
     let message = entry["MESSAGE"].as_str()?;
     let micros: i64 = entry["__REALTIME_TIMESTAMP"].as_str()?.parse().ok()?;

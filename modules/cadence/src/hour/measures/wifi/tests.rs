@@ -79,7 +79,11 @@ fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
     for (message, why) in [
         (
             said_by_wifid(NEAR, None, false),
-            "a minute with no video echo sent read as one",
+            "a minute from a wifid that left out its video clause read as one",
+        ),
+        (
+            said_by_wifid(NEAR, Some("unmeasured"), false),
+            "a minute whose video went unmeasured read as one",
         ),
         (
             said_by_wifid(NEAR, Some(LOST), false),
@@ -156,7 +160,8 @@ fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why(
         (m.now - 2.0).abs() < f64::EPSILON && m.past().is_none(),
         "one bad moment, in the two lines covering it, was filed with wifid's owner: {m:?}"
     );
-    let before = journal(&[entry(AT, &said_by_wifid(NEAR, None, false))]);
+    let unmeasured = said_by_wifid(NEAR, Some("unmeasured"), false);
+    let before = journal(&[entry(AT, &unmeasured)]);
     for (text, why) in [
         (None, ": wifid's journal unread"),
         (Some(""), ": no Wi-Fi minute"),
