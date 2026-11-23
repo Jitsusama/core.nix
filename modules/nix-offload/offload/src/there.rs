@@ -4907,7 +4907,9 @@ fn admitted_holding<'a>(
             drop(place);
             return (other, Some(claimed), held);
         }
-        if asked.is_none() && came.elapsed() >= ASKS_AFTER {
+        // A run given `--never-ask` asks no lender for anything, room
+        // included, so it only waits for the builders already standing.
+        if waiting.asks && asked.is_none() && came.elapsed() >= ASKS_AFTER {
             asked = ask_for_room(dir, others, room);
         }
         if !said {
