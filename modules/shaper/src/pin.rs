@@ -14,6 +14,10 @@
 //!
 //! Which way is quick is told by delay alone, so nothing here names a
 //! place or an address.
+//!
+//! Long because its tests, over half of it, walk each way a pin is kept,
+//! moved or let go: a round that can't judge it, a network changed under
+//! it, flows that hold its ports, and flows its rule can't get through.
 
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -249,18 +253,26 @@ pub fn settle(timeout: &str) -> Duration {
 }
 
 /// What the pin knows between rounds: the VPN's flows it has probed for,
-/// whether a round is out, when the last was asked, the pin a round found
-/// and when it may take hold, the pin in force, the count last read of its
-/// flows that came back, and how many came back look after look since.
+/// whether a round is out and whether its network changed since, when the
+/// last was asked, the pin a round found and when it may take hold, the
+/// pin in force, the count last read of its flows that came back, how many
+/// came back look after look since, whether the last round kept a pin it
+/// couldn't judge, the network the pin was measured on, and the VPN's
+/// flows now, each with the first of the pair pinned when it was first
+/// seen.
 #[derive(Debug, Default)]
 pub struct Pinning {
     seen: Vec<End>,
     probing: bool,
+    stale: bool,
     asked: Option<Instant>,
     coming: Option<(Option<Pin>, Instant)>,
     pub pinned: Option<Pin>,
     retried: Option<u64>,
     failing: u64,
+    kept: bool,
+    on: Option<String>,
+    flows: Vec<(End, Option<u16>)>,
 }
 
 /// How many of the VPN's flows came back to the pin's rule, in packets,
@@ -284,6 +296,22 @@ pub fn dropped(first: u16, times: u64) -> String {
     )
 }
 
+/// What the journal says when a pin lets go because `why`: two rounds in
+/// a row couldn't judge it, or the uplink moved to another network.
+pub fn let_go(first: u16, why: &str) -> String {
+    format!(
+        "The VPN's next connection leaves from any port again, no longer {first} or {}: {why}",
+        first.saturating_add(1)
+    )
+}
+
+/// Why a pin two rounds couldn't judge lets go.
+pub const UNJUDGED: &str = "two rounds in a row couldn't measure it, so the next reads its \
+                            pair afresh";
+
+/// Why a pin measured on another network lets go.
+pub const ELSEWHERE: &str = "it was measured on another network";
+
 impl Pinning {
     /// The flow to probe toward now, if any: one from a socket the VPN
     /// opened since the last round, at the start too, while no call is
@@ -304,32 +332,103 @@ impl Pinning {
         Some(to)
     }
 
-    /// The ports a round leaves out: the pinned pair, which the VPN's own
-    /// flow may hold, so conntrack would give a probe from them another
-    /// port and the probe would cross the line as some other flow.
+    /// Takes the VPN's flows now: each new one is remembered with the pair
+    /// pinned toward its server when it was first seen, since NAT gave it
+    /// one of that pair, and a flow gone is forgotten.
+    pub fn flows(&mut self, ends: &[End]) {
+        self.flows.retain(|(flow, _)| ends.contains(flow));
+        for &end in ends {
+            if self.flows.iter().all(|&(flow, _)| flow != end) {
+                let pinned = self.pinned.filter(|p| (p.to, p.port) == (end.to, end.port));
+                self.flows.push((end, pinned.map(|p| p.first)));
+            }
+        }
+    }
+
+    /// The ports a round leaves out, since a flow of the VPN's may hold
+    /// them, so conntrack would give a probe from one another port and the
+    /// probe would cross the line as some other flow: the pinned pair, the
+    /// pair each live flow was pinned to, as one pinned before a move or a
+    /// let-go still is, and each flow's own port, which it keeps unpinned.
     pub fn held(&self) -> Vec<u16> {
-        self.pinned
-            .map_or_else(Vec::new, |pin| vec![pin.first, pin.first.saturating_add(1)])
+        let pairs = self
+            .pinned
+            .map(|p| p.first)
+            .into_iter()
+            .chain(self.flows.iter().filter_map(|&(_, first)| first))
+            .flat_map(|first| [first, first.saturating_add(1)]);
+        let own = self.flows.iter().map(|(flow, _)| flow.from_port);
+        let mut held: Vec<u16> = pairs.chain(own).collect();
+        held.sort_unstable();
+        held.dedup();
+        held
+    }
+
+    /// Takes the network the primary uplink is on: a pin measured on
+    /// another lets go, since the line it split isn't this one's, a round
+    /// out reads the old one, and the VPN's flows are probed for afresh.
+    /// The first network named only names where the pin already is. Gives
+    /// the first of the pair let go.
+    pub fn network(&mut self, network: &str) -> Option<u16> {
+        let was = self.on.replace(network.to_owned())?;
+        if was == network {
+            return None;
+        }
+        self.stale = self.probing;
+        self.coming = None;
+        self.kept = false;
+        self.seen.clear();
+        self.pinned.take().map(|p| p.first)
+    }
+
+    /// Whether a round toward `end` that read `delays` can judge the pin
+    /// in force. It can't when it heard too few ports, as with the network
+    /// down, or, toward the pin's own server, when it read every port
+    /// slower than the pin read, or read the line splitting but no two
+    /// adjacent ports quick: the round leaves the pin's pair out (`held`),
+    /// so it can't tell a pair still quick from one that went slow.
+    fn judges(&self, end: End, delays: &BTreeMap<u16, f64>) -> bool {
+        let Some(pin) = self.pinned else {
+            return true;
+        };
+        if delays.len() < HEARD {
+            return false;
+        }
+        if (pin.to, pin.port) != (end.to, end.port) {
+            return true;
+        }
+        let quickest = delays.values().copied().fold(f64::INFINITY, f64::min);
+        let slowest = delays.values().copied().fold(0.0, f64::max);
+        let splits = slowest > quickest + MARGIN_MS;
+        quickest <= pin.ms + MARGIN_MS && !(splits && choose(delays).is_none())
     }
 
     /// Takes what a round toward `end` read of each port, to take hold
     /// from `from`, once the round's probes have let their ports go
-    /// (`settle`). A round that read fewer than `HEARD` ports, as with the
-    /// network down, keeps the pin it had. So does one toward the pin's own
-    /// server that read every port slower than the pin read, since the
-    /// round leaves the pin's pair out (`held`) and so can't tell a line
-    /// that still splits, quick only there, from one that went slow.
-    pub fn found(&mut self, end: End, delays: &BTreeMap<u16, f64>, from: Instant) {
+    /// (`settle`). A round that can't judge the pin in force (`judges`)
+    /// keeps it, but only once: the next such round lets it go, so a pair
+    /// whose way went slow or began dropping isn't kept on a delay read
+    /// long ago, and the round after, the pair no longer held out, reads
+    /// every port afresh. A round that read fewer than `HEARD` ports
+    /// chooses no pin, and one whose network changed while it was out
+    /// counts for nothing. Gives the first of a pair let go at once, since
+    /// no probe holds a port the VPN would then take.
+    pub fn found(&mut self, end: End, delays: &BTreeMap<u16, f64>, from: Instant) -> Option<u16> {
         self.probing = false;
-        if delays.len() < HEARD {
-            return;
+        if std::mem::take(&mut self.stale) {
+            return None;
         }
-        let quickest = delays.values().copied().fold(f64::INFINITY, f64::min);
-        if let Some(pin) = self.pinned
-            && (pin.to, pin.port) == (end.to, end.port)
-            && quickest > pin.ms + MARGIN_MS
-        {
-            return;
+        if !self.judges(end, delays) {
+            if !std::mem::replace(&mut self.kept, true) {
+                return None;
+            }
+            self.kept = false;
+            self.coming = None;
+            return self.pinned.take().map(|p| p.first);
+        }
+        self.kept = false;
+        if delays.len() < HEARD {
+            return None;
         }
         let pin = choose(delays).map(|first| {
             let ms = |port: u16| delays.get(&port).copied().unwrap_or(f64::INFINITY);
@@ -341,6 +440,7 @@ impl Pinning {
             }
         });
         self.coming = Some((pin, from));
+        None
     }
 
     /// Puts the pin a round found in force once its time comes, and says
@@ -638,13 +738,9 @@ mod tests {
     }
 
     #[test]
-    fn a_round_keeps_a_pin_it_cant_judge_and_moves_one_it_can() {
+    fn a_round_keeps_a_pin_it_cant_judge_once_and_lets_it_go_the_next_time() {
         let later = Instant::now();
-        let mut pinning = Pinning {
-            pinned: Some(pin_at(30_000)),
-            ..Pinning::default()
-        };
-        let held = pinning.held();
+        let held = [30_000, 30_001];
         for (heard, why) in [
             (BTreeMap::new(), "a round that heard nothing"),
             (
@@ -658,11 +754,40 @@ mod tests {
                 read(&[], 66.0, &held),
                 "a round that read every other port slower than the pin",
             ),
+            (
+                read(&[30_004, 30_008], 66.0, &held),
+                "a round that read the line split with no two adjacent ports quick",
+            ),
         ] {
-            pinning.found(end(41_000), &heard, later);
+            let mut pinning = Pinning {
+                pinned: Some(pin_at(30_000)),
+                ..Pinning::default()
+            };
+            assert_eq!(
+                pinning.found(end(41_000), &heard, later),
+                None,
+                "{why} let go"
+            );
             assert_eq!(pinning.take_hold(later), None, "{why} moved the pin");
             assert_eq!(pinning.pinned, Some(pin_at(30_000)), "{why} lost the pin");
+            assert_eq!(
+                pinning.found(end(41_000), &heard, later),
+                Some(30_000),
+                "{why}, twice running, kept a pin read long ago"
+            );
+            assert_eq!(pinning.pinned, None, "{why}, twice running, left the pin");
         }
+    }
+
+    #[test]
+    fn a_round_moves_a_pin_it_can_judge() {
+        let later = Instant::now();
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(30_000)),
+            ..Pinning::default()
+        };
+        let held = pinning.held();
+        pinning.found(end(41_000), &read(&[], 66.0, &held), later);
         let elsewhere = End {
             to: Ipv4Addr::new(198, 51, 100, 7),
             ..end(41_000)
@@ -687,6 +812,66 @@ mod tests {
             "a round that read every port as quick as the pin didn't let it go"
         );
         assert_eq!(pinning.pinned, None, "a round that read alike kept a pin");
+    }
+
+    #[test]
+    fn a_round_leaves_out_every_port_the_vpns_flows_hold() {
+        let mut pinning = Pinning::default();
+        pinning.flows(&[end(30_020)]);
+        pinning.pinned = Some(pin_at(30_006));
+        pinning.flows(&[end(30_020), end(41_000)]);
+        pinning.pinned = Some(pin_at(30_010));
+        assert_eq!(
+            pinning.held(),
+            vec![30_006, 30_007, 30_010, 30_011, 30_020, 41_000],
+            "a port a live flow holds, by its pin then or its own, was probed"
+        );
+        pinning.flows(&[end(41_000)]);
+        pinning.pinned = None;
+        assert_eq!(
+            pinning.held(),
+            vec![30_006, 30_007, 41_000],
+            "a pair pinned before a let-go, still held by its flow, was probed"
+        );
+        pinning.flows(&[]);
+        assert_eq!(
+            pinning.held(),
+            Vec::<u16>::new(),
+            "a flow gone still held its ports"
+        );
+    }
+
+    #[test]
+    fn a_pin_lets_go_on_another_network_but_not_on_its_first_name() {
+        let mut pinning = Pinning {
+            pinned: Some(pin_at(30_006)),
+            probing: true,
+            ..Pinning::default()
+        };
+        assert_eq!(
+            pinning.network("aa:bb"),
+            None,
+            "the first network named let go"
+        );
+        assert_eq!(pinning.network("aa:bb"), None, "the same network let go");
+        assert_eq!(
+            pinning.network("cc:dd"),
+            Some(30_006),
+            "a pin measured on another network stayed"
+        );
+        assert_eq!(pinning.pinned, None, "the pin was said let go but kept");
+        let later = Instant::now();
+        pinning.found(end(41_000), &read(&[30_000, 30_001], 66.0, &[]), later);
+        assert_eq!(
+            pinning.take_hold(later),
+            None,
+            "a round out when the network changed pinned what it read of the old one"
+        );
+        assert_eq!(
+            pinning.ask(&[end(36_284)], false, later),
+            Some(end(36_284)),
+            "the VPN's flow wasn't probed for afresh on the new network"
+        );
     }
 
     #[test]

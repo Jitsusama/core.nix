@@ -8,14 +8,20 @@
 //! and a delay is all a round compares.
 
 use crate::pin::{self, Answer};
-use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::io;
 use std::mem::{size_of, zeroed};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
+
+/// The number the last probe carried, counted across every socket: the
+/// scout's port is probed again by a fresh socket, which hears what came
+/// late to the scout's, so numbers counted per socket would start over
+/// where the scout's left answers waiting.
+static SENT: AtomicU8 = AtomicU8::new(0);
 
 /// What ICMP says when a packet's time ran out on the way.
 const TIME_EXCEEDED: u8 = 11;
@@ -58,10 +64,9 @@ pub fn round(link: &str, to: SocketAddrV4, held: &[u16]) -> BTreeMap<u16, f64> {
 }
 
 /// A UDP socket bound to `port` on `link`, connected to `to`, whose
-/// errors are kept for reading, with the number its last probe carried.
+/// errors are kept for reading.
 pub struct Probe {
     fd: OwnedFd,
-    sent: Cell<u8>,
 }
 
 fn checked(result: libc::c_int) -> io::Result<()> {
@@ -140,10 +145,7 @@ impl Probe {
         let remote = address(to);
         // SAFETY: the address is a sockaddr_in, of the length given.
         checked(unsafe { libc::connect(fd.as_raw_fd(), (&raw const remote).cast(), length) })?;
-        Ok(Probe {
-            fd,
-            sent: Cell::new(0),
-        })
+        Ok(Probe { fd })
     }
 
     /// Sends one probe to expire at `hop`, and waits at most `wait` for
@@ -157,8 +159,7 @@ impl Probe {
         // the probe's data hands back, so an answer that came late to an
         // earlier probe, after the queue was emptied, isn't taken for this
         // one's. A hop that quotes only the header is believed.
-        let number = self.sent.get().wrapping_add(1);
-        self.sent.set(number);
+        let number = SENT.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
         let sent = Instant::now();
         // SAFETY: the message is a byte, valid for its length.
         let wrote = unsafe { libc::send(self.fd.as_raw_fd(), [number].as_ptr().cast(), 1, 0) };

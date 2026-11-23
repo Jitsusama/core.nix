@@ -767,6 +767,9 @@ struct Pinner {
     read: Receiver<(pin::End, BTreeMap<u16, f64>)>,
     last: BTreeMap<u16, f64>,
     looked: Option<Instant>,
+    /// Whether the journal said the count of flows back can't be read,
+    /// so it says so once rather than every look.
+    unread: bool,
 }
 
 impl Pinner {
@@ -778,6 +781,7 @@ impl Pinner {
             read,
             last: BTreeMap::new(),
             looked: None,
+            unread: false,
         }
     }
 
@@ -785,19 +789,31 @@ impl Pinner {
     /// probes have let their ports go and says so when the pin moves, and
     /// every few seconds lets a pin go that the VPN's new flows can't get
     /// through, and looks for a new socket of the VPN's to probe for, out
-    /// of `link`, the primary uplink. Gives the pin chain's transaction.
-    fn step(&mut self, link: Option<&str>, calling: bool, now: Instant) -> String {
+    /// of the primary uplink, on its network. Gives the pin chain's
+    /// transaction.
+    fn step(&mut self, primary: Option<&Shaped>, calling: bool, now: Instant) -> String {
+        let uplink = primary.map(|s| (s.uplink.name.as_str(), s.network.as_str()));
+        // A link the router hasn't answered on yet is named by itself, and
+        // learns its network a moment later: the same network, not another.
+        if let Some((_, network)) = uplink
+            && !network.starts_with("link ")
+            && let Some(first) = self.pinning.network(network)
+        {
+            eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
+        }
         while let Ok((end, read)) = self.read.try_recv() {
             let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
             let from = now + pin::settle(&timeout.unwrap_or_default());
-            self.pinning.found(end, &read, from);
+            if let Some(first) = self.pinning.found(end, &read, from) {
+                eprintln!("{}", pin::let_go(first, pin::UNJUDGED));
+            }
             self.last = read;
         }
         if let Some(moved) = self.pinning.take_hold(now) {
             let first = self.pinning.pinned.map(|p| p.first);
             eprintln!("{}", pin::said(moved.was, first, &self.last));
         }
-        if let Some(link) = link
+        if let Some((link, _)) = uplink
             && self
                 .looked
                 .is_none_or(|at| now - at >= Duration::from_secs(5))
@@ -806,13 +822,27 @@ impl Pinner {
             let counted = sh(&words(&format!(
                 "nft -j list counter inet {TABLE} pinretried"
             )));
-            if let Some(retried) = counted.ok().as_deref().and_then(pin::retried)
-                && let Some((pin::Moved { was: Some(first) }, times)) = self.pinning.heed(retried)
-            {
-                eprintln!("{}", pin::dropped(first, times));
+            match counted.ok().as_deref().and_then(pin::retried) {
+                Some(retried) => {
+                    self.unread = false;
+                    if let Some((pin::Moved { was: Some(first) }, times)) =
+                        self.pinning.heed(retried)
+                    {
+                        eprintln!("{}", pin::dropped(first, times));
+                    }
+                }
+                None if self.pinning.pinned.is_some() && !self.unread => {
+                    self.unread = true;
+                    eprintln!(
+                        "the count of the VPN's flows that came back to its pin can't be read, \
+                         so a pin they can't get through isn't let go"
+                    );
+                }
+                None => {}
             }
             let listed = sh(&words(&format!("nft -j list set inet {TABLE} vpn_ends")));
             let ends = pin::ends(&listed.unwrap_or_default());
+            self.pinning.flows(&ends);
             if let Some(end) = self.pinning.ask(&ends, calling, now) {
                 let (link, held, send) = (link.to_string(), self.pinning.held(), self.send.clone());
                 let to = std::net::SocketAddrV4::new(end.to, end.port);
@@ -1097,7 +1127,7 @@ fn run(options: &Options) -> Result<(), Failure> {
         read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
         let text = [
             classes::transaction(TABLE, &sets, &reach),
-            pinner.step(primary.as_deref(), call.on, now),
+            pinner.step(primary.as_ref().and_then(|p| shaped.get(p)), call.on, now),
         ];
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);

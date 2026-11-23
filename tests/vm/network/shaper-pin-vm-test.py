@@ -151,7 +151,9 @@ def test_a_pin_no_flow_gets_through_lets_go(moved: Moved) -> None:
     """With both pinned ports held toward the VPN's end, the pin lets go of its next socket.
 
     The VPN's own flow holds the port it's on, and a flow from the other port to the same
-    end, refreshed each second, holds that one, so NAT finds neither free.
+    end, refreshed each second, holds that one, so NAT finds neither free. In a full run the
+    previous subtest's socket already holds the other port, so NAT moves the socat flow off
+    it; either way both are held.
     """
     rig = moved.rig
     for port in sorted(set(NEAR) - {rig.port()}):
