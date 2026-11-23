@@ -71,6 +71,7 @@ in
 
   # A warning rather than a refusal, since a refusal would stop the whole
   # machine updating, kernel and fixes too, over one flag the node can go
-  # without.
-  warnings = lib.optional (cfg.easesCarry && !carries) guards.missing;
+  # without. Only where a home realm runs a node, since elsewhere no node
+  # is told anything.
+  warnings = lib.optional (cfg.realm != null && cfg.easesCarry && !carries) (guards.missing mycelium);
 }
