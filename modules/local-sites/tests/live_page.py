@@ -294,7 +294,11 @@ class Opened:
 
         A page's test calls this once its page keeps to the rules, so each page
         takes the probe as it's moved onto them (1HE06W's plan of 22 November
-        2026), rather than every page failing at once before it's moved.
+        2026), rather than every page failing at once before it's moved. The
+        probe counts every layout shift since the load, waiting for the page
+        to go quiet, so call this before anything presses, scrolls or opens
+        a fold, passes_the_skills_checks among them, whose layout.js opens
+        each one.
         """
         found = self.page.evaluate((Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text())
         assert found == [], f"pixels.js at {self.size} in the {self.look} look found {found}"

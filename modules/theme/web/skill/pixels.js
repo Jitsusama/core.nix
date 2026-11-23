@@ -6,11 +6,14 @@
 // - Nothing scrolls sideways: the page is no wider than its window (WCAG
 //   1.4.10), so a phone at 390 px never pans.
 // - Nothing moves as it arrives: the page's layout shift, counted as the
-//   browser's Cumulative Layout Shift counts it, stays under 0.1.
-// - No text is under 12 px on screen. A drawing's label may be smaller only
-//   where it's marked data-enlarges, saying a zoom, a hover or focus shows it
+//   browser's Cumulative Layout Shift counts it, stays under 0.1. Run it
+//   first on a page freshly loaded, before layout.js opens its folds.
+// - No text is under 12 px on screen, a field's words and what a style
+//   writes before or after an element counted with the page's. A
+//   drawing's label may be smaller only where it's marked data-enlarges, saying a zoom, a hover or focus shows it
 //   at 12 px or more, and nothing is under 9 px, marked or not.
-// - A control's name starts with the words it shows (WCAG 2.5.3), a keycap
+// - A control's name starts with the words it shows, word for word (WCAG
+//   2.5.3), a keycap
 //   drawn on it coming after them, and a control showing only a mark such as
 //   "/" shows a word too. One drawn only as a picture is named by its label.
 // - Every word reaches 4.5:1 on the ground painted under it, or 3:1 at 24 px
@@ -24,8 +27,11 @@
   const root = page.documentElement;
   const floor = 12;
   const least = 9;
-  const quoted = (words) => words.replace(/\s+/gu, " ").trim().slice(0, 40);
-  const shown = (element) => element?.isConnected === true && element.checkVisibility();
+  // A page's words quoted into a line, short, with no quote mark of their
+  // own to end the quote early.
+  const quoted = (words) => words.replace(/\s+/gu, " ").replaceAll('"', "'").trim().slice(0, 40);
+  const shown = (element) =>
+    element?.isConnected === true && element.checkVisibility({ visibilityProperty: true });
 
   // Sideways: the page's own width against its window's, then the widest
   // thing past the window's edge that no scroller of its own holds, so the
@@ -59,29 +65,49 @@
   // Shift, by the browser's own count: shifts a second or less apart make a
   // window of at most five seconds, and the largest window is the page's.
   // One just after a press is the press's, so it's left out, as the browser
-  // leaves it out.
+  // leaves it out. The count runs from the page's load, so the probe goes
+  // first on a page freshly loaded and drawn, before anything opens a fold:
+  // layout.js's openings would count as the page's own. It waits for half a
+  // second with no shift, at most three, so one arriving as it's called is
+  // counted rather than missed.
+  const quiet = 500;
+  const longest = 3000;
   const shifts = await new Promise((resolve) => {
     const heard = [];
-    const watch = new PerformanceObserver((list) => heard.push(...list.getEntries()));
+    const began = performance.now();
+    let lastHeard = began;
+    const watch = new PerformanceObserver((list) => {
+      heard.push(...list.getEntries());
+      lastHeard = performance.now();
+    });
     try {
       watch.observe({ type: "layout-shift", buffered: true });
     } catch {
-      resolve([]);
+      resolve(null);
       return;
     }
-    requestAnimationFrame(() =>
-      setTimeout(() => {
-        heard.push(...watch.takeRecords());
-        watch.disconnect();
-        resolve(heard);
-      }, 0),
-    );
+    const settled = () => {
+      const now = performance.now();
+      if (now - lastHeard < quiet && now - began < longest) {
+        setTimeout(settled, quiet - (now - lastHeard));
+        return;
+      }
+      heard.push(...watch.takeRecords());
+      watch.disconnect();
+      resolve(heard);
+    };
+    requestAnimationFrame(() => setTimeout(settled, quiet));
   });
+  if (shifts === null) {
+    missing.push(
+      "this browser can't observe layout shifts, so the shift went unmeasured: run it in Chromium",
+    );
+  }
   let largest = 0;
   let session = 0;
   let first = 0;
   let last = 0;
-  for (const shift of shifts.filter((one) => !one.hadRecentInput)) {
+  for (const shift of (shifts ?? []).filter((one) => !one.hadRecentInput)) {
     if (session > 0 && shift.startTime - last < 1000 && shift.startTime - first < 5000) {
       session += shift.value;
     } else {
@@ -114,16 +140,30 @@
     }
     return false;
   };
-  const onScreen = (element) => {
-    const size = Number.parseFloat(getComputedStyle(element).fontSize);
+  // A box's size on screen is its font's times every scale over it: each
+  // transform it sits in, and CSS zoom, read from the styles rather than its
+  // measured box, whose whole-pixel offsetWidth rounds a small box's ratio.
+  // A drawing's words are scaled by the drawing.
+  const onScreen = (element, size) => {
     if (element instanceof SVGElement) {
       const scale = element.getScreenCTM();
       return scale === null ? size : size * Math.hypot(scale.a, scale.b);
     }
-    return element.offsetWidth > 0
-      ? size * (element.getBoundingClientRect().width / element.offsetWidth)
-      : size;
+    let scale = element.currentCSSZoom ?? 1;
+    for (let at = element; at !== null; at = at.parentElement) {
+      const transform = getComputedStyle(at).transform;
+      if (transform !== "none") {
+        const matrix = new DOMMatrixReadOnly(transform);
+        scale *= Math.hypot(matrix.a, matrix.b);
+      }
+    }
+    return size * scale;
   };
+  const sizeOf = (element, pseudo) =>
+    Number.parseFloat(getComputedStyle(element, pseudo).fontSize);
+  // Text is a text node's, a field's own words and its placeholder, and what
+  // a style writes in ::before or ::after, each at its own size.
+  const reading = [];
   const holders = new Set();
   const text = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
   for (let node = text.nextNode(); node !== null; node = text.nextNode()) {
@@ -131,28 +171,57 @@
       holders.add(node.parentElement);
     }
   }
-  let smallest = null;
   for (const element of holders) {
+    reading.push({ element, size: sizeOf(element), words: element.textContent });
+  }
+  const fields = page.querySelectorAll(
+    "input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=hidden], " +
+      "[type=file], [type=image]), textarea, select",
+  );
+  for (const field of fields) {
+    const words =
+      field instanceof HTMLSelectElement
+        ? (field.selectedOptions[0]?.textContent ?? "")
+        : field.value || field.getAttribute("placeholder") || "";
+    if (words.trim() !== "") {
+      reading.push({ element: field, size: sizeOf(field), words });
+    }
+  }
+  for (const element of page.body.querySelectorAll("*")) {
+    for (const pseudo of ["::before", "::after"]) {
+      const written = getComputedStyle(element, pseudo).content;
+      if (written.startsWith('"') && written.length > 2) {
+        reading.push({ element, size: sizeOf(element, pseudo), words: written.slice(1, -1) });
+      }
+    }
+  }
+  let smallest = null;
+  let small = 0;
+  for (const { element, size: set, words } of reading) {
     if (!shown(element) || forEarsOnly(element)) {
       continue;
     }
-    const size = onScreen(element);
+    const size = onScreen(element, set);
     const enlarges = element.closest("svg [data-enlarges], svg[data-enlarges]") !== null;
     const bar = enlarges ? least : floor;
-    // A twentieth of a pixel covers the float a scaled box's measure carries,
-    // and no more: 11.76 px, a 15 px root's least step, is short by a quarter.
-    if (size < bar - 0.05 && (smallest === null || size - bar < smallest.short)) {
-      smallest = { element, size, enlarges, short: size - bar };
+    // A hundredth of a pixel covers a scale's float, and no more: 11.76 px,
+    // a 15 px root's least step, is short by a quarter.
+    if (size < bar - 0.01) {
+      small += 1;
+      if (smallest === null || size - bar < smallest.short) {
+        smallest = { words, size, enlarges, short: size - bar };
+      }
     }
   }
   if (smallest !== null) {
-    const words = quoted(smallest.element.textContent);
+    const words = quoted(smallest.words);
+    const more = small > 1 ? ` (and ${small - 1} more)` : "";
     missing.push(
       smallest.enlarges
         ? `a drawing's label at ${smallest.size.toFixed(1)} px ("${words}"), under ${least} px ` +
-            "even where it enlarges: draw fewer, larger, or name it for the ear alone"
-        : `text at ${smallest.size.toFixed(1)} px ("${words}"), under ${floor} px: set it in ` +
-            "--step-small or larger, or, in a drawing, mark it data-enlarges and show it " +
+            `even where it enlarges${more}: draw fewer, larger, or name it for the ear alone`
+        : `text at ${smallest.size.toFixed(1)} px ("${words}"), under ${floor} px${more}: set ` +
+            "it in --step-small or larger, or, in a drawing, mark it data-enlarges and show it " +
             `at ${floor} px or more on zoom, hover or focus`,
     );
   }
@@ -223,7 +292,7 @@
     }
     ink[3] *= behind.faded;
     const got = ratio(over(ink, behind.ground), behind.ground);
-    const bar = large(element, onScreen(element)) ? 3 : 4.5;
+    const bar = large(element, onScreen(element, sizeOf(element))) ? 3 : 4.5;
     if (got < bar - 0.005) {
       faint += 1;
       if (faintest === null || got / bar < faintest.got / faintest.bar) {
@@ -241,14 +310,19 @@
   }
 
   // Names. A control's name, where its markup gives it one apart from its
-  // words, starts with the words it shows, keycaps left out, as a voice
-  // command says what it sees. One whose words hold no letter or figure
-  // shows a mark alone, and shows a word beside it.
+  // words, starts with the words it shows, word for word, keycaps left out,
+  // as a voice command says what it sees (WCAG 2.5.3): "Find" doesn't start
+  // "Finder". One whose words hold no letter or figure shows a mark alone,
+  // and the kit's own rule, stricter than WCAG's, has it show a word beside
+  // the mark, since "×" or "/" is no word a voice can say.
   const said = (words) =>
     words
       .toLowerCase()
       .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim();
+      .trim()
+      .split(" ")
+      .filter((word) => word !== "");
+  // Only words on screen count: a label a narrow screen hides isn't shown.
   // A keycap inside a control is left out of its words; a keycap that is
   // the control, as pressable makes one, shows its own key as its word.
   const shows = (element, keycaps) => {
@@ -257,12 +331,17 @@
     for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
       const holder = node.parentElement;
       const cap = holder.closest("kbd");
-      if (!forEarsOnly(holder) && (keycaps || cap === null || cap === element)) {
+      if (
+        shown(holder) &&
+        !forEarsOnly(holder) &&
+        (keycaps || cap === null || cap === element)
+      ) {
         words.push(node.textContent);
       }
     }
     return words.join(" ");
   };
+  const begins = (name, words) => words.every((word, at) => name[at] === word);
   const labelled = (element) => {
     const by = element.getAttribute("aria-labelledby");
     if (by !== null) {
@@ -278,9 +357,12 @@
     "button, a[href], summary, [role=button], [role=link], [role=tab], [role=menuitem], " +
       "[role=option], [role=switch], [role=checkbox], [role=radio]",
   );
+  // A name left empty is no name: the browser names the control by its
+  // words, as if the markup gave none.
+  const misnamed = [];
   for (const control of controls) {
     const name = labelled(control);
-    if (name === null || !shown(control)) {
+    if (name === null || name.trim() === "" || !shown(control)) {
       continue;
     }
     const all = shows(control, true);
@@ -288,17 +370,22 @@
     if (all.trim() === "") {
       continue;
     }
-    if (words === "") {
-      missing.push(
-        `a control showing only "${quoted(all)}", named "${quoted(name)}": ` +
-          "show its word beside the mark, its name starting with that word",
+    if (words.length === 0) {
+      misnamed.push(
+        `a control showing only "${quoted(all)}", named "${quoted(name)}"`,
+        "show its word beside the mark, its name starting with that word",
       );
-    } else if (!said(name).startsWith(words)) {
-      missing.push(
-        `a control showing "${quoted(shows(control, false))}" named "${quoted(name)}": ` +
-          "start its name with the words it shows, or drop the aria-label",
+    } else if (!begins(said(name), words)) {
+      misnamed.push(
+        `a control showing "${quoted(shows(control, false))}" named "${quoted(name)}"`,
+        "start its name with the words it shows, or drop the aria-label",
       );
     }
+  }
+  if (misnamed.length > 0) {
+    const [what, fix] = misnamed;
+    const more = misnamed.length > 2 ? ` (and ${misnamed.length / 2 - 1} more)` : "";
+    missing.push(`${what}${more}: ${fix}`);
   }
   return missing;
 })()

@@ -763,7 +763,10 @@ in
   # theme as the hand-copied sites did; and it sends a first view's three
   # faces, the upright, the italic a heading's turn draws and the mono, in
   # under 350 KB, the budget the web-design skill sets, so cutting them can't
-  # silently grow back to the 1.5 MB of whole font files.
+  # silently grow back to the 1.5 MB of whole font files. Every type step
+  # starts at 12 px or more, and code, keycaps and samples set in small text
+  # do too, so a small step on an interface's 15 px body can't fall back to
+  # the 11.76 px forage drew.
   the-web-kit-carries-the-theme =
     let
       home = account workstation;
@@ -795,6 +798,14 @@ in
         echo "A first view's faces come to $first bytes, past 350 KB."
         exit 1
       fi
+      steps=$(grep -c -- '--step-[a-z]*: clamp(' ${kit}/theme.css)
+      held=$(grep -c -- '--step-[a-z]*: clamp(max(12px, ' ${kit}/theme.css)
+      if [ "$steps" -eq 0 ] || [ "$held" -ne "$steps" ]; then
+        echo "Only $held of theme.css's $steps type steps start at 12 px or more."
+        exit 1
+      fi
+      grep -qF 'font-size: max(0.85em, 12px);' ${kit}/base.css \
+        || { echo "base.css lets code, keycaps and samples go under 12 px."; exit 1; }
       touch $out
     '';
 }

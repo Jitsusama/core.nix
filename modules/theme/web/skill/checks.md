@@ -31,17 +31,20 @@ through axe-core and its own console.
    Then run `layout.js`, beside it, the same way: things side by side
    ending level with their parts in line and none under 256 px, and every
    fold opening without moving anything beside or above it. It opens each
-   fold, so run it on a page nobody is reading. Then run `pixels.js` the
-   same way, at the phone's width and the desk's: the page no wider than
+   fold, so run it on a page nobody is reading. Run `pixels.js` the same
+   way, at the phone's width and the desk's, before `layout.js` on a page
+   freshly loaded, since it counts every shift since the load and would
+   count the folds layout.js opens as the page's own: the page no wider than
    its window (a part wider than it scrolls in a scroller of its own), a
    layout shift under 0.1 as it arrives, no text under 12 px on screen, a
    drawing's label under 12 px only where it's marked `data-enlarges` and
    a zoom, hover or focus shows it at 12 px or more, nothing under 9 px,
-   and every control's name starting with the words it shows (WCAG
-   2.5.3), a keycap on it after them, and a mark alone, such as "/",
-   showing a word beside it, and every word at 4.5:1 or more on the ground
-   painted under it, 3:1 at 24 px or 18.66 px bold, with any opacity it
-   sits in (WCAG 1.4.3), so axe's cases left to a person are measured.
+   and every control's name starting with the words it shows, word for
+   word (WCAG 2.5.3), a keycap on it after them, and a mark alone, such as
+   "/", showing a word beside it, as the kit asks beyond WCAG, and every
+   word at 4.5:1 or more on the ground painted under it, 3:1 at 24 px or
+   18.66 px bold, with any opacity it sits in (WCAG 1.4.3), so axe's cases
+   left to a person are measured.
    A box painted with a picture is left to the person's pass. A live page's
    test runs it through
    `holds_every_pixel` once the page keeps to it. A page with a walked map
