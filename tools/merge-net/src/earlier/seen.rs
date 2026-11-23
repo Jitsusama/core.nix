@@ -9,7 +9,9 @@
 //! whose reviewers read the code (a judge reads their findings), they read
 //! that commit (no `unpinned`), it was collected (neither `open` nor
 //! `closed`), and one of them answered. The harness's own merge reads its
-//! records the same way (`readSomething` in its review store).
+//! records the same way (`readSomething` in its review store). A round
+//! over a range of commits counts only where its base is on main: the
+//! commit it records as `from`, else the base the range is named by.
 
 use std::collections::HashSet;
 use std::fs;
@@ -238,7 +240,9 @@ fn shaped(text: &str) -> bool {
 }
 
 /// The commits the rounds of one change's file `text` read in full, each
-/// with the base it read from when the change is a range of commits.
+/// with the base it read from when the change is a range of commits: the
+/// commit the round itself records as `from`, else the base the range is
+/// named by, which a ref may spell and so means nothing on another machine.
 fn read_in(text: &str) -> Vec<Read> {
     let Ok(change) = serde_json::from_str::<Value>(text) else {
         return Vec::new();
@@ -246,7 +250,7 @@ fn read_in(text: &str) -> Vec<Read> {
     let Some(rounds) = change["runs"].as_array() else {
         return Vec::new();
     };
-    let from = (change["change"]["provider"].as_str() == Some("local-range"))
+    let named = (change["change"]["provider"].as_str() == Some("local-range"))
         .then(|| change["change"]["id"].as_str())
         .map(|range| {
             range
@@ -257,6 +261,12 @@ fn read_in(text: &str) -> Vec<Read> {
         .iter()
         .filter(|round| speaks(round))
         .flat_map(|round| {
+            let from = named.as_ref().map(|named| {
+                round["from"]
+                    .as_str()
+                    .filter(|from| is_commit_id(from))
+                    .map_or_else(|| named.clone(), str::to_owned)
+            });
             round["witness"]
                 .as_str()
                 .into_iter()
@@ -577,6 +587,20 @@ mod tests {
             &range(&id('9'), 'f'),
             0,
         );
+        // A range named by ref whose round recorded the commit it read from
+        // counts from that commit; a recorded base that's no commit doesn't.
+        written(
+            &root.join("ranges"),
+            "by-ref-recorded.json",
+            &json!({
+                "change": {"provider": "local-range", "id": "origin/main..x"},
+                "runs": [
+                    round(&json!({"witness": id('7'), "from": id('8')})),
+                    round(&json!({"witness": id('6'), "from": "origin/main"})),
+                ],
+            }),
+            0,
+        );
         let mirrored = mirrored(&root);
         let gone = super::mirrored(&root.join("gone"));
         fs::remove_dir_all(&root).unwrap();
@@ -594,9 +618,24 @@ mod tests {
             commit: id('f'),
             from: Some(id('9')),
         };
+        let recorded = Read {
+            commit: id('7'),
+            from: Some(id('8')),
+        };
+        let recorded_by_ref = Read {
+            commit: id('6'),
+            from: Some(String::new()),
+        };
         assert_eq!(
             mirrored.rounds,
-            HashSet::from([change_read('b'), change_read('c'), by_ref, by_commit]),
+            HashSet::from([
+                change_read('b'),
+                change_read('c'),
+                by_ref,
+                by_commit,
+                recorded,
+                recorded_by_ref,
+            ]),
             "the rounds read, a range's base kept only when it names a commit"
         );
         assert!(mirrored.trouble.is_empty(), "{:?}", mirrored.trouble);
