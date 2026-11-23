@@ -565,11 +565,12 @@ in
               realm names replaced by the realm's. A realm that names its own
               threshold, in GLIBC_TUNABLES or MALLOC_TRIM_THRESHOLD_, keeps it
               alone; a large one, such as 4294967295, turns the trim off. The
-              conversation's commands get the realm's MALLOC_TRIM_THRESHOLD_
-              but not its GLIBC_TUNABLES, which the harness keeps from them
-              from its pull request 2015 on (an older one passes it on, with
-              the trim added where the realm names no threshold). Any named trim threshold also fixes the size
-              glibc maps apart, at its 128 KiB start unless
+              commands of a conversation in its own unit get the realm's
+              MALLOC_TRIM_THRESHOLD_ and glibc's other MALLOC_ variables, but
+              not its GLIBC_TUNABLES, which the harness keeps from them from
+              its pull request 2015 on (an older one passes it on, with the
+              trim added where the realm names no threshold). Any named trim
+              threshold also fixes the size glibc maps apart, at its 128 KiB start unless
               glibc.malloc.mmap_threshold in the realm's GLIBC_TUNABLES, or
               MALLOC_MMAP_THRESHOLD_ from the realm or the login, names
               another, so none keeps glibc's own growing thresholds. From
