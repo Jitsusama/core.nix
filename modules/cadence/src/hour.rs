@@ -11,17 +11,19 @@
 //! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, and `owing` files its drag with each owner.
+//! says and keeps, `owing` files its drag with each owner, and `records`
+//! reads the queues' records.
 
 mod card;
 mod lines;
 mod measures;
 mod moved;
 mod owing;
+mod records;
 
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -37,6 +39,7 @@ use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
 use owing::file;
+use records::{RECORD_READ, aboard, tail};
 
 /// Who moves the measures no file names an owner for: the merge net's
 /// rules and its quarantine are cadence's keeper's, the net that finds a
@@ -319,59 +322,6 @@ fn gather(
     Ok(all)
 }
 
-/// When each rider aboard the train boarded, from its file in `riders`:
-/// none aboard where the folder isn't there, and none read where it can't
-/// be listed.
-fn aboard(riders: &Path) -> Option<Vec<i64>> {
-    let listed = match fs::read_dir(riders) {
-        Ok(listed) => listed,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => return Some(Vec::new()),
-        Err(_) => return None,
-    };
-    Some(
-        listed
-            .flatten()
-            .filter(|entry| entry.file_type().is_ok_and(|t| t.is_file()))
-            .filter_map(|entry| fs::read_to_string(entry.path()).ok())
-            .filter_map(|said| serde_json::from_str::<serde_json::Value>(&said).ok())
-            .filter_map(|said| said["at"].as_i64())
-            .collect(),
-    )
-}
-
-/// How much of each queue's record the hour reads: nix-offload keeps every
-/// send it ever made (38 MB on 21 November), about 2.6 MB a day, so the end
-/// holds days of them, and the others are smaller.
-const RECORD_READ: u64 = 16 << 20;
-
-/// The last `bytes` of the file at `path`, from its first whole line:
-/// nothing where there is no file, and none where it can't be read.
-fn tail(path: &Path, bytes: u64) -> Option<String> {
-    let read = || -> io::Result<String> {
-        let mut file = fs::File::open(path)?;
-        let from = file.metadata()?.len().saturating_sub(bytes);
-        file.seek(SeekFrom::Start(from))?;
-        let mut raw = Vec::new();
-        // Taken to the bound, so a file that grew since, or isn't one,
-        // can't be read past it.
-        file.take(bytes).read_to_end(&mut raw)?;
-        let text = String::from_utf8_lossy(&raw);
-        // A cut line isn't one, so it starts after the first break.
-        Ok(if from == 0 {
-            text.into_owned()
-        } else {
-            text.split_once('\n')
-                .map(|(_, rest)| rest.to_owned())
-                .unwrap_or_default()
-        })
-    };
-    match read() {
-        Ok(text) => Some(text),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Some(String::new()),
-        Err(_) => None,
-    }
-}
-
 /// The council rounds each change merged to core's and the harness's
 /// mains in the last day took, from the harness's review runs and the
 /// fixes their findings led to, reading only the records written since
@@ -424,9 +374,20 @@ fn rounds_per_merge(
         };
         let notes = mesh.sent_since((now - DAY) * 1000);
         let presences = mesh.all();
+        let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+            .map(|b| b.trim().to_owned())
+            .unwrap_or_default();
+        // A pid from another boot may name some other process now.
         let there = |address: &str| {
-            crate::mesh::alive(mesh.presence(address).as_ref(), |pid| {
-                Path::new(&format!("/proc/{pid}")).exists()
+            let presence = presences
+                .iter()
+                .filter(|p| p.addresses.iter().any(|a| a == address))
+                .max_by_key(|p| p.at.to_string());
+            let this_boot = presence
+                .and_then(|p| p.owner.as_ref()?.boot_id.as_deref())
+                .is_some_and(|b| b == boot);
+            crate::mesh::alive(presence, |pid| {
+                this_boot && Path::new(&format!("/proc/{pid}")).exists()
             })
         };
         landed_by_session(
@@ -682,29 +643,6 @@ fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_records_tail_starts_at_its_first_whole_line() {
-        let root = tempfile::tempdir().expect("a scratch folder");
-        let path = root.path().join("there.jsonl");
-        fs::write(&path, "{\"at\":1}\n{\"at\":2}\n{\"at\":3}\n").expect("written");
-        assert_eq!(
-            tail(&path, 12).as_deref(),
-            Some("{\"at\":3}\n"),
-            "the cut line is left out"
-        );
-        assert_eq!(
-            tail(&path, 1 << 20),
-            Some(fs::read_to_string(&path).expect("read")),
-            "all of a short one"
-        );
-        assert_eq!(
-            tail(&root.path().join("none"), 12).as_deref(),
-            Some(""),
-            "no file is nothing in it"
-        );
-        assert_eq!(tail(root.path(), 12), None, "a folder can't be read");
-    }
 
     #[test]
     fn a_merges_rounds_go_to_the_session_that_merged_it_not_its_quest() {

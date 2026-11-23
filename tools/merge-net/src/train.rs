@@ -73,7 +73,7 @@ use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
-use landed::{boarded_at, keep_landed};
+use landed::{boarded_at, keep_fell, keep_landed};
 use landing::{Landing, land};
 use pulls::aboard;
 pub use pulls::drafted;
@@ -179,6 +179,7 @@ pub fn fall(root: &Path, head: &str, why: &str) -> io::Result<()> {
     let fell = fell_folder(root);
     fs::create_dir_all(&fell)?;
     fs::write(fell.join(head), format!("{why}\n"))?;
+    keep_fell(root, head);
     alight(root, head);
     Ok(())
 }

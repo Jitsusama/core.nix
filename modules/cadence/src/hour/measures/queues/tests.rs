@@ -39,13 +39,15 @@ fn sorted(mut waits: Vec<f64>) -> Vec<f64> {
 
 #[test]
 fn each_turn_counts_its_own_wait_once_it_ends_within_the_day() {
+    // Each waitedS differs from its asked-to-started time, so the test sees
+    // which was read: the workflow's own wait, where the line has one.
     let outcomes = [
         outcome(
             "world-walk",
             "2026-11-21T11:00:00Z",
             Some("2026-11-21T11:00:05Z"),
             "2026-11-21T11:01:00Z",
-            5,
+            4,
         ),
         // Gave up after ten minutes without a turn.
         outcome(
@@ -53,7 +55,7 @@ fn each_turn_counts_its_own_wait_once_it_ends_within_the_day() {
             "2026-11-21T10:00:00Z",
             None,
             "2026-11-21T10:10:00Z",
-            600,
+            590,
         ),
         // Asked more than a day ago, it waited long and ended today.
         outcome(
@@ -61,7 +63,7 @@ fn each_turn_counts_its_own_wait_once_it_ends_within_the_day() {
             "2026-11-20T10:00:00Z",
             Some("2026-11-21T11:00:00Z"),
             "2026-11-21T11:30:00Z",
-            90_000,
+            89_000,
         ),
         // Ended a day and more ago, and a build: neither is today's turn.
         outcome(
@@ -76,7 +78,7 @@ fn each_turn_counts_its_own_wait_once_it_ends_within_the_day() {
             "2026-11-21T11:00:00Z",
             Some("2026-11-21T11:01:00Z"),
             "2026-11-21T11:02:00Z",
-            60,
+            50,
         ),
         // An older line with no waitedS waited from asking to its turn.
         serde_json::json!({
@@ -91,14 +93,14 @@ fn each_turn_counts_its_own_wait_once_it_ends_within_the_day() {
     let walks = turns(&outcomes, "world-walk", NOW);
     assert_eq!(
         sorted(walks.waits),
-        vec![5.0, 600.0, 90_000.0],
-        "each of the turns that ended today, one asked yesterday too"
+        vec![4.0, 590.0, 89_000.0],
+        "each of the turns that ended today, one asked yesterday too, by its waitedS"
     );
     assert_eq!(walks.flow, "3 ended in a day", "its flow is what ended");
     assert_eq!(
         sorted(turns(&outcomes, "build", NOW).waits),
-        vec![60.0, 120.0],
-        "builds read apart"
+        vec![50.0, 120.0],
+        "builds read apart, an old line by asked to started"
     );
 }
 
@@ -143,18 +145,26 @@ fn a_riders_wait_counts_from_boarding_and_one_still_aboard_counts_so_far() {
             NOW - DAY - 1,
             NOW - DAY - 100
         ),
+        // A rider the train refused, 15 minutes after it boarded, as
+        // merge-net's keep_fell writes one.
+        format!(
+            r#"{{"at":{},"fell":["x"],"boarded":[{}]}}"#,
+            NOW - 1800,
+            NOW - 2700
+        ),
     ]
     .join("\n");
     let read = trains(&landed, &[NOW - 3000], NOW);
     assert_eq!(
         read.waits,
-        vec![600.0, 2100.0, 3000.0],
-        "a run's length was read as its riders' wait, or one aboard didn't count"
+        vec![600.0, 900.0, 2100.0, 3000.0],
+        "a run's length was read as its riders' wait, or one aboard or fallen didn't count"
     );
     assert_eq!(
-        read.flow, "4 landed in a day, 1 aboard",
+        read.flow, "4 landed in a day, 1 fell off, 1 aboard",
         "riders, not trains"
     );
+    assert_eq!(read.through, 6, "every rider went through");
 }
 
 #[test]
@@ -183,14 +193,18 @@ fn each_queue_says_its_wait_or_that_nothing_passed_or_that_it_went_unread() {
     let measures = queues(&records, NOW);
     assert_eq!(measures.len(), 4, "every queue has its line: {measures:?}");
     let walks = found(&measures, "world-walks");
-    assert_eq!(walks.now, 180.0, "the p90 of three is the longest");
+    assert_eq!(
+        walks.now, 1.0,
+        "three waits are judged by their median, not their one outlier"
+    );
     assert_eq!(walks.target, Some(60.0), "a minute at most");
     assert_eq!(walks.owner, "80ECO2", "the workflow's keeper");
     assert_eq!(walks.class, Class::Queues, "on the queues section");
     assert_eq!(
         walks.says,
-        "p90 seconds waiting for a World git turn (median 1, worst 180; 3 ended in a day)",
-        "names the wait, its spread and its flow"
+        "median seconds waiting for a World git turn (worst 180; 3 ended in a day, too few \
+         for a p90)",
+        "names the wait, its worst and its flow"
     );
     let builds = found(&measures, "builds");
     assert!(
@@ -217,6 +231,51 @@ fn each_queue_says_its_wait_or_that_nothing_passed_or_that_it_went_unread() {
         .iter()
         .any(|m| m.key == "queue:trains" && m.says.ends_with(UNREAD)),
         "riders that couldn't be listed weren't said as unread"
+    );
+}
+
+#[test]
+fn ten_waits_are_judged_by_their_p90_and_waits_unsaid_keep_the_ask() {
+    let records = Records {
+        outcomes: None,
+        sends: None,
+        landed: None,
+        aboard: None,
+    };
+    // Ten builds, nine quick and one of ten minutes: a p90 from ten.
+    let builds = (0..10)
+        .map(|n| {
+            let asked = format!("2026-11-21T11:{n:02}:00Z");
+            let waited = if n == 9 { 600 } else { 1 };
+            outcome("build", &asked, Some(&asked), "2026-11-21T11:30:00Z", waited)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let ten = queues(
+        &Records {
+            outcomes: Some(&builds),
+            ..records
+        },
+        NOW,
+    );
+    assert!(
+        found(&ten, "builds").says.starts_with("p90 seconds waiting for a build"),
+        "ten waits weren't judged by their p90: {:?}",
+        found(&ten, "builds")
+    );
+    // VM runs that ended without saying how long they waited went through.
+    let unsaid = format!(r#"{{"at":{},"on":"vm-12","seconds":30}}"#, NOW - 60);
+    let sent = queues(
+        &Records {
+            sends: Some(&unsaid),
+            ..records
+        },
+        NOW,
+    );
+    let sent = found(&sent, "sends");
+    assert!(
+        sent.target.is_none() && !answered(&sent.key, std::slice::from_ref(sent)),
+        "a queue that let work through without its waits read as quiet: {sent:?}"
     );
 }
 

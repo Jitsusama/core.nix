@@ -304,6 +304,24 @@ fn a_partial_landing_keeps_the_landed_drops_the_refused_and_seats_the_rest() {
         why.contains("is a draft") && why.contains("the rider before it landed as m1"),
         "the refused rider wasn't told why, and that the one before it stays: {why}"
     );
+    let kept: Vec<Value> = fs::read_to_string(folder(&root).join("landed.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let said: Vec<(&Value, &Value, &Value)> = kept
+        .iter()
+        .map(|line| (&line["heads"], &line["fell"], &line["boarded"]))
+        .collect();
+    assert_eq!(
+        said,
+        [
+            (&json!(["a1"]), &Value::Null, &json!([10])),
+            (&Value::Null, &json!(["b2"]), &json!([20])),
+        ],
+        "the landed rider's boarding wasn't kept beside its head, or the refused one's wait \
+         was lost"
+    );
     fs::remove_dir_all(&root).unwrap();
 }
 

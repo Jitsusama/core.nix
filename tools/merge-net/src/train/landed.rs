@@ -1,5 +1,6 @@
-//! The record of what the train landed, a line each in
-//! `train/landed.jsonl`, which cadence reads for how long riders waited.
+//! The record of what the train landed, and of each rider it refused, a
+//! line each in `train/landed.jsonl`, which cadence reads for how long
+//! riders waited.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -43,12 +44,35 @@ pub(super) fn keep_landed(
         "boarded": boarded,
         "seconds": seconds,
     });
+    keep(root, &line, &format!("landing at {landed}"));
+}
+
+/// Keep that the rider at `head` fell off, and when it boarded, read
+/// before it alights, so its wait counts though it never landed: a train
+/// that keeps refusing riders would otherwise read better than it is. One
+/// not aboard waited on no train, so nothing is kept of it.
+pub(super) fn keep_fell(root: &Path, head: &str) {
+    let heads = [head.to_owned()];
+    let boarded = boarded_at(root, &heads);
+    if boarded.iter().all(Option::is_none) {
+        return;
+    }
+    let line = json!({
+        "at": crate::state::now(),
+        "fell": heads,
+        "boarded": boarded,
+    });
+    keep(root, &line, &format!("rider {head} falling off"));
+}
+
+/// Add `line` to the record, saying `what` wasn't kept where it can't be.
+fn keep(root: &Path, line: &serde_json::Value, what: &str) {
     let kept = OpenOptions::new()
         .create(true)
         .append(true)
         .open(folder(root).join("landed.jsonl"))
         .and_then(|mut file| file.write_all(format!("{line}\n").as_bytes()));
     if let Err(error) = kept {
-        eprintln!("merge-net: the train's landing at {landed} wasn't kept: {error}");
+        eprintln!("merge-net: the train's {what} wasn't kept: {error}");
     }
 }

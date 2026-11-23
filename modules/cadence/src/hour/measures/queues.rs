@@ -12,7 +12,15 @@
 //! so a turn or a send still waiting shows only when it ends; the card
 //! says their flow as how many ended. The train keeps each rider aboard in
 //! a file of its own from when it boarded, so a rider still aboard counts
-//! its wait so far, and a stuck train shows at once.
+//! its wait so far, and a stuck train shows at once; a rider the train
+//! refused counts its wait to when it fell, so a train shedding riders
+//! doesn't read better than it is.
+//!
+//! A queue is quiet only when nothing went through it: one that let work
+//! through without saying how long it waited is unjudged and keeps its
+//! ask. With fewer than ten waits a p90 is the worst one, so such a day is
+//! judged by its median, which one outlier can't move but one stuck rider
+//! alone still shows.
 
 use super::{Class, Measure, count, lines, seconds};
 use crate::stats::spread;
@@ -30,9 +38,12 @@ pub const UNREAD: &str = " (its record unread)";
 
 const DAY: i64 = 86_400;
 
-/// 80ECO2 keeps all four queues' code: the harness's priority workflow,
-/// nix-offload and merge-net's train.
-const KEEPER: &str = "80ECO2";
+/// The net's keeper keeps all four queues' code: the harness's priority
+/// workflow, nix-offload and merge-net's train.
+const KEEPER: &str = crate::hour::NET_RULES;
+
+/// The fewest waits a day's p90 is judged by; below it, its median.
+const P90_FROM: usize = 10;
 
 /// A queue the card reads: its key after [`QUEUE`], what waits in it as
 /// the card says it, and the most its p90 wait may be, in seconds.
@@ -77,10 +88,11 @@ const TRAINS: Queue = Queue {
     target: 1200.0,
 };
 
-/// A queue's waits over the day, and how many passed through it, said as
-/// the card says them.
+/// A queue's waits over the day, how many passed through it, whether or
+/// not their waits were said, and that flow as the card says it.
 struct Waits {
     waits: Vec<f64>,
+    through: usize,
     flow: String,
 }
 
@@ -89,9 +101,12 @@ struct Waits {
 /// job that ended, written then, with how long it waited for its turn,
 /// given up or given.
 fn turns(outcomes: &str, kind: &str, now: i64) -> Waits {
-    let waits: Vec<f64> = lines(outcomes)
+    let ended: Vec<serde_json::Value> = lines(outcomes)
         .filter(|o| o["kind"].as_str() == Some(kind))
         .filter(|o| seconds(&o["ended"]).is_some_and(|at| at > now - DAY && at <= now))
+        .collect();
+    let waits: Vec<f64> = ended
+        .iter()
         .filter_map(|o| {
             o["waitedS"].as_f64().or_else(|| {
                 let asked = seconds(&o["asked"])?;
@@ -100,30 +115,43 @@ fn turns(outcomes: &str, kind: &str, now: i64) -> Waits {
             })
         })
         .collect();
-    let flow = format!("{} ended in a day", waits.len());
-    Waits { waits, flow }
+    let through = ended.len();
+    let flow = format!("{through} ended in a day");
+    Waits {
+        waits,
+        through,
+        flow,
+    }
 }
 
 /// Each VM run's wait in nix-offload's `sends` that ended within the day
 /// before `now`.
 fn sends(text: &str, now: i64) -> Waits {
-    let waits: Vec<f64> = lines(text)
+    let ended: Vec<serde_json::Value> = lines(text)
         .filter(|line| line["on"].as_str().is_some_and(|on| on.contains("vm")))
         .filter(|line| {
             line["at"]
                 .as_i64()
                 .is_some_and(|at| at > now - DAY && at <= now)
         })
+        .collect();
+    let waits: Vec<f64> = ended
+        .iter()
         .filter_map(|line| line["waited"].as_f64())
         .collect();
-    let flow = format!("{} ended in a day", waits.len());
-    Waits { waits, flow }
+    let through = ended.len();
+    let flow = format!("{through} ended in a day");
+    Waits {
+        waits,
+        through,
+        flow,
+    }
 }
 
 /// Each rider's wait on the train: each still `aboard`, by when it
-/// boarded, so far, and each landed within the day before `now`, from
-/// when it boarded, where the landing says so. Its flow is the riders
-/// landed, since a landing can carry several.
+/// boarded, so far, and each that landed or fell off within the day before
+/// `now`, from when it boarded to then, where the line says so. Its flow
+/// is the riders, since a landing can carry several.
 fn trains(landed: &str, aboard: &[i64], now: i64) -> Waits {
     let landings: Vec<serde_json::Value> = lines(landed)
         .filter(|line| {
@@ -132,10 +160,13 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Waits {
                 .is_some_and(|at| at > now - DAY && at <= now)
         })
         .collect();
-    let riders: usize = landings
-        .iter()
-        .map(|line| line["heads"].as_array().map_or(0, Vec::len))
-        .sum();
+    let riders = |field: &str| -> usize {
+        landings
+            .iter()
+            .map(|line| line[field].as_array().map_or(0, Vec::len))
+            .sum()
+    };
+    let (landed, fell) = (riders("heads"), riders("fell"));
     let mut waits: Vec<f64> = landings
         .iter()
         .flat_map(|line| {
@@ -151,13 +182,21 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Waits {
         .map(|waited| count(usize::try_from(waited).unwrap_or_default()))
         .collect();
     waits.sort_by(f64::total_cmp);
-    let flow = format!("{riders} landed in a day, {} aboard", aboard.len());
-    Waits { waits, flow }
+    let flow = format!(
+        "{landed} landed in a day, {fell} fell off, {} aboard",
+        aboard.len()
+    );
+    Waits {
+        waits,
+        through: landed + fell + aboard.len(),
+        flow,
+    }
 }
 
 /// The measure of `queue` from what its record held over the day: none
-/// read says so, unjudged; nothing through says so, unjudged; else its
-/// p90 against its target.
+/// read says so, unjudged; nothing through says so, unjudged; work through
+/// with no wait said says so, unjudged; else its p90 against its target,
+/// or its median with fewer than [`P90_FROM`] waits.
 fn measure(queue: &Queue, waits: Option<Waits>) -> Measure {
     let unjudged = |says: String| Measure {
         key: format!("{QUEUE}{}", queue.key),
@@ -168,20 +207,44 @@ fn measure(queue: &Queue, waits: Option<Waits>) -> Measure {
         owner: KEEPER.to_owned(),
         behind: Vec::new(),
     };
-    let Some(Waits { waits, flow }) = waits else {
+    let Some(Waits {
+        waits,
+        through,
+        flow,
+    }) = waits
+    else {
         return unjudged(format!("p90 seconds waiting for {}{UNREAD}", queue.name));
     };
-    let Some(s) = spread(&waits) else {
+    if through == 0 {
         return unjudged(format!("seconds waiting for {}{QUIET}", queue.name));
+    }
+    let Some(s) = spread(&waits) else {
+        return unjudged(format!(
+            "seconds waiting for {}: {flow}, no wait said",
+            queue.name
+        ));
     };
-    Measure {
-        now: s.p90,
+    let judged = |now: f64, says: String| Measure {
+        now,
         target: Some(queue.target),
-        ..unjudged(format!(
+        ..unjudged(says)
+    };
+    if waits.len() < P90_FROM {
+        return judged(
+            s.median,
+            format!(
+                "median seconds waiting for {} (worst {:.0}; {flow}, too few for a p90)",
+                queue.name, s.max
+            ),
+        );
+    }
+    judged(
+        s.p90,
+        format!(
             "p90 seconds waiting for {} (median {:.0}, worst {:.0}; {flow})",
             queue.name, s.median, s.max
-        ))
-    }
+        ),
+    )
 }
 
 /// What the hour read of each queue's record: the text of each, or none
