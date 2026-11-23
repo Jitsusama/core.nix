@@ -45,9 +45,9 @@ in
         say which, and reads its limits back from what it keeps, so a
         restart lifts none. The two that keep the person's and the leading
         sessions came in mycelium's #381: where the source the node is built
-        from has no line of code for either, the node isn't told to carry and the switch warns, rather
-        than the machine refusing to update. Off, the node only writes what
-        it would do. To stop at once, set it false and switch, which
+        from has no line of code for either, the node isn't told to carry
+        and the switch warns, rather than the machine refusing to update.
+        Off, the node only writes what it would do. To stop at once, set it false and switch, which
         restarts the node; a carry it already asked for is the harness's, so
         it goes on, and the sessions it carried stay where they went.
       '';

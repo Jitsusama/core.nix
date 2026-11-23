@@ -41,6 +41,10 @@ let
       [ "it has no source to read" ];
 in
 {
+  # Each file a guard is looked for in, with the pattern a line of it must
+  # match, so core's checks hold the warning to the pattern it names.
+  inherit guards;
+
   # Whether `mycelium`, the source a machine's node is built from, has
   # each guard's line. A source with no file to read has none.
   keepsTheLed = mycelium: shorts mycelium == [ ];

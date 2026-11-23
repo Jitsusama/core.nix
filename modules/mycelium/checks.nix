@@ -104,7 +104,7 @@ let
   # Whether a node built from `mycelium` may make carries, by
   # carry-guards.nix's own rule, what the switch warns of an account
   # setting it anyway, and whether its node is told to carry.
-  inherit (import ./carry-guards.nix { inherit lib; }) keepsTheLed missing;
+  inherit (import ./carry-guards.nix { inherit lib; }) guards keepsTheLed missing;
   warnedOf = account: lib.filter (lib.hasInfix "easesCarry") account.warnings;
   carriesIn =
     account:
@@ -120,42 +120,46 @@ let
       outPath = ./tests/stale-mycelium + "/${name}";
       rev = "stand-in-${name}";
     };
-  # The stand-ins lacking a guard, by what the switch must say of each of
-  # their two files: `null` where the file keeps its guard, so the warning
-  # mustn't name it. All but `without` and `older` lack one in one file
-  # alone, so loosening either pattern lets its own case through.
+  # The stand-ins lacking a guard, by what the switch must say of each
+  # file a guard is looked for in: that it has no line matching the
+  # guard's pattern, named so the person can tell what form it takes, that
+  # it is missing, or nothing (`kept`) where it keeps its guard. All but
+  # `without` and `older` lack one in one file alone, so loosening either
+  # pattern lets its own case through.
   refusedSays =
     let
-      noLine = file: "${file} has no line of code matching";
+      lacks = file: "${file} has no line of code matching ${guards.${file}}";
       gone = file: "${file} is missing";
-      ease = "src/carry/ease.rs";
-      easing = "src/carry/easing.rs";
+      kept = null;
+      each = says: lib.mapAttrs (file: say: if say == kept then kept else say file) says;
+      easeFile = "src/carry/ease.rs";
+      easingFile = "src/carry/easing.rs";
     in
-    {
-      without = [
-        (noLine ease)
-        (noLine easing)
-      ];
-      older = [
-        (gone ease)
-        (gone easing)
-      ];
-      half = [
-        null
-        (noLine easing)
-      ];
-      other-half = [
-        (noLine ease)
-        null
-      ];
-      commented = [
-        (noLine ease)
-        null
-      ];
-      commented-leads = [
-        null
-        (noLine easing)
-      ];
+    lib.mapAttrs (_: each) {
+      without = {
+        ${easeFile} = lacks;
+        ${easingFile} = lacks;
+      };
+      older = {
+        ${easeFile} = gone;
+        ${easingFile} = gone;
+      };
+      half = {
+        ${easeFile} = kept;
+        ${easingFile} = lacks;
+      };
+      other-half = {
+        ${easeFile} = lacks;
+        ${easingFile} = kept;
+      };
+      commented = {
+        ${easeFile} = lacks;
+        ${easingFile} = kept;
+      };
+      commented-leads = {
+        ${easeFile} = kept;
+        ${easingFile} = lacks;
+      };
     };
   refused = lib.attrNames refusedSays;
   # A workstation of either system whose account's node is built from
@@ -179,6 +183,17 @@ let
   );
   staleAccounts = lib.mapAttrs (_: account) staleMachines;
   stale = staleAccounts.without;
+  # A Mac whose account's node is built from `without`, and its account.
+  staleMac = machineFrom bareDarwin self.darwinModules.workstation (standIn "without") easing;
+  staleMacAccount = account staleMac;
+  staleMacArguments = staleMacAccount.launchd.agents.mycelium.config.ProgramArguments;
+  # How many of a system's own warnings name the stand-in `without`.
+  warnsOfWithout =
+    machine: lib.length (lib.filter (lib.hasInfix "(stand-in-without)") machine.config.warnings);
+  # The Linux account from `without` with `settings` in place of easing's.
+  withoutAs =
+    settings:
+    account (machineFrom bareNixos self.nixosModules.workstation (standIn "without") settings);
   # What the switch warns of an account whose node is built from the
   # stand-in `name`.
   staleWarning = name: lib.concatStrings (warnedOf staleAccounts.${name});
@@ -590,35 +605,23 @@ in
           name:
           let
             warning = staleWarning name;
-            ease = lib.elemAt refusedSays.${name} 0;
-            easing' = lib.elemAt refusedSays.${name} 1;
-            says = what: file: if what == null then !(lib.hasInfix file warning) else lib.hasInfix what warning;
+            saysOf =
+              file: said:
+              if said == null then !(lib.hasInfix file warning) else lib.hasInfix said warning;
           in
           !(keepsTheLed (standIn name))
           && !(carriesIn staleAccounts.${name})
           && lib.length (warnedOf staleAccounts.${name}) == 1
           && lib.hasInfix "(stand-in-${name})" warning
-          && says ease "src/carry/ease.rs"
-          && says easing' "src/carry/easing.rs"
+          && lib.all ({ name, value }: saysOf name value) (lib.attrsToList refusedSays.${name})
+          && lib.attrNames refusedSays.${name} == lib.attrNames guards
         ) refused
-        && lib.any (lib.hasInfix "(stand-in-without)") staleMachines.without.config.warnings
-        &&
-          lib.any (lib.hasInfix "(stand-in-without)")
-            (machineFrom bareDarwin self.darwinModules.workstation (standIn "without") easing).config.warnings
-        &&
-          warnedOf (
-            account (
-              machineFrom bareNixos self.nixosModules.workstation (standIn "without") (
-                easing // { easesCarry = false; }
-              )
-            )
-          ) == [ ]
-        &&
-          warnedOf (
-            account (
-              machineFrom bareNixos self.nixosModules.workstation (standIn "without") { easesCarry = true; }
-            )
-          ) == [ ]
+        && warnsOfWithout staleMachines.without == 1
+        && warnsOfWithout staleMac == 1
+        && lib.length (warnedOf staleMacAccount) == 1
+        && !(lib.elem "--eases-carry" staleMacArguments)
+        && warnedOf (withoutAs (easing // { easesCarry = false; })) == [ ]
+        && warnedOf (withoutAs { easesCarry = true; }) == [ ]
       );
 
   # A machine in a realm reads each minute how evenly the home realm's
