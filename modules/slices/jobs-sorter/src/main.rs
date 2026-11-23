@@ -824,9 +824,8 @@ struct Ranks {
     reading: Option<u64>,
     /// Each pi host's rank, as last set.
     hosts: hosts::Hosts,
-    /// The slices whose floor couldn't be read to fit their units' floors
-    /// into, so each is said once.
-    unfitted: HashSet<String>,
+    /// What fitting the units' floors into their slices has said.
+    fitting: Fitting,
     /// The sessions viewers attach to that no slot holds, as the looks
     /// before found them, so each is said once while it lasts.
     unslotted: Unslotted,
@@ -1439,7 +1438,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         &mut ranked,
         windows.prefixes,
         &ranks.hosts,
-        &mut ranks.unfitted,
+        &mut ranks.fitting,
     );
     let control =
         kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
@@ -1720,17 +1719,117 @@ struct Ranked {
     writeback: bool,
 }
 
+/// What fitting the units' floors into their slices ([`fit_floors`]) has
+/// said, so each is said once while it lasts.
+#[derive(Default)]
+struct Fitting {
+    /// The slices whose floor couldn't be read to fit their units' floors
+    /// into.
+    unfitted: HashSet<String>,
+    /// The slices whose others claimed past the room the units Joel is at
+    /// left them ([`Fitting::overran`]).
+    overrun: HashSet<String>,
+}
+
+impl Fitting {
+    /// What to say of `slice` when the others beside its units, `strays`,
+    /// each by name with its claim, claim more in all, `claimed`, than the
+    /// `given` the units Joel is at left them: the sorter can't trim what
+    /// they claim, so the slice is claimed past its floor and the kernel
+    /// shares it among every child again, the windows too. Said once, and
+    /// again once it has stopped and starts again.
+    fn overran(
+        &mut self,
+        slice: &str,
+        strays: &[(String, u64)],
+        claimed: u64,
+        given: u64,
+    ) -> Option<String> {
+        if claimed <= given {
+            self.overrun.remove(slice);
+            return None;
+        }
+        if !self.overrun.insert(slice.to_owned()) {
+            return None;
+        }
+        let which: Vec<String> = strays
+            .iter()
+            .filter(|(_, claim)| *claim > 0)
+            .map(|(name, claim)| format!("{name} {} MiB", claim >> 20))
+            .collect();
+        Some(format!(
+            "The others in {slice} claim {} MiB, past the {} MiB the units Joel is at leave \
+             them, so its floor is shared among every child again, the windows too: {}.",
+            claimed >> 20,
+            given >> 20,
+            which.join(", ")
+        ))
+    }
+}
+
+/// What the children of `slice` beside the units at `mine` claim of its
+/// floor `low`: the room the windows, those under `prefixes`, leave the
+/// units, and each other's claim by name, fitted after the units Joel is
+/// at ([`fit_floors`]).
+fn claims(
+    slice: &Path,
+    low: u64,
+    prefixes: &[String],
+    mine: &[&Path],
+) -> (u64, Vec<(String, u64)>) {
+    // Only the windows' floors are taken first: any agent can start a scope here with a floor
+    // of max, which would leave the units Joel is at none.
+    let scopes = homes(slice, prefixes);
+    let (windows, others): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(slice)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && !mine.contains(&path.as_path()))
+        .partition(|path| scopes.contains(path));
+    // A child that can't be read has most likely just gone, so it claims nothing, while a unit
+    // that can't be read counts as holding its whole floor (`fit_floors`).
+    let claim = |path: &PathBuf| {
+        let name = path.file_name()?.to_string_lossy().into_owned();
+        Some((name, holds::current(path)?, memory_low(path)?))
+    };
+    let windows: Vec<(String, u64, u64)> = windows.iter().filter_map(claim).collect();
+    // A scope counts as a window by its name alone, and the sorter gives a window no more than
+    // focus::FLOOR, so what one claims past that is claimed as a stray's is, after the units
+    // Joel is at: an agent naming a scope as a window and asking for max would otherwise take
+    // their floors.
+    let room = budget::room(
+        low,
+        windows
+            .iter()
+            .map(|(_, current, floor)| (*current, (*floor).min(focus::FLOOR))),
+    );
+    let past = windows
+        .into_iter()
+        .map(|(name, current, floor)| (name, current.min(floor).saturating_sub(focus::FLOOR)));
+    let strays = others
+        .iter()
+        .filter_map(claim)
+        .map(|(name, current, floor)| (name, current.min(floor)))
+        .chain(past)
+        .collect();
+    (room, strays)
+}
+
 /// Fits the floors the `ranked` units would be given into what each one's
-/// slice has left once the windows and others beside them keep theirs
-/// ([`budget`]), so the windows Joel types in, those under `prefixes`,
-/// keep theirs whole, each against the floor `hosts` last set on it. A
-/// slice whose floor can't be read is left as ranked, and said once, as
-/// `unfitted` remembers.
+/// slice has left once the windows beside them keep theirs ([`budget`]),
+/// each against the floor `hosts` last set on it: first the units Joel is
+/// at, then what the others beside them claim, then the rest. So the
+/// windows Joel types in, those under `prefixes`, keep theirs whole while
+/// those others fit in what the units Joel is at leave; past it the
+/// kernel shares the slice's floor among every child again, which is said
+/// once ([`Fitting::overran`]). A slice whose floor can't be read is left
+/// as ranked, and said once, as `fitting` remembers.
 fn fit_floors(
     ranked: &mut [Ranked],
     prefixes: &[String],
     hosts: &hosts::Hosts,
-    unfitted: &mut HashSet<String>,
+    fitting: &mut Fitting,
 ) {
     let mut slices: Vec<PathBuf> = ranked
         .iter()
@@ -1741,7 +1840,7 @@ fn fit_floors(
     for slice in slices {
         let name = slice.display().to_string();
         let Some(low) = memory_low(&slice) else {
-            if unfitted.insert(name) {
+            if fitting.unfitted.insert(name) {
                 eprintln!(
                     "Ranking the units in {} unfitted: its memory.low can't be read.",
                     slice.display()
@@ -1749,38 +1848,15 @@ fn fit_floors(
             }
             continue;
         };
-        unfitted.remove(&name);
+        fitting.unfitted.remove(&name);
         let mine: Vec<usize> = (0..ranked.len())
             .filter(|&at| ranked[at].path.parent() == Some(slice.as_path()))
             .collect();
-        // Only the windows' floors are taken first: any agent can start a scope here with a
-        // floor of max, which would leave the units Joel is at none.
-        let scopes = homes(&slice, prefixes);
-        let (windows, strays): (Vec<PathBuf>, Vec<PathBuf>) = fs::read_dir(&slice)
-            .into_iter()
-            .flatten()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.is_dir() && !mine.iter().any(|&at| ranked[at].path == *path))
-            .partition(|path| scopes.contains(path));
-        // A child that can't be read has most likely just gone, so it claims nothing, while a
-        // unit that can't be read counts as holding its whole floor, below.
-        let claim = |path: &PathBuf| Some((holds::current(path)?, memory_low(path)?));
-        let windows: Vec<(u64, u64)> = windows.iter().filter_map(claim).collect();
-        // A scope counts as a window by its name alone, and the sorter gives a window no more
-        // than focus::FLOOR, so what one claims past that is claimed as a stray's is, after the
-        // units Joel is at: an agent naming a scope as a window and asking for max would
-        // otherwise take their floors.
-        let room = budget::room(
-            low,
-            windows
-                .iter()
-                .map(|&(current, floor)| (current, floor.min(focus::FLOOR))),
-        );
-        let past = windows
+        let paths: Vec<&Path> = mine.iter().map(|&at| ranked[at].path.as_path()).collect();
+        let (room, strays) = claims(&slice, low, prefixes, &paths);
+        let claimed = strays
             .iter()
-            .map(|&(current, floor)| (current.min(floor).saturating_sub(focus::FLOOR), u64::MAX));
-        let strays = budget::claimed(strays.iter().filter_map(claim).chain(past));
+            .fold(0u64, |sum, (_, claim)| sum.saturating_add(*claim));
         let signs: Vec<hosts::Signs> = mine.iter().map(|&at| ranked[at].signs).collect();
         let order: Vec<usize> = budget::order(&signs)
             .into_iter()
@@ -1804,14 +1880,17 @@ fn fit_floors(
             viewed,
             budget::Wanted {
                 own: 0,
-                added: strays,
+                added: claimed,
                 current: 0,
             },
         );
         let mut fitted = budget::fit(&wanted, room);
         let mut margin = budget::fit(&wanted, room.saturating_sub(budget::STEP));
-        fitted.remove(viewed);
+        let given = fitted.remove(viewed);
         margin.remove(viewed);
+        if let Some(line) = fitting.overran(&name, &strays, claimed, given) {
+            eprintln!("{line}");
+        }
         for ((&at, fitted), margin) in order.iter().zip(fitted).zip(margin) {
             let unit = &mut ranked[at];
             let last = unit
@@ -4534,22 +4613,63 @@ mod tests {
             ranked_at("pi-host-a.service", 0, 512 * MIB, shown),
             ranked_at("pi-conversation-b@1.service", 256 * MIB, 2304 * MIB, viewed),
         ];
+        let mut fitting = Fitting::default();
         fit_floors(
             &mut ranked,
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
-            &mut HashSet::new(),
+            &mut fitting,
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
             [ranked[0].rank.floor, ranked[1].rank.floor],
             [0, 2304 * MIB],
             "of the 3 GiB the window leaves, the unit Joel is at keeps its whole floor, ahead of \
-             the scope no window holds, which claims the rest before the unit only shown"
+             the scope no window holds, and the unit only shown gets none"
+        );
+        assert!(
+            fitting.overrun.contains(&slice.display().to_string()),
+            "the scope claims its 2 GiB of the 768 MiB left, past the slice's floor, which is said"
         );
         assert!(
             !ranked[1].rank.writeback,
             "the unit Joel is at, fitting under its floor, has writeback off"
+        );
+    }
+
+    #[test]
+    fn others_claiming_past_the_room_left_them_are_said_once_each_time() {
+        const MIB: u64 = 1 << 20;
+        let mut fitting = Fitting::default();
+        let strays = [
+            ("run-u7.scope".to_owned(), 2048 * MIB),
+            ("run-u8.scope".to_owned(), 0),
+        ];
+        let said = fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB);
+        assert_eq!(
+            said.as_deref(),
+            Some(
+                "The others in agents.slice claim 2048 MiB, past the 768 MiB the units Joel is at \
+                 leave them, so its floor is shared among every child again, the windows too: \
+                 run-u7.scope 2048 MiB."
+            ),
+            "it says which children overran, and by how much"
+        );
+        assert_eq!(
+            fitting.overran("agents.slice", &strays, 2048 * MIB, 768 * MIB),
+            None,
+            "and once while it lasts"
+        );
+        assert_eq!(
+            fitting.overran("agents.slice", &strays, 768 * MIB, 768 * MIB),
+            None,
+            "others fitting in what's left say nothing"
+        );
+        assert!(
+            fitting
+                .overran("agents.slice", &strays, 2048 * MIB, 768 * MIB)
+                .is_some(),
+            "and once they overrun again, it's said again"
         );
     }
 
@@ -4623,7 +4743,7 @@ mod tests {
             &mut ranked,
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
-            &mut HashSet::new(),
+            &mut Fitting::default(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
@@ -4671,14 +4791,14 @@ mod tests {
             &mut ranked,
             &["kitty-".to_owned()],
             &hosts,
-            &mut HashSet::new(),
+            &mut Fitting::default(),
         );
         let mut fresh = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
         fit_floors(
             &mut fresh,
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
-            &mut HashSet::new(),
+            &mut Fitting::default(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
@@ -4715,7 +4835,7 @@ mod tests {
             &mut ranked,
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
-            &mut HashSet::new(),
+            &mut Fitting::default(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(

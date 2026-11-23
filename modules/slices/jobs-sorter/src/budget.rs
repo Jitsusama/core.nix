@@ -1,6 +1,7 @@
 //! Fits the floors jobs-sorter gives pi hosts' and conversations' units
 //! into what their slice's own floor has left once the windows beside
-//! them are protected, so the windows Joel types in keep theirs whole.
+//! them are protected, so the windows Joel types in keep theirs whole
+//! while the others beside them, the strays, fit in what's left.
 //!
 //! Under the kernel's `memory_recursiveprot`, when a slice's children
 //! claim more protection than the slice's own floor, each gets the same
@@ -19,6 +20,17 @@
 //! the claims past the slice's floor. A floor trimmed short is rounded
 //! down to a [`STEP`], and kept while the room wavers within one
 //! ([`steady`]), so it isn't set again on every look.
+//!
+//! A stray, any other child of the slice, claims what it holds up to its
+//! own floor, which the sorter never sets, so fitting gives it nothing
+//! and trims nothing of it. Its claim is fitted after the units Joel is
+//! at and before the rest, as one any agent can start with a floor of max
+//! would otherwise leave the units Joel is at none. So when the strays
+//! claim more than the units Joel is at leave, the slice is claimed past
+//! its floor again and the kernel shares it among every child, the
+//! windows too: the units Joel is at keep their floors ahead of the
+//! windows keeping theirs whole. The sorter says so once a slice, naming
+//! the strays (`Fitting::overran` in `src/main.rs`).
 //!
 //! The room is the slice's floor as set, not the protection the kernel
 //! leaves it, which no file says: it holds while the account's own
@@ -47,12 +59,6 @@ pub fn room(low: u64, others: impl IntoIterator<Item = (u64, u64)>) -> u64 {
     others.into_iter().fold(low, |room, (current, floor)| {
         room.saturating_sub(current.min(floor))
     })
-}
-
-/// What the `others` in a slice claim of its floor, each as what it holds
-/// and its floor.
-pub fn claimed(others: impl IntoIterator<Item = (u64, u64)>) -> u64 {
-    u64::MAX - room(u64::MAX, others)
 }
 
 /// How much of what each of `wanted` would add it's given, in the order
