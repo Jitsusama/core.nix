@@ -67,8 +67,8 @@ pub const CROSSES_WITHIN: u64 = 300;
 /// The slowest a job's files may cross at, in bytes a second, however
 /// steadily they keep crossing: past it, the far line waits no longer
 /// than `CROSSES_WITHIN` and a second for each of these. A quarter of the
-/// MiB a second the near side waits on a share for, so a share the near
-/// side took as whole is never given up on here.
+/// MiB a second the near side allows a share it waits on, so only a share
+/// far slower than any yet seen is given up on.
 const CROSSES_AT: u64 = 256 << 10;
 
 /// How many seconds the near side waits for what comes home before it
