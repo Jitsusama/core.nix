@@ -1381,20 +1381,29 @@ ShellRoot {
 
         // Once it answers, the plate says how far off the clock was at its last update, from
         // the reading's clock as Time's own figures read it: the reading carries an exchange
-        // only per server, so reading one at its top said nothing.
+        // only per server, so reading one at its top said nothing. It's signed, in Time's
+        // decimal mark, as Time says it. The time source goes first, so Now finds it before
+        // any the harness holds.
         const sourcesBeforeTime = theLauncher.sources;
-        theLauncher.sources = sourcesBeforeTime.concat([{ settings: { name: "time" },
-            clockSaid: { point: "." },
-            kept: { synchronised: true, clock: { lastOffset: -0.000388 }, servers: [] } }]);
-        const clockQualifier = Array.from(now.placePlate().groups)
-            .reduce((all, group) => all.concat(Array.from(group)), [])
-            .filter(fact => fact.label === Words.name("on:plate:clock"))
-            .map(fact => fact.qualifier);
-        theLauncher.sources = sourcesBeforeTime;
+        const offsetSaid = (lastOffset, point) => {
+            theLauncher.sources = [{ settings: { name: "time" }, clockSaid: { point: point },
+                kept: { synchronised: true, clock: { lastOffset: lastOffset }, servers: [] } }]
+                .concat(sourcesBeforeTime);
+            const said = Array.from(now.placePlate().groups)
+                .reduce((all, group) => all.concat(Array.from(group)), [])
+                .filter(fact => fact.label === Words.name("on:plate:clock"))
+                .map(fact => fact.qualifier);
+            theLauncher.sources = sourcesBeforeTime;
+            return said;
+        };
+        const behindSaid = offsetSaid(-0.000388, ".");
         expect("kept, the plate's clock says how far off it was at its last update",
-            clockQualifier.length === 1 && clockQualifier[0].indexOf("388") !== -1
-                && clockQualifier[0].indexOf("\u00b5s") !== -1,
-            JSON.stringify(clockQualifier));
+            JSON.stringify(behindSaid) === JSON.stringify(["\u2212388 \u00b5s"]),
+            JSON.stringify(behindSaid));
+        const commaSaid = offsetSaid(0.0000412, ",");
+        expect("and ahead, it says so in Time's decimal mark",
+            JSON.stringify(commaSaid) === JSON.stringify(["+41,2 \u00b5s"]),
+            JSON.stringify(commaSaid));
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
@@ -1503,31 +1512,23 @@ ShellRoot {
             now.openedAt === keptOpening - 60000 && now.openingAt === -1,
             JSON.stringify([now.openedAt, keptOpening, now.openingAt]));
         theLauncher.open = false;
-        now.asleep = true;
-        theLauncher.open = true;
-        const toldOpening = now.openingAt - 60000;
-        now.openingAt = toldOpening;
-        Notices.history = Notices.history.slice();
-        expect("a notice told while Now sleeps in an open launcher opens it then",
-            now.openedAt === toldOpening && now.openingAt === -1,
-            JSON.stringify([now.openedAt, toldOpening, now.openingAt]));
-        theLauncher.open = false;
-        // A notice read while Now sleeps holds still from the launcher's
-        // opening, not from none, so Desktop still counts it unread until
-        // the launcher shuts, rather than dropping it and taking it back
-        // as Now wakes.
+        // A notice read while Now sleeps in an open launcher runs that
+        // work then, so the read holds still from the launcher's opening,
+        // not from none: Desktop still counts it unread until the launcher
+        // shuts, rather than dropping it and taking it back as Now wakes.
         const historyBeforeRead = Notices.history;
         Notices.history = [{ id: 31, at: Date.now() - 1000, app: "Firefox",
             summary: "Read before Now woke", read: false }];
         now.asleep = true;
         theLauncher.open = true;
-        const readOpening = now.openingAt - 60000;
-        now.openingAt = readOpening;
+        const toldOpening = now.openingAt - 60000;
+        now.openingAt = toldOpening;
         Notices.history = [Object.assign({}, Notices.history[0],
             { read: true, readHow: "read", readAt: Date.now() })];
-        expect("a notice read while Now sleeps in an open launcher stays unread there",
-            now.openedAt === readOpening && now.unreadNotices.some(notice => notice.id === 31),
-            JSON.stringify([now.openedAt, readOpening,
+        expect("a notice read while Now sleeps in an open launcher opens it, and stays unread",
+            now.openedAt === toldOpening && now.openingAt === -1
+                && now.unreadNotices.some(notice => notice.id === 31),
+            JSON.stringify([now.openedAt, toldOpening, now.openingAt,
                 now.unreadNotices.map(notice => notice.id)]));
         theLauncher.open = false;
         Notices.history = historyBeforeRead;
