@@ -61,19 +61,21 @@ impl App {
         let file = self.file.clone();
         let to = self.layout_to.clone();
         // Without its lines a standing character's keys say they're still
-        // reading, so a thread that can't start says why, and one that
-        // fails sends none, so its keys act as before the first read
+        // reading, so a thread that can't start says why, and it or a read
+        // that panics sends none, so its keys act as before the first read
         // rather than wait for lines that never come.
+        let failed = self.layout_to.clone();
         let started = std::thread::Builder::new()
             .name("layout".into())
             .spawn(move || {
-                let read = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let read = select::Layout::guarded(|| {
                     select::Layout::read_file(&page.frame, &file, version)
-                }));
-                let _ = to.send((version, read.unwrap_or(None)));
+                });
+                let _ = to.send((version, read));
             });
         if let Err(error) = started {
             eprintln!("reader: can't read the page's lines: {error}");
+            let _ = failed.send((version, None));
         }
     }
 

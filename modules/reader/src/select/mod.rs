@@ -379,6 +379,13 @@ impl Layout {
         }
     }
 
+    /// What `read` gives, or none when it panics, so the lines a failed
+    /// read leaves are dropped as an unread file's are, rather than waited
+    /// for when none will come.
+    pub fn guarded(read: impl FnOnce() -> Option<Self>) -> Option<Self> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(read)).unwrap_or(None)
+    }
+
     /// These lines, when they were read from the page's setting `version`:
     /// read from another, they no longer say where the page's links are.
     pub fn of(&self, version: u32) -> Option<&Self> {

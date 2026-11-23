@@ -141,6 +141,13 @@ impl Layout {
         if from.line != to.line && (unheld(from) || unheld(to)) {
             return None;
         }
+        // A paragraph taken whole, as vip takes it, is on the lines it took,
+        // wherever its ends' characters are.
+        if let Some(Taken::Lines(first, last)) = selection.taken
+            && first != last
+        {
+            return None;
+        }
         let (first, last) = match selection.kind {
             Kind::Chars => self.matched_within(from, to).unwrap_or((from, to)),
             Kind::Pieces => (from, to),
