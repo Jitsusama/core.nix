@@ -2812,6 +2812,66 @@ fn a_nearby_machine_ssh_reaches_takes_its_part_though_its_address_doesnt_answer(
 }
 
 #[test]
+fn a_nearby_machine_ssh_fails_to_reach_as_it_builds_is_asked_again_by_the_next_run() {
+    // ssh said a moment ago that it reaches the Mac, then fails as the
+    // Mac's part is sent, as it did when the Mac slept on 22 November.
+    // What ssh said is forgotten, so the next run asks afresh rather than
+    // sending the Mac its part again for the rest of the minute.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("ssh-reaches"), "").unwrap();
+    fs::write(bin.join("status"), "255").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{away} mac aarch64-darwin\n"),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let asked = || {
+        there_command(&bin, &offload, folder.path())
+            .args([
+                &format!("path:{}", zone.display()),
+                "checks.aarch64-darwin.a",
+            ])
+            .env("XDG_CONFIG_HOME", folder.path().join("config"))
+            .output()
+            .unwrap()
+    };
+
+    let first = asked();
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap_or_default();
+    assert!(
+        given.starts_with("mac\n"),
+        "the Mac ssh reaches wasn't sent its part: {given} {first:?}"
+    );
+    assert!(
+        !folder.path().join("nix-offload-reached/mac").exists(),
+        "what ssh said was kept past its failing there: {first:?}"
+    );
+    let second = asked();
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap_or_default(),
+        "mac\nmac\n",
+        "the run after ssh failed there didn't ask afresh: {first:?} {second:?}"
+    );
+}
+
+#[test]
 fn a_folder_sent_to_a_nearby_machine_leaves_what_its_git_ignores_here() {
     // A working tree's zone held 509 MB, almost all one ignored target.
     let folder = tempfile::tempdir().unwrap();
@@ -4466,6 +4526,37 @@ fn a_mac_that_stalls_is_ended_and_kept_as_skipped() {
     assert_eq!(
         skipped["because"], "mac's comparison ran past 3 seconds",
         "{skipped}"
+    );
+}
+
+#[test]
+fn a_mac_ssh_alone_reaches_is_asked_again_after_its_comparison_runs_past_its_time() {
+    // A comparison that runs past its time may be the Mac going, which
+    // what ssh said of it a moment ago can't know, so what it said is
+    // forgotten, and the next run asks afresh rather than believing it
+    // for the rest of the minute.
+    let changed = Changed::new();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    changed.mac_at(away);
+    fs::write(changed.bin.join("ssh-reaches"), "").unwrap();
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("holds-mac"), "60").unwrap();
+
+    let (first, _) = changed.run_bounded(3, &GATE);
+    assert_eq!(first.status.code(), Some(0), "{first:?}");
+    let asked = fs::read_to_string(changed.bin.join("reach-was-asked")).unwrap_or_default();
+    assert_eq!(
+        asked, "mac\n",
+        "ssh wasn't asked once, before the comparison: {first:?}"
+    );
+    let kept = changed.folder.path().join("nix-offload-reached/mac");
+    assert!(
+        !kept.exists(),
+        "what ssh said was kept past a comparison that ran past its time: {first:?}"
     );
 }
 

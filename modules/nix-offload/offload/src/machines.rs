@@ -705,7 +705,9 @@ const LINE_MOST: u64 = 4096;
 /// What `ssh` says of reaching `host` and running `true` there, within
 /// `within` ([`REACHING`]). It runs in a process group of its own, which
 /// is ended however ssh does, and while ssh is still unreaped, so the
-/// group is never another's and a proxy it starts never outlives it.
+/// group is never another's. A proxy in ssh's own group never outlives it;
+/// one in a session of its own may, and is only kept from holding the
+/// answer past [`QUIET`].
 /// Its standard error is read a line at a time on a thread of its own,
 /// so nothing holding it open can hold this past `within`, or past
 /// [`QUIET`] once ssh has ended.
@@ -811,7 +813,10 @@ fn has_ended(pid: u32) -> std::io::Result<bool> {
             )
         };
         if got == 0 {
-            return Ok(info.si_signo != 0);
+            // SAFETY: waitid filled info for a child that changed, and left
+            // it zeroed when none did, so its pid is set either way. POSIX
+            // names a zero pid, not a zero signal, as the sign of no change.
+            return Ok(unsafe { info.si_pid() } != 0);
         }
         let error = std::io::Error::last_os_error();
         if error.kind() != std::io::ErrorKind::Interrupted {
@@ -1484,14 +1489,16 @@ mod tests {
         let began = Instant::now();
         let reached = ssh_reaches(&ssh.display().to_string(), "mac", REACHING);
         let took = began.elapsed();
-        if let Ok(started) = fs::read_to_string(&pid)
-            && let Ok(started) = started.trim().parse::<libc::pid_t>()
-        {
-            // SAFETY: kill only signals the sleep this test started.
-            unsafe {
-                libc::kill(started, libc::SIGKILL);
-            }
-        }
+        let started = fs::read_to_string(&pid)
+            .ok()
+            .and_then(|started| started.trim().parse::<libc::pid_t>().ok());
+        // SAFETY: kill only signals the sleep this test started.
+        let was_running =
+            started.is_some_and(|started| unsafe { libc::kill(started, libc::SIGKILL) } == 0);
+        assert!(
+            was_running,
+            "the proxy never ran, or had ended, so nothing held ssh's error open: {started:?}"
+        );
         assert!(
             took < Duration::from_secs(5),
             "a proxy holding ssh's error held the ask {took:?}"
@@ -1655,8 +1662,9 @@ mod tests {
         }
     }
 
-    // A machine forgotten, as after a comparison there failed, is asked of
-    // afresh by this run and the next.
+    // A machine forgotten is asked of afresh by the run that forgot it,
+    // and what ssh said of it leaves the folder, though another machine's
+    // stays.
     #[test]
     fn a_machine_forgotten_is_asked_of_again() {
         let folder = tempfile::tempdir().unwrap();
