@@ -362,13 +362,16 @@
   // when it sits on a picture, and undefined when it has no ink to read.
   const worst = (element, pseudo, colour) => {
     const styles = [];
-    for (let at = element; at !== null; at = at.parentElement) {
+    for (let at = element.parentElement; at !== null; at = at.parentElement) {
       styles.unshift(getComputedStyle(at));
     }
+    // The box the words are drawn in: the element, or what a style writes
+    // into it, last in the chain.
+    const own = pseudo === null ? getComputedStyle(element) : getComputedStyle(element, pseudo);
     if (pseudo !== null) {
-      styles.push(getComputedStyle(element, pseudo));
+      styles.push(getComputedStyle(element));
     }
-    const own = styles.at(-1);
+    styles.push(own);
     const written = rgba(colour);
     let inks = [written];
     const boxes = [];
