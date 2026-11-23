@@ -224,3 +224,13 @@ if grep -qF "needs files gone" "$work/out" "$work/err"; then
   echo "a half-full step ended at 06:00 said files must go, though the night was cut short"
   exit 1
 fi
+
+disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"
+CLOCK=05:30:00 give
+expect "0 5 10 20 30 40 50 " 1 "a half-full step killed past 06:00 fails short"
+expect_said "the rest waits for the next night" \
+  "a half-full step killed past 06:00 says the rest waits"
+if grep -qF "needs files gone" "$work/out" "$work/err"; then
+  echo "a half-full step killed past 06:00 said files must go, though the night was cut short"
+  exit 1
+fi
