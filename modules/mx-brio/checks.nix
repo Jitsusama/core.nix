@@ -8,10 +8,17 @@
   lib,
   onLinux,
   pkgs,
+  self,
   ...
 }:
+let
+  # A graphical machine that shares the Brio, since no role does while its
+  # relay gives no picture (nixos.nix says why).
+  shared = graphical.extendModules { modules = [ self.nixosModules.mx-brio ]; };
+in
 onLinux {
-  # The MX Brio is shared through its loopback on every graphical machine:
+  # The MX Brio is shared through its loopback on a graphical machine that
+  # imports it:
   # among the machine's own udev rules, udev reads the Brio's without a
   # complaint, and it comes after every rule tagging cameras for the seat
   # and before the handing, keeps the Brio from the seat, marks it relayed
@@ -27,13 +34,13 @@ onLinux {
   # loopback's file.
   the-mx-brio-is-shared =
     let
-      inherit (graphical.config) environment services systemd;
+      inherit (shared.config) environment services systemd;
       relay = systemd.services.mx-brio or (throw "no service relays the MX Brio");
       holders = systemd.services.mx-brio-holders or (throw "no service says who holds the MX Brio");
       watch =
         systemd.services."usb-camera-holders-relayed@" or (throw "no watch records a relayed camera");
       card = "MX Brio 705 for Business";
-      shell = (account graphical).jitsusama.quickshell;
+      shell = (account shared).jitsusama.quickshell;
       shown = shell.margin.pieces.camera.holders;
       # The relay's own input, as its service gives it.
       read = builtins.match "[^']*-i '([^']*)'[^']*" relay.script;

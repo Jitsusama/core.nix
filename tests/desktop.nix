@@ -593,6 +593,9 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
         # The laptop role's Wi-Fi, which the shell's network piece and Wi-Fi
         # collection read.
         self.nixosModules.wifid
+        # The laptop's camera hardware's loopback module, which makes the
+        # stand-in camera below.
+        self.nixosModules.v4l2loopback
         # The laptop role's keyd describes the built-in keyboard's layout for
         # Super+K; its layout alone, since keyd itself would type Colemak
         # for the test's US keys.
@@ -766,7 +769,7 @@ import ./lib/pytest-vm-test.nix { inherit pkgs; } {
       systemd.services.stand-in-camera = {
         wantedBy = [ "multi-user.target" ];
         after = [ "systemd-modules-load.service" ];
-        # Made here, as the laptop's relay makes its own, since the role's
+        # Made here, as the laptop's relay makes its own, since the
         # loopback module makes none as it loads.
         serviceConfig.ExecStartPre = lib.concatStringsSep " " [
           "${config.jitsusama.v4l2loopback.package.bin}/bin/v4l2loopback-ctl"
