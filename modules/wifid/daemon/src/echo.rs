@@ -366,10 +366,9 @@ mod tests {
             // SAFETY: the descriptor was just made, and nothing else holds it.
             unsafe { OwnedFd::from_raw_fd(fd) }
         };
-        // The build's own network namespace leaves every port free.
-        let identifier = 0x1234;
+        // The kernel's choice is one free wherever the test runs.
         let first = udp();
-        identify(&first, identifier).expect("a free identifier is bound");
+        identify(&first, 0).expect("the kernel chooses one free");
         // SAFETY: all zeros is an address, which the kernel fills.
         let mut bound: libc::sockaddr_in = unsafe { mem::zeroed() };
         let mut length = libc::socklen_t::try_from(mem::size_of_val(&bound)).unwrap();
@@ -378,8 +377,9 @@ mod tests {
             libc::getsockname(first.as_raw_fd(), (&raw mut bound).cast(), &raw mut length)
         };
         assert_eq!(named, 0, "its name: {}", io::Error::last_os_error());
-        assert_eq!(u16::from_be(bound.sin_port), identifier, "in network order");
+        let identifier = u16::from_be(bound.sin_port);
 
+        // Bound in the wrong order, it would land on another, free one.
         let taken = identify(&udp(), identifier).expect_err("one taken is refused");
         assert_eq!(taken.kind(), io::ErrorKind::AddrInUse, "as taken: {taken}");
     }

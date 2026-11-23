@@ -435,7 +435,8 @@ async fn echo_on(
 /// one whose queue is held can't thin another's echoes, then reads each
 /// card's station. A socket that can't be opened, or errs, is passed over
 /// until the next second, and opened again then; a card best effort's echo
-/// couldn't be sent on goes unmeasured that second, its station too.
+/// couldn't be sent on goes unmeasured that second, its video echo and its
+/// station too, though late answers to earlier echoes still count.
 async fn measure(
     joined: &[Joined],
     echoers: &mut HashMap<String, Echoers>,
@@ -467,7 +468,10 @@ async fn measure(
                 continue;
             }
         };
-        if best_effort_went(&echoed) {
+        // A second best effort didn't go in keeps nothing of the card's,
+        // so video's share is of the seconds best effort's is.
+        let went = best_effort_went(&echoed);
+        if went {
             echoed_on.push(on.clone());
         }
         // Taken before a failing socket is let go, as what it heard late
@@ -480,7 +484,9 @@ async fn measure(
             match echoed {
                 Ok((at, echo)) => {
                     sockets.failing.went(class);
-                    measures.echoed_as(class, &on.point, at, echo);
+                    if went {
+                        measures.echoed_as(class, &on.point, at, echo);
+                    }
                 }
                 Err(error) => {
                     let level = sockets.failing.failed(class);
