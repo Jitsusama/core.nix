@@ -65,12 +65,23 @@ fi
 # that would say nothing of the branch. So each of the case's starts, from
 # its own line to the next start's or the count's, is asked for that line,
 # and at least half of the starts the case counted must have one. Not
-# every start: on a loaded builder Qt logged it 8 times over a whole run
-# of ten starts, one stop finding a window not shown, likely a late frame
-# callback (2026-11-21, before the timeout above), and how many of those
-# fell within the starts that log doesn't say; a passing run logged 11
-# over the run and 10 within them. The timer's line is Qt's own wording,
-# which a Qt bump may change.
+# every start: on a loaded builder Qt logged a timer line with all three
+# shown 8 times over a whole run of ten starts, one stop finding a window
+# not shown, likely a late frame callback (2026-11-21, counted before
+# this script asked for the line straight after animationStarted(), and
+# before the timeout above). Counted this way, a run on a lender on
+# 2026-11-22 found it in 10 of 10 starts. In Qt 6.12.0's
+# qsgthreadedrenderloop.cpp, every other caller that starts the timer
+# logs a line of the loop's own on the GUI thread first (animationStopped,
+# handleExposure, handleObscurity, windowDestroyed, polishAndSync), so
+# one can't pass for animationStarted()'s; the one exception, a polish
+# that starts an animation in the same polishAndSync that then finds bad
+# vsync, says badVSync=1 on its timer line. The timer's line, the
+# animationStarted() line before it and the (RT) mark on the render
+# thread's lines are Qt's own wording, which a Qt bump may change: a
+# render-thread line without the mark, or a new line from the GUI thread
+# between the two, marks real starts -other and fails the case, never
+# passes it.
 if ! grep -q 'threaded render loop' "$said"; then
   echo "The shell didn't draw through Qt's threaded render loop." >&2
   exit 1
