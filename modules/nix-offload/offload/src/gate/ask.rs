@@ -148,12 +148,25 @@ fn mycelium(arguments: &[&str]) -> Result<(), String> {
         .stdin(Stdio::null())
         .output()
         .map_err(|error| format!("mycelium couldn't start: {error}"))?;
-    eprint!("{}", String::from_utf8_lossy(&output.stdout));
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+    let said = String::from_utf8_lossy(&output.stdout);
+    eprint!("{said}");
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_owned());
     }
+    refused(&said).map_or(Ok(()), Err)
+}
+
+/// Why the node refused, where mycelium printed its reply as `{"Err": …}`.
+/// mycelium ends 0 once it has the node's reply, whatever that says, so a
+/// refused start read by its exit alone left ask waiting for a gate that
+/// was never started.
+fn refused(said: &str) -> Option<String> {
+    said.lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find_map(|reply| {
+            let why = reply.as_object()?.get("Err")?;
+            Some(why.as_str().map_or_else(|| why.to_string(), str::to_owned))
+        })
 }
 
 /// The result once it's there for `commit`, waited for at most `longest`.
@@ -330,6 +343,26 @@ fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_start_the_node_refused_is_a_failure() {
+        let said = "{\"Err\":\"this asks as a fenced agent, so it starts nothing\"}\n";
+        assert_eq!(
+            refused(said).as_deref(),
+            Some("this asks as a fenced agent, so it starts nothing"),
+            "a reply of Err must read as the node's refusal"
+        );
+    }
+
+    #[test]
+    fn a_start_the_node_took_is_no_failure() {
+        let said = "{\"Ok\":{\"Started\":{\"machine\":\"far\"}}}\nshared\n";
+        assert_eq!(
+            refused(said),
+            None,
+            "a reply of Ok, or plain words, refuses nothing"
+        );
+    }
 
     fn words(text: &str) -> Vec<String> {
         text.split(' ').map(str::to_owned).collect()
