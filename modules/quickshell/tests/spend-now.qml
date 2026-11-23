@@ -1,8 +1,8 @@
 // How a Spend row reads now while Spend's rows aren't wanted, run in Qt's
 // own JavaScript engine, the one the shell runs it in. The
-// `the-desktop-reads-the-spend-watch` check copies
-// modules/quickshell/launcher/SpendNow.js and tests/lib/Expect.js beside
-// this file and runs it offscreen, before tests/spend-served.qml holds
+// `the-desktop-reads-the-spend-watch` check copies tests/lib/Expect.js
+// beside this file, with modules/quickshell/launcher/SpendNow.js under
+// launcher/, and runs it offscreen, before tests/spend-served.qml holds
 // Spend.qml's rowNow to the rows `spend-watch serve` serves.
 import QtQuick
 import "Expect.js" as Expect
@@ -40,14 +40,14 @@ QtObject {
                 return "down" in read ? read.down : unread("down");
             },
             get sharing() {
-                return unread("sharing");
+                return "sharing" in read ? read.sharing : unread("sharing");
             },
             get place() {
-                return unread("place");
+                return "place" in read ? read.place : unread("place");
             },
-            serves: () => unread("what it serves"),
+            serves: record => "serves" in read ? read.serves(record) : unread("what it serves"),
             get answered() {
-                return unread("whether it answered");
+                return "answered" in read ? read.answered : unread("whether it answered");
             }
         };
     }
@@ -69,7 +69,7 @@ QtObject {
         Expect.same("and every other as none",
             SpendNow.standing("spend:budgets", spend({ down: true }, ["row:spend:budgets"])),
             "none");
-        Expect.same("answered without it, even with no rows, it's none",
+        Expect.same("answered without it, it's none",
             SpendNow.standing("spend:budgets", spend({})), "none");
         Expect.same("before the place's first answer, it can't say",
             SpendNow.standing("spend:budgets", spend({ answered: false })), "unsure");
@@ -86,8 +86,8 @@ QtObject {
             SpendNow.standing("spend:budgets", spend({ sharing: undefined, answered: false })),
             "none");
         // Each guard answers before what follows it is read, so wanted wins
-        // over all, a key not Spend's over down, and down over what the
-        // place serves.
+        // over all, a key not Spend's over down, down over what the place
+        // serves, that over sharing, and sharing over whether it answered.
         Expect.same("wanted, it reads nothing more",
             SpendNow.standing("spend:budgets", readingOnly({ wanted: true })), "unsure");
         Expect.same("a key not Spend's reads nothing more",
@@ -98,6 +98,13 @@ QtObject {
         Expect.same("nor does any other",
             SpendNow.standing("spend:budgets", readingOnly({ wanted: false, down: true })),
             "none");
+        const up = { wanted: false, down: false, place: "spend" };
+        Expect.same("served, it reads nothing of sharing",
+            SpendNow.standing("spend:budgets", readingOnly(Object.assign({ serves: () => true },
+                up))), "served");
+        Expect.same("shared, it reads nothing of whether it answered",
+            SpendNow.standing("spend:budgets", readingOnly(Object.assign({ serves: () => false,
+                sharing: true }, up))), "none");
         Expect.same("as Spend's record is the place's row of its key",
             SpendNow.recordOf("spend-quiet", "spend:budgets"), "row:spend-quiet:budgets");
     }
