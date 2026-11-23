@@ -128,8 +128,10 @@ let
   # AGENTS_RUNTIME_DIR, where the harness and mycelium look first on a Mac,
   # and the scratch of the host's conversations in its temporary folder;
   # each is the account's with mode 700, unlike /tmp. The socket stays out
-  # of the temporary folder because macOS removes what sits there untouched
-  # for three days, and a host's socket lives as long as the host. A host
+  # of the temporary folder because, by confstr(3), the system may remove
+  # what sits there unaccessed for three days, and a host's socket lives as
+  # long as the host; the cache folder it never cleans by itself, only a
+  # safe boot empties it, which ends every host anyway. A host
   # already running keeps its socket where it was until it starts again.
   # XDG_RUNTIME_DIR is taken away, since disk-guard reads it for a folder
   # of its own. Neither path is known until the account asks the system, so
