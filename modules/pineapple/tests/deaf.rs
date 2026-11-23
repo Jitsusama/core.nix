@@ -27,18 +27,23 @@ fn joel_is_told_once_two_rounds_running_hear_nothing() {
         Change::Keep,
         "and once is enough"
     );
-    let changed = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 90_000);
+    let no_sign_in = Round::Deaf(Deafness::NoSignIn);
     assert_eq!(
-        changed,
-        Change::Tell(waits(Deafness::NoSignIn, AT + 90_000, AT + 90_000)),
-        "a new why is said as a row of its own, as a sign-in marks the old one done"
+        deaf.heard(no_sign_in, AT + 90_000),
+        Change::Keep,
+        "a new why for one round may be a blip"
     );
     assert_eq!(
-        deaf.heard(Round::Heard, AT + 120_000),
+        deaf.heard(no_sign_in, AT + 120_000),
+        Change::Tell(waits(Deafness::NoSignIn, AT + 120_000, AT + 120_000)),
+        "two of it are said as a row of its own, as a sign-in marks the old one done"
+    );
+    assert_eq!(
+        deaf.heard(Round::Heard, AT + 150_000),
         Change::Untell,
         "hearing again takes it away"
     );
-    assert_eq!(deaf.heard(Round::Heard, AT + 150_000), Change::Keep, "once");
+    assert_eq!(deaf.heard(Round::Heard, AT + 180_000), Change::Keep, "once");
 }
 
 #[test]
@@ -99,11 +104,12 @@ fn a_row_left_by_a_tell_that_failed_after_it_is_still_taken_away() {
     let told = deaf.heard(refused, AT + 30_000);
     assert!(matches!(told, Change::Tell(_)), "told: {told:?}");
     // Written; then a new why, whose rewrite fails.
-    let rewrite = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 60_000);
+    let _ = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 60_000);
+    let rewrite = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 90_000);
     assert!(matches!(rewrite, Change::Tell(_)), "retold: {rewrite:?}");
     deaf.failed(&rewrite);
     assert_eq!(
-        deaf.heard(Round::Heard, AT + 90_000),
+        deaf.heard(Round::Heard, AT + 120_000),
         Change::Untell,
         "the first row still stands, so hearing Slack takes it away"
     );
@@ -289,30 +295,58 @@ fn one_search_that_cant_be_read_is_told_by_name_and_as_it_changes() {
     assert_eq!(deaf.heard(tag, AT + 60_000), Change::Keep, "told once");
     assert_eq!(
         deaf.heard(both, AT + 90_000),
-        Change::Tell(waits(Deafness::Unreadable, AT + 90_000, AT + 90_000)),
-        "the other going deaf too is a row of its own, so one marked done can't hide it"
+        Change::Keep,
+        "a new why held once"
     );
     assert_eq!(
-        deaf.heard(tag, AT + 120_000),
+        deaf.heard(both, AT + 120_000),
+        Change::Tell(waits(Deafness::Unreadable, AT + 120_000, AT + 120_000)),
+        "the other going deaf too is a row of its own, so one marked done can't hide it"
+    );
+    let _ = deaf.heard(tag, AT + 150_000);
+    assert_eq!(
+        deaf.heard(tag, AT + 180_000),
         Change::Tell(waits(
             Deafness::Unread(Search::Tag),
-            AT + 120_000,
-            AT + 120_000
+            AT + 180_000,
+            AT + 180_000
         )),
         "one search coming back narrows it to a row of its own, so a whole row marked done \
          can't hide it"
     );
     let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    let _ = deaf.heard(phrase, AT + 210_000);
     assert_eq!(
-        deaf.heard(phrase, AT + 150_000),
+        deaf.heard(phrase, AT + 240_000),
         Change::Tell(waits(
             Deafness::Unread(Search::Phrase),
-            AT + 150_000,
-            AT + 150_000
+            AT + 240_000,
+            AT + 240_000
         )),
         "the other search going deaf in its place is a row of its own"
     );
-    assert_eq!(deaf.heard(Round::Heard, AT + 180_000), Change::Untell);
+    assert_eq!(deaf.heard(Round::Heard, AT + 270_000), Change::Untell);
+}
+
+#[test]
+fn a_why_that_flips_each_round_is_no_row_of_its_own() {
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let both = Round::Deaf(Deafness::Unreadable);
+    let _ = deaf.heard(tag, AT);
+    assert!(
+        matches!(deaf.heard(tag, AT + 30_000), Change::Tell(_)),
+        "two of one why are told"
+    );
+    for round in 2..12 {
+        let why = if round % 2 == 0 { both } else { tag };
+        assert_eq!(
+            deaf.heard(why, AT + round * 30_000),
+            Change::Keep,
+            "a why held for a round at a time leaves the row as it was, so each flip \
+             isn't a notice: round {round}"
+        );
+    }
 }
 
 #[test]
@@ -331,7 +365,8 @@ fn a_row_for_another_why_is_never_the_one_marked_done() {
             let Change::Tell(first) = deaf.heard(Round::Deaf(before), AT + 30_000) else {
                 panic!("two rounds of {before:?} are told");
             };
-            let Change::Tell(then) = deaf.heard(Round::Deaf(after), AT + 60_000) else {
+            deaf.heard(Round::Deaf(after), AT + 60_000);
+            let Change::Tell(then) = deaf.heard(Round::Deaf(after), AT + 90_000) else {
                 panic!("{after:?} after {before:?} is told");
             };
             assert_ne!(

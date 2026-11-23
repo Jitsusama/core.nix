@@ -85,6 +85,8 @@ pub enum Change {
 #[derive(Debug)]
 pub struct Deaf {
     rounds: u32,
+    /// The last round's why, and how many rounds in a row gave it.
+    held: Option<(Deafness, u32)>,
     told: Option<Deafness>,
     /// When this time of not hearing was first told, in milliseconds,
     /// which names its row, so each time is a row For You hasn't seen.
@@ -107,6 +109,7 @@ impl Deaf {
     pub fn new() -> Deaf {
         Deaf {
             rounds: 0,
+            held: None,
             told: None,
             since: None,
             left: true,
@@ -130,13 +133,15 @@ impl Deaf {
     }
 
     /// What `round`, at `at` in milliseconds, changes. Joel is told once
-    /// [`ROUNDS`] in a row are deaf, again only when why changes, and
+    /// [`ROUNDS`] in a row are deaf, again only when why changes and the
+    /// new why has held as many, so a blip is no row of its own, and
     /// untold once a round reads Slack whole. A change of why starts a
     /// time of its own, so it isn't hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
         match round {
             Round::Heard => {
                 self.rounds = 0;
+                self.held = None;
                 self.since = None;
                 let left = std::mem::take(&mut self.left);
                 if self.told.take().is_some() || left {
@@ -147,7 +152,13 @@ impl Deaf {
             }
             Round::Deaf(why) => {
                 self.rounds = self.rounds.saturating_add(1);
-                if self.rounds < ROUNDS || self.told == Some(why) {
+                let held = match self.held {
+                    Some((last, held)) if last == why => held.saturating_add(1),
+                    _ => 1,
+                };
+                self.held = Some((why, held));
+                let changed = self.told.is_some();
+                if self.rounds < ROUNDS || self.told == Some(why) || (changed && held < ROUNDS) {
                     return Change::Keep;
                 }
                 // For You keeps a row Joel marked done gone by name, and
@@ -155,7 +166,7 @@ impl Deaf {
                 // or not. So a row told for another why, narrower, wider
                 // or other, is a time of its own. A row whose writing
                 // failed isn't told, so it's written again as itself.
-                if self.told.is_some() {
+                if changed {
                     self.since = None;
                 }
                 self.told = Some(why);
