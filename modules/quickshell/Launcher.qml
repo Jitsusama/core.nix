@@ -1591,10 +1591,12 @@ Scope {
         const offer = agents ? agents.newWorkFor(words, from) : null;
         // A link names the session it's from, so with reports off its address is counted, as
         // talkTo's is (Presented.whomShown).
-        const from = offer?.from?.address;
-        console.info(`launcher: asked from outside to start new work, ${offer === null
-            ? "offering no plain words" : from === undefined ? "from no session here"
-            : Options.reports ? `from ${from}` : `from a session, ${Presented.typedShown(from, false)}`}`);
+        const linkedFrom = offer?.from?.address;
+        const whence = linkedFrom === undefined ? "from no session here"
+            : Options.reports ? `from ${linkedFrom}`
+            : `from a session, ${Presented.typedShown(linkedFrom, false)}`;
+        console.info("launcher: asked from outside to start new work, "
+            + (offer === null ? "offering no plain words" : whence));
         if (offer === null)
             return { error: "the link offered no plain words to start new work with" };
         const told = toldWhence(offer.said);
