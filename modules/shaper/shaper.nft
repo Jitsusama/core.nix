@@ -45,6 +45,13 @@ set uplinks { type ifname; }
 # the shaper holds its VPNs by (src/cost.rs says why).
 set vpns { type mark; }
 counter vpnout { }
+# Each VPN flow leaving by an uplink in the last five minutes, by where it
+# goes and the port its socket sends from, which the shaper reads to probe
+# the way to the VPN's server and to see a new socket (src/pin.rs).
+set vpn_ends {
+  type ipv4_addr . inet_service . inet_service;
+  flags dynamic, timeout;
+}
 
 chain local {
   ct mark set ct mark and 0xf0ffffff or 0x0a000000
@@ -178,6 +185,8 @@ chain input {
 chain postrouting {
   type filter hook postrouting priority mangle; policy accept;
   oifname != @uplinks return
+  meta mark @vpns meta nfproto ipv4 meta l4proto udp \
+    update @vpn_ends { ip daddr . udp dport . udp sport timeout 5m }
   meta mark @vpns counter name "vpnout" meta priority set 1:4 return
   ct mark and 0x08000000 != 0 meta priority set 1:1 return
   # Over Wi-Fi the radio picks its queue from DSCP and never from the
@@ -190,4 +199,13 @@ chain postrouting {
   ct mark and 0x07000000 == 0x02000000 meta priority set 2:2 return
   ct mark and 0x07000000 == 0x03000000 meta priority set 2:3 return
   ct mark and 0x07000000 == 0x04000000 meta priority set 2:4 return
+}
+
+# Where the line splits by source port between a near way and a far one
+# to the VPN's server, a new VPN flow is given two adjacent ports that went
+# the near way when last probed. Only a connection's first packet meets
+# NAT, so a flow already open keeps its port. The shaper writes the rule,
+# or none, with the sets (src/pin.rs says why).
+chain pin {
+  type nat hook postrouting priority srcnat; policy accept;
 }

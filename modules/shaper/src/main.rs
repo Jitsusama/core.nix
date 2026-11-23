@@ -29,6 +29,7 @@ mod cpu;
 mod day;
 mod first;
 mod held;
+mod hops;
 mod house;
 mod icmp;
 mod lanes;
@@ -36,6 +37,7 @@ mod links;
 mod live;
 mod networks;
 mod oneway;
+mod pin;
 mod probe;
 mod proof;
 mod qdisc;
@@ -747,6 +749,70 @@ fn install(
     true
 }
 
+/// Gives each link the round trips its probes heard since the last step.
+fn hear_echoes(echoes: &Receiver<Echo>, shaped: &mut BTreeMap<String, Shaped>) {
+    while let Ok(echo) = echoes.try_recv() {
+        if let Some(s) = shaped.get_mut(&echo.link) {
+            s.trips.heard(&echo.host, echo.rtt_ms);
+        }
+    }
+}
+
+/// The VPN's source-port pin as the shaper keeps it (src/pin.rs): its
+/// rounds run on a thread of their own, since one takes seconds, and what
+/// each read comes back here, kept for the journal.
+struct Pinner {
+    pinning: pin::Pinning,
+    send: std::sync::mpsc::Sender<BTreeMap<u16, f64>>,
+    read: Receiver<BTreeMap<u16, f64>>,
+    last: BTreeMap<u16, f64>,
+    looked: Option<Instant>,
+}
+
+impl Pinner {
+    fn new() -> Pinner {
+        let (send, read) = channel();
+        Pinner {
+            pinning: pin::Pinning::default(),
+            send,
+            read,
+            last: BTreeMap::new(),
+            looked: None,
+        }
+    }
+
+    /// Takes what a round read, puts its pin in force once the round's
+    /// probes have let their ports go and says so when the pin moves, and
+    /// every few seconds looks for a new socket of the VPN's to probe for,
+    /// out of `link`, the primary uplink. Gives the pin chain's transaction.
+    fn step(&mut self, link: Option<&str>, calling: bool, now: Instant) -> String {
+        while let Ok(read) = self.read.try_recv() {
+            let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
+            self.pinning
+                .found(&read, now + pin::settle(&timeout.unwrap_or_default()));
+            self.last = read;
+        }
+        if let Some(moved) = self.pinning.take_hold(now) {
+            eprintln!("{}", pin::said(moved.was, self.pinning.pinned, &self.last));
+        }
+        if let Some(link) = link
+            && self
+                .looked
+                .is_none_or(|at| now - at >= Duration::from_secs(5))
+        {
+            self.looked = Some(now);
+            let listed = sh(&words(&format!("nft -j list set inet {TABLE} vpn_ends")));
+            let ends = pin::ends(&listed.unwrap_or_default());
+            if let Some(end) = self.pinning.ask(&ends, calling, now) {
+                let (link, held, send) = (link.to_string(), self.pinning.held(), self.send.clone());
+                let to = std::net::SocketAddrV4::new(end.to, end.port);
+                thread::spawn(move || send.send(hops::round(&link, to, &held)));
+            }
+        }
+        pin::chain(TABLE, self.pinning.pinned)
+    }
+}
+
 /// Runs each command, saying what failed, and gives whether all went.
 fn run_all(commands: Vec<Vec<String>>) -> bool {
     let mut fine = true;
@@ -954,6 +1020,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
     let mut swept = false;
+    let mut pinner = Pinner::new();
     heed_stopping();
     loop {
         if STOPPING.load(Ordering::Relaxed) {
@@ -1010,17 +1077,14 @@ fn run(options: &Options) -> Result<(), Failure> {
         let sets = sorted(options, &sessions, &mut call, &mut first, now);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
-        let text = classes::transaction(TABLE, &sets, &reach);
+        let text = classes::transaction(TABLE, &sets, &reach)
+            + &pinner.step(primary.as_deref(), call.on, now);
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
             refill(&text);
             filled = text;
         }
-        while let Ok(echo) = echoes.try_recv() {
-            if let Some(s) = shaped.get_mut(&echo.link) {
-                s.trips.heard(&echo.host, echo.rtt_ms);
-            }
-        }
+        hear_echoes(&echoes, &mut shaped);
         let (house, steady) = most.house(Instant::now());
         step_links(&mut shaped, &mut live, (&most.written, &house, steady));
         hold_followers(&mut shaped);
