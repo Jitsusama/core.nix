@@ -224,7 +224,7 @@ case "$*" in
     [ -e "$here/copy-takes" ] && exec sleep "$(cat "$here/copy-takes")"
     slow=$(cat "$here/slow-to-send" 2>/dev/null)
     case "$*" in *" $slow"*) [ -n "$slow" ] && exec sleep 30 ;; esac ;;
-  "copy --no-recursive "*)
+  "copy --no-recursive "*|"copy --derivation "*)
     [ -e "$here/drv-copy-takes" ] && exec sleep "$(cat "$here/drv-copy-takes")" ;;
 esac
 case "$*" in
@@ -238,7 +238,9 @@ esac
 case "$1 $2" in
   "derivation show") cat "$here/derivations" 2>/dev/null ;;
   "path-info --json") cat "$here/held" 2>/dev/null ;;
-  "path-info --recursive") cat "$here/closure" 2>/dev/null ;;
+  "path-info --recursive")
+    [ -e "$here/no-closure" ] && exit 1
+    cat "$here/closure" 2>/dev/null ;;
 esac
 fails=$(cat "$here/nix-fails" 2>/dev/null || echo 0)
 if [ "$fails" -gt 0 ]; then
@@ -600,10 +602,66 @@ fn a_copy_up_waits_its_turn_while_three_go_up() {
     let (ran, took) = sent_up_while_the_uplink_is_taken(&[], Duration::from_secs(3));
     assert_eq!(ran.status.code(), Some(0), "{ran:?}");
     let said = String::from_utf8_lossy(&ran.stderr);
-    assert!(said.contains("so this waits its turn to send"), "{said}");
+    assert_eq!(
+        said.matches("so this waits its turn to send").count(),
+        1,
+        "waiting for a turn wasn't said once: {said}"
+    );
     assert!(
         took >= Duration::from_secs(3),
         "sent before a turn was free: {took:?}"
+    );
+}
+
+// A copy up whose closure can't be read sends the derivations with all
+// they're built from, its closure walked once and its size never asked,
+// and its turn leased as any other's.
+#[test]
+fn a_copy_up_of_a_closure_unread_walks_it_once_and_asks_no_size() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    fs::write(folder.path().join("says"), "/nix/store/aaaa-x.drv\n").unwrap();
+    fs::write(folder.path().join("no-closure"), "").unwrap();
+    fs::write(folder.path().join("drv-copy-takes"), "3").unwrap();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .env("NIX_OFFLOAD_TURN_WITHIN", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "the copy up to nix-offload, of a size unknown here, has held its turn for 1 \
+             second, as long as NIX_OFFLOAD_TURN_WITHIN gives one, so it goes on without it"
+        ),
+        "a copy of a size unknown didn't give its turn back as leased: {said}"
+    );
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    assert_eq!(
+        calls
+            .lines()
+            .filter(|call| call.starts_with("path-info --recursive"))
+            .count(),
+        1,
+        "its closure wasn't walked once: {calls}"
+    );
+    assert!(
+        !calls
+            .lines()
+            .any(|call| call.starts_with("path-info --json")),
+        "the size of a closure it couldn't read was asked: {calls}"
+    );
+    let copy = format!(
+        "copy --derivation --substitute-on-destination --to {} /nix/store/aaaa-x.drv",
+        STORE.trim()
+    );
+    assert!(
+        calls.lines().any(|call| call == copy),
+        "it didn't send the derivations with all they're built from: {calls}"
     );
 }
 
@@ -626,7 +684,7 @@ fn a_slow_copy_up_gives_its_turn_back_and_sends_only_its_closure() {
     fs::write(folder.path().join("closure"), "/nix/store/aaaa-x.drv\n").unwrap();
     fs::write(
         folder.path().join("held"),
-        r#"{"/nix/store/aaaa-x.drv": {"narSize": 5000000, "signatures": []}}"#,
+        r#"{"/nix/store/aaaa-x.drv": {"narSize": 4200000, "signatures": []}}"#,
     )
     .unwrap();
     fs::write(folder.path().join("drv-copy-takes"), "3").unwrap();
@@ -644,10 +702,17 @@ fn a_slow_copy_up_gives_its_turn_back_and_sends_only_its_closure() {
     let said = String::from_utf8_lossy(&ran.stderr);
     assert!(
         said.contains(
-            "the copy up of 5 MB to nix-offload has held its turn for 1 second, as long as \
+            "the copy up of 4.2 MB to nix-offload has held its turn for 1 second, as long as \
              NIX_OFFLOAD_TURN_WITHIN gives one, so it goes on without it"
         ),
         "{said}"
+    );
+    assert!(
+        said.contains(
+            "the lent builder nix-offload named 1 path it lacks that isn't among what was \
+             asked, which doesn't go"
+        ),
+        "a builder naming paths outside the closure went unsaid: {said}"
     );
     let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
     assert!(
