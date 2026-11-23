@@ -132,30 +132,49 @@ fn what_cant_be_read_starts_afresh_and_says_why() {
 }
 
 #[test]
-fn an_answer_cut_short_reaches_back_to_the_last_read_or_since_whichever_is_later() {
+fn a_full_answer_reaches_back_to_the_last_read_or_since_whichever_is_later() {
+    const NOW: u64 = 1_795_000_060;
     let mut judged = Judged::starting(1_795_000_000);
     assert_eq!(
-        judged.back_to("pineapple"),
+        judged.back_to("pineapple", NOW),
         "1795000000.000000",
         "before any answer to it was read, nothing earlier than since is judged"
     );
     judged.reached("pineapple", Some(&said("C1", "1795000009.000100")));
     assert_eq!(
-        (judged.back_to("pineapple"), judged.back_to("<@U1>")),
-        ("1795000009.000100", "1795000000.000000"),
+        (
+            judged.back_to("pineapple", NOW),
+            judged.back_to("<@U1>", NOW)
+        ),
+        (
+            "1795000009.000100".to_owned(),
+            "1795000000.000000".to_owned()
+        ),
         "once read, to its newest message, and each search to its own"
     );
     judged.reached("pineapple", None);
     assert_eq!(
-        judged.back_to("pineapple"),
+        judged.back_to("pineapple", NOW),
         "1795000009.000100",
         "an answer giving nothing leaves it where it was"
     );
     judged.reached("pineapple", Some(&said("C1", "1794999999.000000")));
     assert_eq!(
-        judged.back_to("pineapple"),
+        judged.back_to("pineapple", NOW),
         "1795000000.000000",
         "one earlier than since reaches only since, as nothing before it is judged"
+    );
+}
+
+#[test]
+fn a_mark_later_than_now_reaches_only_now() {
+    let mut judged = Judged::starting(1_795_000_000);
+    judged.reached("pineapple", Some(&said("C1", "9999999999.000000")));
+    assert_eq!(
+        judged.back_to("pineapple", 1_795_000_060),
+        "1795000060.000000",
+        "no message is said after now, so a mark past it, typed or a clock set back, \
+         lets no answer through that doesn't reach now"
     );
 }
 

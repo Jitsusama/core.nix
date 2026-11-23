@@ -64,9 +64,10 @@ pub(super) fn round(
     let tag = format!("<@{me}>");
     // A sign-in refused or missing for the first isn't asked for again; an
     // answer that couldn't be read is, so the other may still be heard.
-    let (phrase, tagged) = match ears.search(PHRASE, judged.back_to(PHRASE)) {
+    let now = seconds();
+    let (phrase, tagged) = match ears.search(PHRASE, &judged.back_to(PHRASE, now)) {
         Err(deaf @ Round::Deaf(Deafness::Refused | Deafness::NoSignIn)) => return deaf,
-        phrase => (phrase, ears.search(&tag, judged.back_to(&tag))),
+        phrase => (phrase, ears.search(&tag, &judged.back_to(&tag, now))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
     let (phrase, tagged, deaf) = match (phrase, tagged) {

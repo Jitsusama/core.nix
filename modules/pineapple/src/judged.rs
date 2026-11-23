@@ -32,8 +32,8 @@ pub struct Judged {
     /// The keys of those judged, newest last.
     pub keys: Vec<String>,
     /// Each search's newest message in the last answer to it read, as a
-    /// Slack timestamp, by its query: an answer a gateway cut short is read
-    /// only when it reaches back to it, so nothing between goes unread.
+    /// Slack timestamp, by its query: a gateway's full answer is read only
+    /// when it reaches back to it, so nothing between goes unread.
     pub newest: BTreeMap<String, String>,
 }
 
@@ -51,12 +51,15 @@ impl Judged {
     /// How far back an answer to `query` must reach for nothing it could
     /// find to go unread since the last: the newest message the last answer
     /// to it read gave, or `since`, when that's later, as nothing earlier
-    /// is judged.
+    /// is judged; never later than `now`, in seconds, as no message is said
+    /// after then, and a mark past it would let every answer through.
     #[must_use]
-    pub fn back_to(&self, query: &str) -> &str {
+    pub fn back_to(&self, query: &str, now: u64) -> String {
+        let now = Judged::starting(now).since;
         match self.newest.get(query) {
-            Some(newest) if micros(newest) > micros(&self.since) => newest,
-            _ => &self.since,
+            Some(newest) if micros(newest) > micros(&now) => now,
+            Some(newest) if micros(newest) > micros(&self.since) => newest.clone(),
+            _ => self.since.clone(),
         }
     }
 
