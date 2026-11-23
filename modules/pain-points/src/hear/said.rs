@@ -384,10 +384,17 @@ mod tests {
         };
         let kept = serde_json::to_string(&carried).expect("carried writes");
         let back: Carried = serde_json::from_str(&kept).expect("carried reads");
-        assert_eq!(back.answered, at, "an answer is kept until the session's cell is known");
+        assert_eq!(
+            back.answered, at,
+            "an answer is kept until the session's cell is known"
+        );
         let old: Carried = serde_json::from_str(r#"{"tools": [], "failed": [], "earlier": []}"#)
             .expect("a reading kept before answers reads");
-        assert_eq!(old, Carried::default(), "a reading kept before answers reads as none");
+        assert_eq!(
+            old,
+            Carried::default(),
+            "a reading kept before answers reads as none"
+        );
     }
 
     #[test]
