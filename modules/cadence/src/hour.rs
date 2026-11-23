@@ -11,8 +11,8 @@
 //! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, `owing` files its drag with each owner, and `records`
-//! reads the queues' records.
+//! says and keeps, `owing` files its drag with each owner, `records`
+//! reads the queues' records, and `reviews` the harness's review records.
 
 mod card;
 mod lines;
@@ -20,6 +20,7 @@ mod measures;
 mod moved;
 mod owing;
 mod records;
+mod reviews;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -355,27 +356,11 @@ fn rounds_per_merge(
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
     let review = state_home.join("pi/agentic-harness.pi/review");
-    let written = |folder: &Path| -> Vec<String> {
-        fs::read_dir(folder)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .is_ok_and(|at| at >= since)
-            })
-            .filter_map(|entry| fs::read_to_string(entry.path()).ok())
-            .collect()
-    };
     // One folder for each machine whose rounds the harness mirrors here.
-    let mirrored: Vec<String> = fs::read_dir(review.join("runs-from"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .flat_map(|node| written(&node.path()))
-        .collect();
+    let mirrored = reviews::mirrored(&review.join("runs-from"), since);
+    for trouble in &mirrored.trouble {
+        eprintln!("cadence: rounds: {trouble}");
+    }
     let landed = || {
         let mesh = Mesh {
             root: state_home.join("pi/agentic-harness.pi"),
@@ -417,9 +402,9 @@ fn rounds_per_merge(
     ];
     rounds(
         &mains,
-        &written(&review.join("runs")),
+        &reviews::written(&review.join("runs"), since),
         &mirrored,
-        &written(&review.join("fixes")),
+        &reviews::written(&review.join("fixes"), since),
         landed,
         now,
         measures::ASKS,
