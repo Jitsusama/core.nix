@@ -369,9 +369,11 @@ pub struct Ours {
     /// link's did.
     #[serde(default)]
     pub vpn_queued: bool,
-    /// How long the link's queues kept what they held, in ms, agents' lane
-    /// aside: a wait of ours, which the VPN's flow takes too before it
-    /// reaches the router. A trace line with no `why` comes from a shaper
+    /// How long what the link's queues held ahead of the VPN's flow took
+    /// to leave, in ms: a wait of ours, which the VPN's flow takes before
+    /// it reaches the router. Agents' lane's bytes stand apart, but while
+    /// it holds any it sends them beside the VPN's turn (`held::ahead_us`
+    /// says how). A trace line with no `why` comes from a shaper
     /// that counted what agents' lane held under its hold in it too, by
     /// the build that wrote it, whatever its date (src/trace.rs).
     #[serde(default)]

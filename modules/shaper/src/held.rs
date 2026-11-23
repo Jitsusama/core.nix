@@ -69,23 +69,25 @@ fn dropped(cake: &Value) -> u64 {
 }
 
 /// How long what a read found ahead of the VPN's packets takes to leave,
-/// in microseconds: the bytes before them, sent at `kbit` less what
-/// agents' class is assured, `agents_kbit`, while their lane holds
-/// anything. HTB sends a class under its assured rate before any class
-/// borrows, so a busy agents' lane takes its own beside the VPN's turn,
-/// whatever its priority, and the rest drains slower than the link. No
-/// rate keeps nothing.
+/// in microseconds. HTB sends a class under its assured rate before any
+/// class borrows, so while agents' lane holds anything it takes its
+/// assured `agents_kbit` beside the VPN's turn, whatever its priority, and
+/// the bytes before the VPN drain at `kbit` less that. But the lane sends
+/// only what it holds: once it empties, they drain at the whole `kbit`.
+/// So the wait is the lesser of the bytes before the VPN at what agents
+/// leave, and every byte held at the whole link: a lane that empties
+/// first sent all it held in the meantime, and one that doesn't kept its
+/// assured rate throughout. No rate keeps nothing.
 pub fn ahead_us(now: Holding, kbit: u64, agents_kbit: u64) -> u64 {
-    let busy = now.held > now.before_the_vpn;
-    let left = if busy && agents_kbit < kbit {
-        kbit - agents_kbit
-    } else {
-        kbit
-    };
-    if left == 0 {
+    if kbit == 0 {
         return 0;
     }
-    now.before_the_vpn * 8_000 / left
+    let all = now.held.max(now.before_the_vpn) * 8_000 / kbit;
+    let left = kbit.saturating_sub(agents_kbit);
+    if left == 0 {
+        return all;
+    }
+    (now.before_the_vpn * 8_000 / left).min(all)
 }
 
 /// How long the queues kept what they held ahead of the VPN, in ms, on
@@ -169,19 +171,37 @@ mod tests {
             10_000,
             "100 kbit at 10 kbit a ms, with agents' lane empty"
         );
+        let busy = Holding {
+            held: 42_500,
+            ..alone
+        };
+        assert_eq!(
+            ahead_us(busy, 10_000, 2_500),
+            13_333,
+            "agents' 30 000 bytes, outlasting the VPN's wait, took their 2.5 Mbit/s throughout"
+        );
+        let trickle = Holding {
+            held: 12_600,
+            ..alone
+        };
+        assert_eq!(
+            ahead_us(trickle, 10_000, 2_500),
+            10_080,
+            "agents' 100 bytes took only themselves, not their assured rate throughout"
+        );
         let beside = Holding {
             held: 16_500,
             ..alone
         };
         assert_eq!(
             ahead_us(beside, 10_000, 2_500),
-            13_333,
-            "a busy agents' lane takes its assured 2.5 Mbit/s first"
+            13_200,
+            "agents' 4 000 bytes, sent in 12.8 ms, emptied before the VPN's turn came"
         );
         assert_eq!(
             ahead_us(beside, 10_000, 10_000),
-            10_000,
-            "an assurance of the whole link, which no split gives, leaves it whole"
+            13_200,
+            "an assurance of the whole link, which no split gives, sends all of it first"
         );
         assert_eq!(ahead_us(alone, 0, 0), 0, "no rate is no CAKE to wait in");
         assert_eq!(
