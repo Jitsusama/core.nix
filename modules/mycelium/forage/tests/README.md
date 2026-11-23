@@ -37,7 +37,10 @@ run by Node's own test runner when the local sites build the page.
   drawn around, the cells that grew straight from that one and those nearest it,
   each with every cell it grew from, once round a ring, so a booked start
   far down the list still draws solid, and a line deeper than the floor
-  cut at its top, but stopped at a cell already drawn; the cells the
+  cut at its top, but stopped at a cell already drawn, and leaving the
+  cells that grew from its cell up to half the floor; a ring longer than
+  the room filling it cut at its top; an ellipsis wherever the floor
+  skips cells of its list, and none on a list that fits; the cells the
   node's book holds started before those only claimed; that a step draws
   the floor again only for a cell it leaves off or one that grew a cell it
   leaves off, no cursor at all not among them; that a live
