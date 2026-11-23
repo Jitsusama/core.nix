@@ -138,11 +138,14 @@ impl App {
             _ => {
                 // A floating window in a headless sway is resized by
                 // nobody, so the reader resizes its own buffer every quarter
-                // second, which costs it what a resize from niri would.
+                // second, which costs it what a resize from niri would
+                // between two widths past the widest measure. A resize
+                // across one of the measure's steps sets the page again too,
+                // which this leaves out.
                 self.set_zoom(1.0);
                 self.offset += 300.0 * self.scale * dt;
                 let wide = u32_of((t - ZOOM_UNTIL) / 0.25) % 2 == 1;
-                let width = if wide { 1200 } else { 960 };
+                let width = if wide { 1440 } else { 1200 };
                 if width != self.size.0 {
                     self.size.0 = width;
                     let (w, h) = self.buffer_size();

@@ -227,6 +227,33 @@ fn a_picture_is_known_by_its_first_bytes_not_its_name() {
 }
 
 #[test]
+fn math_in_a_cell_is_measured_word_by_word_and_code_as_one_span() {
+    let world = PageWorld::new(&[], std::path::Path::new("/nowhere"));
+    // Dollars give a span, and dollars around backticks a code element,
+    // which only its math style keeps from being measured as code.
+    for sum in ["$x^2 + y^2 = z^2$", "$`x^2 + y^2 = z^2`$"] {
+        let typst = walked(
+            &world,
+            &format!("| Sum | Run |\n|---|---|\n| {sum} | `cargo test --lib` |\n"),
+        );
+        // What the sheet is told of each column, before its rows.
+        let from = typst
+            .find("#sheet(")
+            .unwrap_or_else(|| panic!("no table's sheet in {typst}"));
+        let sheet = &typst[from..];
+        let sheet = &sheet[..sheet.find("head:").unwrap_or(sheet.len())];
+        assert!(
+            sheet.contains("text(\"x^2\")") && !sheet.contains("least-code(\"x^2"),
+            "{sum} is drawn as an equation, so measured as words: {sheet}"
+        );
+        assert!(
+            sheet.contains("least-code(\"cargo test --lib\")"),
+            "code is one span, measured as the page sets it: {sheet}"
+        );
+    }
+}
+
+#[test]
 fn only_a_cell_of_figures_is_a_figure() {
     for figure in ["42", "3.5", "$1,200", "-4%", "12:30", "2 \u{d7} 3"] {
         assert!(is_figure(figure), "{figure} is a figure");

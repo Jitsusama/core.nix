@@ -28,7 +28,7 @@ impl App {
     /// the view's top words are on it.
     /// A page the reloader set: the file shown, saved, or the file being
     /// opened in its place. One of a file no longer wanted is let go.
-    pub(crate) fn saved(&mut self, (file, set): Reset) {
+    pub(crate) fn saved(&mut self, (file, edited, set): Reset) {
         let file = std::path::PathBuf::from(file);
         let opens = match &self.following {
             Some(following) if following.file == file => true,
@@ -86,6 +86,7 @@ impl App {
             set_ms: ms,
             opens: opens.then_some(file),
             title,
+            edited,
         });
         self.ask_incoming();
     }
@@ -108,7 +109,8 @@ impl App {
         let kept = || match place::read(file) {
             Some(kept) if kept.at_end => most_pt,
             Some(kept) => {
-                place::pt_of(&place::starts(&page.frame), kept.block, kept.into_pt).unwrap_or(0.0)
+                let starts = place::starts(&page.frame);
+                place::pt_of(&starts, kept.block, kept.into_pt, kept.block_pt).unwrap_or(0.0)
             }
             None => 0.0,
         };
@@ -207,18 +209,35 @@ impl App {
         self.fresh.extend(incoming.textures.keys().copied());
         self.textures = incoming.textures;
         // Set again at another width, the page's blocks have moved, so each
-        // mark moves with the block it was in. A save keeps them where they
-        // were, as the words below them may have changed.
+        // mark, and the cursor's line, goes as far through its block from
+        // the line it's on. Set again at the same width, saved or with its
+        // pictures come, they stay where they were, as the words below them
+        // may have changed. A kept mark where it landed lands again from
+        // what was kept either way, unless the file was edited.
         let reflowed = incoming.opens.is_none()
             && (incoming.page.frame.size().x.to_pt() - self.painter.width_pt()).abs() >= 0.01;
         let before = reflowed.then(|| place::starts(&self.painter.page().frame));
         self.painter.take(incoming.page, incoming.version);
-        if let Some(before) = before {
+        if incoming.opens.is_none() && (reflowed || !self.landed.is_empty()) {
             let after = place::starts(&self.painter.page().frame);
-            // The cursor's line goes with its block too.
-            for pt in self.marks.values_mut().chain(self.aim.as_mut()) {
-                let (block, into_pt) = place::at(&before, *pt);
-                *pt = place::pt_of(&after, block, into_pt).unwrap_or(*pt);
+            let was = self.words.as_deref().unwrap_or(&[]);
+            let now: Vec<(f64, f64)> = incoming.lines.iter().map(moves::ends_of).collect();
+            let moved = |pt: f64| match &before {
+                Some(before) => {
+                    let line = moves::line_topped(was, pt);
+                    place::moved(before, &after, line, &now).unwrap_or(pt)
+                }
+                None => pt,
+            };
+            place::set_again(
+                &mut self.landed,
+                &mut self.marks,
+                &after,
+                incoming.edited,
+                moved,
+            );
+            if let Some(pt) = self.aim.as_mut() {
+                *pt = moved(*pt);
             }
         }
         self.offset = incoming.offset;
@@ -246,7 +265,12 @@ impl App {
         if let Some(file) = incoming.opens {
             self.shown_now(file);
             self.aim = landed;
+        } else {
+            // The whole page, set again at another width or saved, has the
+            // blocks the first screen's marks waited for.
+            self.take_kept_marks();
         }
+        self.marks_on_lines();
         self.read_layout();
         self.refind();
     }
@@ -257,6 +281,7 @@ impl App {
         self.following = None;
         self.aim = None;
         self.marks.clear();
+        self.landed.clear();
         self.kept_marks = place::read(&file)
             .map(|kept| kept_marks(&kept))
             .unwrap_or_default();
@@ -289,22 +314,52 @@ impl App {
     }
 
     /// Takes back the marks kept from the last time whose blocks the page
-    /// shown has.
+    /// shown has. The first screen's page often ends on a mark's block,
+    /// whose height is known only once the next is set, so a mark kept
+    /// with its block's height waits for the whole page there.
     pub(crate) fn take_kept_marks(&mut self) {
+        self.take_kept_marks_as(self.whole);
+    }
+
+    /// The rest of the page couldn't be set, so no block past the first
+    /// screen's comes: marks waiting on one land by their kept distance,
+    /// as one kept without its height does, rather than wait all session.
+    pub(crate) fn rest_failed(&mut self) {
+        self.take_kept_marks_as(true);
+    }
+
+    /// Takes back the kept marks whose blocks the page has, `whole` when
+    /// no block past the page's comes.
+    fn take_kept_marks_as(&mut self, whole: bool) {
         if self.kept_marks.is_empty() {
             return;
         }
         let starts = place::starts(&self.painter.page().frame);
-        let marks = &mut self.marks;
-        self.kept_marks.retain(|(letter, block, into_pt)| {
-            match place::pt_of(&starts, *block, *into_pt) {
-                Some(pt) => {
-                    marks.entry(*letter).or_insert(pt);
-                    false
-                }
-                None => true,
-            }
-        });
+        place::take_kept(
+            &mut self.kept_marks,
+            &mut self.marks,
+            &mut self.landed,
+            &starts,
+            whole,
+        );
+        self.marks_on_lines();
+    }
+
+    /// Puts each kept mark landed as far through its block on the line of
+    /// that block nearest it, once the page's lines are read.
+    pub(crate) fn marks_on_lines(&mut self) {
+        // Most often none waits, and the page's blocks needn't be walked.
+        if self.landed.iter().all(|one| one.on_line) {
+            return;
+        }
+        let Some(lines) = self.words.as_deref() else {
+            return;
+        };
+        let lines: Vec<(f64, f64)> = lines.iter().map(moves::ends_of).collect();
+        let starts = place::starts(&self.painter.page().frame);
+        for (letter, top) in place::on_lines(&mut self.landed, &self.marks, &starts, &lines) {
+            self.marks.insert(letter, top);
+        }
     }
 
     /// Keeps where the view is on the file shown, and its marks, for the
@@ -332,23 +387,28 @@ impl App {
         };
         let (block, into_pt) = place::at(&starts, here);
         // A mark is its line's top, and the line is found by it for its
-        // baseline, which says the block it's in; a mark kept where no
-        // line is, before the page's lines are read, stands for both.
-        // A mark is a point, so its share is of the page's whole height,
-        // not of how far the view goes, and known as `most` is.
+        // baseline, which says the block it's in; a mark set where no line
+        // is stands for both. A kept mark where it landed goes back as it
+        // was read, its block's height and all. A mark is a point, so its
+        // share is of the page's whole height, not of how far the view
+        // goes, and known as `most` is.
         let height = self.whole.then(|| self.end_px() / px_per_pt);
         let lines = self.words.as_deref().unwrap_or(&[]);
-        let line = |pt: f64| {
-            lines
-                .iter()
-                .find(|line| (moves::top_of(line) - pt).abs() < 0.5)
-                .map_or((pt, pt), |line| (pt, line.baseline_pt))
-        };
         let mut marks: Vec<place::Mark> = self
             .marks
             .iter()
-            .map(|(letter, pt)| place::mark(&blocks, *letter, line(*pt), height))
+            .map(
+                |(letter, pt)| match place::as_read(&self.landed, *letter, *pt) {
+                    Some(kept) => kept.clone(),
+                    None => place::mark(&blocks, *letter, moves::line_topped(lines, *pt), height),
+                },
+            )
             .collect();
+        marks.extend(place::still_waiting(
+            &self.kept_marks,
+            self.whole,
+            |letter| self.marks.contains_key(&letter),
+        ));
         marks.sort_by_key(|mark| mark.letter);
         let at_end = self.at_end();
         if let Err(error) = place::write(
@@ -356,6 +416,7 @@ impl App {
             &place::Place {
                 block,
                 into_pt,
+                block_pt: place::height_of(&starts, block),
                 at_end,
                 marks,
                 said: said(block, here),

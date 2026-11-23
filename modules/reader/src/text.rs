@@ -130,13 +130,13 @@ const BREAK: char = '\u{ad}';
 const DROPPED: f64 = 2.0;
 
 /// The air the page sets after a drop cap, in ems of its size, as
-/// page.rs's opening sets it; a word after it a space further on starts a
+/// page/mod.rs's opening sets it; a word after it a space further on starts a
 /// word of its own.
 const DROP_AIR_EM: f64 = 0.08;
 
 /// A character as the page reads it back: a space that doesn't break as
 /// a space, and a word joiner as nothing, since the page puts them in to
-/// hold code's pieces together (page.rs's `code`), and a yank or a search
+/// hold code's pieces together (page/mod.rs's `code`), and a yank or a search
 /// wants what the file has. A file's own read the same, which only a yank
 /// of one would show, and a search typed with a space then finds it.
 fn read_as(c: char) -> Option<char> {

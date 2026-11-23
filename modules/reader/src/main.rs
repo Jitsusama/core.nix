@@ -187,7 +187,10 @@ struct App {
     /// last closed the file. Taken at the first frame.
     start_pt: Option<f64>,
     /// Marks kept from the last time, whose blocks aren't set yet.
-    kept_marks: Vec<(char, usize, f64)>,
+    kept_marks: Vec<KeptMark>,
+    /// Kept marks taken back onto the page, as read and where each landed,
+    /// until he moves one.
+    landed: Vec<place::Landed>,
     /// The places jumped from, oldest first, each with its file, and where
     /// Ctrl+O and Ctrl+I stand in them; at its length, past the newest.
     jumps: Vec<Spot>,
@@ -354,30 +357,19 @@ struct Scaling;
 /// Which frame a presentation feedback is for.
 struct Feedback(u64);
 
-/// Where on the first page the view opens for a place kept, in points.
-/// Kept at the end, it opens at the end, however the window or the page
-/// has changed since: the first frame clamps it there.
-fn start_at(block: usize, into_pt: f64, at_end: bool, starts: &[(usize, f64)]) -> Option<f64> {
-    if at_end {
-        Some(f64::INFINITY)
-    } else {
-        place::pt_of(starts, block, into_pt)
-    }
+/// What a place kept says of its marks, as the page takes them back.
+fn kept_marks(place: &place::Place) -> Vec<KeptMark> {
+    place.marks.clone()
 }
 
-/// What a place kept says of its marks, as the page takes them back.
-fn kept_marks(place: &place::Place) -> Vec<(char, usize, f64)> {
-    place
-        .marks
-        .iter()
-        .map(|mark| (mark.letter, mark.block, mark.into_pt))
-        .collect()
-}
+/// A mark kept from the last time, as it was read, so one still waiting
+/// when the reader closes is written back with all it said.
+type KeptMark = place::Mark;
 
 /// Where the view opens: the mark asked for, or where the file was left.
 /// A letter with no mark kept says so, as Vim does, and opens where the
 /// file was left, as a file opened plainly does.
-fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<(usize, f64, bool)> {
+fn opening_at(kept: Option<&place::Place>, letter: Option<char>) -> Option<place::Opens> {
     let (opens, unmarked) = place::opening(kept, letter);
     if let Some(letter) = unmarked {
         eprintln!("reader: E20: Mark not set: {letter}");
@@ -432,16 +424,6 @@ fn started_with(args: &[String]) -> Result<Option<(bool, Option<char>, String)>,
         ),
         _ => return Err(usage()),
     }))
-}
-
-/// The width the first screen is set at: the window's when the reader last
-/// closed, which niri most likely opens it at again, so the first screen
-/// seldom sets twice; measuring, or with none kept, the one a window has
-/// until niri names it.
-fn first_width(measuring: bool) -> page::Width {
-    let unnamed = f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX;
-    let kept = if measuring { None } else { place::window_pt() };
-    page::Width::for_window(kept.unwrap_or(unnamed))
 }
 
 fn help() -> Help {
@@ -502,20 +484,23 @@ fn show(
     } else {
         place::read(std::path::Path::new(file))
     };
-    let width = first_width(measuring);
+    // Measuring, a headless window's is named by nobody.
+    let width = page::Width::first(
+        if measuring { None } else { place::window_pt() },
+        f64::from(app::UNNAMED_SIZE.0) * theme::PT_A_PX,
+    );
     let opens_at = opening_at(kept.as_ref(), letter);
     // Connecting before the page is set lets the GL driver come up beside it.
     let conn = Connection::connect_to_env()?;
     // SAFETY: the connection, and so its display, outlives the join below.
     let warming = unsafe { gl::warm(conn.backend().display_ptr().cast()) };
-    let first = page::set_first(file, opens_at.map(|(block, _, _)| block), width);
+    let first = page::set_first(file, opens_at.map(|opens| opens.block), width);
     if let Some(warming) = warming {
         let _ = warming.join();
     }
     let first = first?;
     let starts = place::starts(&first.page.frame);
-    let start_pt =
-        opens_at.and_then(|(block, into_pt, at_end)| start_at(block, into_pt, at_end, &starts));
+    let start_pt = opens_at.and_then(|opens| opens.at(&starts));
     let kept_marks = kept.as_ref().map(kept_marks).unwrap_or_default();
     let page::First {
         page,
@@ -709,7 +694,7 @@ struct Opening {
     scale: f64,
     measuring: bool,
     start_pt: Option<f64>,
-    kept_marks: Vec<(char, usize, f64)>,
+    kept_marks: Vec<KeptMark>,
     set_ms: f64,
     set_parts: Vec<(&'static str, f64, f64)>,
     width: page::Width,
@@ -724,13 +709,22 @@ fn set_rest(
     rest: page::Rest,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let whole = heard(handle, |app: &mut App, (page, ms)| app.replace(page, ms))?;
+    let failed = heard(handle, |app: &mut App, ()| app.rest_failed())?;
     std::thread::Builder::new()
         .name("setter".into())
-        .spawn(move || match rest.set() {
-            Ok(done) => {
-                let _ = whole.send(done);
-            }
-            Err(error) => eprintln!("can't set the rest: {error}"),
+        // A panic setting it fails it too, or marks waiting on the rest
+        // would wait all session.
+        .spawn(move || {
+            let why = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| rest.set())) {
+                Ok(Ok(done)) => {
+                    let _ = whole.send(done);
+                    return;
+                }
+                Ok(Err(error)) => error,
+                Err(_) => "it panicked".to_string(),
+            };
+            eprintln!("reader: can't set past the first screen, so the page ends there: {why}");
+            let _ = failed.send(());
         })?;
     Ok(())
 }
@@ -755,13 +749,13 @@ fn reload_on_save(
         .spawn(move || {
             let mut setter: Option<page::Setter> = None;
             while let Ok(ask) = asks.recv() {
-                let mut open = None;
-                let mut fit = None;
+                let (mut open, mut fit, mut saved) = (None, None, false);
                 for ask in std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())) {
                     match ask {
                         Reload::Open(file) => open = Some(file),
                         Reload::Fit(width) => fit = Some(width),
-                        Reload::Saved => (),
+                        Reload::Saved => saved = true,
+                        Reload::Fetched => (),
                     }
                 }
                 let setter = setter.get_or_insert_with(|| {
@@ -779,15 +773,21 @@ fn reload_on_save(
                     let lines = text::lines(text::runs(&page.frame));
                     (page, ms, lines, setter.title().to_string())
                 });
-                if reset_to.send((setter.file().to_string(), set)).is_err() {
+                // Edited when a save was heard, or when a set for a width
+                // read words a save not heard yet changed.
+                let edited = saved || setter.edited();
+                if reset_to
+                    .send((setter.file().to_string(), edited, set))
+                    .is_err()
+                {
                     return;
                 }
             }
         })?;
-    // Pictures fetched from the web set the page again, as a save does.
+    // Pictures fetched from the web set the page again, the file unedited.
     let fetched_to = reload_to.clone();
     web::when_fetched(move || {
-        let _ = fetched_to.send(Reload::Saved);
+        let _ = fetched_to.send(Reload::Fetched);
     });
     let save_to = reload_to.clone();
     let watch = watch::saves(std::path::Path::new(file), move || {

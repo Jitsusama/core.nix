@@ -9,6 +9,10 @@
 //! the heading it sits under, how far down the page it is, and when it was
 //! left. The launcher lists them (`listed`, which `reader --places` prints)
 //! for the reader's Recent, so nothing there sets a page to say where.
+//!
+//! Long because a mark kept across widths, saves and closes is decided
+//! here in pure functions its tests reach, apart from the window.
+use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -23,6 +27,10 @@ use typst::layout::{Frame, FrameItem, Point};
 pub struct Place {
     pub block: usize,
     pub into_pt: f64,
+    /// How tall its block was where it was kept, so a page set at another
+    /// width finds it as far through the block; a place kept before this
+    /// was written, or in the page's last block, has none.
+    pub block_pt: Option<f64>,
     pub at_end: bool,
     /// Each letter's mark, kept the same way.
     pub marks: Vec<Mark>,
@@ -39,6 +47,7 @@ pub struct Mark {
     pub letter: char,
     pub block: usize,
     pub into_pt: f64,
+    pub block_pt: Option<f64>,
     pub said: Said,
 }
 
@@ -150,13 +159,28 @@ fn said(value: &Value, top_pt: f64) -> Option<Block> {
 }
 
 /// The block a point is in, and how far into it: the last block starting
-/// at or above it.
+/// at or above it. A point over every block, as the eyebrow's line is,
+/// stands that far over the first, a distance less than nothing that
+/// keeps it as far above the first block wherever that starts, as what
+/// stands over the page's words moves with them.
 pub fn at(starts: &[(usize, f64)], pt: f64) -> (usize, f64) {
     starts
         .iter()
         .rev()
         .find(|(_, top)| *top <= pt)
+        .or(starts.first())
         .map_or((0, pt), |(block, top)| (*block, pt - top))
+}
+
+/// The block a line is in, by its baseline, and how far its top stands
+/// from the block's: `line` is its top and baseline in points. A
+/// heading's block starts at its capitals, below its line's top, so a
+/// line found by its top alone is the block's before, and its distance
+/// into its own is less than nothing, which reaches the same top again.
+pub fn line_at(starts: &[(usize, f64)], line: (f64, f64)) -> (usize, f64) {
+    let (top, baseline) = line;
+    let (block, below_its_top) = at(starts, baseline);
+    (block, below_its_top - (baseline - top))
 }
 
 /// A letter's mark as it's kept: the block its line is in and how far the
@@ -165,10 +189,7 @@ pub fn at(starts: &[(usize, f64)], pt: f64) -> (usize, f64) {
 /// points, and the page's height is known only of the whole file's page.
 ///
 /// A line is in the block its baseline is in, as ]] finds a heading's
-/// line (moves.rs): a heading's block starts at its capitals, below its
-/// line's top, so a mark found by its top alone was kept under the
-/// heading before. Its distance into its block is then less than nothing,
-/// which reaches the same top again. And a mark is a point, not a view,
+/// line (moves.rs), by `line_at`. And a mark is a point, not a view,
 /// so how far down it is is its line's share of the page's whole height:
 /// a view's share of how far it can go reads every mark on the last
 /// screen as all of it.
@@ -177,15 +198,15 @@ pub fn mark(blocks: &[Block], letter: char, line: (f64, f64), height_pt: Option<
         .iter()
         .map(|block| (block.number, block.top_pt))
         .collect();
-    let (top, baseline) = line;
-    let (block, below_its_top) = at(&starts, baseline);
+    let (block, into_pt) = line_at(&starts, line);
     Mark {
         letter,
         block,
-        into_pt: below_its_top - (baseline - top),
+        into_pt,
+        block_pt: height_of(&starts, block),
         said: Said {
             heading: heading_of(blocks, block),
-            through: height_pt.map(|height| share(top, height)),
+            through: height_pt.map(|height| share(line.0, height)),
         },
     }
 }
@@ -233,19 +254,51 @@ pub fn letter(said: &str) -> Option<char> {
 }
 
 /// Where a file opens: the block the view's top is in, how far into it,
-/// and whether at the page's end, from the mark kept under `letter` when
-/// one is asked for, or else where it was left; and the letter asked for,
-/// when no mark is kept under it, to be said.
-pub fn opening(
-    kept: Option<&Place>,
-    letter: Option<char>,
-) -> (Option<(usize, f64, bool)>, Option<char>) {
-    let left = kept.map(|place| (place.block, place.into_pt, place.at_end));
+/// how tall the block stood when kept, and whether at the page's end.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Opens {
+    pub block: usize,
+    pub into_pt: f64,
+    pub block_pt: Option<f64>,
+    pub at_end: bool,
+}
+
+impl Opens {
+    /// Where on a page whose blocks start at `starts` the view opens, in
+    /// points. Kept at the end, it opens at the end, however the window or
+    /// the page has changed since: the first frame clamps it there.
+    pub fn at(self, starts: &[(usize, f64)]) -> Option<f64> {
+        if self.at_end {
+            Some(f64::INFINITY)
+        } else {
+            pt_of(starts, self.block, self.into_pt, self.block_pt)
+        }
+    }
+}
+
+/// Where a file opens, from the mark kept under `letter` when one is
+/// asked for, or else where it was left; and the letter asked for, when
+/// no mark is kept under it, to be said.
+pub fn opening(kept: Option<&Place>, letter: Option<char>) -> (Option<Opens>, Option<char>) {
+    let left = kept.map(|place| Opens {
+        block: place.block,
+        into_pt: place.into_pt,
+        block_pt: place.block_pt,
+        at_end: place.at_end,
+    });
     let Some(letter) = letter else {
         return (left, None);
     };
     match kept.and_then(|place| place.marks.iter().find(|mark| mark.letter == letter)) {
-        Some(mark) => (Some((mark.block, mark.into_pt, false)), None),
+        Some(mark) => (
+            Some(Opens {
+                block: mark.block,
+                into_pt: mark.into_pt,
+                block_pt: mark.block_pt,
+                at_end: false,
+            }),
+            None,
+        ),
         None => (left, Some(letter)),
     }
 }
@@ -259,12 +312,252 @@ pub fn now() -> Option<u64> {
 }
 
 /// Where a block and a distance into it are on a page, if the page has the
-/// block.
-pub fn pt_of(starts: &[(usize, f64)], block: usize, into_pt: f64) -> Option<f64> {
-    starts
+/// block. Kept where the block stood `block_pt` tall, and set now at
+/// another height, as a page set at another width sets it, the distance
+/// is taken as far through it, so a place on its fourth line of eight
+/// lands on the middle of it however its lines wrap now. A distance less
+/// than nothing is a heading's line standing over its capitals, which its
+/// type sets and no wrapping changes, so it's kept as it is.
+pub fn pt_of(
+    starts: &[(usize, f64)],
+    block: usize,
+    into_pt: f64,
+    block_pt: Option<f64>,
+) -> Option<f64> {
+    let top = starts.iter().find(|(b, _)| *b == block)?.1;
+    let into_pt = match (block_pt, height_of(starts, block)) {
+        (Some(was), Some(now))
+            if was >= LEAST_BLOCK_PT && into_pt > 0.0 && (now - was).abs() >= 0.01 =>
+        {
+            // No place stands past its block's foot, so a distance kept
+            // further is a file gone wrong, held to the block.
+            into_pt.min(was) * now / was
+        }
+        _ => into_pt,
+    };
+    Some(top + into_pt)
+}
+
+/// Where a mark kept in `block`, `into_pt` into it when it stood
+/// `block_pt` tall, lands on a page whose blocks start at `starts`, or
+/// none while it waits: for its block, and on the first screen's page,
+/// not `whole`, for the block after it too when it was kept with its
+/// height, since only that says how tall its block stands now.
+pub fn mark_at(
+    starts: &[(usize, f64)],
+    whole: bool,
+    block: usize,
+    into_pt: f64,
+    block_pt: Option<f64>,
+) -> Option<f64> {
+    if !whole && block_pt.is_some() && height_of(starts, block).is_none() {
+        return None;
+    }
+    pt_of(starts, block, into_pt, block_pt)
+}
+
+/// The marks kept from the last time to write back as they were read:
+/// those still waiting on the first screen's page, whose letter no mark
+/// set since has taken, so closing before the whole page arrives loses
+/// none. On the whole page a mark left waiting has lost its block, as a
+/// file cut shorter loses it, so it goes.
+pub fn still_waiting(kept: &[Mark], whole: bool, set: impl Fn(char) -> bool) -> Vec<Mark> {
+    if whole {
+        return Vec::new();
+    }
+    kept.iter()
+        .filter(|mark| !set(mark.letter))
+        .cloned()
+        .collect()
+}
+
+/// The least height a kept block is believed to have stood: a line of the
+/// smallest type is taller, so one kept less is a file gone wrong, whose
+/// share would throw the place far down the page.
+const LEAST_BLOCK_PT: f64 = 1.0;
+
+/// How tall a block stands, from its top to the next block's; the page's
+/// last block, or one the page lacks, says none, as does one standing at
+/// its next's top, with nothing to be through.
+pub fn height_of(starts: &[(usize, f64)], block: usize) -> Option<f64> {
+    let at = starts.iter().position(|(b, _)| *b == block)?;
+    let next = starts.get(at + 1)?;
+    Some(next.1 - starts[at].1).filter(|pt| *pt >= LEAST_BLOCK_PT)
+}
+
+/// Where a line, its top and baseline, on a page set `before` lands on
+/// the same page set again `after`, at another width: as far through the
+/// same block, and then on the line of that block nearest it, of the
+/// tops and baselines `lines_after`, or between them while it has none.
+pub fn moved(
+    before: &[(usize, f64)],
+    after: &[(usize, f64)],
+    line: (f64, f64),
+    lines_after: &[(f64, f64)],
+) -> Option<f64> {
+    let (block, into_pt) = line_at(before, line);
+    let pt = pt_of(after, block, into_pt, height_of(before, block))?;
+    Some(line_in(after, block, pt, lines_after).unwrap_or(pt))
+}
+
+/// The top of the line in `block` nearest `pt`, of `lines` given by their
+/// tops and baselines. A place landed as far through its block falls
+/// between its lines, and the line nearest it is the one it was on, but
+/// only among its own block's: past its last line the nearest may be the
+/// next block's heading, and over its first the line above it the block
+/// before's.
+pub fn line_in(
+    starts: &[(usize, f64)],
+    block: usize,
+    pt: f64,
+    lines: &[(f64, f64)],
+) -> Option<f64> {
+    // A line is in the block its baseline is in, as `line_at` finds it:
+    // from the block's top to the next's, and for the first block from
+    // over the page too. Found once, so a resize on a long page asks each
+    // line once rather than searching every block for it.
+    let at = starts.iter().position(|(b, _)| *b == block)?;
+    let from = if at == 0 {
+        f64::NEG_INFINITY
+    } else {
+        starts[at].1
+    };
+    let to = starts.get(at + 1).map_or(f64::INFINITY, |next| next.1);
+    lines
         .iter()
-        .find(|(b, _)| *b == block)
-        .map(|(_, top)| top + into_pt)
+        .filter(|(_, baseline)| (from..to).contains(baseline))
+        .map(|(top, _)| *top)
+        .min_by(|a, b| (a - pt).abs().total_cmp(&(b - pt).abs()))
+}
+
+/// A kept mark taken back onto the page: as it was read, where it stands
+/// now, and whether that's on a line of its block yet. While the mark
+/// stays where it landed it is the kept one, which a resize lands again
+/// from what was kept and closing writes back as it was read, so landing
+/// it costs nothing it was kept with.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Landed {
+    pub kept: Mark,
+    pub pt: f64,
+    pub on_line: bool,
+}
+
+impl Landed {
+    /// Whether the mark still stands where it landed, in `marks`: one set
+    /// or moved since is his own, no longer the kept one.
+    fn holds(&self, marks: &HashMap<char, f64>) -> bool {
+        marks
+            .get(&self.kept.letter)
+            .is_some_and(|pt| (pt - self.pt).abs() < 0.01)
+    }
+}
+
+/// Puts each landed mark not on a line yet on the line of its block
+/// nearest it, of `lines` by their tops and baselines, giving the letters
+/// and the lines' tops: between lines, going to it would take the line
+/// below, and past the block's last line that's the next block's heading.
+/// One whose block has no line read yet waits; one set or moved since goes.
+pub fn on_lines(
+    landed: &mut Vec<Landed>,
+    marks: &HashMap<char, f64>,
+    starts: &[(usize, f64)],
+    lines: &[(f64, f64)],
+) -> Vec<(char, f64)> {
+    landed.retain(|one| one.holds(marks));
+    let mut put = Vec::new();
+    for one in landed.iter_mut().filter(|one| !one.on_line) {
+        if let Some(top) = line_in(starts, one.kept.block, one.pt, lines) {
+            (one.pt, one.on_line) = (top, true);
+            put.push((one.kept.letter, top));
+        }
+    }
+    put
+}
+
+/// Lands again each landed mark still where it landed on the page set
+/// again at another width, whose blocks start at `after`, as far through
+/// its block as it was kept, giving the letters and where they land, to
+/// go on a line once its lines are read. Found again from its own line,
+/// one not on a line yet would be found in the block before.
+pub fn landed_again(
+    landed: &mut Vec<Landed>,
+    marks: &HashMap<char, f64>,
+    after: &[(usize, f64)],
+) -> Vec<(char, f64)> {
+    landed.retain(|one| one.holds(marks));
+    landed
+        .iter_mut()
+        .filter_map(|one| {
+            let kept = &one.kept;
+            let pt = pt_of(after, kept.block, kept.into_pt, kept.block_pt)?;
+            (one.pt, one.on_line) = (pt, false);
+            Some((kept.letter, pt))
+        })
+        .collect()
+}
+
+/// The kept mark a letter's mark at `pt` still is, to write back as it
+/// was read, with its block's height, which the first screen's page may
+/// not know, and before it's on a line, where its own line isn't.
+pub fn as_read(landed: &[Landed], letter: char, pt: f64) -> Option<&Mark> {
+    landed
+        .iter()
+        .find(|one| one.kept.letter == letter && (one.pt - pt).abs() < 0.01)
+        .map(|one| &one.kept)
+}
+
+/// Takes the kept marks whose blocks the page starting at `starts` has,
+/// `whole` when no block past them comes, into `marks`, each kept as read
+/// in `landed`; the others wait in `kept`. A mark set while it waited is
+/// his, and beats it. One kept before its block's height was would land
+/// unscaled at every width, so it takes the height its block has here,
+/// where its distance is read as it was, once that's known.
+pub fn take_kept(
+    kept: &mut Vec<Mark>,
+    marks: &mut HashMap<char, f64>,
+    landed: &mut Vec<Landed>,
+    starts: &[(usize, f64)],
+    whole: bool,
+) {
+    kept.retain(|one| {
+        let Some(pt) = mark_at(starts, whole, one.block, one.into_pt, one.block_pt) else {
+            return true;
+        };
+        if let std::collections::hash_map::Entry::Vacant(mark) = marks.entry(one.letter) {
+            mark.insert(pt);
+            let block_pt = one.block_pt.or_else(|| height_of(starts, one.block));
+            landed.push(Landed {
+                kept: Mark {
+                    block_pt,
+                    ..one.clone()
+                },
+                pt,
+                on_line: false,
+            });
+        }
+        false
+    });
+}
+
+/// Moves `marks` for the page set again, its blocks starting at `after`:
+/// a kept mark where it landed lands again from what was kept, and the
+/// others go as `moved` takes them. An `edited` file may have renumbered
+/// the blocks under a kept mark, so where it stands then is his, no
+/// longer the kept one's.
+pub fn set_again(
+    landed: &mut Vec<Landed>,
+    marks: &mut HashMap<char, f64>,
+    after: &[(usize, f64)],
+    edited: bool,
+    moved: impl Fn(f64) -> f64,
+) {
+    if edited {
+        landed.clear();
+    }
+    let again: HashMap<char, f64> = landed_again(landed, marks, after).into_iter().collect();
+    for (letter, pt) in marks.iter_mut() {
+        *pt = again.get(letter).copied().unwrap_or_else(|| moved(*pt));
+    }
 }
 
 /// The state home, where places are kept.
@@ -313,6 +606,7 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
                         letter: mark.get("letter")?.as_str()?.chars().next()?,
                         block: usize::try_from(mark.get("block")?.as_u64()?).ok()?,
                         into_pt: mark.get("into_pt")?.as_f64()?,
+                        block_pt: block_pt_of(mark),
                         said: said_of(mark),
                     })
                 })
@@ -322,6 +616,7 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
     Some(Place {
         block,
         into_pt: kept.get("into_pt")?.as_f64()?,
+        block_pt: block_pt_of(kept),
         at_end: kept
             .get("at_end")
             .and_then(serde_json::Value::as_bool)
@@ -330,6 +625,13 @@ fn from_json(kept: &serde_json::Value) -> Option<Place> {
         said: said_of(kept),
         left: kept.get("left").and_then(serde_json::Value::as_u64),
     })
+}
+
+/// How tall a place's or a mark's block was, where it was kept.
+fn block_pt_of(kept: &serde_json::Value) -> Option<f64> {
+    kept.get("block_pt")
+        .and_then(serde_json::Value::as_f64)
+        .filter(|pt| pt.is_finite() && *pt >= LEAST_BLOCK_PT)
 }
 
 /// What a place or a mark says of where it is, whatever of it was kept.
@@ -378,11 +680,14 @@ fn write_in(state: &Path, file: &Path, place: &Place) -> std::io::Result<()> {
         .marks
         .iter()
         .map(|mark| {
-            let fields = serde_json::json!({
+            let mut fields = serde_json::json!({
                 "letter": mark.letter.to_string(),
                 "block": mark.block,
                 "into_pt": mark.into_pt,
             });
+            if let Some(block_pt) = mark.block_pt {
+                fields["block_pt"] = serde_json::json!(block_pt);
+            }
             with_said(fields, &mark.said)
         })
         .collect();
@@ -395,6 +700,9 @@ fn write_in(state: &Path, file: &Path, place: &Place) -> std::io::Result<()> {
     });
     if let Some(left) = place.left {
         fields["left"] = serde_json::json!(left);
+    }
+    if let Some(block_pt) = place.block_pt {
+        fields["block_pt"] = serde_json::json!(block_pt);
     }
     let text = with_said(fields, &place.said);
     if let Some(folder) = kept.parent() {
@@ -508,285 +816,4 @@ fn keep_window_in(state: &Path, pt: f64) -> std::io::Result<()> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{
-        Block, Mark, Place, Said, at, heading_of, keep_window_in, kept_at, letter, listed_in, mark,
-        opening, pt_of, read_in, through, window_in, write_in,
-    };
-
-    /// A block of a page, a heading's words given.
-    fn block(number: usize, heading: Option<&str>) -> Block {
-        Block {
-            number,
-            top_pt: f64::from(u32::try_from(number).unwrap_or(0)) * 100.0,
-            lines: None,
-            heading: heading.map(|words| (2, words.to_string())),
-        }
-    }
-
-    #[test]
-    fn a_place_sits_under_the_nearest_heading_at_or_before_it() {
-        let blocks = [
-            block(0, None),
-            block(1, Some("Installing")),
-            block(2, None),
-            block(3, Some("Using It")),
-        ];
-        assert_eq!(heading_of(&blocks, 2).as_deref(), Some("Installing"));
-        assert_eq!(
-            heading_of(&blocks, 3).as_deref(),
-            Some("Using It"),
-            "a heading's own block is under it"
-        );
-        assert_eq!(
-            heading_of(&blocks, 0),
-            None,
-            "above the first heading, none"
-        );
-        assert_eq!(heading_of(&blocks, 9), None, "a block the page lacks, none");
-    }
-
-    #[test]
-    fn a_mark_on_a_headings_line_is_kept_under_that_heading() {
-        // A heading's block starts at its capitals, a few points below its
-        // line's top, which is where the cursor's line and so the mark are.
-        let blocks = [
-            block(0, Some("A Page")),
-            block(1, None),
-            block(2, Some("Further On")),
-        ];
-        let kept = mark(&blocks, 'a', (196.0, 210.0), Some(1000.0));
-        assert_eq!(kept.said.heading.as_deref(), Some("Further On"), "{kept:?}");
-        assert_eq!(kept.block, 2, "{kept:?}");
-        assert_eq!(
-            pt_of(
-                &[(0, 0.0), (1, 100.0), (2, 200.0)],
-                kept.block,
-                kept.into_pt
-            ),
-            Some(196.0),
-            "it's kept where its line's top is"
-        );
-        let words = mark(&blocks, 'b', (120.0, 134.0), Some(1000.0));
-        assert_eq!(
-            (words.block, words.said.heading.as_deref()),
-            (1, Some("A Page")),
-            "a line of words under a heading is in its own block"
-        );
-    }
-
-    #[test]
-    fn a_mark_says_its_lines_share_of_the_whole_page() {
-        // The view goes no further than 700 down a 1000-point page, so a
-        // view's share of 950 would be all of it; a mark there is a point.
-        let blocks = [block(0, None), block(9, None)];
-        let kept = mark(&blocks, 'a', (950.0, 964.0), Some(1000.0));
-        let share = kept
-            .said
-            .through
-            .expect("a whole page's mark says how far down");
-        assert!((share - 0.95).abs() < 1e-9, "{share} isn't 950 of 1000");
-        assert_eq!(
-            mark(&blocks, 'a', (950.0, 964.0), None).said.through,
-            None,
-            "a page not yet set whole can't say"
-        );
-    }
-
-    #[test]
-    fn how_far_down_is_a_share_of_the_furthest_the_view_goes() {
-        assert!(
-            (through(400.0, 1000.0) - 0.4).abs() < 1e-9,
-            "400 down of 1000 is two fifths"
-        );
-        assert!(
-            (through(1000.0, 1000.0) - 1.0).abs() < 1e-9,
-            "the end is the whole"
-        );
-        assert!(
-            (through(1200.0, 1000.0) - 1.0).abs() < 1e-9,
-            "never past the whole"
-        );
-        assert!(
-            (through(0.0, 0.0) - 1.0).abs() < 1e-9,
-            "a page within its window is read"
-        );
-    }
-
-    #[test]
-    fn a_file_opens_at_the_mark_asked_for_or_where_it_was_left() {
-        let place = Place {
-            block: 9,
-            into_pt: 4.0,
-            at_end: true,
-            marks: vec![Mark {
-                letter: 'a',
-                block: 3,
-                into_pt: 7.0,
-                said: Said::default(),
-            }],
-            said: Said::default(),
-            left: None,
-        };
-        assert_eq!(
-            opening(Some(&place), Some('a')),
-            (Some((3, 7.0, false)), None)
-        );
-        assert_eq!(
-            opening(Some(&place), Some('b')),
-            (Some((9, 4.0, true)), Some('b')),
-            "no mark b, so where it was left, saying so"
-        );
-        assert_eq!(opening(Some(&place), None), (Some((9, 4.0, true)), None));
-        assert_eq!(opening(None, Some('a')), (None, Some('a')), "nothing kept");
-        assert_eq!(letter("a"), Some('a'));
-        assert_eq!(letter("Q"), Some('Q'));
-        assert_eq!(letter("ab"), None, "one letter alone");
-        assert_eq!(letter("1"), None);
-        assert_eq!(letter(""), None);
-    }
-
-    #[test]
-    fn a_place_kept_before_it_said_where_still_reads() {
-        let dir = std::env::temp_dir().join(format!("reader-old-place-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("a folder");
-        let file = dir.join("page.md");
-        std::fs::write(&file, "# A page").expect("the file");
-        let state = dir.join("state");
-        let kept = kept_at(&state, &file).expect("where it's kept");
-        std::fs::create_dir_all(kept.parent().expect("its folder")).expect("made");
-        let old = serde_json::json!({
-            "file": file.to_string_lossy(),
-            "block": 4,
-            "into_pt": 2.5,
-            "at_end": false,
-            "marks": [{"letter": "a", "block": 1, "into_pt": 0.0}],
-        });
-        std::fs::write(&kept, old.to_string()).expect("kept");
-        let place = read_in(&state, &file).expect("read");
-        assert_eq!(
-            (place.block, place.left, place.said),
-            (4, None, Said::default())
-        );
-        assert_eq!(place.marks.len(), 1);
-        assert_eq!(place.marks[0].said, Said::default());
-        let listed = listed_in(&state, 9);
-        assert_eq!(listed.len(), 1, "listed by its file's time");
-        let line: serde_json::Value = serde_json::from_str(&listed[0]).expect("JSON");
-        assert!(line["left"].as_u64().is_some_and(|left| left > 0), "{line}");
-        assert!(
-            line.get("heading").is_none() && line.get("through").is_none(),
-            "{line}"
-        );
-        std::fs::remove_dir_all(&dir).expect("cleaned");
-    }
-
-    #[test]
-    fn the_places_are_listed_newest_left_first_without_a_file_gone() {
-        let dir = std::env::temp_dir().join(format!("reader-listed-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("a folder");
-        let state = dir.join("state");
-        let keep = |name: &str, left: u64, heading: Option<&str>| {
-            let file = dir.join(name);
-            std::fs::write(&file, "# A page").expect("the file");
-            let said = Said {
-                heading: heading.map(str::to_string),
-                through: Some(0.4),
-            };
-            let place = Place {
-                block: 2,
-                into_pt: 0.0,
-                at_end: false,
-                marks: vec![Mark {
-                    letter: 'b',
-                    block: 1,
-                    into_pt: 0.0,
-                    said: said.clone(),
-                }],
-                said,
-                left: Some(left),
-            };
-            write_in(&state, &file, &place).expect("kept");
-            file
-        };
-        keep("older.md", 100, None);
-        keep("newer.md", 300, Some("Installing"));
-        let gone = keep("gone.md", 200, None);
-        std::fs::remove_file(gone).expect("gone");
-        let listed: Vec<serde_json::Value> = listed_in(&state, 9)
-            .iter()
-            .map(|line| serde_json::from_str(line).expect("JSON"))
-            .collect();
-        let files: Vec<&str> = listed
-            .iter()
-            .filter_map(|line| line["file"].as_str()?.rsplit('/').next())
-            .collect();
-        assert_eq!(files, ["newer.md", "older.md"]);
-        assert_eq!(listed[0]["heading"], "Installing");
-        assert_eq!(listed[0]["through"], 0.4);
-        assert_eq!(listed[0]["left"], 300);
-        assert_eq!(listed[0]["marks"][0]["letter"], "b");
-        assert_eq!(listed[0]["marks"][0]["heading"], "Installing");
-        assert!(listed[1].get("heading").is_none(), "no heading, none said");
-        assert_eq!(listed_in(&state, 1).len(), 1, "no more than asked");
-        std::fs::remove_dir_all(&dir).expect("cleaned");
-    }
-
-    #[test]
-    fn the_windows_width_is_kept_and_taken_back() {
-        let state = std::env::temp_dir().join(format!("reader-window-{}", std::process::id()));
-        assert_eq!(window_in(&state), None, "nothing kept yet");
-        keep_window_in(&state, 360.0).expect("kept");
-        assert_eq!(window_in(&state), Some(360.0));
-        std::fs::remove_dir_all(&state).expect("cleaned");
-    }
-
-    #[test]
-    fn a_place_is_the_last_block_starting_above_it_and_the_way_into_it() {
-        let starts = [(0, 36.0), (1, 120.0), (2, 400.0)];
-        assert_eq!(at(&starts, 130.0), (1, 10.0));
-        assert_eq!(at(&starts, 400.0), (2, 0.0));
-        assert_eq!(
-            at(&starts, 10.0),
-            (0, 10.0),
-            "above the first block is the page's top"
-        );
-        assert_eq!(pt_of(&starts, 1, 10.0), Some(130.0));
-        assert_eq!(
-            pt_of(&starts, 7, 0.0),
-            None,
-            "a block the page lacks has no place"
-        );
-    }
-
-    #[test]
-    fn a_place_kept_is_the_place_read_back() {
-        let dir = std::env::temp_dir().join(format!("reader-place-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("a folder");
-        let file = dir.join("page.md");
-        std::fs::write(&file, "# A page").expect("the file");
-        let state = dir.join("state");
-        let place = Place {
-            block: 12,
-            into_pt: 40.5,
-            at_end: false,
-            marks: vec![Mark {
-                letter: 'a',
-                block: 3,
-                into_pt: 7.0,
-                said: Said {
-                    heading: Some("Before".to_string()),
-                    through: Some(0.1),
-                },
-            }],
-            said: Said {
-                heading: Some("Installing".to_string()),
-                through: Some(0.4),
-            },
-            left: Some(1_700_000_000),
-        };
-        write_in(&state, &file, &place).expect("kept");
-        assert_eq!(read_in(&state, &file), Some(place));
-        std::fs::remove_dir_all(&dir).expect("cleaned");
-    }
-}
+mod tests;
