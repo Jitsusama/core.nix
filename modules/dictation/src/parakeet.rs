@@ -57,6 +57,9 @@ const SPACE: char = '\u{2581}';
 /// The samples an encoder frame stands for, 80 ms: the spectrogram's
 /// 10 ms hop, eight of which the encoder makes one.
 const FRAME: usize = 8 * RATE / 100;
+/// The encoder's frames for a window when it steps by FRAME: three
+/// halvings of the spectrogram's 1501 frames, each rounding up.
+const STEPPED: usize = 188;
 
 /// A word heard, and the sample of the sound it starts at, by the frame
 /// its first piece was written on.
@@ -297,15 +300,9 @@ impl Parakeet {
         if width != ENCODED {
             return Err(format!("the encoder's output is {width} wide"));
         }
-        // Word times rest on each frame standing for FRAME samples, so an
-        // encoder that steps otherwise is refused rather than misplacing
-        // every word. Its three halvings of 1501 frames give 188.
-        if all.abs_diff(WINDOW / FRAME) > 1 {
-            let wanted = WINDOW / FRAME;
-            return Err(format!(
-                "the encoder gave {all} frames a window, not {wanted}"
-            ));
-        }
+        // It's checked here, on every window, rather than only where words
+        // are timed, so each check that runs the real model proves it.
+        steps_by_frame(all)?;
         // The output is laid out a dimension at a time, every frame's value
         // for each, so each frame is gathered across them.
         Ok((0..usize_of(count)?.min(all))
@@ -505,6 +502,19 @@ fn english(piece: &str) -> bool {
     !special && piece.chars().all(|c| c == SPACE || c.is_ascii())
 }
 
+/// Whether an encoder that gives `all` frames a window steps by FRAME.
+/// Word times rest on it, so one that steps otherwise is refused rather
+/// than misplacing every word.
+fn steps_by_frame(all: usize) -> Result<()> {
+    if all == STEPPED {
+        Ok(())
+    } else {
+        Err(format!(
+            "the encoder gave {all} frames a window, not {STEPPED}, so it doesn't step by 80 ms"
+        ))
+    }
+}
+
 /// The sample of a take that window `number`'s encoder frame `frame`
 /// starts at.
 fn sample_of(number: usize, frame: usize) -> usize {
@@ -692,6 +702,26 @@ mod tests {
             2 * 15 * RATE + 1280,
             "a later window's frame isn't timed from the take's start"
         );
+    }
+
+    #[test]
+    fn an_encoder_stepping_otherwise_than_by_a_frame_is_refused() {
+        let halved = (0..3).fold(usize::try_from(MEL_FRAMES).unwrap(), |n, _| n.div_ceil(2));
+        assert_eq!(
+            STEPPED, halved,
+            "STEPPED isn't the spectrogram's frames halved thrice"
+        );
+        assert_eq!(
+            steps_by_frame(STEPPED),
+            Ok(()),
+            "the shipped encoder's step was refused"
+        );
+        for all in [94, 187, 189, 376] {
+            assert!(
+                steps_by_frame(all).is_err(),
+                "an encoder giving {all} frames a window wasn't refused"
+            );
+        }
     }
 
     #[test]

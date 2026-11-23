@@ -65,7 +65,7 @@ rustPlatform.buildRustPackage {
   # by hand once spaced words otherwise and hid that no take was split.
   # It's named on the package, not in its check phase, so `nix develop` on
   # the package reads it too.
-  PARAKEET_VOCAB = parakeet.vocab;
+  env.PARAKEET_VOCAB = parakeet.vocab;
   passthru = { inherit openvino openvino-genai openvino-tokenizers; };
   meta = {
     description = "Dictation, call transcripts, screenshot text and noise-cancelled microphones";

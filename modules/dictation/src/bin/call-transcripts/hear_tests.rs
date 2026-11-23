@@ -270,7 +270,8 @@ fn joels_echoes_of_their_takes_are_left_out_of_what_is_written() {
     hear_take(&mut writing, 49, &[BO], &[("Sounds", 0), ("good.", 1)]);
     // Joel's microphone hearing the split take across its cut, and Bo's
     // short take, then Joel saying something of his own.
-    writing.lines.push(joels(43, 48, "It today, not yet."));
+    let across = joels(43, 48, "It today, not yet.");
+    writing.lines.push(across.clone());
     writing.lines.push(joels(49, 51, "Sounds good."));
     writing.lines.push(joels(60, 61, "Right."));
     give_voices(&mut writing, None);
@@ -278,6 +279,10 @@ fn joels_echoes_of_their_takes_are_left_out_of_what_is_written() {
     assert!(
         said_by(&writing).contains(&("Not yet.", bo)),
         "the take wasn't split, so its echo across the cut shows nothing"
+    );
+    assert!(
+        !transcript::echoes(&across, &writing.lines),
+        "the echo across the cut is one of a part's, so leaving it out shows nothing"
     );
     assert_eq!(
         joels_written(&writing),
@@ -473,6 +478,40 @@ fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
     );
 }
 
+/// A take heard as scripted: these words for theirs, this text for
+/// Joel's, or neither.
+struct Scripted(Option<(Vec<Word>, String)>);
+
+impl Scripted {
+    fn heard<T>(
+        &self,
+        what: impl FnOnce(&(Vec<Word>, String)) -> T,
+    ) -> Result<(T, Timings), String> {
+        let took = Timings {
+            mel: Duration::ZERO,
+            encoder: Duration::ZERO,
+            decoder: Duration::ZERO,
+            tokens: 0,
+        };
+        let script = self.0.as_ref().ok_or("the encoder failed")?;
+        Ok((what(script), took))
+    }
+}
+
+impl Hears for Scripted {
+    fn words(&mut self, _: &[f32]) -> Result<(Vec<Word>, Timings), String> {
+        self.heard(|(words, _)| words.clone())
+    }
+
+    fn text(&mut self, _: &[f32]) -> Result<(String, Timings), String> {
+        self.heard(|(_, text)| text.clone())
+    }
+
+    fn device(&self) -> &str {
+        "CPU"
+    }
+}
+
 #[test]
 fn a_takes_words_find_the_pieces_they_were_said_in() {
     // Parakeet times a take's words from the take's start and its pieces
@@ -480,7 +519,8 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
     // no piece, and no line would be given a voice.
     let start = 40 * SECOND;
     let said = vec![word("Not", 0), word("yet.", 4 * SECOND)];
-    let (text, words) = as_kept(start, None, said);
+    let mut scripted = Scripted(Some((said, " Done. ".to_owned())));
+    let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]);
     assert_eq!(
         text.as_deref(),
         Some("Not yet."),
@@ -504,9 +544,14 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
         "a piece didn't find the word said in it"
     );
     assert_eq!(
-        as_kept(start, Some(" Done. ".to_owned()), Vec::new()),
+        transcribe_take(&mut scripted, Side::Mine, start, &[]),
         (Some("Done.".to_owned()), Vec::new()),
-        "Joel's text wasn't kept as Parakeet spelled it"
+        "Joel's text wasn't kept as Parakeet spelled it, without words"
+    );
+    assert_eq!(
+        transcribe_take(&mut Scripted(None), Side::Theirs, start, &[]),
+        (None, Vec::new()),
+        "a take that wasn't heard was kept"
     );
 }
 
