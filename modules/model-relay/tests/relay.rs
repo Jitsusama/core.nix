@@ -79,6 +79,9 @@ const ASKED_AGAIN_AFTER: Duration = Duration::from_secs(11);
 /// before it: inside the half second a stop once still forwarded in, and
 /// long enough for the relay to have heard its SIGTERM.
 const PROBED_AFTER_THE_STOP: Duration = Duration::from_millis(250);
+/// How long a relay takes to hear a stop, or to take a connection, before
+/// the next step of a test leans on it having done so.
+const HEARD_WITHIN: Duration = Duration::from_millis(250);
 /// How long a stopped relay gives those it sends direct once its answers
 /// have ended, as its own constant has it.
 const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
@@ -2597,11 +2600,11 @@ async fn a_relay_stopped_again_leaves_at_once() {
     // Apart, so the relay has heard the first and begun its drain before
     // the second comes, rather than taking both as one. A pi connecting
     // between them, saying nothing, is one it's sending direct.
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    tokio::time::sleep(HEARD_WITHIN).await;
     let _late = UnixStream::connect(&relay.socket)
         .await
         .expect("the socket answers");
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    tokio::time::sleep(HEARD_WITHIN).await;
     relay.stop();
 
     let left = relay.left_within(Duration::from_secs(3));
