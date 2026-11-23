@@ -1818,7 +1818,14 @@ impl NetworkCeilings {
     fn of(options: &Options) -> Self {
         let file = options.networks.as_deref();
         let houses = file.map(networks::houses).unwrap_or_default();
-        let from = || house::Ear::start(houses.values().map(|h| h.from).collect());
+        let from = || {
+            house::Ear::start(
+                houses
+                    .values()
+                    .flat_map(|h| h.from.iter().copied())
+                    .collect(),
+            )
+        };
         Self {
             written: file.map(networks::ceilings).unwrap_or_default(),
             ear: (!houses.is_empty()).then(from),
@@ -1889,7 +1896,13 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
     houses
         .iter()
         .filter_map(|(network, h)| {
-            let sent = ear.sent(h.from, now);
+            // The other machine reports by the interface it sends by, so
+            // from one of its addresses; the freshest says what it sends.
+            let sent = h
+                .from
+                .iter()
+                .filter_map(|&address| ear.sent(address, now))
+                .min_by_key(|&(_, age)| age);
             let most = house::held(h.most, sent, least)?;
             Some((network.clone(), (rate::whole(sent?.0), most)))
         })
@@ -2929,7 +2942,7 @@ mod tests {
             "00:00:5e:00:53:01".to_string(),
             networks::House {
                 most: 7_000,
-                from: mac,
+                from: vec![mac],
             },
         )]);
         let at = Instant::now();
@@ -2992,6 +3005,47 @@ mod tests {
             house_said(&quiet).contains("holds nothing"),
             "{}",
             house_said(&quiet)
+        );
+    }
+
+    // A house whose other machine moves to its cable is heard from the
+    // cable's address, its Wi-Fi's last word standing until the cable's
+    // is fresher, and going once it's past its time.
+    #[test]
+    fn a_house_is_heard_from_whichever_of_its_addresses_said_last() {
+        let wifi: std::net::IpAddr = "192.0.2.7".parse().expect("an address");
+        let cable: std::net::IpAddr = "192.0.2.8".parse().expect("an address");
+        let houses = networks::Houses::from([(
+            "00:00:5e:00:53:01".to_string(),
+            networks::House {
+                most: 7_000,
+                from: vec![wifi, cable],
+            },
+        )]);
+        let ear = house::Ear::default();
+        let at = Instant::now();
+        let report = |bytes, ms| house::Report { bytes, ms };
+        ear.hear(wifi, report(0, 0), at);
+        ear.hear(wifi, report(312_500, 1_000), at);
+        let moved = at + Duration::from_secs(2);
+        ear.hear(cable, report(312_500, 2_000), moved);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), moved).get("00:00:5e:00:53:01"),
+            Some(&(2_500, 4_500)),
+            "the Wi-Fi's last rate didn't stand while the cable had said none"
+        );
+        let next = moved + Duration::from_secs(1);
+        ear.hear(cable, report(437_500, 3_000), next);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), next).get("00:00:5e:00:53:01"),
+            Some(&(1_000, 6_000)),
+            "the cable's rate, the fresher, didn't say what the other machine sends"
+        );
+        let past = at + house::FRESH + Duration::from_secs(1);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), past).get("00:00:5e:00:53:01"),
+            Some(&(1_000, 6_000)),
+            "the house went quiet with the Wi-Fi, though the cable spoke lately"
         );
     }
 }

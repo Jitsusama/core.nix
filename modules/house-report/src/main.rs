@@ -9,15 +9,18 @@
 //! uplink has sent since the reporter started, and its own clock in
 //! milliseconds since then. The uplink is INTERFACE, or, without one, the
 //! interface this machine's routes send to ADDRESS by that second, so a
-//! Mac given a cable beside its Wi-Fi is counted by the one it sends by. The shaped machine hears it only from the reserved address
-//! its house names, so this machine sends from that address by its route.
+//! Mac given a cable beside its Wi-Fi is counted by the one it sends by.
+//! A report goes from that interface's address, so the shaped machine's
+//! house names each interface's reserved address, and the log says which
+//! interface and address reports go by, and again each time they move.
 //! It reads a counter any account may read, 64 bits wide on Linux and on a
 //! Mac, so a count that went back was made again, never wrapped.
 //!
-//! A second whose counter can't be read sends nothing, since a count that
-//! went back reads as a restart there; a report that can't be sent, as
-//! while the link changes networks, is dropped. Each is said once in the
-//! log as it starts, and again once it has cleared and comes back.
+//! A second with no route, or whose counter can't be read, sends nothing,
+//! since a count that went back reads as a restart there; a report that
+//! can't be sent, as while the link changes networks, is dropped. Each
+//! trouble is said once in the log as it starts, and again once it has
+//! cleared.
 //!
 //! It takes its help, exits and failures from the terminal kit
 //! (docs/commands.md); it answers nothing, since what it says goes to the
@@ -26,7 +29,7 @@
 mod route;
 mod sent;
 
-use std::net::{SocketAddr, UdpSocket};
+use std::net::{IpAddr, SocketAddr, UdpSocket};
 use std::process::ExitCode;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -135,19 +138,61 @@ fn main() -> ExitCode {
     })
 }
 
-/// The uplink's name and what its counter reads now: `interface`'s, or
-/// the one the routes send to `to` by.
-fn reading(to: SocketAddr, interface: Option<&str>) -> Result<(String, u64), String> {
-    let uplink = match interface {
-        Some(interface) => interface.to_owned(),
-        None => route::toward(to).map_err(|error| {
-            format!("no interface sends to {to}, so nothing is reported: {error}")
-        })?,
-    };
-    let count = sent::by(&uplink).map_err(|error| {
-        format!("{uplink}'s sent bytes can't be read, so nothing is reported: {error}")
-    })?;
-    Ok((uplink, count))
+/// What the log says of the way reports go, when it's another than
+/// `last`'s: the interface the routes send to `to` by, and the address
+/// they go from, which the shaped machine's house must name.
+fn moved(
+    last: Option<&(String, IpAddr)>,
+    now: &(String, IpAddr),
+    to: SocketAddr,
+) -> Option<String> {
+    (last != Some(now)).then(|| {
+        let (interface, from) = now;
+        format!("reports go to {to} by {interface}, from {from}")
+    })
+}
+
+/// The troubles a second can meet, each said once as it starts and once as
+/// it clears.
+#[derive(Debug, Default)]
+struct Troubles {
+    unrouted: Once,
+    unread: Once,
+    unsent: Once,
+}
+
+/// Says `said` in the log, if anything.
+fn say(said: Option<String>) {
+    if let Some(said) = said {
+        eprintln!("house-report: {said}");
+    }
+}
+
+/// The uplink to count this second, `interface` or the one the routes
+/// send to `to` by, saying in the log when the way reports go moves or its
+/// route can't be found.
+fn uplink(
+    to: SocketAddr,
+    interface: Option<&str>,
+    way: &mut Option<(String, IpAddr)>,
+    troubles: &mut Troubles,
+) -> Option<String> {
+    if let Some(interface) = interface {
+        return Some(interface.to_owned());
+    }
+    let found = route::toward(to);
+    let trouble = found
+        .as_ref()
+        .err()
+        .map(|error| format!("no interface sends to {to}, so nothing is reported: {error}"));
+    say(troubles
+        .unrouted
+        .now(trouble, &format!("an interface sends to {to} again")));
+    let now = found.ok()?;
+    say(moved(way.as_ref(), &now, to));
+    let uplink = now.0.clone();
+    *way = Some(now);
+    Some(uplink)
 }
 
 /// Sends a report each second, for as long as it runs.
@@ -159,28 +204,34 @@ fn reports(to: SocketAddr, interface: Option<&str>) -> Result<(), Failure> {
     };
     let socket = UdpSocket::bind(any)
         .map_err(|error| Failure::new(Exit::Failed, format!("no socket to send from: {error}")))?;
+    if let Some(interface) = interface {
+        eprintln!("house-report: reports go to {to}, counting {interface}'s sent bytes");
+    }
     let started = Instant::now();
     let mut total = Total::default();
-    let (mut unread, mut unsent) = (Once::default(), Once::default());
+    let mut troubles = Troubles::default();
+    let mut way = None;
     let mut next = started;
     loop {
         let now = Instant::now();
-        let read = reading(to, interface);
-        if let Some(said) = unread.now(
-            read.as_ref().err().cloned(),
-            "the uplink's sent bytes read again",
-        ) {
-            eprintln!("house-report: {said}");
-        }
-        if let Ok((uplink, count)) = read {
-            total.take(&uplink, count);
-            let text = report(total.bytes, now.duration_since(started).as_millis());
-            let trouble = socket
-                .send_to(text.as_bytes(), to)
-                .err()
-                .map(|error| format!("reports can't reach {to}: {error}"));
-            if let Some(said) = unsent.now(trouble, &format!("reports reach {to} again")) {
-                eprintln!("house-report: {said}");
+        if let Some(uplink) = uplink(to, interface, &mut way, &mut troubles) {
+            let count = sent::by(&uplink);
+            let trouble = count.as_ref().err().map(|error| {
+                format!("{uplink}'s sent bytes can't be read, so nothing is reported: {error}")
+            });
+            say(troubles
+                .unread
+                .now(trouble, &format!("{uplink}'s sent bytes read again")));
+            if let Ok(count) = count {
+                total.take(&uplink, count);
+                let text = report(total.bytes, now.duration_since(started).as_millis());
+                let trouble = socket
+                    .send_to(text.as_bytes(), to)
+                    .err()
+                    .map(|error| format!("reports can't reach {to}: {error}"));
+                say(troubles
+                    .unsent
+                    .now(trouble, &format!("reports reach {to} again")));
             }
         }
         // A step that ran late, its process starved, starts the count of
@@ -257,6 +308,33 @@ mod tests {
         assert_eq!(
             total.bytes, 1_500,
             "the move counted the new uplink's whole count, or what it sent after was lost"
+        );
+    }
+
+    #[test]
+    fn the_way_reports_go_is_said_first_and_each_time_it_moves() {
+        let to: SocketAddr = "192.0.2.3:47110".parse().expect("an address");
+        let wifi = ("en0".to_owned(), "192.0.2.7".parse().expect("an address"));
+        let cable = ("en5".to_owned(), "192.0.2.8".parse().expect("an address"));
+        assert_eq!(
+            moved(None, &wifi, to).as_deref(),
+            Some("reports go to 192.0.2.3:47110 by en0, from 192.0.2.7"),
+            "the first way reports go wasn't said, or not with its interface and address"
+        );
+        assert_eq!(
+            moved(Some(&wifi), &wifi, to),
+            None,
+            "a way that stood was said again"
+        );
+        assert_eq!(
+            moved(Some(&wifi), &cable, to).as_deref(),
+            Some("reports go to 192.0.2.3:47110 by en5, from 192.0.2.8"),
+            "a move to the cable went unsaid"
+        );
+        let renumbered = ("en0".to_owned(), "192.0.2.9".parse().expect("an address"));
+        assert!(
+            moved(Some(&wifi), &renumbered, to).is_some(),
+            "a new address on the same interface went unsaid"
         );
     }
 

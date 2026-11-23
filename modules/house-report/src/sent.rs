@@ -40,7 +40,14 @@ pub fn by(interface: &str) -> io::Result<u64> {
     if index == 0 {
         return Err(io::Error::new(io::ErrorKind::NotFound, "no such interface"));
     }
-    let list = interfaces()?;
+    sent_in(&interfaces()?, index)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such interface"))
+}
+
+/// The bytes the interface numbered `index` has sent, as the routing
+/// socket's interface list `list` counts them, if the list holds it whole.
+#[cfg(target_os = "macos")]
+fn sent_in(list: &[u8], index: u32) -> Option<u64> {
     let mut at = 0;
     // Each message starts with its length, two bytes, and its type, the
     // fourth byte; an interface's own is a whole if_msghdr2.
@@ -56,12 +63,12 @@ pub fn by(interface: &str) -> io::Result<u64> {
             let message: libc::if_msghdr2 =
                 unsafe { std::ptr::read_unaligned(list[at..].as_ptr().cast()) };
             if u32::from(message.ifm_index) == index {
-                return Ok(message.ifm_data.ifi_obytes);
+                return Some(message.ifm_data.ifi_obytes);
             }
         }
         at += length;
     }
-    Err(io::Error::new(io::ErrorKind::NotFound, "no such interface"))
+    None
 }
 
 /// The routing socket's list of interfaces, each with its 64-bit counts.
@@ -110,8 +117,59 @@ fn interfaces() -> io::Result<Vec<u8>> {
 mod tests {
     use super::*;
 
+    /// An interface list's message for the interface numbered `index`,
+    /// whole, counting `sent` bytes sent and `heard` heard.
+    fn message(index: u16, sent: u64, heard: u64) -> Vec<u8> {
+        // SAFETY: if_msghdr2 is numbers alone, so all zeroes is one.
+        let mut message: libc::if_msghdr2 = unsafe { std::mem::zeroed() };
+        let whole = std::mem::size_of::<libc::if_msghdr2>();
+        message.ifm_msglen = u16::try_from(whole).expect("a message longer than its length");
+        message.ifm_type = u8::try_from(libc::RTM_IFINFO2).expect("a type past a byte");
+        message.ifm_index = index;
+        message.ifm_data.ifi_obytes = sent;
+        message.ifm_data.ifi_ibytes = heard;
+        // SAFETY: `message` is `whole` bytes long and lives to the copy.
+        unsafe { std::slice::from_raw_parts((&raw const message).cast::<u8>(), whole) }.to_vec()
+    }
+
+    // The list's walk, over a list made here: a message of another type
+    // and length passed by, the sent count read rather than the heard one,
+    // and all 64 bits of it, and a message cut short or of no length read
+    // as nothing rather than past the list's end.
+    #[test]
+    fn the_list_gives_the_sent_count_of_the_interface_asked_whole() {
+        let past_32_bits = 5_000_000_000;
+        let mut other = vec![0_u8; 20];
+        other[0] = 20;
+        other[3] = u8::try_from(libc::RTM_NEWADDR).expect("a type past a byte");
+        let list = [other, message(3, past_32_bits, 7), message(4, 9, 9)].concat();
+        assert_eq!(
+            sent_in(&list, 3),
+            Some(past_32_bits),
+            "the sent count wasn't read whole, or the heard one was read for it"
+        );
+        assert_eq!(
+            sent_in(&list, 5),
+            None,
+            "an interface not listed read a count"
+        );
+        let cut = &list[..list.len() - 1];
+        assert_eq!(
+            sent_in(cut, 4),
+            None,
+            "a message cut short was read past the list's end"
+        );
+        let none_long = [vec![0_u8; 4], message(3, 1, 1)].concat();
+        assert_eq!(
+            sent_in(&none_long, 3),
+            None,
+            "the walk went on past a message of no length"
+        );
+    }
+
     // What the loopback carries for a datagram sent to this machine is
-    // counted as sent, so getifaddrs is read for real, not a stand-in.
+    // counted as sent, so the routing socket's list is read for real
+    // (sysctl's NET_RT_IFLIST2), not a stand-in.
     #[test]
     fn the_loopbacks_count_grows_by_what_it_sends() {
         let before = by("lo0").expect("the loopback's count couldn't be read");

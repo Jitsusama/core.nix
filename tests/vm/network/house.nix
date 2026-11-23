@@ -5,9 +5,10 @@
 # client leaves by, and sends 3 Mbit/s across the home network. That upload
 # never reaches the connection, so the client's own reading of the line
 # can't hold it there: only the reports can. While they come, the client's
-# upload is held under what the house's 8 Mbit/s leaves; once they stop, it
-# climbs back to the connection. The tests are house-vm-test.py, run
-# through pytest.
+# upload is held under what the house's 8 Mbit/s leaves, and still once the
+# other machine's route moves to another of its addresses, as a Mac's does
+# to its cable's; once they stop, it climbs back to the connection. The
+# tests are house-vm-test.py, run through pytest.
 { self, pkgs }:
 let
   inherit (pkgs) lib;
@@ -43,12 +44,16 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     jitsusama.shaper.controller = "one-way";
     # The router's hardware address, as QEMU gives the third machine by
     # name its card on the first network, names the network; the house is
-    # the second's, at the address the test network gives it.
+    # the second's, at the address the test network gives it, or the one
+    # it moves to.
     jitsusama.shaper.networks."52:54:00:12:01:03" = {
       up = 8000;
       house = {
         most = 8000;
-        from = "192.168.1.2";
+        from = [
+          "192.168.1.2"
+          "192.168.1.12"
+        ];
       };
     };
     users.users.alice = {

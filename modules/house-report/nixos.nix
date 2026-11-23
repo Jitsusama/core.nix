@@ -14,6 +14,9 @@
       DynamicUser = true;
       Restart = "always";
       RestartSec = 5;
+      # Asked wrongly (the terminal kit's usage exit), it would exit the
+      # same way each start, so it stays stopped and says why once.
+      RestartPreventExitStatus = "64";
       ProtectSystem = "strict";
       ProtectHome = true;
       PrivateTmp = true;

@@ -7,6 +7,7 @@
 { config, lib, ... }:
 let
   log = "/var/log/house-report.log";
+  program = lib.escapeShellArgs config.jitsusama.house-report.arguments;
 in
 {
   imports = [ ./system.nix ];
@@ -29,7 +30,7 @@ in
     ProgramArguments = [
       "/bin/sh"
       "-c"
-      "/bin/wait4path /nix/store && exec ${lib.escapeShellArgs config.jitsusama.house-report.arguments}"
+      "/bin/wait4path /nix/store && exec ${program}"
     ];
     RunAtLoad = true;
     # launchd waits 10 s between starts should it end.

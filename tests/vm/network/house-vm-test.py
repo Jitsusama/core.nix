@@ -44,6 +44,9 @@ FLOOR = 4000
 CLIMBED = HELD + 500
 # How many readings a second apart the hold has to keep.
 READINGS = 10
+# The address the house's other machine moves its route to, as a Mac does
+# to its cable's, which the client's house names beside its first.
+MOVED_TO = "192.168.1.12"
 # How long the client may take to boot to its first queues, the shaper to
 # hear the house and hold, the hold to let go once the reports stop (3 s
 # fresh, then the journal's next step), and the upload to climb back.
@@ -84,6 +87,15 @@ class Rig:
         """Give what the shaper said."""
         return self.client.succeed("journalctl -u shaper -o cat --no-pager")
 
+    def holds(self) -> list[int]:
+        """Give the rate the upload is held to, read a second apart, READINGS times."""
+        readings = []
+        for _ in range(READINGS):
+            readings.append(self.up())
+            # Readings a second apart, as the shaper steps.
+            self.client.succeed("sleep 1")
+        return readings
+
 
 @pytest.fixture(scope="module")
 def rig(machines: dict[str, BaseMachine]) -> Rig:
@@ -123,11 +135,7 @@ def held(rig: Rig) -> None:
 def test_the_house_holds_the_upload_under_what_it_leaves(rig: Rig) -> None:
     """While the house says it sends 3 Mbit/s, the client's upload is held under the 5 left."""
     held(rig)
-    readings = []
-    for _ in range(READINGS):
-        readings.append(rig.up())
-        # Readings a second apart, as the shaper steps.
-        rig.client.succeed("sleep 1")
+    readings = rig.holds()
     heard = rig.heard()[-READINGS:]
     said = [(s.get("house_sent"), s.get("house_most"), s.get("up")) for s in heard]
     print(f"held at {readings} kbit/s, the house sending and leaving, and asked: {said}")
@@ -141,6 +149,33 @@ def test_the_house_holds_the_upload_under_what_it_leaves(rig: Rig) -> None:
         f"the reports said the house sent {sent} kbit/s, past its {SENDS}"
     )
     assert "the house's ceiling holds" in rig.journal(), "the shaper held without saying so"
+
+
+def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
+    """Once the reporter's route sends from another address the house names, it still holds."""
+    held(rig)
+    rig.house.succeed(
+        f"ip addr add {MOVED_TO}/24 dev eth1",
+        f"ip route replace 192.168.1.0/24 dev eth1 proto kernel scope link src {MOVED_TO}",
+    )
+    rig.house.wait_until_succeeds(
+        f"journalctl -u house-report -o cat --no-pager | grep -q 'by eth1, from {MOVED_TO}'",
+        timeout=QUIETING,
+    )
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat --no-pager"
+        f' | grep -q "the house\'s first report from {MOVED_TO} was heard"',
+        timeout=QUIETING,
+    )
+    # The first address's last word goes stale, so a hold that stands
+    # past it was heard from the new one.
+    rig.client.succeed("sleep 5")
+    readings = rig.holds()
+    print(f"held at {readings} kbit/s after the move")
+    assert max(readings) <= HELD, (
+        f"the upload went to {max(readings)} kbit/s once the reports came from {MOVED_TO}"
+    )
+    assert "went quiet" not in rig.journal(), "the house went quiet as its reporter moved"
 
 
 def test_a_house_gone_quiet_lets_the_upload_go(rig: Rig) -> None:

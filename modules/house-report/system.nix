@@ -7,10 +7,13 @@
 # on a Mac is let reach the local network without asking: macOS blocks an
 # account's own agent there, with no prompt, for a program Nix built.
 #
-# The shaped machine hears reports only from the address its house names,
-# so give this machine a reserved address on that network, and leave the
-# home network out of any VPN's tunnel here, or the reports leave by the
-# tunnel and never arrive.
+# The shaped machine hears reports only from the addresses its house
+# names, and this one reports from the address of the interface it sends
+# by, so give each interface it may send by (its Wi-Fi and its cable) a
+# reserved address on that network, name each in the house's `from`, and
+# leave the home network out of any VPN's tunnel here, or the reports
+# leave by the tunnel and never arrive. The reporter says in its log which
+# interface and address it sends by, and again each time that moves.
 {
   config,
   lib,
@@ -32,19 +35,10 @@ let
     lib.head
     (lib.replaceStrings [ "_" ] [ "" ])
   ];
-  # An address, not a name: the reporter would exit on a name each time it
-  # started, and its service start it again forever. Its own parse judges
-  # the rest.
-  octet = "(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])";
-  address =
-    lib.types.addCheck lib.types.str (
-      text:
-      builtins.match "${octet}([.]${octet}){3}" text != null
-      || builtins.match "[0-9a-fA-F:]*:[0-9a-fA-F:]*" text != null
-    )
-    // {
-      description = "IPv4 or IPv6 address";
-    };
+  # An address, not a name, as Rust's parse and the shaper's house read
+  # one alike: the reporter would exit on anything else each time it
+  # started.
+  address = import ../shaper/address.nix lib;
   # An IPv6 address goes in brackets before its port.
   to = if lib.hasInfix ":" cfg.to then "[${cfg.to}]:${port}" else "${cfg.to}:${port}";
 in

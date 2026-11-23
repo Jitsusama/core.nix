@@ -7,8 +7,9 @@ use std::ffi::CStr;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, UdpSocket};
 
-/// The interface this machine's routes send to `to` by now.
-pub fn toward(to: SocketAddr) -> io::Result<String> {
+/// The interface this machine's routes send to `to` by now, and the
+/// address it sends from there, which the shaped machine hears it by.
+pub fn toward(to: SocketAddr) -> io::Result<(String, IpAddr)> {
     let any: SocketAddr = if to.is_ipv4() {
         (Ipv4Addr::UNSPECIFIED, 0).into()
     } else {
@@ -18,7 +19,8 @@ pub fn toward(to: SocketAddr) -> io::Result<String> {
     // address it would send from.
     let socket = UdpSocket::bind(any)?;
     socket.connect(to)?;
-    holding(socket.local_addr()?.ip())
+    let from = socket.local_addr()?.ip();
+    Ok((holding(from)?, from))
 }
 
 /// The interface that holds `address`.
@@ -87,11 +89,15 @@ mod tests {
 
     #[test]
     fn this_machine_sends_to_itself_by_its_loopback() {
-        let loopback = toward((Ipv4Addr::LOCALHOST, 47_110).into())
+        let (loopback, from) = toward((Ipv4Addr::LOCALHOST, 47_110).into())
             .expect("no interface was found for this machine's own address");
         assert!(
             loopback.starts_with("lo"),
             "this machine's own address was sent to by {loopback}, not its loopback"
+        );
+        assert!(
+            from.is_loopback(),
+            "this machine's own address was sent to from {from}, not a loopback address"
         );
     }
 
