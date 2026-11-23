@@ -1337,13 +1337,14 @@ Provider {
     // Talk reaches, or the look's own where the cell only lists that, never
     // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
-    // leaves what waits at once. One with nobody to tell, that the node
-    // refused or went before saying it took, or that no word came for, says
-    // so at its side (Looks.js's unanswered), the journal saying why where
-    // a word came. Its choices come back only where nobody was told or the
-    // node refused (Looks.js's awaiting), and one run while an answer may
-    // still reach its session, from acts drawn before it was given, sends
-    // nothing. A word for an answer since replaced changes nothing (`sent`).
+    // leaves what waits at once. One with nobody to tell, never sent, that
+    // the node refused or went before saying it took, or that no word came
+    // for, says so at its side (Looks.js's unanswered), the journal saying
+    // why where it ended. Its choices stay away only while no word has come
+    // on a connection still open (Looks.js's awaiting), and one run then,
+    // from acts drawn before it was given, sends nothing; the connection
+    // going ends that wait, as every ask's (Daemon.qml's gone). A word for
+    // an answer since replaced changes nothing (`sent`).
     function answerLook(one, choice) {
         if (Looks.awaiting(one, lookAnswers)) {
             console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
@@ -1364,29 +1365,37 @@ Provider {
         }
         lookAnswers = Object.assign({}, lookAnswers,
             { [one.id]: { label: choice.label, at: at, sent: sent } });
-        // The node's answer is none where it went before answering, the
-        // steer perhaps already in the session's inbox (Daemon.qml's gone),
-        // or else what it said, a refusal where it didn't put it.
-        Sessions.steer(told.address, told.steer, (put, answer) => {
+        Sessions.steer(told.address, told.steer, (put, answer, reached) => {
             const left = Object.assign({}, provider.lookAnswers);
             if (left[one.id]?.sent !== sent)
                 return;
-            const dropped = !put && (answer === null || answer === undefined);
             if (put) {
                 left[one.id] = Object.assign({}, left[one.id], { taken: true });
-            } else if (dropped) {
-                console.warn(`Now: the node went before saying it took the answer to look`
-                    + ` ${JSON.stringify(one.id)} for ${JSON.stringify(told.address)}`);
-            } else {
-                console.warn(`Now: the node refused the answer to look`
-                    + ` ${JSON.stringify(one.id)} for ${JSON.stringify(told.address)}:`
-                    + ` ${JSON.stringify(answer?.error?.message ?? "")}`);
+                provider.lookAnswers = left;
+                return;
             }
-            if (!put)
-                left[one.id] = { label: choice.label, at: Date.now(), sent: sent,
-                    failed: dropped ? "dropped" : "untaken" };
+            const failed = provider.answerFailed(reached, answer);
+            const words = {
+                unsent: "wasn't connected to the node, so never sent",
+                dropped: "lost the node before it said it took",
+                untaken: `was refused ${JSON.stringify(answer?.error?.message ?? "")} by the node`
+            };
+            console.warn(`Now: ${words[failed]} the answer to look ${JSON.stringify(one.id)}`
+                + ` for ${JSON.stringify(told.address)}`);
+            left[one.id] = { label: choice.label, at: Date.now(), sent: sent, failed: failed };
             provider.lookAnswers = left;
         });
+    }
+
+    // Why an answer the node didn't put failed: never sent, with no node
+    // connected; the node gone before answering one it was sent, which may
+    // be in the session's inbox all the same (Daemon.qml's gone gives
+    // none); or else refused, which is also what an answer of no known
+    // shape is taken for, so its choices come back saying so.
+    function answerFailed(reached, answer) {
+        if (reached === false)
+            return "unsent";
+        return reached === true && answer === null ? "dropped" : "untaken";
     }
 
     // A look as ForYou.js weighs it, blocking the session that left it
@@ -1409,8 +1418,10 @@ Provider {
         // do (Joel, 2026-11-19): in its second form, where it says what
         // follows any, one fact a choice, its label and what follows it or
         // that it doesn't say (QGB4ON's layout of 2026-11-22), so none is
-        // left out; else the labels together.
-        const offered = lookChoices(one, now);
+        // left out; else the labels together. They're said while an answer
+        // is out too, so Joel still reads what he chose and what else there
+        // was, though none can be pressed (lookChoices).
+        const offered = lookOffers(one);
         const followed = LookForm.secondForm(one) && offered.some(choice => choice.follows !== "")
             ? offered.map(choice => ({ label: choice.label,
                 value: choice.follows || waitingSaid("followsUnsaid", {}) }))
@@ -1473,13 +1484,18 @@ Provider {
         "verb:on:look:clear", "verb:on:waiting:go", "verb:on:waiting:explain",
         "verb:agent:talk"].map(id => Words.name(id))
 
-    // The choices a look offers while it waits and no answer given may have
-    // reached its session (Looks.js's awaiting), but for one named as the
+    // The choices a look offers while it waits, but for one named as the
     // launcher's own acts are, which a look's writer could word to pass for
     // Clear It.
-    function lookChoices(one, now) {
-        return one.state === "waiting" && !Looks.awaiting(one, lookAnswers)
+    function lookOffers(one) {
+        return one.state === "waiting"
             ? one.offers.filter(choice => !LookForm.poses(choice.label, lookActNames)) : [];
+    }
+
+    // Those Joel can press: none while an answer given is out (Looks.js's
+    // awaiting).
+    function lookChoices(one, now) {
+        return Looks.awaiting(one, lookAnswers) ? [] : lookOffers(one);
     }
 
     // A look's row: its title, who asks in its note, its kind's mark, and

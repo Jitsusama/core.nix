@@ -1880,11 +1880,11 @@ works the same way everywhere.
   The failure's mark and what didn't happen are in alert and the why
   muted, and short of room the why gives way from its end. A look's
   answer is the one exception: it's said at the look's side until Joel
-  answers again, "Keep It not answered yet · no answer", since he comes
-  back to a look later rather than at the next key. Its choices stay
-  away while the session may have heard it, or may yet, the node gone
-  before saying included, so the session never hears two; nobody to
-  tell, or the node's refusal, brings them back. Going into a row lists
+  answers again or the look is settled, "Keep It not answered yet · no
+  answer", since he comes back to a look later rather than at the next
+  key. Its choices stay away while no word of it has come, so a second
+  can't follow one on its way; the node answering or going brings them
+  back, the yet saying where it may still come. Going into a row lists
   its acts, led by Return's own, which there does it and closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"); a power profile's stays even there,

@@ -547,19 +547,19 @@ QtObject {
                 Looks.unanswered(Object.assign({}, choosing, { state: "resolved" }), given,
                     now + 6 * 1000)],
             ["nobody", "untaken", "dropped", "", "unheard", "unheard", "", "", ""]);
-        // While an answer may have reached its session, or yet reach it, its
-        // choices stay away, so a second can't follow it and the session hear
-        // both: with no word yet, however long, or the node gone before
-        // saying. Only nobody to tell or the node's refusal brings them back.
-        expect("an answer that may have gone or yet go, never once refused or taken",
+        // While no word of an answer has come its choices stay away, however
+        // long, so a second can't follow it and the session hear both; any
+        // word, the node going included, brings them back.
+        expect("an answer out while no word of it came, never once said or taken",
             [Looks.awaiting(choosing, given),
                 Looks.awaiting(choosing, failed("dropped")),
+                Looks.awaiting(choosing, failed("unsent")),
                 Looks.awaiting(choosing, failed("untaken")),
                 Looks.awaiting(choosing, failed("nobody")),
                 Looks.awaiting(choosing, { P: { label: "Posted", at: now, taken: true } }),
                 Looks.awaiting(Object.assign({}, choosing, { state: "resolved" }), given),
                 Looks.awaiting(choosing, {})],
-            [true, true, false, false, false, false, false]);
+            [true, false, false, false, false, false, false, false]);
         expect("when an answer's side next changes, at its 5 s, never once said or taken",
             [Looks.answersChange(given, now + 1000), Looks.answersChange(given, now + 6 * 1000),
                 Looks.answersChange(failed("dropped"), now + 1000),

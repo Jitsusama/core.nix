@@ -22,8 +22,8 @@ const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
 const OFFERED = 4;
 // How long an answer shows as given while the node hasn't said it took
 // it, before saying it may not have gone: "no answer in 5 s" (docs/
-// design.md). Its side says so from then until a word comes, since
-// nothing times out a steer the node was asked.
+// design.md). Its side says so from then until a word comes, the node
+// going included, since nothing else times out a steer it was asked.
 const ANSWER_HEARD = 5 * 1000;
 // How long a look waits before it goes quiet: it leaves what waits, and so
 // every count of it, for History, where it's still opened as it was. By then
@@ -335,11 +335,12 @@ function answering(one, answered, now) {
 }
 
 // Why Joel's answer to a look still waiting may not have gone, "nobody"
-// to tell, "untaken" where the node answered without taking it,
-// "dropped" where it went before saying, or "unheard" past ANSWER_HEARD
-// with no word, else "", said until he answers again: his choices coming
-// back unsaid left him no way "to in any way follow through" (Joel,
-// 2026-11-22), however much later he comes back to it.
+// to tell, "unsent" with no node connected, "untaken" where the node
+// refused it, "dropped" where it went before saying, or "unheard" past
+// ANSWER_HEARD with no word, else "", said until he answers again or the
+// look is settled, however much later he comes back to it: his choices
+// coming back unsaid left him no way "to in any way follow through"
+// (Joel, 2026-11-22).
 function unanswered(one, answered, now) {
     const given = answered?.[one.id];
     if (one.state !== "waiting" || !given || given.taken) {
@@ -351,16 +352,16 @@ function unanswered(one, answered, now) {
     return now - given.at >= ANSWER_HEARD ? "unheard" : "";
 }
 
-// Whether Joel's answer to a look still waiting may have reached, or yet
-// reach, its session: given and not taken, with no word yet, or the node
-// gone before saying, which a session may have heard. Its choices stay
-// away meanwhile, so a second answer can't follow one still on its way
-// and the session hear both; only nobody to tell or the node's refusal
-// brings them back.
+// Whether Joel's answer to a look still waiting is out: given, with no
+// word come of it, which only the node answering or going ends. Its
+// choices stay away meanwhile, so a second answer can't follow one still
+// on its way and the session hear both. Once the node went they come
+// back, though it may have written the first, since a look left with no
+// way to answer until the shell restarts is worse; the side's "yet" says
+// it may still come.
 function awaiting(one, answered) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && !!given && !given.taken
-        && (!given.failed || given.failed === "dropped");
+    return one.state === "waiting" && !!given && !given.taken && !given.failed;
 }
 
 // How long until an answer's side next changes as time passes, or null:
