@@ -21,7 +21,10 @@ hiding() {
   fi
 }
 
-if [ -z "$(hiding "$1")" ]; then
+# Each search is its own assignment, so a folder it can't read ends the
+# script under set -e; inside a test, the failure would read as no match.
+shared=$(hiding "$1")
+if [ -z "$shared" ]; then
   echo "the search finds no rule hiding the MX Brio even where the sharing's is"
   exit 1
 fi
