@@ -64,13 +64,19 @@ function whereKept(at, moment, screens, given, inUse) {
     return Object.keys(screens).find(name => screens[name] === at.screen && !taken.includes(name));
 }
 
-// The other screens as `at` is found gone (othersAt): those heard, and its
-// twins (twinsOf) gone or not heard yet. Another not heard is left out: it
-// may be `at`'s own, renumbered, which wayBack never takes as "".
-function othersGone(at, moment, screens) {
+// The note (homeward's) a place kept at `at` and found on `output` (whereKept) carries, or null:
+// one gone, or on a screen not heard yet (""), may be another's, so it goes home when its own
+// comes. The others (othersAt) are those heard, and its twins (twinsOf) gone or not heard yet;
+// another not heard is left out, as it may be `at`'s own, renumbered, which wayBack refuses.
+function awayOf(at, output, moment, screens) {
+    if (output !== undefined && !(at.screen && screens?.[output] === "")) {
+        return null;
+    }
     const lefts = twinsOf(at, moment).filter(one => !screens[one]);
     const heard = Object.assign({}, screens, ...lefts.map(one => ({ [one]: at.screen })));
-    return othersAt(at.output, Object.keys(screens).filter(name => screens[name]), lefts, heard);
+    const said = Object.keys(screens).filter(name => screens[name]);
+    const others = othersAt(at.output, said, lefts, heard);
+    return { screen: at.screen || at.output, workspace: at.workspace, output: at.output, others };
 }
 
 // Where each kept place goes now, in the order given, null for none: on
@@ -78,11 +84,11 @@ function othersGone(at, moment, screens) {
 // goes to the screen in use, its workspaces after every workspace the
 // places there use, in their order, as niri moves a gone screen's
 // workspaces, rather than mixed into the same numbers, and says where it
-// belongs (`away`), so its workspace can go there once the screen comes,
-// with the other screens as it was found gone (`others`, of othersGone),
-// each twin (of `moments`, each place's boot's) given a connector of its
-// own. `screens` is connected's; with none, as before niri lists any, or no
-// screen in use, a gone one is left as it was kept.
+// belongs (`away`, of awayOf, as one on a screen not heard yet does), so
+// its workspace can go there once the screen comes, each twin (of
+// `moments`, each place's boot's) given a connector of its own. `screens`
+// is connected's; with none, as before niri lists any, or no screen in
+// use, a gone one is left as it was kept.
 function placed(places, screens, inUse, moments) {
     const known = Object.keys(screens ?? {}).length > 0;
     const given = [];
@@ -92,7 +98,8 @@ function placed(places, screens, inUse, moments) {
         }
         const output = known ? whereKept(at, moments?.[index], screens, given, inUse) : at.output;
         given.push({ at, output });
-        return output === undefined ? { at, gone: at.screen || at.output, index } : { at, output };
+        const gone = output === undefined ? at.screen || at.output : undefined;
+        return { at, index, output, gone };
     });
     let last = 0;
     for (const one of found) {
@@ -118,22 +125,15 @@ function placed(places, screens, inUse, moments) {
         if (one === null) {
             return null;
         }
+        const away = known ? awayOf(one.at, one.output, moments?.[one.index], screens) : null;
         if (one.output !== undefined) {
-            return Object.assign({}, one.at, { output: one.output });
+            return Object.assign({}, one.at, { output: one.output }, away ? { away } : {});
         }
         if (inUse === null || inUse === undefined) {
             return Object.assign({}, one.at);
         }
-        return Object.assign({}, one.at, {
-            output: inUse,
-            workspace: after[one.gone] + one.at.workspace,
-            away: {
-                screen: one.gone,
-                workspace: one.at.workspace,
-                output: one.at.output,
-                others: othersGone(one.at, moments?.[one.index], screens)
-            }
-        });
+        const workspace = after[one.gone] + one.at.workspace;
+        return Object.assign({}, one.at, { output: inUse, workspace, away });
     });
 }
 
