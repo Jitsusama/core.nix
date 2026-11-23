@@ -179,7 +179,7 @@ pub fn lock(state: &Path) -> Result<std::fs::File, String> {
 /// fill with where an agent's log or another machine's is.
 #[cfg(target_os = "linux")]
 fn watch(config: Config, wake: Sender<Wake>, followed: Arc<Mutex<Vec<PathBuf>>>) {
-    use rustix::fs::inotify::{self, CreateFlags, ReadFlags, WatchFlags};
+    use rustix::fs::inotify::{self, CreateFlags, WatchFlags};
     std::thread::spawn(move || {
         let sessions = config.sessions.clone();
         // Each machine's logs are watched as this machine's are, a new
@@ -224,12 +224,16 @@ fn watch(config: Config, wake: Sender<Wake>, followed: Arc<Mutex<Vec<PathBuf>>>)
                 })
                 .collect();
             if looked.is_none_or(|at| at.elapsed() >= BUSY) {
-                *looked = Some(Instant::now());
                 // A pass that panicked holding it left a list still whole.
                 let followed = match followed.lock() {
                     Ok(followed) => followed.clone(),
                     Err(poisoned) => poisoned.into_inner().clone(),
                 };
+                // Until the first pass says what it found, each batch asks
+                // again, so the agents' folders are watched once it has.
+                if !followed.is_empty() {
+                    *looked = Some(Instant::now());
+                }
                 paths.extend(followed);
             }
             let known: std::collections::HashSet<PathBuf> = watched.values().cloned().collect();
@@ -250,28 +254,49 @@ fn watch(config: Config, wake: Sender<Wake>, followed: Arc<Mutex<Vec<PathBuf>>>)
         let mut buffer = [std::mem::MaybeUninit::<u8>::uninit(); 8192];
         let mut events = inotify::Reader::new(&fd, &mut buffer);
         loop {
-            let mut touched = Vec::new();
-            loop {
-                match events.next() {
-                    Ok(event) if event.events().contains(ReadFlags::QUEUE_OVERFLOW) => {
-                        touched.push(PathBuf::from("/"));
-                    }
-                    Ok(event) => touched.extend(watched.get(&event.wd()).cloned()),
-                    Err(rustix::io::Errno::INTR) => continue,
-                    Err(_) => return poll(&config, &wake),
-                }
-                if events.is_buffer_empty() {
-                    break;
-                }
-            }
+            let Some(touched) = written_in(&mut events, &mut watched) else {
+                return poll(&config, &wake);
+            };
             add(&mut watched, &mut looked);
-            touched.sort();
-            touched.dedup();
             if wake.send(Wake::Touched(touched)).is_err() {
                 return;
             }
         }
     });
+}
+
+/// What the watch has heard since it last asked: each watched folder
+/// written in, `/` where it may have missed some. A watch the kernel
+/// dropped, as its folder went, is forgotten, so the folder made again by
+/// that name is watched afresh once a pass finds it. None once it can't
+/// read.
+#[cfg(target_os = "linux")]
+fn written_in<Fd: std::os::fd::AsFd>(
+    events: &mut rustix::fs::inotify::Reader<'_, Fd>,
+    watched: &mut std::collections::HashMap<i32, PathBuf>,
+) -> Option<Vec<PathBuf>> {
+    use rustix::fs::inotify::ReadFlags;
+    let mut touched = Vec::new();
+    loop {
+        match events.next() {
+            Ok(event) if event.events().contains(ReadFlags::QUEUE_OVERFLOW) => {
+                eprintln!("the watch missed what was written; walking every folder again");
+                touched.push(PathBuf::from("/"));
+            }
+            Ok(event) if event.events().contains(ReadFlags::IGNORED) => {
+                touched.extend(watched.remove(&event.wd()));
+            }
+            Ok(event) => touched.extend(watched.get(&event.wd()).cloned()),
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(_) => return None,
+        }
+        if events.is_buffer_empty() {
+            break;
+        }
+    }
+    touched.sort();
+    touched.dedup();
+    Some(touched)
 }
 
 #[cfg(not(target_os = "linux"))]

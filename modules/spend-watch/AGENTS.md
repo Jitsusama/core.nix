@@ -68,8 +68,10 @@ feed speaks.
   name, and serves the quest whose workspace it works in until a quest
   entry says otherwise. A folder at a pattern's first `*` (a council's run,
   a quest's workspace) that has gone a day unwritten, its logs read to
-  their end, is walked no more until the watch hears a write under it, or
-  until the walk every six hours that catches what no watch hears.
+  their end, is walked no more, though its logs are still read each pass.
+  It's walked again when a folder the walk read in it changes (a reviewer
+  asked again makes one), when the watch hears a write under it, and at
+  least every six hours, which finds a log made in a folder that held none.
   `src/ingest.rs` finds them; `src/series.rs` maps them.
 - **Machines.** Another machine is counted as this one is, the only
   difference being where its credentials live: the config names where its
