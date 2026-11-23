@@ -28,7 +28,7 @@
 //! than holding it, unseen by video, as by best effort wherever its own
 //! queue is spared; and a hold still on unseen until its answers come.
 //! The minute's line says best effort's own figures, and the video
-//! class's beside them.
+//! class's beside them, or that video went unmeasured.
 //!
 //! Long because its cases, near half of it, stay beside the private
 //! figures they prove one by one, as every module in wifid keeps them.
@@ -333,10 +333,39 @@ pub async fn follow(
 struct Echoers {
     best: Option<Echoer>,
     video: Option<Echoer>,
-    /// The classes whose socket has failed to open since it last opened,
-    /// said as a warning the first time, as such a class goes unmeasured,
-    /// and quietly after.
-    unopened: Vec<Class>,
+    failing: Failing,
+}
+
+/// The classes whose echoes have failed, to open or to go, since each last
+/// went: the first failure is said as a warning, as such a class goes
+/// unmeasured, and the rest quietly.
+#[derive(Default)]
+struct Failing(Vec<Class>);
+
+impl Failing {
+    /// The journal level to say the class's failure at.
+    fn failed(&mut self, class: Class) -> u8 {
+        if self.0.contains(&class) {
+            7
+        } else {
+            self.0.push(class);
+            4
+        }
+    }
+
+    /// Takes note that the class's echo went.
+    fn went(&mut self, class: Class) {
+        self.0.retain(|failing| *failing != class);
+    }
+}
+
+/// Whether best effort's echo went this second, as only then is the card's
+/// station read: its counts alone would read as never answered, and send
+/// it from one good access point to the next.
+fn best_effort_went(echoed: &[(Class, io::Result<(Instant, Echo)>)]) -> bool {
+    echoed
+        .iter()
+        .any(|(class, echoed)| *class == Class::BestEffort && echoed.is_ok())
 }
 
 impl Echoers {
@@ -351,17 +380,9 @@ impl Echoers {
                 continue;
             }
             match Echoer::open(card, class) {
-                Ok(opened) => {
-                    *socket = Some(opened);
-                    self.unopened.retain(|unopened| *unopened != class);
-                }
+                Ok(opened) => *socket = Some(opened),
                 Err(error) => {
-                    let level = if self.unopened.contains(&class) {
-                        7
-                    } else {
-                        self.unopened.push(class);
-                        4
-                    };
+                    let level = self.failing.failed(class);
                     eprintln!(
                         "<{level}>can't echo {card}'s gateway in {}: {error}",
                         class.name()
@@ -446,30 +467,31 @@ async fn measure(
                 continue;
             }
         };
-        // A card best effort couldn't be echoed on isn't measured: its
-        // station's counts alone would read as never answered, and send
-        // it from one good access point to the next.
-        if echoed
-            .iter()
-            .any(|(class, echoed)| *class == Class::BestEffort && echoed.is_ok())
-        {
+        if best_effort_went(&echoed) {
             echoed_on.push(on.clone());
+        }
+        // Taken before a failing socket is let go, as what it heard late
+        // before failing is heard all the same. Each is to an echo of an
+        // earlier second, already kept.
+        for late in sockets.late() {
+            measures.answered_late(late);
         }
         for (class, echoed) in echoed {
             match echoed {
-                Ok((at, echo)) => measures.echoed_as(class, &on.point, at, echo),
+                Ok((at, echo)) => {
+                    sockets.failing.went(class);
+                    measures.echoed_as(class, &on.point, at, echo);
+                }
                 Err(error) => {
+                    let level = sockets.failing.failed(class);
                     eprintln!(
-                        "<7>can't echo {}'s gateway in {}: {error}",
+                        "<{level}>can't echo {}'s gateway in {}: {error}",
                         on.card,
                         class.name()
                     );
                     sockets.close(class);
                 }
             }
-        }
-        for late in sockets.late() {
-            measures.answered_late(late);
         }
         echoers.insert(on.card, sockets);
     }
@@ -556,7 +578,9 @@ fn said(
     video: Option<Video>,
     call: bool,
 ) -> String {
-    let video = video.map_or(String::new(), |video| {
+    // A card whose video echoes don't go is judged by best effort alone,
+    // which is said each minute rather than once, hours back.
+    let video = video.map_or("; video unmeasured".into(), |video| {
         format!(
             "; video {} at p95, {:.1}% of {} echoes answered past {} s, {} unanswered{}",
             ms(video.p95),
@@ -1032,8 +1056,9 @@ pub(crate) mod tests {
         assert_eq!(
             said(&on, both, None, false),
             "wlan2 on 6c:ae:f6:c1:84:26: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
-             echoes lost; 1.25 in 100 frames sent again, 0.00 lost; signal -47 dBm",
-            "one line says all of it"
+             echoes lost; video unmeasured; 1.25 in 100 frames sent again, 0.00 lost; \
+             signal -47 dBm",
+            "one line says all of it, and that video went unmeasured"
         );
         assert!(
             said(&on, both, None, true).ends_with("signal -47 dBm, during a call"),
@@ -1141,6 +1166,41 @@ pub(crate) mod tests {
             .best_effort_of(DESK, now)
             .expect("best effort was echoed");
         assert_eq!(best.p95, Some(ms(6)), "best effort's own, as logged");
+        assert!(best.lost.abs() < 1e-9, "its loss its own: {}", best.lost);
+    }
+
+    #[test]
+    fn a_class_failing_is_warned_of_once_until_its_echo_goes_again() {
+        let mut failing = Failing::default();
+        let levels = [
+            failing.failed(Class::Video),
+            failing.failed(Class::Video),
+            failing.failed(Class::BestEffort),
+        ];
+        assert_eq!(levels, [4, 7, 4], "each class warns once on its own");
+        failing.went(Class::Video);
+        assert_eq!(failing.failed(Class::Video), 4, "and again once it went");
+        assert_eq!(
+            failing.failed(Class::BestEffort),
+            7,
+            "the other still quiet"
+        );
+    }
+
+    #[test]
+    fn a_card_s_station_is_read_only_when_its_best_effort_echo_went() {
+        let at = Instant::now();
+        let went = || Ok((at, Echo::Lost));
+        let failed = || Err(io::Error::other("unreachable"));
+        assert!(
+            best_effort_went(&[(Class::BestEffort, went()), (Class::Video, failed())]),
+            "best effort went, lost or not"
+        );
+        assert!(
+            !best_effort_went(&[(Class::BestEffort, failed()), (Class::Video, went())]),
+            "only video went"
+        );
+        assert!(!best_effort_went(&[]), "neither socket open");
     }
 
     #[test]

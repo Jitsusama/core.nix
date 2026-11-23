@@ -4,9 +4,12 @@
 //! The echo goes out on an ICMP datagram socket, which the kernel lets any
 //! group in `net.ipv4.ping_group_range` open, so wifid needs no capability
 //! for it: its bounding set stays empty. The socket is bound to the card,
-//! so a VPN's routes or a cable can't carry the echo another way. The
-//! kernel sets each echo's identifier and checksum, and hands back only the
-//! answers to this socket's, so an answer is told by its sequence alone.
+//! so a VPN's routes or a cable can't carry the echo another way, and to
+//! an identifier drawn at random, which the kernel sets in each echo with
+//! its checksum; it hands back only the answers to this socket's, so an
+//! answer is told by its sequence alone. One answer counted needs both a
+//! gateway's address and the identifier, so a station on the same network
+//! forging answers has 65,536 to guess before its answers count.
 //!
 //! Each card's gateway is echoed in two classes, best effort and video,
 //! since an access point can hold one of a station's queues while the
@@ -177,9 +180,12 @@ impl Echoer {
             return Err(io::Error::last_os_error());
         }
         mark(&owned, class)?;
-        // A first sequence nobody off the card's link can guess, so nobody
-        // can answer an echo in the gateway's place unseen.
-        let [low, high, ..] = RandomState::new().hash_one(card).to_le_bytes();
+        // An identifier and a first sequence drawn at random, so answering
+        // an echo in the gateway's place means guessing them. An identifier
+        // another socket holds fails the bind, and the next second draws
+        // another.
+        let [low, high, first, second, ..] = RandomState::new().hash_one(card).to_le_bytes();
+        identify(&owned, u16::from_le_bytes([first, second]))?;
         Ok(Echoer {
             socket: AsyncFd::with_interest(owned, Interest::READABLE)?,
             sequence: u16::from_le_bytes([low, high]),
@@ -302,6 +308,25 @@ fn mark(socket: &OwnedFd, class: Class) -> io::Result<()> {
     Ok(())
 }
 
+/// Binds the socket to the identifier its echoes carry.
+fn identify(socket: &OwnedFd, identifier: u16) -> io::Result<()> {
+    let address = libc::sockaddr_in {
+        sin_family: libc::sa_family_t::try_from(libc::AF_INET).map_err(io::Error::other)?,
+        sin_port: identifier.to_be(),
+        sin_addr: libc::in_addr {
+            s_addr: libc::INADDR_ANY,
+        },
+        sin_zero: [0; 8],
+    };
+    let length = libc::socklen_t::try_from(mem::size_of_val(&address)).map_err(io::Error::other)?;
+    // SAFETY: the address outlives the call, and the length is its own.
+    let bound = unsafe { libc::bind(socket.as_raw_fd(), (&raw const address).cast(), length) };
+    if bound < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
 /// An echo request with this sequence, its identifier and checksum left
 /// for the kernel.
 fn request(sequence: u16) -> Vec<u8> {
@@ -333,12 +358,6 @@ mod tests {
         assert_eq!(request[0], 8, "an echo request");
         assert_eq!(request[1], 0, "of code 0");
         assert_eq!(&request[6..8], &[1, 2], "its sequence, in network order");
-    }
-
-    #[test]
-    fn a_video_echo_goes_in_wi_fis_video_queue_and_best_effort_unmarked() {
-        assert_eq!(Class::Video.tos(), 0xa0, "CS5: user priority 5, video's");
-        assert_eq!(Class::BestEffort.tos(), 0, "best effort carries no mark");
     }
 
     #[test]

@@ -220,6 +220,7 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           pkgs.coreutils
           pkgs.iproute2
           pkgs.iw
+          pkgs.nftables
         ];
         serviceConfig = {
           Type = "oneshot";
@@ -241,6 +242,11 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
           ip -n air address add 10.42.0.1/24 dev lantern
           ip -n air address add 10.43.0.1/24 dev wlan1
           ip -n air address add 10.44.0.1/24 dev wlan4
+          # The gateway counts the echoes reaching it marked for video, so a
+          # test can see a card's marked echo leave marked.
+          ip netns exec air nft add table ip marked
+          ip netns exec air nft add chain ip marked input '{ type filter hook input priority 0; }'
+          ip netns exec air nft add rule ip marked input ip dscp cs5 icmp type echo-request counter
         '';
       };
       systemd.services.lantern = inAir // {
@@ -379,6 +385,8 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
         pkgs.iw
         pkgs.dig
         pkgs.curl
+        # For reading the gateway's count of echoes marked for video.
+        pkgs.nftables
         # For asking acts on the launcher's rows socket as the launcher does.
         pkgs.socat
       ];

@@ -316,11 +316,8 @@ async fn serve(
         followed: HashMap::new(),
     };
     let (asks, taken) = mpsc::channel(1);
-    let before = Path::new(STATE).join(learn::BEFORE);
-    if let Err(error) = fs::remove_file(&before)
-        && error.kind() != io::ErrorKind::NotFound
-    {
-        eprintln!("<4>can't let go of {}: {error}", before.display());
+    if let Err(error) = learn::let_go_of_before(Path::new(STATE)) {
+        eprintln!("<4>can't let go of the hours learned before video was weighed: {error}");
     }
     // How well each access point carries, measured from where the machine
     // is, and the card moved to one carrying better (moves.rs), with what

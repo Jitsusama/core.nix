@@ -41,14 +41,29 @@ use crate::measure::Measured;
 /// learned of best effort alone, which holds a point stalling a call's
 /// queue as quick as its best effort, and on 23 Nov 2026 such a figure
 /// drew a card back to one 81 s after it was moved off. So the hours are
-/// learned again in a file of their own.
+/// learned again in a file of their own. A wifid from before knows nothing
+/// of this one, so going back to it leaves this file on the disk, kept to
+/// the networks saved again only once a wifid from after starts.
 pub const FILE: &str = "carried-weighing-video";
 
 /// The file the hours were kept in before, let go of as wifid starts:
 /// nothing keeps it to the networks still saved, and which access points
 /// a machine was near, and when, would say where it has been. A wifid
 /// from before begins its hours again.
-pub const BEFORE: &str = "carried";
+const BEFORE: &str = "carried";
+
+/// Lets go of the hours kept before in wifid's state folder, and of any
+/// write of them cut short, which holds the same.
+pub fn let_go_of_before(state: &Path) -> io::Result<()> {
+    let before = state.join(BEFORE);
+    for file in [before.with_extension("partial"), before] {
+        match fs::remove_file(&file) {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+    }
+    Ok(())
+}
 
 /// How many minutes an access point must have been measured at an hour,
 /// from about one place, before what it carried is gone by.
@@ -328,6 +343,22 @@ mod tests {
     fn p95_of(learned: &Learned, point: &str, hour: u8, signal: i16) -> Option<u64> {
         let measured = learned.of(point, hour, signal)?;
         Some(u64::try_from(measured.p95?.as_millis()).unwrap())
+    }
+
+    #[test]
+    fn the_hours_kept_before_are_let_go_of_with_any_write_cut_short() {
+        let dir = tempfile::tempdir().unwrap();
+        for file in [BEFORE, "carried.partial", FILE] {
+            fs::write(dir.path().join(file), "{}").unwrap();
+        }
+        let_go_of_before(dir.path()).unwrap();
+        assert!(!dir.path().join(BEFORE).exists(), "the old hours are gone");
+        assert!(
+            !dir.path().join("carried.partial").exists(),
+            "and their write cut short"
+        );
+        assert!(dir.path().join(FILE).exists(), "the new hours stay");
+        let_go_of_before(dir.path()).expect("nothing left to let go of is no error");
     }
 
     #[test]
