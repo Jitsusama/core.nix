@@ -6,7 +6,8 @@ journal by what it was (Presented.timedShown): words typed by how many letters, 
 arrow and the letters of the row it named, and a key the launcher names itself, an arrow, whole,
 since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
 no case in Qt's engine reaches, so these press each kind and read its line. A key listed
-without a daemon's answer, and the answer that comes late, count its letters the same way.
+without a daemon's answer, and the answer that comes late, count its letters the same way, and
+a slow drawer is said by its row's kind (Presented.rowShown), not by the id its key carries.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import launcher_on_niri
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from launcher_on_niri import Shell
+    from launcher_on_niri import Json, Shell
 
 # How many times a kind of key is pressed for one of them to be slow enough to be said: the
 # nested niri's software frames take longer than FELT_MS for nearly every key.
@@ -40,6 +41,8 @@ LISTED = re.compile(r"launcher: (.+?) listed without ")
 LATE = re.compile(r"launcher: .+? answered (.+?) \d+ ms after its key")
 # Words typed with nothing else named by them, so no line says them but by the letters.
 UNNAMED = "zygodactyl"
+# What a program's drawer line says of its row, keyed `program:<its desktop entry's id>`.
+PROGRAMS_DRAWER = 'drawer for "program"'
 
 # The shell, started once for the file's cases.
 shell = launcher_on_niri.shell
@@ -160,3 +163,34 @@ def test_a_key_listed_without_an_answer_and_the_late_answer_count_its_letters(
     shell.close_launcher()
     keys = listed + late
     assert all(re.fullmatch(r"\d+ letters?", key) for key in keys), f"words were said: {keys}"
+
+
+def program_timed_since(shown: Json, before: int) -> bool:
+    """Say whether a program's drawer is the one timed since the launcher had timed `before`."""
+    timed = shown["drawer"]["timed"]
+    return timed["count"] > before and str(timed["key"]).startswith("program:")
+
+
+def test_a_programs_slow_drawer_is_said_by_its_kind(shell: Shell) -> None:
+    """A program's drawer slow to its frame is said by its row's kind, not by the program's id.
+
+    Launcher.qml's drawerMade hands Trials.drawerTimed the row as Presented.rowShown says it;
+    handed the row's key, the line would say the id after `program:`, which a package wrote, as
+    a window's key carries its title.
+    """
+    keyed: set[str] = set()
+
+    def drawn() -> None:
+        shell.as_account(shell.ipc("toggle"))
+        shell.launcher_ready()
+        before = shell.showing()["drawer"]["timed"]["count"]
+        shell.type_in("programs", selecting="Programs")
+        shell.step_in()
+        shell.launcher_until(lambda shown: program_timed_since(shown, before))
+        keyed.add(str(shell.showing()["drawer"]["timed"]["key"]))
+        shell.close_launcher()
+
+    said = said_by(shell, drawn, lambda keys: PROGRAMS_DRAWER in keys)
+    whole = [line for line in said if any(key in line for key in keyed)]
+    assert not whole, f"a drawer said its row's key {sorted(keyed)}: {whole}"
+    assert PROGRAMS_DRAWER in said, f"no program's drawer was said by its kind: {said}"

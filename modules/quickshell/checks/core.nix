@@ -173,8 +173,9 @@ in
 
   # With reports off, a slow key's line says an arrow whole and a step by
   # its arrow and its row's letters, as each of keyTimed's callers in
-  # Launcher.qml says its key is, and a key listed without an answer and the
-  # answer late count its letters (modules/quickshell/tests/slow-keys-on-niri-test.py).
+  # Launcher.qml says its key is, a key listed without an answer and the
+  # answer late count its letters, and a program's slow drawer says its row's
+  # kind, not its id (modules/quickshell/tests/slow-keys-on-niri-test.py).
   the-launcher-says-a-slow-keys-kind-on-niri = launcherOnNiri {
     name = "the-launcher-says-a-slow-keys-kind-on-niri";
     tests = ../tests/slow-keys-on-niri-test.py;
