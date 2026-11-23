@@ -2726,7 +2726,10 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     shell.step_in()
     shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
     stepped = shell.rows_made("emoji") - before
-    assert stepped > moved, "a step into the first group made none of its emoji"
+    assert stepped > moved, (
+        "a step into the first group made none of its emoji, so they were made before this"
+        " case and kept: a close before it let none go, or the start made them"
+    )
     shell.close_launcher()
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
@@ -2758,6 +2761,8 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
     shell.type_in("f")
+    # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
+    shell.launcher_until(lambda shown: shown["count"] > 0)
     shell.normal()
     words = " ".join(word["text"] for word in laid_out(shell)["foot"])
     shell.close_launcher()
