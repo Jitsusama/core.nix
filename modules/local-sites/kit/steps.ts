@@ -56,7 +56,9 @@ function answersAt(target: Element): boolean {
  * head.css reads to keep a key line showing on touch: a line whose only
  * tappable key is `?` tells a phone nothing it can do. A page writes
  * data-tap in its markup too, so the line is there at first paint rather
- * than arriving with the script and pushing the switch down.
+ * than arriving with the script and pushing the switch down; a key it marks
+ * there that does nothing when tapped loses the mark here, so no finger is
+ * offered a dead target.
  */
 function pressable(
   selector: string,
@@ -65,6 +67,9 @@ function pressable(
 ): void {
   for (const kbd of document.querySelectorAll<HTMLElement>(selector)) {
     const tap = Object.hasOwn(taps, kbd.textContent) ? taps[kbd.textContent] : undefined;
+    if (!tap || HELP_KEYS.has(kbd.textContent)) {
+      Reflect.deleteProperty(kbd.dataset, "tap");
+    }
     if (tap) {
       const act = (): void => {
         tap();

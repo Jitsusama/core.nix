@@ -1,9 +1,10 @@
-"""The web-design skill's pixels probe (skill/pixels.js), held to its cases in headless Chromium.
+"""The web-design skill's pixels and names probes, held to their cases in headless Chromium.
 
 Each case sets a small page in a phone's 390 px window and runs the probe
 on it as a live page's test does, reading the lines it answers: a page
 scrolling sideways, a shift as a part arrives, text under the floor, and a
-control named apart from its words. The cases come from the live sites as
+control named apart from its words (skill/pixels.js, and skill/names.js for
+the names). The cases come from the live sites as
 1HE06W measured them on 22 November 2026: forage 601 px wide on a phone and
 shifting 0.81, its labels under 10 px, and the Network's buttons named
 "Find a cell" while showing "/". The probe's path comes from WEB_SKILL, as
@@ -12,6 +13,7 @@ loaded as a plugin.
 """
 
 import os
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -23,6 +25,10 @@ if TYPE_CHECKING:
     from playwright.sync_api import Browser, Page, ViewportSize
 
 PROBE = (Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text()
+NAMES = (Path(os.environ["WEB_SKILL"]) / "names.js").read_text()
+# Longest the probe may take on a page that never rests: its three seconds'
+# wait, its last half second of quiet, and a builder's slack.
+RESTLESS_SECONDS = 5
 PHONE: ViewportSize = {"width": 390, "height": 844}
 ORIGIN = "http://pixels.test/"
 # The kit's own text-for-the-ear rule, so a case can hide words as a page does.
@@ -41,8 +47,8 @@ def tab(browser: Browser) -> Iterator[Page]:
     opened.close()
 
 
-def probed(tab: Page, body: str, settle_ms: int = 0) -> list[str]:
-    """Open `body` as a page, let it settle `settle_ms`, and give what the probe answers.
+def probed(tab: Page, body: str, settle_ms: int = 0, probe: str = PROBE) -> list[str]:
+    """Open `body` as a page, let it settle `settle_ms`, and give what `probe` answers.
 
     The page comes by a real navigation, not `set_content`, whose written
     document keeps no layout shifts in its timeline as a loaded page does.
@@ -52,9 +58,14 @@ def probed(tab: Page, body: str, settle_ms: int = 0) -> list[str]:
     tab.goto(ORIGIN)
     if settle_ms:
         tab.wait_for_timeout(settle_ms)
-    found = tab.evaluate(PROBE)
+    found = tab.evaluate(probe)
     assert isinstance(found, list), f"the probe answered {found!r}, not a list of lines"
     return [str(line) for line in found]
+
+
+def named(tab: Page, body: str) -> list[str]:
+    """Open `body` as a page and give what names.js answers."""
+    return probed(tab, body, probe=NAMES)
 
 
 def test_a_page_that_fits_passes(tab: Page) -> None:
@@ -212,9 +223,33 @@ MOVING = """
   const above = document.getElementById("above");
   const grow = (px) => () => {{ above.style.height = px; }};
   requestAnimationFrame(() => requestAnimationFrame(() => {{
-    setTimeout(grow("{first}"), 100);
-    setTimeout(grow("{then}"), 1600);
+    setTimeout(() => {{ grow("{first}")(); setTimeout(grow("{then}"), 1500); }}, 100);
   }}));
+</script>
+"""
+
+# The block moved down 100 px at 300 ms and again 350 ms after that: two
+# shifts of 0.07 in one window, the second landing after the probe's first
+# half second of quiet would have ended, so only a wait that starts again on
+# a shift hears it.
+AGAIN = """
+<main><div id="above"></div><div style="height: 400px; background: #ccc"></div></main>
+<script>
+  const above = document.getElementById("above");
+  setTimeout(() => {
+    above.style.height = "100px";
+    setTimeout(() => { above.style.height = "200px"; }, 350);
+  }, 300);
+</script>
+"""
+
+# The block moved 40 px every 200 ms for as long as the page is open.
+RESTLESS = """
+<main><div id="above"></div><div style="height: 400px; background: #ccc"></div></main>
+<script>
+  const above = document.getElementById("above");
+  let down = false;
+  setInterval(() => { down = !down; above.style.height = down ? "40px" : "0"; }, 200);
 </script>
 """
 
@@ -229,6 +264,22 @@ def test_a_shift_is_said_by_its_size(tab: Page) -> None:
 def test_shifts_far_apart_are_windows_apart(tab: Page) -> None:
     """Two shifts of 0.07 a second and a half apart are two windows, neither over 0.1."""
     assert probed(tab, MOVING.format(first="100px", then="200px"), 2000) == []
+
+
+def test_a_shift_as_the_probe_waits_starts_its_wait_again(tab: Page) -> None:
+    """A second shift landing in the probe's wait is heard, so the two make 0.14."""
+    found = probed(tab, AGAIN)
+    assert len(found) == 1, found
+    assert found[0].startswith("the page shifts 0.14 as it arrives"), found
+
+
+def test_a_page_that_never_rests_ends_the_wait(tab: Page) -> None:
+    """A page shifting for ever is named within the wait's three seconds, and a little."""
+    began = time.monotonic()
+    found = probed(tab, RESTLESS)
+    took = time.monotonic() - began
+    assert took < RESTLESS_SECONDS, f"the probe took {took:.1f} s on a page that never rests"
+    assert found[0].startswith("the page shifts "), found
 
 
 def test_a_shift_after_a_press_is_the_press(tab: Page) -> None:
@@ -256,7 +307,7 @@ def test_a_part_whose_box_is_kept_doesnt_shift(tab: Page) -> None:
 
 def test_a_name_apart_from_what_shows_is_named(tab: Page) -> None:
     """A button showing "Find" but named "Search cells" can't be said by what it shows."""
-    found = probed(tab, '<main><button aria-label="Search cells">Find</button></main>')
+    found = named(tab, '<main><button aria-label="Search cells">Find</button></main>')
     assert found == [
         (
             'a control showing "Find" named "Search cells": '
@@ -267,7 +318,7 @@ def test_a_name_apart_from_what_shows_is_named(tab: Page) -> None:
 
 def test_a_name_only_beginning_with_the_same_letters_is_named(tab: Page) -> None:
     """A button showing "Find" named "Finder" can't be said as "Find", so it's named."""
-    found = probed(tab, '<main><button aria-label="Finder">Find</button></main>')
+    found = named(tab, '<main><button aria-label="Finder">Find</button></main>')
     assert len(found) == 1
     assert found[0].startswith('a control showing "Find" named "Finder"'), found
 
@@ -278,12 +329,12 @@ def test_words_a_narrow_screen_hides_arent_shown(tab: Page) -> None:
         '<main><button aria-label="Find a cell">Find'
         '<span style="display: none"> everything</span></button></main>'
     )
-    assert probed(tab, body) == []
+    assert named(tab, body) == []
 
 
 def test_an_empty_name_is_no_name(tab: Page) -> None:
     """An empty aria-label leaves the button named by its words, so it passes."""
-    assert probed(tab, '<main><button aria-label="">Find</button></main>') == []
+    assert named(tab, '<main><button aria-label="">Find</button></main>') == []
 
 
 def test_every_misnamed_control_is_counted_in_one_line(tab: Page) -> None:
@@ -292,7 +343,7 @@ def test_every_misnamed_control_is_counted_in_one_line(tab: Page) -> None:
         '<main><button aria-label="Search">Find</button>'
         '<button aria-label="Leave">Go</button><button aria-label="Shut">Close</button></main>'
     )
-    found = probed(tab, body)
+    found = named(tab, body)
     assert len(found) == 1
     assert found[0].startswith('a control showing "Find" named "Search" (and 2 more): '), found
 
@@ -300,12 +351,12 @@ def test_every_misnamed_control_is_counted_in_one_line(tab: Page) -> None:
 def test_a_name_starting_with_what_shows_passes(tab: Page) -> None:
     """A button showing "Find" and its keycap, named "Find a cell", passes."""
     body = '<main><button aria-label="Find a cell">Find <kbd>/</kbd></button></main>'
-    assert probed(tab, body) == []
+    assert named(tab, body) == []
 
 
 def test_a_mark_alone_shows_a_word_too(tab: Page) -> None:
     """A keycap button showing "/" and named "Find a cell", as the Network's were, is named."""
-    found = probed(
+    found = named(
         tab, '<main><kbd role="button" tabindex="0" aria-label="Find a cell">/</kbd></main>'
     )
     assert found == [
@@ -319,7 +370,7 @@ def test_a_mark_alone_shows_a_word_too(tab: Page) -> None:
 def test_a_keycap_showing_its_key_passes(tab: Page) -> None:
     """A tappable keycap showing j, named for its key first, passes."""
     body = '<main><kbd role="button" tabindex="0" aria-label="j, next site">j</kbd></main>'
-    assert probed(tab, body) == []
+    assert named(tab, body) == []
 
 
 def test_a_picture_named_by_its_label_passes(tab: Page) -> None:
@@ -328,7 +379,7 @@ def test_a_picture_named_by_its_label_passes(tab: Page) -> None:
         '<main><button aria-label="Dark"><svg width="24" height="24" aria-hidden="true">'
         '<circle cx="12" cy="12" r="6"/></svg></button></main>'
     )
-    assert probed(tab, body) == []
+    assert named(tab, body) == []
 
 
 def test_faint_text_is_named_with_its_ratio(tab: Page) -> None:
@@ -348,7 +399,19 @@ def test_large_text_needs_only_three(tab: Page) -> None:
     large = '<main><h1 style="color: #949494; font-size: 24px">Forage</h1></main>'
     assert probed(tab, large) == []
     small = '<main><p style="color: #949494">Forage</p></main>'
-    assert len(probed(tab, small)) == 1
+    found = probed(tab, small)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Forage" at 3.03:1 on its ground, under 4.5:1'), found
+
+
+def test_bold_text_is_large_from_eighteen_and_two_thirds(tab: Page) -> None:
+    """#949494 at 19 px is enough bold, and not at a normal weight."""
+    bold = '<main><p style="color: #949494; font: 700 19px serif">Forage</p></main>'
+    assert probed(tab, bold) == []
+    normal = '<main><p style="color: #949494; font: 400 19px serif">Forage</p></main>'
+    found = probed(tab, normal)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Forage" at 3.03:1'), found
 
 
 def test_text_faded_by_opacity_is_measured_faded(tab: Page) -> None:
@@ -356,6 +419,97 @@ def test_text_faded_by_opacity_is_measured_faded(tab: Page) -> None:
     found = probed(tab, '<main><p style="opacity: 0.5">Quiet</p></main>')
     assert len(found) == 1
     assert found[0].startswith('text "Quiet" at 3.9'), found
+
+
+def test_a_faded_box_fades_its_ground_and_words_as_one(tab: Page) -> None:
+    """#888 on black at 0.8 opacity paints #a0a0a0 on #333 over white, 4.8:1."""
+    body = (
+        '<main><div style="background: #000; opacity: 0.8">'
+        '<p style="color: #888">Calm</p></div></main>'
+    )
+    assert probed(tab, body) == []
+
+
+def test_a_faded_control_on_its_own_ground_is_measured_as_drawn(tab: Page) -> None:
+    """White on #444 at half opacity over black paints mid grey on #222, about 4:1."""
+    body = (
+        '<main style="background: #000"><div style="background: #444; opacity: 0.5">'
+        '<p style="color: #fff">Off</p></div></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Off" at 4.0'), found
+
+
+def test_words_nobody_sees_are_not_faint(tab: Page) -> None:
+    """Words at no opacity, still to arrive, aren't measured."""
+    assert probed(tab, '<main><p style="opacity: 0; color: #999">Copied</p></main>') == []
+
+
+def test_a_placeholder_is_measured_in_its_own_colour(tab: Page) -> None:
+    """A field's #bbb placeholder is faint, though the field's words are black."""
+    body = (
+        "<style>input::placeholder { color: #bbb; }</style>"
+        '<main><input placeholder="Find" style="color: #000"></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Find" at 1.9'), found
+
+
+def test_words_a_style_writes_are_measured_in_their_colour(tab: Page) -> None:
+    """An ::after's #bbb words are faint beside black ones."""
+    body = (
+        '<style>.n::after { content: " cells"; color: #bbb; }</style>'
+        '<main><p class="n">12</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "cells" at 1.9'), found
+
+
+def test_a_gradient_is_measured_at_its_worst(tab: Page) -> None:
+    """#777 on a gradient from white to #999 is named at its #999 end."""
+    body = (
+        '<main><div style="background: linear-gradient(#fff, #999)">'
+        '<p style="color: #777">Fade</p></div></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Fade" at 1.57'), found
+
+
+def test_a_line_drawn_beside_the_words_is_not_their_ground(tab: Page) -> None:
+    """A 1 px black line drawn as a gradient leaves the words on white."""
+    body = (
+        '<main><div style="background: linear-gradient(#000, #000) no-repeat; '
+        'background-size: 1px 100%"><p>Beside a line</p></div></main>'
+    )
+    assert probed(tab, body) == []
+
+
+def test_words_painted_with_a_gradient_are_measured_by_it(tab: Page) -> None:
+    """Words clipped to a black to #ccc gradient are named at #ccc."""
+    body = (
+        '<main><p style="background: linear-gradient(#000, #ccc); background-clip: text; '
+        'color: transparent">Glow</p></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1, found
+    assert found[0].startswith('text "Glow" at 1.6'), found
+
+
+def test_words_on_a_picture_are_named_for_a_person(tab: Page) -> None:
+    """A picture can't be measured, so its words are named, not passed in silence."""
+    picture = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+    body = f'<main><div style="background-image: url({picture})"><p>On a picture</p></div></main>'
+    found = probed(tab, body)
+    assert found == [
+        (
+            "words in 1 place sit on a picture, so their contrast went unmeasured: "
+            "set them on a plain ground or a gradient"
+        )
+    ], found
 
 
 def test_a_box_ground_is_what_the_words_sit_on(tab: Page) -> None:

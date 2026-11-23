@@ -709,8 +709,9 @@ in
         echo "A first view's faces come to $first bytes, past 350 KB."
         exit 1
       fi
-      steps=$(grep -c -- '--step-[a-z]*: clamp(' ${kit}/theme.css)
-      held=$(grep -c -- '--step-[a-z]*: clamp(max(12px, ' ${kit}/theme.css)
+      # grep counts none with a failure, which would end the build unsaid.
+      steps=$(grep -c -- '--step-[a-z0-9-]*: clamp(' ${kit}/theme.css || true)
+      held=$(grep -c -- '--step-[a-z0-9-]*: clamp(max(12px, ' ${kit}/theme.css || true)
       if [ "$steps" -eq 0 ] || [ "$held" -ne "$steps" ]; then
         echo "Only $held of theme.css's $steps type steps start at 12 px or more."
         exit 1

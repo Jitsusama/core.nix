@@ -104,6 +104,17 @@ copied "${work}/late"
 sed -i '\|href="../local-sites/web/fonts/monaspace.woff2"|d' "${work}/late/index.html"
 refused "${work}/late" "index.html doesn't preload monaspace.woff2" "a page preloading no mono"
 
+# A preload without crossorigin is never matched to the face's own fetch,
+# so the face comes twice, late, and one in a comment asks for nothing.
+copied "${work}/uncrossed"
+sed -i '\|fonts/monaspace.woff2|s| crossorigin>|>|' "${work}/uncrossed/index.html"
+refused "${work}/uncrossed" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono without crossorigin"
+copied "${work}/hushed"
+sed -i '\|fonts/monaspace.woff2|{s|^|<!-- |;s|$| -->|}' "${work}/hushed/index.html"
+refused "${work}/hushed" "index.html doesn't preload monaspace.woff2" \
+  "a page preloading its mono only in a comment"
+
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still
 # send each through the same script: those builds take no source but their

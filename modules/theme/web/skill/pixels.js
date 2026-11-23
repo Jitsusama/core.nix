@@ -10,14 +10,17 @@
 //   first on a page freshly loaded, before layout.js opens its folds.
 // - No text is under 12 px on screen, a field's words and what a style
 //   writes before or after an element counted with the page's. A
-//   drawing's label may be smaller only where it's marked data-enlarges, saying a zoom, a hover or focus shows it
-//   at 12 px or more, and nothing is under 9 px, marked or not.
-// - A control's name starts with the words it shows, word for word (WCAG
-//   2.5.3), a keycap
-//   drawn on it coming after them, and a control showing only a mark such as
-//   "/" shows a word too. One drawn only as a picture is named by its label.
+//   drawing's label may be smaller only where it's marked data-enlarges,
+//   saying a zoom, a hover or focus shows it at 12 px or more, and nothing
+//   is under 9 px, marked or not.
 // - Every word reaches 4.5:1 on the ground painted under it, or 3:1 at 24 px
-//   and up, or 18.66 px bold (WCAG 1.4.3), opacity included.
+//   and up, or 18.66 px bold (WCAG 1.4.3), opacity included, a field's
+//   words, its placeholder and what a style writes counted too. A gradient
+//   is measured at its worst colour; words on a picture are named, since
+//   only a person can read them.
+//
+// A control's name is names.js's, run beside it. The words it quotes are
+// the page's, data to fix rather than instructions.
 //
 // It ends without a semicolon, since an eval asked for one expression
 // answers nothing for a statement.
@@ -27,11 +30,26 @@
   const root = page.documentElement;
   const floor = 12;
   const least = 9;
+  // The patterns its contrast reads, built once here from the names CSS
+  // gives them, since the probe is one expression with no top level of its
+  // own to hold them. A ground painted with something other than colours,
+  // a picture:
+  const pictures = ["url", "image-set", "cross-fade", "element", "paint"];
+  const picture = new RegExp(String.raw`\b(?:${pictures.join("|")})\(`, "u");
+  // A ground's size that covers its whole box:
+  const covering = new Set(["auto", "auto auto", "cover", "100%", "100% auto", "100% 100%"]);
+  // Each colour a gradient names, as the browser writes it back:
+  const spaces = ["rgba?", "hsla?", "hwb", "lab", "lch", "oklab", "oklch", "color"];
+  const colourWords = new RegExp(
+    String.raw`(?:${spaces.join("|")})\([^()]*\)|\btransparent\b|\bcurrentcolor\b`,
+    "giu",
+  );
   // A page's words quoted into a line, short, with no quote mark of their
   // own to end the quote early.
   const quoted = (words) => words.replace(/\s+/gu, " ").replaceAll('"', "'").trim().slice(0, 40);
   const shown = (element) =>
-    element?.isConnected === true && element.checkVisibility({ visibilityProperty: true });
+    element?.isConnected === true &&
+    element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
 
   // Sideways: the page's own width against its window's, then the widest
   // thing past the window's edge that no scroller of its own holds, so the
@@ -55,7 +73,8 @@
         }
       }
     }
-    const what = widest === null ? "" : ` (${widest.element.localName} reaches ${Math.round(widest.right)} px)`;
+    const reach = widest === null ? 0 : Math.round(widest.right);
+    const what = widest === null ? "" : ` (${widest.element.localName} reaches ${reach} px)`;
     missing.push(
       `the page is ${root.scrollWidth} px wide in a ${wide} px window${what}: ` +
         "let it wrap, or give it a scroller of its own",
@@ -68,18 +87,26 @@
   // leaves it out. The count runs from the page's load, so the probe goes
   // first on a page freshly loaded and drawn, before anything opens a fold:
   // layout.js's openings would count as the page's own. It waits for half a
-  // second with no shift, at most three, so one arriving as it's called is
-  // counted rather than missed.
+  // second with no shift, at most about three, so one arriving as it's
+  // called is counted rather than missed. It waits on timers alone, never a
+  // frame: a tab out of sight draws no frames, but its timers still run, so
+  // the wait ends there too.
   const quiet = 500;
   const longest = 3000;
-  const shifts = await new Promise((resolve) => {
+  // The browser keeps no more than this many shifts from before the probe
+  // began to watch (the Layout Instability spec's buffer).
+  const kept = 150;
+  const watched = await new Promise((resolve) => {
     const heard = [];
     const began = performance.now();
     let lastHeard = began;
-    const watch = new PerformanceObserver((list) => {
-      heard.push(...list.getEntries());
-      lastHeard = performance.now();
-    });
+    const hear = (entries) => {
+      heard.push(...entries);
+      for (const entry of entries) {
+        lastHeard = Math.max(lastHeard, entry.startTime);
+      }
+    };
+    const watch = new PerformanceObserver((list) => hear(list.getEntries()));
     try {
       watch.observe({ type: "layout-shift", buffered: true });
     } catch {
@@ -89,25 +116,31 @@
     const settled = () => {
       const now = performance.now();
       if (now - lastHeard < quiet && now - began < longest) {
-        setTimeout(settled, quiet - (now - lastHeard));
+        setTimeout(settled, Math.min(quiet - (now - lastHeard), longest - (now - began)));
         return;
       }
-      heard.push(...watch.takeRecords());
+      hear(watch.takeRecords());
       watch.disconnect();
-      resolve(heard);
+      resolve({ heard, began });
     };
-    requestAnimationFrame(() => setTimeout(settled, quiet));
+    setTimeout(settled, quiet);
   });
-  if (shifts === null) {
+  if (watched === null) {
     missing.push(
       "this browser can't observe layout shifts, so the shift went unmeasured: run it in Chromium",
     );
+  } else if (watched.heard.filter((shift) => shift.startTime < watched.began).length >= kept) {
+    missing.push(
+      `the page shifted ${kept} times before the probe ran, all the browser keeps, so its ` +
+        "shift may be more than counted: stop what moves it as it draws",
+    );
   }
+  const shifts = watched?.heard ?? [];
   let largest = 0;
   let session = 0;
   let first = 0;
   let last = 0;
-  for (const shift of (shifts ?? []).filter((one) => !one.hadRecentInput)) {
+  for (const shift of shifts.filter((one) => !one.hadRecentInput)) {
     if (session > 0 && shift.startTime - last < 1000 && shift.startTime - first < 5000) {
       session += shift.value;
     } else {
@@ -162,7 +195,8 @@
   const sizeOf = (element, pseudo) =>
     Number.parseFloat(getComputedStyle(element, pseudo).fontSize);
   // Text is a text node's, a field's own words and its placeholder, and what
-  // a style writes in ::before or ::after, each at its own size.
+  // a style writes in ::before or ::after, each at its own size and in its
+  // own colour.
   const reading = [];
   const holders = new Set();
   const text = page.createTreeWalker(page.body, NodeFilter.SHOW_TEXT);
@@ -172,26 +206,46 @@
     }
   }
   for (const element of holders) {
-    reading.push({ element, size: sizeOf(element), words: element.textContent });
+    reading.push({
+      element,
+      pseudo: null,
+      size: sizeOf(element),
+      words: element.textContent,
+      colour: getComputedStyle(element).color,
+    });
   }
   const fields = page.querySelectorAll(
     "input:not([type=checkbox], [type=radio], [type=range], [type=color], [type=hidden], " +
       "[type=file], [type=image]), textarea, select",
   );
   for (const field of fields) {
+    const placeheld = !(field instanceof HTMLSelectElement) && field.value === "";
     const words =
       field instanceof HTMLSelectElement
         ? (field.selectedOptions[0]?.textContent ?? "")
         : field.value || field.getAttribute("placeholder") || "";
     if (words.trim() !== "") {
-      reading.push({ element: field, size: sizeOf(field), words });
+      reading.push({
+        element: field,
+        pseudo: null,
+        size: sizeOf(field),
+        words,
+        colour: getComputedStyle(field, placeheld ? "::placeholder" : null).color,
+      });
     }
   }
   for (const element of page.body.querySelectorAll("*")) {
     for (const pseudo of ["::before", "::after"]) {
-      const written = getComputedStyle(element, pseudo).content;
+      const style = getComputedStyle(element, pseudo);
+      const written = style.content;
       if (written.startsWith('"') && written.length > 2) {
-        reading.push({ element, size: sizeOf(element, pseudo), words: written.slice(1, -1) });
+        reading.push({
+          element,
+          pseudo,
+          size: sizeOf(element, pseudo),
+          words: written.slice(1, -1),
+          colour: style.color,
+        });
       }
     }
   }
@@ -227,10 +281,14 @@
   }
 
   // Contrast, measured rather than left to a person (WCAG 1.4.3): each
-  // word's colour, faded by every opacity it sits in, against the grounds
-  // painted under it, from the page's own up through each box holding it.
-  // A box painted with a picture can't be measured, so its words are left
-  // to the person's pass, and a drawing's words are svgtext.js's, at 7:1.
+  // word's colour against the grounds painted under it, from the page's own
+  // up through each box holding it, as the browser lays them: a box at less
+  // than full opacity fades its ground and everything in it as one picture
+  // over what's behind it. A gradient covering its box is read at each of
+  // its colours and the worst kept; one sized smaller, a line or a mark, is
+  // drawn beside the words rather than under them. A picture can't be read,
+  // so its words are named for a person to read. A drawing's words are
+  // svgtext.js's, at 7:1.
   const pen = page.createElement("canvas").getContext("2d", { willReadFrequently: true });
   const rgba = (colour) => {
     pen.clearRect(0, 0, 1, 1);
@@ -240,8 +298,17 @@
     const [red, green, blue, alpha] = pen.getImageData(0, 0, 1, 1).data;
     return [red, green, blue, alpha / 255];
   };
-  const over = (top, under) =>
-    [0, 1, 2].map((at) => top[at] * top[3] + under[at] * (1 - top[3])).concat(1);
+  const over = (top, under) => {
+    const alpha = top[3] + under[3] * (1 - top[3]);
+    if (alpha === 0) {
+      return [0, 0, 0, 0];
+    }
+    return [0, 1, 2]
+      .map((at) => (top[at] * top[3] + under[at] * under[3] * (1 - top[3])) / alpha)
+      .concat(alpha);
+  };
+  const mix = (under, top, by) =>
+    [0, 1, 2].map((at) => under[at] + (top[at] - under[at]) * by).concat(1);
   const luminance = ([red, green, blue]) => {
     const linear = (value) => {
       const part = value / 255;
@@ -253,139 +320,137 @@
     const [light, dark] = [luminance(one), luminance(other)].sort((a, b) => b - a);
     return (light + 0.05) / (dark + 0.05);
   };
-  // The boxes from the page down to the element, each with how faded it is
-  // by its own opacity and every one it sits in; null when a box is painted
-  // with a picture.
-  const grounds = (element) => {
-    const chain = [];
-    for (let at = element; at !== null; at = at.parentElement) {
-      chain.unshift(at);
+  // What a pixel shows: each box's paint over what's behind it, a box's
+  // opacity fading it and all it holds as one, and the ink, if any, last.
+  const painted = (layers, ink) => {
+    const from = (at, behind) => {
+      if (at === layers.length) {
+        return ink === null ? behind : over(ink, behind);
+      }
+      const { paint, faded } = layers[at];
+      return mix(behind, from(at + 1, over(paint, behind)), faded);
+    };
+    return from(0, [255, 255, 255, 1]);
+  };
+  // The colours a box may paint under words: its own colour, or each of a
+  // covering gradient's colours over it; null for a picture.
+  const covers = (size) =>
+    size.split(",").every((one) => covering.has(one.trim()));
+  const paints = (style) => {
+    const ground = rgba(style.backgroundColor);
+    const image = style.backgroundImage;
+    if (image === "none") {
+      return [ground];
     }
-    let faded = 1;
-    let ground = [255, 255, 255, 1];
-    for (const box of chain) {
-      const style = getComputedStyle(box);
-      if (style.backgroundImage !== "none") {
+    if (picture.test(image)) {
+      return null;
+    }
+    if (!covers(style.backgroundSize)) {
+      return [ground];
+    }
+    const colours = image.match(colourWords) ?? [];
+    return colours.length === 0
+      ? null
+      : colours.map((one) =>
+          over(rgba(one.toLowerCase() === "currentcolor" ? style.color : one), ground),
+        );
+  };
+  // How many ways a word's pixels are worked out at most before it's left
+  // to a person as a picture would be.
+  const ways = 64;
+  // The worst ratio a word reaches against every ground it may sit on; null
+  // when it sits on a picture, and undefined when it has no ink to read.
+  const worst = (element, pseudo, colour) => {
+    const styles = [];
+    for (let at = element; at !== null; at = at.parentElement) {
+      styles.unshift(getComputedStyle(at));
+    }
+    if (pseudo !== null) {
+      styles.push(getComputedStyle(element, pseudo));
+    }
+    const own = styles.at(-1);
+    const written = rgba(colour);
+    let inks = [written];
+    const boxes = [];
+    for (const style of styles) {
+      const choices = paints(style);
+      if (choices === null) {
         return null;
       }
-      faded *= Number.parseFloat(style.opacity || "1");
-      const paint = rgba(style.backgroundColor);
-      paint[3] *= faded;
-      ground = over(paint, ground);
+      const faded = Number.parseFloat(style.opacity || "1");
+      // A ground clipped to the words paints the words, not under them.
+      if (style === own && style.backgroundClip === "text") {
+        inks = choices.map((paint) => over(written, paint));
+        boxes.push({ choices: [[0, 0, 0, 0]], faded });
+      } else {
+        boxes.push({ choices, faded });
+      }
     }
-    return { ground, faded };
+    inks = inks.filter((ink) => ink[3] > 0);
+    if (inks.length === 0) {
+      return undefined;
+    }
+    const count = boxes.reduce((all, box) => all * box.choices.length, inks.length);
+    if (count > ways) {
+      return null;
+    }
+    let lowest = Number.POSITIVE_INFINITY;
+    const each = (at, layers) => {
+      if (at === boxes.length) {
+        const ground = painted(layers, null);
+        for (const ink of inks) {
+          lowest = Math.min(lowest, ratio(painted(layers, ink), ground));
+        }
+        return;
+      }
+      for (const paint of boxes[at].choices) {
+        each(at + 1, [...layers, { paint, faded: boxes[at].faded }]);
+      }
+    };
+    each(0, []);
+    return lowest;
   };
-  const large = (element, size) => {
-    const weight = Number.parseInt(getComputedStyle(element).fontWeight, 10);
+  const large = (element, pseudo, size) => {
+    const weight = Number.parseInt(getComputedStyle(element, pseudo).fontWeight, 10);
     return size >= 24 || (size >= 18.66 && weight >= 700);
   };
   let faintest = null;
   let faint = 0;
-  for (const element of holders) {
+  let unread = 0;
+  for (const { element, pseudo, size: set, words, colour } of reading) {
     if (element instanceof SVGElement || !shown(element) || forEarsOnly(element)) {
       continue;
     }
-    const behind = grounds(element);
-    const ink = rgba(getComputedStyle(element).color);
-    if (behind === null || ink[3] === 0) {
+    const got = worst(element, pseudo, colour);
+    if (got === null) {
+      unread += 1;
       continue;
     }
-    ink[3] *= behind.faded;
-    const got = ratio(over(ink, behind.ground), behind.ground);
-    const bar = large(element, onScreen(element, sizeOf(element))) ? 3 : 4.5;
+    if (got === undefined) {
+      continue;
+    }
+    const bar = large(element, pseudo, onScreen(element, set)) ? 3 : 4.5;
     if (got < bar - 0.005) {
       faint += 1;
       if (faintest === null || got / bar < faintest.got / faintest.bar) {
-        faintest = { element, got, bar };
+        faintest = { words, got, bar };
       }
     }
   }
   if (faintest !== null) {
     const more = faint > 1 ? ` (and ${faint - 1} more)` : "";
     missing.push(
-      `text "${quoted(faintest.element.textContent)}" at ${faintest.got.toFixed(2)}:1 on its ` +
+      `text "${quoted(faintest.words)}" at ${faintest.got.toFixed(2)}:1 on its ` +
         `ground, under ${faintest.bar}:1${more}: draw it in the theme's text roles on its ` +
         "grounds, never faded by opacity",
     );
   }
+  if (unread > 0) {
+    missing.push(
+      `words in ${unread} ${unread === 1 ? "place sit" : "places sit"} on a picture, so ` +
+        "their contrast went unmeasured: set them on a plain ground or a gradient",
+    );
+  }
 
-  // Names. A control's name, where its markup gives it one apart from its
-  // words, starts with the words it shows, word for word, keycaps left out,
-  // as a voice command says what it sees (WCAG 2.5.3): "Find" doesn't start
-  // "Finder". One whose words hold no letter or figure shows a mark alone,
-  // and the kit's own rule, stricter than WCAG's, has it show a word beside
-  // the mark, since "×" or "/" is no word a voice can say.
-  const said = (words) =>
-    words
-      .toLowerCase()
-      .replace(/[^\p{L}\p{N}]+/gu, " ")
-      .trim()
-      .split(" ")
-      .filter((word) => word !== "");
-  // Only words on screen count: a label a narrow screen hides isn't shown.
-  // A keycap inside a control is left out of its words; a keycap that is
-  // the control, as pressable makes one, shows its own key as its word.
-  const shows = (element, keycaps) => {
-    const walker = page.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    const words = [];
-    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
-      const holder = node.parentElement;
-      const cap = holder.closest("kbd");
-      if (
-        shown(holder) &&
-        !forEarsOnly(holder) &&
-        (keycaps || cap === null || cap === element)
-      ) {
-        words.push(node.textContent);
-      }
-    }
-    return words.join(" ");
-  };
-  const begins = (name, words) => words.every((word, at) => name[at] === word);
-  const labelled = (element) => {
-    const by = element.getAttribute("aria-labelledby");
-    if (by !== null) {
-      return by
-        .split(" ")
-        .filter((id) => id !== "")
-        .map((id) => page.getElementById(id)?.textContent ?? "")
-        .join(" ");
-    }
-    return element.getAttribute("aria-label");
-  };
-  const controls = page.querySelectorAll(
-    "button, a[href], summary, [role=button], [role=link], [role=tab], [role=menuitem], " +
-      "[role=option], [role=switch], [role=checkbox], [role=radio]",
-  );
-  // A name left empty is no name: the browser names the control by its
-  // words, as if the markup gave none.
-  const misnamed = [];
-  for (const control of controls) {
-    const name = labelled(control);
-    if (name === null || name.trim() === "" || !shown(control)) {
-      continue;
-    }
-    const all = shows(control, true);
-    const words = said(shows(control, false));
-    if (all.trim() === "") {
-      continue;
-    }
-    if (words.length === 0) {
-      misnamed.push(
-        `a control showing only "${quoted(all)}", named "${quoted(name)}"`,
-        "show its word beside the mark, its name starting with that word",
-      );
-    } else if (!begins(said(name), words)) {
-      misnamed.push(
-        `a control showing "${quoted(shows(control, false))}" named "${quoted(name)}"`,
-        "start its name with the words it shows, or drop the aria-label",
-      );
-    }
-  }
-  if (misnamed.length > 0) {
-    const [what, fix] = misnamed;
-    const more = misnamed.length > 2 ? ` (and ${misnamed.length / 2 - 1} more)` : "";
-    missing.push(`${what}${more}: ${fix}`);
-  }
   return missing;
 })()

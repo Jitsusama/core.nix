@@ -290,18 +290,21 @@ class Opened:
             assert found == [], f"{check} at {self.size} in the {self.look} look found {found}"
 
     def holds_every_pixel(self) -> None:
-        """Hold the page to the skill's pixels probe: width, shift, type floors and names.
+        """Hold the page to the pixels and names probes: width, shift, type, contrast, names.
 
         A page's test calls this once its page keeps to the rules, so each page
         takes the probe as it's moved onto them (1HE06W's plan of 22 November
         2026), rather than every page failing at once before it's moved. The
         probe counts every layout shift since the load, waiting for the page
-        to go quiet, so call this before anything presses, scrolls or opens
-        a fold, passes_the_skills_checks among them, whose layout.js opens
-        each one.
+        to go quiet, so call this once the page's first reading is drawn, as
+        its own wait for that says, and before anything presses, scrolls or
+        opens a fold, passes_the_skills_checks among them, whose layout.js
+        opens each one. Called sooner, a feed answering after half a second's
+        quiet lands unmeasured.
         """
-        found = self.page.evaluate((Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text())
-        assert found == [], f"pixels.js at {self.size} in the {self.look} look found {found}"
+        for probe in ("pixels.js", "names.js"):
+            found = self.page.evaluate((Path(os.environ["WEB_SKILL"]) / probe).read_text())
+            assert found == [], f"{probe} at {self.size} in the {self.look} look found {found}"
 
     def keeps_to(self, budget: Budget) -> None:
         """Hold the drawn page to `budget`, then visit it again and find nothing sent twice.

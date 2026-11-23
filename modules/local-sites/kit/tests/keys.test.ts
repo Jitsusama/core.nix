@@ -162,6 +162,13 @@ it("head.css hides the key line only on touch, by the names keys.ts and pressabl
     hides > touch && hides < ends,
     "the rule hiding the key line isn't inside the touch query",
   );
+  // A keycap marked data-tap in the markup is a whole target at first
+  // paint, before steps.ts gives it its role.
+  const whole = sheet.indexOf('.page-head .keys kbd:is([data-tap], [role="button"])');
+  assert.ok(
+    whole > touch && whole < ends,
+    "a keycap marked data-tap in the markup isn't a whole target on touch",
+  );
 });
 
 it("a key the page doesn't name is nothing, even one every object answers to", () => {

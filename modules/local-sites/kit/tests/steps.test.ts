@@ -80,6 +80,21 @@ it("a pressable key is marked a tap for the touch rule, but one that only lists 
   );
 });
 
+it("a key the markup marks a tap that does nothing when tapped loses the mark", () => {
+  const keys = [kbdNaming("j"), kbdNaming("k"), kbdNaming("?")];
+  for (const kbd of keys) {
+    kbd.dataset["tap"] = "";
+  }
+  Object.assign(globalThis, { document: { querySelectorAll: () => keys } });
+  const nothing = (): void => undefined;
+  pressable(".keys kbd", { j: nothing, "?": nothing });
+  assert.deepEqual(
+    keys.map((kbd) => "tap" in kbd.dataset),
+    [true, false, false],
+    "j keeps its mark, and k, handed nothing, and ?, which only lists the keys, lose it",
+  );
+});
+
 it("a key pressed twice in a row acts once, and a third press starts over", () => {
   const hands = new Hands();
   let acted = 0;

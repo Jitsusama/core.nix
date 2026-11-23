@@ -3,10 +3,14 @@
 // the browser for 15 s; a feed already says which records moved, by key
 // (records.ts), so the rows of every other record stay as they were drawn,
 // the same elements, where a reader's eye and a screen reader's place stay.
+// Focus stays too: a focused row moved keeps it, and one drawn afresh hands
+// it to the same place in its new drawing.
 //
 // The list owns every child of the element it draws into: a row is marked
-// with its key in data-key, and a child without one, a "Loading" sentence
-// drawn before the feed spoke, goes at the first drawing.
+// with its key in data-key, and anything else, a "Loading" sentence drawn
+// before the feed spoke, an element or bare words, goes at the first
+// drawing. Every row is drawn before the list is touched, so a drawing that
+// throws on a record leaves the list as it was.
 
 /** As much of a drawn row as keyed reads: its key, kept on it. */
 interface Drawn {
@@ -14,11 +18,23 @@ interface Drawn {
   setAttribute(name: string, value: string): void;
 }
 
+/** As much of an element as keeping focus reads: where it sits, and focusing it. */
+interface Placed {
+  readonly parentElement: Placed | null;
+  readonly children: ArrayLike<Placed>;
+  focus?(options?: FocusOptions): void;
+}
+
 /** As much of the element a list is drawn into as keyed reads and moves. */
 interface Holder<Item extends Drawn> {
+  /** Its elements, in order. */
   readonly children: ArrayLike<Item>;
+  /** Every child, bare words among them. */
+  readonly childNodes: ArrayLike<object>;
+  /** Where focus is: the document's focused element, if any. */
+  readonly ownerDocument?: { readonly activeElement: Placed | null } | null;
   insertBefore(node: Item, before: Item | null): Item;
-  removeChild(node: Item): Item;
+  removeChild(node: object): unknown;
 }
 
 /** What a page hands `keyed`. */
@@ -27,8 +43,11 @@ interface Drawing<Row, Item extends Drawn> {
   readonly rows: readonly Row[];
   /** The record key a row is drawn from. */
   readonly key: (row: Row) => string;
-  /** A row, drawn afresh. */
-  readonly draw: (row: Row) => Item;
+  /**
+   * A row, drawn afresh, or `was`, its drawing until now, brought up to
+   * date where it stands.
+   */
+  readonly draw: (row: Row, was?: Item) => Item;
   /**
    * The keys whose records moved since the last drawing, as the feed's
    * answer said them; every row is drawn afresh without it, as a page does
@@ -41,7 +60,7 @@ interface Drawing<Row, Item extends Drawn> {
 interface Drew {
   /** Rows drawn for a key the list didn't show. */
   readonly made: number;
-  /** Rows drawn afresh because their record moved. */
+  /** Rows drawn afresh, or brought up to date, because their record moved. */
   readonly redrawn: number;
   /** Rows left as they were drawn. */
   readonly kept: number;
@@ -66,20 +85,26 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
   const moved = drawing.moved === undefined ? null : new Set(drawing.moved);
   const wanted = new Set(drawing.rows.map(drawing.key));
   const shown = new Map<string, Item>();
-  let removed = 0;
+  const stale: object[] = [];
+  const elements = new Set<object>(Array.from(holder.children));
+  for (const node of Array.from(holder.childNodes)) {
+    if (!elements.has(node)) {
+      stale.push(node);
+    }
+  }
   for (const item of Array.from(holder.children)) {
     const key = item.getAttribute(KEY);
     if (key === null || !wanted.has(key) || shown.has(key)) {
-      holder.removeChild(item);
-      removed += 1;
+      stale.push(item);
     } else {
       shown.set(key, item);
     }
   }
-  let made = 0;
-  let redrawn = 0;
-  let kept = 0;
-  let placed = 0;
+  const focused = holder.ownerDocument?.activeElement ?? null;
+  const focus = within(focused, shown);
+
+  // Every row is drawn first, so nothing is touched if one throws.
+  const rows: { key: string; item: Item; old: Item | undefined; fresh: boolean }[] = [];
   const drawn = new Set<string>();
   for (const row of drawing.rows) {
     const key = drawing.key(row);
@@ -88,28 +113,49 @@ function keyed<Row, Item extends Drawn>(holder: Holder<Item>, drawing: Drawing<R
     }
     drawn.add(key);
     const old = shown.get(key);
-    let item: Item;
     if (old === undefined) {
-      item = marked(drawing.draw(row), key);
-      made += 1;
+      rows.push({ key, item: marked(drawing.draw(row), key), old, fresh: true });
     } else if (moved === null || moved.has(key)) {
-      item = marked(drawing.draw(row), key);
-      holder.insertBefore(item, old);
-      holder.removeChild(old);
+      rows.push({ key, item: marked(drawing.draw(row, old), key), old, fresh: true });
+    } else {
+      rows.push({ key, item: old, old, fresh: false });
+    }
+  }
+
+  for (const node of stale) {
+    holder.removeChild(node);
+  }
+  let made = 0;
+  let redrawn = 0;
+  let kept = 0;
+  let placed = 0;
+  rows.forEach(({ item, old, fresh }, at) => {
+    if (old === undefined) {
+      made += 1;
+    } else if (fresh) {
+      if (item !== old) {
+        holder.insertBefore(item, old);
+        holder.removeChild(old);
+      }
       redrawn += 1;
     } else {
-      item = old;
       kept += 1;
     }
-    const here = holder.children[drawn.size - 1] ?? null;
+    const here = holder.children[at] ?? null;
     if (here !== item) {
       holder.insertBefore(item, here);
       if (old !== undefined) {
         placed += 1;
       }
     }
+  });
+  if (focus !== null) {
+    const now = rows.find((row) => row.key === focus.key);
+    if (now !== undefined) {
+      refocus(focused, focus.path, now.item, now.old);
+    }
   }
-  return { made, redrawn, kept, removed, placed };
+  return { made, redrawn, kept, removed: stale.length, placed };
 }
 
 /** `item`, marked with the key it's drawn from. */
@@ -118,5 +164,60 @@ function marked<Item extends Drawn>(item: Item, key: string): Item {
   return item;
 }
 
-export type { Drawing, Drawn, Drew, Holder };
+/** Whether `node` can be walked for focus. */
+function walkable(node: unknown): node is Placed {
+  return typeof node === "object" && node !== null && "children" in node;
+}
+
+/**
+ * The key of the row `focused` sits in among `rows`, and the way down to it
+ * from the row, child by child; null when focus is in none of them.
+ */
+function within(
+  focused: Placed | null,
+  rows: ReadonlyMap<string, object>,
+): { key: string; path: number[] } | null {
+  const keys = new Map<object, string>();
+  for (const [key, item] of rows) {
+    keys.set(item, key);
+  }
+  const path: number[] = [];
+  for (let at = focused; at !== null; at = at.parentElement) {
+    const key = keys.get(at);
+    if (key !== undefined) {
+      return { key, path };
+    }
+    if (at.parentElement === null) {
+      return null;
+    }
+    path.unshift(Array.prototype.indexOf.call(at.parentElement.children, at));
+  }
+  return null;
+}
+
+/**
+ * Gives focus back after a drawing: to `focused` itself when its row was
+ * moved but kept, and otherwise to the same place in the row's new drawing,
+ * or the row itself where that place is gone.
+ */
+function refocus(focused: Placed | null, path: number[], item: object, old: object | undefined) {
+  if (item === old) {
+    focused?.focus?.({ preventScroll: true });
+    return;
+  }
+  if (!walkable(item)) {
+    return;
+  }
+  let target: Placed = item;
+  for (const at of path) {
+    const next = target.children[at];
+    if (next === undefined) {
+      break;
+    }
+    target = next;
+  }
+  target.focus?.({ preventScroll: true });
+}
+
+export type { Drawing, Drawn, Drew, Holder, Placed };
 export { KEY, keyed };
