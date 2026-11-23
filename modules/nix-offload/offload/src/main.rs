@@ -1549,12 +1549,14 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         .map(PathBuf::as_path)
         .collect();
     // Before packing, which for a tree off GitHub gzips its whole cone
-    // here, only to be thrown away when nothing could take it.
+    // here, thrown away when nothing could take it: a fence can't lock
+    // alone.lock, and a second --alone run would keep its bundle a while.
     if whole && holding.is_empty() {
         return Err(not_run(
             "no VM builder is lent, and --alone holds only one of those",
         ));
     }
+    let _one = whole.then(|| one_whole(&vm_dir, waiting)).transpose()?;
     if !whole
         && !lenders
             .iter()
@@ -1573,14 +1575,21 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
     // One name wherever it goes, since a run sent on to the other builder
     // starts afresh there and never shares this one's files.
     let run = command::run_name();
-    let sending = there::Sending {
-        command: command::command(&checkout, &asked, &run),
-        bundle,
-    };
     let cuts = there::Cuts::default();
     let started = std::time::Instant::now();
     let mut took = None;
-    let mut on = |store: &str| {
+    // Each attempt is given how long it may run, which for --alone is
+    // what's left of its --longest once one was lost.
+    let mut on = |store: &str, longest: u64| {
+        let asked = command::Asked {
+            copies: asked.copies.clone(),
+            longest,
+            words: asked.words.clone(),
+        };
+        let sending = there::Sending {
+            command: command::command(&checkout, &asked, &run),
+            bundle: bundle.clone(),
+        };
         let status = command::on(
             store,
             &sending,
@@ -1599,13 +1608,14 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         }
         status
     };
+    let longest = asked.longest;
     let ran = if whole {
-        whole_on(&vm_dir, &holding, &mut on, waiting, asked.longest)
+        whole_on(&holding, &mut on, waiting, longest)
     } else {
-        Ok(lent_on(lenders, &mut on, waiting))
+        Ok(lent_on(lenders, &mut |store| on(store, longest), waiting))
     };
     let status = ran.as_ref().ok().copied().flatten();
-    if let Some(bundle) = &sending.bundle {
+    if let Some(bundle) = &bundle {
         archived::gone(bundle);
     }
     command::note(
@@ -1630,13 +1640,13 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         (Some(status), _) => ended::status(status, || {
             format!("{} failed on a lent builder", asked.words.join(" "))
         }),
-        (None, Err(why)) => Err(not_run(&why)),
+        (None, Err(refused)) => Err(refused),
         (None, Ok(_)) => Err(not_run("no lent builder took it")),
     }
 }
 
-/// How long `--alone` holds a VM builder whole at most, and for how long
-/// it runs unless `--longest` says less: a builder held takes all its
+/// How long a run held `--alone` runs at most in all, its attempts
+/// together, unless `--longest` says less: a builder held takes all its
 /// room from the after-merge net and every session's VM tests, so an
 /// hour, past the harness's host tests' 56 minutes on 10 November, rather
 /// than [`command::LONGEST`]'s three.
@@ -1649,8 +1659,8 @@ fn held_whole(asked: command::Asked) -> command::Asked {
         return asked;
     }
     eprintln!(
-        "nix-offload: --alone holds a VM builder for at most {} minutes, so this runs for at \
-         most that",
+        "nix-offload: a run held --alone runs for at most {} minutes in all, so this runs \
+         for at most that",
         WHOLE_LONGEST / 60
     );
     command::Asked {
@@ -1701,38 +1711,45 @@ fn lent_on(
 /// stand-in while neither general builder answers, since the machines'
 /// stand-in list reads no claims.
 ///
-/// It waits first until no other `--alone` run holds one ([`one_whole`]),
-/// then its turn for a builder with nothing sent to it, as VM runs do
-/// ([`there::admitted`]), a warm one first, then for that builder to stand
-/// within what root's hold left of `waiting`, then for it to finish
-/// warming, since a lender warms a fresh one by building the desktop's
-/// tests on it ([`warmed`], on a budget of its own sized to a warm). A
-/// builder lost mid-run is waited for to stand again, as [`lent_on`] does,
-/// and to warm, with its places held all the while.
+/// It waits first, in its caller, until no other `--alone` run holds one
+/// ([`one_whole`]), then its turn for a builder with nothing sent to it,
+/// as VM runs do ([`there::admitted`]): a warm one first, then one whose
+/// lender runs, so a lane whose lender stopped and left its file is held
+/// only when no other is. Then it waits for that builder to stand within
+/// what root's hold left of `waiting`, then for it to finish warming,
+/// since a lender warms a fresh one by building the desktop's tests on it
+/// ([`warmed`], on a budget of its own sized to a warm). A builder lost
+/// mid-run is waited for to stand again, as [`lent_on`] does, and to warm,
+/// with its places held all the while.
 ///
-/// It runs nothing, saying why, when its places can't be claimed, as
-/// where a fence lets the lender's folder be read alone, or when the
-/// builder it holds never stands: a run that went on regardless would
-/// share the builder while saying it held it. The claim is counted by pid,
-/// so a run from another pid namespace counts as gone and its places as
-/// free; how long a room wait may take is `admitted`'s, as for VM runs.
+/// It runs nothing, saying why, wherever it would share the builder
+/// while saying it held it: when its places can't be claimed, as where a
+/// fence lets the lender's folder be read alone; when another run's VM
+/// tests are found there once it's held; when the builder never stands,
+/// or is still warming once its budget is spent or under `--never-ask`;
+/// and when a builder lost mid-run stands again as it was, since the
+/// first attempt may still run there. Its claim is of [`there::WHOLE`]
+/// places, more than any machine's room, so a run reading a larger room
+/// than this one's still finds no room beside it. Claims are counted by
+/// pid, so VM tests sent from another pid namespace, as a fenced
+/// session's are, don't see it, and they're sent without waiting for room
+/// anyway; how long a room wait may take is `admitted`'s, as for VM runs.
 ///
-/// Each attempt runs for at most `longest` seconds, and none starts once
-/// `longest` has passed since the first did, so a builder is held for
-/// under twice it. The command runs there in a session of its own, which
-/// its watch ends 120 s after nothing follows it (`command.rs`), so one
-/// whose link was lost may run that long beside what's sent once its
-/// places are let go.
+/// It runs for at most `longest` seconds in all from when it first
+/// starts, a lost attempt's again given only what's left of them, so a
+/// builder is held for its waits to stand and warm and then `longest`.
+/// The command runs there in a session of its own, which its watch ends
+/// 120 s after nothing follows it (`command.rs`), so one whose link was
+/// lost may run that long beside what's sent once its places are let go.
 fn whole_on(
-    vm_dir: &Path,
     holding: &[&Path],
-    on: &mut impl FnMut(&str) -> Option<i32>,
+    on: &mut impl FnMut(&str, u64) -> Option<i32>,
     waiting: there::Waiting,
     longest: u64,
-) -> Result<Option<i32>, String> {
-    let one = one_whole(vm_dir)?;
+) -> Result<Option<i32>, Failure> {
+    let again = |why: String| ended::backs_off(taken_nowhere(), why);
     let mut holding = holding.to_vec();
-    holding.sort_by_key(|dir| !there::warm(dir));
+    holding.sort_by_key(|dir| (!there::warm(dir), !there::lends(dir)));
     let Some((first, others)) = holding.split_first() else {
         return Ok(None);
     };
@@ -1749,82 +1766,148 @@ fn whole_on(
     // Its first wait is what's left once root held it, so it waits on root
     // once; a builder lost later is waited for its whole time again.
     let (dir, claim, left) = there::admitted(first, others, room, room, rank, waiting);
-    let Some(claim) = claim else {
-        return Err(format!(
-            "the VM builder in {} couldn't be held, as where a fence lets its folder be read \
-             alone, and --alone runs only on a builder it holds",
-            dir.display()
+    let Some(claim) = claim.filter(there::Claim::whole) else {
+        return Err(ended::backs_off(
+            Exit::Refused,
+            format!(
+                "the VM builder in {} couldn't be held, as where a fence lets its folder be \
+                 read alone, and --alone runs only on a builder it holds, so nothing ran",
+                dir.display()
+            ),
         ));
     };
-    let Some(store) = standing(dir).or_else(|| there::waited(dir, left)) else {
-        return Err(format!(
-            "the VM builder in {} that --alone held never stood",
+    // Only a claim made where the lock couldn't be had is taken without
+    // room, and the run would then share the builder while holding it.
+    if there::claimed(dir) != there::WHOLE {
+        return Err(again(format!(
+            "another run's VM tests went to the VM builder in {} as --alone held it, so \
+             nothing ran",
             dir.display()
-        ));
-    };
-    say_held(dir, warmed(dir, waiting), longest);
-    let began = std::time::Instant::now();
-    let mut status = on(&store);
-    let since = std::time::Instant::now();
-    while status.is_none()
-        && began.elapsed().as_secs() < longest
-        && let Some(store) = there::stood_again(dir, waiting, since)
-    {
-        // A builder stood again is a fresh one, which its lender warms.
-        if !warmed(dir, waiting) {
-            say_held(dir, false, longest);
-        }
-        status = on(&store);
+        )));
     }
-    drop((claim, one));
+    let Some(mut store) = standing(dir).or_else(|| there::waited(dir, left)) else {
+        return Err(again(format!(
+            "the VM builder in {} that --alone held never stood, so nothing ran",
+            dir.display()
+        )));
+    };
+    warmed(dir, waiting).map_err(|why| again(format!("{why}, so nothing ran")))?;
+    say_held(dir, longest);
+    let began = std::time::Instant::now();
+    let mut status = on(&store, longest);
+    while status.is_none() {
+        let since = std::time::Instant::now();
+        let Some(stood) = there::stood_again(dir, waiting, since) else {
+            break;
+        };
+        // A builder lost and then standing as it was lost only its link,
+        // and the run it was sent may go on there in its own session.
+        if stood == store {
+            return Err(again(format!(
+                "the VM builder in {} stands as it did when its run's link was lost, so the \
+                 run may still go on there, and --alone doesn't send it again beside itself",
+                dir.display()
+            )));
+        }
+        store = stood;
+        // A builder stood again is a fresh one, which its lender warms.
+        warmed(dir, waiting).map_err(|why| again(format!("{why}, so it wasn't sent again")))?;
+        let left = longest.saturating_sub(began.elapsed().as_secs());
+        if left < AGAIN_LEAST {
+            return Err(again(format!(
+                "its builder was lost with {left} of its {longest} seconds left, too few to \
+                 show anything, so it wasn't sent again"
+            )));
+        }
+        say_held(dir, left);
+        status = on(&store, left);
+    }
+    drop(claim);
     Ok(status)
 }
+
+/// How many seconds of its `--longest` a `--alone` run must have left to be
+/// sent again once its builder was lost: a run given less would end on
+/// its clock before it showed anything.
+const AGAIN_LEAST: u64 = 60;
 
 /// The lock that keeps `--alone` runs to one VM builder held at once, in
 /// `vm_dir`, the first VM lender's folder, which every run reads: with
 /// one held, the rest stay for the after-merge net's and sessions' VM
-/// tests. It waits for another `--alone` run's to go, saying so.
-fn one_whole(vm_dir: &Path) -> Result<fs::File, String> {
+/// tests. It waits for another `--alone` run's to go, saying so and
+/// naming its pid, which the lock's holder writes in it, and refuses at
+/// once under `--never-ask`, which waits for nothing. Where the lock
+/// can't even be opened, as where a fence lets the folder be read alone,
+/// it refuses for good: no run from there ever holds a VM builder.
+fn one_whole(vm_dir: &Path, waiting: there::Waiting) -> Result<fs::File, Failure> {
+    use std::io::Write as _;
     let path = vm_dir.join("alone.lock");
     let unheld = |error: &dyn std::fmt::Display| {
-        format!(
-            "{} can't be locked ({error}), as where a fence lets it be read alone, so \
-             --alone can't hold a VM builder",
-            path.display()
+        ended::backs_off(
+            taken_nowhere(),
+            format!(
+                "{} can't be locked ({error}), so nothing ran",
+                path.display()
+            ),
         )
     };
-    let lock = fs::File::create(&path).map_err(|error| unheld(&error))?;
+    // Opened without emptying it, so a run waiting can read who holds it.
+    let lock = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| {
+            ended::backs_off(
+                Exit::Refused,
+                format!(
+                    "{} can't be opened to lock ({error}), as where a fence lets it be read \
+                     alone, so --alone can't hold a VM builder from here, and nothing ran",
+                    path.display()
+                ),
+            )
+        })?;
     match lock.try_lock() {
-        Ok(()) => return Ok(lock),
-        Err(fs::TryLockError::WouldBlock) => {}
+        Ok(()) => {}
+        Err(fs::TryLockError::WouldBlock) => {
+            let by = fs::read_to_string(&path)
+                .ok()
+                .map(|pid| pid.trim().to_owned())
+                .filter(|pid| !pid.is_empty())
+                .map_or_else(String::new, |pid| format!(" (pid {pid})"));
+            if !waiting.asks {
+                return Err(ended::backs_off(
+                    taken_nowhere(),
+                    format!(
+                        "another --alone run{by} holds a VM builder whole, and --never-ask \
+                         waits for nothing, so nothing ran"
+                    ),
+                ));
+            }
+            eprintln!(
+                "nix-offload: another --alone run{by} holds a VM builder whole, and one may at \
+                 once, so this waits for it to end"
+            );
+            lock.lock().map_err(|error| unheld(&error))?;
+        }
         Err(fs::TryLockError::Error(error)) => return Err(unheld(&error)),
     }
-    eprintln!(
-        "nix-offload: another --alone run holds a VM builder whole, and one may at once, so \
-         this waits for it to end"
-    );
-    lock.lock().map_err(|error| unheld(&error))?;
+    let _ = lock
+        .set_len(0)
+        .and_then(|()| (&lock).write_all(format!("{}\n", std::process::id()).as_bytes()));
     Ok(lock)
 }
 
-/// Says whether the run holds `dir`'s builder to itself, as it does once
-/// the builder is `warm`, for up to `longest` seconds of running each
-/// attempt, or shares it with the build warming it.
-fn say_held(dir: &Path, warm: bool, longest: u64) {
-    if warm {
-        eprintln!(
-            "nix-offload: this run holds the VM builder in {} alone while it goes, for up \
-             to {} minutes of running",
-            dir.display(),
-            longest.div_ceil(60)
-        );
-    } else {
-        eprintln!(
-            "nix-offload: the VM builder in {} is still warming, so this run holds it but \
-             shares it with the build warming it",
-            dir.display()
-        );
-    }
+/// Says the run holds `dir`'s builder to itself, for up to `longest`
+/// seconds of running.
+fn say_held(dir: &Path, longest: u64) {
+    eprintln!(
+        "nix-offload: this run holds the VM builder in {} alone while it goes, for up to {} \
+         minutes of running",
+        dir.display(),
+        longest.div_ceil(60)
+    );
 }
 
 /// How long a held builder's warm is waited out at most: a fresh VM
@@ -1832,24 +1915,36 @@ fn say_held(dir: &Path, warm: bool, longest: u64) {
 /// (home.nix), and a run held whole that went sooner would share it with
 /// that build, the noise it's held to be kept from. It's a budget of its
 /// own rather than what's left of the wait for the builder to stand,
-/// which at four minutes is a fraction of a warm.
+/// which at four minutes is a fraction of a warm. `NIX_OFFLOAD_WARM_WITHIN`
+/// gives another, in seconds.
 const WARM_AT_MOST: std::time::Duration = std::time::Duration::from_mins(25);
 
+/// How long a held builder's warm is waited out: [`WARM_AT_MOST`], or what
+/// `NIX_OFFLOAD_WARM_WITHIN` says in seconds.
+fn warm_within() -> std::time::Duration {
+    env::var("NIX_OFFLOAD_WARM_WITHIN")
+        .ok()
+        .and_then(|seconds| seconds.parse().ok())
+        .map_or(WARM_AT_MOST, std::time::Duration::from_secs)
+}
+
 /// Waits while `dir`'s lender warms the builder it stands, for up to
-/// [`WARM_AT_MOST`], saying so once, and gives whether it's warm. It stops
-/// once the builder is warm, or once none stands or comes. A run given
-/// `--never-ask` waits for nothing, so it doesn't wait here either.
-fn warmed(dir: &Path, waiting: there::Waiting) -> bool {
+/// [`warm_within`], saying so once, until the builder is warm; why not
+/// once its budget is spent or none stands or comes. A run given
+/// `--never-ask` waits for nothing, so it's told why at once: a run that
+/// went on would share the builder with the build warming it, the noise
+/// it's held to be kept from.
+fn warmed(dir: &Path, waiting: there::Waiting) -> Result<(), String> {
+    let within = warm_within();
     let since = std::time::Instant::now();
     let mut said = false;
-    while waiting.asks && !there::warm(dir) && there::coming(dir) && since.elapsed() < WARM_AT_MOST
-    {
+    while waiting.asks && !there::warm(dir) && there::coming(dir) && since.elapsed() < within {
         if !said {
             eprintln!(
                 "nix-offload: the VM builder in {} is warming, so this waits for it to finish, \
-                 for up to {} minutes",
+                 for up to {}",
                 dir.display(),
-                WARM_AT_MOST.as_secs() / 60
+                there::lasting(within)
             );
             said = true;
         }
@@ -1857,7 +1952,24 @@ fn warmed(dir: &Path, waiting: there::Waiting) -> bool {
         // costs nothing and starts the run within a second of its end.
         std::thread::sleep(std::time::Duration::from_secs(1).min(waiting.answered));
     }
-    there::warm(dir)
+    if there::warm(dir) {
+        return Ok(());
+    }
+    let builder = dir.display();
+    Err(if !waiting.asks {
+        format!(
+            "the VM builder in {builder} is warming, and --never-ask waits for nothing, so \
+             --alone would share it with the build warming it"
+        )
+    } else if there::coming(dir) {
+        format!(
+            "the VM builder in {builder} was still warming after {}, and --alone runs only \
+             on a builder it holds to itself",
+            there::lasting(within)
+        )
+    } else {
+        format!("the VM builder in {builder} stopped standing as it warmed")
+    })
 }
 
 /// How a changed-checks run that went to no builder ends, for `why`: its

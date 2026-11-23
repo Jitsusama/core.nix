@@ -1732,7 +1732,7 @@ pub fn finished_within(
 
 /// A while, as a person reads it: in seconds under two minutes, else in
 /// minutes, rounded up.
-fn lasting(while_: std::time::Duration) -> String {
+pub fn lasting(while_: std::time::Duration) -> String {
     match while_.as_secs() {
         1 => "1 second".to_owned(),
         seconds if seconds < 120 => format!("{seconds} seconds"),
@@ -4094,6 +4094,20 @@ pub struct Claim(PathBuf);
 impl Drop for Claim {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.0);
+    }
+}
+
+/// How many places a run held whole claims: more than any machine gives a
+/// VM builder, so a run that reads a larger room than the one that held
+/// it still finds none beside it, and few enough that a sum of claims
+/// never comes near overflowing.
+pub const WHOLE: usize = 1000;
+
+impl Claim {
+    /// Makes this a claim of the builder whole, [`WHOLE`] places, once it
+    /// was admitted for the room the run read; whether it could be.
+    pub fn whole(&self) -> bool {
+        fs::write(&self.0, format!("{WHOLE}\n")).is_ok()
     }
 }
 

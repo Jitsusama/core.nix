@@ -156,9 +156,10 @@ fn there() -> Help {
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
     .option(
         "--alone",
-        "with --run, after it, waits for a VM builder with nothing sent to it and holds it \
-         for an hour at most, VM tests kept off it, one --alone run at a time; it runs \
-         nothing where it can't hold one, as from a fence",
+        "with --run, after it, waits for a VM builder with nothing sent to it, and for it \
+         to warm, and holds it alone, one --alone run at a time, running an hour at most \
+         in all; it runs nothing where it would share one, and with --never-ask waits for \
+         neither a warm nor another --alone run. VM tests from a fence don't see it",
     )
     .option("--takes", "names a word each for what this there takes")
     .exit(Exit::Failed, "nix failed, as an evaluation does")
@@ -174,6 +175,7 @@ fn there() -> Help {
          changed-checks builds it here, and otherwise ask again once one is lent; \
          or a nearby Mac's part waits for the Mac, the rest built",
     )
+    .exit(Exit::Refused, "with --alone, from a fence, which can never hold a VM builder")
     .exit(Exit::Bug, "it couldn't start itself again, marked for its run")
     .passes(
         "nix's own code, 100 for a failed build; changed-checks' with --changed; \

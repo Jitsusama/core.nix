@@ -6719,16 +6719,47 @@ fn a_run_alone_holds_a_vm_builder_whole_or_goes_nowhere() {
         hosts.lines().all(|host| host != "nix-offload"),
         "it reached a general builder: {hosts}"
     );
+    assert!(
+        said.contains("all 3 of its places"),
+        "it didn't wait for the room the machine gives a VM builder: {said}"
+    );
+    // Its claim is more than any machine's room, so a run reading a
+    // larger room than 3 finds none beside it either.
     assert_eq!(
         fs::read_to_string(run.bin.join("sending-seen"))
             .unwrap()
             .trim(),
-        "3",
-        "it didn't hold all the places the machine gives a VM builder while it went"
+        "1000",
+        "it didn't hold the builder whole while it went"
     );
     assert!(
         fs::read_dir(vm.join("sending")).unwrap().next().is_none(),
         "its places were still held once it ended"
+    );
+    // Asked for no --longest, it runs the hour --alone gives at most, and
+    // says so; asked for less, it runs that.
+    assert!(
+        given.contains("sleep 3600 ") && said.contains("at most 60 minutes in all"),
+        "it wasn't held to an hour, or didn't say so: {said}\n{given}"
+    );
+    let ran = run.there(
+        &[
+            "--never-ask",
+            "--run",
+            "--alone",
+            "--longest",
+            "60",
+            "--",
+            "pnpm",
+            "test",
+        ],
+        &[],
+    );
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let given = fs::read_to_string(run.bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.contains("sleep 60 ") && !String::from_utf8_lossy(&ran.stderr).contains("in all"),
+        "a run asked for a minute wasn't given it alone: {ran:?}\n{given}"
     );
 }
 
@@ -6749,6 +6780,9 @@ fn a_run_alone_waits_out_a_warm_or_takes_a_warm_builder_first() {
         "it never waited for its builder's warm: {}",
         fs::read_to_string(&said).unwrap_or_default()
     );
+    // Looked at again a second on, so a run that said it waits and went
+    // regardless is seen going.
+    std::thread::sleep(Duration::from_secs(1));
     assert!(
         !run.bin.join("ssh-was-given").exists(),
         "it ran on its builder while it warmed"
@@ -6777,78 +6811,179 @@ fn a_run_alone_waits_out_a_warm_or_takes_a_warm_builder_first() {
     );
 }
 
-// A run given --never-ask waits for nothing, a warm included, and says it
-// shares the builder with the build warming it.
+// A run held whole never shares its builder with the build warming it:
+// given --never-ask it waits for no warm, and one whose warm outlasts its
+// budget is given up, each saying why, and nothing runs.
 #[test]
-fn a_run_alone_that_never_asks_says_it_shares_a_warming_builder() {
+fn a_run_alone_runs_nothing_beside_a_warm() {
     let run = RunTree::new();
     let vm = run.vm_lane("offload-vm", "nix-offload-vm");
     fs::write(vm.join("warming"), format!("{} b\n", std::process::id())).unwrap();
-    let ran = run.there(
-        &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
-        &[],
+    let alone = ["--run", "--alone", "--", "pnpm", "test"];
+    let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
+    run.refused(
+        &run.there(&never, &[]),
+        "is warming, and --never-ask waits for nothing",
     );
-    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
-    let said = String::from_utf8_lossy(&ran.stderr);
+    let ran = there_command(&run.bin, &run.offload, run.folder.path())
+        .args(alone)
+        .current_dir(&run.tree)
+        .env("GIT_CONFIG_GLOBAL", &run.config)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("NIX_OFFLOAD_WARM_WITHIN", "1")
+        .output()
+        .unwrap();
+    run.refused(&ran, "was still warming after 1 second");
     assert!(
-        !said.contains("so this waits for it to finish"),
-        "it waited for a warm though it asks nothing: {said}"
-    );
-    assert!(
-        said.contains("is still warming, so this run holds it but shares it"),
-        "it didn't say it shares the builder with its warm: {said}"
+        fs::read_dir(vm.join("sending")).unwrap().next().is_none(),
+        "its places were still held once it gave up"
     );
 }
 
-// Where its places can't be claimed, as from a fence, a run held whole
-// runs nothing rather than share the builder while saying it holds it.
+// A lane whose lender stopped and left its file is held only when no other
+// is, so a run doesn't wait out a lender that's gone while one runs.
 #[test]
-fn a_run_alone_that_cant_hold_its_builder_runs_nothing() {
+fn a_run_alone_holds_a_lane_whose_lender_runs_over_one_left_behind() {
+    let run = RunTree::new();
+    let more = run.vm_lane("offload-vm-more", "nix-offload-vm-more");
+    fs::write(more.join("warming"), format!("{} b\n", std::process::id())).unwrap();
+    let gone = run.folder.path().join("offload-vm");
+    fs::create_dir_all(gone.join("sending")).unwrap();
+    let mut ended = Command::new("true").spawn().unwrap();
+    ended.wait().unwrap();
+    fs::write(gone.join("lender"), ended.id().to_string()).unwrap();
+    let said = run.folder.path().join("said");
+    let going = run.starting(
+        &["--run", "--alone", "--", "pnpm", "test"],
+        &[("NIX_OFFLOAD_VM_MORE_DIR", &more)],
+        &said,
+    );
+    assert!(
+        within(AT_MOST, || fs::read_to_string(&said)
+            .is_ok_and(|said| said.contains("offload-vm-more is warming"))),
+        "it didn't hold the lane whose lender runs: {}",
+        fs::read_to_string(&said).unwrap_or_default()
+    );
+    fs::remove_file(more.join("warming")).unwrap();
+    let ran = going.wait_with_output().unwrap();
+    let said = fs::read_to_string(&said).unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{said}");
+    assert!(
+        !said.contains("its lender is starting again"),
+        "it waited for the lender that's gone: {said}"
+    );
+    let given = fs::read_to_string(run.bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.starts_with("nix-offload-vm-more"),
+        "it went elsewhere: {given}"
+    );
+}
+
+// A builder held whole that never stands runs nothing, rather than the
+// run going on to one it never held.
+#[test]
+fn a_run_alone_whose_builder_never_stands_runs_nothing() {
     let run = RunTree::new();
     let vm = run.vm_lane("offload-vm", "nix-offload-vm");
-    fs::remove_dir(vm.join("sending")).unwrap();
-    fs::write(vm.join("sending"), "not a folder").unwrap();
+    fs::remove_file(vm.join("store")).unwrap();
     run.refused(
         &run.there(
             &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
             &[],
         ),
-        "couldn't be held",
+        "that --alone held never stood",
+    );
+}
+
+// Where its places can't be claimed, a run held whole runs nothing rather
+// than share the builder while saying it holds it; and from a fence,
+// which lets the lender's folder be read alone, no run can ever hold one,
+// which it ends with an exit of its own rather than "try again".
+#[test]
+fn a_run_alone_that_cant_hold_its_builder_runs_nothing() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
+    fs::remove_dir(vm.join("sending")).unwrap();
+    fs::write(vm.join("sending"), "not a folder").unwrap();
+    let ran = run.there(&never, &[]);
+    assert_eq!(ran.status.code(), Some(77), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("couldn't be held")
+            && !run.bin.join("ssh-was-given").exists(),
+        "a run whose claim couldn't be made went, or didn't say why: {ran:?}"
+    );
+    // The first run made the lock, which a fence's folder would lack.
+    fs::remove_file(vm.join("sending")).unwrap();
+    fs::remove_file(vm.join("alone.lock")).unwrap();
+    fs::set_permissions(&vm, fs::Permissions::from_mode(0o555)).unwrap();
+    let ran = run.there(&never, &[]);
+    fs::set_permissions(&vm, fs::Permissions::from_mode(0o755)).unwrap();
+    assert_eq!(ran.status.code(), Some(77), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("can't be opened to lock")
+            && !run.bin.join("ssh-was-given").exists(),
+        "a run from a folder it can't write went, or didn't say why: {ran:?}"
     );
 }
 
 // One --alone run holds a VM builder at once, leaving the rest to VM
-// tests: a second waits for the first to end.
+// tests: a second waits for the first to end, naming it, and goes once it
+// has; given --never-ask, it waits for nothing and ends at once.
 #[test]
 fn a_second_run_alone_waits_for_the_first_to_end() {
     let run = RunTree::new();
     let vm = run.vm_lane("offload-vm", "nix-offload-vm");
     let first = fs::File::create(vm.join("alone.lock")).unwrap();
     first.lock().unwrap();
-    let said = run.folder.path().join("said");
-    let going = run.starting(
-        &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
-        &[],
-        &said,
+    fs::write(vm.join("alone.lock"), "4242\n").unwrap();
+    run.refused(
+        &run.there(
+            &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
+            &[],
+        ),
+        "another --alone run (pid 4242) holds a VM builder whole, and --never-ask waits",
     );
+    let said = run.folder.path().join("said");
+    let going = run.starting(&["--run", "--alone", "--", "pnpm", "test"], &[], &said);
     assert!(
-        within(AT_MOST, || fs::read_to_string(&said).is_ok_and(
-            |said| said.contains("another --alone run holds a VM builder whole")
-        )),
+        within(AT_MOST, || fs::read_to_string(&said)
+            .is_ok_and(|said| said.contains(
+                "another --alone run (pid 4242) holds a VM builder whole"
+            ))),
         "the second never said it waits for the first: {}",
         fs::read_to_string(&said).unwrap_or_default()
     );
+    // Looked at again a second on, so a run that said it waits and went
+    // regardless is seen going.
+    std::thread::sleep(Duration::from_secs(1));
     assert!(
         !run.bin.join("ssh-was-given").exists(),
         "the second went while the first held its builder"
     );
     drop(first);
+    let pid = going.id();
     let ran = going.wait_with_output().unwrap();
     assert_eq!(
         ran.status.code(),
         Some(0),
         "{}",
         fs::read_to_string(&said).unwrap()
+    );
+    let given = fs::read_to_string(run.bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.starts_with("nix-offload-vm"),
+        "the second didn't go to the VM builder once the first ended: {given}"
+    );
+    assert!(
+        fs::read_dir(vm.join("sending")).unwrap().next().is_none(),
+        "the second's places were still held once it ended"
+    );
+    assert_eq!(
+        fs::read_to_string(vm.join("alone.lock")).unwrap().trim(),
+        pid.to_string(),
+        "the lock's holder didn't name itself for a run waiting on it"
     );
 }
 
