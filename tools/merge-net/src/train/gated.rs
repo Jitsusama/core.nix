@@ -1,9 +1,28 @@
-//! How a candidate's gate ended, read from nix-offload's exit and words:
-//! passed, red for a rider among them, or untaken by any builder, which
-//! says nothing of its riders.
+//! A candidate's gate, run, and how it ended, read from nix-offload's exit
+//! and words: passed, red for a rider among them, or untaken by any
+//! builder, which says nothing of its riders.
 
 use std::fs;
 use std::path::Path;
+use std::process::Command;
+
+/// Run the gate in `checkout`, its words going to `log`: how it ended.
+pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
+    let Ok(words) = fs::File::create(log) else {
+        return Gated::Red;
+    };
+    let Ok(errors) = words.try_clone() else {
+        return Gated::Red;
+    };
+    let ran = Command::new("nix-offload")
+        .args(["there", "--lent-only", "--changed"])
+        .current_dir(checkout)
+        .env_remove("SSH_AUTH_SOCK")
+        .stdout(words)
+        .stderr(errors)
+        .status();
+    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
+}
 
 /// How a candidate's gate ended.
 #[derive(Debug, PartialEq, Eq)]

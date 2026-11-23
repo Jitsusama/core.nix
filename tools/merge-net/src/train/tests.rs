@@ -1,6 +1,7 @@
 //! What the train does, case by case, the git cases against repositories
 //! of their own.
 
+use super::gated::{gated, words_of};
 use super::*;
 
 /// A state folder of the test's own.

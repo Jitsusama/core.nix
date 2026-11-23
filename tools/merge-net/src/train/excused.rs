@@ -20,7 +20,7 @@ use std::process::{Command, Stdio};
 
 use serde_json::{Value, json};
 
-use crate::state::{Ran, State};
+use crate::state::{Ran, State, short};
 use crate::subtests::failed_in;
 
 /// The most checks a red may break and still be asked of the base: a red
@@ -108,10 +108,13 @@ pub(super) fn excused(
             .map(|answer| answer.join().ok().flatten())
             .collect()
     });
-    let all = checks.iter().zip(&answers).all(|(check, answer)| match answer {
-        Some(AtBase::Fails(there)) => failed_by(words, check).is_subset(there),
-        _ => false,
-    });
+    let all = checks
+        .iter()
+        .zip(&answers)
+        .all(|(check, answer)| match answer {
+            Some(AtBase::Fails(there)) => failed_by(words, check).is_subset(there),
+            _ => false,
+        });
     all.then_some(checks)
 }
 
@@ -206,6 +209,31 @@ fn ran(folder: &Path, slug: &str, base: &str, check: &str) -> Option<AtBase> {
         .then(|| AtBase::Fails(failed_by(&said, check)))
 }
 
+/// The checks that excuse the red gate of `candidate`, whose words are in
+/// `log`, by failing at `base` of the repository `slug` as they failed
+/// there, said as the train lands it; none when they don't.
+pub(super) fn mains_own(
+    root: &Path,
+    slug: &str,
+    base: &str,
+    candidate: &str,
+    log: &Path,
+) -> Option<Vec<String>> {
+    let state = State::at(root.to_path_buf());
+    let train = super::folder(root);
+    let checks = excused(&super::gated::words_of(log), |check| {
+        at_base(&train, &state, slug, base, check)
+    })?;
+    println!(
+        "merge-net: the candidate {} failed changed-checks only on {}, which fail at \
+         main's {} too, so the train lands it",
+        short(candidate),
+        checks.join(", "),
+        short(base)
+    );
+    Some(checks)
+}
+
 /// What `check` does at `base` of the repository `slug`: as the train's
 /// `folder` keeps it, else as the watch's runs in `state` say, else as one
 /// run on a lent builder says, kept for the next candidate on that base.
@@ -232,6 +260,8 @@ pub(super) fn at_base(
 mod tests {
     use super::*;
 
+    use std::fmt::Write as _;
+
     /// The words of a gate in which each of `failed` failed to build, its
     /// subtests failing as named, and each of `following` failed only for
     /// one of them.
@@ -239,20 +269,23 @@ mod tests {
         let mut words = String::from("changed-checks: evaluates 3 of x86_64-linux's 9 checks\n");
         for (check, subtests) in failed {
             for subtest in *subtests {
-                words.push_str(&format!(
-                    "{check}> FAILED vm-pytest-ab/{check}-vm-test.py::{subtest} - Error\n"
-                ));
+                let _ = writeln!(
+                    words,
+                    "{check}> FAILED vm-pytest-ab/{check}-vm-test.py::{subtest} - Error"
+                );
             }
-            words.push_str(&format!(
+            let _ = writeln!(
+                words,
                 "error: Cannot build '/nix/store/0x1c-{check}.drv'.\n       Reason: builder \
-                 failed with exit code 1.\n       Output paths:\n"
-            ));
+                 failed with exit code 1.\n       Output paths:"
+            );
         }
         for check in following {
-            words.push_str(&format!(
+            let _ = writeln!(
+                words,
                 "error: Cannot build '/nix/store/j5fh-{check}.drv'.\n       Reason: 1 \
-                 dependency failed.\n"
-            ));
+                 dependency failed."
+            );
         }
         words.push_str("error: Build failed due to failed dependency\n");
         words.push_str("error: build of '/nix/store/0x1c-x.drv^*' failed\n");
@@ -266,7 +299,10 @@ mod tests {
 
     #[test]
     fn a_red_whose_checks_all_fail_at_the_base_is_excused() {
-        let words = red(&[("cat-on-niri", &["test_frames"]), ("launcher", &[])], &["all"]);
+        let words = red(
+            &[("cat-on-niri", &["test_frames"]), ("launcher", &[])],
+            &["all"],
+        );
         let excused = excused(&words, |check| {
             Some(AtBase::Fails(if check == "cat-on-niri" {
                 named(&["test_frames", "test_more"])
@@ -348,7 +384,12 @@ mod tests {
     #[test]
     fn an_answer_kept_for_a_base_is_read_back_by_the_next_candidate() {
         let folder = super::super::tests::root("excused-kept");
-        keep(&folder, "b1", "cat", &AtBase::Fails(named(&["test_frames"])));
+        keep(
+            &folder,
+            "b1",
+            "cat",
+            &AtBase::Fails(named(&["test_frames"])),
+        );
         keep(&folder, "b1", "long-files", &AtBase::Passes);
         let state = State::at(folder.join("state"));
         assert_eq!(
@@ -370,7 +411,11 @@ mod tests {
         let state = State::at(folder.join("state"));
         state.make().unwrap();
         let log = folder.join("cat.log");
-        fs::write(&log, "cat> FAILED vm-pytest-ab/cat-vm-test.py::test_frames - Error\n").unwrap();
+        fs::write(
+            &log,
+            "cat> FAILED vm-pytest-ab/cat-vm-test.py::test_frames - Error\n",
+        )
+        .unwrap();
         state
             .record("b1", "cat", Ran::Failed, Some(1), &log, 60)
             .unwrap();
