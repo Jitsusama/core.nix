@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any, TypedDict, cast
 import pytest
 import test_driver.machine
 import vm_helpers
-from heard import diagnosed, ended, said_by, until_heard
+from heard import diagnosed, ended, said_by, shown, until_heard
 from PIL import Image, ImageChops, ImageStat
 
 if TYPE_CHECKING:
@@ -703,9 +703,19 @@ class Desktop:  # The helpers every area shares, as one machine's desktop.
         """Give what the launcher shows, from its showing call.
 
         That's whether it holds the keys, what's typed and held, and the row Return takes.
-        Under load the launcher lags the keys sent to it, so each step waits on this.
+        Under load the launcher lags the keys sent to it, so each step waits on this. An answer
+        that isn't the state, or says what threw making it, fails saying so and what the shell's
+        journal holds (heard.shown).
         """
-        return cast("Json", json.loads(self.as_account("qs ipc call launcher showing")))
+        journal = "journalctl --user --unit=quickshell --no-pager --output=cat --lines=200"
+        return cast(
+            "Json",
+            shown(
+                self.as_account("qs ipc call launcher showing"),
+                lambda: textwrap.indent(self.diagnosis(journal), "  "),
+                "the launcher's showing call answered",
+            ),
+        )
 
     def launcher_until(
         self,

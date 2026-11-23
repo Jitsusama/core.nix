@@ -73,6 +73,30 @@ def diagnosed(execute: Callable[[], tuple[int, str]]) -> str:
     return f"{said}({stopped} {status})"
 
 
+def shown(
+    answer: str,
+    why: Callable[[], str],
+    who: str,
+) -> Any:  # noqa: ANN401 # Whatever JSON the state is, as it was said.
+    """Give the state a program's call for it answered, failing where that says nothing of it.
+
+    A call whose function threw answers an empty line, which failed vm-desktop-looks as a bare
+    JSONDecodeError and kept nothing of why (e73f6fe8, 22 Nov). So an answer that isn't JSON,
+    or one naming what threw, as the launcher's showing call says it, fails by AssertionError
+    saying what came, then why, the program's journal, read only then since each read costs a
+    paced call. Who is a subject and its verb, "the launcher's showing call answered".
+    """
+    try:
+        state = json.loads(answer)
+    except ValueError:
+        message = f"{who} {answer!r}, not a state as JSON\n{why()}"
+        raise AssertionError(message) from None
+    if isinstance(state, dict) and "threw" in state:
+        message = f"{who} that its read threw {state['threw']}\n{why()}"
+        raise AssertionError(message)
+    return state
+
+
 def until_heard(
     first: Any,  # noqa: ANN401 # Whatever JSON the state is, as it was said.
     test: Callable[[Any], object],

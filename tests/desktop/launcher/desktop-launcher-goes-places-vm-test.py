@@ -1010,7 +1010,7 @@ def shoot_home_at_joels_scales(desktop: Desktop, home: list[str]) -> None:
     desktop.launcher_ready()
     desktop.launcher_until(lambda shown: shown["rows"] == home)
     desktop.down_to("Machine")
-    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Power"], wraps=True))
+    desktop.launcher_until(lambda shown: holds(shown, "Machine", ["Lag", "Processor"], wraps=True))
     desktop.shoot("launcher-home-machine-drawn")
     desktop.close_launcher()
 
