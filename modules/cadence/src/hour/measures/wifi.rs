@@ -22,11 +22,11 @@ pub const KEY: &str = "wifi-video-held";
 const OWNER: &str = "PN2VZC";
 
 /// A minute holds a call's video past this at its 95th percentile, late
-/// answers included, or with over `LATE_PERCENT` of its answers past a
-/// second: PN2VZC's bars of 23 November, well between a clean point's
-/// 14 to 48 ms with none late and a holding one's 2.4 to 3.9 s with 16 to
-/// 38% late. A held queue answers late, in order, so an echo never
-/// answered says nothing of the air and isn't weighed.
+/// answers included, or with over `LATE_PERCENT` of its echoes answered
+/// past a second: PN2VZC's bars of 23 November, well between a clean
+/// point's 14 to 48 ms with none late and a holding one's 2.4 to 3.9 s
+/// with 16 to 38% late. A held queue answers late, in order, so an echo
+/// never answered says nothing of the air and isn't weighed.
 const HELD_MS: f64 = 100.0;
 const LATE_PERCENT: f64 = 1.0;
 
@@ -54,8 +54,8 @@ pub fn journal(now: i64) -> [String; 7] {
 
 /// One minute's reading of the video class, as wifid writes it after its
 /// best-effort figures: `wlp0s20f3 on <bssid>: gateway ...; video 2400.0
-/// ms at p95, 38.3% of 118 answers past 1 s, 2 of 120 echoes unanswered;
-/// ...`, ending `, during a call` while one is on. Best effort's p95 is
+/// ms at p95, 37.5% of 120 echoes answered past 1 s, 2 unanswered; ...`,
+/// ending `, during a call` while one is on. Best effort's p95 is
 /// kept beside it, since wifid times its own echoes, so a minute with the
 /// machine starved of CPU reads slow in both, where one held in the air
 /// leaves best effort quick.
@@ -76,9 +76,9 @@ impl Minute {
 }
 
 /// A minute read from one journal entry: none for any other line, for a
-/// minute with no video echo sent, and for one whose every video echo
-/// went unanswered, `video none at p95`, which is a gateway dropping
-/// marked echoes rather than a hold, as wifid itself reads it.
+/// minute with no video echo sent, and for one whose clause ends `, not
+/// weighed`, fewer than half its video echoes answered, which is a gateway
+/// dropping marked echoes rather than a hold, as wifid itself reads it.
 fn minute(entry: &Value) -> Option<Minute> {
     let message = entry["MESSAGE"].as_str()?;
     let micros: i64 = entry["__REALTIME_TIMESTAMP"].as_str()?.parse().ok()?;
@@ -88,9 +88,12 @@ fn minute(entry: &Value) -> Option<Minute> {
     let (best, _) = best.split_once(" ms at p95, ")?;
     let (_, video) = rest.split_once("; video ")?;
     let video = video.split(';').next()?;
+    if video.ends_with(", not weighed") {
+        return None;
+    }
     let (p95, video) = video.split_once(" ms at p95, ")?;
     let (late, video) = video.split_once("% of ")?;
-    video.split_once(" answers past 1 s")?;
+    video.split_once(" echoes answered past 1 s")?;
     Some(Minute {
         at: micros / 1_000_000,
         bssid: bssid.to_owned(),

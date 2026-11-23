@@ -19,14 +19,23 @@ fn said_by_wifid(bssid: &str, video: Option<&str>, call: bool) -> String {
     )
 }
 
-/// A video clause with its p95 and the share of its answers past a second,
-/// two of its echoes never answered.
+/// A video clause with its p95 and the share of its echoes answered past
+/// a second, two of them never answered.
 fn clause(p95: &str, late: &str) -> String {
-    format!("{p95} ms at p95, {late}% of 118 answers past 1 s, 2 of 120 echoes unanswered")
+    format!("{p95} ms at p95, {late}% of 120 echoes answered past 1 s, 2 unanswered")
 }
 
 /// The clause of a minute whose every video echo went unanswered.
-const NONE: &str = "none at p95, 120 of 120 echoes unanswered";
+const NONE: &str = "none at p95, 0.0% of 120 echoes answered past 1 s, 120 unanswered, not \
+                    weighed";
+
+/// The clause of a minute with fewer than half its video echoes answered,
+/// slow as those few were.
+const FEW: &str = "2400.0 ms at p95, 37.5% of 120 echoes answered past 1 s, 70 unanswered, not \
+                   weighed";
+
+/// The clause as wifid's first version wrote it, its loss unsplit.
+const LOST: &str = "881.0 ms at p95, 38.3% of 120 echoes lost";
 
 /// One journal entry as journalctl's json prints it.
 fn entry(at: i64, message: &str) -> String {
@@ -45,13 +54,13 @@ fn journal(entries: &[String]) -> String {
 fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
     let read = |message: &str| minute(&serde_json::from_str(&entry(AT, message)).ok()?);
     assert_eq!(
-        read(&said_by_wifid(NEAR, Some(&clause("2400.0", "38.3")), true)),
+        read(&said_by_wifid(NEAR, Some(&clause("2400.0", "37.5")), true)),
         Some(Minute {
             at: AT,
             bssid: NEAR.to_owned(),
             best: 15.0,
             p95: 2400.0,
-            late: 38.3,
+            late: 37.5,
             call: true,
         }),
         "a minute's video clause wasn't read as wifid writes it"
@@ -62,11 +71,15 @@ fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
             "a gateway dropping every marked echo read as a hold",
         ),
         (
+            said_by_wifid(NEAR, Some(FEW), false),
+            "a minute wifid doesn't weigh, most of its echoes unanswered, read as one",
+        ),
+        (
             said_by_wifid(NEAR, None, false),
             "a minute with no video echo sent read as one",
         ),
         (
-            said_by_wifid(NEAR, Some("881.0 ms at p95, 38.3% of 120 echoes lost"), false),
+            said_by_wifid(NEAR, Some(LOST), false),
             "echoes lost, which may never have been answered, read as answers late",
         ),
         (
@@ -84,7 +97,7 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
         entry(AT + 60 * n, &said_by_wifid(bssid, Some(video), call))
     };
     let text = journal(&[
-        on(NEAR, 0, &clause("2400.0", "38.3"), false),
+        on(NEAR, 0, &clause("2400.0", "37.5"), false),
         on(NEAR, 1, &clause("12.0", "0.0"), false),
         // Held by its delay alone.
         on(NEAR, 2, &clause("150.0", "0.5"), false),
@@ -114,7 +127,7 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
         m.behind,
         [
             format!(
-                "on {NEAR}, 2 of 3 minutes held, the worst 2400.0 ms at p95 and 38.3% past 1 s \
+                "on {NEAR}, 2 of 3 minutes held, the worst 2400.0 ms at p95 and 37.5% past 1 s \
                  at 11:25, best effort then 15.0 ms"
             ),
             format!(
