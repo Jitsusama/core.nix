@@ -176,8 +176,8 @@ in
   # Launcher.qml says its key is, a key listed without an answer and the
   # answer late count its letters, and a program's slow drawer says its row's
   # kind, not its id (modules/quickshell/tests/slow-keys-on-niri-test.py).
-  the-launcher-says-a-slow-keys-kind-on-niri = launcherOnNiri {
-    name = "the-launcher-says-a-slow-keys-kind-on-niri";
+  the-launcher-says-a-lagging-keys-kind-on-niri = launcherOnNiri {
+    name = "the-launcher-says-a-lagging-keys-kind-on-niri";
     tests = ../tests/slow-keys-on-niri-test.py;
     shell.reports = lib.mkForce false;
   };

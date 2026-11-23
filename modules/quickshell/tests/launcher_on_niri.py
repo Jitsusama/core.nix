@@ -14,6 +14,10 @@ MEANING. A case needing any of those stays in the desktop's VM tests
 (tests/desktop/); one that only types and reads the launcher comes here. The
 helpers keep desktop_session.Desktop's names, so a case moves between the two
 with few words changed: keys are pressed on the shell, since there's no machine.
+
+Long because it's the one fixture every launcher-on-niri check shares, the
+shell's start and the journal's reading among it, so a split would only send
+each check to two files for the same start.
 """
 
 from __future__ import annotations

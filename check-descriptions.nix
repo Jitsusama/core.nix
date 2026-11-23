@@ -4648,7 +4648,7 @@
     Songs, Playlists, Albums, Artists and Podcasts, each counted, each played, opened and copied as
     it says, its note saying when it's signed out or out of reach
   '';
-  the-launcher-says-a-slow-keys-kind-on-niri = ''
+  the-launcher-says-a-lagging-keys-kind-on-niri = ''
     on niri with reports off, a slow key's journal line says an arrow whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and how many letters its row's name
     has, never the name; a key listed without the notices' answer, and their answer late, say
