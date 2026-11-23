@@ -240,9 +240,8 @@ let
         setting:
         let
           asked = "${setting}=";
-          said = lib.findFirst (lib.hasPrefix asked) null (
-            home.systemd.user.services.quickshell.Service.Environment
-          );
+          environment = home.systemd.user.services.quickshell.Service.Environment;
+          said = lib.findFirst (lib.hasPrefix asked) null environment;
         in
         if said == null then
           throw "The shell's unit no longer sets ${setting}."
