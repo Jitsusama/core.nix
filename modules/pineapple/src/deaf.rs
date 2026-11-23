@@ -131,9 +131,8 @@ impl Deaf {
 
     /// What `round`, at `at` in milliseconds, changes. Joel is told once
     /// [`ROUNDS`] in a row are deaf, again only when why changes, and
-    /// untold once a round reads Slack whole. A change from one search
-    /// deaf starts a time of its own, so it isn't hidden under a row Joel
-    /// marked done.
+    /// untold once a round reads Slack whole. A change of why starts a
+    /// time of its own, so it isn't hidden under a row Joel marked done.
     pub fn heard(&mut self, round: Round, at: u64) -> Change {
         match round {
             Round::Heard => {
@@ -151,10 +150,12 @@ impl Deaf {
                 if self.rounds < ROUNDS || self.told == Some(why) {
                     return Change::Keep;
                 }
-                // A one-search row is one Joel may mark done while the
-                // other still hears, and For You keeps a done row gone by
-                // name. So anything after it is a time of its own.
-                if matches!(self.told, Some(Deafness::Unread(_))) {
+                // For You keeps a row Joel marked done gone by name, and
+                // a sign-in's signal marks one done whether it mended it
+                // or not. So a row told for another why, narrower, wider
+                // or other, is a time of its own. A row whose writing
+                // failed isn't told, so it's written again as itself.
+                if self.told.is_some() {
                     self.since = None;
                 }
                 self.told = Some(why);

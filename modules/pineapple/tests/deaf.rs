@@ -30,8 +30,8 @@ fn joel_is_told_once_two_rounds_running_hear_nothing() {
     let changed = deaf.heard(Round::Deaf(Deafness::NoSignIn), AT + 90_000);
     assert_eq!(
         changed,
-        Change::Tell(waits(Deafness::NoSignIn, AT + 30_000, AT + 90_000)),
-        "a new why is said, in the same row"
+        Change::Tell(waits(Deafness::NoSignIn, AT + 90_000, AT + 90_000)),
+        "a new why is said as a row of its own, as a sign-in marks the old one done"
     );
     assert_eq!(
         deaf.heard(Round::Heard, AT + 120_000),
@@ -296,10 +296,11 @@ fn one_search_that_cant_be_read_is_told_by_name_and_as_it_changes() {
         deaf.heard(tag, AT + 120_000),
         Change::Tell(waits(
             Deafness::Unread(Search::Tag),
-            AT + 90_000,
+            AT + 120_000,
             AT + 120_000
         )),
-        "one search coming back narrows the row, as the same time of not hearing"
+        "one search coming back narrows it to a row of its own, so a whole row marked done \
+         can't hide it"
     );
     let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
     assert_eq!(
@@ -315,21 +316,29 @@ fn one_search_that_cant_be_read_is_told_by_name_and_as_it_changes() {
 }
 
 #[test]
-fn a_row_after_one_search_deaf_is_never_the_one_marked_done() {
-    for after in [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable] {
-        let mut deaf = Deaf::new();
-        let tag = Round::Deaf(Deafness::Unread(Search::Tag));
-        deaf.heard(tag, AT);
-        let Change::Tell(half) = deaf.heard(tag, AT + 30_000) else {
-            panic!("two half rounds are told");
-        };
-        let Change::Tell(whole) = deaf.heard(Round::Deaf(after), AT + 60_000) else {
-            panic!("{after:?} after a half round is told");
-        };
-        assert_ne!(
-            half["items"][0]["id"], whole["items"][0]["id"],
-            "{after:?} is named apart from the half row Joel may have marked done"
-        );
+fn a_row_for_another_why_is_never_the_one_marked_done() {
+    let every = [
+        Deafness::Refused,
+        Deafness::NoSignIn,
+        Deafness::Unreadable,
+        Deafness::Unread(Search::Phrase),
+        Deafness::Unread(Search::Tag),
+    ];
+    for before in every {
+        for after in every.into_iter().filter(|after| *after != before) {
+            let mut deaf = Deaf::new();
+            deaf.heard(Round::Deaf(before), AT);
+            let Change::Tell(first) = deaf.heard(Round::Deaf(before), AT + 30_000) else {
+                panic!("two rounds of {before:?} are told");
+            };
+            let Change::Tell(then) = deaf.heard(Round::Deaf(after), AT + 60_000) else {
+                panic!("{after:?} after {before:?} is told");
+            };
+            assert_ne!(
+                first["items"][0]["id"], then["items"][0]["id"],
+                "{after:?} is named apart from the {before:?} row Joel may have marked done"
+            );
+        }
     }
 }
 
