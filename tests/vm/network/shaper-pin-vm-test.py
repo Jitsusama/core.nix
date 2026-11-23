@@ -147,6 +147,28 @@ def test_a_held_port_yields_the_other(moved: Moved) -> None:
     )
 
 
+def test_a_pin_is_kept_through_a_stop_and_start(moved: Moved) -> None:
+    """A stop lets the pin go with the queues; the start puts it back, as a switch needs.
+
+    A switch stops the shaper and starts the new one, and the VPN's live flow keeps the pair
+    NAT gave it, so the new shaper has to know the pair, or its first round probes that port.
+    """
+    rig = moved.rig
+    rig.client.succeed("systemctl stop shaper")
+    assert "masquerade" not in rig.client.succeed("nft list chain inet shaper pin"), (
+        "a stopped shaper left the VPN pinned"
+    )
+    rig.client.succeed("systemctl start shaper")
+    rig.client.wait_until_succeeds(
+        f"nft list chain inet shaper pin | grep -q 'masquerade.*{NEAR[0]}-{NEAR[1]}'",
+        timeout=COMING_UP,
+    )
+    journal = rig.client.succeed("journalctl -u shaper -o cat --no-pager -n 200")
+    assert f"pin to ports {NEAR[0]} and {NEAR[1]} is kept through the restart" in journal, (
+        "the shaper put its pin back without saying so"
+    )
+
+
 def test_a_pin_no_flow_gets_through_lets_go(moved: Moved) -> None:
     """With both pinned ports held toward the VPN's end, the pin lets go of its next socket.
 
