@@ -2515,7 +2515,10 @@ Provider {
     // which are his, never read as that cell's: a heading names the rows
     // under it, down to the next (Y2YBTS, 2026-11-23). None while nothing
     // follows, or while his own heading is already the last. Its key is its
-    // own, since his group can stand higher up under his heading too.
+    // own, since his group can stand higher up under his heading too. It's
+    // `holding` none, so the rows after it stand under no heading, as
+    // before, and one arriving while For You is held still waits behind
+    // the foot's count (Steady.js's headingsUnder).
     function cellsClosed(cells, after) {
         const headings = cells.filter(row => row.heading === true);
         const last = headings[headings.length - 1];
@@ -2523,7 +2526,8 @@ Provider {
             return [];
         const key = "on:heading:kinds";
         const name = cellSaid(null);
-        return [keptAlike(cellsKept, key, [name], () => member({ key, name, heading: true }))];
+        return [keptAlike(cellsKept, key, [name],
+            () => member({ key, name, heading: true, holding: [] }))];
     }
 
     function cellSaid(cell) {
