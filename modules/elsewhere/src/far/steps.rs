@@ -117,14 +117,24 @@ done"#
 /// mycelium kills a group still running a short grace after its signal,
 /// and a job's build can hold more files than go in that time, so a
 /// removal cut short or failed leaves the file that lets the next run
-/// here clear it.
+/// here clear it. What lies in the handover is cleared only once no link
+/// the job left stands at it or above it, as `unlinked` makes sure.
 pub(super) fn stopping() -> String {
     format!(
-        r#"stopped() {{
+        r#"# True once neither the job's handover folder nor either folder above
+# it in the quest's scratch is a link, any one there cleared first: a job
+# may leave one, and whatever the far line writes or clears below goes
+# through it. False when one stays, as in a folder the job closed.
+unlinked() {{
+  for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
+    [ ! -L "$at" ] || rm -f "$at" 2>/dev/null
+    [ ! -L "$at" ] || return 1
+  done
+}}
+stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}" \
-    "$work.names" "$work.back" "$work.back".* "$work" &&
-    rm -f "$work{RUN}"
+  cd "$HOME" && {{ ! unlinked || rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
+    rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
   trap - "$1"
   kill -s "$1" "$$"
   exit "$2"
@@ -262,14 +272,19 @@ pub(super) fn copying() -> String {
 /// The far line's step once the job ends, making the folder its copies
 /// cross in new. A link the job left at its handover folder, or at either
 /// folder above it in the quest's scratch, goes first, so neither the
-/// copies, their list nor the tree's removal is carried through it.
+/// copies, their list nor the tree's removal is carried through it. Where
+/// one can't be cleared, or the folder can't be made new, nothing is
+/// written or cleared in the handover: only the copy goes, and the near
+/// side, given no list, says nothing came back.
 pub(super) fn handing() -> String {
     format!(
-        r#"for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
-  [ ! -L "$at" ] || rm -f "$at"
-done
-# Made fresh, so no copy is written through whatever sat at its number.
-rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
+        r#"# Made fresh, so no copy is written through whatever sat at its number.
+if ! unlinked || ! {{ rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"; }}; then
+  printf "elsewhere: the job left its handover so nothing can be brought back\n" >&2
+  cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
+    rm -f "$work{RUN}"
+  exit "$code"
+fi
 "#
     )
 }

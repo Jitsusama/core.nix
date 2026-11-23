@@ -483,6 +483,71 @@ fn a_link_a_job_leaves_at_its_handover_folder_is_cleared_rather_than_written_thr
     }
 }
 
+/// A job's words moving its handover folder aside for a link to a folder
+/// `beyond` its home, holding what the far line would write or clear.
+fn linking_its_handover() -> String {
+    format!(
+        "mkdir -p \"$HOME/beyond/{TREE}\" \"$HOME/beyond/{BACK}\" &&
+         echo kept > \"$HOME/beyond/{TREE}/kept\" && echo kept > \"$HOME/beyond/{BACK}/0\" &&
+         echo kept > \"$HOME/beyond/{BROUGHT}\" &&
+         mv ../../{HANDOVER}/1 \"$HOME/moved\" && ln -s \"$HOME/beyond\" ../../{HANDOVER}/1"
+    )
+}
+
+/// Whether `beyond` still holds just what `linking_its_handover` put there.
+fn kept_beyond(home: &Path) -> bool {
+    let beyond = home.join("beyond");
+    left_in(&beyond) == [BACK, BROUGHT, TREE]
+        && std::fs::read_to_string(beyond.join(TREE).join("kept")).is_ok()
+        && std::fs::read_to_string(beyond.join(BACK).join("0")).unwrap() == "kept\n"
+        && std::fs::read_to_string(beyond.join(BROUGHT)).unwrap() == "kept\n"
+}
+
+#[test]
+fn a_link_a_job_pins_at_its_handover_folder_stops_all_it_would_bring_back() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // The folder holding the link closed, so the link can't be cleared.
+    let job = format!(
+        "mkdir out && printf a > out/a && {} && chmod a-w ../../{HANDOVER}",
+        linking_its_handover()
+    );
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
+    let closed = handover(&home).parent().unwrap().to_owned();
+    let _ = std::fs::set_permissions(&closed, std::fs::Permissions::from_mode(0o755));
+    assert!(
+        kept_beyond(&home),
+        "the far line wrote or cleared through a link it couldn't clear ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(0)
+            && err.contains("nothing can be brought back")
+            && !work(&home).join("1").exists()
+            && !work(&home).join("1.run").exists(),
+        "the far line didn't say it brought nothing back, or kept its copy ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_far_line_stopped_once_its_job_links_its_handover_clears_nothing_through_it() {
+    let job = format!("{} && kill -TERM $PPID", linking_its_handover());
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind(""), None, &[]);
+    assert!(
+        std::fs::read_to_string(home.join("signal")).unwrap() == "15",
+        "the far line wasn't stopped ({code:?}): {err}"
+    );
+    assert!(
+        kept_beyond(&home),
+        "a stopped far line cleared through the link at its handover: {err}"
+    );
+    assert!(
+        !work(&home).join("1").exists() && !work(&home).join("1.run").exists(),
+        "a stopped far line kept its copy or its run's file: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
 #[test]
 fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
     let root = scratch("far-swept-bytes");
