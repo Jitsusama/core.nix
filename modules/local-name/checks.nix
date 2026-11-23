@@ -23,6 +23,7 @@ let
     networking.localHostName = "its-own-name";
   };
   job = named.local-name.serviceConfig or { };
+  answers = named.local-name-answers.serviceConfig or { };
 in
 {
   # A Mac with a local name runs, as root, keep.sh with that name and its
@@ -54,6 +55,37 @@ in
             networking.localHostName = null;
           }
           ? local-name
+        )
+      );
+
+  # A Mac with a local name advertises itself as a workstation by that name,
+  # with macOS's own dns-sd, as root, from its start and again whenever it
+  # ends, saying what dns-sd says in its log; a Mac with no local name
+  # advertises nothing.
+  local-name-answers-by-a-job =
+    holds "local-name-answers-by-a-job"
+      "A Mac's local name isn't advertised by a root job running macOS's dns-sd as a workstation by that name from its start and again whenever it ends, saying what dns-sd says in its log, or a Mac with no local name advertises one."
+      (
+        answers.ProgramArguments or [ ] == [
+          "/usr/bin/dns-sd"
+          "-R"
+          "its-own-name"
+          "_workstation._tcp"
+          "local"
+          "9"
+        ]
+        && answers.UserName or null == null
+        && answers.RunAtLoad or null == true
+        && answers.KeepAlive or null == true
+        && answers.StandardOutPath or null == "/var/log/local-name-answers.log"
+        && answers.StandardErrorPath or null == "/var/log/local-name-answers.log"
+        && answers.Disabled or null != true
+        && !(
+          macNamed {
+            networking.hostName = "a-mac";
+            networking.localHostName = null;
+          }
+          ? local-name-answers
         )
       );
 }
