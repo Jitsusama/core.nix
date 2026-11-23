@@ -55,9 +55,11 @@ fn answer(ago: i64, from: &str, text: &str, re: &Posted) -> Posted {
 
 /// Every address the tests' messages are sent from.
 fn known() -> BTreeSet<String> {
-    ["IKQ63G", "CIJMZQ", "A2VLJN", "WCJQSG", "OSPHT4", "KP0L6A"]
-        .map(str::to_owned)
-        .into()
+    [
+        "IKQ63G", "CIJMZQ", "A2VLJN", "WCJQSG", "OSPHT4", "KP0L6A", "CADENCE",
+    ]
+    .map(str::to_owned)
+    .into()
 }
 
 /// Whom `one` counts against, P9R1KI where it names none.
@@ -99,6 +101,8 @@ fn a_finding_counts_against_the_owner_its_opening_names() {
         ),
         ("spawns time out for CIJMZQ since the reset", "P9R1KI"),
         ("IKQ63G, for WCJQSG. At 7am, one push had waited", "P9R1KI"),
+        // Cadence's own address only takes answers.
+        ("IKQ63G finding for CADENCE: the count", "P9R1KI"),
     ];
     for (text, owner) in cases {
         assert_eq!(
@@ -117,6 +121,11 @@ fn a_finding_counts_against_the_owner_its_opening_names() {
         owner_of("IKQ63G", &["@IKQ63G", GROUP]),
         "P9R1KI",
         "a finding counted against its own sender"
+    );
+    assert_eq!(
+        owner_of("CIJMZQ", &["@CADENCE", GROUP]),
+        "P9R1KI",
+        "a finding sent to cadence was counted against cadence"
     );
     assert_eq!(
         owner_of("CIJMZQ", &["@not one", GROUP]),
@@ -547,8 +556,7 @@ fn a_reading_that_cant_read_a_file_says_so_and_reads_it_again() {
         read(&messages, NOW, &kept, true).is_err(),
         "a mesh that can't be listed read as one with no findings"
     );
-    // Torn well over the slack before the newest, so only holding the mark
-    // back to it reads it again.
+    // Torn before the newest, so the next reading reads it again.
     let torn = finding(200, "CIJMZQ", "CIJMZQ: torn as it was read");
     put_as(&messages, &format!("{}.json", torn.id), "{\"id\":", 200);
     let first = finding(50, "IKQ63G", "IKQ63G finding for A2VLJN: x");

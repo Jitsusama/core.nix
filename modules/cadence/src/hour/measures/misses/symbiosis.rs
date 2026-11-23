@@ -956,15 +956,22 @@ fn owner(finding: &Posted, known: &BTreeSet<String>) -> Option<String> {
         Some(word.to_owned())
     });
     named
-        .filter(|word| is_address(word) && known.contains(word))
+        .filter(|word| owns(word) && known.contains(word))
         .or_else(|| {
             finding
                 .to
                 .iter()
                 .filter_map(|to| to.strip_prefix('@'))
-                .find(|to| *to != finding.from && is_address(to))
+                .find(|to| *to != finding.from && owns(to))
                 .map(str::to_owned)
         })
+}
+
+/// Whether `word` may own a finding: an address, but never cadence's own,
+/// which only takes answers, so a finding about cadence goes to the
+/// orchestrator.
+fn owns(word: &str) -> bool {
+    is_address(word) && word != crate::FROM
 }
 
 /// Whether `word` is shaped as a mesh address: six to eight capitals and
