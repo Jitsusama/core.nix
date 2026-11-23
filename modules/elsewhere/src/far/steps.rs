@@ -1,53 +1,123 @@
-//! The far line's two steps around the job: making its tree of the files
-//! that crossed, and leaving what its kind brings back to cross home.
+//! The far line's steps around the job: watching its archives cross,
+//! making its tree of them, answering a stop, and leaving what its kind
+//! brings back to cross home.
 //!
-//! Each step writes what it finds to a file of its own beside the job's
-//! copy, and checks it, rather than piping one command into the next: a
+//! The two steps that find files write what each finds to a file of its
+//! own beside the job's copy, and check it, rather than piping one
+//! command into the next: a
 //! pipe's status is only its last command's in an sh with no pipefail, so
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
 
-use super::{
-    BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MARK, MOST_BYTES, MOST_FILES, TREE, quoted,
-};
+use super::{BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES, MOST_FILES, TREE, quoted};
 use crate::settings::Kind;
+
+/// The far line's watch on the job's archives as they cross: `arrived`,
+/// once the list is whole and each archive on it is its listed size, with
+/// `waiting` naming what it still waits on; `grown`, how much has crossed
+/// so far, as `got`; and `tick`, the time in seconds as `now`.
+pub(super) fn crossing() -> String {
+    format!(
+        r#"arrived() {{
+  waiting='its list of them'
+  [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
+  while IFS="$tab" read -r size path; do
+    [ "$size" = {END} ] && return 0
+    case "/$path/" in //*|*/../*|*/./*) continue ;; esac
+    waiting=$path
+    [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
+  done < "$job/{LEFT}"
+  return 1
+}}
+# How much has crossed, list or not, as its names and kilobytes.
+grown() {{
+  kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
+  kb=${{kb%%[!0-9]*}}
+  got=$((${{kb:-0}} + ${{names:-0}}))
+}}
+# The time in seconds, or where a date can't say it, one more each pass;
+# what was counted before it first could, with this pass, carries over.
+tick() {{
+  t=$(date +%s 2>/dev/null)
+  case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
+    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
+}}"#
+    )
+}
+
+/// The far line's answer to being stopped, `stopped`, and the traps that
+/// call it. Mycelium stops a run whose asker let go with a signal to its
+/// whole group, so the far line takes its copy, the files written beside
+/// it, the job's archives and whatever it had begun to bring back away,
+/// since no one waits for them, then ends as the signal would have ended
+/// it. A closed pipe is a let go too, as when the asker's end goes before
+/// its signal comes. A second signal waits for the first one's clearing.
+pub(super) fn stopping() -> String {
+    format!(
+        r#"stopped() {{
+  trap '' HUP INT PIPE TERM
+  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* \
+    "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+  exit "$1"
+}}
+trap 'stopped 129' HUP
+trap 'stopped 130' INT
+trap 'stopped 141' PIPE
+trap 'stopped 143' TERM"#
+    )
+}
 
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
-/// for this machine's, which another may not. A tree with no file in it
-/// may not cross at all, and is made empty.
+/// for this machine's, which another may not. Each name the list holds
+/// must be one of the archives the near side writes, `0.tar` and on, all
+/// checked before any is unpacked. A job with no file that travels sends
+/// none, and its tree is made empty.
+///
+/// The near side writes only files and folders, each named within the
+/// tree, so an archive naming a member from the root or through `..`
+/// came from no near side and is refused before it's unpacked. So is a
+/// tree holding anything else, a link of either kind, a pipe, a socket
+/// or a device, checked as each archive is unpacked, before the next,
+/// so no archive writes through what one before it made, and none takes
+/// away what one before it made before it's seen. Past that, the fence
+/// around the far line writes only the quest's scratch. A file under two
+/// names is found as one that isn't a folder yet has more than one link,
+/// not by its type, so this find reads apart from the bring-back step's.
+/// Each folder is made the far line's own to read, write and enter as it
+/// is unpacked, since an archive's folder modes are kept and one closed
+/// to its owner would leave its contents unchecked and its copy behind;
+/// a file's mode stays as the near side sent it.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
-  while IFS="$tab" read -r size path; do
+  while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
-    case "/$path/" in
-      //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
+    case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
+    case $number in
+      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; return 1 ;;
     esac
   done < "$job/{LEFT}"
-  [ ! -d "$job/{TREE}" ] || cp -R "$job/{TREE}/." "$work/" || return 2
-  # Deepest first, so a folder's contents are named before it is, and
-  # shortest first within a folder, so target.elsewhere is target before
-  # target.elsewhere.elsewhere takes its name.
-  marks="$work.marks"
-  find "$work" -name '*{MARK}' > "$marks" &&
-    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' "$marks" > "$marks.by" &&
-    sort -t "$tab" -k1,1nr -k2,2n "$marks.by" > "$marks.in" &&
-    cut -f3- "$marks.in" > "$marks" || {{ rm -f "$marks" "$marks".*; return 2; }}
-  (
-    # A subshell of its own, so its exit ends only the loop in every sh.
-    while IFS= read -r name; do
-      to=${{name%{MARK}}}
-      case "${{to##*/}}" in
-        ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
+  while IFS="$tab" read -r size part; do
+    [ "$size" = {END} ] && break
+    tar -tf "$job/{TREE}/$part" > "$work.names" || return 2
+    while IFS= read -r member; do
+      case /$member/ in
+        //*|*/../*)
+          printf "elsewhere: the job's archive %s names %s, outside its tree\n" "$part" "$member" >&2
+          return 1 ;;
       esac
-      [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
-      mv "$name" "$to" || exit 2
-    done
-  ) < "$marks"
-  stripped=$?
-  rm -f "$marks" "$marks".*
-  return "$stripped"
+    done < "$work.names"
+    tar -xf "$job/{TREE}/$part" -C "$work" || return 2
+    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || return 2
+    odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
+      -o ! -type d -links +1) || return 2
+    [ -z "$odd" ] || {{
+      printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder of its own\n" "${{odd%%
+*}}" >&2
+      return 1
+    }}
+  done < "$job/{LEFT}"
 }}"#
     )
 }

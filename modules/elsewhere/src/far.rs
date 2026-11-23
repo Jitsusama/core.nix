@@ -1,11 +1,11 @@
 //! A job sent to a far machine by mycelium alone. Its tracked files, and
-//! nothing else, are left in the quest's handover, which crosses to every
-//! machine the quest is shared with; `mycelium run` then runs a shell line
-//! there that waits for them to arrive, copies them out to a folder of its
-//! own, runs the kind's setup and the job, and leaves what the kind brings
-//! back in the handover to cross home. No ssh and no copy of its own,
-//! since mycelium already says which machines may be reached, by whom, and
-//! fences an agent's run where it lands.
+//! nothing else, are left in the quest's handover as a few archives, which
+//! cross to every machine the quest is shared with; `mycelium run` then
+//! runs a shell line there that waits for them to arrive, unpacks them in
+//! a folder of its own, runs the kind's setup and the job, and leaves what
+//! the kind brings back in the handover to cross home. No ssh and no copy
+//! of its own, since mycelium already says which machines may be reached,
+//! by whom, and fences an agent's run where it lands.
 //!
 //! Each end of a shared quest looks once a second and files arrive in no
 //! set order, so each side lists what it left, with sizes and an end line
@@ -15,12 +15,12 @@
 //! here while it was being written, so the size is what says the file
 //! arrived as it was left.
 //!
-//! A shared quest keeps home any folder a build fills, `target` and
-//! `node_modules`, wherever it lies, which a tracked file can sit in as
-//! source. So such a name crosses with [`MARK`] after it, as does a name
-//! already ending in it, and the far side takes one off each name ending
-//! in it. What comes back is few files, and crosses under its numbers in
-//! the list.
+//! The job's files cross as a few tar archives, not one by one, since a
+//! share's cost grows with each file it carries, and since within one a
+//! name a shared quest keeps home wherever it lies, as `target` and
+//! `node_modules` are, crosses as any other. The far side unpacks them
+//! with its own `tar`. What comes back is few files, and crosses under
+//! its numbers in the list.
 
 use crate::settings::{Copies, Kind};
 use landing::Fault;
@@ -36,8 +36,9 @@ use terminal_kit::Exit;
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
 
-/// The list of what's left, a `SIZE<TAB>PATH` line a file, and the list of
-/// what's brought back, the same; each ends with [`END`].
+/// The list of what's left, a `SIZE<TAB>NAME` line an archive, and the
+/// list of what's brought back, a `SIZE<TAB>PATH` line a file; each ends
+/// with [`END`].
 const LEFT: &str = "elsewhere-files";
 const BROUGHT: &str = "elsewhere-back";
 const END: &str = "end";
@@ -46,18 +47,15 @@ const END: &str = "end";
 /// at once rather than waiting out what will never come.
 const CUT: &str = "cut";
 
-/// The folders the job's files lie in, under their paths as crossed, and
-/// what it brings back lies in, each named by its line in the list.
+/// The folders the job's archives lie in, under their names, and what it
+/// brings back lies in, each file named by its line in the list.
 const TREE: &str = "tree";
 const BACK: &str = "back";
 
-/// The names a shared quest keeps home wherever they lie, as a build
-/// fills them, and what such a name crosses with after it.
-const BUILT: [&str; 2] = ["target", "node_modules"];
-const MARK: &str = ".elsewhere";
-
 /// What a shared folder may hold at most, as mycelium refuses to name
-/// one holding more and holds each file whole as it lands.
+/// one holding more and holds each file whole as it lands: a job's
+/// archives are few, so only its bytes are held to these, and only what
+/// it brings back to its count.
 const MOST_FILES: usize = 10_000;
 const MOST_BYTES: u64 = 1 << 30;
 const LARGEST_FILE: u64 = 64 << 20;
@@ -157,6 +155,20 @@ fn excluded(path: &str, pattern: &str) -> bool {
             .any(|(slash, _)| at(&path[slash + 1..]))
 }
 
+/// Whether `path` names somewhere within a tree: a relative path of plain
+/// names, never from the root, through `..` or `.`. Git writes no other
+/// into its index, but an index written by hand could, and the near side
+/// would then read from outside the tree.
+fn within_tree(path: &str) -> bool {
+    use std::path::Component;
+    !path
+        .split('/')
+        .any(|name| name.is_empty() || name == "." || name == "..")
+        && Path::new(path)
+            .components()
+            .all(|part| matches!(part, Component::Normal(_)))
+}
+
 /// The files of the tree at `root` that travel, with their sizes: git's
 /// tracked files, read where they lie, not links or folders, or why the
 /// job can't travel.
@@ -186,6 +198,11 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
                 "the tracked name {path:?} holds a tab or a newline"
             ));
         }
+        if !within_tree(path) {
+            return Err(format!(
+                "the tracked name {path:?} isn't a path within the tree"
+            ));
+        }
         // A file tracked but gone, a link or a submodule doesn't travel.
         let Ok(meta) = fs::symlink_metadata(root.join(path)) else {
             continue;
@@ -193,41 +210,29 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
         if !meta.is_file() {
             continue;
         }
-        if meta.len() > LARGEST_FILE {
-            return Err(format!("{path} is past the 64 MiB a shared file may be"));
+        let taken = archive::taken(path, meta.len());
+        if taken + archive::CLOSED > LARGEST_FILE {
+            return Err(format!(
+                "{path} is past the 64 MiB a shared file may be, with its archive's header"
+            ));
         }
-        bytes += meta.len();
+        bytes += taken;
         files.push((path.to_owned(), meta.len()));
     }
-    if files.len() > MOST_FILES || bytes > MOST_BYTES {
+    let bytes = archive::archived(bytes, LARGEST_FILE);
+    if bytes > MOST_BYTES {
         return Err(format!(
-            "its {} files and {bytes} bytes are past what a shared folder carries",
+            "its {} files would take up to {bytes} bytes as archives, past the {MOST_BYTES} a shared folder carries",
             files.len()
         ));
     }
     Ok(files)
 }
 
-/// `path` as it crosses: each name a share keeps home, and each already
-/// ending in [`MARK`], with the mark after it, which the far side takes
-/// off again.
-pub fn crossing(path: &str) -> String {
-    path.split('/')
-        .map(|name| {
-            if BUILT.contains(&name) || name.ends_with(MARK) {
-                format!("{name}{MARK}")
-            } else {
-                name.to_owned()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-/// Leaves `files`, from the tree at `root`, in the job's folder of the
-/// handover, each under the name it crosses by, and lists them last so
-/// the list is never ahead of its files. Each is listed at the size its
-/// copy came to, which a file rewritten since it was gathered changes.
+/// Leaves `paths`, files of the tree at `root`, in the job's folder of
+/// the handover as archives each a share carries whole, and lists the
+/// archives last so the list is never ahead of them, each at the size it
+/// was written at.
 pub fn left<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
@@ -236,15 +241,9 @@ pub fn left<'a>(
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
-    for path in paths {
-        let crossed = crossing(path);
-        let into = tree.join(&crossed);
-        if let Some(parent) = into.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let size = fs::copy(root.join(path), into)?;
+    for part in archive::write(root, paths, &tree, LARGEST_FILE)? {
         // Writing to a String can't fail.
-        let _ = writeln!(list, "{size}\t{crossed}");
+        let _ = writeln!(list, "{}\t{}", part.size, part.name);
     }
     list.push_str(END);
     list.push('\n');
@@ -252,12 +251,12 @@ pub fn left<'a>(
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's files to cross, copies them to `scratch` within the
-/// quest's own scratch there, the one folder a strict fence lets it write, and
-/// takes the mark off each name a share would have kept home, runs
-/// the kind's setup and then the job, its program found on the far path by
-/// its name, in the job's folder `within` the tree, then leaves what the
-/// kind brings back in the handover and takes its copy away.
+/// for the job's archives to cross, unpacks them in `scratch` within the
+/// quest's own scratch there, the one folder a strict fence lets it
+/// write, runs the kind's setup and then the job, its program found on
+/// the far path by its name, in the job's folder `within` the tree, then
+/// leaves what the kind brings back in the handover and takes its copy
+/// away.
 pub fn script(
     quest: &str,
     id: &str,
@@ -285,40 +284,20 @@ pub fn script(
         .map(|word| quoted(word))
         .collect::<Vec<_>>()
         .join(" ");
+    let crossing = crossing();
     let copying = copying();
+    let stopping = stopping();
     let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
         r#"job={job}
 work={work}
 tab=$(printf '\t')
-arrived() {{
-  waiting='its list of them'
-  [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
-  while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && return 0
-    case "/$path/" in //*|*/../*|*/./*) continue ;; esac
-    waiting=$path
-    [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
-  done < "$job/{LEFT}"
-  return 1
-}}
-# How much has crossed, list or not, as its names and kilobytes.
-grown() {{
-  kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
-  kb=${{kb%%[!0-9]*}}
-  got=$((${{kb:-0}} + ${{names:-0}}))
-}}
-# The time in seconds, or where a date can't say it, one more each pass;
-# what was counted before it first could, with this pass, carries over.
-tick() {{
-  t=$(date +%s 2>/dev/null)
-  case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
-    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
-}}
+{crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
+{stopping}
 # By the clock, since a pass over a large tree takes long itself, and
 # from the last time more crossed, as the near side waits, or the clock
 # stepped back. A pass counts after its second, so passes are never short.
@@ -338,6 +317,7 @@ until arrived; do
   fi
 done
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
+rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
   cd "$HOME" && rm -rf "$work" "$job/{TREE}"
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
@@ -785,12 +765,13 @@ pub fn quoted(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 
+mod archive;
 mod heard;
 mod landing;
 pub mod spent;
 mod steps;
 
-use steps::{bringing, copying};
+use steps::{bringing, copying, crossing, stopping};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

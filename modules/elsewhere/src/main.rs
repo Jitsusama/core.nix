@@ -481,7 +481,7 @@ fn send(
         })?;
     // Shared to the machine and waited for where both ends' mycelium can;
     // otherwise shared, and the far line waits for the files to cross.
-    let within = crosses_within(job.files.len()).to_string();
+    let within = crosses_within(job.files.iter().map(|(_, size)| size).sum()).to_string();
     let shared = mycelium(
         settings,
         &[
@@ -571,11 +571,13 @@ fn send(
     )
 }
 
-/// How many seconds to wait for a job's `files` to cross: a minute, and a
-/// second for each 16 of them, half the 32 a second a share was seen to
-/// carry on 21 November, and never less than mycelium's own 120.
-fn crosses_within(files: usize) -> u64 {
-    u64::try_from(files / 16).map_or(u64::MAX, |more| (60 + more).max(120))
+/// How many seconds to wait for a job's files of `bytes` in all to cross,
+/// in a few archives, so by their size and not their number: a minute,
+/// and a second for each MiB, under a third of the 3.4 MB a second one
+/// archive crossed at on 22 November, and never less than mycelium's own
+/// 120.
+fn crosses_within(bytes: u64) -> u64 {
+    (60 + (bytes >> 20)).max(120)
 }
 
 /// Whether mycelium, asked `words`, says yes.
@@ -608,9 +610,13 @@ mod tests {
     use super::crosses_within;
 
     #[test]
-    fn the_wait_for_files_to_cross_grows_with_them() {
+    fn the_wait_for_files_to_cross_grows_with_their_size() {
         assert_eq!(crosses_within(10), 120, "never less than mycelium's own");
-        assert_eq!(crosses_within(3_876), 302, "a test suite's tree");
-        assert_eq!(crosses_within(10_000), 685, "the most a share carries");
+        assert_eq!(
+            crosses_within(57_530_368),
+            120,
+            "a repository's copy, as crossed on 22 November"
+        );
+        assert_eq!(crosses_within(1 << 30), 1084, "the most a share carries");
     }
 }
