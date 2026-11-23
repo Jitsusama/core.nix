@@ -1272,7 +1272,7 @@ mod tests {
             )
         };
         assert_eq!(
-            read(&kept(&[here.clone()])).len(),
+            read(&kept(std::slice::from_ref(&here))).len(),
             2,
             "a whole read didn't file a merge whose rounds caught nothing, so the test proves \
              nothing"

@@ -94,11 +94,7 @@ fn kept(folder: &Path, since: SystemTime, shaped: fn(&str) -> bool, kind: &Kind)
 /// listed. A record is a `.json` that is a plain file once a link to it is
 /// followed, so a half-written `.tmp`, a pipe or a device beside it isn't
 /// read; one that isn't of `kind` can't be read.
-fn listed(
-    folder: &Path,
-    since: SystemTime,
-    kind: &Kind,
-) -> io::Result<(Vec<String>, Vec<String>)> {
+fn listed(folder: &Path, since: SystemTime, kind: &Kind) -> io::Result<(Vec<String>, Vec<String>)> {
     let mut texts: Vec<(SystemTime, String)> = Vec::new();
     let mut unread = Vec::new();
     let paths = fs::read_dir(folder)?
@@ -125,11 +121,7 @@ fn listed(
 /// or of `kind` can't be read either, as its rounds would be left out
 /// unsaid, nor can a link left pointing at nothing since `since`, which
 /// is no record pruned; one left before it is as old as a record unread.
-fn record(
-    path: &Path,
-    since: SystemTime,
-    kind: &Kind,
-) -> io::Result<Option<(SystemTime, String)>> {
+fn record(path: &Path, since: SystemTime, kind: &Kind) -> io::Result<Option<(SystemTime, String)>> {
     let gone = |error: io::Error| {
         if error.kind() == ErrorKind::NotFound {
             Ok(None)
