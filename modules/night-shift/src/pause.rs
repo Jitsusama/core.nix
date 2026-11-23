@@ -24,6 +24,7 @@
 //! `turn::AHEAD_IS_LEFT_AT_MOST` once rather than every few seconds.
 
 use crate::ahead::{self, Ahead};
+use crate::holding;
 use crate::turn::{self, Look};
 use std::collections::HashSet;
 use std::fs::{self, File};
@@ -152,7 +153,7 @@ impl<'a> Sharing<'a> {
             );
             self.before += paused.since.elapsed();
             self.paused = None;
-            turn::note(self.runtime, self.name);
+            holding::note(self.runtime, self.name);
             // A job still held would keep the turn doing nothing until its
             // most, which no bar stops, as a held job stalls nobody.
             self.hold.set(false).map_err(|error| {
