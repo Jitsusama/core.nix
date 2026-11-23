@@ -700,6 +700,33 @@ in
           --basetemp="$TMPDIR/pytest" ${./web/looks-test.py}
         touch $out
       '';
+  # The web-design skill's pixels probe, run in headless Chromium over small
+  # pages at a phone's width (web/pixels-test.py): a page wider than its
+  # window, a part arriving that shifts the words, text under 12 px and a
+  # drawing's label under 9 px, and a control named apart from what it
+  # shows, each from what the live sites did on 22 November 2026.
+  pixels-probe-holds-every-pixel =
+    let
+      python = pkgs.python3.withPackages (python: [
+        python.playwright
+        python.pytest
+      ]);
+    in
+    pkgs.runCommandLocal "pixels-probe-holds-every-pixel"
+      {
+        env = {
+          WEB_SKILL = "${./web/skill}";
+          FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ ]; };
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PYTHONPATH = "${probeBrowser}";
+          PYTHONDONTWRITEBYTECODE = "1";
+        };
+      }
+      ''
+        HOME=$TMPDIR ${python}/bin/python -m pytest -p no:cacheprovider -p probe_browser \
+          --basetemp="$TMPDIR/pytest" ${./web/pixels-test.py}
+        touch $out
+      '';
   # Picking another theme changes everything the account draws: the desktop
   # rendered in Flexoki Light keeps none of Osaka Jade's colours anywhere in
   # its files, so no surface was left behind in the old one. The design

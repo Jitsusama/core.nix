@@ -31,7 +31,16 @@ through axe-core and its own console.
    Then run `layout.js`, beside it, the same way: things side by side
    ending level with their parts in line and none under 256 px, and every
    fold opening without moving anything beside or above it. It opens each
-   fold, so run it on a page nobody is reading. A page with a walked map
+   fold, so run it on a page nobody is reading. Then run `pixels.js` the
+   same way, at the phone's width and the desk's: the page no wider than
+   its window (a part wider than it scrolls in a scroller of its own), a
+   layout shift under 0.1 as it arrives, no text under 12 px on screen, a
+   drawing's label under 12 px only where it's marked `data-enlarges` and
+   a zoom, hover or focus shows it at 12 px or more, nothing under 9 px,
+   and every control's name starting with the words it shows (WCAG
+   2.5.3), a keycap on it after them, and a mark alone, such as "/",
+   showing a word beside it. A live page's test runs it through
+   `holds_every_pixel` once the page keeps to it. A page with a walked map
    or graph runs `map.js` too, the same way, once the map marks itself as
    the file's opening comment says: each arrow lands on the nearest mark
    of its level within 45 degrees of it, or stays and says so, and the

@@ -289,6 +289,16 @@ class Opened:
             found = self.page.evaluate((skill / check).read_text())
             assert found == [], f"{check} at {self.size} in the {self.look} look found {found}"
 
+    def holds_every_pixel(self) -> None:
+        """Hold the page to the skill's pixels probe: width, shift, type floors and names.
+
+        A page's test calls this once its page keeps to the rules, so each page
+        takes the probe as it's moved onto them (1HE06W's plan of 22 November
+        2026), rather than every page failing at once before it's moved.
+        """
+        found = self.page.evaluate((Path(os.environ["WEB_SKILL"]) / "pixels.js").read_text())
+        assert found == [], f"pixels.js at {self.size} in the {self.look} look found {found}"
+
     def keeps_to(self, budget: Budget) -> None:
         """Hold the drawn page to `budget`, then visit it again and find nothing sent twice.
 

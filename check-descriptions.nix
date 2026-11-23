@@ -3243,6 +3243,15 @@
     pi's text, strings and deepest thinking are the account's text, string and alert colours, and
     every colour it names is hex
   '';
+  pixels-probe-holds-every-pixel = ''
+    the web-design skill's pixels probe, in headless Chromium at a phone's width, names a page
+    wider than its window and what reaches past it while passing a part in its own scroller, a
+    part arriving over the words that shifts the page past 0.1 while passing one whose box was
+    kept, text under 12 px, a drawing's label under 12 px unless marked data-enlarges and under
+    9 px even then, as the drawing's scale sets it, while passing words for the ear alone, and a
+    control whose name doesn't start with the words it shows or that shows a mark alone, while
+    passing a keycap named for its key and a picture named by its label
+  '';
   platform-profiles-reach-the-legacy-file = ''
     every profile Dell's driver offers, the XPS 14's SoC slider takes too
   '';
