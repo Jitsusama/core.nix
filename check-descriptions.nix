@@ -2129,8 +2129,9 @@
     and as Play From the Start does, from its start
   '';
   mycelium-node-takes-its-flags = ''
-    the mycelium core locks takes every flag a workstation's node is started with, so a flag
-    can't reach the node's service before the mycelium that reads it
+    the mycelium core locks takes every flag a workstation's node is started with, each with a
+    value where its line gives one and none where it doesn't, so a flag can't reach the node's
+    service before the mycelium that reads it
   '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
@@ -2145,8 +2146,9 @@
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
     the home realm's node writes how it would ease the machine, asking the harness to park
-    sessions and making the carries it chooses only where told to, and a further realm's
-    doesn't; one naming none runs it dialling
+    sessions and making the carries it chooses only where told to, on Linux and a Mac alike,
+    and only with a mycelium that keeps the person's and the leading sessions, and a further
+    realm's doesn't; one naming none runs it dialling
     nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''

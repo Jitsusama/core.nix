@@ -660,6 +660,12 @@ in
           message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
         }
         {
+          # The guards the option promises are mycelium's, so they hold
+          # only from the node that has them (easing.nix).
+          assertion = cfg.easesCarry -> easing.keepsTheLed mycelium;
+          message = "jitsusama.mycelium.easesCarry is set with a mycelium from before its #381, which may carry the sessions the person writes in or those leading others: take a newer mycelium, or leave easesCarry off.";
+        }
+        {
           assertion = cfg.lend != null -> cfg.realm != null;
           message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, the realm whose node lends.";
         }
