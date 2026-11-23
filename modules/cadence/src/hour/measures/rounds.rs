@@ -218,7 +218,9 @@ fn answered(run: &Value) -> bool {
     let answer = |o: &Value| {
         o.get("failure").is_none()
             && (o.get("stopped").is_none()
-                || o["findingIds"].as_array().is_some_and(|ids| !ids.is_empty()))
+                || o["findingIds"]
+                    .as_array()
+                    .is_some_and(|ids| !ids.is_empty()))
     };
     !flag("open")
         && !flag("closed")
@@ -918,8 +920,16 @@ mod tests {
             ended("council-a-failed", 400, r#"[{"failure": "wall"}]"#),
             ended("council-a-closed", 300, r#"[{}], "closed": true"#),
             ended("council-a-bare", 200, "[]"),
-            ended("council-a-cancelled", 150, r#"[{"stopped": {"limit": "cancelled"}}]"#),
-            ended("council-a-found", 100, r#"[{"stopped": {}, "findingIds": [1]}]"#),
+            ended(
+                "council-a-cancelled",
+                150,
+                r#"[{"stopped": {"limit": "cancelled"}}]"#,
+            ),
+            ended(
+                "council-a-found",
+                100,
+                r#"[{"stopped": {}, "findingIds": [1]}]"#,
+            ),
         ];
         let ours = [
             record("github", CORE, "31", "elsewhere", &a),
