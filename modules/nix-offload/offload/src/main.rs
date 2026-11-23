@@ -1050,28 +1050,70 @@ fn progress(host: &str) -> Result<(), Failure> {
 }
 
 /// The folders of every VM lender, the first's `vm_dir` first, then the
-/// second's and those past it.
+/// second's and those past it, each once. Where they all name one lane,
+/// the others follow it, unless [`LANE_ONLY`] keeps the run there: on 22
+/// November two runs pinned to one full lane each waited one and two
+/// hours while two lanes sat idle and passed their proofs.
 fn vm_dirs(vm_dir: &Path) -> Vec<PathBuf> {
     let vm_more_dir = env::var_os("NIX_OFFLOAD_VM_MORE_DIR")
         .map_or_else(|| PathBuf::from(VM_MORE_DIR), PathBuf::from);
-    [vm_dir.to_path_buf(), vm_more_dir]
+    let named = [vm_dir.to_path_buf(), vm_more_dir]
         .into_iter()
-        .chain(vm_extra_dirs())
-        .collect()
+        .chain(vm_extra_dirs());
+    let every = [PathBuf::from(VM_DIR), PathBuf::from(VM_MORE_DIR)]
+        .into_iter()
+        .chain(lanes_past_the_second());
+    lanes(named, every, lane_only())
+}
+
+/// The VM lanes a run may send to: those `named`, each once, then
+/// `every` other where the named are one lane and it isn't `kept` there.
+fn lanes(
+    named: impl Iterator<Item = PathBuf>,
+    every: impl Iterator<Item = PathBuf>,
+    kept: bool,
+) -> Vec<PathBuf> {
+    let dirs = once_each(named);
+    if dirs.len() == 1 && !kept {
+        once_each(dirs.into_iter().chain(every))
+    } else {
+        dirs
+    }
+}
+
+/// `dirs` in order, each kept only where it first comes.
+fn once_each(dirs: impl Iterator<Item = PathBuf>) -> Vec<PathBuf> {
+    let mut kept: Vec<PathBuf> = Vec::new();
+    for dir in dirs {
+        if !kept.contains(&dir) {
+            kept.push(dir);
+        }
+    }
+    kept
+}
+
+/// What keeps a run on the one VM lane its folders name, rather than
+/// letting the others take its VM tests when it's full.
+const LANE_ONLY: (&str, &str) = ("NIX_OFFLOAD_LANE_ONLY", "1");
+
+fn lane_only() -> bool {
+    env::var_os(LANE_ONLY.0).is_some_and(|value| value == LANE_ONLY.1)
 }
 
 /// The folders of the VM lenders past the second, /run/nix-offload-vm-3
 /// to -16, as many as home.nix's vmTests.extra may lend from;
 /// `NIX_OFFLOAD_VM_EXTRA_DIRS` names others, a path list.
 fn vm_extra_dirs() -> Vec<PathBuf> {
-    env::var_os("NIX_OFFLOAD_VM_EXTRA_DIRS").map_or_else(
-        || {
-            (3..=16)
-                .map(|number| PathBuf::from(format!("{VM_DIR}-{number}")))
-                .collect()
-        },
-        |dirs| env::split_paths(&dirs).collect(),
-    )
+    env::var_os("NIX_OFFLOAD_VM_EXTRA_DIRS").map_or_else(lanes_past_the_second, |dirs| {
+        env::split_paths(&dirs).collect()
+    })
+}
+
+/// The folders home.nix's vmTests.extra lends from past the second.
+fn lanes_past_the_second() -> Vec<PathBuf> {
+    (3..=16)
+        .map(|number| PathBuf::from(format!("{VM_DIR}-{number}")))
+        .collect()
 }
 
 /// The VM tests `vm` split between the VM builders of `vm_dirs`, a part
@@ -4249,6 +4291,37 @@ mod tests {
     /// Held while a test hears a helper, so no stop is told meanwhile.
     fn unstopped() -> RwLockReadGuard<'static, ()> {
         STOPS.read().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn paths(names: &[&str]) -> Vec<PathBuf> {
+        names.iter().map(PathBuf::from).collect()
+    }
+
+    #[test]
+    fn a_run_pinned_to_one_lane_may_go_to_the_others_unless_kept_there() {
+        let pinned = || paths(&["/lane-11", "/lane-11", "/lane-11"]).into_iter();
+        let every = || paths(&["/lane", "/lane-more", "/lane-11", "/lane-12"]).into_iter();
+        assert_eq!(
+            lanes(pinned(), every(), false),
+            paths(&["/lane-11", "/lane", "/lane-more", "/lane-12"]),
+            "a pinned run wasn't let onto the other lanes after its own"
+        );
+        assert_eq!(
+            lanes(pinned(), every(), true),
+            paths(&["/lane-11"]),
+            "a run kept on its lane was let onto others"
+        );
+    }
+
+    #[test]
+    fn a_run_naming_several_lanes_sends_to_those_alone_each_once() {
+        let named = paths(&["/lane-3", "/lane-4", "/lane-3"]).into_iter();
+        let every = paths(&["/lane", "/lane-more"]).into_iter();
+        assert_eq!(
+            lanes(named, every, false),
+            paths(&["/lane-3", "/lane-4"]),
+            "lanes a run named weren't kept as named, each once"
+        );
     }
 
     #[test]
