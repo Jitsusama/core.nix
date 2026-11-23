@@ -291,15 +291,31 @@ fn a_merge_is_found_without_reading_main_below_it() {
             .args(["-C", &repo.to_string_lossy(), "rev-parse", rev])
             .output()
             .expect("git runs");
+        assert!(out.status.success(), "git couldn't name {rev}");
         String::from_utf8_lossy(&out.stdout).trim().to_owned()
     };
     let (merge, root) = (sha("HEAD~1"), sha("HEAD~3"));
-    // The root's object gone, as a history too long to read is: a walk to
-    // the root fails there, so only one left at the merge finds it.
+    // The root's object made a pipe nobody writes, so reading it waits for
+    // good, as a history too long to read does in effect: only a walk left
+    // at the merge answers at all.
     let object = repo.join(".git/objects").join(&root[..2]).join(&root[2..]);
-    std::fs::remove_file(object).expect("the root's object removed");
+    std::fs::remove_file(&object).expect("the root's object removed");
+    let made = std::process::Command::new("mkfifo")
+        .arg(&object)
+        .status()
+        .expect("mkfifo runs");
+    assert!(made.success(), "the root's object wasn't made a pipe");
+    let path = repo.to_string_lossy().into_owned();
+    let (sent, answer) = std::sync::mpsc::channel();
+    std::thread::spawn(move || sent.send(merge_of(&path, 7)).ok());
+    let answer = answer.recv_timeout(std::time::Duration::from_secs(30));
+    if answer.is_err() {
+        // A walk stuck at the root is let go, so a failing run leaves no git
+        // waiting behind it.
+        std::fs::OpenOptions::new().write(true).open(&object).ok();
+    }
     assert_eq!(
-        merge_of(&repo.to_string_lossy(), 7),
+        answer.ok().flatten(),
         Some(merge),
         "the merge wasn't found before main's history below it was read"
     );

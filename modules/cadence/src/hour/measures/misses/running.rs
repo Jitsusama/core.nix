@@ -147,10 +147,16 @@ pub fn unrun(
         };
         let path = path.to_string_lossy();
         let key = format!("{} #{}", change.repo, change.number);
+        let rev = revs.get(&change.repo).map(String::as_str);
+        // Only looked for where judge reads it, since a merge that isn't
+        // found costs a walk to main's root.
+        let merge = (rev.is_some() && RUN_HERE.contains(&change.repo.as_str()))
+            .then(|| merge_of(&path, change.number))
+            .flatten();
         let why = judge(
             &change.repo,
-            revs.get(&change.repo).map(String::as_str),
-            merge_of(&path, change.number).as_deref(),
+            rev,
+            merge.as_deref(),
             |sha, rev| carries(&path, sha, rev),
             |sha| changed(&path, sha),
             |sha| {
@@ -580,15 +586,18 @@ fn merge_of(path: &str, number: u64) -> Option<String> {
             &squashed,
             main_of(path),
         ])
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
     let found = log.stdout.take().and_then(|out| {
+        // Read as bytes, since a subject that isn't UTF-8 above the merge
+        // would otherwise end the read before it.
         BufReader::new(out)
-            .lines()
+            .split(b'\n')
             .map_while(Result::ok)
-            .find_map(|line| subject_merging(&line, number))
+            .find_map(|line| subject_merging(&String::from_utf8_lossy(&line), number))
     });
     // A walk that already ended has nothing to stop, and one stopped here is
     // only reaped, so neither result says anything the merge found doesn't.
