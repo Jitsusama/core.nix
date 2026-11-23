@@ -89,8 +89,10 @@ pub(super) type Said = BTreeMap<String, usize>;
 
 /// What runs `nix-offload` for the train: with its arguments, the commit
 /// it builds at, the log its words go to, and when to let it go; how it
-/// exited, none when it didn't end of itself.
-pub(super) type Runner = dyn Fn(&[String], &str, &Path, &dyn Fn() -> bool) -> Option<i32> + Sync;
+/// exited, none when it didn't end of itself. It may borrow for as long
+/// as it is lent, which an alias without a lifetime would hold to `'static`.
+pub(super) type Runner<'a> =
+    dyn Fn(&[String], &str, &Path, &dyn Fn() -> bool) -> Option<i32> + Sync + 'a;
 
 /// What a failed check did at the candidate's base.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -516,7 +518,7 @@ fn ran(
     slug: &str,
     base: &str,
     check: &str,
-    run: &Runner,
+    run: &Runner<'_>,
     dropped: &dyn Fn() -> bool,
 ) -> Option<AtBase> {
     if crate::macs::base_of(check).is_some() {
@@ -548,7 +550,7 @@ fn again(
     checkout: &Path,
     candidate: &str,
     check: &str,
-    run: &Runner,
+    run: &Runner<'_>,
     dropped: &dyn Fn() -> bool,
 ) -> Option<bool> {
     let log = again_folder(folder, candidate).join(format!("{check}.log"));
@@ -579,7 +581,7 @@ pub(super) struct Red<'a> {
 /// when run again at its candidate, `run` running each ask; said in the
 /// net's log as the train lands it, and none when they don't, with why
 /// said there too.
-pub(super) fn excuse(red: &Red, run: &Runner) -> Option<Vec<String>> {
+pub(super) fn excuse(red: &Red, run: &Runner<'_>) -> Option<Vec<String>> {
     let state = State::at(red.root.to_path_buf());
     let train = super::folder(red.root);
     let off = train.join("no-excuse");
