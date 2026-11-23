@@ -246,6 +246,20 @@ let
           '';
         };
       inherit (pkgs) mesa;
+      # A setting of the account's shell unit, by its name, so the shell here runs as Joel's
+      # does; one the unit no longer sets fails the evaluation rather than going unsaid.
+      unitSets =
+        setting:
+        let
+          asked = "${setting}=";
+          said = lib.findFirst (lib.hasPrefix asked) null (
+            home.systemd.user.services.quickshell.Service.Environment
+          );
+        in
+        if said == null then
+          throw "The shell's unit no longer sets ${setting}."
+        else
+          lib.removePrefix asked said;
     in
     pkgs.runCommandLocal name
       {
@@ -278,6 +292,12 @@ let
             unit = home.xdg.configFile."systemd/user/niri.service.d/fixed-to-output.conf".text;
           in
           lib.removePrefix asked (lib.findFirst (lib.hasPrefix asked) "" (lib.splitString "\n" unit));
+        # Never taking a window for hidden however late niri's frame callback, as the shell's
+        # unit has it (home.nix, its reason there). With Qt's default of 100 ms, a loaded
+        # builder's niri answered late, and Qt stopped drawing a window, then drew it again as
+        # the answer came: the margin cat drew a frame beside each of the launcher's while held
+        # under it, 3 to 8 in five of 66 runs, though Joel's shell never does (2026-11-22).
+        QT_WAYLAND_FRAME_CALLBACK_TIMEOUT = unitSets "QT_WAYLAND_FRAME_CALLBACK_TIMEOUT";
         NOTICES_DAEMON = home.systemd.user.services.notices.Service.ExecStart;
         NOTICES_LOG = "logs/notices.log";
         # The step a switch runs before it restarts the shell, as the
