@@ -39,8 +39,8 @@ pub enum Turn {
 /// each wait on the other's. A turn whose file can't be used is said and
 /// left out, as the uplink's are, so the run waits on the rest; one that
 /// can't be had at all, its folder unwritable or none of its files usable,
-/// is said, and the run goes on without it, keeping the machine's turn
-/// where only the builder's can't be had.
+/// is said, and the run goes on without it, keeping whichever of the two
+/// can be had, so neither limit lifts the other.
 pub fn sending(turns: &Path, host: &str, moves: bool, counted: bool) -> Turn {
     taken(turns, host, moves, counted).unwrap_or_else(|error| {
         eprintln!("nix-offload: couldn't wait for a turn at sending this: {error}");
@@ -54,9 +54,15 @@ fn taken(turns: &Path, host: &str, moves: bool, counted: bool) -> io::Result<Tur
     let mut held = Vec::new();
     if counted {
         let full = format!("{AT_ONCE} changed-checks runs already go out from this machine");
-        match turn_of(turns, ("changed", AT_ONCE), moves, &full)? {
-            Some(turn) => held.push(turn),
-            None => return Ok(Turn::Full),
+        match turn_of(turns, ("changed", AT_ONCE), moves, &full) {
+            Ok(Some(turn)) => held.push(turn),
+            Ok(None) => return Ok(Turn::Full),
+            // The builder's turn is still taken, so its four still hold
+            // where only the machine's eight can't.
+            Err(error) => eprintln!(
+                "nix-offload: this machine's turns can't be had ({error}), so this run is \
+                 counted only by {host}'s"
+            ),
         }
     }
     let name = format!("changed-{host}");
@@ -66,6 +72,9 @@ fn taken(turns: &Path, host: &str, moves: bool, counted: bool) -> io::Result<Tur
         Ok(None) => return Ok(Turn::Full),
         // The machine's turn, won already, perhaps after a wait, is kept,
         // so the run is still counted among the machine's.
+        Err(error) if held.is_empty() => eprintln!(
+            "nix-offload: {host}'s turns can't be had ({error}), so this run goes on without one"
+        ),
         Err(error) => eprintln!(
             "nix-offload: {host}'s turns can't be had ({error}), so this run holds only the \
              machine's"
@@ -84,16 +93,19 @@ fn turn_of(
     full: &str,
 ) -> io::Result<Option<fs::File>> {
     let (turn, unusable) = free(turns, name, count)?;
-    if !unusable.is_empty() {
-        eprintln!(
-            "nix-offload: not every turn named {name} can be used ({}), so this waits on the rest",
-            unusable.join("; ")
-        );
-    }
     match turn {
         Some(turn) => Ok(Some(turn)),
         None if moves => Ok(None),
         None => {
+            // Said only as it waits, as the uplink's are, so a run that
+            // takes a free turn or moves on says nothing of a wait.
+            if !unusable.is_empty() {
+                eprintln!(
+                    "nix-offload: not every turn named {name} can be used ({}), so this waits \
+                     on the rest",
+                    unusable.join("; ")
+                );
+            }
             eprintln!("nix-offload: {full}, so this waits its turn");
             waited(turns, name, count).map(Some)
         }
@@ -315,6 +327,69 @@ mod tests {
             ),
             "a run to a builder whose turns are all unusable lost the machine's"
         );
+        assert!(
+            matches!(
+                sending(turns.path(), "gone", false, false),
+                Turn::Had(files) if files.is_empty()
+            ),
+            "an uncounted run to a builder whose turns are all unusable held a turn"
+        );
+    }
+
+    // With a link among a builder's turns and the rest held, a run waits,
+    // rather than going out or giving up, and takes the turn given back.
+    #[test]
+    fn a_run_waits_past_a_link_for_a_turn_given_back() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        std::os::unix::fs::symlink(&elsewhere, turns.path().join("changed-builder-1")).unwrap();
+        let mut held: Vec<_> = (1..EACH)
+            .map(|_| sending(turns.path(), "builder", false, true))
+            .collect();
+        let (told, heard) = std::sync::mpsc::channel();
+        let path = turns.path().to_owned();
+        let waiting = thread::spawn(move || {
+            let turn = sending(&path, "builder", false, true);
+            let _ = told.send(matches!(&turn, Turn::Had(files) if files.len() == 2));
+            turn
+        });
+        assert!(
+            heard.recv_timeout(Duration::from_secs(1)).is_err(),
+            "a run past a link went out beside three held turns"
+        );
+        held.pop();
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(10)),
+            Ok(true),
+            "a waiting run didn't take the turn given back, with the machine's"
+        );
+        drop(waiting.join());
+        assert!(!elsewhere.exists(), "the link was followed");
+    }
+
+    // Where none of the machine's eight can be used, a run is still
+    // counted by its builder's four, which still hold.
+    #[test]
+    fn a_machine_whose_turns_are_all_unusable_still_counts_each_builders_four() {
+        let turns = tempfile::tempdir().unwrap();
+        let elsewhere = turns.path().join("elsewhere");
+        for turn in 1..=AT_ONCE {
+            let at = turns.path().join(format!("changed-{turn}"));
+            std::os::unix::fs::symlink(&elsewhere, at).unwrap();
+        }
+        let held: Vec<_> = (0..EACH)
+            .map(|_| sending(turns.path(), "builder", false, true))
+            .collect();
+        assert!(
+            held.iter()
+                .all(|turn| matches!(turn, Turn::Had(files) if files.len() == 1)),
+            "a run lost its builder's turn to the machine's links: {held:?}"
+        );
+        assert!(
+            matches!(sending(turns.path(), "builder", true, true), Turn::Full),
+            "a fifth run went to a builder running four"
+        );
+        drop(held);
     }
 
     #[test]

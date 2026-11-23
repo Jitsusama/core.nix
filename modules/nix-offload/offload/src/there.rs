@@ -1821,14 +1821,28 @@ pub fn turns_folder() -> Option<PathBuf> {
 /// and in `temp` otherwise, or in `temp` where the runtime folder's can't
 /// be used, as one inherited through `sudo -E` or left after its account
 /// logged out, for the account `uid`; why not, of each, when neither is
-/// that account's own folder.
+/// that account's own folder. A runtime folder is used only when it's a
+/// folder of that account's that no other may write, as logind makes it,
+/// since another account that can write it could move the turns folder
+/// aside and put its own in its place; one others may only read is used,
+/// since the turns folder within is closed to them.
 fn turns_folder_in(runtime: Option<PathBuf>, temp: &Path, uid: u32) -> Result<PathBuf, String> {
+    use std::os::unix::fs::MetadataExt;
     let in_temp = || turn_folder_at(&temp.join(format!("nix-offload-there-{uid}")), uid);
-    match runtime {
-        None => in_temp(),
-        Some(runtime) => turn_folder_at(&runtime.join("nix-offload-there"), uid)
-            .or_else(|first| in_temp().map_err(|then| format!("{first}, and {then}"))),
-    }
+    let Some(runtime) = runtime else {
+        return in_temp();
+    };
+    let open_to_others = fs::symlink_metadata(&runtime)
+        .is_ok_and(|found| !found.is_dir() || found.uid() != uid || found.mode() & 0o022 != 0);
+    let ours = if open_to_others {
+        Err(format!(
+            "{} isn't a runtime folder of this account's alone",
+            runtime.display()
+        ))
+    } else {
+        turn_folder_at(&runtime.join("nix-offload-there"), uid)
+    };
+    ours.or_else(|first| in_temp().map_err(|then| format!("{first}, and {then}")))
 }
 
 /// The folder `folder`, made only the account `uid` may enter where it
@@ -3581,6 +3595,11 @@ pub fn on_with(
     // lent way.
     eprintln!("nix-offload: building on the lent builder {}", lent.host);
     command.arg(&lent.host).arg(wrap(&sending.command));
+    // Ended with its run, as `captured_on`'s is: a run sent apart holds a
+    // changed-checks turn too, and its ssh, waited on below in this same
+    // thread, would otherwise keep the builder's shell, uncounted, after
+    // the run that held the turn was killed.
+    dies_with_run(&mut command);
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
@@ -6415,6 +6434,66 @@ mod tests {
         );
     }
 
+    // A turn's file that can't be locked at all (here one opened only as a
+    // path, which flock refuses) is taken out and said, and the free one
+    // beside it is still taken.
+    #[test]
+    fn a_turn_that_cant_be_locked_is_left_out_for_the_one_beside_it() {
+        use std::os::unix::fs::OpenOptionsExt;
+        let folder = tempfile::tempdir().expect("a folder");
+        let (pathed, plain) = (folder.path().join("pathed"), folder.path().join("plain"));
+        fs::write(&pathed, "").expect("a turn");
+        let pathed = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_PATH)
+            .open(&pathed)
+            .expect("a turn opened as a path");
+        let plain = open_turn(&plain, true).expect("a turn");
+        let mut files = vec![pathed, plain];
+        let mut unlocked = Vec::new();
+        let taken = free_turn(&mut files, &mut unlocked);
+        assert!(
+            taken.is_some() && files.is_empty() && unlocked.len() == 1,
+            "a turn that can't be locked kept the free one from its copy: {unlocked:?}"
+        );
+        assert_eq!(
+            (copies(files.len() + 1), copies(3)),
+            ("1 copy".to_owned(), "3 copies".to_owned()),
+            "the copies counted were said wrong"
+        );
+    }
+
+    // Opened only to read, as a holder's words are, a FIFO, a folder and
+    // a second name are each refused at once, never waited on or read.
+    #[test]
+    fn a_turn_opened_to_read_refuses_a_fifo_a_folder_or_a_second_name() {
+        use std::os::unix::ffi::OsStrExt;
+        let folder = tempfile::tempdir().expect("a folder");
+        let fifo = folder.path().join("fifo");
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).expect("its name");
+        // SAFETY: the name is a valid C string that outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "a FIFO");
+        let inner = folder.path().join("inner");
+        fs::create_dir(&inner).expect("a folder within");
+        let elsewhere = folder.path().join("elsewhere");
+        fs::write(&elsewhere, "kept").expect("a file elsewhere");
+        let second = folder.path().join("second");
+        fs::hard_link(&elsewhere, &second).expect("a second name");
+        let (told, heard) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let refused = [fifo, inner, second]
+                .iter()
+                .map(|at| open_turn(at, false).is_err())
+                .collect::<Vec<_>>();
+            let _ = told.send(refused);
+        });
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(5)),
+            Ok(vec![true, true, true]),
+            "a FIFO, a folder or a second name was opened to read, or its open hung"
+        );
+    }
+
     // A turn just taken may still hold the words of a run that has ended,
     // which aren't named as its holder.
     #[test]
@@ -6461,6 +6540,14 @@ mod tests {
         let uid = unsafe { libc::geteuid() };
         let runtime = base.path().join("runtime");
         fs::create_dir(&runtime).expect("a runtime folder");
+        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o775)).expect("opened");
+        let temp = tempfile::tempdir().expect("a temp folder");
+        assert_eq!(
+            turns_folder_in(Some(runtime.clone()), temp.path(), uid),
+            Ok(temp.path().join(format!("nix-offload-there-{uid}"))),
+            "a runtime folder others may write was used rather than the temp folder"
+        );
+        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o755)).expect("closed");
         let made = turns_folder_in(Some(runtime.clone()), base.path(), uid).expect("its folder");
         assert_eq!(
             made,
