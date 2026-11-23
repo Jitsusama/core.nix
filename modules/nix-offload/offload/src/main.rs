@@ -2419,8 +2419,9 @@ impl Sent<'_> {
             .kept_first(arguments, lent)
             .into_iter()
             .chain(
+                // A lane kept for the runs naming it takes no whole run.
                 vm.iter()
-                    .filter(|builder| there::warm(builder))
+                    .filter(|builder| there::warm(builder) && !there::named_only(builder))
                     .map(|builder| standing(builder)),
             )
             .collect();
