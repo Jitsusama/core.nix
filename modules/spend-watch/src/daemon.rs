@@ -213,10 +213,12 @@ impl Watches {
     /// saying.
     fn follow(&self, paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
         use std::sync::atomic::Ordering;
+        // Asked under the lock, so a pass racing `give_up` either adds
+        // its watches before they're handed back or adds none.
+        let mut watched = self.held();
         if !self.heard.load(Ordering::Relaxed) {
             return Vec::new();
         }
-        let mut watched = self.held();
         let known: std::collections::HashSet<PathBuf> = watched.values().cloned().collect();
         let mut refused = Vec::new();
         for path in paths.into_iter().filter(|path| !known.contains(path)) {
@@ -303,7 +305,10 @@ fn watch(config: Config, wake: Sender<Wake>) -> Option<Arc<Watches>> {
     // Each machine's logs are watched as this machine's are, a new project
     // folder at once, so its first log is read as it lands rather than on
     // the next quiet pass. Its folder is made here so there is one to
-    // watch before anything is brought.
+    // watch before anything is brought, and this machine's too, as before
+    // pi's first run, rather than polling until the daemon is restarted.
+    // Unmade, as where it can't be, the daemon polls.
+    let _ = std::fs::create_dir_all(&config.sessions);
     let roots: Vec<PathBuf> = std::iter::once(config.sessions.clone())
         .chain(config.machines.iter().map(|machine| {
             // Unmade, it's found by the passes as it appears, a little
@@ -316,8 +321,8 @@ fn watch(config: Config, wake: Sender<Wake>) -> Option<Arc<Watches>> {
     if let Some(watches) = &watches {
         watches.follow(projects(&roots));
     }
-    // No sessions directory yet, as before pi's first run: polling
-    // notices it appear.
+    // A sessions folder that couldn't be made or watched: polling notices
+    // its logs, and the passes are handed no watch to feed.
     let Some(watches) = watches.filter(|watches| watches.follows(&config.sessions)) else {
         std::thread::spawn(move || poll(&config, &wake));
         return None;
@@ -1322,7 +1327,14 @@ mod tests {
             Some(&watches),
         );
         assert!(watches.follows(&session), "the pass's folder isn't watched");
+        let held: Vec<i32> = watches.held().keys().copied().collect();
         watches.give_up();
+        for watch in held {
+            assert!(
+                inotify::remove_watch(&watches.fd, watch).is_err(),
+                "a watch given up wasn't handed back"
+            );
+        }
         watches.follow([dir.path().to_path_buf()]);
         assert!(
             !watches.follows(dir.path()),
@@ -1398,23 +1410,35 @@ mod tests {
         );
     }
 
-    // With no sessions folder yet the daemon polls, and hands back no
-    // watches for its passes to feed.
+    // A sessions folder not yet made is made and watched; one that can't
+    // be made leaves the daemon polling, with no watch for its passes to
+    // feed.
     #[cfg(target_os = "linux")]
     #[test]
-    fn no_sessions_folder_polls_with_no_watch() {
+    fn a_sessions_folder_is_made_or_polled_with_no_watch() {
         let dir = tempfile::tempdir().unwrap();
-        let root = dir.path().display();
-        let config: Config = serde_json::from_value(serde_json::json!({
-            "sessions": format!("{root}/none"), "runs": "/r", "registry": "/g",
-            "quests": "/q", "state": "/t",
-        }))
-        .unwrap();
+        let config = |sessions: PathBuf| -> Config {
+            serde_json::from_value(serde_json::json!({
+                "sessions": sessions, "runs": "/r", "registry": "/g",
+                "quests": "/q", "state": "/t",
+            }))
+            .unwrap()
+        };
+        // A folder can't be made under a file.
+        let file = dir.path().join("file");
+        std::fs::write(&file, "").unwrap();
         let (wake, _heard) = mpsc::channel();
         assert!(
-            watch(config, wake).is_none(),
+            watch(config(file.join("sessions")), wake).is_none(),
             "a watch nobody reads was handed back"
         );
+        let sessions = dir.path().join("sessions");
+        let (wake, _heard) = mpsc::channel();
+        assert!(
+            watch(config(sessions.clone()), wake).is_some(),
+            "a sessions folder not yet made wasn't made and watched"
+        );
+        assert!(sessions.is_dir(), "the sessions folder wasn't made");
     }
 
     fn found(key: &str, detector: &str) -> Finding {

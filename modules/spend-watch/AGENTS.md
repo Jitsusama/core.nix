@@ -256,11 +256,11 @@ feed speaks.
   a second all day, almost all of it councils finished weeks before. So a
   settled folder is left (see Agents), and each pass hands the watch the
   folders it found rather than the watch walking again. Where inotify
-  can't be had, pi's sessions folder isn't there yet as the daemon starts,
-  or the watch can't be read, the daemon polls until it's restarted,
-  saying so once in its journal, and each poll is a whole walk, the old
-  cost. A count that looks late, or a daemon polling once pi has run, is
-  mended by `systemctl --user restart spend-watch`, which forgets what's
+  can't be had, pi's sessions folder can't be made (the daemon makes it
+  before pi's first run), or the watch can't be read, the daemon polls
+  until it's restarted, saying so once in its journal, and each poll is a
+  whole walk, the old cost. A count that looks late, or a daemon polling,
+  is mended by `systemctl --user restart spend-watch`, which forgets what's
   settled at the price of one whole walk. It runs at
   most every 30 seconds while the logs grow and every five minutes while
   they don't; the heartbeat alone is written every 30 seconds, so the shell
