@@ -21,7 +21,7 @@ fn told_after(ready: Vec<Seen>, down: &Seen) -> usize {
     }
     (5..=30)
         .step_by(5)
-        .map(|minutes| step(&mut told, NOW + minutes * 60, &[down.clone()]).len())
+        .map(|minutes| step(&mut told, NOW + minutes * 60, std::slice::from_ref(down)).len())
         .sum()
 }
 
@@ -94,7 +94,7 @@ fn a_busy_machine_held_back_by_its_power_is_said_once_a_spell() {
         for minutes in (5..=30).step_by(5) {
             let before = held_now(&told);
             let now = NOW + minutes * 60;
-            step(&mut told, now, &[down.clone()]);
+            step(&mut told, now, std::slice::from_ref(&down));
             said.extend(held_back(&before, &told, now));
         }
         assert_eq!(

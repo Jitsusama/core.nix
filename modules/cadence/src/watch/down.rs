@@ -31,8 +31,8 @@ use crate::mesh::Mesh;
 
 mod telling;
 
-pub use telling::tell;
 use telling::notify;
+pub use telling::tell;
 
 /// How long a machine may read down before it's told: a link that drops
 /// for a moment, as on a network change, is back within a tick or two.
@@ -192,10 +192,10 @@ pub struct Spell {
     /// what was heard before; none until a realm reads it.
     #[serde(default)]
     pub power: Option<bool>,
-    /// Whether the journal has said, this spell, that it's down while busy
-    /// and untold since its `battery` holds it back.
+    /// When it first read down while busy and untold this spell, since its
+    /// `battery` holds it back, which the journal says once.
     #[serde(default)]
-    pub held: bool,
+    pub held_at: Option<i64>,
     /// When it was last read ready or down.
     #[serde(default)]
     pub read_at: Option<i64>,
@@ -292,7 +292,8 @@ fn unsure_said(this: &str, here: Option<bool>, was_unsure: bool) -> Option<Strin
 fn held_back(before: &BTreeSet<String>, told: &Told, now: i64) -> Vec<String> {
     told.machines
         .iter()
-        .filter(|(machine, spell)| spell.held && !before.contains(*machine))
+        .filter(|(_, spell)| spell.held_at.is_some())
+        .filter(|(machine, _)| !before.contains(*machine))
         .map(|(machine, spell)| {
             let minutes = spell.down_since.map_or(0, |since| (now - since) / 60);
             let why = if spell.power == Some(true) {
@@ -312,7 +313,7 @@ fn held_back(before: &BTreeSet<String>, told: &Told, now: i64) -> Vec<String> {
 fn held_now(told: &Told) -> BTreeSet<String> {
     told.machines
         .iter()
-        .filter(|(_, spell)| spell.held)
+        .filter(|(_, spell)| spell.held_at.is_some())
         .map(|(machine, _)| machine.clone())
         .collect()
 }
@@ -394,17 +395,16 @@ fn cut_off(
     heard.windows(2).any(|pair| pair[1] - pair[0] <= TOGETHER)
 }
 
-/// What's newly down or back, given what each of the `answered` realms of
-/// those `asked` reads now, keeping each machine's spell in `told`, and
-/// whether this machine is `sure` it reaches what its node probes.
-pub fn due(
-    seen: &[Seen],
+/// Each machine's readings merged, each kept in `told` with the realms
+/// that read it, and one that a realm still unanswered may read down taken
+/// as unread.
+fn listened<'a>(
+    seen: &'a [Seen],
     asked: &[String],
     answered: &[String],
     told: &mut Told,
     now: i64,
-    sure: bool,
-) -> Vec<Tell> {
+) -> BTreeMap<&'a str, (Seen, BTreeSet<String>)> {
     let mut by = merged(seen);
     for (machine, (one, realms)) in &mut by {
         let spell = told.machines.entry((*machine).to_owned()).or_default();
@@ -421,6 +421,21 @@ pub fn due(
             spell.realms = std::mem::take(realms);
         }
     }
+    by
+}
+
+/// What's newly down or back, given what each of the `answered` realms of
+/// those `asked` reads now, keeping each machine's spell in `told`, and
+/// whether this machine is `sure` it reaches what its node probes.
+pub fn due(
+    seen: &[Seen],
+    asked: &[String],
+    answered: &[String],
+    told: &mut Told,
+    now: i64,
+    sure: bool,
+) -> Vec<Tell> {
+    let by = listened(seen, asked, answered, told, now);
     let recent: BTreeSet<&str> = by
         .keys()
         .filter(|machine| {
@@ -503,7 +518,7 @@ pub fn due(
                     .is_some_and(|ready| since - ready <= READY_WITHIN);
                 let ripe = !spell.told && all_answered && lately && now - since >= DOWN_FOR;
                 if ripe && spell.working && spell.battery {
-                    spell.held = true;
+                    spell.held_at.get_or_insert(now);
                 } else if ripe && spell.working {
                     tells.push(Tell::Down {
                         machine: machine.to_owned(),
