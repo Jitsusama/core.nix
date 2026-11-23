@@ -3,6 +3,7 @@
 {
   bareNixos,
   holds,
+  lib,
   onLinux,
   pkgs,
   self,
@@ -67,6 +68,33 @@
     holds "disks-are-scrubbed" "The disk's Btrfs is never scrubbed, so damage stays hidden." (
       autoScrub.enable && autoScrub.fileSystems == [ "/" ]
     );
+
+  # The root's data chunks are given back each night, from a bounded unit
+  # that waits behind other work.
+  chunks-are-given-back-each-night =
+    let
+      machine = bareNixos [
+        self.nixosModules.disko
+        {
+          jitsusama.disk = {
+            device = "/dev/disk/by-id/nvme-example";
+            swapSize = "4G";
+          };
+        }
+      ];
+      service = machine.config.systemd.services.chunks-given-back.serviceConfig;
+      inherit (machine.config.systemd.timers.chunks-given-back) timerConfig;
+    in
+    holds "chunks-are-given-back-each-night"
+      "The root's empty data chunks aren't given back by night, bounded and behind other work."
+      (
+        lib.hasSuffix "/bin/chunks-given-back /" service.ExecStart
+        && timerConfig.OnCalendar == "*-*-* 03:00"
+        && !(timerConfig.Persistent or false)
+        && service.TimeoutStartSec == "2h"
+        && service.IOWeight == 1
+        && service.CPUWeight == 1
+      );
 }
 # What follows builds Linux's disk unlocking, which a Mac has none of.
 // onLinux {
