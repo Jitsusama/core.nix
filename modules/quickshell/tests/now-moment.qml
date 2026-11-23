@@ -945,8 +945,10 @@ ShellRoot {
             root.keptReadings();
     }
 
-    // The reader's answer, as timekeeping says it.
-    readonly property string keptSaid: JSON.stringify({ synchronised: true })
+    // The reader's answer, as timekeeping says it, with the clock the plate reads its
+    // offset from, updated a while ago.
+    readonly property string keptSaid: JSON.stringify({ synchronised: true,
+        clock: { lastOffset: -0.000388, lastSync: 1793829480000 } })
     function answerTime() {
         Timekeeping.heard(`{"parameters":${keptSaid}}`);
     }
