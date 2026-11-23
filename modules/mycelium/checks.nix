@@ -247,6 +247,25 @@ let
         };
       }
     );
+  # A machine fenced every way whose pi fences each command itself.
+  selfFenced =
+    bare:
+    bare {
+      declares = declaring // {
+        piFencesItself = true;
+        fence = lib.genAttrs everyKind (_: {
+          builders = [ ];
+          forges = [ ];
+          secrets = [ ];
+        });
+      };
+    };
+  saidBy = home: read home.xdg.configFile."mycelium/declared.json".text;
+  refusesSelfFencing =
+    home:
+    lib.any (
+      check: !check.assertion && lib.hasPrefix "jitsusama.mycelium.declares.piFencesItself" check.message
+    ) home.assertions;
   # A machine fenced every way, and one whose agents' runs are turned off.
   launching = bare: kinds: launchingWith bare kinds { };
   launchingWith =
@@ -931,7 +950,7 @@ in
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when it does, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, whether pi fences itself isn't written only when a Mac says so beside its fences or isn't refused on Linux, doors it accepts for another machine aren't or take a machine no realm could name, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -961,7 +980,12 @@ in
         && !((declared linux) ? hosts)
         && !((declared linux) ? fence)
         && !((declared linux) ? pi_fences_itself)
-        && (declaredAs { piFencesItself = true; }).pi_fences_itself or false
+        && !((launching mac everyKind) ? pi_fences_itself)
+        && (saidBy (selfFenced mac)).pi_fences_itself or false
+        && (saidBy (selfFenced mac)).fence.strict.runs or null == macLauncher
+        && evaluates (selfFenced mac)
+        && refusesSelfFencing (selfFenced linux)
+        && !refusesSelfFencing (fencedIn linux everyKind { })
         && (
           strictly.fence or null == {
             strict = {
