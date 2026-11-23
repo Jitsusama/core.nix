@@ -397,8 +397,12 @@ fn node_holders(realm: Option<&str>) -> Option<Vec<Holder>> {
     };
     let said = down::answer("mycelium", &args, down::ASK_WITHIN)
         .map_err(|error| {
+            let whose = match realm {
+                Some(realm) => format!("the {realm} realm's"),
+                None => "the node's".to_owned(),
+            };
             println!(
-                "the node's holds ask: {error}; a session's holders are read from processes here"
+                "{whose} holds unread, so a session's holders are read from processes: {error}"
             );
         })
         .ok()?;

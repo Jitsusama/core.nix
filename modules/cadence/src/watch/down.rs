@@ -91,7 +91,8 @@ pub struct Seen {
     /// Whether it has a battery, which a lid shut on mains and then
     /// unplugged sleeps unheard however busy; for one down, as its node last
     /// heard. None where its node couldn't read its power, so another
-    /// realm's reading of it speaks first.
+    /// realm's reading of it as lively speaks first: a down realm's word
+    /// beside a ready one's is set aside, as it may be long out of date.
     pub battery: Option<bool>,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
@@ -250,17 +251,19 @@ fn power(was: Option<bool>, heard: Option<bool>) -> Option<bool> {
 /// read keeps what was heard before. Power never heard may be a battery,
 /// so it leans silent. Only a word heard `fresh`, from a machine ready,
 /// starts the day again: a down reading repeats its node's last word, so
-/// a battery it repeats through an outage runs out a day after the last
-/// heard fresh, as a battery not heard at all does.
+/// a battery it repeats through an outage would otherwise never run out.
+/// A battery a down reading repeats still holds it: a laptop shut busy
+/// for a day is its common case, which a run-out would tell as a crash.
 fn keep_power(spell: &mut Spell, heard: Option<bool>, now: i64, fresh: bool) {
-    let standing = spell.battery_at.is_some_and(|at| now - at < BATTERY_FOR);
     match heard {
-        Some(true) if fresh || spell.battery_at.is_none() => {
+        Some(true) => {
             spell.power = Some(true);
-            spell.battery_at = Some(now);
+            if fresh || spell.battery_at.is_none() {
+                spell.battery_at = Some(now);
+            }
         }
-        Some(_) if standing => {}
-        Some(_) => spell.power = Some(false),
+        Some(false) if spell.battery_at.is_some_and(|at| now - at < BATTERY_FOR) => {}
+        Some(false) => spell.power = Some(false),
         None => {}
     }
     spell.battery = spell.power.unwrap_or(true);
@@ -676,7 +679,11 @@ pub fn machines(realms: &[String]) -> BTreeMap<String, String> {
             // Why it didn't answer is said here, as the line saying it
             // didn't can't tell a node that failed from one held open.
             let said = answer("mycelium", &["--realm", realm, "machines"], ASK_WITHIN)
-                .map_err(|error| println!("the {realm} realm's machines ask: {error}"))
+                .map_err(|error| {
+                    println!(
+                        "the {realm} realm's machines unread, so no down is told yet: {error}"
+                    );
+                })
                 .ok()?;
             crate::elsewhere::machines(&said)?;
             Some((realm.clone(), said))
