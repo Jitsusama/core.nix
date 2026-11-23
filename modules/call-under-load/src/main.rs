@@ -399,13 +399,17 @@ fn watch() -> Result<(), Failure> {
             ))
             .try_this("systemctl --user status call-under-load-watch")
     })?;
+    // Without XDG_RUNTIME_DIR, the account's own runtime folder, so an
+    // agent's systemd-run unit is still told from his.
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
+        || PathBuf::from(format!("/run/user/{}", uid(&account).unwrap_or_default())),
+        PathBuf::from,
+    );
     let seat = watch::Seat {
         proc: PathBuf::from("/proc"),
         slice: PathBuf::from(format!("/sys/fs/cgroup{account}/app.slice")),
         account,
-        transient: std::env::var_os("XDG_RUNTIME_DIR")
-            .map_or_else(|| PathBuf::from("/nonexistent"), PathBuf::from)
-            .join("systemd/transient"),
+        transient: runtime.join("systemd/transient"),
     };
     let history = folder().join("history.jsonl");
     let unwritable = |error: std::io::Error| {
@@ -434,6 +438,16 @@ fn account(cgroup: &str) -> Option<String> {
     manager
         .contains("/user@")
         .then(|| format!("{manager}.service"))
+}
+
+/// The account's uid, from its manager's path, `.../user@<uid>.service`.
+fn uid(account: &str) -> Option<u32> {
+    account
+        .rsplit_once("/user@")?
+        .1
+        .strip_suffix(".service")?
+        .parse()
+        .ok()
 }
 
 /// The first program named `name` on PATH.
@@ -521,6 +535,11 @@ mod tests {
             )
             .as_deref(),
             Some("/user.slice/user-1000.slice/user@1000.service")
+        );
+        assert_eq!(
+            uid("/user.slice/user-1000.slice/user@1000.service"),
+            Some(1000),
+            "the account's runtime folder couldn't be found without XDG_RUNTIME_DIR"
         );
         assert_eq!(
             account("0::/system.slice/sshd.service\n"),

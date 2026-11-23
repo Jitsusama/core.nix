@@ -152,19 +152,19 @@ pub fn his_parent(parents: &str, account: &str, transient: &Path) -> bool {
 }
 
 /// Whether a unit in his app.slice is his: one not named for a process is
-/// his by its name, as is one whose process or parent is gone before it's
-/// read, as lag-watch leaves them.
-fn his(seat: &Seat, unit: &str) -> bool {
+/// his by its name. None when its process or parent is gone before it's
+/// read, which is left his for now and judged again, as lag-watch leaves
+/// them.
+fn his(seat: &Seat, unit: &str) -> Option<bool> {
     let Some(pid) = named_pid(unit) else {
-        return true;
+        return Some(true);
     };
-    let stat = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).unwrap_or_default();
-    let parent = stat
+    let stat = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).ok()?;
+    let ppid = stat
         .rsplit_once(')')
-        .and_then(|(_, rest)| rest.split_whitespace().nth(1)?.parse::<u32>().ok());
-    parent
-        .and_then(|ppid| fs::read_to_string(seat.proc.join(format!("{ppid}/cgroup"))).ok())
-        .is_none_or(|cgroup| his_parent(&cgroup, &seat.account, &seat.transient))
+        .and_then(|(_, rest)| rest.split_whitespace().nth(1)?.parse::<u32>().ok())?;
+    let parents = fs::read_to_string(seat.proc.join(format!("{ppid}/cgroup"))).ok()?;
+    Some(his_parent(&parents, &seat.account, &seat.transient))
 }
 
 /// The call apps' units in `slice`, the apps' slice, with the app each
@@ -235,23 +235,55 @@ pub fn worst(
 /// the process's memory lock and could stall behind a page faulting under
 /// the very pressure it records; the sending threads; and their last reads.
 /// The call apps found over the call, which tell a call whose apps' threads
-/// couldn't be read from a microphone in use with no call app open.
+/// couldn't be read from a microphone in use with no call app open. And
+/// whose each unit is, judged once and kept while the watch runs, as
+/// lag-watch keeps it: an agent's Chrome whose launcher has ended is taken
+/// on by his user manager, and judged again would read as his.
 #[derive(Default)]
 struct Watching {
     roles: HashMap<u32, String>,
     threads: Vec<Thread>,
     before: HashMap<(u32, u32), Read>,
     apps: BTreeSet<String>,
+    verdicts: HashMap<String, bool>,
 }
 
 impl Watching {
+    /// Starts a call afresh, keeping only who each unit is.
+    fn begin(&mut self) {
+        *self = Self {
+            verdicts: std::mem::take(&mut self.verdicts),
+            ..Self::default()
+        };
+    }
+
+    /// Whether `unit` is his, as first judged.
+    fn judged(&mut self, seat: &Seat, unit: &str) -> bool {
+        if let Some(&verdict) = self.verdicts.get(unit) {
+            return verdict;
+        }
+        let Some(verdict) = his(seat, unit) else {
+            return true;
+        };
+        self.verdicts.insert(unit.to_string(), verdict);
+        verdict
+    }
+
     /// Looks again for his call apps' sending threads. Threads found anew
     /// are read now, so their first span starts here.
     fn look(&mut self, seat: &Seat) {
         let (proc, slice) = (seat.proc.as_path(), seat.slice.as_path());
         let mut threads = Vec::new();
         let mut roles = HashMap::new();
-        for (unit, app) in units(slice).into_iter().filter(|(unit, _)| his(seat, unit)) {
+        let found = units(slice);
+        // A unit gone takes its verdict, so a pid used again is judged anew.
+        self.verdicts
+            .retain(|unit, _| found.iter().any(|(name, _)| name == unit));
+        let theirs: Vec<(String, String)> = found
+            .into_iter()
+            .filter(|(unit, _)| self.judged(seat, unit))
+            .collect();
+        for (unit, app) in theirs {
             self.apps.insert(app.clone());
             let procs = fs::read_to_string(slice.join(&unit).join("cgroup.procs"));
             for pid in procs
@@ -472,14 +504,20 @@ fn kept(part: &Path, real: &Real) -> std::io::Result<()> {
 /// over, or can't tell for three minutes running. A single answer it
 /// can't give leaves the call watched, since a call under the heaviest
 /// load is the one most worth reading.
-fn one_call(seat: &Seat, part: &Path, said: &Path, clear: &mut u64) -> Real {
+fn one_call(
+    seat: &Seat,
+    watching: &mut Watching,
+    part: &Path,
+    said: &Path,
+    clear: &mut u64,
+) -> Real {
     let began = seconds_now();
     let so_far = |watching: &Watching, ticks: &[Tick]| {
         let mut real = summed(began, seconds_now(), ticks);
         real.apps = watching.apps.iter().cloned().collect();
         real
     };
-    let mut watching = Watching::default();
+    watching.begin();
     watching.look(seat);
     let mut asked = Instant::now();
     let mut unsure = 0;
@@ -502,23 +540,41 @@ fn one_call(seat: &Seat, part: &Path, said: &Path, clear: &mut u64) -> Real {
         }
         alive(said, *clear);
         match answer {
-            Call::Off => return so_far(&watching, &ticks),
+            Call::Off => return so_far(watching, &ticks),
             Call::On => unsure = 0,
             Call::Unknown(why) => {
                 unsure += 1;
                 if unsure >= UNSURE {
                     eprintln!("closing the call as unsure: {why}");
-                    let mut real = so_far(&watching, &ticks);
+                    let mut real = so_far(watching, &ticks);
                     real.unsure = true;
                     return real;
                 }
             }
         }
         watching.look(seat);
-        if let Err(error) = kept(part, &so_far(&watching, &ticks)) {
+        if let Err(error) = kept(part, &so_far(watching, &ticks)) {
             eprintln!("the call so far couldn't be kept: {error}");
         }
     }
+}
+
+/// Writes the call a stop cut short, kept in `part`, to `history`, marked
+/// cut, unless its line was written before the stop; then drops `part`.
+fn recover(part: &Path, history: &Path) -> std::io::Result<()> {
+    if let Some(mut real) = fs::read(part)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Real>(&bytes).ok())
+    {
+        let lines = fs::read_to_string(history).unwrap_or_default();
+        if !written(&lines, real.began) {
+            real.cut = true;
+            crate::hour::append(history, &line(&real))?;
+        }
+    }
+    // Left behind, it's found written at the next start, and dropped then.
+    let _ = fs::remove_file(part);
+    Ok(())
 }
 
 /// The watch's hold on `lock`, so only one watch writes the history: one
@@ -540,23 +596,15 @@ pub fn alone(lock: &Path) -> std::io::Result<Option<File>> {
 
 /// Watches for Joel's calls until it's stopped, adding each call's line
 /// to `history` as it ends, and saying in `said` when it last could tell;
-/// the caller holds `alone`'s lock. A call a stop cut short is written
-/// first, marked cut, unless its line was written before the stop.
+/// the caller holds `alone`'s lock.
 pub fn watch(seat: &Seat, history: &Path, said: &Path) -> std::io::Result<()> {
     let part = history.with_file_name("watching.json");
-    if let Some(mut real) = fs::read(&part)
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Real>(&bytes).ok())
-    {
-        let lines = fs::read_to_string(history).unwrap_or_default();
-        if !written(&lines, real.began) {
-            real.cut = true;
-            crate::hour::append(history, &line(&real))?;
-        }
-    }
-    let _ = fs::remove_file(&part);
+    recover(&part, history)?;
     let mut told = None;
-    let mut clear = clear_at(said).unwrap_or(0);
+    // A watch starting counts as its last clear moment, so one that can't
+    // tell from its start counts its minutes from there.
+    let mut clear = clear_at(said).unwrap_or_else(seconds_now);
+    let mut watching = Watching::default();
     loop {
         let mut asked = gate::a_call();
         for _ in 1..ASKS {
@@ -582,7 +630,7 @@ pub fn watch(seat: &Seat, history: &Path, said: &Path) -> std::io::Result<()> {
             told = Some(now);
         }
         if asked == Call::On {
-            let real = one_call(seat, &part, said, &mut clear);
+            let real = one_call(seat, &mut watching, &part, said, &mut clear);
             crate::hour::append(history, &line(&real))?;
             let _ = fs::remove_file(&part);
             eprintln!(
@@ -632,6 +680,11 @@ mod tests {
             "renderer",
             "a space inside an argument broke it into a type"
         );
+        assert_eq!(
+            role("chrome --type=renderer --lang=en\0"),
+            "renderer",
+            "a retitled line, ending in its one NUL, wasn't read across its spaces"
+        );
     }
 
     #[test]
@@ -660,6 +713,7 @@ mod tests {
         let transient = root.join("transient");
         fs::create_dir_all(&transient).unwrap();
         fs::write(transient.join("agent-run.service"), "").unwrap();
+        fs::write(transient.join("app-gio-x-7.scope"), "").unwrap();
         let account = "/user.slice/user-1000.slice/user@1000.service";
         let parent = |path: &str| his_parent(&format!("0::{path}\n"), account, &transient);
         let (mut his_ok, mut not_ok) = (Vec::new(), Vec::new());
@@ -668,6 +722,8 @@ mod tests {
             "/app.slice/app-niri-x-9.scope",
             "/app.slice/app-org.gnome.Nautilus-4.scope",
             "/app.slice/tuple.service",
+            "/app.slice/tuple.service/delegated/x.scope",
+            "/app.slice/app-gio-x-7.scope",
             "/session.slice/xdg-desktop-portal.service",
         ] {
             his_ok.push((his, parent(&format!("{account}{his}"))));
@@ -676,6 +732,7 @@ mod tests {
             "/agents.slice/pi-host-work.service",
             "/jobs.slice/jobs-work.slice/x.scope",
             "/app.slice/agent-run.service",
+            "/app.slice/agent-run.service/delegated/x.scope",
             "/app.slice/call-under-load.service",
             "/app.slice/kitty-70-0.scope",
             "/background.slice/x.service/init.scope",
@@ -741,17 +798,28 @@ mod tests {
             &format!("{manager}/agents.slice/pi-host-work.service"),
         );
         let seat = Seat {
-            proc,
+            proc: proc.clone(),
             account: manager.to_string(),
             slice: slice.clone(),
             transient: root.join("transient"),
         };
-        let found: Vec<String> = units(&slice)
-            .into_iter()
-            .filter(|(unit, _)| his(&seat, unit))
-            .map(|(unit, app)| format!("{unit} {app}"))
-            .collect();
+        let mut watching = Watching::default();
+        let mut found_now = || -> Vec<String> {
+            units(&slice)
+                .into_iter()
+                .filter(|(unit, _)| watching.judged(&seat, unit))
+                .map(|(unit, app)| format!("{unit} {app}"))
+                .collect()
+        };
+        let found = found_now();
+        // The agent's launcher ends, and his user manager takes its Chrome on.
+        started(34, 1, &format!("{manager}/init.scope"));
+        let again = found_now();
         fs::remove_dir_all(&root).unwrap();
+        assert_eq!(
+            again, found,
+            "an agent's Chrome was taken as his once its launcher had ended"
+        );
         assert_eq!(
             found,
             [
@@ -898,17 +966,29 @@ mod tests {
     }
 
     #[test]
-    fn a_kept_call_already_written_isn_t_written_again() {
-        let history = [
-            line(&summed(10, 20, &[])).to_string(),
-            r#"{"at": 30, "run": {"started": 25}, "measures": {}}"#.to_string(),
-        ]
-        .join("\n");
-        assert!(written(&history, 10), "the call written was missed");
-        assert!(
-            !written(&history, 25),
-            "a test run was taken for a real call"
+    fn a_call_a_stop_cut_short_is_written_once_marked_cut() {
+        let root = std::env::temp_dir().join(format!("watch-recover-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let (part, history) = (root.join("watching.json"), root.join("history.jsonl"));
+        let test_run = r#"{"at": 30, "run": {"started": 10}, "measures": {}}"#;
+        fs::write(&history, format!("{test_run}\n")).unwrap();
+        kept(&part, &summed(10, 20, &[])).unwrap();
+        recover(&part, &history).unwrap();
+        let once = fs::read_to_string(&history).unwrap();
+        let dropped = !part.exists();
+        // Stopped again after its line, before the kept file went.
+        kept(&part, &summed(10, 20, &[])).unwrap();
+        recover(&part, &history).unwrap();
+        let twice = fs::read_to_string(&history).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        let calls = heard(&once, 0, 100);
+        assert_eq!(
+            calls.iter().map(|c| (c.began, c.cut)).collect::<Vec<_>>(),
+            [(10, true)],
+            "a test run that began when the call did hid it, or it wasn't marked cut"
         );
+        assert!(dropped, "the kept call stayed to be written again");
+        assert_eq!(twice, once, "a call already written was written again");
     }
 
     #[test]

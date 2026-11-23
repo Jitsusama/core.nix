@@ -30,6 +30,9 @@ const REAL_BLIND: &str = "real calls with no sending thread found";
 const REAL_WATCH: &str = "real call watch minutes since it could tell";
 /// Past this many minutes, the watch has stopped or can't tell.
 const WATCH_LATE: f64 = 10.0;
+/// The most the watch's minutes read: a day, so one that never could tell
+/// reads as that rather than minutes since 1970.
+const DAY_MINUTES: u64 = 24 * 60;
 /// How far, in tenths, a figure may sit past a whole tenth and still be
 /// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
 /// times carry error near 1e-8 ms, far inside it, and the page's clock
@@ -295,11 +298,11 @@ pub fn real(calls: &[crate::watch::Real], since: u64, clear: Option<u64>, at: u6
         .iter()
         .filter(|call| call.sending_p99.is_some())
         .count();
+    let heard = calls.iter().filter(|call| !appless(call)).count();
     let mut behind = vec![format!(
-        "Joel's own calls, {read} of {} read: the p99 of each 5 s tick's slowest sending \
+        "Joel's own calls, {read} of {heard} read: the p99 of each 5 s tick's slowest sending \
          thread's wait for a CPU per second, in his call apps, which in a call under 8 \
          minutes is its worst tick",
-        calls.len()
     )];
     if let Some(call) = worst {
         behind.push(format!(
@@ -334,22 +337,27 @@ pub fn real(calls: &[crate::watch::Real], since: u64, clear: Option<u64>, at: u6
     ]
 }
 
+/// Whether the watch found none of his call apps open during a call it
+/// couldn't read: the microphone in use outside a call, or a call in a
+/// browser his terminal started, which isn't watched.
+fn appless(call: &crate::watch::Real) -> bool {
+    call.apps.is_empty() && call.sending_p99.is_none()
+}
+
 /// How many calls that ended after `since` the watch couldn't read in a
 /// call app it found, each said with when it ended and in which apps, so
 /// one such call files a fault for its own hour and not for the day its
-/// figure stands. A microphone in use with no call app open is said, and
-/// not counted.
+/// figure stands. One with no call app open is said, and not counted.
 fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
     let fresh: Vec<&crate::watch::Real> = calls
         .iter()
         .filter(|call| call.ended > since && call.sending_p99.is_none())
         .collect();
-    let (unread, appless): (Vec<_>, Vec<_>) =
-        fresh.into_iter().partition(|call| !call.apps.is_empty());
+    let (none_open, unread): (Vec<_>, Vec<_>) = fresh.into_iter().partition(|c| appless(c));
     let mut behind = vec![
-        "Joel's calls since the last hour with a call app found but no sending thread read, \
+        "Joel's calls since the last hour with a call app open but no sending thread read, \
          so their waits are unread; a call in Tuple or Zoom, whose threads aren't named as \
-         Chromium's, reads so"
+         Chromium's, reads so, as does the microphone in use outside a call while one is open"
             .to_string(),
     ];
     behind.extend(unread.iter().map(|call| {
@@ -359,10 +367,11 @@ fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
             call.apps.join(" and ")
         )
     }));
-    if !appless.is_empty() {
+    if !none_open.is_empty() {
         behind.push(format!(
-            "{} with no call app open, a microphone in use outside a call, left out",
-            appless.len()
+            "{} with no call app of his open, left out: the microphone in use outside a call, \
+             or a call in a browser his terminal started",
+            none_open.len()
         ));
     }
     #[expect(
@@ -374,23 +383,27 @@ fn blind(calls: &[crate::watch::Real], since: u64, at: u64) -> Measure {
 }
 
 /// How many minutes since the watch last could tell whether a call was on,
-/// so a watch that stopped, or whose a-call-is-on can't tell, files a
-/// fault rather than reading as a day with no calls. Unread before the
-/// watch first said.
+/// at most a day, so a watch that stopped, never started or hung files a
+/// fault rather than reading as a day with no calls. One that never said
+/// reads as a day. The hour itself runs only when a-call-is-on can tell,
+/// so this shows a watch that can't only once the hour can.
 fn watched(clear: Option<u64>, at: u64) -> Measure {
-    let behind = match clear {
-        Some(0) => "the watch hasn't been able to tell since it started".to_string(),
-        Some(_) => format!(
-            "the watch asks every 30 s; past {WATCH_LATE:.0} min it has stopped or can't tell"
-        ),
-        None => "the watch hasn't said yet".to_string(),
+    let cap = DAY_MINUTES;
+    let minutes = clear.map_or(cap, |clear| (at.saturating_sub(clear) / 60).min(cap));
+    let behind = if clear.is_none() {
+        "the watch has never said when it could tell: it hasn't run".to_string()
+    } else {
+        format!(
+            "the watch asks every 30 s; past {WATCH_LATE:.0} min it has stopped, hung or can't \
+             tell, and a day or more reads as {cap}"
+        )
     };
     #[expect(
         clippy::cast_precision_loss,
-        reason = "minutes since 1970 are far below f64's exact range"
+        reason = "a day's minutes are far below f64's exact range"
     )]
-    let minutes = clear.map(|clear| (at.saturating_sub(clear) / 60) as f64);
-    measure(REAL_WATCH, minutes, WATCH_LATE, true, vec![behind])
+    let minutes = minutes as f64;
+    measure(REAL_WATCH, Some(minutes), WATCH_LATE, true, vec![behind])
 }
 
 #[cfg(test)]
@@ -433,7 +446,7 @@ mod tests {
         );
         assert_eq!(figure.owner, OWNER);
         assert!(
-            figure.behind[0].starts_with("Joel's own calls, 2 of 4 read:"),
+            figure.behind[0].starts_with("Joel's own calls, 2 of 3 read:"),
             "unread calls were counted as read: {}",
             figure.behind[0]
         );
@@ -457,7 +470,8 @@ mod tests {
             blind.behind[1..],
             [
                 "one ended 1 min ago, in chrome and slack",
-                "1 with no call app open, a microphone in use outside a call, left out",
+                "1 with no call app of his open, left out: the microphone in use outside a \
+                 call, or a call in a browser his terminal started",
             ],
             "an unread call wasn't said with when and where"
         );
@@ -474,14 +488,19 @@ mod tests {
         );
         let none = real(&[], 0, None, 0);
         assert_eq!(
-            (none[0].now, none[1].now, none[2].now),
-            (None, Some(0.0), None),
-            "no call watched, before the watch first said, read as a figure"
+            (none[0].now, none[1].now),
+            (None, Some(0.0)),
+            "no call watched read as a wait, or as one unread"
         );
         assert_eq!(
-            real(&[], 0, Some(0), 2_600)[2].now,
-            Some(43.0),
-            "a watch that never could tell read as on time"
+            none[2].now,
+            Some(1440.0),
+            "a watch that never said read as on time, or dropped off the card"
+        );
+        assert_eq!(
+            real(&[], 0, Some(0), 1_800_000_000)[2].now,
+            Some(1440.0),
+            "a watch that never could tell read as minutes since 1970"
         );
     }
 
