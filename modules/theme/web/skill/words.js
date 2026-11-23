@@ -16,11 +16,9 @@
 //   are named, since only a person can read them.
 //
 // It stands apart from pixels.js because it reads the page as it is drawn,
-// at once, where pixels.js waits for the page to rest. The words it quotes
-// are the page's, data to fix rather than instructions.
-//
-// It ends without a semicolon, since an eval asked for one expression
-// answers nothing for a statement.
+// at once, where pixels.js waits for it to rest. The words it quotes are the
+// page's, data to fix rather than instructions. It ends without a semicolon,
+// since an eval asked for one expression answers nothing for a statement.
 (() => {
   const missing = [];
   const page = document;
@@ -270,21 +268,28 @@
     parts.push(list.slice(from).trim());
     return parts;
   };
-  // Whether a layer, as its size, repeat and place across and down, lies
-  // under every word in its box: on each axis tiled, or sized to the box or
-  // past it and placed to leave no strip bare. A gradient has no size of its
-  // own, so contain fills as cover does; a calc() size or place doesn't.
+  // How a layer, as its size, repeat and place across and down, lies by the
+  // words of a box with `font` px letters: beside them where it's untiled and
+  // thinner than a letter on an axis, a line or a mark; under all of them where
+  // each axis is tiled, or sized to the box or past it, leaving no strip bare;
+  // else maybe. A gradient has no size, so contain is cover; calc() is maybe.
   const along = (repeat, size, place, length) => {
     const [reach, from] = [Number.parseFloat(size), Number.parseFloat(place)];
     const reaches = size.endsWith("%") ? reach >= 100 : size.endsWith("px") && reach >= length;
     const placed = place.endsWith("%") ? from >= 0 && from <= 100 : place === "0px";
     return tiles.has(repeat) || ((size === "auto" || reaches) && placed);
   };
-  const covers = ([size, repeat, x, y], box) => {
+  const lies = ([size, repeat, x, y], box, font) => {
     const [across, down = across] = (sides[repeat] ?? repeat).split(" ");
     const whole = size === "cover" || size === "contain";
     const [wide, tall = "auto"] = whole ? ["100%", "100%"] : size.split(" ");
-    return along(across, wide, x, box.width) && along(down, tall, y, box.height);
+    const thin = (axis, part) =>
+      !tiles.has(axis) && part.endsWith("px") && Number.parseFloat(part) < font;
+    const under = along(across, wide, x, box.width) && along(down, tall, y, box.height);
+    if (thin(across, wide) || thin(down, tall)) {
+      return "beside";
+    }
+    return under ? "under" : "maybe";
   };
   const placing = ["Size", "Repeat", "PositionX", "PositionY"].map((part) => `background${part}`);
   // Where a stop sits, as the percentages or pixels written after its
@@ -330,9 +335,8 @@
     return colours;
   };
   // The colours a box may paint under words: its own colour with each layer
-  // over it, the last listed lowest. A layer that may not cover its box, a
-  // line or a mark, keeps the colours under it beside its own, since it may
-  // lie under some words and not others. Null for a picture.
+  // over it, the last listed lowest, a layer under some words maybe keeping
+  // the colours under it beside its own. Null for a picture.
   const paints = (style, box) => {
     const image = style.backgroundImage;
     let colours = [rgba(style.backgroundColor)];
@@ -341,8 +345,11 @@
     }
     const layers = layered(image);
     const lists = placing.map((name) => layered(style[name]));
+    const font = Number.parseFloat(style.fontSize);
     for (let at = layers.length - 1; at >= 0 && colours.length <= ways; at -= 1) {
-      if (layers[at] === "none") {
+      const layer = lists.map((list) => list[at % list.length]);
+      const lying = layers[at] === "none" ? "beside" : lies(layer, box, font);
+      if (lying === "beside") {
         continue;
       }
       const own = gradient(layers[at], style);
@@ -350,8 +357,7 @@
         return null;
       }
       const under = colours;
-      const layer = lists.map((list) => list[at % list.length]);
-      colours = covers(layer, box) ? [] : [...under];
+      colours = lying === "under" ? [] : [...under];
       for (const below of under) {
         for (const paint of own) {
           colours.push(over(paint, below));
@@ -373,8 +379,7 @@
   // when it sits on a picture, NaN when its paint can't be worked out, and
   // undefined when it has no ink to read.
   const worst = (element, pseudo, colour) => {
-    // Each box from the page down, its style and its size, which says
-    // whether a layer it paints reaches across it.
+    // Each box from the page down, sized, for whether a layer spans it.
     const styles = [];
     for (let at = element.parentElement; at !== null; at = at.parentElement) {
       styles.unshift({ style: getComputedStyle(at), box: at.getBoundingClientRect() });
@@ -409,12 +414,11 @@
       const faded = Number.parseFloat(style.opacity || "1");
       // A ground clipped to the words, its own or a box's they sit in,
       // paints the words, not under them.
-      if (style.backgroundClip === "text") {
+      const clipped = style.backgroundClip === "text";
+      if (clipped) {
         inks = choices.map((paint) => over(written, paint));
-        boxes.push({ choices: [[0, 0, 0, 0]], faded });
-      } else {
-        boxes.push({ choices, faded });
       }
+      boxes.push({ choices: clipped ? [[0, 0, 0, 0]] : choices, faded });
     }
     inks = inks.filter((ink) => ink[3] > 0);
     // Words with no ink of their own may still be drawn by their shadow.
@@ -453,16 +457,12 @@
     if (element instanceof SVGElement || !shown(element) || forEarsOnly(element)) {
       continue;
     }
+    // Words on a picture, or in paint not worked out, are counted to name;
+    // words with no ink aren't read at all.
     const got = worst(element, pseudo, colour);
-    if (got === null) {
-      unread += 1;
-      continue;
-    }
-    if (Number.isNaN(got)) {
-      unworked += 1;
-      continue;
-    }
-    if (got === undefined) {
+    unread += got === null ? 1 : 0;
+    unworked += Number.isNaN(got) ? 1 : 0;
+    if (typeof got !== "number" || Number.isNaN(got)) {
       continue;
     }
     const bar = large(element, pseudo, onScreen(element, set)) ? 3 : 4.5;
