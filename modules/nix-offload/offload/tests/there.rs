@@ -291,6 +291,9 @@ fn there_command(bin: &Path, offload: &Path, state: &Path) -> Command {
         .env("NIX_OFFLOAD_DIR", offload)
         .env("NIX_OFFLOAD_MORE_DIR", NO_SECOND)
         .env("NIX_OFFLOAD_KEEP_UNIT", NO_KEEPER)
+        // No file of root's, so every builder is vouched for, as on a
+        // machine without nix-offload-lines, wherever the tests run.
+        .env("NIX_OFFLOAD_VOUCHED", state.join("no-lent"))
         .envs(no_vm_builders(state))
         .env("XDG_RUNTIME_DIR", state)
         .env("XDG_STATE_HOME", state)
@@ -496,6 +499,9 @@ fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
             )
             .env("NIX_OFFLOAD_DIR", folder.path().join("none"))
             .env("NIX_OFFLOAD_MORE_DIR", &more)
+            // No file of root's, as `there_command` gives, so the
+            // machine's own list never decides this.
+            .env("NIX_OFFLOAD_VOUCHED", folder.path().join("no-lent"))
             .envs(no_vm_builders(folder.path()))
             .env("XDG_RUNTIME_DIR", folder.path())
             .output()
@@ -517,6 +523,35 @@ fn a_lent_builders_progress_is_its_processor_time_and_bytes_written() {
     // A builder ssh can't reach is unavailable, the table's 69, rather
     // than ssh's own 255.
     assert_eq!(progress("nix-offload-more").status.code(), Some(69));
+}
+
+// A run isn't held on the first lent builder waiting for root to vouch
+// for it while a second stands that root already does.
+#[test]
+fn a_run_goes_to_the_second_builder_while_root_vouches_only_for_it() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = lending(folder.path(), "offload", "nix-offload");
+    let more = lending(folder.path(), "offload-more", "nix-offload-more");
+    stand_ins(folder.path(), 0);
+    let lent = folder.path().join("lent");
+    fs::write(&lent, "nix-offload-more lend-2 ssh-ed25519 AAAA\n").unwrap();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "github:o/r/abc", "checks.x.a"])
+        .env("NIX_OFFLOAD_MORE_DIR", &more)
+        .env("NIX_OFFLOAD_VOUCHED", &lent)
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        said.contains("root doesn't vouch for the lent builder yet"),
+        "{said}"
+    );
+    assert!(
+        given_to(folder.path()).starts_with("nix-offload-more\n"),
+        "{}",
+        given_to(folder.path())
+    );
 }
 
 /// `there` given a derivation the builder lacks, run with `before` while
@@ -5752,9 +5787,15 @@ impl TwoVm {
 
     /// That run, started, its standard error going to the `said` file.
     fn start(&self, tests: usize) -> std::process::Child {
+        self.start_with(tests, &[])
+    }
+
+    /// That run, with `envs` set besides.
+    fn start_with(&self, tests: usize, envs: &[(&str, &Path)]) -> std::process::Child {
         let _ = fs::remove_file(self.bin.join("ssh-sent"));
         let said = self.folder.path().join("said");
         there_command(&self.bin, &self.offload, self.folder.path())
+            .envs(envs.iter().copied())
             .args(["-L", "github:o/r/abc", "checks.x.a"])
             .args((0..tests).map(|test| format!("checks.x.vm-{test}")))
             .env("NIX_OFFLOAD_VM_DIR", &self.vm)
@@ -6005,6 +6046,255 @@ fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
     assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?}");
     assert_eq!(tests_on(&built, "nix-offload-vm-more"), 3, "{built:?}");
     assert!(said.contains("another VM builder has room now"), "{said}");
+}
+
+// On 22 November a run sent to one VM lender spilled to another whose
+// builder root no longer vouched for, since room was all the spill
+// asked about, and outputs built on builders root didn't name came
+// back trusted. A builder root doesn't vouch for is never sent to.
+#[test]
+fn a_vm_run_never_goes_to_a_builder_root_doesnt_vouch_for() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm vm-1 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    fs::create_dir_all(rig.vm.join("sending")).unwrap();
+    let first = rig.vm.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&first, "6\n").unwrap();
+    // The first still warming, so a spill doesn't ask the other to be
+    // warm, and only root's vouching keeps the run off it.
+    fs::write(
+        rig.vm.join("warming"),
+        format!("{} vm-1\n", std::process::id()),
+    )
+    .unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let began = std::time::Instant::now();
+    while !rig.said().contains("so this waits for room") {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never waited: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    // Long enough for a spill, which looks every half second.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    fs::remove_file(first).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        0,
+        "{built:?} {said}"
+    );
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 3, "{built:?}");
+    assert!(
+        said.contains("root doesn't vouch for the builder in"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_vm_run_leaves_a_builder_root_doesnt_vouch_for_for_one_it_does() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    // The second warming too, so the run's split leaves every test on
+    // the first and only the move away from it reaches the second.
+    fs::write(
+        rig.more.join("warming"),
+        format!("{} vm-2\n", std::process::id()),
+    )
+    .unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        3,
+        "{built:?} {said}"
+    );
+    assert!(
+        said.contains("root doesn't vouch for this VM builder yet, so this waits on"),
+        "{said}"
+    );
+}
+
+// A run held off a builder root doesn't vouch for waits for whichever
+// comes first, root's word or another's room, rather than claiming room
+// there and giving up unsent after four minutes.
+#[test]
+fn a_vm_run_waits_for_a_vouched_builders_room_rather_than_an_unvouched_ones() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    fs::write(
+        rig.more.join("warming"),
+        format!("{} vm-2\n", std::process::id()),
+    )
+    .unwrap();
+    fs::create_dir_all(rig.more.join("sending")).unwrap();
+    let full = rig.more.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&full, "6\n").unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    wait_for_room(&rig);
+    fs::remove_file(full).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        3,
+        "{built:?} {said}"
+    );
+}
+
+// The other way the wait ends: root names the builder the run was held
+// off, while the one it waits on stays full, so it goes back there.
+#[test]
+fn a_vm_run_held_off_a_builder_goes_back_once_root_vouches_for_it() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    fs::write(
+        rig.more.join("warming"),
+        format!("{} vm-2\n", std::process::id()),
+    )
+    .unwrap();
+    fs::create_dir_all(rig.more.join("sending")).unwrap();
+    let full = rig.more.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&full, "6\n").unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    wait_for_room(&rig);
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n\
+         nix-offload-vm vm-1 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    let (built, said) = rig.finish(running);
+    fs::remove_file(full).unwrap();
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 3, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        0,
+        "{built:?} {said}"
+    );
+}
+
+// The 22 November hand-over itself: no VM builder vouched yet, so the run
+// holds for root rather than claiming room on one it can't be sent to, and
+// goes there once root names it.
+#[test]
+fn a_vm_run_holds_for_root_while_none_is_vouched_then_goes() {
+    let rig = TwoVm::new();
+    let lent = rig.folder.path().join("lent");
+    fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let began = std::time::Instant::now();
+    while !rig
+        .said()
+        .contains("root vouches for none of the VM builders yet")
+    {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never held for root: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.contains("#checks.x.vm-"),
+        "a VM test went out before root vouched: {sent}"
+    );
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm vm-1 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 3, "{built:?} {said}");
+}
+
+// A run that never asks waits for nothing, so with no VM builder vouched
+// it isn't held for root, as the gate's runs would be for four minutes
+// after each hand-over, and nothing goes to the unvouched builder.
+#[test]
+fn a_vm_run_that_never_asks_is_not_held_for_root() {
+    let rig = TwoVm::new();
+    let lent = rig.folder.path().join("lent");
+    fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+    let _ = fs::remove_file(rig.bin.join("ssh-sent"));
+    let said = rig.folder.path().join("said");
+    let mut running = there_command(&rig.bin, &rig.offload, rig.folder.path())
+        .env("NIX_OFFLOAD_VOUCHED", &lent)
+        .args(["--never-ask", "-L", "github:o/r/abc", "checks.x.vm-0"])
+        .env("NIX_OFFLOAD_VM_DIR", &rig.vm)
+        .env("NIX_OFFLOAD_VM_MORE_DIR", &rig.more)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &rig.third)
+        .stdout(std::process::Stdio::null())
+        .stderr(fs::File::create(&said).unwrap())
+        .spawn()
+        .unwrap();
+    let began = std::time::Instant::now();
+    while running.try_wait().unwrap().is_none() {
+        if began.elapsed() > std::time::Duration::from_secs(30) {
+            let _ = running.kill();
+            let _ = running.wait();
+            panic!("it was held: {}", rig.said());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let said = rig.said();
+    assert!(
+        !said.contains("root vouches for none of the VM builders yet"),
+        "{said}"
+    );
+    assert!(
+        said.contains("isn't one root vouches for, and --never-ask waits for nothing"),
+        "it ended for another reason: {said}"
+    );
+    let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent.lines().any(|line| line.contains("#checks.x.vm-0")),
+        "a VM test went to a builder root doesn't vouch for: {sent}"
+    );
+}
+
+/// Waits until a run held off a builder root doesn't vouch for says it
+/// waits on one root does.
+fn wait_for_room(rig: &TwoVm) {
+    let began = std::time::Instant::now();
+    while !rig
+        .said()
+        .contains("instead, or for root, whichever comes first")
+    {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never waited: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
 }
 
 #[test]

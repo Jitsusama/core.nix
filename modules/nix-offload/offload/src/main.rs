@@ -1018,7 +1018,7 @@ fn progress(host: &str) -> Result<(), Failure> {
     let Some(lent) = lent else {
         return Err(Failure::new(
             Exit::TryAgain,
-            format!("no lender lends a builder called {host}"),
+            format!("no lender lends a builder called {host} that root vouches for"),
         ));
     };
     let scratch = env::var_os("XDG_RUNTIME_DIR")
@@ -1081,14 +1081,18 @@ fn vm_extra_dirs() -> Vec<PathBuf> {
 /// first, all go to the first. Those waiting count, since a run sent
 /// where others wait goes only after them: on 4 November ten runs waited
 /// 51 minutes on the first builder, with 2 of its 4 claimed, while the
-/// second sat idle.
+/// second sat idle. A builder past the first that stands while root
+/// doesn't vouch for it takes none, since a run split there would wait
+/// on root while the first had room.
 fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there::Asked>> {
     let mut parts: Vec<Option<there::Asked>> = vm_dirs.iter().map(|_| None).collect();
     let Some(part) = vm else {
         return parts;
     };
     let lending: Vec<usize> = (0..vm_dirs.len())
-        .filter(|index| *index == 0 || there::lends(&vm_dirs[*index]))
+        .filter(|index| {
+            *index == 0 || (there::lends(&vm_dirs[*index]) && !there::unvouched(&vm_dirs[*index]))
+        })
         .collect();
     if lending.len() == 1 {
         parts[0] = Some(part);
@@ -1097,7 +1101,12 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
     let builds = vm_room();
     let busy_in =
         |index: &usize| there::claimed(&vm_dirs[*index]) + there::waiting(&vm_dirs[*index]);
-    let lending = warm_of(&part, lending, vm_dirs, builds, busy_in);
+    // Those left out as root vets them still come, so none more is asked
+    // for in their place.
+    let vetting = (1..vm_dirs.len())
+        .filter(|index| there::lends(&vm_dirs[*index]) && there::unvouched(&vm_dirs[*index]))
+        .count();
+    let lending = warm_of(&part, lending, vm_dirs, builds, vetting, busy_in);
     let busy: Vec<usize> = lending.iter().map(busy_in).collect();
     let split = there::overflow(&part, &busy, builds);
     let onward: usize = split.iter().skip(1).flatten().map(there::count).sum();
@@ -1123,12 +1132,14 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
 /// VM tests may go to: the warm ones while any stands, else all of them,
 /// since a cold one's first tests build for an hour what a warm one holds.
 /// Where the warm ones' room runs out, cold ones that aren't on their way
-/// are asked for, to warm for the runs after.
+/// are asked for, to warm for the runs after, less the `vetting` ones
+/// standing as root vets them, which are on their way too.
 fn warm_of(
     part: &there::Asked,
     lending: Vec<usize>,
     vm_dirs: &[PathBuf],
     builds: usize,
+    vetting: usize,
     busy_in: impl Fn(&usize) -> usize,
 ) -> Vec<usize> {
     let (warm, cold): (Vec<usize>, Vec<usize>) = lending
@@ -1141,7 +1152,8 @@ fn warm_of(
     let (coming, unasked): (Vec<usize>, Vec<usize>) = cold
         .iter()
         .partition(|index| there::coming(&vm_dirs[**index]));
-    let asking = there::to_warm(there::count(part), &busy, builds, coming.len()).min(unasked.len());
+    let asking = there::to_warm(there::count(part), &busy, builds, coming.len() + vetting)
+        .min(unasked.len());
     for index in &unasked[..asking] {
         there::want(&vm_dirs[*index]);
     }
@@ -1199,14 +1211,15 @@ fn at_once<'a>(
                     .collect();
                 scope.spawn(move || {
                     let began = now();
-                    let (dir, _claim) = if vm {
+                    let (dir, _claim, first) = if vm {
                         let rank = there::rank(part);
-                        there::admitted(dir, &others, there::count(part), room, rank)
+                        there::admitted(dir, &others, there::count(part), room, rank, waiting)
                     } else {
-                        (dir.as_path(), None)
+                        (dir.as_path(), None, waiting)
                     };
                     let roomed = now().saturating_sub(began);
-                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waiting);
+                    let waits = [first, waiting];
+                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waits);
                     (part, began, now(), roomed + stood, ran)
                 })
             })
@@ -1223,18 +1236,19 @@ fn at_once<'a>(
 /// 70 s after it's asked for. One asked for beside another, as `fallbacks`
 /// pairs them, that doesn't come leaves the build to the other. VM tests,
 /// as `vm` says these are, wait through their lender's restart. It waits
-/// as `waiting` says. Says how it ran, and the seconds it waited for its
-/// builder to stand.
+/// for its builder as `first` says, what's left once it held for root,
+/// and for one lost mid-run as `waiting` says. Says how it ran, and the
+/// seconds it waited for its builder to stand.
 fn sent(
     part: &there::Asked,
     dir: &Path,
     vm: bool,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
-    waiting: there::Waiting,
+    [first, waiting]: [there::Waiting; 2],
 ) -> (there::Ran, u64) {
     let asked = std::time::Instant::now();
-    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, waiting)) {
+    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, first)) {
         None => match fallbacks.iter().find(|(beside, _)| beside.as_path() == dir) {
             Some((_, other)) => (other.as_path(), standing(other)),
             None => (dir, None),
@@ -1246,13 +1260,19 @@ fn sent(
     // ones timed out beside kernel builds.
     let store = match store {
         None if vm && !there::lends(dir) => {
-            there::stood_again(dir, waiting, std::time::Instant::now())
+            there::stood_again(dir, first, std::time::Instant::now())
         }
         store => store,
     };
     // Said apart from the lent builder's absence, which the line after it
     // reads as.
-    if vm && store.is_none() {
+    if vm && store.is_none() && there::unvouched(dir) {
+        eprintln!(
+            "nix-offload: the VM builder in {} stands, but root never vouched for it, so its \
+             VM tests weren't sent, nor the lent way",
+            dir.display()
+        );
+    } else if vm && store.is_none() {
         eprintln!(
             "nix-offload: the VM lender in {} lent no VM builder, so its VM tests weren't \
              sent, nor the lent way",
@@ -1375,17 +1395,29 @@ impl Kept {
 /// The lender's folder a build goes to: `more`, the second's, while the
 /// first's builder is full or doesn't answer, as `there::to_second`
 /// decides, else `first`. A build waits for the first while none stands,
-/// as it always has.
+/// as it always has, but not while one stands that root doesn't vouch
+/// for yet and the second's does: it would wait on root with the second
+/// idle.
 fn more_than(first: &Path, more: &Path, scratch: &Path) -> PathBuf {
     let Some(stands) = standing(first) else {
+        if there::unvouched(first) && standing(more).is_some() {
+            eprintln!(
+                "nix-offload: root doesn't vouch for the lent builder yet, and the second's it \
+                 does, so this goes to the second"
+            );
+            return more.to_owned();
+        }
         return first.to_owned();
     };
     let busy = |store: String| there::pressure(&store, scratch, "ssh");
     let waits = busy(stands);
-    let second = || {
-        standing(more).map_or(there::Second::Unlent, |store| {
-            there::Second::Stands(busy(store))
-        })
+    // A second that stands but root doesn't yet vouch for is no idle
+    // second to ask for: a build sent there waits on root, so it counts
+    // as one standing whose load can't be read, which keeps builds here.
+    let second = || match standing(more) {
+        Some(store) => there::Second::Stands(busy(store)),
+        None if there::unvouched(more) => there::Second::Stands(None),
+        None => there::Second::Unlent,
     };
     match waits {
         // The second is read only once the first is full.
@@ -1461,11 +1493,10 @@ fn this_system() -> String {
     format!("{}-{os}", env::consts::ARCH)
 }
 
-/// The store a lender's folder names while its builder stands.
+/// The store a lender's folder names while its builder stands and root
+/// vouches for it.
 fn standing(dir: &Path) -> Option<String> {
-    fs::read_to_string(dir.join("store"))
-        .ok()
-        .filter(|store| !store.trim().is_empty())
+    there::vouched_store(dir)
 }
 
 /// Says why a passing suite run in a warm target isn't kept as passed,
