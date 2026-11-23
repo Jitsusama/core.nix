@@ -54,10 +54,8 @@ pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -
             continue;
         };
         for session in listed {
-            let (Some(machine), Some(id)) = (
-                session["machine"].as_str(),
-                session["id"].as_str(),
-            ) else {
+            let (Some(machine), Some(id)) = (session["machine"].as_str(), session["id"].as_str())
+            else {
                 continue;
             };
             if !seen.insert(id.to_owned()) {
@@ -93,20 +91,18 @@ pub fn carried(sessions: &[(String, String)], machines: &[String], here: &str) -
         .iter()
         .find(|(name, _)| name == here)
         .map_or(0, |(_, one)| one.busy);
-    let mut says = format!(
-        "sessions busy on this machine, of {busy} busy on {} machines",
-        busiest.len()
-    );
-    let target = if sessions.is_empty() {
-        says.push_str(" (no realm was asked)");
-        None
+    let (target, unjudged) = if sessions.is_empty() {
+        (None, " (no realm was asked)".to_owned())
     } else if unread.is_empty() {
-        Some(BUSY_HERE)
+        (Some(BUSY_HERE), String::new())
     } else {
         let silent = unread.join(" and ");
-        says.push_str(&format!(" (the {silent} realm's node didn't answer)"));
-        None
+        (None, format!(" (the {silent} realm's node didn't answer)"))
     };
+    let says = format!(
+        "sessions busy on this machine, of {busy} busy on {} machines{unjudged}",
+        busiest.len()
+    );
     Measure {
         key: "sessions-here".to_owned(),
         class: Class::Apps,
@@ -154,10 +150,7 @@ mod tests {
             session("a", "here", "busy", "busy"),
             session("i", "here", "ended", "listening"),
         ]);
-        let sessions = [
-            ("work".to_owned(), work),
-            ("personal".to_owned(), personal),
-        ];
+        let sessions = [("work".to_owned(), work), ("personal".to_owned(), personal)];
         let read = carried(&sessions, &[MACHINES.to_owned()], "here");
         assert_eq!(
             (read.now.to_string(), read.target.map(|t| t.to_string())),
@@ -190,7 +183,10 @@ mod tests {
         ];
         let read = carried(&sessions, &[], "here");
         assert!(
-            read.target.is_none() && read.says.contains("the personal realm's node didn't answer"),
+            read.target.is_none()
+                && read
+                    .says
+                    .contains("the personal realm's node didn't answer"),
             "a realm unread was judged without its sessions: {}",
             read.says
         );
