@@ -33,7 +33,7 @@ EXAMPLES
 EXIT
   0   enough room, or outside the night's hours
   1   still short after the last step
-  2   btrfs's usage couldn't be read
+  65  btrfs's usage couldn't be read
   64  asked wrongly
 EOF
   exit 0
@@ -59,29 +59,31 @@ usage() {
   ')
   if ! [[ $bytes =~ ^[0-9]+$ ]]; then
     echo "btrfs filesystem usage -b $mount gave no $1 in bytes, so nothing is balanced" >&2
-    exit 2
+    exit 65
   fi
   echo "$bytes"
 }
 
-# Whether the clock is in the night's hours, when a balance may run.
-at_night() {
-  local hour
-  hour=$((10#${HOUR:-$(date +%H)}))
-  [ "$hour" -ge 1 ] && [ "$hour" -lt 6 ]
+# Reads the clock's hour into hour, as a number, so the night's hours can
+# be checked without a function in a condition, where set -e is off.
+read_hour() {
+  local clock=${HOUR:-}
+  if [ -z "$clock" ]; then
+    clock=$(date +%H)
+  fi
+  hour=$((10#$clock))
 }
 
-gib() {
-  echo $(($1 / 1024 / 1024 / 1024))
-}
+gib=$((1024 * 1024 * 1024))
 
-if ! at_night; then
+read_hour
+if [ "$hour" -lt 1 ] || [ "$hour" -ge 6 ]; then
   echo "it's outside 01:00 to 06:00, so nothing is balanced until the night"
   exit 0
 fi
 
 size=$(usage "Device size")
-cap=$((50 * 1024 * 1024 * 1024))
+cap=$((50 * gib))
 want=$((size / 10))
 if [ "$want" -gt "$cap" ]; then
   want=$cap
@@ -91,11 +93,12 @@ free=$(usage "Device unallocated")
 if [ "$free" -ge "$want" ]; then
   exit 0
 fi
-echo "$(gib "$free") GiB of $mount is in no chunk, short of $(gib "$want"), so data chunks are balanced"
+echo "$((free / gib)) GiB of $mount is in no chunk, short of $((want / gib)), so data chunks are balanced"
 ran=0
 for full in 0 5 10 20 30 40 50; do
-  if ! at_night; then
-    echo "it's past 06:00 with $(gib "$free") GiB in no chunk, so the rest waits for the next night"
+  read_hour
+  if [ "$hour" -lt 1 ] || [ "$hour" -ge 6 ]; then
+    echo "it's past 06:00 with $((free / gib)) GiB in no chunk, so the rest waits for the next night"
     exit 1
   fi
   if btrfs balance start -dusage="$full" "$mount"; then
@@ -105,13 +108,13 @@ for full in 0 5 10 20 30 40 50; do
   fi
   free=$(usage "Device unallocated")
   if [ "$free" -ge "$want" ]; then
-    echo "$(gib "$free") GiB is in no chunk now, after chunks up to $full% full"
+    echo "$((free / gib)) GiB is in no chunk now, after chunks up to $full% full"
     exit 0
   fi
 done
 if [ "$ran" -eq 0 ]; then
-  echo "every balance step failed, so $(gib "$free") GiB is still in no chunk" >&2
+  echo "every balance step failed, so $((free / gib)) GiB is still in no chunk" >&2
 else
-  echo "$(gib "$free") GiB is in no chunk after chunks up to half full, so what's left needs files gone" >&2
+  echo "$((free / gib)) GiB is in no chunk after chunks up to half full, so what's left needs files gone" >&2
 fi
 exit 1

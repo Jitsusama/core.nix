@@ -109,7 +109,7 @@ expect "0 5 10 20 30 40 50 " 1 "a night when every step fails fails"
 disk 950 0
 touch "$work/garbled"
 give
-expect "" 2 "usage it can't read balances nothing and fails"
+expect "" 65 "usage it can't read balances nothing and fails"
 
 disk 950 0 "0 50"
 HOUR=09 give
