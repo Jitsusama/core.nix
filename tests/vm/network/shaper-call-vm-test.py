@@ -101,6 +101,9 @@ CALL_TINS = slice(TINS.index("video"), None)
 # having heard both connects. Either is a handshake lost, which the counters read as lost
 # coming down when the server heard more connects than replies reached the client, and going
 # up otherwise.
+# The error alone is any early read failure, so a handshake counts as lost only where the
+# counters show one missing: a connect the client sent that the server never heard, or one
+# it heard that no reply reached the client for.
 UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
@@ -297,6 +300,7 @@ class Rig:
         for made in range(1, HANDSHAKES + 1):
             before = self.downs()
             connects, replies = self.handshakes(self.server), self.handshakes(self.client)
+            asked = self.handshakes(self.client, "sent")
             walked = self.path()
             results = self.hold(held, seconds)
             now = self.path()
@@ -308,7 +312,15 @@ class Rig:
             dropped = sum(self.downs()[CALL_TINS]) - sum(before[CALL_TINS])
             heard = {name: n - connects[name] for name, n in self.handshakes(self.server).items()}
             came = {name: n - replies[name] for name, n in self.handshakes(self.client).items()}
-            lost = [name for name in held if unanswered(results[name])]
+            sent = {
+                name: n - asked[name] for name, n in self.handshakes(self.client, "sent").items()
+            }
+            lost = [
+                name
+                for name in held
+                if unanswered(results[name])
+                and (sent[name] > heard[name] or heard[name] > came[name])
+            ]
             failed = [name for name in held if "error" in results[name] and name not in lost]
             # iperf3 connects a call's streams one after another and stops at the first left
             # unanswered, so a reply came for every connect heard only when the failing one
@@ -334,9 +346,10 @@ class Rig:
             )
         return results
 
-    def handshakes(self, machine: BaseMachine) -> dict[str, int]:
-        """Give how many call handshake datagrams a machine has received, by call."""
-        return {name: counted(machine, "handshakes", name) for name in CALLS}
+    def handshakes(self, machine: BaseMachine, way: str = "heard") -> dict[str, int]:
+        """Give how many call handshake datagrams a machine has received, or sent, by call."""
+        suffix = "" if way == "heard" else f"_{way}"
+        return {name: counted(machine, "handshakes", f"{name}{suffix}") for name in CALLS}
 
     def path(self) -> dict[str, dict[str, list[int]]]:
         """Give how many of each call's datagrams each machine on its path has met, each way.
@@ -645,6 +658,8 @@ def under_load(
         rig.client.execute("systemctl stop room-watch")
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
+        # Printed before a failure, so the call that failed keeps where its datagrams went.
+        print(f"the {name} call's datagrams, as each machine met them: {result['path']}")
         # The messages are made only on a failure, so the trace is taken only then.
         assert "error" not in result, f"the {name} call failed: {result['error']}\n{rig.trace()}"
         lost[name] = {}
@@ -750,8 +765,9 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
 def test_a_call_loses_little(rig: Rig) -> None:
     """Under a full connection both ways, each call loses a hundredth at most coming down.
 
-    The bar counts what was lost from the server to the client's input hook; what overflows
-    the client's socket, which a starved builder causes, is only printed.
+    The bar counts what was lost from the server to the client's input hook, so not all the
+    call missed: what overflows the client's socket, a reader falling behind, as one starved
+    of the builder's CPU does, is only printed. Every queue of the shaper's is before the hook.
 
     A call is on, as Joel's would be, so the shaper holds the download under the line's
     declared 90 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
