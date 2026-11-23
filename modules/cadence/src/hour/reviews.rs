@@ -119,6 +119,15 @@ fn listed(
     Ok((texts.into_iter().map(|(_, text)| text).collect(), unread))
 }
 
+/// The error a link loop gives, ELOOP, which the standard library names
+/// only on nightly.
+#[cfg(target_os = "macos")]
+const LOOP: i32 = 62;
+/// The error a link loop gives, ELOOP, which the standard library names
+/// only on nightly.
+#[cfg(not(target_os = "macos"))]
+const LOOP: i32 = 40;
+
 /// The record at `path`, with when it was written, or none where it isn't
 /// a plain file, was written before `since`, or was removed once listed,
 /// as the harness prunes; else why it can't be read. One that isn't JSON
@@ -146,10 +155,9 @@ fn record(
             let link = fs::symlink_metadata(path)
                 .ok()
                 .filter(|link| link.file_type().is_symlink());
-            let nothing = matches!(
-                error.kind(),
-                ErrorKind::NotFound | ErrorKind::NotADirectory | ErrorKind::FilesystemLoop
-            );
+            let kind = error.kind();
+            let nothing = matches!(kind, ErrorKind::NotFound | ErrorKind::NotADirectory)
+                || error.raw_os_error() == Some(LOOP);
             return match link {
                 None => gone(error),
                 Some(_) if !nothing => Err(io::Error::new(
@@ -478,8 +486,7 @@ mod tests {
         // A link to itself and one through a file, which hold nothing as
         // surely as a link to a missing name.
         let link = |to: &str, at: &str| {
-            std::os::unix::fs::symlink(torn.join(to), torn.join(at))
-                .expect("the test's link made");
+            std::os::unix::fs::symlink(torn.join(to), torn.join(at)).expect("the test's link made");
         };
         link("six.json", "six.json");
         link("one.json/inside.json", "seven.json");
