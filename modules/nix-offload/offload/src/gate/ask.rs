@@ -209,14 +209,15 @@ fn reply(said: &str) -> Option<Result<(), String>> {
 }
 
 /// What `ask` tells of mycelium's `said`, as `what` failed: a refusal ends
-/// as one, since asking again won't change the node's mind.
+/// as one, since asking again won't change the node's mind, and isn't
+/// sent to check what can be reached, which didn't stop it.
 fn failed_by(said: Said, what: &str, instead: &str) -> Failure {
     match said {
         Said::Refused(why) => failed(
             Exit::Refused,
             what,
             &format!("the node refused: {why}"),
-            instead,
+            "Asking again won't change its answer",
         ),
         Said::Failed(why) => failed(Exit::Unavailable, what, &why, instead),
     }
@@ -362,16 +363,13 @@ fn gated_here() -> Result<(String, Repo), Failure> {
 fn started(quest: &str, on: &str, commit: &str) -> Result<(), Failure> {
     // Shared to the machine and waited for, where both ends' mycelium
     // can; otherwise shared, and `answer` finds the gate once it crosses.
-    // A node that refuses the narrow share isn't asked for the wider one,
-    // which would share the quest further than it agreed to.
+    // Any no to the narrow share falls back to the plain one, as before:
+    // a node whose mycelium can't wait answers it with an `Err` too, and
+    // a Mac's gate rests on the plain share. Only the start's no ends ask.
     let sharing = "Check `mycelium machines` reaches the gate's machine.";
-    match mycelium(&["share", quest, "--to", on, "--wait"]) {
-        Ok(()) => {}
-        Err(said @ Said::Refused(_)) => {
-            return Err(failed_by(said, "ask couldn't share the quest", sharing));
-        }
-        Err(Said::Failed(_)) => mycelium(&["share", quest])
-            .map_err(|said| failed_by(said, "ask couldn't share the quest", sharing))?,
+    if mycelium(&["share", quest, "--to", on, "--wait"]).is_err() {
+        mycelium(&["share", quest])
+            .map_err(|said| failed_by(said, "ask couldn't share the quest", sharing))?;
     }
     let machine = format!("machine={on}");
     let answering = [
