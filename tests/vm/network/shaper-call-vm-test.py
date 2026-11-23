@@ -24,6 +24,8 @@ import pytest
 from test_driver.machine import retry
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from test_driver.machine import BaseMachine
 
 # A JSON object as tc, iperf3 or the shaper gives it, whose fields the test reads as it finds them.
@@ -584,13 +586,15 @@ def under_load(
     app_uploads: int = 0,
     names: list[str] | None = None,
     room: bool = False,
+    held: Callable[[], None] | None = None,
 ) -> dict[str, dict[str, int]]:
     """Hold the calls named, both unless named, while the jobs and an app fill the connection.
 
     What each call lost each way before its receiving socket is given, as the machines on its
     path counted it, and where each was met is printed. With app_uploads, the app uploads too,
     filling Joel's lane rather than the agents'. With room, the calls wait for the shaper to
-    hold the download under the line for a call that's on.
+    hold the download under the line for a call that's on, and held is called once it does,
+    as the calls start, so what it counts from there is the hold's alone.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
@@ -645,6 +649,8 @@ def under_load(
                 timeout=FILLING,
             )
             rig.watch()
+            if held:
+                held()
         results = rig.calls(names)
         if room:
             # Every second from the hold's start until the calls ended, the shaper said its
@@ -708,9 +714,11 @@ def held_for_a_call(turned: bool, kbit: int | None, room: int | None) -> bool:
     """Give whether a watched second held the download for a call.
 
     Turned through the IFB, its CAKE at the room or under, and the shaper saying its room
-    held it, so a cut of the controller's own under the room can't stand in for it.
+    held it, so a cut of the controller's own under the room can't stand in for it. The
+    shaper leaves CAKE at a rate it already set while the one it would set is within a
+    hundredth of it (src/main.rs's `apply`), so CAKE may read up to ROOM_KBIT / 0.99.
     """
-    return turned and kbit is not None and kbit <= ROOM_KBIT and room == ROOM_KBIT
+    return turned and kbit is not None and kbit * 99 <= ROOM_KBIT * 100 and room == ROOM_KBIT
 
 
 def unanswered(result: Json) -> bool:
@@ -794,16 +802,23 @@ def test_a_call_loses_little(rig: Rig) -> None:
     one run in fifty.
     """
     ifb = rig.ifb()
-    before = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
-    router_before = rig.router_drops()
+    before: dict[str, list[int]] = {}
+    router_before: list[int] = []
+
+    def held() -> None:
+        # From the hold's start, so the seconds the loads filled the line before it, when
+        # the router's queue stood as it would with no call on, aren't counted against it.
+        before.update({dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]})
+        router_before.append(rig.router_drops())
+
     try:
         rig.client.succeed(f"touch {CALL_FLAG}")
-        lost = under_load(rig, room=True)
+        lost = under_load(rig, room=True, held=held)
     finally:
         # A call left on would put the next tests' calls in the video tin by the flag alone.
         rig.client.succeed(f"rm -f {CALL_FLAG}")
     after = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
-    router = rig.router_drops() - router_before
+    router = rig.router_drops() - router_before[0]
     dropped = {
         dev: dict(
             zip(TINS, (a - b for a, b in zip(after[dev], before[dev], strict=True)), strict=True)
@@ -819,8 +834,9 @@ def test_a_call_loses_little(rig: Rig) -> None:
                 f" over {DOWN_MOST}; dropped by tin: {dropped}, by the router {router}\n{trace}"
             )
     # Held under the line, the download's excess is dropped in the IFB's CAKE rather than
-    # the router's queue, which the hold keeps short: with the IFB dropping less, the queue
-    # stood in the router whatever the IFB's rate read.
+    # the router's queue, which the hold keeps short: with the IFB dropping less while it
+    # held, the queue stood in the router whatever the IFB's rate read. Counted from the
+    # hold's start to the loads' stop (download round 3's F2, F9 and F13).
     ifb_dropped = sum(dropped[ifb].values())
     assert ifb_dropped > router, (
         f"the IFB dropped {ifb_dropped} of the download, the router's queue {router}: {dropped}"
@@ -831,7 +847,16 @@ def test_a_call_loses_little(rig: Rig) -> None:
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat | grep -q 'no longer held for a call'", timeout=HEARING
     )
-    assert rig.room() is None, "the shaper said its room held the download once the call ended"
+    # The status is written after the journal's line in the same step, so it's waited on.
+    retry(
+        lambda last_try: met(
+            rig,
+            now=rig.room() is None,
+            last_try=last_try,
+            otherwise="the shaper said its room held the download once the call ended",
+        ),
+        timeout=HEARING,
+    )
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat | sed -n '/no longer held for a call/,$p'"
         " | grep -q 'goes straight in'",
