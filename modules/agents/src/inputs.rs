@@ -287,7 +287,7 @@ impl Inputs {
             if self.unwritten.is_none() {
                 return None;
             }
-            self.keep(self.arrangement.clone(), path);
+            self.write_places(self.arrangement.clone(), path);
             return self.kept_again_at(at);
         }
         let sessions: Vec<Session> = self
@@ -313,7 +313,7 @@ impl Inputs {
             at,
         );
         if kept != self.arrangement || self.unwritten.is_some() {
-            self.keep(kept, path);
+            self.write_places(kept, path);
         }
         self.kept_again_at(at)
     }
@@ -323,7 +323,7 @@ impl Inputs {
     /// kept in memory either way, so a closed mark keeps the time it was
     /// stamped at: one stamped again at each try would never come due
     /// while the disk stays full.
-    fn keep(&mut self, kept: Arrangement, path: &Path) {
+    fn write_places(&mut self, kept: Arrangement, path: &Path) {
         let why = kept.write(path).err().map(|why| why.to_string());
         if why.is_some() && why != self.unwritten {
             eprintln!(
