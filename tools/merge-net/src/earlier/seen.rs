@@ -303,8 +303,7 @@ fn speaks(round: &Value) -> bool {
     };
     let answered = round["outcomes"].as_array().is_some_and(|outcomes| {
         outcomes.iter().any(|outcome| {
-            outcome.get("failure").is_none()
-                && (outcome.get("stopped").is_none() || filed(outcome))
+            outcome.get("failure").is_none() && (outcome.get("stopped").is_none() || filed(outcome))
         })
     });
     matches!(round["round"].as_str(), Some("council" | "stack"))

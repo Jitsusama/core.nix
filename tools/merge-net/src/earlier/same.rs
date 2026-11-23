@@ -268,7 +268,7 @@ mod tests {
             repo,
             (head, "main", &[]),
             || rounds,
-            || mirror(mirrored, &["equilibrius"], &[]),
+            || mirror(mirrored, &["peer"], &[]),
             asks,
         )
     }
