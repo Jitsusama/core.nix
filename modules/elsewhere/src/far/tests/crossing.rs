@@ -1,4 +1,4 @@
-use super::{Left, SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
+use super::{Left, SHARE_BYTES, SHARE_FILES, WAITS, far_line, far_run, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Brought, Missed, bring_back, landed};
 use std::io::ErrorKind;
 use std::path::Path;
@@ -12,6 +12,39 @@ const A_WAIT: u64 = 4;
 /// How long such a test's share takes over each step, well inside the
 /// wait, so only a wait that never restarts gives up on it.
 const HALF_A_WAIT: Duration = Duration::from_millis(1500);
+
+#[test]
+fn the_near_side_waits_for_each_file_at_its_listed_size() {
+    let (code, err, home) = far_run(Left::Whole, &[("x", "x")], "mkdir out && printf a > out/a");
+    assert_eq!(code, Some(0), "the job didn't run: {err}");
+    let job = handover(&home);
+    // The far list says out/a is longer than the copy that crossed.
+    std::fs::write(job.join(BROUGHT), "5\tout/a\nend\n").unwrap();
+    let into = home.join("near");
+    let landed = bring_back(&job, &into, &["out".into()], 1);
+    assert!(
+        landed
+            .as_ref()
+            .is_err_and(|why| why.why().contains("didn't cross")),
+        "a copy short of its listed size was taken: {landed:?}"
+    );
+    assert!(!into.join("out/a").exists(), "a short copy landed");
+    // A link where the copy should be, to a file of the listed size, is
+    // no copy at all.
+    let secret = home.join("secret");
+    std::fs::write(&secret, "12345").unwrap();
+    std::fs::remove_file(job.join(BACK).join("0")).unwrap();
+    std::os::unix::fs::symlink(&secret, job.join(BACK).join("0")).unwrap();
+    let landed = bring_back(&job, &into, &["out".into()], 1);
+    assert!(
+        landed
+            .as_ref()
+            .is_err_and(|why| why.why().contains("didn't cross")),
+        "a link in the handover was followed: {landed:?}"
+    );
+    assert!(!into.join("out/a").exists(), "a linked file landed");
+    let _ = std::fs::remove_dir_all(&home);
+}
 
 #[test]
 fn a_copy_longer_than_listed_never_lands() {

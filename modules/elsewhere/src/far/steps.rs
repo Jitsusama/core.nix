@@ -1,5 +1,5 @@
 //! The far line's steps around the job: watching its archives cross,
-//! making its tree of them, answering a stop, and leaving what its kind
+//! waiting on them, making its tree of them, answering a stop, and leaving what its kind
 //! brings back to cross home.
 //!
 //! The two steps that find files write what each finds to a file of its
@@ -9,7 +9,10 @@
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
 
-use super::{BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES, MOST_FILES, TREE, quoted};
+use super::{
+    BACK, BROUGHT, CROSSES_AT, CROSSES_WITHIN, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES,
+    MOST_FILES, TREE, UNTAKEN, quoted,
+};
 use crate::settings::Kind;
 
 /// The far line's watch on the job's archives as they cross: `arrived`,
@@ -36,12 +39,65 @@ grown() {{
   got=$((${{kb:-0}} + ${{names:-0}}))
 }}
 # The time in seconds, or where a date can't say it, one more each pass;
-# what was counted before it first could, with this pass, carries over.
+# what was counted before it first could, with this pass, carries over
+# to the last pass's time.
 tick() {{
   t=$(date +%s 2>/dev/null)
   case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
-    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
+    [ -n "$counting" ] && was=$((t - now - 1 + was)) counting=
+    now=$t ;; esac
 }}"#
+    )
+}
+
+/// The most of the far wait one pass may spend, in seconds, however far
+/// the clock moved over it: a pass takes a second and a look, so one
+/// longer is a clock stepping on or a machine waking from sleep, which
+/// spends nothing of a crossing. A pass that truly took longer, on a far
+/// machine too slow to look over a few archives in ten seconds, makes
+/// both waits longer, never shorter.
+pub(super) const A_PASS_SPENDS_AT_MOST: u64 = 10;
+
+/// The far line's wait for the job's archives, `bytes` in all, to cross,
+/// saying `untaken`, already quoted for the shell, and ending untaken if
+/// they stop crossing or cross too slowly; `crossing`'s steps and `say`
+/// come before it.
+pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
+    // No more than a share carries, which keeps the far sum in range.
+    let bytes = bytes.min(MOST_BYTES);
+    format!(
+        r#"# By the clock, since a pass over a large tree takes long itself: each
+# pass spends what the clock moved over it, never less than the second
+# it slept, as when the clock steps back or stands still, nor more than
+# {A_PASS_SPENDS_AT_MOST}s, as when it steps on or the machine slept. The wait
+# counts what was spent since more last crossed, as the near side waits;
+# a pass counts after its second, so passes are never short. However
+# steadily they cross, all that is spent is held to a ceiling: the wait,
+# and a second for each {CROSSES_AT} bytes left.
+bytes={bytes}
+most=$(({CROSSES_WITHIN} + bytes / {CROSSES_AT}))
+now=0 was=0 counting=yes; tick; grown
+was=$now had=$got quiet=0 spent=0
+until arrived; do
+  sleep 1
+  tick
+  grown
+  step=$((now - was)) was=$now
+  [ "$step" -lt 1 ] && step=1
+  [ "$step" -gt {A_PASS_SPENDS_AT_MOST} ] && step={A_PASS_SPENDS_AT_MOST}
+  quiet=$((quiet + step)) spent=$((spent + step))
+  [ "$got" -gt "$had" ] && quiet=0 had=$got
+  if [ "$quiet" -ge {CROSSES_WITHIN} ]; then
+    printf "elsewhere: the job's files didn't reach %s, none crossing for {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
+    say {untaken}
+    exit {UNTAKEN}
+  fi
+  if [ "$spent" -ge "$most" ] && ! arrived; then
+    printf "elsewhere: the job's files, %s bytes, didn't reach %s within %ss, still crossing too slowly, waiting on %s\n" "$bytes" "$(uname -n)" "$most" "$waiting" >&2
+    say {untaken}
+    exit {UNTAKEN}
+  fi
+done"#
     )
 }
 
