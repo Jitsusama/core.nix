@@ -346,7 +346,7 @@ pub fn hear(
         }
     }
 
-    hear_logs(ears, &mut following, &mut kept, &ledgers, since);
+    hear_logs(ears, &mut following, &mut kept, (&ledgers, &cells), since);
     keep_stalls(ears, &following, &mut kept, since);
 
     // What it heard is kept before anything is sent, and again after each
@@ -399,19 +399,21 @@ pub fn hear(
 }
 
 /// Hears what's new in each session log written since `since`, keeping
-/// each pain he said, and forgets the logs no longer there.
+/// each pain he said, takes up those its session's cell answered him on,
+/// and forgets the logs no longer there.
 fn hear_logs(
     ears: &Ears,
     following: &mut BTreeMap<String, Following>,
     kept: &mut Vec<Heard>,
-    ledgers: &[String],
+    (ledgers, cells): (&[String], &BTreeMap<String, Cell>),
     since: i64,
 ) {
     let mut present = Vec::new();
     for (name, path) in logs(&ears.sessions, since) {
         present.push(name.clone());
         let log = following.entry(name).or_default();
-        for said in follow(&path, &ears.void, log) {
+        let (said, answers) = follow(&path, &ears.void, log);
+        for said in said {
             let key = format!("{}/{}", log.session, said.entry);
             let kinds = sore::kinds(&said.words, said.at, &said.before);
             if log.lab || said.at < since || kinds.is_empty() {
@@ -448,8 +450,27 @@ fn hear_logs(
                 closed_by: None,
             });
         }
+        if let (Some(&last), Some(cell)) = (answers.last(), cells.get(&log.session)) {
+            answered(kept, &log.session, last, &cell.address);
+        }
     }
     following.retain(|name, _| present.contains(name));
+}
+
+/// Takes up each pain said in `session` before its cell, `by`, answered
+/// him there `at`. The cell a pain goes to is the session's own, and one
+/// that answered him where he said it has taken it up though it never
+/// replies to the question, as one did on 20 November after a restart cut
+/// its first turn short. A stall is no words of his to answer, the void
+/// has no cell to take anything, and a pain a carried-on log moved to
+/// another session waits for that one's answer.
+fn answered(kept: &mut [Heard], session: &str, at: i64, by: &str) {
+    for h in kept
+        .iter_mut()
+        .filter(|h| h.session == session && h.at < at && !h.void && !stalled::is(h))
+    {
+        h.taken_by.get_or_insert_with(|| by.to_owned());
+    }
 }
 
 /// Whether any pain of the day waits to be sent, since a node naming no
@@ -681,10 +702,12 @@ fn logs(sessions: &Path, since: i64) -> Vec<(String, PathBuf)> {
 }
 
 /// Reads a log on from where it was left, whole lines alone, giving what
-/// he said in it. A log shorter than where it was left is read anew.
-fn follow(path: &Path, void: &Path, log: &mut Following) -> Vec<said::Said> {
+/// he said in it and when the agent answered him. A log shorter than where
+/// it was left is read anew.
+fn follow(path: &Path, void: &Path, log: &mut Following) -> (Vec<said::Said>, Vec<i64>) {
+    let mut answers = Vec::new();
     let Ok(file) = fs::File::open(path) else {
-        return Vec::new();
+        return (Vec::new(), answers);
     };
     let length = file.metadata().map_or(0, |m| m.len());
     if length < log.offset {
@@ -692,7 +715,7 @@ fn follow(path: &Path, void: &Path, log: &mut Following) -> Vec<said::Said> {
     }
     let mut reader = BufReader::new(file);
     if reader.seek(SeekFrom::Start(log.offset)).is_err() {
-        return Vec::new();
+        return (Vec::new(), answers);
     }
     let mut found = Vec::new();
     let mut line = Vec::new();
@@ -723,8 +746,9 @@ fn follow(path: &Path, void: &Path, log: &mut Following) -> Vec<said::Said> {
         if let Some(said) = said::line(text, &mut log.carried) {
             found.push(said);
         }
+        answers.extend(log.carried.answered.take());
     }
-    found
+    (found, answers)
 }
 
 /// A session log's first line.
