@@ -10,8 +10,9 @@ pragma ComponentBehavior: Bound
 // Brightness holds; and the place's :set line is the one served on the
 // summary, each option saying how it stands and asking what its way
 // serves, a share typed as a Brightness level asks, a switch only the
-// way it doesn't stand; and its work as the launcher opens is felt by its
-// name, giving what it gives and throwing what it throws.
+// way it doesn't stand; its work as the launcher opens is felt by its
+// name, giving what it gives and throwing what it throws; and a share the
+// daemon refuses is said in the journal, as displays-heard.sh reads it.
 // It exits 0 once every case holds, and otherwise 1, saying which didn't.
 import qs
 import Quickshell
@@ -220,9 +221,21 @@ ShellRoot {
                             root.scale("DP-1", "1.5\u00d7", 2050),
                             root.answering("DP-1", "Dell Inc. U2723QE", "1.5\u00d7", 4000),
                             root.answering("eDP-1", "Built-in Screen", "2\u00d7", 4001)] };
+                    } else if (ask.ask === "screen" && ask.option === root.refusedOption) {
+                        answer = { id: ask.id, error: { code: "unknown-option",
+                            said: "DP-1 Harbour takes no such" } };
                     } else if (ask.ask === "screen") {
                         root.acted = root.acted.concat([ask]);
                         answer = { id: ask.id, done: true };
+                    } else if (ask.ask === "light" && ask.share === root.refusedShare) {
+                        // Refused in the daemon's words, which name a screen,
+                        // then the share changed on the watch, after it on
+                        // the one connection, so the refusal is read first.
+                        root.refusedOnWatch = root.watch?.socket === asked;
+                        asked.write(`${JSON.stringify({ id: ask.id, error: { code: "unread",
+                            said: "couldn't dim DP-1 Harbour" } })}\n`);
+                        root.tell([root.summaryAt(root.refusedShare)]);
+                        return;
                     } else if (ask.ask === "light") {
                         root.lit = root.lit.concat([ask]);
                         answer = { id: ask.id, done: true };
@@ -284,6 +297,11 @@ ShellRoot {
             brightened();
         else if (waiting === "the shares asked" && lit.length === 3)
             asked();
+        else if (waiting === "the refusal read"
+            && displays.servedBrightness?.share === refusedShare)
+            refused();
+        else if (waiting === "the late refusals" && laterHeard.length === 2)
+            laterRefused();
     }
 
     // Each row is drawn as it's served, the panel first, and Turn Every
@@ -425,6 +443,39 @@ ShellRoot {
             JSON.stringify(lit));
         Expect.expect("and no level was drawn asking", acted.length === 1, JSON.stringify(acted));
         felt();
+        waiting = "the refusal read";
+        displays.setTo(refusedShare).run();
+    }
+
+    // A share the daemon refuses, asked with no : line to take its why, is
+    // said in the journal, which displays-heard.sh reads: with reports off,
+    // by its code and how many letters, not the screen the words name.
+    readonly property int refusedShare: 33
+    property bool refusedOnWatch: false
+
+    function refused() {
+        Expect.expect("the refusal came on the watch's own connection", refusedOnWatch, "");
+        waiting = "the late refusals";
+        const heard = (why, failed, code) => {
+            laterHeard = laterHeard.concat([{ why, failed, code }]);
+        };
+        displays.brighten(refusedShare, heard);
+        displays.lineAsk({ name: "DP-1" }, refusedOption, "on", heard);
+    }
+
+    // A refusal the : line takes, a share or a screen's option, goes to its
+    // `later` with the daemon's words and its code, so the launcher's line
+    // can say the code whatever the reports setting (Launcher.qml's
+    // commandSetSteps, SetWords.later).
+    readonly property string refusedOption: "refused-here"
+    property var laterHeard: []
+
+    function laterRefused() {
+        const said = laterHeard.map(one => `${one.why} ${one.failed} ${one.code}`).sort();
+        Expect.expect("each refusal reaches the line's later with its words and its code",
+            JSON.stringify(said) === JSON.stringify(["DP-1 Harbour takes no such true "
+                + "unknown-option", "couldn't dim DP-1 Harbour true unread"]),
+            JSON.stringify(said));
         waiting = "done";
         Qt.exit(0);
     }

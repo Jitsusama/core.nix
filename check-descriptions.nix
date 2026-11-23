@@ -4171,7 +4171,8 @@
     command's start, then the act's words; Tab and the arrows choose and write a line in, round to
     what was typed; Return runs exactly what's typed, a short form or more, saying E492, E477 or
     E488 otherwise, each key's work over 400 commands within three times a bare copy of them or a
-    pass over them, timed in turn
+    pass over them, timed in turn; and a late refusal after Joel typed on is journalled by the
+    daemon's code, its words quoted only with reports on and otherwise by how many letters
   '';
   the-console-greets-the-account = ''
     a console greets the account by its description's first word, or its name, with the keys back to
@@ -4743,13 +4744,20 @@
     it stands, and its drawer from what moves most to the model's identifier, leaving out what no
     node said, says how an update it was asked for ended, and how Start a Session says each machine
   '';
+  the-launcher-keeps-a-daemons-words-out-of-its-journal = ''
+    with reports off, the journal says how many letters a daemon's refusal held, not its words, for
+    an act shut and refused, one withheld, what an act asks besides, words typed left unanswered and
+    a search refused, a search's unserved row by its kind and Wi-Fi's own refused act by its code
+  '';
   the-launcher-keeps-its-trials = ''
     each opening of the launcher is kept as its keys by kind, its pick and how long it took, and a
     miss only where letters were typed and nothing picked, and the file gains a close's line alone
   '';
   the-launcher-keeps-its-trials-one-by-one = ''
     a close adds its own opening's line to the file and rewrites none before it, however many are
-    kept, and a start carries the old list into lines and lets the oldest go
+    kept, and a start carries the old list into lines and lets the oldest go; with reports off, a
+    slow key's line says how many letters, a slow step's keeping its arrow, and a key the
+    launcher names itself, such as page down, is said whole
   '';
   the-launcher-lands-where-it-did = ''
     a thing is one row, the same letters keep their row, one slip teaches nothing
@@ -4828,10 +4836,11 @@
     the launcher's Screens draws each screen's row as the windows daemon serves it, makes again
     only the row a change names, offers Windows the screens laid out by what their rows hold, asks
     the daemon to look again once it's changed a screen, and says the Brightness's share, or that
-    it isn't read yet, as the place's line serves it; and as the launcher opens Screens feels a
-    span by its name, while work a source feels through its span runs from before it to after
-    it, is named shutting while the launcher is shut, and gives what the work gives and throws
-    what it throws
+    it isn't read yet, as the place's line serves it; with reports off, a share the daemon refuses
+    is journalled by its code and how many letters, not its words, and one the : line takes goes
+    to it with the daemon's words and code; and as the launcher opens Screens feels a span by its
+    name, while work a source feels through its span runs from before it to after it, is named
+    shutting while the launcher is shut, and gives what the work gives and throws what it throws
   '';
   the-launcher-remakes-only-the-windows-that-changed = ''
     the launcher's windows, as the windows daemon tells of them, list This Window, then the rest
@@ -6610,7 +6619,9 @@
     the launcher's Wi-Fi joins a network by the acts wifid serves it: a password asked as a
     secret, an account's name, its server's domain and password in turn, each set in the ask and
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
-    refusal are said in the foot, never a card; and no password is shown
+    refusal are said in the foot, never a card; no password is shown; and with reports off a
+    refused join is journalled by its act and code, with no network's name, password or wifid's
+    words on any launcher line
   '';
   wifi-holds-the-network-joined-ahead = ''
     the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,

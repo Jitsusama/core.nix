@@ -1091,6 +1091,12 @@ QtObject {
             Presented.keyShown("collection:emoji", false), "collection:emoji");
         check(failures, "but any other key only by its kind, as a network's name is",
             Presented.keyShown("wifi:Harbour House", false), "wifi");
+        check(failures, "and a daemon's record key by the kind after its row:",
+            Presented.keyShown("row:wifi:network:Harbour House", false), "wifi");
+        check(failures, "whole while they're on",
+            Presented.keyShown("row:wifi:network:Harbour", true), "row:wifi:network:Harbour");
+        check(failures, "a record's window by its app",
+            Presented.keyShown("row:window:kitty:~/src", false), "window:kitty");
         check(failures, "a row named but with no key is said only as an answer with reports off",
             Presented.rowShown({ name: "Re: my offer" }, false), "answer");
         check(failures, "and its name while they're on",
@@ -1118,6 +1124,106 @@ QtObject {
         check(failures, "a row's key is what's said of a row that has one",
             Presented.rowShown({ key: "window:kitty:~/src", name: "~/src" }, false),
             "window:kitty");
+        // An act's lines name it by its key, whose verbs are its daemon's
+        // own words, as agents' close or a calendar's no, but a part not
+        // shaped as one may be a path or a name.
+        check(failures, "an act's key keeps its verb with reports off",
+            Presented.keyShown("verb:wifi-join", false), "verb:wifi-join");
+        check(failures, "and each part after it shaped as a kind's word",
+            Presented.keyShown("verb:agent:close", false), "verb:agent:close");
+        check(failures, "up to the first that isn't",
+            Presented.keyShown("verb:disk:nvme0:/home/joel", false), "verb:disk:nvme0");
+        check(failures, "nor anything after that",
+            Presented.keyShown("verb:agent:7f3a:close", false), "verb:agent");
+        check(failures, "and a verb that isn't a kind's word is said as verb",
+            Presented.keyShown("verb:Join Harbour House", false), "verb");
+        check(failures, "and nothing past its act, as a notice's offer the sender named",
+            Presented.keyShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
+        // A slow key's line and a typed answer's say what was typed, which
+        // may be anything Joel searches for.
+        check(failures, "words typed are said by how many letters with reports off",
+            Presented.typedShown("pirate", false), "6 letters");
+        check(failures, "an emoji of one code point counting as one",
+            Presented.typedShown("\ud83d\ude00", false), "1 letter");
+        check(failures, "and quoted while they're on, so they can't forge a line",
+            Presented.typedShown('say "hi"\nlauncher: x', true), '"say \\"hi\\"\\nlauncher: x"');
+        // A step a slow key took is said by its arrow, so it isn't read as
+        // words typed, and the row it named by how many letters.
+        check(failures, "a slow step keeps its arrow with reports off",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", false), "\u2192 7 letters");
+        check(failures, "and a slow key that took no step is said as typed words",
+            Presented.timedShown("pirate", "", false), "6 letters");
+        check(failures, "and a step is quoted whole while they're on",
+            Presented.timedShown("\u2192 Harbour", "\u2192 Harbour", true), '"\u2192 Harbour"');
+        check(failures, "words typed in a row say the row by its kind with reports off",
+            Presented.typedInSaid("door", "wifi:Harbour House", false),
+            '4 letters typed in "wifi"');
+        check(failures, "and both whole while they're on",
+            Presented.typedInSaid("door", "wifi:Harbour House", true),
+            '"door" typed in "wifi:Harbour House"');
+        // An act's key is said bare while reports are on, as the desktop's
+        // tests read it, but a calendar's words in it still can't end the line,
+        // nor can a key the launcher says whole with them off.
+        check(failures, "an act's key is said by its verbs with reports off",
+            Presented.actShown("verb:calendar:no", false), "verb:calendar:no");
+        check(failures, "but not a calendar's words",
+            Presented.actShown("verb:calendar:Standup with Dr Smith", false), "verb:calendar");
+        check(failures, "and an act of another kind by its daemon's own words",
+            Presented.actShown("displays:night-light", false), "displays:night-light");
+        check(failures, "but a window's by its app, as its row is",
+            Presented.actShown("window:Firefox:Inbox", false), "window:Firefox");
+        check(failures, "even where its title is shaped as a kind's word",
+            Presented.actShown("window:kitty:inbox", false), "window:kitty");
+        check(failures, "and a record's by its kind, whatever its network's name is shaped as",
+            Presented.actShown("row:wifi:network:eduroam", false), "wifi");
+        check(failures, "and a daemon's own act no further than its act",
+            Presented.actShown("displays:sleep:eduroam", false), "displays:sleep");
+        check(failures, "and a key of one word, which may be a record's name, as a row",
+            Presented.actShown("eduroam", false), "row");
+        check(failures, "as is an act with no key", Presented.actShown(undefined, false), "row");
+        check(failures, "and a verb no further than keyShown says it",
+            Presented.actShown("verb:notice:offer:reply-alice", false), "verb:notice:offer");
+        check(failures, "and the launcher's own whole",
+            Presented.actShown("place:Programs", false), "place:Programs");
+        check(failures, "and bare while they're on",
+            Presented.actShown("verb:wifi-join", true), "verb:wifi-join");
+        check(failures, "its line breaks and quotes escaped",
+            Presented.actShown('verb:calendar:a "b"\nlauncher: x', true),
+            'verb:calendar:a \\"b\\"\\nlauncher: x');
+        check(failures, "and escaped with reports off where it's said whole",
+            Presented.actShown("place:x\nlauncher: y", false), "place:x\\nlauncher: y");
+        // A refusal's code, which its line says whole, escaped as a key is.
+        const refusing = { error: { code: "refused", refused: "WrongPassword" } };
+        check(failures, "a refusal says the daemon's own reason first",
+            Presented.codeShown(refusing), "WrongPassword");
+        check(failures, "and its code where it gives none",
+            Presented.codeShown({ error: { code: 'go"ne\n' } }), 'go\\"ne\\n');
+        check(failures, "and that it gave none", Presented.codeShown({}), "no code");
+        // A refusal that came after the line was done, as the : line's
+        // journal says it once Joel has typed on.
+        check(failures, "a late refusal says its code and how many letters with reports off",
+            Presented.refusalShown("couldn't dim Harbour", "unread", false), "unread, 20 letters");
+        check(failures, "or the letters alone where no code came with it",
+            Presented.refusalShown("couldn't dim Harbour", "", false), "20 letters");
+        check(failures, "and its words quoted while they're on",
+            Presented.refusalShown("no\nlauncher: x", "unread", true), '"no\\nlauncher: x"');
+        check(failures, "or that no answer came", Presented.codeShown(null), "no answer");
+        // A daemon's error says its codes whole, being no one's words, and
+        // its words by how many letters, since they can name a row.
+        const busy = { code: "busy", refused: "WrongPassword", said: "Harbour is busy", at: 2 };
+        check(failures, "a daemon's error keeps its codes and numbers with reports off",
+            Presented.errorShown(busy, false),
+            '{"code":"busy","refused":"WrongPassword","said":"15 letters","at":2}');
+        check(failures, "and says a field holding more by its JSON's letters",
+            Presented.errorShown({ code: "x", detail: { name: "Harbour" } }, false),
+            '{"code":"x","detail":"18 letters"}');
+        check(failures, "and an error that's words alone by how many letters",
+            Presented.errorShown("couldn't join Harbour", false), '"21 letters"');
+        check(failures, "and is whole while they're on",
+            Presented.errorShown(busy, true), JSON.stringify(busy));
+        check(failures, "its line ends that JSON leaves raw escaped",
+            Presented.errorShown({ said: "a\u2028launcher: b" }, true),
+            '{"said":"a\\u2028launcher: b"}');
         // Joel's drawers took a median 54 ms on the 60 Hz screen and 33 on
         // the 120 Hz panel (2026-11-17), and his day's median followed
         // which he worked on. Each says its screen last, as keys do, so

@@ -5,6 +5,7 @@
 // in Qt's own engine beside the line it's typed on (Commands.js).
 .pragma library
 .import "Commands.js" as Commands
+.import "launcher/Presented.js" as Presented
 
 const space = /\s/;
 const number = /^[0-9]+$/;
@@ -207,15 +208,20 @@ function shown(name, now, option) {
 // What an option's answer that comes after the line is done does with
 // its words, as a screen's setting answers once niri has (Launcher.qml's
 // commandSetSteps): { say } while the prompt still holds the keys that
-// ran it, so a refusal is said where the line was; { journal } once Joel
-// has typed on, so a late one never writes over what he's doing, said
-// in the journal instead; and null where it has no words.
-function later(option, words, ranAt, keysNow) {
+// ran it (`held`), so a refusal is said where the line was; { journal }
+// once Joel has typed on, so a late one never writes over what he's
+// doing, said in the journal instead as Presented.refusalShown says it:
+// `refusal`'s `code` whole, the daemon's, and its words quoted only where
+// its `whole` is true, as while reports are on, else by how many letters
+// they held, so a caller that gives neither keeps them out too; and null
+// where it has no words.
+function later(option, words, held, refusal = {}) {
     if (words === "") {
         return null;
     }
-    return keysNow === ranAt ? { say: words }
-        : { journal: `launcher: ${option} refused after Joel typed on: ${words}` };
+    const journalled = Presented.refusalShown(words, refusal.code, refusal.whole === true);
+    return held ? { say: words }
+        : { journal: `launcher: ${option} refused after Joel typed on: ${journalled}` };
 }
 
 const escapedSpace = /\s/g;
