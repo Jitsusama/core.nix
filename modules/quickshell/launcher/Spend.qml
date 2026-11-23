@@ -220,21 +220,38 @@ Provider {
     // wanted: Now's Spend and Tokens borrowing its drawer, and Agents'
     // Budgets, made then as it was served: null for none, undefined when
     // it can't say, as SpendNow.js decides, and Spend's down row, held
-    // while Start runs, as it is.
+    // while Start runs, as it is. Any reading but can't say is none, so one
+    // not known holds no amount.
     function rowNow(key) {
-        const now = SpendNow.standing(key, {
-            wanted: provider.wanted,
-            down: down,
-            sharing: sharing,
-            place: place.place,
-            serves: record => !!place.served(record),
-            answered: place.keys.length > 0 || place.link?.answeredThisWatch === true
-        });
+        const now = SpendNow.standing(key, standingNow());
         if (now === "down")
             return downRow();
         if (now === "served")
             return place.rowAt(SpendNow.recordOf(place.place, key));
-        return now === "none" ? null : undefined;
+        return now === "unsure" ? undefined : null;
+    }
+
+    // How Spend stands, as SpendNow.js reads it, each read only once it's
+    // asked, so a binding asking rowNow while these rows are wanted waits
+    // on nothing more than that.
+    function standingNow() {
+        return {
+            wanted: provider.wanted,
+            get down() {
+                return provider.down;
+            },
+            get sharing() {
+                return provider.sharing;
+            },
+            get place() {
+                return provider.place.place;
+            },
+            serves: record => !!provider.place.served(record),
+            get answered() {
+                return provider.place.keys.length > 0
+                    || provider.place.link?.answeredThisWatch === true;
+            }
+        };
     }
 
     function everything() {

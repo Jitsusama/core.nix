@@ -19,7 +19,10 @@ function recordOf(place, key) {
 // Budgets. Said as unsure, a row is looked for among the rows last made
 // while wanted, and Agents' Budgets said the amounts those held, on a
 // shared screen too (core.nix#6073). So "unsure" is left only for the
-// moment before the place first answers, the screen unshared.
+// moment before the place first answers, the screen said unshared: a
+// sharing left unsaid is read as shared. Each of how Spend stands is read
+// only once the guards before it haven't answered, so a binding asking
+// while Spend's rows are wanted waits on nothing more.
 function standing(key, spend) {
     if (spend.wanted || !key.startsWith("spend:")) {
         return "unsure";
@@ -30,5 +33,5 @@ function standing(key, spend) {
     if (spend.serves(recordOf(spend.place, key))) {
         return "served";
     }
-    return spend.sharing || spend.answered ? "none" : "unsure";
+    return spend.sharing !== false || spend.answered ? "none" : "unsure";
 }

@@ -887,12 +887,20 @@ ShellRoot {
         // is shared, whose quiet place holds no Budgets, rather than with
         // its amounts (core.nix#6073).
         const elsewhere = unwanted("spend:budgets");
+        const unshared = readOf(shutSpend.standingNow());
         Quiet.sharing = true;
         const shared = unwanted("spend:budgets");
+        const sharedRead = readOf(shutSpend.standingNow());
         Quiet.sharing = false;
         expect("shown elsewhere it reads as served, and as none while sharing",
             elsewhere?.side === "$100 this month" && shared === null,
             JSON.stringify([elsewhere?.side, shared]));
+        // The moment before the quiet place first answers is said by how
+        // Spend stands (tests/spend-now.qml), so what rowNow gives it must
+        // follow the screen as it's shared.
+        expect("rowNow is told the screen is shared, and reads the quiet place",
+            unshared === "false spend" && sharedRead === "true spend-quiet",
+            JSON.stringify([unshared, sharedRead]));
 
         // The rows come as the daemon placed them, the shell ranking none
         // (2026-11-10).
@@ -1005,6 +1013,11 @@ ShellRoot {
                     budgets === null, JSON.stringify(budgets));
                 Qt.callLater(() => Qt.exit(0));
             }));
+    }
+
+    // Whether Spend says the screen is shared, and the place it reads.
+    function readOf(standing) {
+        return `${standing.sharing} ${standing.place}`;
     }
 
     // What the shut Spend says a row reads now while its rows aren't
