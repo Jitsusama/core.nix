@@ -60,6 +60,14 @@ function seen(rows) {
         waiting: rows.filter(row => row.unseen === true && row.went !== true).length };
 }
 
+// What a search typed in a held step found among its rows, as it's shown:
+// a row found is seen, so none keeps the mark of one waiting unseen, which
+// the refresh after would read as never shown and move to the end, under
+// the cursor and among rows held still.
+function searched(rows) {
+    return rows.map(asSeen);
+}
+
 // The rows laid again, `rows`, with `lit(rows)` dimming each heading said
 // again with no row of its own standing under it in `rows`, and `late`,
 // how many new ones wait to be shown afresh where `withholding`.
