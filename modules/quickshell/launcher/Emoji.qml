@@ -148,8 +148,9 @@ Provider {
     }
 
     // Closing lets go of what was found and of the emoji made in the groups
-    // stepped into, so each is held only while a step or a search shows it;
-    // the groups' own rows stand, for Super+E to open on.
+    // stepped into, so each is held only while a step or a search shows it
+    // and the launcher's last few lists hold it (ReadyRows.qml's
+    // letGoInside); the groups' own rows stand, for Super+E to open on.
     Connections {
         target: provider.launcher
 

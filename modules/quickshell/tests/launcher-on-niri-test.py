@@ -2695,15 +2695,22 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
     finds them now (clipboard/src/search.rs), so the start makes only its groups' rows, a
     group's row moved over makes none of its emoji, and closing lets go of those a step into a
-    group made, which were otherwise held for the shell's life.
+    group made, which were otherwise held for the shell's life. The tally counts every row since
+    the shell started, and a case before this one in its part steps into a group, so each
+    count here is from this case's start; the start itself is judged by having made fewer than
+    Emoji holds, which a step into one group never reaches.
     """
     launcher_on_niri.warmed(shell)
+    before = shell.rows_made("emoji")
+    assert before < EMOJI_LISTED_LEAST, (
+        f"Emoji made {before} rows before this case, so its start made every emoji"
+    )
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
-    # Once its groups are listed the history's records have come, so a start that made every
-    # emoji has made them by now.
-    made = shell.rows_made("emoji")
+    # Once its groups are listed the history's records have come, so an opening that made
+    # every emoji has made them by now.
+    made = shell.rows_made("emoji") - before
     assert made < EMOJI_MADE_MOST, f"Emoji made {made} rows before a group was stepped into"
     listed = shell.showing()
     assert listed["count"] < EMOJI_MADE_MOST, (
@@ -2712,13 +2719,13 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     shell.normal()
     shell.send_chars("j")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") != FIRST_GROUP)
-    moved = shell.rows_made("emoji")
+    moved = shell.rows_made("emoji") - before
     assert moved < EMOJI_MADE_MOST, f"moving to the next group made {moved - made} of its emoji"
     shell.send_chars("k")
     shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
     shell.step_in()
     shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
-    stepped = shell.rows_made("emoji")
+    stepped = shell.rows_made("emoji") - before
     assert stepped > moved, "a step into the first group made none of its emoji"
     shell.close_launcher()
     shell.as_account(shell.ipc("collection", "emoji"))
@@ -2726,13 +2733,38 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
     shell.step_in()
     shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
-    again = shell.rows_made("emoji") - stepped
+    again = shell.rows_made("emoji") - before - stepped
     assert again > 0, "closing kept every emoji the first step made, so the second made none"
     shell.close_launcher()
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     shell.type_in("tada", selecting="Party popper")
     shell.close_launcher()
+
+
+# How the foot says a find the history answered only in part: those shown, of all it found.
+FOUND_OF = re.compile(r"(\d+) of (\d+) found")
+
+
+def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> None:
+    """A find in Emoji the history answers with its first hundred says how many it found.
+
+    The history answers a find with its best hundred emoji and how many it found
+    (clipboard/src/search.rs), and Emoji passes that on (launcher/Emoji.qml's search), so the
+    foot says "100 of 412 found" rather than "100 found" as though that were all. An f finds
+    every flag and face, past a hundred.
+    """
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    shell.type_in("f")
+    shell.normal()
+    words = " ".join(word["text"] for word in laid_out(shell)["foot"])
+    shell.close_launcher()
+    counted = FOUND_OF.search(words)
+    assert counted, f"Emoji's foot never said how many it found past those it shows: {words}"
+    shown, found = (int(part) for part in counted.groups())
+    assert shown < found, f"the foot said {shown} of {found} found: {words}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
