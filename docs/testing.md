@@ -212,8 +212,10 @@ when none of those read it, from those mirrored from other machines into
 `review/runs-from` beside them, where a range counts only when its base
 was given as a commit. A head whose only change is flake.lock moving
 mycelium, whose own changes merge through our rounds, to a newer commit
-on its trunk, as GitHub's compare says, with every other field and node
-as it was, needs none, and `ready` says so. It passes, too, when the head
+that a pull request merged as into its trunk, as GitHub says, locked as
+Nix makes that commit, with every other field and node as it was, needs
+none, and `ready` says so; a lock-only head turned down says why. It
+passes, too, when the head
 is a clean rebase of a commit one read, by the same patch id taken with
 its context lines and whitespace, so a block moved within its file is
 another change. A round over a range of commits stands for its head only

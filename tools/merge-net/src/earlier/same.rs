@@ -28,12 +28,30 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// never holds back a head reviewed here.
 ///
 /// A head that only pins newer commits of repos our rounds already review
-/// needs none of its own (`pins.rs`), and is told so.
+/// needs none of its own (`pins.rs`), and is told so, or why it needs one
+/// after all.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
-    let repo = Path::new(".");
-    if let Some(said) = pins::ours_alone(repo, commit, main) {
-        eprintln!("merge-net: {said}");
-        return Ok(());
+    read_in_repo(Path::new("."), commit, main, files, &pins::Live)
+}
+
+/// [`read_by_a_round`] in the repo at `repo`, asking `asks` about pins.
+fn read_in_repo(
+    repo: &Path,
+    commit: &str,
+    main: &str,
+    files: &[String],
+    asks: &impl pins::Asks,
+) -> Result<(), String> {
+    match pins::ours_alone(repo, commit, main, asks) {
+        Some(pins::Pinned::Alone(said)) => {
+            eprintln!("merge-net: {said}");
+            return Ok(());
+        }
+        Some(pins::Pinned::Declined(why)) => eprintln!(
+            "merge-net: {} moves only flake.lock, but {why}, so it needs a round",
+            short(commit)
+        ),
+        None => {}
     }
     here_or_mirrored(
         seen::witnessed(&seen::rounds_folder())?,
@@ -205,6 +223,19 @@ mod tests {
 
     use super::*;
     use crate::tests::{commit, git_in};
+
+    // A pin the pass vouches for is let through before any round is looked
+    // for, so a head that's only a pin of ours needs no rounds at all.
+    #[test]
+    fn a_pin_of_ours_passes_the_review_gate_without_a_round() {
+        let (repo, head) = pins::tests::pinned_to_b("gate", None);
+        assert_eq!(
+            read_in_repo(&repo, &head, "main", &[], &pins::tests::Fake::vouching()),
+            Ok(()),
+            "a lock-only pin of a merged mycelium commit was refused at the review gate"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
 
     fn round(commit: &str, from: Option<&str>) -> seen::Read {
         seen::Read {

@@ -9,12 +9,18 @@
 //! Only a node's commit may move: its lock's `rev`, `narHash` and
 //! `lastModified`, every other field as it was, so a lock can't send the
 //! fetch to another host, folder or ref under our repo's name. The new
-//! commit must descend from the old one and sit on the repo's trunk, as
-//! GitHub says, since only what merged there went through a round: a
-//! branch, a pull request's head, a commit from a fork or a pin back to
-//! an older commit needs a round. A node added, removed or renamed, an
-//! input that follows another, or a source of anyone else's needs one too.
-//! Anything that can't be read or asked needs a round, as before.
+//! commit must descend from the old one and be the very commit a pull
+//! request merged as into the repo's trunk, as GitHub says. Being on the
+//! trunk isn't enough: the repo's train merges with merge commits, which
+//! put every commit a pull request carried on the trunk, though a round
+//! read only its head (on 22 November 1,150 of mycelium's 1,543). Its
+//! `narHash` and `lastModified` must be what Nix makes of that commit
+//! fetched afresh, since Nix takes a source whose hash it already holds
+//! without fetching it. A branch, a pull request's head, a commit from a
+//! fork or a pin back to an older commit needs a round. A node added,
+//! removed or renamed, an input that follows another, or a source of
+//! anyone else's needs one too. Anything that can't be read or asked
+//! needs a round, as before, and a lock-only head of ours says why.
 
 use std::path::Path;
 use std::process::Command;
@@ -42,22 +48,94 @@ struct Moved {
     trunk: String,
     old: String,
     new: String,
+    /// The node's lock as the head has it.
+    locked: Value,
 }
 
-/// Why `commit`, in the repo at `repo`, needs no round of ours, when its
-/// change from its base on `main` only pins newer commits of [`OURS`].
-pub fn ours_alone(repo: &Path, commit: &str, main: &str) -> Option<String> {
-    alone_asking(repo, commit, main, compare)
+/// What a head that moves only flake.lock, pinning repos of ours, is told.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Pinned {
+    /// It needs no round, and why.
+    Alone(String),
+    /// It needs a round after all, and why, said so the person waiting on
+    /// it can tell an outage worth asking again from a pin worth fixing.
+    Declined(String),
 }
 
-/// [`ours_alone`], asking `compared` how two commits of a repo on GitHub
-/// stand, as its compare API's `status` says of `base...head`.
-fn alone_asking(
-    repo: &Path,
-    commit: &str,
-    main: &str,
-    compared: impl Fn(&str, &str, &str) -> Option<String>,
-) -> Option<String> {
+/// What's asked about a pin's new commit, of GitHub and of Nix.
+pub trait Asks {
+    /// Whether `new` descends from `old` in `repo` and isn't it.
+    fn newer(&self, repo: &str, old: &str, new: &str) -> Result<bool, String>;
+    /// Whether a pull request merged into `trunk` of `repo` as `rev`.
+    fn merged(&self, repo: &str, rev: &str, trunk: &str) -> Result<bool, String>;
+    /// The lock Nix makes of `rev` of `repo`, fetched afresh.
+    fn locked(&self, repo: &str, rev: &str) -> Result<Value, String>;
+}
+
+/// GitHub's API through gh, on github.com, the host a lock's `github`
+/// type fetches from, and Nix's own prefetch.
+pub struct Live;
+
+impl Asks for Live {
+    fn newer(&self, repo: &str, old: &str, new: &str) -> Result<bool, String> {
+        // `ahead` says head descends from base and isn't it.
+        let path = format!("repos/{repo}/compare/{old}...{new}?per_page=1");
+        Ok(answer(gh(&[&path, "--jq", ".status"]))? == "ahead")
+    }
+
+    fn merged(&self, repo: &str, rev: &str, trunk: &str) -> Result<bool, String> {
+        let path = format!("repos/{repo}/commits/{rev}/pulls");
+        let merged = format!(
+            "[.[] | select(.merge_commit_sha == \"{rev}\" and .merged_at != null \
+             and .base.ref == \"{trunk}\")] | length"
+        );
+        Ok(answer(gh(&[&path, "--jq", &merged]))? != "0")
+    }
+
+    fn locked(&self, repo: &str, rev: &str) -> Result<Value, String> {
+        let mut nix = Command::new("timeout");
+        nix.args(["120", "nix", "flake", "prefetch", "--json"])
+            .arg(format!("github:{repo}/{rev}"));
+        let said: Value = serde_json::from_str(&answer(nix)?)
+            .map_err(|why| format!("Nix's prefetch of {repo} said what can't be read: {why}"))?;
+        Ok(said["locked"].clone())
+    }
+}
+
+/// gh asking github.com's API at `args`, given two minutes.
+fn gh(args: &[&str]) -> Command {
+    let mut gh = Command::new("timeout");
+    gh.args(["120", "gh", "api", "--hostname", "github.com"])
+        .args(args);
+    gh
+}
+
+/// What `command` says, or what went wrong, its own words included.
+fn answer(mut command: Command) -> Result<String, String> {
+    let program = command
+        .get_args()
+        .nth(1)
+        .map_or_else(String::new, |program| {
+            program.to_string_lossy().into_owned()
+        });
+    let ran = command
+        .output()
+        .map_err(|why| format!("{program} couldn't be run: {why}"))?;
+    if ran.status.success() {
+        return Ok(String::from_utf8_lossy(&ran.stdout).trim().to_owned());
+    }
+    let said = String::from_utf8_lossy(&ran.stderr);
+    let said = said.lines().last().unwrap_or("nothing").trim();
+    Err(match ran.status.code() {
+        Some(124) => format!("{program} didn't answer within two minutes"),
+        _ => format!("{program} failed, saying {said}"),
+    })
+}
+
+/// What `commit`, in the repo at `repo`, is told when its change from its
+/// base on `main` only moves flake.lock, pinning repos of [`OURS`]; nothing
+/// for any other head.
+pub fn ours_alone(repo: &Path, commit: &str, main: &str, asks: &impl Asks) -> Option<Pinned> {
     let base = git_at(repo, &["merge-base", main, commit]).ok()?;
     let files = git_at(repo, &["diff", "--name-only", &base, commit]).ok()?;
     if files != LOCK {
@@ -66,34 +144,44 @@ fn alone_asking(
     let lock = |at: &str| git_at(repo, &["show", &format!("{at}:{LOCK}")]).ok();
     let moved = moved_ours(&lock(&base)?, &lock(commit)?)?;
     for pin in &moved {
-        // `ahead` says head descends from base and isn't it.
-        let newer = compared(&pin.repo, &pin.old, &pin.new)?;
-        let merged = compared(&pin.repo, &pin.new, &pin.trunk)?;
-        if newer != "ahead" || !matches!(merged.as_str(), "ahead" | "identical") {
-            return None;
+        if let Err(why) = vouched(pin, asks) {
+            return Some(Pinned::Declined(why));
         }
     }
     let repos: Vec<&str> = moved.iter().map(|pin| pin.repo.as_str()).collect();
-    Some(format!(
-        "{} moves only {LOCK}, to newer commits on the trunk of {}, whose own changes merge \
-         through rounds of ours, so it needs no round of its own",
+    Some(Pinned::Alone(format!(
+        "{} moves only {LOCK}, to newer commits that pull requests merged as into {}, whose \
+         own changes merge through rounds of ours, so it needs no round of its own",
         short(commit),
         repos.join(" and ")
-    ))
+    )))
 }
 
-/// How `head` stands to `base` in `repo` on GitHub, as the compare API's
-/// `status` says, or nothing when it can't be asked in two minutes.
-fn compare(repo: &str, base: &str, head: &str) -> Option<String> {
-    let ran = Command::new("timeout")
-        .args(["120", "gh", "api"])
-        .arg(format!("repos/{repo}/compare/{base}...{head}"))
-        .args(["--jq", ".status"])
-        .output()
-        .ok()?;
-    ran.status
-        .success()
-        .then(|| String::from_utf8_lossy(&ran.stdout).trim().to_owned())
+/// Whether `pin`'s new commit is newer, merged as a pull request and
+/// locked as Nix makes it, asking each only once the one before holds.
+fn vouched(pin: &Moved, asks: &impl Asks) -> Result<(), String> {
+    let (repo, new) = (pin.repo.as_str(), short(&pin.new));
+    if !asks.newer(repo, &pin.old, &pin.new)? {
+        return Err(format!(
+            "{repo} at {new} isn't newer than at {}",
+            short(&pin.old)
+        ));
+    }
+    if !asks.merged(repo, &pin.new, &pin.trunk)? {
+        return Err(format!(
+            "no pull request merged into {repo}'s {} as {new}, so no round need have read it",
+            pin.trunk
+        ));
+    }
+    let fetched = asks.locked(repo, &pin.new)?;
+    for field in ["narHash", "lastModified"] {
+        if pin.locked.get(field).is_none() || pin.locked[field] != fetched[field] {
+            return Err(format!(
+                "its {field} for {repo} at {new} isn't what Nix makes of that commit"
+            ));
+        }
+    }
+    Ok(())
 }
 
 /// The nodes of ours whose commits moved from `before` to `after`, two
@@ -123,6 +211,7 @@ fn moved_ours(before: &str, after: &str) -> Option<Vec<Moved>> {
             trunk: trunk.to_owned(),
             old: commit_of(locked)?,
             new: commit_of(unlocked)?,
+            locked: unlocked.clone(),
         });
     }
     (!moved.is_empty()).then_some(moved)
@@ -157,7 +246,8 @@ fn commit_of(locked: &Value) -> Option<String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use std::cell::RefCell;
     use std::{env, fs};
 
     use serde_json::json;
@@ -214,6 +304,7 @@ mod tests {
                 trunk: "main".to_owned(),
                 old: A.to_owned(),
                 new: B.to_owned(),
+                locked: after["nodes"]["mycelium"]["locked"].clone(),
             }]),
             "a pin of mycelium alone wasn't read as one"
         );
@@ -230,10 +321,12 @@ mod tests {
     }
 
     #[test]
-    fn a_node_of_ours_pointed_at_another_repo_needs_a_round() {
-        let mut after = lock(B, "n");
-        after["nodes"]["mycelium"]["locked"]["repo"] = json!("agentic-harness.pi");
-        needs_a_round(&after, "a node moved to another repo");
+    fn a_node_of_ours_pointed_at_another_repo_or_owner_needs_a_round() {
+        for (field, value) in [("repo", "agentic-harness.pi"), ("owner", "Elsewhere")] {
+            let mut after = lock(B, "n");
+            after["nodes"]["mycelium"]["locked"][field] = json!(value);
+            needs_a_round(&after, &format!("a node moved to another {field}"));
+        }
     }
 
     #[test]
@@ -246,8 +339,13 @@ mod tests {
     }
 
     #[test]
-    fn a_pin_to_a_short_rev_needs_a_round() {
+    fn a_pin_to_a_short_or_unhexed_rev_needs_a_round() {
         needs_a_round(&lock("main", "n"), "a pin naming a branch for its commit");
+        let forty = "z".repeat(40);
+        needs_a_round(
+            &lock(&forty, "n"),
+            "a pin naming 40 letters that aren't hex",
+        );
     }
 
     #[test]
@@ -296,8 +394,13 @@ mod tests {
     }
 
     /// A repo whose main holds a lock with mycelium at A, and a branch from
-    /// it that pins mycelium at B, touching `beside` too when it's given.
-    fn pinned(name: &str, beside: Option<&str>) -> (std::path::PathBuf, String) {
+    /// it that pins mycelium at B as `after` locks it, touching `beside`
+    /// too when it's given.
+    pub(crate) fn pinned(
+        name: &str,
+        after: &Value,
+        beside: Option<&str>,
+    ) -> (std::path::PathBuf, String) {
         let repo = env::temp_dir().join(format!("merge-net-pins-{name}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&repo);
         fs::create_dir_all(&repo).unwrap();
@@ -307,7 +410,7 @@ mod tests {
         git_in(&repo, &["add", "."]);
         git_in(&repo, &["commit", "-qm", "base"]);
         git_in(&repo, &["checkout", "-qb", "pin"]);
-        fs::write(repo.join(LOCK), lock(B, "n").to_string()).unwrap();
+        fs::write(repo.join(LOCK), after.to_string()).unwrap();
         if let Some(file) = beside {
             fs::write(repo.join(file), "{ x = 1; }").unwrap();
         }
@@ -317,77 +420,184 @@ mod tests {
         (repo, head)
     }
 
-    /// GitHub as `asked` answers: B ahead of A, and main at or ahead of B.
-    fn github(
-        newer: &'static str,
-        merged: &'static str,
-    ) -> impl Fn(&str, &str, &str) -> Option<String> {
-        move |repo, base, head| {
-            assert_eq!(
-                repo, "Jitsusama/mycelium",
-                "asked GitHub about another repo"
-            );
-            match (base, head) {
-                (A, B) => Some(newer.to_owned()),
-                (B, "main") => Some(merged.to_owned()),
-                _ => panic!("asked GitHub about {base}...{head}"),
+    /// [`pinned`] with mycelium at B as the lock gives it.
+    pub(crate) fn pinned_to_b(name: &str, beside: Option<&str>) -> (std::path::PathBuf, String) {
+        pinned(name, &lock(B, "n"), beside)
+    }
+
+    /// GitHub and Nix as the test has them answer about mycelium's A and B,
+    /// noting each ask, so a test sees which were made.
+    pub(crate) struct Fake {
+        pub newer: Result<bool, String>,
+        pub merged: Result<bool, String>,
+        pub locked: Result<Value, String>,
+        pub asked: RefCell<Vec<&'static str>>,
+    }
+
+    impl Fake {
+        /// A fake saying B is newer, merged and locked as the test's lock has it.
+        pub(crate) fn vouching() -> Self {
+            Self {
+                newer: Ok(true),
+                merged: Ok(true),
+                locked: Ok(lock(B, "n")["nodes"]["mycelium"]["locked"].clone()),
+                asked: RefCell::new(Vec::new()),
             }
+        }
+    }
+
+    impl Asks for Fake {
+        fn newer(&self, repo: &str, old: &str, new: &str) -> Result<bool, String> {
+            assert_eq!(
+                (repo, old, new),
+                ("Jitsusama/mycelium", A, B),
+                "asked newer wrongly"
+            );
+            self.asked.borrow_mut().push("newer");
+            self.newer.clone()
+        }
+
+        fn merged(&self, repo: &str, rev: &str, trunk: &str) -> Result<bool, String> {
+            assert_eq!(
+                (repo, rev, trunk),
+                ("Jitsusama/mycelium", B, "main"),
+                "asked merged wrongly"
+            );
+            self.asked.borrow_mut().push("merged");
+            self.merged.clone()
+        }
+
+        fn locked(&self, repo: &str, rev: &str) -> Result<Value, String> {
+            assert_eq!((repo, rev), ("Jitsusama/mycelium", B), "asked Nix wrongly");
+            self.asked.borrow_mut().push("locked");
+            self.locked.clone()
+        }
+    }
+
+    /// Asserts `asks` turns down the pin in `repo` at `head`, saying `says`.
+    fn declined(repo: &Path, head: &str, asks: &Fake, says: &str) {
+        match ours_alone(repo, head, "main", asks) {
+            Some(Pinned::Declined(why)) => {
+                assert!(
+                    why.contains(says),
+                    "a pin turned down said {why}, not {says}"
+                );
+            }
+            other => panic!("a pin that should need a round was told {other:?}"),
         }
     }
 
     #[test]
     fn a_lock_alone_pinning_a_merged_newer_commit_needs_no_round() {
-        let (repo, head) = pinned("alone", None);
-        let said = alone_asking(&repo, &head, "main", github("ahead", "ahead"));
+        let (repo, head) = pinned_to_b("alone", None);
+        let asks = Fake::vouching();
+        let told = ours_alone(&repo, &head, "main", &asks);
         assert!(
-            said.is_some_and(|said| said.contains("Jitsusama/mycelium")),
-            "a lock-only pin of a merged mycelium commit was asked for a round"
+            matches!(&told, Some(Pinned::Alone(said)) if said.contains("Jitsusama/mycelium")),
+            "a lock-only pin of a merged mycelium commit was told {told:?}"
         );
-        assert!(
-            alone_asking(&repo, &head, "main", github("ahead", "identical")).is_some(),
-            "a pin of mycelium's trunk itself was asked for a round"
+        assert_eq!(
+            *asks.asked.borrow(),
+            ["newer", "merged", "locked"],
+            "it didn't ask all three"
         );
         fs::remove_dir_all(&repo).unwrap();
     }
 
     #[test]
-    fn a_pin_back_off_or_unmerged_or_unasked_needs_a_round() {
-        let (repo, head) = pinned("unmerged", None);
-        for (newer, merged, why) in [
-            ("behind", "ahead", "a pin back to an older commit"),
-            ("identical", "ahead", "a pin to the same commit"),
-            (
-                "ahead",
-                "diverged",
-                "a pin to a commit off mycelium's trunk",
-            ),
-            (
-                "ahead",
-                "behind",
-                "a pin to a commit ahead of mycelium's trunk",
-            ),
+    fn a_pin_still_passes_once_main_moves_on_beside_it() {
+        let (repo, head) = pinned_to_b("moved-on", None);
+        git_in(&repo, &["checkout", "-q", "main"]);
+        fs::write(repo.join("module.nix"), "{ y = 2; }").unwrap();
+        git_in(&repo, &["commit", "-qam", "main moves on"]);
+        let told = ours_alone(&repo, &head, "main", &Fake::vouching());
+        assert!(
+            matches!(told, Some(Pinned::Alone(_))),
+            "a pin behind a main that moved a module was told {told:?}"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn a_pin_back_or_unmerged_says_so_and_asks_no_further() {
+        let (repo, head) = pinned_to_b("unmerged", None);
+        let back = Fake {
+            newer: Ok(false),
+            ..Fake::vouching()
+        };
+        declined(&repo, &head, &back, "isn't newer");
+        assert_eq!(
+            *back.asked.borrow(),
+            ["newer"],
+            "an older pin was asked after further"
+        );
+        let unmerged = Fake {
+            merged: Ok(false),
+            ..Fake::vouching()
+        };
+        declined(&repo, &head, &unmerged, "no pull request merged");
+        assert_eq!(
+            *unmerged.asked.borrow(),
+            ["newer", "merged"],
+            "an unmerged pin went to Nix"
+        );
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn a_pin_github_or_nix_cant_answer_says_why() {
+        let (repo, head) = pinned_to_b("unasked", None);
+        let failing = |at: &str| format!("gh failed at {at}");
+        for asks in [
+            Fake {
+                newer: Err(failing("newer")),
+                ..Fake::vouching()
+            },
+            Fake {
+                merged: Err(failing("merged")),
+                ..Fake::vouching()
+            },
+            Fake {
+                locked: Err(failing("locked")),
+                ..Fake::vouching()
+            },
         ] {
-            assert_eq!(
-                alone_asking(&repo, &head, "main", github(newer, merged)),
-                None,
-                "{why} went without a round"
-            );
+            declined(&repo, &head, &asks, "gh failed at");
         }
-        assert_eq!(
-            alone_asking(&repo, &head, "main", |_, _, _| None),
-            None,
-            "a pin GitHub couldn't be asked about went without a round"
-        );
         fs::remove_dir_all(&repo).unwrap();
     }
 
     #[test]
-    fn a_pin_beside_another_file_needs_a_round() {
-        let (repo, head) = pinned("beside", Some("module.nix"));
+    fn a_pin_whose_hash_isnt_its_commits_needs_a_round() {
+        let (repo, head) = pinned_to_b("hash", None);
+        let other = Fake {
+            locked: Ok(json!({"narHash": "sha256-other", "lastModified": 1})),
+            ..Fake::vouching()
+        };
+        declined(&repo, &head, &other, "its narHash");
+        fs::remove_dir_all(&repo).unwrap();
+        let mut after = lock(B, "n");
+        after["nodes"]["mycelium"]["locked"]
+            .as_object_mut()
+            .unwrap()
+            .remove("narHash");
+        let (repo, head) = pinned("hashless", &after, None);
+        declined(&repo, &head, &Fake::vouching(), "its narHash");
+        fs::remove_dir_all(&repo).unwrap();
+    }
+
+    #[test]
+    fn a_pin_beside_another_file_isnt_asked_after() {
+        let (repo, head) = pinned_to_b("beside", Some("module.nix"));
+        let asks = Fake::vouching();
         assert_eq!(
-            alone_asking(&repo, &head, "main", github("ahead", "ahead")),
+            ours_alone(&repo, &head, "main", &asks),
             None,
-            "a pin changing a module too went without a round"
+            "a pin changing a module too was taken for a pin"
+        );
+        assert!(
+            asks.asked.borrow().is_empty(),
+            "a head beside a module asked GitHub"
         );
         fs::remove_dir_all(&repo).unwrap();
     }
