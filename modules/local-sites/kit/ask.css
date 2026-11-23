@@ -5,12 +5,18 @@
      <article class="ask">
        <h3>what it's about, a link where ask.opens is one</h3>
        <p class="ask-said">each of ask.said</p>
+       <p class="ask-question">ask.question, then ask.ifNothing, where it says them</p>
        <ul class="ask-answers">
          <li><button>a choice's label</button> <span>what follows</span></li>
        </ul>
        <form class="ask-words"><label>Your Own Words <input></label></form>
-       <p class="ask-act"><a>ask.act</a></p>
+       <p class="ask-act"><a href="ask.opens">ask.act</a></p>
      </article>
+
+   with every word drawn as text, never as markup, since a session wrote it.
+   The answers and the words show only while ask.asks. Where ask.act is
+   null, the look is about a file or a session no browser opens, so the act
+   line shows ask.target as text instead of a link that goes nowhere.
 
    What happened comes first, in the serif, since it's the context Joel said
    was lost by the time he found a look. Each answer is a whole target with
