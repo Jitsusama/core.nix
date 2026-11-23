@@ -1552,8 +1552,10 @@ Singleton {
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
         const placeable = keptPlaces.map(Reopening.placeOf);
-        const places = Places.placed(placeable, root.screensThere(),
-            Niri.workspace()?.output ?? null,
+        const inUse = Niri.workspace()?.output ?? null;
+        if (puttingBack !== null)
+            puttingBack.inUse = inUse;
+        const places = Places.placed(placeable, root.screensThere(), inUse,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
@@ -2207,7 +2209,8 @@ Singleton {
         const held = Object.entries(waiting).reduce((all, [screen, kept]) =>
             all.concat(kept.map(one => ({ id: one.id, screen, left: one.output }))), []);
         held.filter(one => !heldSaid.includes(one.id)).forEach(one => console.info(
-            `workspace ${one.id} left ${one.left ?? "its screen"}, waits for ${one.screen}`));
+            `workspace ${one.id} left ${one.left || "a screen"}, `
+            + `waits for ${one.screen || "its screen"}`));
         heldSaid = held.map(one => one.id);
     }
     function noteGone() {
@@ -2223,7 +2226,8 @@ Singleton {
         const next = {};
         for (const one of now) {
             const was = root.workspacesWere[one.id];
-            const left = was !== undefined && !outputs.includes(was.output);
+            // One first seen on no screen left none, so it waits for none.
+            const left = was !== undefined && was.output !== "" && !outputs.includes(was.output);
             if (left && was.output !== (one.output ?? "") && !noted.includes(one.id))
                 root.noteAway({ screen: root.screens[was.output] || was.output, workspace: was.idx,
                     output: was.output,
@@ -2317,9 +2321,11 @@ Singleton {
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
-        const inUse = Niri.workspace()?.output ?? null;
+        // The screen in use as its sessions were placed, so a focus moved
+        // since doesn't decide a window apart from them.
+        const inUse = going.inUse ?? Niri.workspace()?.output ?? null;
         const kept = Places.whereKept(at, going.kept, there, { inUse });
-        const output = found.output ?? kept ?? inUse;
+        const output = found.output ?? kept.output ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
         const column = window.layout.pos_in_scrolling_layout[0];
@@ -2332,9 +2338,8 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        const away = Places.awayOf(at, kept, going.kept, there);
-        if (into !== null && away !== null)
-            root.noteAway(away, into);
+        if (into !== null && kept.away !== null)
+            root.noteAway(kept.away, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
