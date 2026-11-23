@@ -139,9 +139,8 @@ rec {
           behind a door it lacked. The kinds aren't the same on each system:
           a Mac's strict reads the home folder but what pi's fence hides,
           where Linux's reads only what it lists, and it writes the account's
-          temporary folder, which on a Mac is also its runtime folder, yet
-          both say strict. So a carry from Linux to a Mac lands looser in
-          what it may read and write.
+          temporary folder, yet both say strict. So a carry from Linux to a
+          Mac lands looser in what it may read and write.
         '';
       };
     };

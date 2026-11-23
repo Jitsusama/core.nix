@@ -142,11 +142,13 @@ let
   # bind the relay's socket in the runtime folder, and it already reaches
   # every key that account holds, so the lend opens it nothing new. A key
   # left out is left out of the file, as mycelium reads a budget whose
-  # upstream adds its own. Only Linux lends: on a Mac the runtime folder the
-  # upstream sits in is DARWIN_USER_TEMP_DIR, every pi session's TMPDIR,
-  # which fenced agents write, so one could bind the socket and be handed
-  # the key; and model-relay, the upstream a lend is built for, is Linux's
-  # alone.
+  # upstream adds its own. Only Linux lends: model-relay, the upstream a lend
+  # is built for, is Linux's alone. On a Mac the node's runtime folder, where
+  # the upstream would sit, is the account's cache folder,
+  # DARWIN_USER_CACHE_DIR. For one release a node still serves in the
+  # account's temporary folder too, as it did before, which fenced agents
+  # write, and nothing yet shows they can't bind a socket in the cache
+  # folder either and be handed the key.
   lendArgs = lib.optionals (isLinux && cfg.lend != null) [
     "--lend"
     "${pkgs.writeText "mycelium-lend.json" (
@@ -610,7 +612,7 @@ in
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
     # never looser; a Mac runs its strict for either, which writes the
-    # run's folder and the account's temporary folder, its runtime folder.
+    # run's folder and the account's temporary folder.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
       default = [
@@ -665,9 +667,10 @@ in
           message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, the realm whose node lends.";
         }
         {
-          # As lendArgs says, a Mac's runtime folder is one its agents write.
+          # As lendArgs says, model-relay is Linux's alone, and a Mac's
+          # runtime folder isn't shown to be out of its agents' reach.
           assertion = isDarwin -> cfg.lend == null;
-          message = "jitsusama.mycelium.lend is set on a Mac, whose runtime folder is every pi session's TMPDIR, so an agent could bind the upstream and take the key: lend from Linux.";
+          message = "jitsusama.mycelium.lend is set on a Mac, where model-relay, the upstream a lend is built for, doesn't run: lend from Linux.";
         }
         {
           assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;

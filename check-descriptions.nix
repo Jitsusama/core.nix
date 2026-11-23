@@ -2313,7 +2313,7 @@
     and no field attribute but default, which a scan shown to refuse eight other layouts reads,
     and the lender joins a relative upstream onto its runtime folder; a budget with no key is
     written with none, a further realm's node and a machine lending nothing are given no lend, a
-    Mac's lend is refused, its runtime folder being its agents' TMPDIR, and its node given none,
+    Mac's lend is refused, model-relay being Linux's alone, and its node given none,
     plain prefixes and dotted paths and key packages are taken, and a lend with no realm, naming a
     budget it lacks, with a prefix that is empty, starts another, either way round, or is named
     twice, a key that is empty or whose program is outside the store, climbs out of it with .. or
