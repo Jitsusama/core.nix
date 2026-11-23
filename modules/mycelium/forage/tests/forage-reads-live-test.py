@@ -513,7 +513,8 @@ STILL = 0.1
 # none once it has kept none for a moment.
 SHIFTED = """() => new Promise((done) => {
   const box = (rect) => `${Math.round(rect.y)}+${Math.round(rect.height)}`;
-  const named = (node) => node?.id || node?.getAttribute?.("class") || node?.nodeName;
+  const named = (node) =>
+    node?.id || node?.getAttribute?.("class") || node?.nodeName || "a node since gone";
   new PerformanceObserver((list, observer) => {
     observer.disconnect();
     const shifts = list.getEntries().filter((each) => !each.hadRecentInput);
@@ -568,6 +569,7 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         # Open, so the panel draws the link as well as the row.
         cell(page, "OSPREY").click()
         selected(page, "OSPREY", "a click didn't open the long link's cell")
+        expect(page.locator("#panel"), "the opened cell's panel wasn't shown").to_be_visible()
         expect(page.locator("#panel-body .lead"), "the panel lost the link").to_contain_text(
             "https://"
         )
