@@ -1212,19 +1212,24 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # off the screen's foot (MarginCatStacked.js's moves() with nowhere to go), laid a whole
     # gap between workspaces below where it got to, a tenth of the screen past its height
     # (apart()), on the workspace sliding back down, `carried` as far off that as niri's
-    # slide still has its ground. Peeking 3 of its 8 rows down from the gap at y -5, it was next said
-    # at 816 and 845 a millisecond into that ride (the net, 2026-11-22). So on the ride, a
-    # place a step from the gap below where it got to, off by its ground, is where it got to
-    # too. The second move is always up here, so only that way is held to it.
+    # slide still has its ground. Peeking 3 of its 8 rows down from the gap at y -5, it was
+    # next said at 816 and 845 a millisecond into that ride (the net, 2026-11-22). So on the
+    # ride, a place a step from the gap below where it got to, off by its ground, is where it
+    # got to too. The second move is always up here, so only that way is held to it.
+    # `carried` is the cat's own word, so this holds where the ride began and that its ground
+    # is carried no farther than the gap, between where it got to and the gap below: that
+    # the ground follows niri's slide is proven in Qt's engine (margin-cat-one-screen.qml).
     move = after.get("move") or {}
     scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
     apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
-    laid = after["y"] - move.get("carried", 0) - was["y"]
+    carried = move.get("carried", 0)
+    laid = after["y"] - carried - was["y"]
     rode = (
         move.get("way") == -1
         and move.get("beats") == ["rides"]
         and abs(after["x"] - was["x"]) <= near
         and abs(laid - apart) <= near
+        and -apart - near <= carried <= near
     )
     assert all(off) or gone <= near or rode, f"the second move put it at {after}, from {was}"
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
