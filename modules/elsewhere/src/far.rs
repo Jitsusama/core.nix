@@ -325,8 +325,12 @@ say() {{ printf '\n%s\n' "$1"; }}
 {stopping}
 {sweeping}
 {waiting}
-# Its run's file first, so no copy lies here without one.
-if mkdir -p "$runs" && printf '%s %s\n' "$$" "$here" > "$work{RUN}" &&
+# Its run's file first, so no copy lies here without one. Whatever sat at
+# its name goes first, as a link an earlier job left would, and noclobber
+# refuses a file, or a link to one, put there meanwhile; a link to a
+# device or a pipe put there meanwhile is still written through.
+if mkdir -p "$runs" && rm -f "$work{RUN}" &&
+  (set -C && printf '%s %s\n' "$$" "$here" > "$work{RUN}") &&
   rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
