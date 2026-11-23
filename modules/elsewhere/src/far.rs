@@ -279,7 +279,8 @@ fn leave<'a>(
 /// strict fence lets it write, runs the kind's setup and then the job,
 /// its program found on the far path by its name, in the job's folder
 /// `within` the tree, then leaves what the kind brings back in the
-/// handover and takes its copy away.
+/// handover and takes its copy away. First it clears what earlier runs
+/// here left spent beside its copy.
 pub fn script(
     quest: &str,
     id: &str,
@@ -313,6 +314,7 @@ pub fn script(
     let waiting = waiting(bytes, &untaken);
     let copying = copying();
     let stopping = stopping();
+    let sweeping = sweeping();
     let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
@@ -324,6 +326,7 @@ tab=$(printf '\t')
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
 {stopping}
+{sweeping}
 {waiting}
 if rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 rm -f "$work.names"
@@ -779,7 +782,7 @@ mod landing;
 pub mod spent;
 mod steps;
 
-use steps::{bringing, copying, crossing, stopping, waiting};
+use steps::{bringing, copying, crossing, stopping, sweeping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

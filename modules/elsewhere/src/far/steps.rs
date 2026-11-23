@@ -1,6 +1,6 @@
-//! The far line's steps around the job: watching its archives cross,
-//! waiting on them, making its tree of them, answering a stop, and leaving what its kind
-//! brings back to cross home.
+//! The far line's steps around the job: clearing what earlier runs left,
+//! watching its archives cross, waiting on them, making its tree of them,
+//! answering a stop, and leaving what its kind brings back to cross home.
 //!
 //! The two steps that find files write what each finds to a file of its
 //! own beside the job's copy, and check it, rather than piping one
@@ -112,13 +112,21 @@ done"#
 /// the exit but still dies by that signal. A closed pipe is a let go
 /// too, as when the asker's end goes before its signal comes. A signal
 /// that comes while it clears is dropped, so the clearing runs once, and
-/// one ignored when the far line began is never trapped at all.
+/// one ignored when the far line began is never trapped at all. The copy
+/// is first renamed spent, at once, then removed: mycelium kills a group
+/// still running a short grace after its signal, and a job's build can
+/// hold more files than go in that time, so a removal cut short leaves
+/// a copy the next run here knows for spent.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* \
-    "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+  cd "$HOME" && {{
+    copy=$work marked=${{work%/*}}/{SPENT}${{work##*/}}
+    [ -d "$work" ] && [ ! -e "$marked" ] && mv "$work" "$marked" && copy=$marked
+    rm -rf "$copy" "$work.names" "$work.back" "$work.back".* \
+      "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+  }}
   trap - "$1"
   kill -s "$1" "$$"
   exit "$2"
@@ -129,6 +137,35 @@ trap 'stopped PIPE 141' PIPE
 trap 'stopped TERM 143' TERM"#
     )
 }
+
+/// The far line's step clearing what earlier runs here left beside its
+/// copy, before it waits on its files, which cross meanwhile: each copy a
+/// stop renamed spent, and anything else left untouched a day, as by a
+/// run killed outright, past any job's run, so no live run's copy goes.
+/// Only within the copies' own folder, and only when that is a folder,
+/// not a link, so nothing outside the quest's scratch is ever removed.
+pub(super) fn sweeping() -> String {
+    format!(
+        r#"runs=${{work%/*}}
+if [ -d "$runs" ] && [ ! -L "$runs" ]; then
+  for marked in "$runs"/{SPENT}*; do
+    [ -e "$marked" ] || [ -L "$marked" ] || continue
+    rm -rf "$marked" || printf "elsewhere: couldn't clear %s\n" "$marked" >&2
+  done
+  find "$runs" -mindepth 1 -maxdepth 1 -mmin +{UNTOUCHED_MINUTES} -exec rm -rf {{}} + ||
+    printf "elsewhere: couldn't clear all that lay a day in %s\n" "$runs" >&2
+fi"#
+    )
+}
+
+/// What a copy a stop couldn't finish removing is renamed with, hidden
+/// like the copies' own folder.
+pub(super) const SPENT: &str = ".spent-";
+
+/// How long, in minutes, what lies beside the far line's copy may be left
+/// untouched before it's spent: the near side's day for another machine's
+/// folder.
+const UNTOUCHED_MINUTES: u64 = super::spent::UNTOUCHED_A_DAY.as_secs() / 60;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
