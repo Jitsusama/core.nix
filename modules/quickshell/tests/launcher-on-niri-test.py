@@ -2594,10 +2594,8 @@ def test_a_drawer_shown_again_measures_little_anew(shell: Shell) -> None:
 FIRST_GROUP = "Smileys & Emotion"
 # How many of Emoji's rows its start makes and Super+E lists at most: its groups, not 1,914.
 EMOJI_MADE_MOST = 20
-# The start line's count of rows by source, the most first, and Emoji's among them, where it's
-# one of the sources the line names; one it leaves out made fewer than the last it names.
-START_MADE = re.compile(r"places kept as the shell started, \d+ rows made \(([^)]*)\)")
-EMOJI_MADE = re.compile(r"\bemoji (\d+)")
+# How many emoji Desktop's Emoji says it holds at least, though its own rows are its groups.
+EMOJI_LISTED_LEAST = 1000
 
 DRAWER_SAID = re.compile(
     r'launcher: drawer for "((?:[^"\\]|\\.)*)" presented (\d+) ms from the key: a median (\d+) ms '
@@ -2695,21 +2693,44 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
 
     Every one of Emoji's 1,914 rows was made as the shell started, kept for Super+E and matched
     in the shell, about 30 MB of what its heap held (Y2YBTS's lab, 2026-11-19). The history
-    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows.
+    finds them now (clipboard/src/search.rs), so the start makes only its groups' rows, a
+    group's row moved over makes none of its emoji, and closing lets go of those a step into a
+    group made, which were otherwise held for the shell's life.
     """
     launcher_on_niri.warmed(shell)
-    said = shell.log.read_bytes()[shell.launched :].decode(errors="replace")
-    start = START_MADE.search(said)
-    assert start, f"the shell never said what its start made\n{shell.tail()}"
-    made = EMOJI_MADE.search(start.group(1))
-    counted = int(made.group(1)) if made else 0
-    assert counted < EMOJI_MADE_MOST, f"the start made {counted} of Emoji's rows"
     shell.as_account(shell.ipc("collection", "emoji"))
     shell.launcher_ready()
     shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
-    rows = shell.showing()["rows"]
-    # showing() lists at most 20 rows, so 20 or more shows as 20, which this refuses.
-    assert len(rows) < EMOJI_MADE_MOST, f"Super+E listed {rows[:12]}, not Unicode's groups"
+    # Once its groups are listed the history's records have come, so a start that made every
+    # emoji has made them by now.
+    made = shell.rows_made("emoji")
+    assert made < EMOJI_MADE_MOST, f"Emoji made {made} rows before a group was stepped into"
+    listed = shell.showing()
+    assert listed["count"] < EMOJI_MADE_MOST, (
+        f"Super+E listed {listed['count']} rows, {listed['rows'][:12]}, not Unicode's groups"
+    )
+    shell.normal()
+    shell.send_chars("j")
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") != FIRST_GROUP)
+    moved = shell.rows_made("emoji")
+    assert moved < EMOJI_MADE_MOST, f"moving to the next group made {moved - made} of its emoji"
+    shell.send_chars("k")
+    shell.launcher_until(lambda shown: (shown.get("selected") or {}).get("name") == FIRST_GROUP)
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
+    stepped = shell.rows_made("emoji")
+    assert stepped > moved, "a step into the first group made none of its emoji"
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
+    shell.launcher_until(lambda shown: shown["rows"][:1] == [FIRST_GROUP])
+    shell.step_in()
+    shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
+    again = shell.rows_made("emoji") - stepped
+    assert again > 0, "closing kept every emoji the first step made, so the second made none"
+    shell.close_launcher()
+    shell.as_account(shell.ipc("collection", "emoji"))
+    shell.launcher_ready()
     shell.type_in("tada", selecting="Party popper")
     shell.close_launcher()
 
@@ -3368,6 +3389,11 @@ def test_a_terminal_is_shown_a_place_by_its_names_and_a_miss_the_nearest(shell: 
     grinning = shown("desktop", "emoji", FIRST_GROUP, "grinning face")
     assert "Copy" in [row["name"] for row in grinning["acts"]], grinning
     assert "Copy" not in [row["name"] for row in grinning["rows"]], grinning
+    # Desktop's Emoji says how many emoji it holds, counted from the history's records, though
+    # it lists only Unicode's groups and has made none of the emoji inside them.
+    emoji = next(row for row in shown("desktop")["rows"] if row["name"] == "Emoji")
+    figure = "".join(letter for letter in str(emoji.get("count", "")) if letter.isdigit())
+    assert int(figure or 0) >= EMOJI_LISTED_LEAST, f"Desktop's Emoji said its count so: {emoji}"
     assert all("drawer" not in row for row in machine["rows"]), machine["rows"]
     # A miss says where, the names it was nearest, and that nothing it was looked among is
     # still being read, so the terminal says it at once rather than asking again.

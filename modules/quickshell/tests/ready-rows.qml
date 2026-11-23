@@ -1,8 +1,9 @@
 // How the shell takes a place's rows as its daemon serves them ready,
 // run in Qt's own JavaScript engine, the one the shell runs it in. The
 // `the-launcher-words-each-ready-row-it-is-served` check copies
-// launcher/ReadyRows.js, launcher/Found.js and launcher/Beneath.js, the When.js ReadyRows.js
-// reads from beside the launcher's folder, launcher/Ago.js,
+// launcher/ReadyRows.js, launcher/Found.js, launcher/Beneath.js and
+// launcher/EmojiSearch.js, the When.js ReadyRows.js and the Fuzzy.js
+// EmojiSearch.js read from beside the launcher's folder, launcher/Ago.js,
 // launcher/Interfaces.js and tests/lib/Expect.js
 // beside this file and runs `qml -platform offscreen ready-rows.qml` over
 // records made up here in the crate's wrapped form. Long because every
@@ -15,6 +16,8 @@ import "launcher/ActForms.js" as Forms
 import "launcher/Moved.js" as Moved
 import "launcher/Beneath.js" as Beneath
 import "launcher/EmojiDrawer.js" as EmojiDrawer
+import "launcher/EmojiSearch.js" as EmojiSearch
+import "Fuzzy.js" as Fuzzy
 import "Expect.js" as Expect
 
 QtObject {
@@ -50,6 +53,8 @@ QtObject {
             beneath();
             keywording();
             searching();
+            emojiAsked();
+            madeInside();
             Qt.exit(0);
         } catch (error) {
             Expect.fail(`${error}`);
@@ -58,6 +63,48 @@ QtObject {
 
     function record(key, order) {
         return { key: key, kind: "row", row: { thing: `quest:${key}`, order: order } };
+    }
+
+    // The rows made inside others, which a place lets go as the launcher
+    // closes, its own rows kept (ReadyRows.qml's letGoInside).
+    function madeInside() {
+        const rows = {
+            group: { name: "Animals" },
+            cat: { name: "Cat", parent: "group" },
+            loose: { name: "Loose", parent: "" },
+            typed: { name: "Dog", parent: "group" }
+        };
+        const made = { group: {}, cat: {}, loose: {}, typed: null, gone: {} };
+        Expect.same("only those inside another, made or made as nothing, are let go",
+            Ready.madeInside(made, key => rows[key] ?? null), ["cat", "typed"]);
+    }
+
+    // What Emoji lists while the history's answer to a key is asked
+    // (launcher/EmojiSearch.js): the last answer's rows holding every
+    // letter typed, only where what's typed goes on from that answer.
+    function emojiAsked() {
+        const emoji = (name, keywords) => ({
+                name: name,
+                prepared: Fuzzy.prepare(name),
+                keywords: Fuzzy.prepare(keywords)
+            });
+        const last = [emoji("Grinning face", "cheerful grin"), emoji("Grinning cat", "pet"),
+            emoji("Party popper", "tada")];
+        const names = rows => rows.map(row => row.name);
+        Expect.same("a row stands where its name or its meaning holds every letter typed",
+            names(EmojiSearch.holding(last, "grin c")), ["Grinning face", "Grinning cat"]);
+        Expect.same("and none where neither does",
+            names(EmojiSearch.holding(last, "grin z")), []);
+        Expect.same("what's typed goes on from the last answer's words, folded as matched",
+            [EmojiSearch.goesOn("Grin", "grin  c"), EmojiSearch.goesOn("grin c", "grin")],
+            [true, false]);
+        Expect.same("nothing goes on before any answer has come",
+            EmojiSearch.goesOn(null, "grin"), false);
+        const standing = EmojiSearch.whileAsked(last, "grinning c");
+        Expect.same("those standing are graded as found by where words start",
+            [names(standing.rows), standing.grade], [["Grinning face", "Grinning cat"], 0]);
+        Expect.same("none standing is graded as a search finding nothing",
+            EmojiSearch.whileAsked([], "grin"), { rows: [], grade: 3 });
     }
 
     function placing() {
@@ -818,6 +865,9 @@ QtObject {
                 { far: [[0, 4]] }]);
         Expect.same("one that says no grade is graded 0, and one that says is as said",
             [found.grade, Found.foundOf("shot", { keys: ["b"], grade: 1 }).grade], [0, 1]);
+        Expect.same("one that says no count found its keys, and one that says found as said",
+            [none.found, found.found, Found.foundOf("shot", { keys: ["b"], found: 838 }).found],
+            [0, 3, 838]);
         const held = { b: record("b", 2048) };
         Expect.same("a row it found that the watch serves is the watch's",
             Found.foundRecord(found, held, "b"), held.b);
