@@ -145,7 +145,7 @@ enum Refused {
 /// The bytes `text` spells in hex, two digits a byte, or nothing where
 /// it spells none.
 fn hex(text: &str) -> Option<Vec<u8>> {
-    if text.len() % 2 != 0 || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !text.len().is_multiple_of(2) || !text.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..text.len())
@@ -959,7 +959,8 @@ mod tests {
             "the same report taken twice"
         );
         assert!(
-            unheard_said(mac, &again).is_some_and(|said| said.contains("192.0.2.7")),
+            unheard_said(mac, &Unheard::Refused(Refused::Repeated))
+                .is_some_and(|said| said.contains("192.0.2.7")),
             "a refusal goes unsaid, or without its address"
         );
         assert_eq!(

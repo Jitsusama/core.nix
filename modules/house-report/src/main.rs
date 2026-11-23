@@ -248,7 +248,9 @@ fn reports(to: SocketAddr, interface: Option<&str>, key: Option<&Path>) -> Resul
             path.display()
         ),
         None => {
-            eprintln!("house-report: reports go unsigned, so the house takes them by address alone")
+            eprintln!(
+                "house-report: reports go unsigned, so the house takes them by address alone"
+            );
         }
     }
     let started = Instant::now();

@@ -8,6 +8,7 @@
 //! a report caught off the line can't be sent again later, and `mac` is
 //! the first 16 bytes of HMAC-SHA256 over the text before it, in hex.
 
+use std::fmt::Write as _;
 use std::fs;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -44,8 +45,10 @@ fn mac(key: &[u8], text: &str) -> String {
     hash.update(text.as_bytes());
     hash.finalize().into_bytes()[..MAC_BYTES]
         .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+        .fold(String::new(), |mut hex, byte| {
+            write!(hex, "{byte:02x}").expect("a String takes any write");
+            hex
+        })
 }
 
 /// `text` signed under `key` at `unix_ms`: the clock, then the mac of
