@@ -17,7 +17,9 @@ pragma ComponentBehavior: Bound
 // into the machines the realm's node places on, where it has more than
 // this one, each that can't take a session dimmed with why, each other
 // saying how it stands as Machines says it, from the node's machine
-// records, and Wherever It Fits last; and a quest made since is heard,
+// records, and Wherever It Fits last; a row told while the launcher is
+// open in another place is drawn as it is now on the step back, which
+// makes no row; and a quest made since is heard,
 // shut making no row, the daemon telling only the rows that moved, so a
 // list written again with only when each was heard moved tells none and
 // every other row is kept. It exits 0 once every case holds, and
@@ -94,6 +96,9 @@ ShellRoot {
             if (root.waiting === "its session heard"
                 && rows().some(row => row.side.endsWith("WCJQSG")))
                 Qt.callLater(root.sessionHeard);
+            if (root.waiting === "told away"
+                && root.told.includes("row:quests:QEST-20261003-PROMPT") && !settled.running)
+                settled.start();
             if (root.waiting === "heard shut" && theQuests.counted() === "4 open, 1 driving")
                 Qt.callLater(root.heardShut);
             if (root.waiting === "only those heard"
@@ -486,6 +491,55 @@ ShellRoot {
             expect("its step says so", held.verbs()[0].name === "Go To Its Session" && held.verbs()[0].verb === "go to",
                 held.verbs()[0].name);
 
+            // Open in another place, Quests isn't wanted, and its session
+            // parks, as the node tells sessions parking and waking all day.
+            root.told = [];
+            root.waiting = "told away";
+            theLauncher.open = true;
+            theLauncher.wanting = false;
+            tell("session", { changed: [{ key: "session:WCJQSG", standing: "parked",
+                presence: { addresses: ["WCJQSG"], owns: ["mesh", "QEST-20261003-PROMPT"] } }] });
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // A moment for what's told away to settle, since rows made ahead of the
+    // step back are made off the frame that draws it.
+    Timer {
+        id: settled
+
+        interval: 200
+        onTriggered: root.steppedBack()
+    }
+
+    // Stepped back home, Quests is wanted again, and a quest's row told
+    // while it wasn't is drawn as it is now, with nothing made on the step:
+    // Joel's "\u2190 now" made 31 to 37 rows at each, all told away, as
+    // its session parked or woke or its folder moved (2026-11-23).
+    function steppedBack() {
+        if (root.waiting !== "told away")
+            return;
+        try {
+            const before = theQuests.tally.rows;
+            theLauncher.wanting = true;
+            const prompt = theQuests.everything()[1];
+            expect("the row told away drawn as it is now",
+                prompt.verb !== "go to" && prompt.side.endsWith("WCJQSG"),
+                `${prompt.verb} ${prompt.side}`);
+            expect("the step back makes no row", theQuests.tally.rows === before,
+                `${theQuests.tally.rows - before} rows: ${theQuests.tally.lately.join(", ")}`);
+            heardShutNext();
+        } catch (error) {
+            fail(error.message);
+        }
+    }
+
+    // Shut, the node tells every quest again, as the harness writes its
+    // list.
+    function heardShutNext() {
+        try {
+            theLauncher.open = false;
             root.made = theQuests.looksThrough();
             root.counted = theQuests.tally.rows;
             root.told = [];
