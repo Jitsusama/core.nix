@@ -177,8 +177,10 @@ an address a device or an eero holds now, or one outside the range the
 home subnet gives out, where a device set up by hand may keep its own.
 An unreservation is refused where a port forward may reach the
 reservation, by its address, its url, its device's url or its MAC,
-where eero keeps more than one for the device, or where its reservation
-lives anywhere but under the network's reservations. No forward has
+where eero keeps more than one for the device, where its address is
+outside the range eero gives out, since keeping it again couldn't undo
+it, or where its reservation lives anywhere but under the network's
+reservations. No forward has
 been seen, so the whole answer is searched for any of those. A list
 this can't read whole, reservations, devices, eeros or forwards,
 refuses too. Each change is judged by reading eero's reservations after

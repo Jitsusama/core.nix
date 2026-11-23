@@ -169,7 +169,8 @@ fn unreserve() -> Help {
     )
     .exit(
         Exit::Failed,
-        "eero refused, or a port forward may reach the address",
+        "eero refused, a port forward may reach the address, or it's outside the range \
+         eero gives out",
     )
     .exit(
         Exit::TryAgain,

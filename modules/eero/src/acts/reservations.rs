@@ -5,8 +5,9 @@
 //! Each refuses rather than guesses. A reservation crossing one eero keeps
 //! is refused, not replaced; so is an address a device or an eero holds
 //! now, one outside the range the home subnet gives out, and an
-//! unreservation where a port forward may reach the address or eero keeps
-//! more than one for the device. A list this can't read whole refuses
+//! unreservation where a port forward may reach the address, eero keeps
+//! more than one for the device, or the address is outside that range,
+//! since keeping it again couldn't undo it. A list this can't read whole refuses
 //! too, since a reservation, device or forward read as none could be one
 //! the act crosses. Each change is judged by reading eero's reservations
 //! after it rather than by eero's answer, whose shape for a change was
