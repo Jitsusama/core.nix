@@ -640,6 +640,14 @@ Singleton {
         viewWith(words, named, into === null ? null
             : Object.assign({}, into, { focused: true }), title);
         console.info(`sessions: viewing ${lost.id} to wait for its host`);
+        // Asked for by Joel himself, a place the walk kept for its viewer
+        // is done with, as letGoWaitedFor lets the walk's own go: kept,
+        // viewKept would open another by itself once he closes this one.
+        if (keptPlaces[lost.id]?.waiting !== undefined) {
+            const kept = Object.assign({}, keptPlaces);
+            delete kept[lost.id];
+            keepPlaces(kept);
+        }
     }
     // Whether a viewer `named` is held back, as one asked for moments ago
     // that niri hasn't listed yet (viewerComing), said opening. Asked
