@@ -264,10 +264,20 @@ QtObject {
             [["rides"], 100, Math.round((7 + 880 * MarginCat.slid(slides / 2, at.spring)) * 100),
                 887]);
         // Its report says how far the slide still has its ground, so the
-        // nested niri's check can take the way back from a place it's said.
-        expect("halfway up its ride, it says its ground is as far off as niri's slide has it",
-            Math.round(halfway.carried * 100),
-            Math.round(-Stacked.apart(held) * (1 - MarginCat.slid(slides / 2, at.spring)) * 100));
+        // nested niri's check can take the way back from a place it's said:
+        // the gap's 880 short of it as the ride sets off, none once niri's
+        // slide is within its epsilon of done, when the frame leaves it unsaid.
+        const saidOff = one => one.carried ?? 0;
+        const offBy = t => {
+            const slid = MarginCat.slid(t, at.spring);
+            return slid >= 1 - at.spring.epsilon ? 0 : -880 * (1 - slid);
+        };
+        expect("each frame of its ride up, it says its ground is as far off as niri's slide has it",
+            frames(rides, 1000 / 120)
+                .filter(one => !(Math.abs(saidOff(one) - offBy(one.t)) <= 1e-6))
+                .map(one => [Math.round(one.t), saidOff(one), offBy(one.t)]), []);
+        expect("setting off a whole gap short, and done by the ride's end",
+            [saidOff(Paths.frame(rides, 0)), saidOff(Paths.frame(rides, rides.ends))], [-880, 0]);
         // Ridden off the bottom over an empty workspace, it peeks in at
         // the bottom edge, springs onto the floor and lands.
         const floor = Stacked.risesOnto(Stacked.risesFrom({ x: 100, y: 887 }, at), at);

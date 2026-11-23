@@ -1161,6 +1161,12 @@ def test_an_empty_workspace_has_it_fall_to_the_floor_and_climb_back(shell: Shell
     sits_over(shell, there, since)
 
 
+def rides_back(place: Json | None) -> TypeGuard[Json]:
+    """Say whether a place the cat said is on a ride back up, with nowhere yet to sit."""
+    move = (place or {}).get("move") or {}
+    return move.get("way") == -1 and move.get("beats") == ["rides"]
+
+
 def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> None:
     """A move between workspaces as the last still holds moves it on from where it got to.
 
@@ -1215,9 +1221,9 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     # next said at 816 and 845 a millisecond into that ride (the net, 2026-11-22). So on the
     # ride, a place a step from the gap below where it got to, off by its ground, is where it
     # got to too. The second move is always up here, so only that way is held to it.
-    # `carried` is the cat's own word, so this holds only where the ride began; where on the
-    # screen it rides is held below, by its ground settling, and how far its ground is off at
-    # each moment of niri's slide is proven in Qt's engine (margin-cat-one-screen.qml).
+    # `carried` is the cat's own word, so this holds only where the ride began; that the rest
+    # of the ride keeps to its way is held below, and how far its ground is off over niri's
+    # slide is proven frame by frame in Qt's engine (margin-cat-one-screen.qml).
     move = after.get("move") or {}
     scale = json.loads(shell.as_account("niri msg --json outputs"))["winit"]["logical"]["scale"]
     apart = was["reach"] + max(1, round(was["reach"] * 0.1 * scale)) / scale
@@ -1230,18 +1236,24 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
         and abs(laid - apart) <= near
     )
     assert all(off) or gone <= near or rode, f"the second move put it at {after}, from {was}"
-    # Its ground only ever follows niri's slide home, so each place the ride says has it
-    # carried no farther off than the one before, to the report's tenth of a pixel: a ride
-    # stepped on a clock run back, or one laid from the slide's start again, carries it
-    # farther and fails here.
-    riding = []
-    for one in places[turned:]:
-        ride = (one or {}).get("move") or {}
-        if ride.get("way") != -1 or ride.get("beats") != ["rides"]:
-            break
-        riding.append(abs(ride.get("carried", 0)))
-    assert all(later <= earlier + 0.1 for earlier, later in itertools.pairwise(riding)), (
-        f"the ride back carried its ground farther off as it went: {riding}"
+    # The ride back, from its first place said after the turn, past any report between the
+    # two moves that says no move, to its last. Each place it says lies on the way it was laid,
+    # off it by its ground alone, within a pixel of where the place is drawn; and its ground
+    # only ever follows niri's slide home, so none has it carried farther off than the one
+    # before, which the report's rounding keeps. A ride put off its way, stepped on a clock
+    # run back or laid again from the slide's start fails here. That holds for the theme's
+    # spring, which settles without overshooting (damping 1); a looser one, which the theme
+    # allows, would carry its ground past the way and back, and this would need to know it.
+    begins = next((i for i in range(turned, len(places)) if rides_back(places[i])), len(places))
+    ends = next((i for i in range(begins, len(places)) if not rides_back(places[i])), len(places))
+    riding = [one for one in places[begins:ends] if rides_back(one)]
+    laid_at = [one["y"] - one["move"].get("carried", 0) for one in riding]
+    assert all(abs(y - laid_at[0]) <= 1 for y in laid_at), (
+        f"the ride back left the way it was laid: {laid_at}"
+    )
+    ground = [abs(one["move"].get("carried", 0)) for one in riding]
+    assert all(later <= earlier for earlier, later in itertools.pairwise(ground)), (
+        f"the ride back carried its ground farther off as it went: {ground}"
     )
     again = [step for step in moved(shell, since) if step["move"]["way"] < 0]
     assert again, "the second move set it on its seat, moving it no more"
