@@ -1962,9 +1962,10 @@
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
-    daemon's records held as its watch tells them, a feed's watch saying connecting, live, broken
-    or stale and since when, every line it can't read reported, a document's reader stepping
-    from part to part, every step held at its list's ends, and g pressed twice going to the top
+    daemon's records held as its watch tells them and each answer said whole or a change, a feed's
+    watch saying connecting, live, broken or stale and since when, every line it can't read
+    reported, a document's reader stepping from part to part, every step held at its list's ends,
+    and g pressed twice going to the top
   '';
   local-sites-passes-clippy = ''
     clippy finds nothing in the local sites' server or its tests
@@ -4012,6 +4013,7 @@
     as home.nix declares it for a machine in a realm, reads live in headless Chromium: every murmur
     drawn newest first and counted, one said, settled or gone, a quiet node said in a line with no
     empty list or bare sky, again once its last murmur goes and never while a record goes unread,
+    a node the server never reached said unheard and never quiet, in a second tab too,
     one it can't read said while the rest draw, broken while the node is away with the murmurs
     kept and live once it's back, stale once the server goes with them kept, a murmur's words
     drawn as words and never as markup, j, k, g, G and ? answering, a tap on a key its head shows

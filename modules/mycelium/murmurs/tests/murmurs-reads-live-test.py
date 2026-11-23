@@ -6,12 +6,12 @@ murmurs under test names, said minutes ago, through the node feed exactly as
 home.nix declares it for a machine in a realm (NODE_KINDS). It must say it's
 live with every murmur drawn and counted, take a murmur said, settled or gone
 within its pace, say a quiet node in a line with no empty list and no bare
-sky, say what it couldn't read, say broken when the node stops
-while keeping what it drew and live once it's back, say stale when the server
-goes, draw a murmur's words as words and never as markup, step its cursor by
-the keys and by a tap on the keys its head shows, and pass the web-design
-skill's page checks at a phone's width and a desk's in both looks. Anything
-the page logs fails it. The server, the browser and the tab are
+sky, never call a node it never heard quiet, say what it couldn't read, say
+broken when the node stops while keeping what it drew and live once it's back,
+say stale when the server goes, draw a murmur's words as words and never as
+markup, step its cursor by the keys and by a tap on the keys its head shows,
+and pass the web-design skill's page checks at a phone's width and a desk's in
+both looks. Anything the page logs fails it. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's, which opens once more a tab whose
 renderer died before its first reading, as a busy builder's sometimes does.
 """
@@ -478,6 +478,38 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             said_quiet(page, "the last murmur going left no quiet line")
         finally:
             opened.close()
+
+
+def never_reached(page: Page) -> None:
+    """Read the page broken with nothing heard, as a node never reached leaves it."""
+    the_page_stands(page, "broken")
+    the_page_counts(page, "Nothing to hear yet.", "a node never reached wasn't said unheard")
+
+
+def test_a_node_never_reached_is_said_unheard_and_never_quiet(
+    browser: Browser, tmp_path: Path
+) -> None:
+    absent = tmp_path / "absent.sock"
+    feed = {"socket": str(absent), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"web": os.environ["MURMURS_SITE"]}, {"node": feed}) as served:
+        root, _ = served
+        first = Opened(browser, f"{root}web/", SIZES[0], "light")
+        second: Opened | None = None
+        try:
+            first.first(never_reached)
+            # A tab joining the watch once it's broken is told the server holds no
+            # records for it, which say nothing of the node's day.
+            second = Opened(browser, f"{root}web/", SIZES[0], "light")
+            second.first(never_reached)
+            second.page.wait_for_timeout(REDRAWN_MS)
+            for page in (first.page, second.page):
+                quiet = page.locator("#quiet")
+                expect(quiet, "a node never reached was called quiet").to_be_hidden()
+                the_page_counts(page, "Nothing to hear yet.", "the unheard page changed its word")
+        finally:
+            if second is not None:
+                second.close()
+            first.close()
 
 
 def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:

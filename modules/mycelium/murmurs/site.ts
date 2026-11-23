@@ -11,7 +11,7 @@
 
 import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
-import type { Held } from "../../local-sites/kit/records.ts";
+import type { Held, Moved } from "../../local-sites/kit/records.ts";
 import { said } from "../../local-sites/kit/status.ts";
 import { pressable } from "../../local-sites/kit/steps.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
@@ -47,17 +47,22 @@ const crest = sky.innerHTML;
 let murmurs: readonly Murmur[] = [];
 let unread: readonly string[] = [];
 let standing: Standing | undefined;
-// The last thing the watch couldn't read, said until a reading takes cleanly.
+// The last thing the watch couldn't read, said until the node's records come
+// whole again: a line the page couldn't take may have been a change, which
+// nothing tells again, so a later change can't stand for what it lost.
 let heard: string | undefined;
 // Whether `heard` came with the reading now being taken: the kit says a
 // reading's keyless records in the same task as the reading, so that reading
-// keeps the problem and only a later one clears it. The sites' server passes
-// no keyless record, so a problem here is a fault of the server's own, which
-// shouldn't hide a quiet day once a reading takes cleanly again.
+// keeps the problem and only a later whole one clears it. The sites' server
+// passes no keyless record, so a problem here is a line it sent garbled.
 let heardNow = false;
-// Whether the node has given any records yet, so a refusal before the first
-// never leaves the page saying it's still asking.
+// Whether the watch has told any records yet, so ages are redrawn only once
+// there are some, and "live" told after them stands for them.
 let given = false;
+// Whether the records held are ones the node gave while its watch was live.
+// A watch the sites' server never reached tells a reader no records, then
+// that it's broken, and an empty list from it says nothing of the node's day.
+let fromLive = false;
 let cursor: string | null = null;
 // Whether the list holds only the murmurs still in the air, as the
 // headline's second count asks.
@@ -84,7 +89,9 @@ function sayWhen(): void {
   const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
   asof.textContent = `${standing === undefined ? "Reaching the mycelium node." : said(standing)}${trouble}`;
   asof.setAttribute("data-state", standing?.state ?? "connecting");
-  if (!given && standing?.state === "broken") {
+  // A broken node the page never heard live has said nothing, whatever empty
+  // list the server held for it.
+  if (!fromLive && murmurs.length === 0 && standing?.state === "broken") {
     title.textContent = "Nothing to hear yet.";
     ledeLine.textContent =
       "The mycelium node didn't say what its sessions murmur; the line below says why.";
@@ -118,15 +125,16 @@ function select(bringIntoView = false): void {
 }
 
 /**
- * Shows the list while it has rows, and the quiet line once the node has said there
- * are none and nothing it told went unread, since the standing line then says so.
- * A broken or stale node keeps the line, as it keeps a list, since the standing
- * line then says the page is how it stood. A list with no rows is no listbox, since
+ * Shows the list while it has rows, and the quiet line once the node, while live,
+ * has said there are none and nothing it told went unread, since the standing line
+ * then says so. A node that goes broken or stale keeps the line, as it keeps a list,
+ * since the standing line then says the page is how it stood; an empty list told
+ * while it wasn't live claims no quiet day. A list with no rows is no listbox, since
  * a listbox must hold options.
  */
 function showList(any: boolean): void {
   list.hidden = !any;
-  quiet.hidden = any || !given || troubles().length > 0;
+  quiet.hidden = any || !fromLive || troubles().length > 0;
   if (any) {
     // Only a listbox may be labelled, so its name comes and goes with its role.
     list.setAttribute("role", "listbox");
@@ -180,10 +188,13 @@ function sayWhole(): void {
   ledeLine.textContent = lede(murmurs);
 }
 
-function heardAll(held: Held): void {
+function heardAll(held: Held, moved: Moved): void {
   given = true;
-  if (!heardNow) {
-    heard = undefined;
+  if (moved.whole) {
+    fromLive = standing?.state === "live";
+    if (!heardNow) {
+      heard = undefined;
+    }
   }
   ({ murmurs, unread } = murmursOf(held));
   sayWhole();
@@ -197,7 +208,15 @@ follow(
     moved: heardAll,
     stands: (state) => {
       standing = state;
+      // A server tells a joining reader the records it holds, then how its watch
+      // stands, so records told before "live" are the live node's too.
+      const live = given && state.state === "live";
+      const drawn = fromLive;
+      fromLive ||= live;
       sayWhen();
+      if (fromLive !== drawn) {
+        draw();
+      }
     },
     problem: (what) => {
       heard = what;
