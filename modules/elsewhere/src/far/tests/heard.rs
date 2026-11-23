@@ -246,11 +246,12 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
 }
 
 #[test]
-fn a_far_clock_that_steps_back_spends_nothing_of_the_wait() {
+fn a_far_clock_that_steps_back_spends_the_second_its_pass_slept() {
     // Ten seconds back after its first reading, and on a second a pass
     // from there, so a wait that measured from before the step would read
-    // it sixteen times rather than seven. Counted by its readings, since
-    // this clock moves by them rather than by the time a busy machine took.
+    // it sixteen times, and one that spent nothing of the pass that
+    // stepped, seven, rather than six. Counted by its readings, since this
+    // clock moves by them rather than by the time a busy machine took.
     let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
                 echo $((n + 1)) > \"$HOME/clock\"\n\
                 if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((999990 + n)); fi";
@@ -267,10 +268,10 @@ fn a_far_clock_that_steps_back_spends_nothing_of_the_wait() {
         code == Some(75) && err.contains("didn't reach"),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
-    // The first, the one stepped back, and the wait's own from there.
+    // The first, then a pass a second, the one stepped back among them.
     assert_eq!(
         readings.trim().parse::<u64>().ok(),
-        Some(super::WAITS + 2),
+        Some(super::WAITS + 1),
         "a {}s wait over a clock that stepped back read it wrongly often",
         super::WAITS
     );
@@ -281,10 +282,12 @@ fn a_far_clock_that_steps_back_spends_nothing_of_the_wait() {
 fn files_crossing_too_slowly_are_given_up_on_however_steadily_they_cross() {
     // A name a second, never the listed file, so the wait from the last
     // that crossed never ends, and only the ceiling, the wait and a
-    // second for each `SLOWEST` bytes listed, ends the whole.
-    let listed = 3 * super::SLOWEST;
+    // second for each `SLOWEST` bytes the near side sent, ends the whole.
+    // The list names more, so a ceiling taken from it lasts past the
+    // trickle, and the wait from the last that crossed ends it instead.
+    let sent = 3 * super::SLOWEST;
     let (code, err, home) = far_line(
-        Left::Listed(&format!("{listed}\tx\nend\n")),
+        Left::Sized(&format!("{}\tx\nend\n", super::SHARE_BYTES), sent),
         &[],
         "touch ../ran",
         &kind(""),
@@ -297,9 +300,11 @@ fn files_crossing_too_slowly_are_given_up_on_however_steadily_they_cross() {
         }),
         &[],
     );
-    let most = super::WAITS + listed / super::SLOWEST;
+    let most = super::WAITS + sent / super::SLOWEST;
     assert!(
-        code == Some(75) && err.contains(&format!("within {most}s, still crossing too slowly")),
+        code == Some(75)
+            && err.contains(&format!("{sent} bytes"))
+            && err.contains(&format!("within {most}s, still crossing too slowly")),
         "a trickle was waited on past its ceiling ({code:?}): {err}"
     );
     assert!(
@@ -341,6 +346,48 @@ fn a_far_clock_that_steps_on_mid_crossing_spends_only_a_pass_of_it() {
     assert!(
         code == Some(77) && err.contains("isn't one of its archives"),
         "a crossing was given up on for a clock stepping on ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_ceiling_is_never_counted_from_more_than_a_share_carries() {
+    // More than the near side could ever have sent, so a sum past it
+    // stays in range of the far shell's arithmetic.
+    let most = format!("bytes={}\n", crate::far::MOST_BYTES);
+    assert!(
+        crate::far::steps::waiting(u64::MAX, "'untaken'").contains(&most),
+        "bytes past what a share carries weren't held to it"
+    );
+}
+
+#[test]
+fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
+    // An hour on from the first pass, while nothing crosses, and the
+    // listed file landing a pass and a half on: a wait that took the hour
+    // as quiet gives up at once, as one spending more than
+    // `A_PASS_AT_MOST` would before the file lands. The near side sends
+    // enough that only the quiet could end it.
+    let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
+                echo $((n + 1)) > \"$HOME/clock\"\n\
+                t=$(PATH=${PATH#*:} date +%s)\n\
+                if [ \"$n\" -ge 1 ]; then echo $((t + 3600)); else echo \"$t\"; fi";
+    let (code, err, home) = far_line(
+        Left::Sized("1\tx\nend\n", 10 * super::SLOWEST),
+        &[],
+        "touch ../ran",
+        &kind(""),
+        Some(&|tree| {
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            std::fs::create_dir_all(tree).unwrap();
+            std::fs::write(tree.join("x"), "x").unwrap();
+        }),
+        &[("date", date)],
+    );
+    // What crossed is no archive, so the wait ended with all of it there.
+    assert!(
+        code == Some(77) && err.contains("isn't one of its archives"),
+        "a quiet wait was given up on for a clock stepping on ({code:?}): {err}"
     );
     let _ = std::fs::remove_dir_all(&home);
 }

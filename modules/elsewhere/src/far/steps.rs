@@ -53,20 +53,23 @@ tick() {{
 /// The most of the far wait one pass may spend, in seconds, however far
 /// the clock moved over it: a pass takes a second and a look, so one
 /// longer is a clock stepping on or a machine waking from sleep, which
-/// spends nothing of a crossing.
-const A_PASS_SPENDS_AT_MOST: u64 = 10;
+/// spends nothing of a crossing. A pass that truly took longer, on a far
+/// machine too slow to look over a few archives in ten seconds, makes
+/// both waits longer, never shorter.
+pub(super) const A_PASS_SPENDS_AT_MOST: u64 = 10;
 
 /// The far line's wait for the job's archives, `bytes` in all, to cross,
-/// saying `untaken` and ending untaken if they stop crossing or cross too
-/// slowly; `crossing`'s steps and `say` come before it.
+/// saying `untaken`, already quoted for the shell, and ending untaken if
+/// they stop crossing or cross too slowly; `crossing`'s steps and `say`
+/// come before it.
 pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
     // No more than a share carries, which keeps the far sum in range.
     let bytes = bytes.min(MOST_BYTES);
     format!(
         r#"# By the clock, since a pass over a large tree takes long itself: each
-# pass spends what the clock moved over it, never less than nothing, as
-# when it steps back, nor more than {A_PASS_SPENDS_AT_MOST}s, as when it steps on or the
-# machine slept. The wait counts what was spent since more last crossed,
+# pass spends what the clock moved over it, never less than the second
+# it slept, as when the clock steps back or stands still, nor more than
+# {A_PASS_SPENDS_AT_MOST}s, as when it steps on or the machine slept. The wait counts what was spent since more last crossed,
 # as the near side waits; a pass counts after its second, so passes are
 # never short. However steadily they cross, all that is spent is held to
 # a ceiling: the wait, and a second for each {CROSSES_AT} bytes left.
@@ -79,7 +82,7 @@ until arrived; do
   tick
   grown
   step=$((now - was)) was=$now
-  [ "$step" -lt 0 ] && step=0
+  [ "$step" -lt 1 ] && step=1
   [ "$step" -gt {A_PASS_SPENDS_AT_MOST} ] && step={A_PASS_SPENDS_AT_MOST}
   quiet=$((quiet + step)) spent=$((spent + step))
   [ "$got" -gt "$had" ] && quiet=0 had=$got

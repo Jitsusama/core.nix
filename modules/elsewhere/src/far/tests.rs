@@ -183,6 +183,11 @@ pub(super) const WAITS: u64 = 5;
 /// second, so a test can outlast its ceiling in seconds.
 pub(super) const SLOWEST: u64 = 100;
 
+/// The most of that wait one pass may spend in these tests, in seconds,
+/// inside `WAITS`, so a clock stepping on while nothing crosses is seen
+/// to spend no more.
+pub(super) const A_PASS_AT_MOST: u64 = 2;
+
 /// How many files, and bytes, a share carries in these tests' far lines,
 /// so a test can pass them without making ten thousand files.
 pub(super) const SHARE_FILES: usize = 4;
@@ -218,6 +223,9 @@ pub(super) enum Left<'a> {
     /// This list, with each file in the tree under its own path, as no
     /// near side leaves them, for a list that is odd or never arrives.
     Listed(&'a str),
+    /// As `Listed`, with the near side saying the files come to these
+    /// bytes, whatever the list says.
+    Sized(&'a str, u64),
 }
 
 /// Runs the far line for a job whose handover holds `files`, each a path
@@ -327,20 +335,21 @@ pub(super) fn far_line_in(
     )
 }
 
-/// Leaves `files` in the `job` folder of `home` as `list` says, and
+/// Leaves `files` in the `job` folder of `home` as `left` says, and
 /// answers what the near side says they come to (what it archived, or for
-/// a list of its own, the sizes listed that are numbers, or where it sizes
-/// nothing, as one still to come, the most a share carries) and each archive
-/// left short, with its whole, for `far_line_in` to finish crossing.
+/// a list of its own, what `Sized` says, else the sizes listed that are
+/// numbers, else, as for a list still to come, the most a share carries)
+/// and each archive left short, with its whole, for `far_line_in` to
+/// finish crossing.
 fn leave(
-    list: Left,
+    left: Left,
     files: &[(&str, &str)],
     home: &Path,
     job: &Path,
 ) -> (u64, Vec<(PathBuf, Vec<u8>)>) {
     let tree = job.join(super::TREE);
     let mut still_crossing = Vec::new();
-    if let Left::Listed(list) = list {
+    if let Left::Listed(list) | Left::Sized(list, _) = left {
         for (path, text) in files {
             let into = tree.join(path);
             std::fs::create_dir_all(into.parent().unwrap()).unwrap();
@@ -351,7 +360,11 @@ fn leave(
             .lines()
             .filter_map(|line| line.split('\t').next()?.parse::<u64>().ok())
             .sum();
-        let bytes = if bytes == 0 { SHARE_BYTES } else { bytes };
+        let bytes = match left {
+            Left::Sized(_, bytes) => bytes,
+            _ if bytes == 0 => SHARE_BYTES,
+            _ => bytes,
+        };
         return (bytes, still_crossing);
     }
     let source = home.join("source");
@@ -364,7 +377,7 @@ fn leave(
     // No tree at all when no file crosses, as a share carrying only
     // files leaves it.
     let _ = std::fs::remove_dir(&tree);
-    if matches!(list, Left::Short) {
+    if matches!(left, Left::Short) {
         for part in std::fs::read_dir(&tree).unwrap() {
             let part = part.unwrap().path();
             let whole = std::fs::read(&part).unwrap();
@@ -378,7 +391,8 @@ fn leave(
 }
 
 /// The far `line` with these tests' waits and totals for a real
-/// crossing's: `WAITS`, `SLOWEST`, `SHARE_FILES` and `SHARE_BYTES`.
+/// crossing's: `WAITS`, `SLOWEST`, `A_PASS_AT_MOST`, `SHARE_FILES` and
+/// `SHARE_BYTES`.
 fn quickened(line: &str) -> String {
     let mut line = line.to_owned();
     for (real, quick) in [
@@ -393,6 +407,10 @@ fn quickened(line: &str) -> String {
                 super::CROSSES_AT
             ),
             format!("most=$(({WAITS} + bytes / {SLOWEST}))"),
+        ),
+        (
+            format!("-gt {0} ] && step={0}", super::steps::A_PASS_SPENDS_AT_MOST),
+            format!("-gt {A_PASS_AT_MOST} ] && step={A_PASS_AT_MOST}"),
         ),
         (
             format!(
