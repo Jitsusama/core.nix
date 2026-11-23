@@ -742,7 +742,11 @@ fn ended(stamp: &str, stop: &str) -> String {
 fn a_pain_its_session_answered_him_on_is_taken_by_that_cell() {
     let place = Place::new("answered");
     place.routes();
-    let mut live = vec![user("a", "2026-11-16T19:10:00.000Z", "no, that's broken again")];
+    let mut live = vec![user(
+        "a",
+        "2026-11-16T19:10:00.000Z",
+        "no, that's broken again",
+    )];
     live.extend(tool("bash"));
     live.extend([
         ended("2026-11-16T19:30:00.000Z", "stop"),
