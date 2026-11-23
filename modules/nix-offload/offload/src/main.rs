@@ -469,6 +469,14 @@ fn main() -> ExitCode {
     if help::asked(&arguments) {
         return help::answered();
     }
+    // A panic aborts, after saying it, rather than unwinding to Rust's
+    // 101, which is also a code nix ends a failed build with, so a run
+    // that panicked is never read as one that ran to its end.
+    let said = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic| {
+        said(panic);
+        std::process::abort();
+    }));
     // Every other call's words are read below, exactly as its units and
     // gates give them, so the kit takes none of them: a `-v` or `--json`
     // given to `there` is nix's. It ends through the kit, so its exits
@@ -2416,7 +2424,9 @@ const RAN_WHOLE: &str = "nix-offload: every part of the run ran to its end";
 
 /// Whether a part of a run that ended `status` ran to its end of itself:
 /// it passed, or failed as nix or changed-checks fails a build that ran,
-/// 1 or nix's 100 to 104. Every other status is cut short, a list of the
+/// 1 or nix's 100 to 104. changed-checks ends 1 for nothing else, and a
+/// check that no longer evaluates, an error part way or a panic each end
+/// otherwise (round 5). Every other status is cut short, a list of the
 /// ways not kept (round 4, 23 November): ssh losing its builder, a turn
 /// away, a run kept here or no builder taking it, a signal as 128 and
 /// more, and changed-checks' 69 for a build of its own that a signal or

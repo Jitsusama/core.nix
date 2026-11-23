@@ -80,6 +80,7 @@ mod building;
 mod carry;
 mod checks;
 mod command;
+mod ending;
 mod evaluating;
 mod first;
 mod gathered;
@@ -102,6 +103,7 @@ use std::thread;
 
 use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
+use ending::{Built, Compared, broke};
 use evaluating::{busiest_system, derivations, evaluated, names};
 use quarantine::Held;
 use runs::Run;
@@ -220,6 +222,7 @@ fn say_vm_tests(targets: &[String]) {
 }
 
 fn main() -> ExitCode {
+    ending::abort_on_panic();
     terminal_kit::main(&command::help(), env!("CARGO_PKG_VERSION"), |context| {
         let arguments = &context.args;
         if let Some(("keep-main", rest)) = arguments
@@ -251,11 +254,6 @@ fn main() -> ExitCode {
         };
         changed(&options, out)
     })
-}
-
-/// A run that couldn't go on, as it said why.
-fn broke(why: String) -> Failure {
-    Failure::new(Exit::Failed, why)
 }
 
 /// Name the checks the working tree's change touches, and build them if asked.
@@ -331,38 +329,7 @@ fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
     if let Err(why) = noted.record(&log) {
         eprintln!("changed-checks: couldn't log the run: {why}");
     }
-    match compared.map_err(broke)? {
-        Compared::Passed => Ok(()),
-        Compared::Broken => Err(Failure::new(
-            Exit::Failed,
-            "a check the change touched no longer evaluates",
-        )),
-        Compared::Failed => Err(Failure::new(
-            Exit::Failed,
-            "a check the change touched failed",
-        )),
-        // Never 1, which says every build ran and one failed: nix-offload
-        // reads this as a part cut short, so the train excuses no red of
-        // it.
-        Compared::Cut => Err(Failure::new(
-            Exit::Unavailable,
-            "a build of the checks the change touched was cut short, so not every check was \
-             built",
-        )),
-    }
-}
-
-/// How a comparison ended.
-enum Compared {
-    /// Every check it named evaluates, and each built passed.
-    Passed,
-    /// A check no longer evaluates, so nothing was built.
-    Broken,
-    /// A check it built failed.
-    Failed,
-    /// A build was cut short, by a signal or a lost builder, so not every
-    /// check it named was built.
-    Cut,
+    compared.map_err(broke)?.ending()
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
@@ -600,15 +567,13 @@ fn compare(
             noted.lent(build.sent.bytes);
         }
     }
-    Ok(if !whole {
-        Compared::Broken
-    } else if build.as_ref().is_none_or(|build| build.sent.passed) {
-        Compared::Passed
-    } else if build.as_ref().is_some_and(|build| !build.sent.whole) {
-        Compared::Cut
-    } else {
-        Compared::Failed
-    })
+    Ok(Compared::of(
+        whole,
+        build.as_ref().map(|build| Built {
+            passed: build.sent.passed,
+            whole: build.sent.whole,
+        }),
+    ))
 }
 
 /// Evaluate the tree's ordinary checks, giving the base's derivation to
