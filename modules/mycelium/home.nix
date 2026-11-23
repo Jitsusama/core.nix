@@ -312,8 +312,9 @@ let
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
   builders = import ./builders.nix;
   # The home realm's node writes, as it judges the machine, the carry it
-  # would make to ease it, and makes none, so a day of those lines can be read
-  # before it may act; a further realm's sessions aren't its to move. Where
+  # would make to ease it, and unless its machine says it may, makes none, so
+  # a day of those lines can be read before it acts; a further realm's
+  # sessions aren't its to move. Where
   # the machine says so, it asks the harness to park the idle sessions it
   # would put to sleep, in the folder each session's harness reads, and
   # makes the carries it chooses, under its own name, which each session's
@@ -620,7 +621,10 @@ in
         this machine is held over its room and another has some, rather
         than only saying so: an idle session at a time, off the screen and
         nobody's but the agents', never one orchestrating others, at most
-        one each half hour and six a day. The session's harness carries it
+        one each half hour and six a day, as the mycelium this flake locks
+        keeps them; one older than its #381 may take the person's or an
+        orchestrator's, so a machine overriding that input to an older one
+        leaves this off. The session's harness carries it
         only once nothing of its own would be lost, and says why it
         refused otherwise. Off, the node only writes what it would do.
       '';
