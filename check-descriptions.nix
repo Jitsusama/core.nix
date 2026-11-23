@@ -114,6 +114,12 @@
     and the field's path shares its room with a folder's path giving way first, down to its least,
     before the other steps share what's left
   '';
+  a-look-leads-to-its-cell = ''
+    a look's Talk and Go To reach the session that left it, the agents daemon's answer for its
+    cell, or a session on its quest, and another quest's only as the one that left a look naming
+    no cell, a Go whose session works on another quest now says it moved on, a file's lent mark is
+    never read, and a served look settles only once it opened
+  '';
   a-low-charge-is-said-once = ''
     a battery that reports only its charge runs low at its mark and critical at its own, only ever
     deeper until it charges or rises five points past the low mark, so a charge wavering about a
@@ -1386,7 +1392,7 @@
     history, newest first, leaving out any it can't read, offers a look's choices, answered by a
     steer to the session that left it or its quest's and then in History, and gathers what other
     sources give it, as Passwords' one to-do, into what waits, weighed beside the rest, and what's
-    done, and finds the cell a look leads to: the session that left it, else one on its quest
+    done
   '';
   formatting = ''
     everything is formatted and passes the linters
@@ -4727,8 +4733,9 @@
   the-launcher-puts-back-a-look-it-couldnt-write = ''
     a look cleared in For You shows cleared in the act's own frame, and when its file can't be
     written is put back as it read, its failure said in the journal, the shut launcher keeping
-    the looks it read, and the daemon's word on one it settled, the same look written its own
-    way, leaves the text the act showed
+    the looks it read, the daemon's word on one it settled, the same look written its own way,
+    leaves the text the act showed, and a served look whose session is gone is never settled and
+    Now tells the launcher once that it's gone
   '';
   the-launcher-reads-spec-from-its-daemon = ''
     the launcher's Spec reads what the cadence-spec daemon serves: the head as the daemon says it,

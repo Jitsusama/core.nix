@@ -238,6 +238,26 @@ ShellRoot {
         function say(keys) {
             said = keys;
         }
+        // What it was told failed, as toldThat's what and why, the place it
+        // was last asked to open into, and how often it was asked to say a
+        // Go To's session is gone, its keys held back (Launcher.qml's
+        // toldGone), which Now asks rather than opening it bare.
+        property var told: []
+        property string intoAsked: ""
+        property int goneTold: 0
+        property var goneMoved: []
+
+        function toldThat(what, why) {
+            told = told.concat([{ what: what, why: why }]);
+        }
+        function into(name) {
+            intoAsked = name;
+        }
+        function toldGone(moved) {
+            goneTold += 1;
+            goneMoved = goneMoved.concat([moved]);
+            return true;
+        }
         // Set without one only by a case that asks what's left without it.
         property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
         property int placed: 0
@@ -1821,6 +1841,49 @@ ShellRoot {
                 && Sessions.steered[steeredBefore]?.fields?.value === "merge"
                 && askingRow() === undefined,
             JSON.stringify([Sessions.steered.slice(steeredBefore), askingRow()?.side]));
+        // Where an answer goes: to the cell Talk reaches where that is the
+        // one that left it, by the address it goes by now, else to the
+        // quest's own, never to a stranger on another quest that lists the
+        // look's address; and who asks, where the look says none, is that
+        // same cell's title where it is the one that left it, else none.
+        const queue = { value: "merge", label: "Queue It" };
+        const onQuestOne = { id: "r", kind: "pr", title: "Read R", state: "waiting",
+            quest: "QEST-1-ABCDEF", session: "s-1", address: "AAAAAA", cell: "AAAAAA" };
+        const lister = { address: "DDDDDD", title: "Elsewhere", presence: { session: "s-4",
+            quest: "QEST-2-XXXXXX", addresses: ["AAAAAA"] } };
+        const ownOne = { address: "ABCDEF", title: "Here", presence: { session: "s-2",
+            quest: "QEST-1-ABCDEF" } };
+        const movedOne = { address: "NNNNNN", title: "Moved", presence: { session: "s-1",
+            quest: "QEST-1-ABCDEF" } };
+        const heldBefore = [Sessions.running, Sessions.parked];
+        const steerOf = (running, parked) => {
+            Sessions.running = running;
+            Sessions.parked = parked;
+            const from = Sessions.steered.length;
+            now.answerLook(onQuestOne, queue);
+            now.lookAnswers = {};
+            return Sessions.steered.slice(from).map(one => one.address);
+        };
+        expect("an answer, a stranger on another quest listing its address, to its quest's",
+            steerOf([lister], []), ["ABCDEF"]);
+        expect("an answer, the one that left it under a new address, there",
+            steerOf([lister, movedOne], []), ["NNNNNN"]);
+        expect("an answer, the one that left it parked, there too",
+            steerOf([lister], [movedOne]), ["NNNNNN"]);
+        Sessions.running = [lister, ownOne];
+        Sessions.parked = [];
+        expect("who asks, where the look names none, never a cell that didn't leave it",
+            now.lookAsker(onQuestOne) === "", JSON.stringify(now.lookAsker(onQuestOne)));
+        Sessions.running = [lister, ownOne, movedOne];
+        expect("and the cell Talk reaches where it is the one that left it",
+            now.lookAsker(onQuestOne) === "Moved", JSON.stringify(now.lookAsker(onQuestOne)));
+        const namedOne = Object.assign({}, onQuestOne, { cell: "CCCCCC" });
+        Sessions.running = [lister, ownOne, { address: "CCCCCC", title: "Named",
+            presence: { session: "s-9", quest: "QEST-1-ABCDEF" } }];
+        expect("and the cell the look names, though it lists none of the look's names",
+            now.lookAsker(namedOne) === "Named", JSON.stringify(now.lookAsker(namedOne)));
+        Sessions.running = heldBefore[0];
+        Sessions.parked = heldBefore[1];
         // Later cases count the steers the shell itself sends from none.
         Sessions.steered = Sessions.steered.slice(0, steeredBefore);
         now.lookAnswers = {};
@@ -2154,6 +2217,61 @@ ShellRoot {
             cell: null } }, "row:looks-history:t").run();
         expect("a terminal look done with naming no cell opens no session listing it",
             Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
+        Sessions.wentTo = null;
+        // Go on a terminal look whose session is gone opens nothing, settles
+        // nothing and says so through the launcher's own toldGone, which
+        // holds Joel's keys back, never by opening it bare.
+        const textsGone = now.lookTexts;
+        const goneLook = { id: "g", file: "g.json", kind: "terminal", title: "Read G",
+            target: "", state: "waiting", session: "s-gone", address: "GONEGG",
+            quest: "QEST-G", cell: "GONEGG" };
+        now.lookTexts = Object.assign({}, textsGone, { "g.json": JSON.stringify(goneLook) });
+        const textGone = now.lookTexts["g.json"];
+        theLauncher.told = [];
+        theLauncher.intoAsked = "";
+        theLauncher.goneTold = 0;
+        theLauncher.goneMoved = [];
+        const openedGone = now.openLook(goneLook);
+        expect("Go on a gone session opens nothing",
+            openedGone === false && Sessions.wentTo === null,
+            JSON.stringify([openedGone, Sessions.wentTo?.address ?? null]));
+        expect("and leaves its look waiting as it was",
+            now.lookTexts["g.json"] === textGone && now.looksSettling["g.json"] === undefined,
+            JSON.stringify([now.lookTexts["g.json"], now.looksSettling["g.json"] ?? null]));
+        expect("and says so through the launcher's toldGone, as ended, never opening it bare",
+            theLauncher.goneTold === 1 && theLauncher.told.length === 0
+                && theLauncher.intoAsked === ""
+                && JSON.stringify(theLauncher.goneMoved) === "[false]",
+            JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked,
+                theLauncher.goneMoved]));
+        now.lookTexts = textsGone;
+        theLauncher.goneTold = 0;
+        theLauncher.goneMoved = [];
+        now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
+            state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
+            cell: "GONEQQ" } }, "row:looks-history:q").run();
+        expect("a served quiet terminal look whose session is gone opens nothing and says so",
+            Sessions.wentTo === null && theLauncher.goneTold === 1
+                && JSON.stringify(theLauncher.goneMoved) === "[false]",
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneTold,
+                theLauncher.goneMoved]));
+        // One whose session is still held, on another quest now, says it has
+        // moved on, not that it has ended.
+        const runningBefore = Sessions.running;
+        Sessions.running = [{ address: "GONEQQ", title: "Elsewhere",
+            presence: { session: "s-gone", quest: "QEST-OTHER" } }];
+        theLauncher.goneMoved = [];
+        now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
+            state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
+            cell: "GONEQQ" } }, "row:looks-history:q").run();
+        expect("one whose session works on another quest now says it moved on, not gone",
+            Sessions.wentTo === null && JSON.stringify(theLauncher.goneMoved) === "[true]",
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneMoved]));
+        Sessions.running = runningBefore;
+        theLauncher.goneMoved = [];
+        theLauncher.goneTold = 0;
+        theLauncher.told = [];
+        theLauncher.intoAsked = "";
         Sessions.wentTo = null;
         // As the shell makes one itself, the daemon not serving it.
         const textsBefore = now.lookTexts;

@@ -17,7 +17,11 @@
       "glyph": "windows",
       "said": {
         "gone": "its session isn't here",
-        "why": "it has ended, or runs where this launcher can't see it"
+        "why": "it has ended, or runs where this launcher can't see it",
+        "moved": {
+          "gone": "its session has moved on",
+          "why": "it works on another quest now, so the look leads nowhere; Agents lists it"
+        }
       }
     },
     {

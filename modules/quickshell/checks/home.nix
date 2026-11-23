@@ -40,8 +40,7 @@
   # look's ask under its why, offers its choices, each answered by a steer
   # to the session that left it or its quest's, and gathers what other
   # sources give it, as Passwords' one to-do, weighed beside the rest or
-  # done, and finds the cell a look leads to, its own session or one on its
-  # quest, as modules/quickshell/tests/for-you.qml holds ForYou.js and
+  # done, as modules/quickshell/tests/for-you.qml holds ForYou.js and
   # Looks.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
@@ -56,6 +55,29 @@
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml for-you.qml
+      touch $out
+    '';
+
+  # A look's Talk and Go To reach the session that left it, the agents
+  # daemon's answer for its cell, or a session on its quest, and another
+  # quest's only as the one that left a look naming no cell, a Go whose
+  # session works on another quest now says it moved on, a file's lent mark
+  # is never read, and a served look settles only once it opened, as
+  # modules/quickshell/tests/look-cells.qml holds Looks.js to it in Qt's own
+  # engine.
+  a-look-leads-to-its-cell =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-look-leads-to-its-cell" { } ''
+      cp ${../tests/look-cells.qml} look-cells.qml
+      cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/Looks.js} Looks.js
+      cp ${../launcher/Order.js} Order.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml look-cells.qml
       touch $out
     '';
 
@@ -113,8 +135,10 @@
   # A look Joel acts on shows so at once; one the to-do daemon refuses to
   # settle is put back as it read and said in the journal, and one it
   # settles stays as its stream then tells it, the same look in the
-  # daemon's own words leaving the act's text, the daemon stood in on its
-  # socket by the case itself (modules/quickshell/tests/now-look-unwritten.qml).
+  # daemon's own words leaving the act's text, and a served look whose
+  # session is gone is never settled, Now telling the launcher once, the
+  # daemon stood in on its socket by the case itself
+  # (modules/quickshell/tests/now-look-unwritten.qml).
   the-launcher-puts-back-a-look-it-couldnt-write = nowShown {
     name = "the-launcher-puts-back-a-look-it-couldnt-write";
     test = ../tests/now-look-unwritten.qml;

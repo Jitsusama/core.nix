@@ -82,6 +82,7 @@ import "launcher/Standing.js" as Standing
 import "launcher/Steady.js" as Steady
 import "launcher/Held.js" as Held
 import "launcher/Joined.js" as Joined
+import "launcher/Looks.js" as Looks
 import "launcher/RowsKept.js" as RowsKept
 import "launcher/Becoming.js" as Becoming
 import "launcher/Pacing.js" as Pacing
@@ -1615,12 +1616,26 @@ Scope {
         const session = agents ? agents.goToFor(said) : null;
         if (session === null) {
             const gone = Words.of("verb:notice:goTo").said ?? {};
-            toldThat(gone.gone ?? "", gone.why ?? "");
-            into("agents");
-            prompt.linked();
+            toldGone();
             return { done: false, said: `${gone.gone ?? ""}: ${gone.why ?? ""}` };
         }
         return { done: true, said: String(session.title ?? "") };
+    }
+
+    // Says a Go To's session is no longer here, in a notice's Go To's own words, opening the
+    // launcher on Agents to say it with Joel's first keys held back (Prompt.qml's linked), as
+    // one he didn't open himself; over a launcher in use it says nothing (inUse). goToCell's,
+    // and a look's Go in Now, which runs once the launcher has shut, while he may be typing
+    // into the terminal he expected. Where it's `moved`, a look's session still held on
+    // another quest, it says that it has moved on, not that it has ended. Whether it said so.
+    function toldGone(moved) {
+        if (inUse())
+            return false;
+        const gone = Looks.goneWords(Words.of("verb:notice:goTo").said, moved);
+        toldThat(gone.gone, gone.why);
+        into("agents");
+        prompt.linked();
+        return true;
     }
 
     // Whether Joel has the launcher or the void's line up, which a mycelium: link, asking

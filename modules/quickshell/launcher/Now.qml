@@ -1156,24 +1156,25 @@ Provider {
             lookTexts = Object.assign({}, lookTexts, { [file]: was });
     }
 
-    // The session a terminal look is about, by the session or address it
-    // names, or null when none runs.
-    function lookSession(one) {
-        return Sessions.running.find(session => ForYou.leftBy(one, session)) ?? null;
-    }
-
     // Opening a look: a terminal's session gone to, anything else opened
     // by what opens its link or its file. Opened, it no longer needs Joel,
     // so a waiting one is written so and moves to History, as does one
-    // gone quiet there, whose file still says it waits.
+    // gone quiet there, whose file still says it waits. A terminal whose
+    // session is gone opened nothing, so it stays as it was. Whether it
+    // opened, so a caller settling it elsewhere settles only what opened.
+    // A session held whose window can't be raised or opened (Sessions.qml's
+    // unopened and unhosted) still counts as opened, until Sessions.goTo
+    // says whether it opened anything, by Mon 23 Nov 2026.
     function openLook(one) {
         if (one.kind === "terminal") {
-            goToCell(one);
+            if (!goToCell(one))
+                return false;
         } else {
             Niri.spawn(["xdg-open", one.target]);
         }
         if (one.state === "waiting" || one.state === "quiet")
             settleLook(one, "opened", waitingSaid("openedHow", {}));
+        return true;
     }
 
     // Which live session each cell is now, as the agents daemon serves it
@@ -1203,11 +1204,30 @@ Provider {
 
     // Goes to the window of the cell a look leads to, as it stands when
     // pressed, waking it first where it's parked, as a want's Go To does.
+    // Where none is held it says so through the launcher's toldGone, the
+    // same as a Go To from outside, his first keys held back, since a press
+    // runs once the launcher has shut: that its session has ended, or has
+    // moved on to another quest where it's still held (Looks.js's movedOn).
+    // Over a launcher or a talk line Joel has up by then it says nothing
+    // on screen, as toldGone never opens over what he's typing, and only
+    // the journal says so. The journal names what the look led by, so a
+    // report reads why. Whether a session was held to go to: a parked one
+    // whose wake is refused says why on the foot, and still counts.
     function goToCell(one) {
         const cell = lookCell(one);
-        if (cell === null)
-            return;
+        if (cell === null) {
+            const moved = Looks.movedOn(one, Sessions.running, Sessions.parked);
+            const told = provider.launcher?.toldGone(moved) === true;
+            console.warn(`Now: no session held for look ${JSON.stringify(one.id)} to go to:`
+                + ` cell ${JSON.stringify(one.cell ?? null)},`
+                + ` quest ${JSON.stringify(one.quest ?? null)},`
+                + ` session ${JSON.stringify(one.session ?? null)}, the daemon says`
+                + ` ${JSON.stringify(Looks.cellGoes(one, cellsDaemon.held))},`
+                + ` ${moved ? "moved on" : "gone"}, ${told ? "told" : "not told, in use"}`);
+            return false;
+        }
         Sessions.wakeToGo(Sessions.parkedAs(cell.address), cell);
+        return true;
     }
 
     // What a look's row does with the cell behind it (Joel, 2026-11-16:
@@ -1284,12 +1304,15 @@ Provider {
     // Answers a look with one of its choices where it is, rather than in a
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
     // into a pi sessino that has already moved on from it is a waste of my
-    // time"): a steer tells the session that left it, or its quest's, which
-    // writes the look resolved. One the node took leaves what waits at
-    // once; one it didn't is no longer shown as given, so its choices
-    // come back.
+    // time"): a steer tells the session that left it, where that is the
+    // look's cell (lookCell) and left it (Looks.leftIt), at the address
+    // Talk reaches, or the look's own where the cell only lists that, never
+    // one on another quest that lists its address, or else its quest's, which
+    // writes the look resolved (Looks.js's answer). One the node took
+    // leaves what waits at once; one it didn't is no longer shown as given,
+    // so its choices come back.
     function answerLook(one, choice) {
-        const told = Looks.answer(one, choice, lookSession(one) !== null, Date.now());
+        const told = Looks.answer(one, choice, lookCell(one), Date.now());
         if (told === null)
             return;
         lookAnswers = Object.assign({}, lookAnswers,
@@ -1349,13 +1372,16 @@ Provider {
         };
     }
 
-    // Who asks, in plain words (Looks.js's askerOf), else its session's
-    // title, never an id: "from Trunkd Disk Saturation During Compaction
-    // (INV-31016) \u00b7 to look at" told Joel nothing (2026-11-19).
+    // Who asks, in plain words (Looks.js's askerOf), else the title of the
+    // cell Talk goes to (lookCell) where that left it (Looks.leftIt), never
+    // an id: "from Trunkd Disk Saturation During Compaction (INV-31016)
+    // \u00b7 to look at" told Joel nothing (2026-11-19), and a session Talk
+    // won't reach, or one that never asked, misleads him.
     function lookAsker(one) {
         const title = one.quest ? WaitingOnYou.titles?.[one.quest] : undefined;
+        const cell = lookCell(one);
         return Looks.askerOf(one, title === undefined ? null : { title: title })
-            || lookSession(one)?.title || "";
+            || (Looks.leftIt(one, cell) ? cell.title ?? "" : "");
     }
 
     // What becomes of a look its session says nothing of: it expires at its
@@ -1598,10 +1624,10 @@ Provider {
     }
     // Opening a served look: as the shell opens its own, and one the shell
     // holds no file of, still waiting or gone quiet, settled by the daemon
-    // by its id (FEH1HE, 2026-11-14).
+    // by its id (FEH1HE, 2026-11-14), once it opened: a terminal whose
+    // session is gone stays as it was there too.
     function openServed(one) {
-        openLook(one);
-        if (one.file === "" && (one.state === "waiting" || one.state === "quiet"))
+        if (Looks.servedSettles(one, openLook(one)))
             lookStream.ask({ ask: "settle-look", look: one.id, state: "opened",
                 how: waitingSaid("openedHow", {}) }, () => {});
     }
