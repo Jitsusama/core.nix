@@ -1,7 +1,8 @@
 # Runs the shaper on a client whose network names a house: another machine
 # on the same line, which says each second what it sends up. The other
-# machine runs house-report from its account, as a Mac does, through
-# home-manager, and sends 3 Mbit/s across the home network. That upload
+# machine runs house-report as a system service, as a Mac does under
+# launchd, naming no interface, so it counts the one its route to the
+# client leaves by, and sends 3 Mbit/s across the home network. That upload
 # never reaches the connection, so the client's own reading of the line
 # can't hold it there: only the reports can. While they come, the client's
 # upload is held under what the house's 8 Mbit/s leaves; once they stop, it
@@ -57,24 +58,13 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     environment.systemPackages = [ pkgs.jq ];
   };
 
-  # The house's other machine, its reporter run by its account.
+  # The house's other machine and its reporter.
   nodes.house = {
-    imports = [ self.nixosModules.home-manager ];
+    imports = [ self.nixosModules.house-report ];
     virtualisation.vlans = [ 1 ];
     networking.useDHCP = false;
     networking.firewall.enable = false;
-    users.users.alice = {
-      isNormalUser = true;
-      linger = true;
-    };
-    home-manager.users.alice = {
-      imports = [ self.homeModules.house-report ];
-      home.stateVersion = "26.05";
-      jitsusama.house-report = {
-        to = "192.168.1.1";
-        interface = "eth1";
-      };
-    };
+    jitsusama.house-report.to = "192.168.1.1";
     # Its upload, held to 3 Mbit/s with a short queue, so a report waits
     # behind it no more than 50 ms.
     systemd.services.upload = {

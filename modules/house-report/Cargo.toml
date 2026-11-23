@@ -10,8 +10,6 @@ publish = false
 
 [dependencies]
 terminal-kit = { path = "../terminal-kit" }
-
-# A Mac's interface counters are read through getifaddrs, whose types libc
-# spells for it.
-[target.'cfg(target_os = "macos")'.dependencies]
+# Which interface the routes send by is read through getifaddrs, and a
+# Mac's counters through sysctl, whose types libc spells for each system.
 libc = "0.2"

@@ -1,15 +1,8 @@
 //! What an interface has sent, in bytes, as the system counts it for any
-//! account: on Linux its statistics in sysfs, a 64-bit count, and on a Mac
-//! the link entry getifaddrs gives, whose count is 32 bits wide and wraps
-//! every 4 GiB, an hour's sending at 10 Mbit/s.
+//! account, 64 bits wide on both: on Linux its statistics in sysfs, and on a
+//! Mac the routing socket's interface list.
 
 use std::io;
-
-/// How wide the counter `by` reads is, in bits.
-#[cfg(target_os = "linux")]
-pub const BITS: u32 = 64;
-#[cfg(target_os = "macos")]
-pub const BITS: u32 = 32;
 
 /// The bytes `interface` has sent, by its counter.
 #[cfg(target_os = "linux")]
@@ -34,39 +27,113 @@ fn from(root: &std::path::Path, interface: &str) -> io::Result<u64> {
         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
-/// The bytes `interface` has sent, by its link entry's count.
+/// The bytes `interface` has sent, by the 64-bit count the routing
+/// socket's interface list gives (NET_RT_IFLIST2), rather than the link
+/// entry getifaddrs gives, whose count is 32 bits wide and wraps every
+/// 4 GiB, so a count that went back can't be told a wrap from a reset.
 #[cfg(target_os = "macos")]
 pub fn by(interface: &str) -> io::Result<u64> {
-    use std::ffi::CStr;
+    let name = std::ffi::CString::new(interface)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "no such interface name"))?;
+    // SAFETY: `name` is a valid string ending in a nul, read only here.
+    let index = unsafe { libc::if_nametoindex(name.as_ptr()) };
+    if index == 0 {
+        return Err(io::Error::new(io::ErrorKind::NotFound, "no such interface"));
+    }
+    let list = interfaces()?;
+    let mut at = 0;
+    // Each message starts with its length, two bytes, and its type, the
+    // fourth byte; an interface's own is a whole if_msghdr2.
+    while let Some(head) = list.get(at..at + 4) {
+        let length = usize::from(u16::from_ne_bytes([head[0], head[1]]));
+        if length == 0 {
+            break;
+        }
+        let whole = std::mem::size_of::<libc::if_msghdr2>();
+        if i32::from(head[3]) == libc::RTM_IFINFO2 && length >= whole && at + whole <= list.len() {
+            // SAFETY: the bytes from `at` hold a whole if_msghdr2, as its
+            // type and length say, read unaligned since the list is bytes.
+            let message: libc::if_msghdr2 =
+                unsafe { std::ptr::read_unaligned(list[at..].as_ptr().cast()) };
+            if u32::from(message.ifm_index) == index {
+                return Ok(message.ifm_data.ifi_obytes);
+            }
+        }
+        at += length;
+    }
+    Err(io::Error::new(io::ErrorKind::NotFound, "no such interface"))
+}
 
-    let link = u8::try_from(libc::AF_LINK).unwrap_or(u8::MAX);
-    let mut first: *mut libc::ifaddrs = std::ptr::null_mut();
-    // SAFETY: getifaddrs fills `first` with a list it allocated, freed below
-    // and read only before.
-    if unsafe { libc::getifaddrs(&raw mut first) } != 0 {
+/// The routing socket's list of interfaces, each with its 64-bit counts.
+#[cfg(target_os = "macos")]
+fn interfaces() -> io::Result<Vec<u8>> {
+    let mut asked = [libc::CTL_NET, libc::PF_ROUTE, 0, 0, libc::NET_RT_IFLIST2, 0];
+    let depth = libc::c_uint::try_from(asked.len()).unwrap_or(libc::c_uint::MAX);
+    let mut length: libc::size_t = 0;
+    // SAFETY: with no buffer, sysctl writes only the length it needs.
+    let sized = unsafe {
+        libc::sysctl(
+            asked.as_mut_ptr(),
+            depth,
+            std::ptr::null_mut(),
+            &raw mut length,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if sized != 0 {
         return Err(io::Error::last_os_error());
     }
-    let mut found = None;
-    let mut at = first;
-    while !at.is_null() {
-        // SAFETY: every entry of the list is valid until freeifaddrs.
-        let entry = unsafe { &*at };
-        // SAFETY: a non-null address, name and data are the entry's own, a
-        // link entry's data is its if_data, and the name ends in a nul.
-        let ours = !entry.ifa_addr.is_null()
-            && !entry.ifa_data.is_null()
-            && unsafe { (*entry.ifa_addr).sa_family } == link
-            && unsafe { CStr::from_ptr(entry.ifa_name) }.to_bytes() == interface.as_bytes();
-        if ours {
-            // SAFETY: as above, a link entry's data is its if_data.
-            let data = unsafe { &*entry.ifa_data.cast::<libc::if_data>() };
-            found = Some(u64::from(data.ifi_obytes));
-        }
-        at = entry.ifa_next;
+    // Room for an interface that comes between the two calls.
+    length += length / 8;
+    let mut list = vec![0_u8; length];
+    // SAFETY: `list` holds `length` bytes, which sysctl writes within and
+    // then sets to what it wrote.
+    let read = unsafe {
+        libc::sysctl(
+            asked.as_mut_ptr(),
+            depth,
+            list.as_mut_ptr().cast(),
+            &raw mut length,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if read != 0 {
+        return Err(io::Error::last_os_error());
     }
-    // SAFETY: `first` came from getifaddrs and nothing read from it is kept.
-    unsafe { libc::freeifaddrs(first) };
-    found.ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such interface"))
+    list.truncate(length);
+    Ok(list)
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod tests {
+    use super::*;
+
+    // What the loopback carries for a datagram sent to this machine is
+    // counted as sent, so getifaddrs is read for real, not a stand-in.
+    #[test]
+    fn the_loopbacks_count_grows_by_what_it_sends() {
+        let before = by("lo0").expect("the loopback's count couldn't be read");
+        let socket = std::net::UdpSocket::bind("127.0.0.1:0").expect("no socket to send from");
+        let to = socket.local_addr().expect("the socket has no address");
+        for _ in 0..10 {
+            socket
+                .send_to(&[0; 1_000], to)
+                .expect("a datagram couldn't be sent");
+        }
+        let after = by("lo0").expect("the loopback's count couldn't be read again");
+        assert!(
+            after.saturating_sub(before) >= 10_000,
+            "ten datagrams of 1,000 bytes counted {} bytes",
+            after.saturating_sub(before)
+        );
+        assert_eq!(
+            by("none0").map_err(|e| e.kind()),
+            Err(io::ErrorKind::NotFound),
+            "an interface that isn't there read a count"
+        );
+    }
 }
 
 #[cfg(all(test, target_os = "linux"))]
@@ -75,11 +142,20 @@ mod tests {
 
     #[test]
     fn an_interfaces_count_is_read_from_its_statistics() {
-        let root = std::env::temp_dir().join(format!("house-report-{}", std::process::id()));
-        let statistics = root.join("eth0/statistics");
-        std::fs::create_dir_all(&statistics).expect("the stand-in folder couldn't be made");
-        std::fs::write(statistics.join("tx_bytes"), "123456789\n")
-            .expect("the stand-in count couldn't be written");
+        let top = std::env::temp_dir().join(format!("house-report-{}", std::process::id()));
+        let root = top.join("net");
+        // A count in the stand-in class folder, one beside it that a name
+        // with a slash would reach, and a hidden one in it.
+        for (folder, count) in [
+            ("net/eth0", "123456789\n"),
+            ("eth0", "1\n"),
+            ("net/.eth0", "1\n"),
+        ] {
+            let statistics = top.join(folder).join("statistics");
+            std::fs::create_dir_all(&statistics).expect("the stand-in folder couldn't be made");
+            std::fs::write(statistics.join("tx_bytes"), count)
+                .expect("the stand-in count couldn't be written");
+        }
         let read = from(&root, "eth0").expect("the stand-in count couldn't be read");
         assert_eq!(read, 123_456_789, "the count read isn't the one written");
         assert!(
@@ -88,8 +164,9 @@ mod tests {
         );
         assert!(
             from(&root, "../eth0").is_err(),
-            "a name with a slash read another's file"
+            "a name with a slash read a count outside the class folder"
         );
-        std::fs::remove_dir_all(&root).expect("the stand-in folder couldn't be removed");
+        assert!(from(&root, ".eth0").is_err(), "a hidden name read a count");
+        std::fs::remove_dir_all(&top).expect("the stand-in folder couldn't be removed");
     }
 }

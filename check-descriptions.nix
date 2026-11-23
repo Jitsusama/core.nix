@@ -1618,9 +1618,10 @@
     clippy finds nothing in house-report or its tests
   '';
   house-report-says-what-the-link-sent = ''
-    house-report's tests pass: a report reads as the shaper parses it, its total starts at nothing
-    and grows by what the counter counts, a 32-bit counter that wraps counts on, one made again
-    counts from nothing, and an interface's count is read from its statistics alone
+    house-report's tests pass: a report's text is the bytes then the ms, its total starts at
+    nothing and grows by what the counter counts, a counter made again counts from nothing, an
+    uplink that moves counts on from the new one's count, this machine's own address is sent to by
+    its loopback, and an interface's count is read from its statistics alone
   '';
   idle-pi-windows-yield = ''
     the sorter is given the folder where the harness marks pi sessions nobody is at, and weighs pi
@@ -6441,10 +6442,11 @@
     uploads ride a second link to the same router
   '';
   vm-the-house-holds-the-upload = ''
-    with another machine on the line running house-report from its account through home-manager
-    and sending 3 Mbit/s across the home network, the shaper hears it through its firewall and
-    holds its own upload under what the house's 8 Mbit/s leaves, never under 4, and says so; once
-    the reports stop it says the house went quiet and the upload climbs past the hold
+    with another machine on the line running house-report as a service, naming no interface, and
+    sending 3 Mbit/s across the home network, the shaper hears it through its firewall, its
+    reports read 2.4 to 3.6 Mbit/s, and it holds its own upload under what the house's 8 Mbit/s
+    leaves, never under 4, and says so; once the reports stop it says the house went quiet and the
+    upload climbs past the hold
   '';
   vm-the-cores-stay-out-of-deep-rest = ''
     a boot starts the XPS 14's hold keeping the cores from their deepest rest, bounding their exit

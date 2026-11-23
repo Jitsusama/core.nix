@@ -4,12 +4,15 @@
 //! machine's packets go out its own link, which the shaped one never sees,
 //! and fill the router's queue its VPN waits in.
 //!
-//! Usage: house-report ADDRESS:PORT INTERFACE. Each second it sends one UDP
-//! datagram to ADDRESS:PORT, the text `"<bytes> <ms>"`: the bytes INTERFACE
-//! has sent since the reporter started, and its own clock in milliseconds
-//! since then. The shaped machine hears it only from the reserved address
-//! its house names, so this machine sends from that address by its route,
-//! and needs no administrator: it reads a counter any account may read.
+//! Usage: house-report ADDRESS:PORT [INTERFACE]. Each second it sends one
+//! UDP datagram to ADDRESS:PORT, the text `"<bytes> <ms>"`: the bytes its
+//! uplink has sent since the reporter started, and its own clock in
+//! milliseconds since then. The uplink is INTERFACE, or, without one, the
+//! interface this machine's routes send to ADDRESS by that second, so a
+//! Mac given a cable beside its Wi-Fi is counted by the one it sends by. The shaped machine hears it only from the reserved address
+//! its house names, so this machine sends from that address by its route.
+//! It reads a counter any account may read, 64 bits wide on Linux and on a
+//! Mac, so a count that went back was made again, never wrapped.
 //!
 //! A second whose counter can't be read sends nothing, since a count that
 //! went back reads as a restart there; a report that can't be sent, as
@@ -20,6 +23,7 @@
 //! (docs/commands.md); it answers nothing, since what it says goes to the
 //! other machine.
 
+mod route;
 mod sent;
 
 use std::net::{SocketAddr, UdpSocket};
@@ -33,48 +37,34 @@ use terminal_kit::{Exit, Failure, Help};
 /// apart, and lets the house go when none came for three.
 const EVERY: Duration = Duration::from_secs(1);
 
-/// The most an uplink is taken to send in a second, in bytes, 10 Gbit/s: a
-/// counter narrower than 64 bits that reads less than it did wrapped, unless
-/// that would mean sending more than this since the last reading, when the
-/// interface was made again and counts from nothing.
-const MOST_PER_SECOND: u64 = 1_250_000_000;
-
 /// What the uplink has sent since the reporter started, summed from its
-/// counter's readings, so a counter that wraps or starts over never makes
-/// the report go back.
+/// counter's readings, so a counter that starts over, as an interface made
+/// again does, never makes the report go back.
 #[derive(Debug, Default)]
 struct Total {
-    last: Option<u64>,
+    last: Option<(String, u64)>,
     bytes: u64,
 }
 
 impl Total {
-    /// Takes a reading of a counter `bits` wide, `elapsed` after the last.
-    fn take(&mut self, reading: u64, bits: u32, elapsed: Duration) {
-        if let Some(last) = self.last {
-            self.bytes = self
-                .bytes
-                .saturating_add(grew(last, reading, bits, elapsed));
+    /// Takes a reading of `interface`'s counter. A reading of another
+    /// interface than the last, the uplink having moved, counts nothing: its
+    /// counter counted all it ever sent, and from the next it counts on.
+    fn take(&mut self, interface: &str, reading: u64) {
+        if let Some((was, last)) = &self.last
+            && was == interface
+        {
+            self.bytes = self.bytes.saturating_add(grew(*last, reading));
         }
-        self.last = Some(reading);
+        self.last = Some((interface.to_owned(), reading));
     }
 }
 
-/// What a counter `bits` wide sent between a reading of `last` and one of
-/// `now`, `elapsed` apart: the difference, or past a wrap, what it counted to
-/// its top and from nothing again, or, for a counter made again, `now`.
-fn grew(last: u64, now: u64, bits: u32, elapsed: Duration) -> u64 {
-    if let Some(sent) = now.checked_sub(last) {
-        return sent;
-    }
-    let seconds = elapsed.as_secs().saturating_add(1);
-    let wrapped = 1u64
-        .checked_shl(bits)
-        .filter(|_| bits < 64)
-        .map(|top| top - last + now);
-    wrapped
-        .filter(|&sent| sent <= MOST_PER_SECOND.saturating_mul(seconds))
-        .unwrap_or(now)
+/// What a 64-bit counter sent between a reading of `last` and one of
+/// `now`: the difference, or, for a counter that went back, which a 64-bit
+/// one does only when it was made again, all it counted since, `now`.
+fn grew(last: u64, now: u64) -> u64 {
+    now.checked_sub(last).unwrap_or(now)
 }
 
 /// A report's text, as house.rs reads it.
@@ -113,35 +103,55 @@ fn help() -> Help {
         "tells the shaped machine on this line what this one sends up",
     )
     .command(
-        "ADDRESS:PORT INTERFACE",
-        "reports INTERFACE's sent bytes there each second",
+        "ADDRESS:PORT [INTERFACE]",
+        "reports the sent bytes of INTERFACE, or of the one sent there by, each second",
     )
     .example(
-        "house-report 192.0.2.3:47110 en0",
-        "what the agent runs on a machine beside a shaped one",
+        "house-report 192.0.2.3:47110",
+        "what a machine beside a shaped one runs",
     )
-    .exit(Exit::Usage, "the address or the interface is missing")
+    .exit(Exit::Usage, "the address is missing or isn't one")
     .exit(Exit::Failed, "no socket could be opened to send from")
 }
 
 fn main() -> ExitCode {
     terminal_kit::main(&help(), env!("CARGO_PKG_VERSION"), |context| {
-        let [to, interface] = context.args.as_slice() else {
-            return Err(
-                Failure::new(Exit::Usage, "it takes ADDRESS:PORT, then INTERFACE")
-                    .try_this("house-report --help"),
-            );
+        let (to, interface) = match context.args.as_slice() {
+            [to] => (to, None),
+            [to, interface] => (to, Some(interface.as_str())),
+            _ => {
+                return Err(Failure::new(
+                    Exit::Usage,
+                    "it takes ADDRESS:PORT, then INTERFACE if any",
+                )
+                .try_this("house-report --help"));
+            }
         };
         let to: SocketAddr = to.parse().map_err(|_| {
             Failure::new(Exit::Usage, format!("{to} isn't an address and a port"))
-                .try_this("house-report 192.0.2.3:47110 en0")
+                .try_this("house-report 192.0.2.3:47110")
         })?;
         reports(to, interface)
     })
 }
 
+/// The uplink's name and what its counter reads now: `interface`'s, or
+/// the one the routes send to `to` by.
+fn reading(to: SocketAddr, interface: Option<&str>) -> Result<(String, u64), String> {
+    let uplink = match interface {
+        Some(interface) => interface.to_owned(),
+        None => route::toward(to).map_err(|error| {
+            format!("no interface sends to {to}, so nothing is reported: {error}")
+        })?,
+    };
+    let count = sent::by(&uplink).map_err(|error| {
+        format!("{uplink}'s sent bytes can't be read, so nothing is reported: {error}")
+    })?;
+    Ok((uplink, count))
+}
+
 /// Sends a report each second, for as long as it runs.
-fn reports(to: SocketAddr, interface: &str) -> Result<(), Failure> {
+fn reports(to: SocketAddr, interface: Option<&str>) -> Result<(), Failure> {
     let any: SocketAddr = if to.is_ipv4() {
         ([0, 0, 0, 0], 0).into()
     } else {
@@ -151,21 +161,19 @@ fn reports(to: SocketAddr, interface: &str) -> Result<(), Failure> {
         .map_err(|error| Failure::new(Exit::Failed, format!("no socket to send from: {error}")))?;
     let started = Instant::now();
     let mut total = Total::default();
-    let mut read_at = started;
     let (mut unread, mut unsent) = (Once::default(), Once::default());
     let mut next = started;
     loop {
         let now = Instant::now();
-        let reading = sent::by(interface);
-        let trouble = reading.as_ref().err().map(|error| {
-            format!("{interface}'s sent bytes can't be read, so nothing is reported: {error}")
-        });
-        if let Some(said) = unread.now(trouble, &format!("{interface}'s sent bytes read again")) {
+        let read = reading(to, interface);
+        if let Some(said) = unread.now(
+            read.as_ref().err().cloned(),
+            "the uplink's sent bytes read again",
+        ) {
             eprintln!("house-report: {said}");
         }
-        if let Ok(reading) = reading {
-            total.take(reading, sent::BITS, now.duration_since(read_at));
-            read_at = now;
+        if let Ok((uplink, count)) = read {
+            total.take(&uplink, count);
             let text = report(total.bytes, now.duration_since(started).as_millis());
             let trouble = socket
                 .send_to(text.as_bytes(), to)
@@ -175,8 +183,9 @@ fn reports(to: SocketAddr, interface: &str) -> Result<(), Failure> {
                 eprintln!("house-report: {said}");
             }
         }
-        // A machine that slept wakes far past its next tick, and starts the
-        // count of ticks again rather than sending the ones it missed at once.
+        // A step that ran late, its process starved, starts the count of
+        // ticks again rather than sending the ones it missed at once. A
+        // machine's sleep isn't one: Instant stops while it sleeps.
         next += EVERY;
         let now = Instant::now();
         if next <= now {
@@ -195,20 +204,20 @@ mod tests {
         assert_eq!(
             report(1_500, 2_000),
             "1500 2000",
-            "a report reads as house.rs parses it"
+            "a report's text isn't the bytes, a space, then the ms, as house.rs reads it"
         );
     }
 
     #[test]
     fn the_total_starts_at_nothing_and_grows_by_what_the_counter_counts() {
         let mut total = Total::default();
-        total.take(9_000, 64, EVERY);
+        total.take("en0", 9_000);
         assert_eq!(
             total.bytes, 0,
             "what the counter held before the reporter started counted"
         );
-        total.take(10_500, 64, EVERY);
-        total.take(12_000, 64, EVERY);
+        total.take("en0", 10_500);
+        total.take("en0", 12_000);
         assert_eq!(
             total.bytes, 3_000,
             "the total isn't what the counter counted since"
@@ -216,42 +225,38 @@ mod tests {
     }
 
     #[test]
-    fn a_narrow_counter_that_wraps_counts_on() {
-        let top = 1u64 << 32;
-        assert_eq!(
-            grew(top - 1_000, 500, 32, EVERY),
-            1_500,
-            "a 32-bit counter's wrap didn't count what it sent past its top"
-        );
-    }
-
-    #[test]
     fn a_counter_made_again_counts_from_nothing() {
+        for last in [1_000, 3_000_000_000, 5_000_000_000] {
+            assert_eq!(
+                grew(last, 700),
+                700,
+                "a counter that went back from {last} wasn't taken as made again"
+            );
+        }
+        let mut total = Total::default();
+        for reading in [5_000_000_000, 5_000_001_000, 700, 1_700] {
+            total.take("en0", reading);
+        }
         assert_eq!(
-            grew(3_000_000_000, 700, 64, EVERY),
-            700,
-            "a 64-bit counter that went back wasn't taken as made again"
-        );
-        assert_eq!(
-            grew(1_000, 700, 32, EVERY),
-            700,
-            "a 32-bit counter that went back more than a second could send was taken as wrapped"
+            total.bytes, 2_700,
+            "a counter made again made the total go back or jump"
         );
     }
 
     #[test]
-    fn a_wrap_after_a_long_gap_is_still_a_wrap() {
-        let top = 1u64 << 32;
-        let (last, now) = (top - 1_000, 4_000_000_000);
+    fn an_uplink_that_moves_counts_on_from_the_new_ones_count() {
+        let mut total = Total::default();
+        for (uplink, reading) in [
+            ("en0", 1_000),
+            ("en0", 2_000),
+            ("en5", 90_000),
+            ("en5", 90_500),
+        ] {
+            total.take(uplink, reading);
+        }
         assert_eq!(
-            grew(last, now, 32, Duration::from_secs(10)),
-            now + 1_000,
-            "a wrap ten seconds on, within what ten seconds could send, was taken as made again"
-        );
-        assert_eq!(
-            grew(last, now, 32, EVERY),
-            now,
-            "four gigabytes a second on was taken as a wrap rather than a counter made again"
+            total.bytes, 1_500,
+            "the move counted the new uplink's whole count, or what it sent after was lost"
         );
     }
 
