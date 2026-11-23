@@ -229,6 +229,33 @@ fn a_job_waiting_past_its_most_gives_up_with_try_again_later() {
     assert!(!account.path("ran").exists(), "it ran without the turn");
 }
 
+// A turn asked for inside a turn's command, as nix-offload's cargo asks
+// for one inside an agent's, has it already, where it once waited for its
+// own parent's lock for ever. One beside a turn, not within it, still
+// waits, as a_job_waiting_past_its_most_gives_up_with_try_again_later shows.
+#[test]
+fn a_turn_asked_for_within_a_turn_runs_in_it() {
+    let account = Account::new();
+    let inner = format!(
+        "'{}' turn cargo --wait-at-most 5 -- touch inner",
+        env!("CARGO_BIN_EXE_night-shift")
+    );
+    let output = account.turn("test", &[], &inner).output().unwrap();
+    let said = warned(&output);
+    assert!(
+        output.status.success(),
+        "the turn within a turn failed: {said}"
+    );
+    assert!(
+        account.path("inner").exists(),
+        "the inner command never ran"
+    );
+    assert!(
+        said.contains("night-shift cargo: runs in the turn test (process"),
+        "the inner turn didn't say whose turn it ran in: {said}"
+    );
+}
+
 #[test]
 fn a_night_job_tried_beside_a_heavy_job_by_day_leaves_it_the_turn() {
     let account = Account::new();

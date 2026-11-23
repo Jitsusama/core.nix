@@ -49,6 +49,10 @@
 //! The command's output is its own: what night-shift says goes to stderr,
 //! and its status is the command's. `--wait-at-most SECONDS` gives up
 //! waiting with status 75, so a caller can try again later.
+//!
+//! A turn asked for by a turn's own command, or anything below it, runs
+//! at once as part of that job, since the turn is already its own: as
+//! nix-offload's cargo asks for one inside an agent's.
 
 use crate::ahead::{self, Ahead, Waiter};
 use std::collections::HashMap;
@@ -153,6 +157,31 @@ pub fn holder(runtime: &Path) -> String {
         .map_or(0, |now| now.as_secs());
     let minutes = now.saturating_sub(since.parse().unwrap_or(now)) / 60;
     format!("{name} (process {pid}, for {minutes} min)")
+}
+
+/// Who holds the turn in `runtime`, as [`holder`] says, when it's
+/// this process or one above it: a turn asked for inside a turn's command
+/// has the turn already, and waiting for the lock its own parent holds
+/// would wait for ever, as a cargo test an agent ran in its turn did once
+/// nix-offload asked for a turn of its own. A pid noted by a job long
+/// gone and taken again by another process is above this one only by
+/// chance too slight to matter, and then the turn is held anyway.
+fn held_above(runtime: &Path) -> Option<String> {
+    let noted = fs::read_to_string(runtime.join("holder")).ok()?;
+    let holder = noted.trim().split('\t').nth(1)?.parse::<i32>().ok()?;
+    let mut at = i32::try_from(std::process::id()).ok()?;
+    // pid 1 and the kernel's 0 hold no turn, and a chain longer than any
+    // real one is a loop read mid-change.
+    for _ in 0..4096 {
+        if at == holder {
+            return Some(self::holder(runtime));
+        }
+        if at <= 1 {
+            return None;
+        }
+        at = ahead::stat(&at.to_string())?.get(1)?.parse().ok()?;
+    }
+    None
 }
 
 /// What one look at the turn found.
@@ -445,6 +474,13 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
             &error,
         )
     })?;
+    if let Some(holder) = held_above(runtime) {
+        say(
+            &turn.name,
+            &format!("runs in the turn {holder} already has, being part of its job"),
+        );
+        return run(turn);
+    }
     // Opened close-on-exec, as std opens every file, so it stays here,
     // and held until this process ends, however it ends.
     let lock = File::create(runtime.join("lock"))
