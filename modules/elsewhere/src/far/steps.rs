@@ -71,8 +71,9 @@ pub(super) fn waiting(bytes: u64, untaken: &str) -> String {
 # it slept, as when the clock steps back or stands still, nor more than
 # {A_PASS_SPENDS_AT_MOST}s, as when it steps on or the machine slept. The wait
 # counts what was spent since more last crossed, as the near side waits;
-# a pass counts after its second, so passes are never short. However steadily they cross, all that is spent is held to
-# a ceiling: the wait, and a second for each {CROSSES_AT} bytes left.
+# a pass counts after its second, so passes are never short. However
+# steadily they cross, all that is spent is held to a ceiling: the wait,
+# and a second for each {CROSSES_AT} bytes left.
 bytes={bytes}
 most=$(({CROSSES_WITHIN} + bytes / {CROSSES_AT}))
 now=0 was=0 counting=yes; tick; grown

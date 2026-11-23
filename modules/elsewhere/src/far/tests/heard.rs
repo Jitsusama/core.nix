@@ -251,8 +251,9 @@ fn a_far_clock_that_steps_back_or_stands_still_spends_the_second_a_pass_slept() 
     // from there, so a wait that measured from before the step would read
     // it sixteen times, and one that spent nothing of the pass that
     // stepped, seven, rather than six. Then one standing still for twenty
-    // readings before it moves, so a wait that spent nothing while it
-    // stood reads it twenty-five times rather than hanging for good.
+    // readings before it jumps on, so a wait that spent nothing while it
+    // stood reads it twenty-three times, its jump spending the
+    // `A_PASS_AT_MOST` a pass may, rather than hanging for good.
     // Counted by readings, since these clocks move by them rather than by
     // the time a busy machine took.
     for (how, clock) in [
@@ -379,30 +380,34 @@ fn a_ceiling_is_never_counted_from_more_than_a_share_carries() {
 
 #[test]
 fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
-    // An hour on from the first pass, while nothing crosses, and the
-    // listed file landing half a pass on: a wait that took the hour as
-    // quiet, or let one pass spend the whole `WAITS`, gives up at once.
-    // The near side sends enough that only the quiet could end it.
+    // An hour on after its first reading, while nothing crosses, and on a
+    // second a pass from there: the step spends `A_PASS_AT_MOST`, and
+    // the passes after it the rest of `WAITS`, where a wait that took
+    // the hour as quiet gives up at its second reading. Counted by
+    // readings, as the clock moves by them, and the near side sends
+    // enough that only the quiet could end it.
     let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
                 echo $((n + 1)) > \"$HOME/clock\"\n\
-                t=$(PATH=${PATH#*:} date +%s)\n\
-                if [ \"$n\" -ge 1 ]; then echo $((t + 3600)); else echo \"$t\"; fi";
+                if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((1003600 + n)); fi";
     let (code, err, home) = far_line(
         Left::Sized("1\tx\nend\n", 10 * super::SLOWEST),
         &[],
         "touch ../ran",
         &kind(""),
-        Some(&|tree| {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            std::fs::create_dir_all(tree).unwrap();
-            std::fs::write(tree.join("x"), "x").unwrap();
-        }),
+        None,
         &[("date", date)],
     );
-    // What crossed is no archive, so the wait ended with all of it there.
+    let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
     assert!(
-        code == Some(77) && err.contains("isn't one of its archives"),
-        "a quiet wait was given up on for a clock stepping on ({code:?}): {err}"
+        code == Some(75) && err.contains("none crossing"),
+        "a file that never crossed wasn't waited out ({code:?}): {err}"
+    );
+    // The first, the step, then a pass a second for what is left.
+    assert_eq!(
+        readings.trim().parse::<u64>().ok(),
+        Some(2 + super::WAITS - super::A_PASS_AT_MOST),
+        "a clock an hour on was spent as more than a pass of {}s",
+        super::A_PASS_AT_MOST
     );
     let _ = std::fs::remove_dir_all(&home);
 }
