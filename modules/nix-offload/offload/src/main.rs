@@ -176,7 +176,6 @@ mod keep;
 mod kept;
 mod lines;
 mod machines;
-mod marked;
 mod outside;
 mod passed;
 mod progress;
@@ -459,7 +458,7 @@ fn main() -> ExitCode {
     // one before `main`.
     unsafe { asking::never_ask() };
     // SAFETY: as above, nothing has started a thread yet.
-    unsafe { marked::take() };
+    unsafe { ended::marked::take() };
     // Read lossily only to see whether help is asked: a word that isn't
     // text reaches the kit whole, which refuses it as asked wrongly (64)
     // where `env::args` would panic.
@@ -1990,7 +1989,7 @@ fn changed_there(
     // Said of the run as it ends, never of a part: a run named on one
     // builder and built on another (`built_named`) is never whole.
     if finished.whole {
-        eprintln!("{}", marked::signed(RAN_WHOLE));
+        eprintln!("{}", ended::marked::signed(RAN_WHOLE));
     }
     ended::status(finished.status, || {
         "the changed checks didn't pass, as the lines above say".to_owned()
@@ -2262,7 +2261,7 @@ fn runs_again(replayed: Option<&str>, status: i32) -> bool {
     if status != 0 && status != there::BUSY {
         let again =
             format!("nix-offload: {replayed} failed, so the change runs again on its own base");
-        eprintln!("{}", marked::signed(&again));
+        eprintln!("{}", ended::marked::signed(&again));
         return true;
     }
     eprintln!("nix-offload: what passed is {replayed}, and its pass is kept under that");
