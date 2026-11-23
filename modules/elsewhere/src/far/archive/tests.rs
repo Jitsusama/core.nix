@@ -1,4 +1,4 @@
-use super::{CLOSED, Part, archived, record, taken, write};
+use super::{CLOSED, Part, archived, at_most, record, taken, write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
@@ -204,6 +204,74 @@ fn a_file_itself_past_the_most_is_refused_as_it_is_opened_not_once_read() {
         "a file past the most was read before it was refused: {refused:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// A reader of `left` bytes that counts those it has given.
+struct Counted {
+    left: u64,
+    given: u64,
+}
+
+impl std::io::Read for Counted {
+    fn read(&mut self, into: &mut [u8]) -> std::io::Result<usize> {
+        let count = into
+            .len()
+            .min(usize::try_from(self.left).unwrap_or(usize::MAX));
+        into[..count].fill(b'x');
+        self.left -= count as u64;
+        self.given += count as u64;
+        Ok(count)
+    }
+}
+
+#[test]
+fn what_holds_more_than_the_most_is_read_no_further_than_the_byte_past_it() {
+    let mut past = Counted {
+        left: 1 << 20,
+        given: 0,
+    };
+    assert_eq!(
+        at_most(&mut past, 16).unwrap(),
+        None,
+        "what held more than the most was taken"
+    );
+    assert_eq!(
+        past.given, 17,
+        "a reader past a most of 16 was read for {} bytes",
+        past.given
+    );
+    let mut within = Counted { left: 16, given: 0 };
+    assert_eq!(
+        at_most(&mut within, 16).unwrap(),
+        Some(vec![b'x'; 16]),
+        "what held just the most wasn't taken whole"
+    );
+}
+
+// Linux's own files say they are empty as they are opened and hold bytes
+// as they are read, as a file growing between the two does.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_file_that_grows_past_the_most_as_it_is_read_is_refused() {
+    let parts = crate::far::tests::scratch("archive-grows");
+    let root = Path::new("/proc/self");
+    assert_eq!(
+        std::fs::metadata(root.join("status")).unwrap().len(),
+        0,
+        "the process's status no longer says it is empty"
+    );
+    let refused = write(root, ["status"], &parts, 16, u64::MAX);
+    let grew = format!(
+        "{} grew as it was read, past the 16 bytes",
+        root.join("status").display()
+    );
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|error| error.to_string().starts_with(&grew)),
+        "a file past the most once read wasn't refused as it grew: {refused:?}"
+    );
+    let _ = std::fs::remove_dir_all(&parts);
 }
 
 #[test]

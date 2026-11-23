@@ -149,15 +149,18 @@ fn read(path: &Path, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
     if meta.len() > most {
         return Err(past(&format!("is {} bytes,", meta.len())));
     }
-    let mut data = Vec::new();
-    io::Read::read_to_end(
-        &mut io::Read::take(&mut file, most.saturating_add(1)),
-        &mut data,
-    )?;
-    if data.len() as u64 > most {
+    let Some(data) = at_most(&mut file, most)? else {
         return Err(past("grew as it was read,"));
-    }
+    };
     Ok((data, meta))
+}
+
+/// All of `from` when it holds at most `most` bytes, and nothing when it
+/// holds more, found by reading no further than the byte past them.
+fn at_most(from: impl io::Read, most: u64) -> io::Result<Option<Vec<u8>>> {
+    let mut data = Vec::new();
+    io::Read::read_to_end(&mut from.take(most.saturating_add(1)), &mut data)?;
+    Ok((data.len() as u64 <= most).then_some(data))
 }
 
 /// The archive numbered `number`'s name.

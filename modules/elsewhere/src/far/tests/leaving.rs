@@ -2,7 +2,7 @@
 //! list of them, and the bytes it says they take.
 
 use super::scratch;
-use crate::far::{LEFT, TREE, archive, leave, left};
+use crate::far::{LARGEST_FILE, LEFT, TREE, archive, leave, left};
 
 #[test]
 fn what_is_left_is_its_archives_each_listed_at_its_size() {
@@ -20,6 +20,32 @@ fn what_is_left_is_its_archives_each_listed_at_its_size() {
         std::fs::read_to_string(job.join(LEFT)).unwrap(),
         format!("{size}\t0.tar\nend\n"),
         "an archive wasn't listed at the size it was written at"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn what_is_left_holds_each_file_to_what_a_shared_file_may_be() {
+    let root = scratch("left-largest");
+    // Sparse, so a byte past the most takes no room on the disk.
+    std::fs::File::create(root.join("x"))
+        .unwrap()
+        .set_len(LARGEST_FILE + 1)
+        .unwrap();
+    let job = root.join("job");
+    let refused = left(&root, ["x"], &job);
+    // Refused by its size as it is opened. Were the two bounds swapped, it
+    // would be read whole and refused as past the total instead.
+    let opened = format!(
+        "{} is {} bytes, past the {LARGEST_FILE} bytes one shared file may be",
+        root.join("x").display(),
+        LARGEST_FILE + 1
+    );
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|error| error.to_string() == opened),
+        "a file past the most a shared file may be wasn't refused as it was opened: {refused:?}"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
