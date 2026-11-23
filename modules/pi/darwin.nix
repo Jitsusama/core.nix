@@ -133,12 +133,13 @@ let
   # long as the host; the cache folder it never cleans by itself, only a
   # safe boot empties it, which ends every host anyway. A host
   # already running keeps its socket where it was until it starts again.
-  # XDG_RUNTIME_DIR is taken away, since disk-guard reads it for a folder
-  # of its own. Neither path is known until the account asks the system, so
-  # sh asks, checks each is a whole path to a folder with no . or .. in
-  # it, not a link, the account's with mode 700, and then becomes node,
-  # the process launchd signals, through env, which takes any name a realm
-  # gives and drops every variable that would run code as node starts
+  # The XDG_RUNTIME_DIR launchd gives is taken away, since disk-guard reads
+  # it for a folder of its own; a realm naming one gets what it named.
+  # Neither path is known until the account asks the system, so sh asks,
+  # checks each is a whole path to a folder with no . or .. in it, not a
+  # link, the account's with mode 700, and then becomes node, the process
+  # launchd signals, through env, which takes any name a realm gives and
+  # drops every variable that would run code as node starts
   # (host-launch.nix's loadsCode), as Linux's unit does.
   startOf = realm: host: kind: ''
     log=${lib.escapeShellArg (logOf realm kind)}
