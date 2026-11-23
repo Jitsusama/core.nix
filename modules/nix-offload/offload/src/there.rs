@@ -1326,7 +1326,7 @@ fn derivations_up(
     alive: &str,
 ) -> Result<(), Uncopied> {
     let mut copying = upload(nix, alive);
-    match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
+    let size = match closure(paths, nix).and_then(|closure| lacking(lent, &closure, scratch, ssh)) {
         Some(lacking) if lacking.is_empty() => return Ok(()),
         Some(lacking) => {
             let (count, them) = match lacking.len() {
@@ -1337,10 +1337,16 @@ fn derivations_up(
                 "nix-offload: copying {count} up to the lent builder {}, which lacks {them}",
                 lent.host
             );
+            let size = stored_size(
+                Command::new(nix)
+                    .args(["path-info", "--json"])
+                    .args(&lacking),
+            );
             copying
                 .args(["copy", "--no-recursive", "--substitute-on-destination"])
                 .args(["--to", &lent.store])
-                .args(lacking)
+                .args(lacking);
+            size
         }
         None => {
             eprintln!(
@@ -1351,19 +1357,62 @@ fn derivations_up(
             copying
                 .args(["copy", "--derivation", "--substitute-on-destination"])
                 .args(["--to", &lent.store])
-                .args(paths)
+                .args(paths);
+            stored_size(
+                Command::new(nix)
+                    .args(["path-info", "--json", "--recursive", "--derivation"])
+                    .args(paths),
+            )
         }
     };
-    let _turn = uplink_turn(rank);
+    let turn = uplink_turn(rank);
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
         .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
-    match copied.child.wait() {
+    match waited_giving_back(&mut copied.child, turn, send_within(size)) {
         Ok(status) if status.success() => Ok(()),
         _ => Err(Uncopied::of(
             "the derivations couldn't be copied up to the builder".to_owned(),
             &copied,
         )),
+    }
+}
+
+/// How many bytes the store paths `nix path-info --json` prints from
+/// `listing` hold, or none when it prints nothing.
+fn stored_size(listing: &mut Command) -> u64 {
+    held::described(&json_of(listing))
+        .values()
+        .map(|stored| stored.size)
+        .sum()
+}
+
+/// How `copy` ended, its uplink `turn` given back once the copy has run
+/// past `within`, what its bytes take at this machine's uplink, while it
+/// goes on. A copy of many small paths through a tunnel goes at the
+/// tunnel's round trips, not the link's speed: on 22 November one went at
+/// 25 to 140 KB/s for two hours, held one of the three turns all along,
+/// and runs that would have filled the link waited behind it.
+fn waited_giving_back(
+    copy: &mut std::process::Child,
+    turn: Option<fs::File>,
+    within: std::time::Duration,
+) -> std::io::Result<std::process::ExitStatus> {
+    let began = std::time::Instant::now();
+    let mut turn = turn;
+    loop {
+        if let Some(status) = copy.try_wait()? {
+            return Ok(status);
+        }
+        if turn.is_some() && began.elapsed() >= within {
+            drop(turn.take());
+            eprintln!(
+                "nix-offload: the copy up has taken longer than {}, slower than this machine's \
+                 uplink, so it goes on without its turn and another copy takes it",
+                lasting(within)
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
 }
 
@@ -5552,6 +5601,56 @@ mod tests {
         assert_eq!(send_within(1_080_000_000), Duration::from_mins(2 + 18));
         // The 1.4 GB that crawled on 9 November gets 25 minutes, not two hours.
         assert_eq!(send_within(1_400_000_000), Duration::from_secs(120 + 1400));
+    }
+
+    #[test]
+    fn a_copy_slower_than_the_uplink_gives_its_turn_back_and_goes_on() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let turn_at = folder.path().join("uplink-1");
+        let turn = fs::File::create(&turn_at).expect("a turn");
+        turn.try_lock().expect("the turn, free");
+        let copy = Command::new("sleep").arg("30").spawn().expect("a copy");
+        let pid = libc::pid_t::try_from(copy.id()).expect("a pid");
+        let waiting = std::thread::spawn(move || {
+            let mut copy = copy;
+            waited_giving_back(&mut copy, Some(turn), Duration::from_secs(2))
+        });
+        let other = fs::File::open(&turn_at).expect("the turn, again");
+        assert!(
+            other.try_lock().is_err(),
+            "the turn was given back as the copy began, before its 2 s"
+        );
+        let began = std::time::Instant::now();
+        while other.try_lock().is_err() {
+            assert!(
+                began.elapsed() < Duration::from_secs(10),
+                "the turn was still held 10 s into a copy given 2 s"
+            );
+            // The copy's waiter looks every 100 ms, so this looks as often.
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            !waiting.is_finished(),
+            "the copy was given up along with its turn, where it should go on"
+        );
+        // SAFETY: a signal to the copy this test started, not yet waited on.
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+        let ended = waiting
+            .join()
+            .expect("the waiter")
+            .expect("how the copy ended");
+        assert!(!ended.success(), "a copy killed read as one that succeeded");
+    }
+
+    #[test]
+    fn a_copy_within_its_pace_says_how_it_ended() {
+        let mut copy = Command::new("true").spawn().expect("a copy");
+        let ended = waited_giving_back(&mut copy, None, Duration::from_secs(60))
+            .expect("how the copy ended");
+        assert!(
+            ended.success(),
+            "a copy that succeeded read as one that failed"
+        );
     }
 
     #[test]
