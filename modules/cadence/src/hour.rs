@@ -356,9 +356,11 @@ fn rounds_per_merge(
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
     let review = state_home.join("pi/agentic-harness.pi/review");
+    let here = reviews::rounds(&review.join("runs"), since);
     // One folder for each machine whose rounds the harness mirrors here.
     let mirrored = reviews::mirrored(&review.join("runs-from"), since);
-    for trouble in &mirrored.trouble {
+    let fixes = reviews::fixes(&review.join("fixes"), since);
+    for trouble in [&here, &mirrored, &fixes].iter().flat_map(|r| &r.trouble) {
         eprintln!("cadence: rounds: {trouble}");
     }
     let landed = || {
@@ -402,9 +404,9 @@ fn rounds_per_merge(
     ];
     rounds(
         &mains,
-        &reviews::written(&review.join("runs"), since),
+        &here,
         &mirrored,
-        &reviews::written(&review.join("fixes"), since),
+        &fixes,
         landed,
         now,
         measures::ASKS,
