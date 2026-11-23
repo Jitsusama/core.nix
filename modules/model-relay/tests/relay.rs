@@ -1496,30 +1496,31 @@ async fn a_body_over_64_mib_goes_nowhere_another_origins_421_said_and_one_pi_lef
         &["--idle-exit", "4"],
     );
 
-    let answer = asked_too_much(&relay.socket, &host).await;
-    assert!(
-        answer.starts_with(b"HTTP/1.1 413"),
-        "a body too large was answered {:?}",
-        String::from_utf8_lossy(&answer)
-    );
-    assert_eq!(handed_to(&origin, "/echo"), 0, "a body too large went on");
+    let mine = asked_too_much(&relay.socket, &host).await;
+    let handed = handed_to(&origin, "/echo");
     // For another origin, it's the 421 that sends pi direct all the same.
-    let answer = asked_too_much(&relay.socket, "example.com").await;
-    assert!(
-        answer.starts_with(b"HTTP/1.1 421"),
-        "another origin's body too large was answered {:?}",
-        String::from_utf8_lossy(&answer)
-    );
+    let others = asked_too_much(&relay.socket, "example.com").await;
     // A body pi leaves is its cancel, though, not a 421 nobody hears.
     left_halfway(&relay.socket, "example.com").await;
     // And one for its own origin is its cancel all the same.
     left_halfway(&relay.socket, &host).await;
+    let left = relay.left_within(LISTENS_WITHIN * 2);
+    // Its words are read before anything is judged, since a relay that
+    // answered wrongly is the one whose log says why.
+    let said = relay.said();
 
     assert!(
-        relay.left_within(LISTENS_WITHIN * 2).is_some(),
-        "the relay didn't leave once idle"
+        mine.starts_with(b"HTTP/1.1 413"),
+        "a body too large was answered {:?}, the relay saying: {said}",
+        String::from_utf8_lossy(&mine)
     );
-    let said = relay.said();
+    assert_eq!(handed, 0, "a body too large went on: {said}");
+    assert!(
+        others.starts_with(b"HTTP/1.1 421"),
+        "another origin's body too large was answered {:?}, the relay saying: {said}",
+        String::from_utf8_lossy(&others)
+    );
+    assert!(left.is_some(), "the relay didn't leave once idle: {said}");
     assert_eq!(
         said.matches("a request's body passed 64 MiB, so it's refused")
             .count(),
