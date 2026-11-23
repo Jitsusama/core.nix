@@ -263,7 +263,8 @@ pub(super) fn far_line(
 /// `meanwhile` to the job's tree a second after it starts, as a share
 /// still crossing would, with each of `programs`, a name and its script,
 /// ahead of the rest on its path, in the tree's `folder`. What it said
-/// for the near side to hear, on stdout, is left in the home's `said`.
+/// for the near side to hear, on stdout, is left in the home's `said`,
+/// and the signal it died by, if one ended it, in its `signal`.
 pub(super) fn far_line_in(
     folder: &Path,
     list: Left,
@@ -332,6 +333,12 @@ pub(super) fn far_line_in(
     }
     let output = far.wait_with_output().unwrap();
     std::fs::write(home.join("said"), &output.stdout).unwrap();
+    let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
+    std::fs::write(
+        home.join("signal"),
+        signal.map(|signal| signal.to_string()).unwrap_or_default(),
+    )
+    .unwrap();
     // Its own words, then what it said for the near side to hear.
     let said = [output.stderr, output.stdout].concat();
     (

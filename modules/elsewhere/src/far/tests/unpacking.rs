@@ -283,8 +283,10 @@ fn an_archive_naming_a_member_outside_its_tree_is_refused_before_it_s_unpacked()
 fn a_far_line_stopped_mid_job_takes_its_copy_away() {
     // Mycelium stops a run whose asker let go with the terminate signal
     // to its whole group; here the job sends a signal to the far line
-    // alone, then ends, as a job the signal reached would.
-    for (signal, ends) in [("TERM", 143), ("HUP", 129), ("INT", 130), ("PIPE", 141)] {
+    // alone, then ends, as a job the signal reached would. The far line
+    // dies by the signal itself once it has cleared, so what waits on it
+    // sees it stopped.
+    for (signal, number) in [("TERM", 15), ("HUP", 1), ("INT", 2), ("PIPE", 13)] {
         let (code, err, home) = far_run(
             Left::Whole,
             &[("a", "1")],
@@ -294,9 +296,10 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
             work(&home).join("ran").exists(),
             "the job never ran ({code:?}): {err}"
         );
+        let died_by = std::fs::read_to_string(home.join("signal")).unwrap();
         assert_eq!(
-            code,
-            Some(ends),
+            (code, died_by.as_str()),
+            (None, number.to_string().as_str()),
             "a far line stopped by {signal} ended otherwise: {err}"
         );
         assert!(
