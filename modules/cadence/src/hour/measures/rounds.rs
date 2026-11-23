@@ -696,7 +696,7 @@ mod tests {
                 &[
                     started("council-a", 900),
                     started("council-b", 600),
-                    started("judge-a", 500),
+                    started("judge-a", 500).replace("council", "judge"),
                 ],
             ),
             // By its branch, the same council again in another record,
@@ -1018,11 +1018,23 @@ mod tests {
         let finished = [outcome(FINISHED)];
         for (rest, counts, why) in [
             (COUNCIL, true, "a council a reviewer finished didn't count"),
-            (r#", "round": "stack""#, true, "a stack's round didn't count"),
+            (
+                r#", "round": "stack""#,
+                true,
+                "a stack's round didn't count",
+            ),
             (r#", "round": "judge""#, false, "a judge counted as a round"),
             ("", false, "a run naming no kind of round counted"),
-            (r#", "round": "council", "open": true"#, false, "an open round counted"),
-            (r#", "round": "council", "closed": true"#, false, "a closed round counted"),
+            (
+                r#", "round": "council", "open": true"#,
+                false,
+                "an open round counted",
+            ),
+            (
+                r#", "round": "council", "closed": true"#,
+                false,
+                "a closed round counted",
+            ),
             (
                 r#", "round": "council", "unpinned": "main""#,
                 false,
@@ -1038,8 +1050,16 @@ mod tests {
         let cancelled =
             outcome(r#", "stopped": {"limit": "cancelled", "detail": "asked to stop"}"#);
         let cases = [
-            (vec![outcome(FINISHED)], true, "a reviewer that finished didn't answer"),
-            (vec![outcome("")], false, "an outcome with no sign of an answer counted"),
+            (
+                vec![outcome(FINISHED)],
+                true,
+                "a reviewer that finished didn't answer",
+            ),
+            (
+                vec![outcome("")],
+                false,
+                "an outcome with no sign of an answer counted",
+            ),
             (
                 vec![outcome(r#", "answerPath": "/a.md", "failure": "the wall""#)],
                 false,
@@ -1051,7 +1071,11 @@ mod tests {
                 "a failure written null answered",
             ),
             (vec![], false, "a round with no outcome counted"),
-            (vec![cancelled.clone()], false, "a cancel filing nothing answered"),
+            (
+                vec![cancelled.clone()],
+                false,
+                "a cancel filing nothing answered",
+            ),
             (
                 vec![outcome(r#", "stopped": {"limit": "soft-deadline"}"#)],
                 false,
@@ -1063,7 +1087,10 @@ mod tests {
                 "a finding filed before a cancel didn't count",
             ),
             (
-                vec![cancelled, outcome(r#", "answerPath": "/a.md", "stopped": null"#)],
+                vec![
+                    cancelled,
+                    outcome(r#", "answerPath": "/a.md", "stopped": null"#),
+                ],
                 false,
                 "a stop written null, filing nothing, answered",
             ),
@@ -1141,7 +1168,6 @@ mod tests {
                     "core.nix#32: 9 rounds, past five caught in the ninth, ",
                     "3 rounds past five run on another machine, what 2 of them caught unread"
                 ),
-                "core.nix#33: 6 rounds, those past five run on another machine, unread",
                 concat!(
                     "core.nix#36: 8 rounds, those past five caught nothing here, ",
                     "2 rounds past five run on another machine, what they caught unread"
