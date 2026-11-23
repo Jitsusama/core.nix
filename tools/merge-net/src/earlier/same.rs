@@ -7,7 +7,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use super::seen;
+use super::{pins, seen};
 use crate::{candidates, git_at, patch_of, ready, short};
 
 /// How a change from a base to a head, in a repo, is told from others.
@@ -26,8 +26,15 @@ pub type PatchId = fn(&Path, &str, &str) -> Option<String>;
 /// The rounds mirrored from other machines are asked only when this
 /// machine's read nothing for the head, so a mirror that's broken or slow
 /// never holds back a head reviewed here.
+///
+/// A head that only pins newer commits of repos our rounds already review
+/// needs none of its own (`pins.rs`), and is told so.
 pub fn read_by_a_round(commit: &str, main: &str, files: &[String]) -> Result<(), String> {
     let repo = Path::new(".");
+    if let Some(said) = pins::ours_alone(repo, commit, main) {
+        eprintln!("merge-net: {said}");
+        return Ok(());
+    }
     here_or_mirrored(
         seen::witnessed(&seen::rounds_folder())?,
         || seen::mirrored(&seen::mirrors_folder()),
