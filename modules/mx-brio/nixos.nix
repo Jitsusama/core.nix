@@ -21,6 +21,12 @@
 # holders say who's on camera. A switch that brings the sharing in takes
 # hold of a Brio already plugged in, so nobody plugs it in again
 # (take-hold.sh).
+#
+# No role imports it while its relay gives no picture: opened by a program,
+# the relay builds no input pipeline, so the loopback shows only its
+# placeholder, and Chrome, which lists a loopback only while one streams,
+# leaves the Brio out of a call. Until the relay is fixed, the seat opens
+# the Brio itself, one program at a time.
 {
   config,
   lib,

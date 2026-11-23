@@ -5070,6 +5070,10 @@
     lists the Brio only while that file is there, and the Brio's own watch writes in the hidden
     folder, never beside it
   '';
+  the-mx-brio-is-the-seats = ''
+    a graphical machine runs no relay on the MX Brio and has no udev rule taking the seat's tag
+    off it, so the seat opens the Brio itself while its relay gives no picture
+  '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
     void says it went is told apart from the time it can be undone by, and a take-back stands
