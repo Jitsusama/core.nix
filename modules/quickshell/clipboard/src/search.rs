@@ -99,7 +99,7 @@ impl Index {
     /// What a search the shell asks is answered with: the keys of what it
     /// finds, best first, at most as many as it says or `FOUND`, the
     /// letters of each name to bring forward, how many it found in all, so
-    /// the launcher's foot says those past the keys ("100 of 838"), and its
+    /// the launcher's head says those past the keys ("100 of 838"), and its
     /// grade, 1 where the best was found only loosely, as Fuzzy.js grades a
     /// match. A search of another place is refused, so the shell matches its
     /// rows itself.

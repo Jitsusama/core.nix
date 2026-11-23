@@ -113,7 +113,7 @@ Provider {
     }
 
     // The emoji the history finds for what's typed, best first, and how
-    // many it found, so the foot says those past the hundred it answers
+    // many it found, so the head says those past the hundred it answers
     // with. While its answer is asked, what stands is EmojiSearch.js's
     // whileAsked, for the moment the answer takes, which the launcher
     // holds a key's list for a moment (`awaits`); the last answer's rows

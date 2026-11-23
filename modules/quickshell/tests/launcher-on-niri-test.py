@@ -2745,7 +2745,8 @@ def test_emoji_makes_a_row_only_for_an_emoji_it_shows(shell: Shell) -> None:
     shell.close_launcher()
 
 
-# How the foot says a find the history answered only in part: those shown, of all it found.
+# How the head says a find the history answered only in part, in normal: those shown, of all it
+# found (Launcher.qml's narrowed, which showing() gives as `found`).
 FOUND_OF = re.compile(r"(\d+) of (\d+) found")
 
 
@@ -2754,7 +2755,7 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
 
     The history answers a find with its best hundred emoji and how many it found
     (clipboard/src/search.rs), and Emoji passes that on (launcher/Emoji.qml's search), so the
-    foot says "100 of 412 found" rather than "100 found" as though that were all. An f finds
+    head says "100 of 412 found" rather than "100 found" as though that were all. An f finds
     every flag and face, past a hundred.
     """
     shell.as_account(shell.ipc("collection", "emoji"))
@@ -2764,12 +2765,12 @@ def test_emoji_says_how_many_it_found_past_those_it_answers(shell: Shell) -> Non
     # Emoji lists nothing for an f until the history answers, which type_in takes as settled.
     shell.launcher_until(lambda shown: shown["count"] > 0)
     shell.normal()
-    words = " ".join(word["text"] for word in laid_out(shell)["foot"])
+    said = shell.launcher_until(lambda shown: shown["found"] != "")["found"]
     shell.close_launcher()
-    counted = FOUND_OF.search(words)
-    assert counted, f"Emoji's foot never said how many it found past those it shows: {words}"
+    counted = FOUND_OF.fullmatch(said)
+    assert counted, f"Emoji's head never said how many it found past those it shows: {said}"
     shown, found = (int(part) for part in counted.groups())
-    assert shown < found, f"the foot said {shown} of {found} found: {words}"
+    assert shown < found, f"the head said {shown} of {found} found: {said}"
 
 
 def test_a_cheap_drawer_comes_in_its_keys_own_frame(shell: Shell) -> None:
