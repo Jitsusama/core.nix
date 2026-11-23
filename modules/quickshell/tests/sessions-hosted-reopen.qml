@@ -719,7 +719,10 @@ ShellRoot {
         const asked = Niri.acts.filter(act => act.OpenNextWindowOn?.app_id === classed);
         if (asked.length === 0 || Niri.windows[window])
             return;
-        const workspace = asked[asked.length - 1].OpenNextWindowOn.reference.Id;
+        opensOnly(window, classed, asked[asked.length - 1].OpenNextWindowOn.reference.Id);
+    }
+    // niri opens a window on the workspace given, and tells the shell.
+    function opensOnly(window, classed, workspace) {
         const opened = { id: window, pid: window * 10, workspace_id: workspace, session: true,
             opened: classed, layout: { pos_in_scrolling_layout: [5, 1] } };
         Niri.windows = Object.assign({}, Niri.windows, { [window]: opened });
@@ -812,9 +815,19 @@ ShellRoot {
         const started = piFor("s-unarranged");
         if (started.length === 0)
             return;
-        Expect.expect("with no boot's places known, one kept nowhere opens in a window",
-            started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
-            && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
+        if (!Niri.windows[91]) {
+            Expect.expect("with no boot's places known, one kept nowhere opens in a window",
+                started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
+                && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
+            // Its kitty opens the window where Joel is, asked nowhere, so
+            // the walk ends with it rather than waiting out its patience.
+            const waiting = Sessions.reopening?.waiting;
+            if (waiting?.id !== "s-unarranged" || !waiting.classed)
+                return;
+            const joels = Object.values(Niri.workspaces).find(one => one.is_focused);
+            opensOnly(91, waiting.classed, joels.id);
+            return;
+        }
         // KELP's workspace, named for its orchestrator, comes back fifth
         // this boot, with a window of its own, and niri's empty one after.
         Niri.workspaces = Object.assign({}, Niri.workspaces, {
@@ -837,7 +850,7 @@ ShellRoot {
     // (2026-11-21 10:08: WM4KSZ's sessions came back on workspace 3 by
     // number), naming nothing.
     function naming() {
-        if (!find("KELPER") || !find("REEFER") || (Sessions.reopening?.queue.length ?? 0) > 0)
+        if (!find("KELPER") || !find("REEFER") || Sessions.reopening !== null)
             return;
         stage = "named";
         Sessions.reopenAll([{ id: "s-kelp", cwd: "/tmp", hosted: true }], root.never,
@@ -898,8 +911,8 @@ ShellRoot {
 
     // Its viewer waits for Joel to leave, as one bound for his workspace
     // does, rather than being dropped from the walk. Looked at once its
-    // place is kept, or a walk's few paces after: s-next, given up on
-    // earlier, keeps the reopening going, so it never ends to wait on.
+    // place is kept, or a walk's few paces after: its own wait keeps the
+    // reopening going, so the walk never ends to wait on.
     function cornered() {
         const place = Sessions.keptPlaces["s-cornered"];
         if (place === undefined && Date.now() - corneredAt < 10000)
