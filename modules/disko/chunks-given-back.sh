@@ -13,8 +13,8 @@
 # It balances only from 01:00 to 06:00, since a laptop asleep at night
 # fires its timer as it wakes and a switch can fire it at any hour: it
 # starts no step outside those hours, and a step still running at 06:00
-# is ended, which the kernel takes as cancelling the balance once the
-# chunk in hand is moved. A step that fails is said and the next is
+# is ended: btrfs balance start sets no handler for timeout's signals, so
+# they kill it, and the kernel cancels a balance whose process is dying. A step that fails is said and the next is
 # tried, since a fuller step can find room an emptier one didn't. Its help and failures take the
 # shape every command of ours does (docs/commands.md), by hand.
 set -euo pipefail
@@ -110,7 +110,8 @@ for full in 0 5 10 20 30 40 50; do
   timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" || status=$?
   if [ "$status" -eq 0 ]; then
     ran=$((ran + 1))
-  elif [ "$status" -eq 124 ]; then
+  elif [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+    # 137 is a step that outlived TERM by a minute and was killed.
     echo "balancing data chunks up to $full% full was ended at 06:00"
   else
     echo "balancing data chunks up to $full% full failed, so the next step is tried"

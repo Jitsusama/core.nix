@@ -35,7 +35,8 @@ if [ "\$#" -ne 4 ] || [ "\$1 \$2" != "balance start" ] || [ "\$4" != / ] \
 fi
 step=\${3#-dusage=}
 echo "\$step" >>"$work/steps"
-read -r gives after < <(awk -v step="\$step" '\$1 == step { print \$2, \$3 }' "$work/gives")
+# A step the file doesn't name gives nothing.
+read -r gives after < <(awk -v step="\$step" '\$1 == step { print \$2, \$3 }' "$work/gives") || true
 if [ -n "\${after:-}" ]; then
   echo "\$after" >"$work/clock"
 fi
@@ -94,7 +95,7 @@ disk() {
 give() {
   local status=0
   echo "${CLOCK:-03:00:00}" >"$work/clock"
-  PATH="$work/bin:$PATH" bash "$given" / >/dev/null 2>"$work/err" || status=$?
+  PATH="$work/bin:$PATH" bash "$given" / >"$work/out" 2>"$work/err" || status=$?
   echo "$status" >"$work/status"
 }
 
@@ -105,6 +106,14 @@ expect() {
   if [ "$steps" != "$1" ] || [ "$status" != "$2" ]; then
     echo "$3, but the steps run were '$steps' and it ended $status, not '$1' and $2"
     cat "$work/err"
+    exit 1
+  fi
+}
+
+expect_said() {
+  if ! grep -qF "$1" "$work/out" "$work/err"; then
+    echo "$2, but it didn't say '$1'"
+    cat "$work/out" "$work/err"
     exit 1
   fi
 }
@@ -142,6 +151,7 @@ expect "0 5 10 " 0 "a step that fails is passed for the next"
 disk 950 0 "0 1"
 give
 expect "0 5 10 20 30 40 50 " 1 "balancing stops at half-full chunks and fails short"
+expect_said "after chunks up to half full" "a night whose steps gave too little says files must go"
 
 disk 950 0 "0 fails" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
 give
@@ -177,6 +187,12 @@ disk 950 0 "0 1 06:00:00" "5 50"
 CLOCK=05:00:00 give
 expect "0 " 1 "a night that reaches 06:00 between steps stops and fails short"
 
+disk 950 0 "0 1 05:00:00" "5 50"
+give
+expect "0 5 " 0 "a step after the clock moves is run"
+expect_deadlines "10800 3600 " "each step is given only until 06:00, read again before it"
+
 disk 950 0 "0 ends" "5 50"
 CLOCK=05:30:00 give
 expect "0 " 1 "a step ended at 06:00 is the last, and the night fails short"
+expect_said "was ended at 06:00" "a step ended at 06:00 says so"
