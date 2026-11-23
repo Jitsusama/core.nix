@@ -21,20 +21,21 @@ pub const KEY: &str = "wifi-video-held";
 /// Who keeps wifid and the eero, and so moves a held video class.
 const OWNER: &str = "PN2VZC";
 
-/// A minute holds a call's video past this at its 95th percentile, or
-/// past `LOST_PERCENT` of its echoes lost, each unanswered within a
+/// A minute holds a call's video past this at its 95th percentile, late
+/// answers included, or with over `LATE_PERCENT` of its answers past a
 /// second: PN2VZC's bars of 23 November, well between a clean point's
-/// 14 to 48 ms with no loss and a holding one's 2.4 to 3.9 s with 16 to
-/// 38% lost.
+/// 14 to 48 ms with none late and a holding one's 2.4 to 3.9 s with 16 to
+/// 38% late. A held queue answers late, in order, so an echo never
+/// answered says nothing of the air and isn't weighed.
 const HELD_MS: f64 = 100.0;
-const LOST_PERCENT: f64 = 1.0;
+const LATE_PERCENT: f64 = 1.0;
 
 /// How many held minutes an hour may have: two, since each line covers
 /// the two minutes before it, so one bad moment shows in two running.
 const TARGET: f64 = 2.0;
 
-const SAYS: &str = "minutes the Wi-Fi held a call's video past 100 ms at p95 or lost over 1% \
-                    of it, this hour";
+const SAYS: &str = "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it \
+                    past 1 s, this hour";
 
 /// journalctl's arguments for wifid's lines in the hour to `now`, every
 /// one of them, since `--grep` matching nothing exits as if it failed.
@@ -52,24 +53,25 @@ pub fn journal(now: i64) -> [String; 7] {
 }
 
 /// One minute's reading of the video class, as wifid writes it after its
-/// best-effort figures: `wlp0s20f3 on <bssid>: gateway ...; video 881.0 ms
-/// at p95, 38.3% of 120 echoes lost; ...`, ending `, during a call` while
-/// one is on. Best effort's p95 is kept beside it, since wifid times its
-/// own echoes, so a minute with the machine starved of CPU reads slow in both,
-/// where one held in the air leaves best effort quick.
+/// best-effort figures: `wlp0s20f3 on <bssid>: gateway ...; video 2400.0
+/// ms at p95, 38.3% of 118 answers past 1 s, 2 of 120 echoes unanswered;
+/// ...`, ending `, during a call` while one is on. Best effort's p95 is
+/// kept beside it, since wifid times its own echoes, so a minute with the
+/// machine starved of CPU reads slow in both, where one held in the air
+/// leaves best effort quick.
 #[derive(Debug, PartialEq)]
 struct Minute {
     at: i64,
     bssid: String,
     best: f64,
     p95: f64,
-    lost: f64,
+    late: f64,
     call: bool,
 }
 
 impl Minute {
     fn held(&self) -> bool {
-        self.p95 > HELD_MS || self.lost > LOST_PERCENT
+        self.p95 > HELD_MS || self.late > LATE_PERCENT
     }
 }
 
@@ -87,13 +89,14 @@ fn minute(entry: &Value) -> Option<Minute> {
     let (_, video) = rest.split_once("; video ")?;
     let video = video.split(';').next()?;
     let (p95, video) = video.split_once(" ms at p95, ")?;
-    let (lost, _) = video.split_once("% of ")?;
+    let (late, video) = video.split_once("% of ")?;
+    video.split_once(" answers past 1 s")?;
     Some(Minute {
         at: micros / 1_000_000,
         bssid: bssid.to_owned(),
         best: best.parse().ok()?,
         p95: p95.parse().ok()?,
-        lost: lost.parse().ok()?,
+        late: late.parse().ok()?,
         call: message.ends_with(", during a call"),
     })
 }
@@ -157,10 +160,10 @@ fn said(bssid: &str, held: usize, read: usize, worst: &Minute, zone: &TimeZone) 
         .map(|at| at.to_zoned(zone.clone()).strftime(" at %H:%M").to_string())
         .unwrap_or_default();
     let call = if worst.call { ", during a call" } else { "" };
-    let (p95, lost, best) = (worst.p95, worst.lost, worst.best);
+    let (p95, late, best) = (worst.p95, worst.late, worst.best);
     format!(
         "on {bssid}, {held} of {read} minutes held, the worst {p95:.1} ms at p95 and \
-         {lost:.1}% lost{when}{call}, best effort then {best:.1} ms"
+         {late:.1}% past 1 s{when}{call}, best effort then {best:.1} ms"
     )
 }
 
