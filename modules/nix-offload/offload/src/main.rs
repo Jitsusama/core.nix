@@ -4079,9 +4079,53 @@ fn say_others(settings: &Settings) {
     }
 }
 
+/// Put `giving` in place, locked, naming `name`, and give its file and
+/// inode: made and locked under a name of its own first, then renamed into
+/// place, so no other process can lock it before this does, and one
+/// holding a file a stopped lender left holds nothing that's read. The
+/// lock is only tried, so nothing ever holds a give-back up.
+fn marking(giving: &Path, name: &str) -> Option<(fs::File, u64)> {
+    use std::io::Write;
+    use std::os::unix::fs::MetadataExt;
+    let making = giving.with_file_name(format!(".{}.{}", there::GIVING_BACK, std::process::id()));
+    let _ = fs::remove_file(&making);
+    let made = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&making)
+        .and_then(|mut file| {
+            file.try_lock().map_err(std::io::Error::other)?;
+            writeln!(file, "{} {name}", std::process::id())?;
+            let inode = file.metadata()?.ino();
+            fs::rename(&making, giving)?;
+            Ok((file, inode))
+        });
+    if made.is_err() {
+        let _ = fs::remove_file(&making);
+    }
+    made.ok()
+}
+
 /// Ask the helper to give a builder back: whether it's gone.
 fn down(settings: &Settings, name: &str) -> bool {
+    // Runs waiting on this lender read this while it gives a builder back,
+    // which writes no `lending`, as still answering: on 22 November sends
+    // to -more gave up within 35 s of a give-back that took 160 s.
+    // The file is held locked while the helper runs, rather than read for
+    // a pid, since a fenced run counts pids in a namespace of its own; the
+    // kernel lets the lock go however this ends.
+    let giving = settings.dir.join(there::GIVING_BACK);
+    let held = marking(&giving, name);
     let gone = call_helper(settings, &["down", name]).is_some();
+    if let Some((_, ours)) = &held {
+        use std::os::unix::fs::MetadataExt;
+        // A lender started beside this one, as a switch starts one, may
+        // have put its own there since.
+        if fs::metadata(&giving).is_ok_and(|there| there.ino() == *ours) {
+            let _ = fs::remove_file(&giving);
+        }
+    }
+    drop(held);
     if !gone {
         eprintln!("nix-offload: the helper couldn't give {name} back; it's asked again next tick");
     }
@@ -4282,6 +4326,45 @@ trap '' TERM
 [ "$1" = down ] && sleep 60
 exit 0
 "#;
+
+    /// A helper whose give-back takes a second.
+    const GIVES_BACK_SLOWLY: &str = "#!/bin/sh\n[ \"$1\" = down ] && sleep 1\nexit 0\n";
+
+    #[test]
+    fn a_give_back_is_held_locked_while_the_helper_runs_then_goes() {
+        let _heard = unstopped();
+        let folder = tempfile::tempdir().unwrap();
+        let (mut settings, _) = holding(folder.path(), "");
+        settings.helper = folder.path().join("gives-back-slowly");
+        executable(&settings.helper, GIVES_BACK_SLOWLY);
+        let giving = settings.dir.join(there::GIVING_BACK);
+        // A file a stopped lender left, held by another process, which
+        // mustn't hold this give-back up.
+        let left = fs::File::create(&giving).unwrap();
+        left.lock().unwrap();
+        let watched = giving.clone();
+        let watching = thread::spawn(move || {
+            let began = Instant::now();
+            while began.elapsed() < Duration::from_millis(800) {
+                let held = fs::File::open(&watched)
+                    .is_ok_and(|file| matches!(file.try_lock(), Err(fs::TryLockError::WouldBlock)));
+                let named = fs::read_to_string(&watched)
+                    .is_ok_and(|text| text.trim_end().ends_with(" lend-5"));
+                if held && named {
+                    return true;
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            false
+        });
+        assert!(down(&settings, "lend-5"), "the give-back wasn't done");
+        assert!(
+            watching.join().unwrap(),
+            "the give-back wasn't there, locked and naming its builder, while the helper ran"
+        );
+        assert!(!giving.exists(), "the give-back was left once done");
+        drop(left);
+    }
 
     #[test]
     fn a_stop_ends_a_give_back_in_flight() {

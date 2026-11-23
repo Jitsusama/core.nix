@@ -3432,6 +3432,7 @@ pub struct Waiting {
     pub restarting: std::time::Duration,
     pub longest: std::time::Duration,
     pub worked: std::time::Duration,
+    pub given_back: std::time::Duration,
 }
 
 pub const WAITING: Waiting = Waiting {
@@ -3442,6 +3443,9 @@ pub const WAITING: Waiting = Waiting {
     restarting: std::time::Duration::from_secs(120),
     longest: std::time::Duration::from_secs(240),
     worked: std::time::Duration::from_secs(300),
+    // Past it, the helper giving a builder back is taken for stuck. The
+    // one seen on 22 November took 160 s.
+    given_back: std::time::Duration::from_secs(600),
 };
 
 /// A builder whose CPUs are this busy, as the share of the last minute
@@ -3593,12 +3597,36 @@ fn wanting(dir: &Path) -> Option<Want> {
     None
 }
 
+/// The file a lender keeps in its folder, locked, while it gives a builder
+/// back, naming its pid and the builder for a person reading it. Only the
+/// lock counts, so one a lender left as it stopped says nothing.
+pub const GIVING_BACK: &str = "giving-back";
+
+/// One give-back, as its file's inode and the time it was written: a
+/// lender makes each anew, so a second is told from the first.
+type GiveBack = (u64, std::time::SystemTime);
+
+/// The give-back `dir`'s lender is making, if any younger than `longest`:
+/// it lends nothing until the helper is done, then turns to what's wanted.
+fn giving_back(dir: &Path, longest: std::time::Duration) -> Option<GiveBack> {
+    use std::os::unix::fs::MetadataExt;
+    let path = dir.join(GIVING_BACK);
+    let named = fs::metadata(&path).ok()?;
+    let at = named.modified().ok()?;
+    let fresh = at.elapsed().is_ok_and(|age| age < longest);
+    (fresh && held(&path)).then_some((named.ino(), at))
+}
+
 /// Waits for a builder when none stands, rather than building here: it
 /// says it wants one by a [`Want`] it holds, which the lender counts as
 /// queued work, for as long as it waits. It
 /// waits only while `dir`'s lender runs, as [`lender_stands`] sees, and
 /// gives up once that lender hasn't begun making one (`lending` is empty)
-/// within `answered`, or none stands within `longest`. A lender that
+/// within `answered`, or none stands within `longest`. The time the
+/// lender spends giving a builder back, as [`giving_back`] sees, counts
+/// toward neither, since it lends only once that's done: up to
+/// `given_back` a run, for the first give-back it sees while nothing is
+/// being lent. A lender that
 /// stopped, its pid left there, is waited for up to `restarting` first,
 /// since a switch starts one again within seconds, and one superseded
 /// ends just as a build that would have used its builder asks. It gives
@@ -3623,14 +3651,42 @@ pub fn waited(dir: &Path, waiting: Waiting) -> Option<String> {
             .ok()
             .filter(|text| !text.trim().is_empty())
     };
+    // How long the lender has been seen giving back, and when it last was:
+    // once done, it has `answered` again to begin lending. Only one
+    // give-back is waited out, and only while nothing is being lent: a
+    // helper failing every tick makes one each time, and the lender lends
+    // nothing while one's unreturned; a give-back after a failed ask leads
+    // to a hold, not a lend.
+    let mut given = std::time::Duration::ZERO;
+    let mut excused: Option<GiveBack> = None;
+    let mut heard = began;
+    let mut last = began;
     let stood = loop {
         if let Some(store) = read("store") {
             break Some(store);
         }
-        let so_far = began.elapsed();
-        if so_far >= waiting.longest || (so_far >= waiting.answered && read("lending").is_none()) {
+        let now = std::time::Instant::now();
+        let seen = (given < waiting.given_back && read("lending").is_none())
+            .then(|| giving_back(dir, waiting.given_back))
+            .flatten();
+        if seen.is_some_and(|seen| *excused.get_or_insert(seen) == seen) {
+            if given.is_zero() {
+                eprintln!(
+                    "nix-offload: its lender gives a builder back first, so this waits that out \
+                     too, for up to {} minutes",
+                    waiting.given_back.as_secs().div_ceil(60)
+                );
+            }
+            given += now
+                .duration_since(last)
+                .max(std::time::Duration::from_nanos(1));
+            heard = now;
+        } else if now.duration_since(began).saturating_sub(given) >= waiting.longest
+            || (now.duration_since(heard) >= waiting.answered && read("lending").is_none())
+        {
             break None;
         }
+        last = now;
         std::thread::sleep(std::time::Duration::from_millis(250).min(waiting.answered));
     };
     drop(want);
@@ -7122,6 +7178,7 @@ mod tests {
         // Wide of what a stand-in ssh takes to fail at once on a loaded
         // machine, past 200 ms at load 55 on 4 November.
         worked: std::time::Duration::from_secs(1),
+        given_back: std::time::Duration::from_secs(10),
     };
 
     #[test]
@@ -7295,6 +7352,165 @@ mod tests {
             began.elapsed() < QUICK.longest,
             "it gave up once nothing was being made"
         );
+    }
+
+    #[test]
+    fn a_build_waits_out_its_lender_giving_a_builder_back_then_lending() {
+        // At 09:53 on 22 November sends to -more gave up within 35 s while
+        // its lender spent 160 s giving its dropped builder back, writing
+        // no `lending`. Here the give-back outlasts `answered`, and then
+        // `longest`. Then, as the lender does, it lets the give-back go
+        // and begins lending only at its next tick, a gap `answered` has
+        // to cover afresh; it's 2 s here, so a loaded machine's slow
+        // thread doesn't stretch the 1 s gap past it.
+        let wide = Waiting {
+            answered: std::time::Duration::from_secs(2),
+            ..QUICK
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let pid = std::process::id();
+        fs::write(dir.path().join("lender"), format!("{pid}\n")).unwrap();
+        // Held locked as the lender holds it, by its own open file, which
+        // the waiting run's lock is refused against.
+        let held = fs::File::create(dir.path().join(GIVING_BACK)).unwrap();
+        held.lock().unwrap();
+        let lender = dir.path().to_owned();
+        let giving = std::thread::spawn(move || {
+            std::thread::sleep(wide.longest + std::time::Duration::from_secs(1));
+            fs::remove_file(lender.join(GIVING_BACK)).unwrap();
+            drop(held);
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            fs::write(lender.join("lending"), "a-builder\n").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            fs::write(lender.join("store"), "ssh-ng://far\n").unwrap();
+        });
+        assert_eq!(
+            waited(dir.path(), wide).as_deref(),
+            Some("ssh-ng://far\n"),
+            "it gave up while the lender was giving a builder back"
+        );
+        giving.join().unwrap();
+    }
+
+    #[test]
+    fn a_give_back_left_by_a_stopped_lender_holds_no_build() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        // Left behind, so nobody holds it locked, though it names a pid
+        // that's alive: only the lock counts.
+        fs::write(
+            dir.path().join(GIVING_BACK),
+            format!("{} old-builder\n", std::process::id()),
+        )
+        .unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), QUICK), None);
+        assert!(
+            began.elapsed() < QUICK.longest,
+            "a give-back whose lender is gone was waited out"
+        );
+    }
+
+    #[test]
+    fn a_give_back_held_past_its_longest_is_taken_for_stuck() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(GIVING_BACK);
+        let held = fs::File::create(&path).unwrap();
+        held.lock().unwrap();
+        assert!(
+            giving_back(dir.path(), WAITING.given_back).is_some(),
+            "a fresh, held give-back wasn't seen"
+        );
+        let old =
+            std::time::SystemTime::now() - WAITING.given_back - std::time::Duration::from_secs(60);
+        held.set_modified(old).unwrap();
+        assert!(
+            giving_back(dir.path(), WAITING.given_back).is_none(),
+            "a give-back held for 11 minutes was still waited out"
+        );
+    }
+
+    /// A folder whose lender runs, as this process, and holds a give-back
+    /// for as long as the file it gives back is kept.
+    fn giving_back_now() -> (tempfile::TempDir, fs::File) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let held = fs::File::create(dir.path().join(GIVING_BACK)).unwrap();
+        held.lock().unwrap();
+        (dir, held)
+    }
+
+    #[test]
+    fn a_run_waits_out_give_backs_only_so_long() {
+        let short = Waiting {
+            given_back: std::time::Duration::from_secs(1),
+            ..QUICK
+        };
+        let (dir, _held) = giving_back_now();
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), short), None);
+        let took = began.elapsed();
+        assert!(
+            took >= short.given_back,
+            "it gave up within the give-back, after {took:?}"
+        );
+        assert!(
+            took < short.given_back + std::time::Duration::from_secs(2),
+            "it waited {took:?}, past its cap on give-backs"
+        );
+    }
+
+    #[test]
+    fn a_give_back_while_lending_isnt_waited_out() {
+        // After a failed ask the lender gives the builder back while
+        // `lending` still names it, then holds for half an hour.
+        let brief = Waiting {
+            longest: std::time::Duration::from_secs(1),
+            ..QUICK
+        };
+        let (dir, _held) = giving_back_now();
+        fs::write(dir.path().join("lending"), "a-builder\n").unwrap();
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), brief), None);
+        assert!(
+            began.elapsed() < brief.longest + std::time::Duration::from_secs(2),
+            "a give-back after a failed ask stretched the wait to {:?}",
+            began.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_second_give_back_isnt_waited_out() {
+        // A helper failing every tick gives the builder back anew each
+        // time, and the lender lends nothing while it's unreturned.
+        let (dir, first) = giving_back_now();
+        let lender = dir.path().to_owned();
+        let again = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let next = lender.join("next");
+            let held = fs::File::create(&next).unwrap();
+            held.lock().unwrap();
+            fs::rename(&next, lender.join(GIVING_BACK)).unwrap();
+            drop(first);
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            drop(held);
+        });
+        let began = std::time::Instant::now();
+        assert_eq!(waited(dir.path(), QUICK), None);
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(2),
+            "a second give-back was waited out too, for {:?}",
+            began.elapsed()
+        );
+        again.join().unwrap();
     }
 
     #[test]
