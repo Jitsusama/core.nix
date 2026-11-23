@@ -3136,7 +3136,7 @@ fn it_says_what_it_takes_a_word_a_line() {
         concat!(
             "tree\napply\nout\nwants\nfolder\nchanged\nhere\n",
             "here-when-idle\nprint\nderivation\noutlive\nbulk\nnever-ask\nfirst\nrun\n",
-            "lent-only\n"
+            "lent-only\nalone\n"
         )
     );
 }

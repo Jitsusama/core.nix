@@ -1595,31 +1595,11 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
         }
         status
     };
-    let mut status = if alone {
+    let status = if alone {
         alone_on(&holding, &mut on, waiting)
     } else {
-        changed::in_turn(lenders, std::process::id())
-            .iter()
-            .filter_map(|lender| standing(lender))
-            .find_map(|store| on(&store))
+        lent_on(lenders, &mut on, waiting)
     };
-    if !alone
-        && status.is_none()
-        && let Some(lender) = lenders.into_iter().find(|lender| there::lends(lender))
-    {
-        eprintln!(
-            "nix-offload: no lent builder answered, so this waits for one to stand, for up \
-             to {} minutes",
-            waiting.longest.as_secs().div_ceil(60)
-        );
-        there::want(lender);
-        let since = std::time::Instant::now();
-        while status.is_none()
-            && let Some(store) = there::stood_again(lender, waiting, since)
-        {
-            status = on(&store);
-        }
-    }
     if let Some(bundle) = &sending.bundle {
         archived::gone(bundle);
     }
@@ -1659,6 +1639,37 @@ fn run_there(arguments: &[String], waiting: there::Waiting) -> Result<(), Failur
 /// It waits its turn for a builder with nothing sent to it, as VM runs do
 /// ([`there::admitted`]), taking the first of `holding` to empty, then for
 /// that builder to stand.
+/// Run on the general builders, in the turn this run's pid gives them, and
+/// when none answers, wait for the first lent one to stand again, for up to
+/// `waiting.longest`.
+fn lent_on(
+    lenders: [&Path; 2],
+    on: &mut impl FnMut(&str) -> Option<i32>,
+    waiting: there::Waiting,
+) -> Option<i32> {
+    let mut status = changed::in_turn(lenders, std::process::id())
+        .iter()
+        .filter_map(|lender| standing(lender))
+        .find_map(|store| on(&store));
+    if status.is_none()
+        && let Some(lender) = lenders.into_iter().find(|lender| there::lends(lender))
+    {
+        eprintln!(
+            "nix-offload: no lent builder answered, so this waits for one to stand, for up \
+             to {} minutes",
+            waiting.longest.as_secs().div_ceil(60)
+        );
+        there::want(lender);
+        let since = std::time::Instant::now();
+        while status.is_none()
+            && let Some(store) = there::stood_again(lender, waiting, since)
+        {
+            status = on(&store);
+        }
+    }
+    status
+}
+
 fn alone_on(
     holding: &[&Path],
     on: &mut impl FnMut(&str) -> Option<i32>,
