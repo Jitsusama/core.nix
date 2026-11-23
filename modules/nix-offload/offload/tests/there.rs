@@ -48,7 +48,10 @@ fn wants_of(dir: &Path) -> PathBuf {
 /// `evaluating-at-once-<host>` as it starts.
 /// A host an `unreached-<host>` file names is never reached, exiting 255,
 /// and one a `busy-<host>` file names says it's busy, 76, to a run marked
-/// to move on rather than wait.
+/// to move on rather than wait. A host a `lost-<host>` file names says a
+/// `--run` started there and then loses its link, 255, and says it has no
+/// such run to what follows one there, as a builder whose run's session
+/// went does.
 /// A read of the builder's CPU pressure prints the `pressure-<host>` file
 /// beside it, when there is one, and nothing else, and a dry run of a
 /// build prints the `plans` file, when there is one, and nothing else.
@@ -133,6 +136,13 @@ printf '%s %s\n' "$1" "$2" > "$here/ssh-line-$$"
 cat "$here/ssh-line-$$" >> "$here/ssh-sent"
 rm -f "$here/ssh-line-$$"
 [ -f "$here/unreached-$1" ] && exit 255
+if [ -f "$here/lost-$1" ]; then
+  case "$2" in
+    *setsid*) echo 'nix-offload: this runs there as lost, so a lost link reattaches to it' >&2 ;;
+    *) echo 'nix-offload: the builder has no run lost' >&2 ;;
+  esac
+  exit 255
+fi
 if [ -f "$here/busy-$1" ]; then
   case "$2" in *": NIX_OFFLOAD_MOVES=1; "*) exit 76 ;; esac
 fi
@@ -6066,25 +6076,20 @@ fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
     assert!(said.contains("another VM builder has room now"), "{said}");
 }
 
-// VM tests split to a builder that doesn't come fall back to the first,
-// which takes them without a claim there, so not while an --alone run
-// holds the first whole: they'd share the builder it says it holds.
-#[test]
-fn vm_tests_never_fall_back_to_a_builder_an_alone_run_holds() {
+/// A rig whose second VM builder is asked for and never comes, so a run
+/// splitting VM tests to it falls back to the first.
+fn second_never_comes() -> TwoVm {
     let rig = TwoVm::new();
     rig.lend_second();
     fs::remove_file(rig.more.join("store")).unwrap();
     fs::write(rig.more.join("lending"), "vm-more-1\n").unwrap();
-    fs::create_dir_all(rig.vm.join("sending")).unwrap();
-    let held = rig.vm.join(format!("sending/{}.0", std::process::id()));
-    fs::write(&held, "1000\n").unwrap();
-    // The first still warming, so the split doesn't keep to warm ones.
-    fs::write(
-        rig.vm.join("warming"),
-        format!("{} vm-1\n", std::process::id()),
-    )
-    .unwrap();
-    let ran = there_command(&rig.bin, &rig.offload, rig.folder.path())
+    rig
+}
+
+/// A run of one check and one VM test on `rig`, never asking for a
+/// builder to stand, its standard error going to the rig's `said` file.
+fn falling_back(rig: &TwoVm) -> std::process::Child {
+    there_command(&rig.bin, &rig.offload, rig.folder.path())
         .args([
             "--never-ask",
             "-L",
@@ -6095,25 +6100,98 @@ fn vm_tests_never_fall_back_to_a_builder_an_alone_run_holds() {
         .env("NIX_OFFLOAD_VM_DIR", &rig.vm)
         .env("NIX_OFFLOAD_VM_MORE_DIR", &rig.more)
         .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &rig.third)
-        .output()
-        .unwrap();
-    let said = String::from_utf8_lossy(&ran.stderr);
+        .stdout(std::process::Stdio::null())
+        .stderr(fs::File::create(rig.folder.path().join("said")).unwrap())
+        .spawn()
+        .unwrap()
+}
+
+/// Waits up to 30 s for `until`, failing should `running` end first.
+fn waits_for(running: &mut std::process::Child, rig: &TwoVm, until: impl Fn() -> bool) {
+    let began = std::time::Instant::now();
+    while !until() {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never came: {}",
+            rig.said()
+        );
+        if let Some(status) = running.try_wait().unwrap() {
+            panic!("it ended first, {status}: {}", rig.said());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+}
+
+// VM tests split to a builder that doesn't come fall back to the first,
+// claiming room there as any run's do, so they wait while an --alone run
+// holds it whole rather than share the builder it says it holds.
+#[test]
+fn vm_tests_falling_back_to_a_builder_an_alone_run_holds_wait_for_it() {
+    let rig = second_never_comes();
+    fs::create_dir_all(rig.vm.join("sending")).unwrap();
+    let held = rig.vm.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&held, "1000\n").unwrap();
+    // The first still warming, so the split doesn't keep to warm ones.
+    let warming = rig.vm.join("warming");
+    fs::write(&warming, format!("{} vm-1\n", std::process::id())).unwrap();
+    let mut running = falling_back(&rig);
+    waits_for(&mut running, &rig, || {
+        rig.said()
+            .contains("an --alone run holds the VM builder in")
+    });
     let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
     assert!(
         !sent
             .lines()
             .any(|line| line.starts_with("nix-offload-vm ") && line.contains("vm-0")),
-        "a VM test went to the builder an --alone run holds: {sent} {said}"
+        "a VM test went to the builder an --alone run holds: {sent}"
     );
-    assert!(
-        said.contains("an --alone run holds the one in"),
-        "it didn't say why the first wasn't used: {said}"
+    fs::remove_file(&held).unwrap();
+    fs::remove_file(&warming).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm"),
+        1,
+        "it never went once the hold ended: {built:?} {said}"
     );
-    assert_ne!(
-        ran.status.code(),
-        Some(0),
-        "an unsent VM test passed: {said}"
-    );
+}
+
+// The other order: VM tests fallen back to the first builder hold a claim
+// there while they build, so an --alone run coming then reads it as taken
+// rather than empty.
+#[test]
+fn vm_tests_fallen_back_to_a_builder_claim_it_while_they_build() {
+    let rig = second_never_comes();
+    fs::write(rig.bin.join("holds-nix-offload-vm"), "0\n").unwrap();
+    let gate = rig.bin.join("gated-nix-offload-vm");
+    fs::write(&gate, "").unwrap();
+    let mut running = falling_back(&rig);
+    let building = rig.bin.join("building-nix-offload-vm");
+    waits_for(&mut running, &rig, || {
+        fs::read_dir(&building).is_ok_and(|mut builds| builds.next().is_some())
+    });
+    let pid = running.id().to_string();
+    let claims: usize = fs::read_dir(rig.vm.join("sending"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|claim| {
+            claim
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.split('.').next() == Some(pid.as_str()))
+        })
+        .filter_map(|claim| {
+            fs::read_to_string(claim.path())
+                .ok()?
+                .trim()
+                .parse::<usize>()
+                .ok()
+        })
+        .sum::<usize>();
+    fs::remove_file(&gate).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(claims, 1, "its VM test went unclaimed: {said}");
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 1, "{built:?} {said}");
 }
 
 // On 22 November a run sent to one VM lender spilled to another whose
@@ -7127,6 +7205,104 @@ fn a_run_alone_sent_again_to_a_fresh_builder_waits_out_its_warm() {
         said.contains("is warming, and --never-ask waits for nothing")
             && reached(&run, "nix-offload-vm-b") == 0,
         "it was sent to a fresh builder as it warmed: {said}"
+    );
+}
+
+// A run held whole may still go on in its own session on a builder it was
+// lost from once started, so it's never sent again to the builder its
+// lender stands as it did, only to a fresh one.
+#[test]
+fn a_run_alone_lost_once_started_goes_again_only_to_a_fresh_builder() {
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    fs::write(run.bin.join("lost-nix-offload-vm"), "").unwrap();
+    let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
+    let ran = run.there(&never, &[]);
+    let stderr = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(75), "{stderr}");
+    assert!(
+        stderr.contains("stands as it did when its run's link was lost"),
+        "it didn't say why it wasn't sent again: {stderr}"
+    );
+    // Sent once, and followed once as its link was lost, never sent again.
+    assert_eq!(
+        reached(&run, "nix-offload-vm"),
+        2,
+        "a lost run was sent again beside itself: {stderr}"
+    );
+
+    let said = run.folder.path().join("said");
+    let going = run.starting(&["--run", "--alone", "--", "pnpm", "test"], &[], &said);
+    assert!(
+        within(AT_MOST, || reached(&run, "nix-offload-vm") >= 4),
+        "it was never sent: {}",
+        fs::read_to_string(&said).unwrap_or_default()
+    );
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm-b"),
+    )
+    .unwrap();
+    let ran = going.wait_with_output().unwrap();
+    let said = fs::read_to_string(&said).unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{said}");
+    assert_eq!(
+        reached(&run, "nix-offload-vm"),
+        4,
+        "a lost run was sent again beside itself: {said}"
+    );
+    assert_eq!(
+        reached(&run, "nix-offload-vm-b"),
+        1,
+        "it wasn't sent to the fresh builder: {said}"
+    );
+}
+
+// The same, asking: a run sent again to a fresh builder waits while its
+// lender warms it, sends nothing meanwhile, and goes once it's warm.
+#[test]
+fn a_run_alone_sent_again_to_a_fresh_builder_goes_once_it_warms() {
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    fs::write(run.bin.join("unreached-nix-offload-vm"), "").unwrap();
+    let said = run.folder.path().join("said");
+    let going = run.starting(&["--run", "--alone", "--", "pnpm", "test"], &[], &said);
+    assert!(
+        within(AT_MOST, || reached(&run, "nix-offload-vm") >= 1),
+        "it was never sent: {}",
+        fs::read_to_string(&said).unwrap_or_default()
+    );
+    // Warming before it stands, as a lender says it.
+    let warming = vm.join("warming");
+    fs::write(&warming, format!("{} b\n", std::process::id())).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm-b"),
+    )
+    .unwrap();
+    assert!(
+        within(AT_MOST, || fs::read_to_string(&said).is_ok_and(
+            |said| said.contains("is warming, so this waits for it to finish")
+        )),
+        "it never waited for the fresh builder's warm: {}",
+        fs::read_to_string(&said).unwrap_or_default()
+    );
+    // Looked at again a second on, so a run that said it waits and went
+    // regardless is seen going.
+    std::thread::sleep(Duration::from_secs(1));
+    assert_eq!(
+        reached(&run, "nix-offload-vm-b"),
+        0,
+        "it ran on the fresh builder as it warmed"
+    );
+    fs::remove_file(&warming).unwrap();
+    let ran = going.wait_with_output().unwrap();
+    let said = fs::read_to_string(&said).unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{said}");
+    assert_eq!(
+        reached(&run, "nix-offload-vm-b"),
+        1,
+        "it wasn't sent once warm: {said}"
     );
 }
 

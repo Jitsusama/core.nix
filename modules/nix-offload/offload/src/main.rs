@@ -1233,7 +1233,7 @@ fn at_once<'a>(
                     };
                     let roomed = now().saturating_sub(began);
                     let waits = [first, waiting];
-                    let (ran, stood) = sent(part, dir, vm, fallbacks, &scratch, waits);
+                    let (ran, stood) = sent(part, (dir, room), vm, fallbacks, &scratch, waits);
                     (part, began, now(), roomed + stood, ran)
                 })
             })
@@ -1249,37 +1249,35 @@ fn at_once<'a>(
 /// on rather than built here while a lender runs: a builder stands about
 /// 70 s after it's asked for. One asked for beside another, as `fallbacks`
 /// pairs them, that doesn't come leaves the build to the other. VM tests,
-/// as `vm` says these are, wait through their lender's restart. It waits
+/// as `vm` says these are, wait through their lender's restart, and those
+/// left to the other are claimed there as [`there::admitted`] claims them,
+/// for its `room`. It waits
 /// for its builder as `first` says, what's left once it held for root,
 /// and for one lost mid-run as `waiting` says. Says how it ran, and the
 /// seconds it waited for its builder to stand.
 fn sent(
     part: &there::Asked,
-    dir: &Path,
+    (dir, room): (&Path, usize),
     vm: bool,
     fallbacks: &[(&PathBuf, &PathBuf)],
     scratch: &Path,
     [first, waiting]: [there::Waiting; 2],
 ) -> (there::Ran, u64) {
     let asked = std::time::Instant::now();
-    let (dir, store) = match standing(dir).or_else(|| there::waited(dir, first)) {
+    // VM tests left to another VM builder are claimed there, under its
+    // lock, for as long as they go: sent unclaimed, they shared it with
+    // runs that read it as empty, an --alone run held whole among them.
+    let (dir, store, _claimed_there) = match standing(dir).or_else(|| there::waited(dir, first)) {
         None => match fallbacks.iter().find(|(beside, _)| beside.as_path() == dir) {
-            // The first VM builder takes another's tests without a claim
-            // there, so not while an --alone run holds it whole, which it
-            // would share.
-            Some((_, other)) if vm && there::claimed(other) >= there::WHOLE => {
-                eprintln!(
-                    "nix-offload: the VM builder in {} didn't come, and an --alone run holds \
-                     the one in {} whole, so its VM tests weren't sent there",
-                    dir.display(),
-                    other.display()
-                );
-                (dir, None)
+            Some((_, other)) if vm => {
+                let (count, rank) = (there::count(part), there::rank(part));
+                let (other, claim, _) = there::admitted(other, &[], count, room, rank, first);
+                (other, standing(other), claim)
             }
-            Some((_, other)) => (other.as_path(), standing(other)),
-            None => (dir, None),
+            Some((_, other)) => (other.as_path(), standing(other), None),
+            None => (dir, None, None),
         },
-        store => (dir, store),
+        store => (dir, store, None),
     };
     // A VM test waits through its lender's restart, as a switch does it,
     // rather than going anywhere else: sent the lent way meanwhile, good
@@ -1754,8 +1752,9 @@ fn lent_on(
 /// [`there::WHOLE`] places, more than any machine's room, written in the
 /// same hold of the folder's lock that found the builder empty
 /// ([`there::admitted_whole`]), so a run reading a larger room than this
-/// one's still finds no room beside it. VM tests that would fall back to
-/// it from a builder that didn't come aren't sent there ([`sent`]). Claims are counted by
+/// one's still finds no room beside it. VM tests that fall back to it from
+/// a builder that didn't come claim their room there as any run's do, so
+/// they wait for it to end ([`sent`]). Claims are counted by
 /// pid, so VM tests sent from another pid namespace, as a fenced
 /// session's are, don't see it, and they're sent without waiting for room
 /// anyway; how long a room wait may take is `admitted`'s, as for VM runs.
@@ -1913,22 +1912,30 @@ fn again_on(
         };
         // Any builder stood in place of the one sent to is a fresh one,
         // which its lender warms, whether the run was lost there or never
-        // reached it; the warm gets only what's left after the wait to
-        // stand.
-        if stood != store {
-            left = longest.saturating_sub(began.elapsed().as_secs());
-            let within = std::time::Duration::from_secs(left);
-            warmed(dir, waiting, warm_within().min(within))
-                .map_err(|why| again(format!("{why}, so it wasn't sent again, and {ran}")))?;
-        }
-        store = stood;
-        left = longest.saturating_sub(began.elapsed().as_secs());
-        if left < AGAIN_LEAST {
-            return Err(again(format!(
+        // reached it. The warm gets only what's left after the wait to
+        // stand, less the [`AGAIN_LEAST`] the run must have once it's
+        // warm, so a run that couldn't be sent after the warm lets the
+        // builder go at once rather than hold it whole through one.
+        let too_few = |left: u64| {
+            again(format!(
                 "its builder stood again with {left} of its {longest} seconds left, too few \
                  to show anything, so it wasn't sent again, and {ran}"
-            )));
+            ))
+        };
+        left = longest.saturating_sub(began.elapsed().as_secs());
+        if left < AGAIN_LEAST {
+            return Err(too_few(left));
         }
+        if stood != store {
+            let within = std::time::Duration::from_secs(left - AGAIN_LEAST);
+            warmed(dir, waiting, warm_within().min(within))
+                .map_err(|why| again(format!("{why}, so it wasn't sent again, and {ran}")))?;
+            left = longest.saturating_sub(began.elapsed().as_secs());
+            if left < AGAIN_LEAST {
+                return Err(too_few(left));
+            }
+        }
+        store = stood;
         say_held(dir, left);
     }
 }

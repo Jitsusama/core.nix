@@ -155,12 +155,18 @@ pub fn asked(arguments: &[String]) -> Result<Asked, String> {
 
 /// What the builder's shell runs: `checkout`, which goes into the commit's
 /// folder there, then the command, started apart as the run `run` names
-/// and followed (`follow`); where a run of that name was already started
-/// there, it's followed from its start instead. A clock beside it ends the run's whole group
-/// once it has run `longest` seconds, saying so, and is ended with it
-/// otherwise. A watch beside it ends the group once nothing has followed
-/// it for `NIX_OFFLOAD_UNWATCHED` seconds, and takes its files away then
-/// too, whether it ended or not. The command's own status is the shell's. The clock's
+/// and followed (`follow`). The run's folder, made before the checkout, is
+/// its token: a shell sent again under its name that finds it made waits
+/// while the shell that made it lives for the run to start, then follows
+/// it from its start, so the run never starts beside itself. One whose
+/// maker ended before starting it takes the token over and starts the run
+/// itself; one whose maker neither ends nor starts it within
+/// [`MAKER_WAITS`] looks says the run is gone, starting nothing. A clock
+/// beside it ends the run's whole group once it has run `longest` seconds,
+/// saying so, and is ended with it otherwise. A watch beside it ends the
+/// group once nothing has followed it for `NIX_OFFLOAD_UNWATCHED` seconds,
+/// and takes its files away then too, whether it ended or not, which is
+/// how an ended run's status goes. The command's own status is the shell's. The clock's
 /// sleep holds no output open, since one left behind by a TERM landing
 /// before its pid is known would keep ssh, and so the builder, until it
 /// woke. Once it has run out, the clock ends the group before saying so,
@@ -189,8 +195,11 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     // dash clears what it inherited. A command as quick as `true` ends in
     // that window, and the shell then waited on a clock asleep for
     // `longest` (14 November: 41 of 50 quick runs under dash).
+    // It names itself as the run, so a shell following it waits on the
+    // process that writes its status, whether `setsid` forked or not.
     let apart = format!(
         "run=$1; leaves=$2; \
+         echo $$ > \"$run/pid.new\" && mv -f \"$run/pid.new\" \"$run/pid\"; \
          (trap '' TERM; while sleep 2; do [ -d \"$run\" ] || exit 0; \
          beat=$(stat -c %Y \"$run/beat\" 2>/dev/null) || exit 0; \
          [ $(($(date +%s) - beat)) -gt \"${{NIX_OFFLOAD_UNWATCHED:-120}}\" ] || continue; \
@@ -213,17 +222,31 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     );
     // A run sent again under its name after a link that never said it had
     // started may have started all the same, ssh lost between its start
-    // and that line: then it's followed from its start, never started
-    // beside itself.
+    // and that line, or still be checking out, its shell going on unaware
+    // of the lost link: then it's followed from its start, never started
+    // beside itself. A maker that ended unseen, its shell file empty, is
+    // judged by a shorter wait, since it writes that file at once. A maker
+    // found ended is given a second for the run it may have started as it
+    // ended to name itself.
+    let unkept = "{ echo \"nix-offload: the builder can't keep the run's files\" >&2; exit 254; }";
     format!(
-        "{RUN_DIR} if [ -s \"$run/pid\" ]; then \
-         echo \"{STARTED}{run}, so a lost link reattaches to it\" >&2; {}; fi; \
-         leaves=; {checkout}set +e; \
-         mkdir -p \"$run\" && : > \"$run/out\" && : > \"$run/err\" && : > \"$run/beat\" \
-         || {{ echo \"nix-offload: the builder can't keep the run's files\" >&2; exit 254; }}; \
+        "{RUN_DIR} mkdir -p \"${{run%/*}}\" || {unkept}; \
+         if ! mkdir \"$run\" 2>/dev/null; then [ -d \"$run\" ] || {unkept}; looks=0; \
+         while [ ! -s \"$run/pid\" ]; do maker=$(cat \"$run/shell\" 2>/dev/null); \
+         if {{ [ -n \"$maker\" ] && ! kill -0 \"$maker\" 2>/dev/null; }} \
+         || {{ [ -z \"$maker\" ] && [ $looks -ge 20 ]; }}; then sleep 1; \
+         [ -s \"$run/pid\" ] || {{ rm -rf \"$run\"; mkdir \"$run\" || {unkept}; }}; break; fi; \
+         if [ $looks -ge {MAKER_WAITS} ]; then \
+         echo \"{GONE}{run}, whose maker neither ended nor started it\" >&2; exit 255; fi; \
+         sleep 0.5; looks=$((looks + 1)); done; \
+         if [ -s \"$run/pid\" ]; then \
+         echo \"{STARTED}{run}, so a lost link reattaches to it\" >&2; {}; fi; fi; \
+         echo $$ > \"$run/shell\"; leaves=; {checkout}set +e; \
+         : > \"$run/out\" && : > \"$run/err\" && : > \"$run/beat\" || {unkept}; \
          setsid sh -c {} nix-offload-run \"$run\" \"$leaves\" \
-         </dev/null >\"$run/out\" 2>\"$run/err\" & \
-         echo $! > \"$run/pid\"; trap - EXIT; \
+         </dev/null >\"$run/out\" 2>\"$run/err\" & started=$!; trap - EXIT; looks=0; \
+         while [ ! -s \"$run/pid\" ] && kill -0 $started 2>/dev/null && [ $looks -lt 100 ]; \
+         do sleep 0.1; looks=$((looks + 1)); done; \
          echo \"{STARTED}{run}, so a lost link reattaches to it\" >&2; {}",
         follow(run, 0, 0),
         there::quoted(&apart),
@@ -232,6 +255,11 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
     .replace("{RUN_NAME}", run)
 }
 
+/// How many half-second looks a shell sent again waits for the shell that
+/// made its run's folder to start it: ten minutes, longer than any
+/// checkout took, for a maker that hangs rather than ends.
+const MAKER_WAITS: u32 = 1200;
+
 /// Where a run keeps its files there, named `{RUN_NAME}`.
 const RUN_DIR: &str = "run=\"${TMPDIR:-/tmp}/nix-offload-runs/{RUN_NAME}\";";
 
@@ -239,7 +267,10 @@ const RUN_DIR: &str = "run=\"${TMPDIR:-/tmp}/nix-offload-runs/{RUN_NAME}\";";
 /// the `err` of its errors already come back: each is printed on from
 /// there as it comes, and the run's status is this shell's, once it ends.
 /// While it follows, it says so to the run's watch every 2 s. A run there's
-/// no sign of says so, `GONE`, ending as ssh does for a lost builder.
+/// no sign of says so, `GONE`, ending as ssh does for a lost builder. The
+/// run's files stay once it has ended, so a shell sent again whose link
+/// lost the status reads it rather than running it again, until the run's
+/// watch takes them, once nothing has followed for its unwatched while.
 pub fn follow(run: &str, out: u64, err: u64) -> String {
     let (out, err) = (out + 1, err + 1);
     format!(
@@ -250,9 +281,8 @@ pub fn follow(run: &str, out: u64, err: u64) -> String {
          </dev/null >/dev/null 2>&1 & \
          tail -s 0.5 -c +{err} --pid=\"$pid\" -f \"$run/err\" >&2 & erring=$!; \
          tail -s 0.5 -c +{out} --pid=\"$pid\" -f \"$run/out\"; wait $erring; \
-         if [ -e \"$run/status\" ]; then ended=$(cat \"$run/status\"); rm -rf \"$run\"; \
-         exit \"$ended\"; fi; \
-         echo 'nix-offload: the run there ended with no status' >&2; rm -rf \"$run\"; exit 254"
+         if [ -e \"$run/status\" ]; then exit \"$(cat \"$run/status\")\"; fi; \
+         echo 'nix-offload: the run there ended with no status' >&2; exit 254"
     )
     .replace("{RUN_NAME}", run)
 }
@@ -1081,9 +1111,104 @@ mod tests {
         assert_eq!(String::from_utf8_lossy(&followed.stdout), "two\n");
         assert!(stderr.contains("err-two"), "{stderr}");
         assert!(!stderr.contains("err-one"), "said again: {stderr}");
-        assert!(
-            !folder.path().join("nix-offload-runs/lost").exists(),
-            "its files stayed"
+        let again = far_side(&follow("lost", 8, 16), folder.path())
+            .output()
+            .unwrap();
+        assert_eq!(
+            again.status.code(),
+            Some(4),
+            "a link lost as the status came back left nothing to read it from: {}",
+            String::from_utf8_lossy(&again.stderr)
+        );
+    }
+
+    /// What `counted` says the run `sh -c` ran: a line each time it ran,
+    /// then `one`, ending 4.
+    fn counting(counted: &Path) -> Asked {
+        Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: vec![
+                "sh".to_owned(),
+                "-c".to_owned(),
+                format!("echo ran >> {}; echo one; exit 4", counted.display()),
+            ],
+        }
+    }
+
+    /// Waits up to 20 s for `path` to be there, rather than a fixed sleep
+    /// that a loaded machine outruns.
+    fn appears(path: &Path) {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while !path.exists() && Instant::now() < deadline {
+            // A look every twentieth of a second, for the far shell's file.
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(path.exists(), "{} never came", path.display());
+    }
+
+    /// A run sent again while its first shell still checks out, that shell
+    /// going on unaware its link was lost, waits for that shell to start
+    /// it and follows it, rather than starting it beside itself (F12).
+    #[test]
+    fn a_run_sent_again_as_it_checks_out_is_followed_not_run_twice() {
+        let folder = tempfile::tempdir().unwrap();
+        let counted = folder.path().join("counted");
+        let asked = counting(&counted);
+        let mut first = far_side(&command("sleep 2; ", &asked, "early"), folder.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        appears(&folder.path().join("nix-offload-runs/early/shell"));
+        let again = far_side(&command("", &asked, "early"), folder.path())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&again.stderr);
+        assert_eq!(
+            again.status.code(),
+            Some(4),
+            "its status was lost: {stderr}"
+        );
+        assert_eq!(String::from_utf8_lossy(&again.stdout), "one\n", "{stderr}");
+        assert_eq!(
+            first.wait().unwrap().code(),
+            Some(4),
+            "the first shell lost it"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&counted).unwrap(),
+            "ran\n",
+            "the run started again beside itself"
+        );
+    }
+
+    /// A run sent again after its first shell was lost mid-checkout, never
+    /// having started it, starts it itself, once, rather than waiting on a
+    /// shell that's gone.
+    #[test]
+    fn a_run_whose_first_shell_ended_unstarted_is_started_when_sent_again() {
+        let folder = tempfile::tempdir().unwrap();
+        let counted = folder.path().join("counted");
+        let asked = counting(&counted);
+        let mut first = far_side(&command("sleep 60; ", &asked, "orphan"), folder.path())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        appears(&folder.path().join("nix-offload-runs/orphan/shell"));
+        let group = libc::pid_t::try_from(first.id()).unwrap();
+        assert_eq!(unsafe { libc::kill(-group, libc::SIGKILL) }, 0);
+        first.wait().unwrap();
+        let again = far_side(&command("", &asked, "orphan"), folder.path())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&again.stderr);
+        assert_eq!(again.status.code(), Some(4), "it never ran: {stderr}");
+        assert_eq!(
+            std::fs::read_to_string(&counted).unwrap(),
+            "ran\n",
+            "it ran other than once"
         );
     }
 
