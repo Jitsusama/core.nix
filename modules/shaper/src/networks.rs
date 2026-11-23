@@ -1,7 +1,8 @@
 //! What each network's line is known to carry, as nixos.nix writes
 //! `jitsusama.shaper.networks` for `shaper run --networks`: the one-way
 //! controller guards the upload near it (src/oneway.rs), and under the
-//! network's ceiling where one is set.
+//! network's ceiling where one is set, and a call is given room under the
+//! download's line where one is declared (src/room.rs).
 
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -49,9 +50,16 @@ enum Addresses {
 /// `jitsusama.shaper.networks` sets one.
 pub type Houses = BTreeMap<String, House>;
 
+/// Each network's declared download rate, its line, in kbit/s, by its
+/// router's hardware address, where `jitsusama.shaper.networks` sets one.
+pub type Lines = BTreeMap<String, u64>;
+
 #[derive(Deserialize)]
 struct Network {
-    up: f64,
+    #[serde(default)]
+    up: Option<f64>,
+    #[serde(default)]
+    down: Option<f64>,
     #[serde(default)]
     most: Option<f64>,
     /// Read as any value, then as a house, so one of the wrong shape
@@ -80,7 +88,24 @@ fn networks(path: &Path) -> BTreeMap<String, Network> {
 pub fn anchors(path: &Path) -> Anchors {
     networks(path)
         .into_iter()
-        .map(|(router, network)| (router, network.up))
+        .filter_map(|(router, network)| Some((router, network.up?)))
+        .collect()
+}
+
+/// The most a line's download may be declared at, in kbit/s, as nixos.nix
+/// says, and the least: a call's room under the least is still above the
+/// download's floor.
+const DOWN_KBIT: std::ops::RangeInclusive<f64> = 6_000.0..=10_000_000.0;
+
+/// The lines written at `path`, of the networks that declare one within
+/// what nixos.nix takes, or none where there is no such file or it can't
+/// be read as one, which gives no call room on the download anywhere.
+pub fn lines(path: &Path) -> Lines {
+    networks(path)
+        .into_iter()
+        .filter_map(|(router, network)| Some((router, network.down?)))
+        .filter(|(_, down)| DOWN_KBIT.contains(down))
+        .map(|(router, down)| (router, crate::rate::whole(down)))
         .collect()
 }
 
@@ -330,6 +355,46 @@ mod tests {
             ["00:00:5e:00:53:01", "00:00:5e:00:53:06"],
             "the least, and IPv6 merely holding ffff, kept; past the most, or IPv4's written \
              as IPv6 in any form, alone or in a list, left out"
+        );
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn each_network_s_line_is_read_by_its_router_within_what_nixos_takes() {
+        let folder = std::env::temp_dir().join(format!("shaper-lines-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        fs::create_dir_all(&folder).expect("a folder");
+        let file = folder.join("networks.json");
+        assert!(lines(&file).is_empty(), "with no file");
+        fs::write(
+            &file,
+            concat!(
+                r#"{"00:00:5E:00:53:01": {"up": null, "down": 90000}, "#,
+                r#""00:00:5e:00:53:02": {"up": 9000, "down": null}, "#,
+                r#""00:00:5e:00:53:03": {"up": 9000, "down": 6000}, "#,
+                r#""00:00:5e:00:53:04": {"up": 9000, "down": 90}, "#,
+                r#""00:00:5e:00:53:05": {"up": 9000, "down": 10000001}}"#,
+            ),
+        )
+        .expect("the lines");
+        assert_eq!(
+            lines(&file),
+            Lines::from([
+                ("00:00:5e:00:53:01".to_string(), 90_000),
+                ("00:00:5e:00:53:03".to_string(), 6_000),
+            ]),
+            "as nixos.nix writes them, null where none is set, the least kept, one in Mb/s \
+             or past the most left out"
+        );
+        assert_eq!(
+            anchors(&file).into_keys().collect::<Vec<_>>(),
+            [
+                "00:00:5e:00:53:02",
+                "00:00:5e:00:53:03",
+                "00:00:5e:00:53:04",
+                "00:00:5e:00:53:05"
+            ],
+            "a network declaring only its download anchors no upload"
         );
         let _ = fs::remove_dir_all(&folder);
     }

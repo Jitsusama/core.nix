@@ -84,6 +84,15 @@ fn said(link: &LinkStatus, room: Room) -> Vec<String> {
     if let Some(why) = link.heard.as_ref().and_then(|heard| heard.why.clone()) {
         say(why);
     }
+    // The controller's why speaks of its own rates, so a call's hold on
+    // the download, which it didn't ask, is said on its own.
+    if let Some(room) = link.room {
+        say(format!(
+            "a call is on: the download is held to {}, so its queue stands here, \
+             where the call goes first",
+            mbit(room)
+        ));
+    }
     if let Some(leader) = &link.follows {
         say(format!("at {leader}'s rate: both reach the same router"));
     }
@@ -468,7 +477,28 @@ mod tests {
                 ..crate::live::Heard::default()
             }),
             lanes: Some(shared(12, 3)),
+            room: Some(81_000),
         }
+    }
+
+    #[test]
+    fn a_download_held_for_a_call_says_so() {
+        let lines = said(&held(), Room::Unbounded);
+        assert!(
+            lines.iter().any(|line| line
+                == "  a call is on: the download is held to 81.0 Mb/s, so its queue stands here, \
+                    where the call goes first"),
+            "a call's hold wasn't said: {lines:#?}"
+        );
+        let free = LinkStatus {
+            room: None,
+            ..held()
+        };
+        let lines = said(&free, Room::Unbounded);
+        assert!(
+            lines.iter().all(|line| !line.contains("a call is on")),
+            "a hold was said with none: {lines:#?}"
+        );
     }
 
     #[test]

@@ -27,6 +27,12 @@ use std::time::{Duration, Instant, SystemTime};
 /// connection's now.
 const SILENT_MS: u64 = 10_000;
 
+/// How old, in ms, the last second stepped on may be for what its link
+/// carried down to count now (`Follow::carried`): a second is drained once
+/// the next begins and stepped on within a second after, so a fresh one is
+/// two to three seconds old, and one older says nothing of the line now.
+pub const CARRIED_MS: u64 = 5_000;
+
 /// What the controller last heard of its link's second, and what it made
 /// of it: what a trace needs to say why a rate held where it did.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -130,6 +136,8 @@ pub struct Follow {
     /// seconds since 1970, for the trace (src/trace.rs).
     last: Option<crate::replay::Second>,
     last_at: Option<u64>,
+    /// The link that second was read on, none since a new stay began.
+    last_link: Option<String>,
     /// The network of the stay.
     network: String,
     /// When the shaper started, in ms since 1970: what was recorded before
@@ -159,6 +167,7 @@ impl Follow {
             vpn_ms: None,
             last: None,
             last_at: None,
+            last_link: None,
             network: UNKNOWN.into(),
             from_ms: 0,
             trial: None,
@@ -244,6 +253,7 @@ impl Follow {
                 // hold of the line the network's ceiling leaves, and whose
                 // plateau reads the trial's hold.
                 self.network.clone_from(network);
+                self.last_link = None;
                 self.controller.ceil(self.ceilings.get(network).copied());
                 self.controller.up.tune(self.tuning());
                 self.controller.anchor(self.anchors.get(network).copied());
@@ -283,7 +293,26 @@ impl Follow {
                 .began_s()
                 .map(|began| began + crate::rate::whole(second.t_s));
             self.last = Some(second);
+            self.last_link.clone_from(&self.link);
         }
+    }
+
+    /// The link the last second stepped on was read on, and what it
+    /// carried down then in kbit/s, while that second began within
+    /// `CARRIED_MS` of a moment in ms since 1970 and in this stay: a
+    /// recorder gone silent, or a move to another link or network, says
+    /// nothing of what the link carries now (download hold round 1's F1).
+    /// A second stamped more than a second after the moment, more than its
+    /// stamp's rounding to a whole second, is of a clock since stepped
+    /// back, so it says nothing of now either (download hold round 2's
+    /// F25).
+    pub fn carried(&self, at_ms: u64) -> Option<(&str, f64)> {
+        let link = self.last_link.as_deref()?;
+        let began_ms = self.last_at?.saturating_mul(1_000);
+        if began_ms.saturating_add(CARRIED_MS) < at_ms || began_ms > at_ms.saturating_add(1_000) {
+            return None;
+        }
+        Some((link, self.last.as_ref()?.down_kbit))
     }
 
     /// The link the controller holds, and what it last heard of it and
@@ -426,6 +455,12 @@ impl Live {
     /// The link the controller holds, and what it last heard of it.
     pub fn heard(&self) -> Option<(&str, Heard)> {
         self.follow.heard()
+    }
+
+    /// The link the recorder follows and what it carried down in its last
+    /// second, while that second is fresh at `now` (`Follow::carried`).
+    pub fn carried(&self, now: SystemTime) -> Option<(&str, f64)> {
+        self.follow.carried(ms(now))
     }
 
     /// What the controller's judgement says of the rates now (`Follow::why`).
@@ -587,6 +622,44 @@ mod tests {
             (second.vpn_share, second.agents_share),
             (None, None),
             "the shares were said before main put them on the link's queues"
+        );
+    }
+
+    #[test]
+    fn what_a_link_carried_counts_only_while_its_second_is_fresh_and_of_this_stay() {
+        let mut follow = followed(&queued());
+        let began = follow
+            .last_at
+            .expect("a second stepped on")
+            .saturating_mul(1_000);
+        let (link, kbit) = follow
+            .carried(began)
+            .expect("a fresh second carried nothing");
+        assert_eq!(link, "wlan0", "the second carried isn't its link's");
+        assert!(
+            kbit > 100_000.0,
+            "a 200 Mbit/s download carried {kbit} kbit/s"
+        );
+        assert!(
+            follow.carried(began + CARRIED_MS).is_some(),
+            "a second as old as allowed carried nothing"
+        );
+        assert!(
+            follow.carried(began + CARRIED_MS + 1).is_none(),
+            "a stale second was carried"
+        );
+        assert!(
+            follow.carried(began - 1_000).is_some(),
+            "a second a whole second ahead, as its stamp rounds, carried nothing"
+        );
+        assert!(
+            follow.carried(began - 1_001).is_none(),
+            "a second from after a clock stepped back was carried"
+        );
+        follow.take(&parse(&pool(NOV3 + 6_100, Some("elsewhere"))).expect("a sample"));
+        assert!(
+            follow.carried(began).is_none(),
+            "a second from before a new stay was carried in it"
         );
     }
 
