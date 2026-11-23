@@ -2317,8 +2317,9 @@
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
     call is on there through a-call-is-on alone, what a held session outlives, whether work
-    costs money, its taints, its agents by realm, the fences its agent sessions run in) has it
-    written where mycelium reads it, in mycelium's words; a fence it doesn't say is left out, the
+    costs money, its taints, its agents by realm, the fences its agent sessions run in, whether
+    pi fences each command itself) has it written where mycelium reads it, in mycelium's words;
+    a fence it doesn't say is left out, pi_fences_itself is written only when it does, the
     doors a fence accepts for another machine are written only when named and refused for a
     machine no realm could name, a fenced or strict one says its system's launcher for an
     agent's run, which runs pi's strict profile, and an unfenced one none, no fence says a

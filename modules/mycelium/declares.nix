@@ -81,6 +81,19 @@ rec {
         default = false;
         description = "Whether work on this machine costs money.";
       };
+      # A Mac's pi in pi-fence's launcher can't reach its own state, so a
+      # session started there for a fenced kind runs bare once pi lays
+      # its own sandbox profile round each command it runs.
+      piFencesItself = lib.mkOption {
+        type = lib.types.bool;
+        default = false;
+        description = ''
+          Whether pi here lays its own fence round each command it runs, as
+          a Mac's pi does from the harness that fences each command with a
+          sandbox profile, so a fenced or strict session starts as pi alone
+          rather than within the fence's launcher.
+        '';
+      };
       taints = lib.mkOption {
         type = lib.types.listOf taint;
         default = [ ];

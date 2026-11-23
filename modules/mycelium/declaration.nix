@@ -50,4 +50,5 @@ builtins.toJSON (
   // lib.optionalAttrs (cfg.declares.within != null) { inherit (cfg.declares) within; }
   // lib.optionalAttrs (cfg.declares.hosts != [ ]) { inherit (cfg.declares) hosts; }
   // lib.optionalAttrs (fenced != { }) { fence = fenced; }
+  // lib.optionalAttrs cfg.declares.piFencesItself { pi_fences_itself = true; }
 )
