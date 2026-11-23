@@ -461,13 +461,20 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 /**
+ * A purpose that shows nothing: spaces, breaks and the marks that take no
+ * room, such as a zero-width space, a word joiner or a soft hyphen, which a
+ * pasted or written purpose can carry and `trim` leaves.
+ */
+const SAYS_NOTHING = /^[\s\p{Cf}]*$/u;
+
+/**
  * Whether `forage` has no purpose written yet: what the headline counts,
- * the lede names, the floor draws hollow and the view of cells without
- * purpose takes in, so none of them can disagree with another. A purpose
- * of nothing but spaces or breaks says nothing, so it counts as unwritten.
+ * the lede names, the row and the floor show hollow and the view of cells
+ * without purpose takes in, so none of them can disagree with another. A
+ * purpose that shows nothing says nothing, so it counts as unwritten.
  */
 function unwritten(forage: Forage): boolean {
-  return forage.purpose.trim() === "";
+  return SAYS_NOTHING.test(forage.purpose);
 }
 
 /**
