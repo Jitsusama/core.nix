@@ -269,6 +269,40 @@ fn a_merge_is_found_by_its_subject_not_a_later_body() {
 }
 
 #[test]
+fn a_merge_is_found_without_reading_main_below_it() {
+    let repo = scratch("merge-walk");
+    std::fs::create_dir_all(&repo).expect("a scratch history");
+    git(&repo, &["init", "-q", "-b", "main"]);
+    for message in ["the root", "a step", "fix(x): the fix (#7)"] {
+        git(&repo, &["commit", "-q", "--allow-empty", "-m", message]);
+    }
+    git(
+        &repo,
+        &["commit", "-q", "--allow-empty", "-m", "a later one\n\nAfter (#7)"],
+    );
+    let sha = |rev: &str| {
+        let out = std::process::Command::new("git")
+            .args(["-C", &repo.to_string_lossy(), "rev-parse", rev])
+            .output()
+            .expect("git runs");
+        String::from_utf8_lossy(&out.stdout).trim().to_owned()
+    };
+    let (merge, root) = (sha("HEAD~1"), sha("HEAD~3"));
+    // The root's object gone, as a history too long to read is: a walk to
+    // the root fails there, so only one left at the merge finds it.
+    let object = repo
+        .join(".git/objects")
+        .join(&root[..2])
+        .join(&root[2..]);
+    std::fs::remove_file(object).expect("the root's object removed");
+    assert_eq!(
+        merge_of(&repo.to_string_lossy(), 7),
+        Some(merge),
+        "the merge wasn't found before main's history below it was read"
+    );
+}
+
+#[test]
 fn a_host_is_read_by_its_units_main_process() {
     let environ =
         format!("HOME=/x\0PI_PACKAGE_DIR=/nix/store/{OLD}-pi-host-runtime-1.5.0/lib/pi\0");
