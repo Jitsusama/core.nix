@@ -48,38 +48,6 @@ fn machines_last_heard_together_with_none_ready_is_this_one_cut_off() {
 }
 
 #[test]
-fn this_machine_reads_its_reach_by_every_network_probed_but_never_the_call() {
-    let machines = |reached: &str| {
-        format!(
-            r#"{{"Ok":{{"Machines":[{{"name":"here","reached":{reached}}},
-            {{"name":"yonder","reached":{{"home":true}}}}]}}}}"#
-        )
-    };
-    for (reached, reads) in [
-        (r#"{"call":false,"home":true,"office":true}"#, Some(true)),
-        (r#"{"call":true,"home":true}"#, Some(true)),
-        (r#"{"call":false,"home":true,"office":false}"#, Some(false)),
-        (r#"{"call":true,"home":false}"#, Some(false)),
-        (r#"{"call":false}"#, None),
-        (r#"{"call":true}"#, None),
-        ("{}", None),
-        ("null", None),
-    ] {
-        assert_eq!(
-            reach(&machines(reached), "here"),
-            reads,
-            "a machine reaching {reached} misread"
-        );
-    }
-    assert_eq!(
-        reach(&machines(r#"{"home":false}"#), "far"),
-        None,
-        "another machine's record was read as this one's"
-    );
-    assert_eq!(reach("", "here"), None, "no answer read as a reach");
-}
-
-#[test]
 fn a_machine_unsure_of_its_own_reach_tells_a_drop_only_beside_one_ready() {
     let unsure = |seen: &[Seen], told: &mut Told, now| {
         super::super::due(seen, &work(), &work(), told, now, false)
@@ -260,45 +228,6 @@ fn a_peer_whose_clock_runs_ahead_is_heard_as_now() {
         cut_off(&by, NOW + 300, true, &BTreeSet::new()),
         "a peer lost beside another, its clock ten hours ahead, was heard apart from it"
     );
-}
-
-#[test]
-fn a_network_one_realm_reads_missed_outranks_another_reading_all_reached() {
-    for (was, realm, folded) in [
-        (Some(true), Some(false), Some(false)),
-        (Some(false), Some(true), Some(false)),
-        (None, Some(true), Some(true)),
-        (Some(true), None, Some(true)),
-        (None, None, None),
-    ] {
-        assert_eq!(
-            reaches(was, realm),
-            folded,
-            "{was:?} then {realm:?} folded wrongly"
-        );
-    }
-}
-
-#[test]
-fn being_unsure_of_its_own_reach_is_said_once_as_it_starts_and_ends() {
-    let said = |here, was| unsure_said("here", here, was);
-    for (here, was, words) in [
-        (Some(false), false, "doesn't read every network"),
-        (None, false, "says nothing of the networks"),
-        (Some(true), true, "as reached again"),
-    ] {
-        assert!(
-            said(here, was).is_some_and(|line| line.contains(words)),
-            "{here:?} after unsure {was} didn't say {words:?}"
-        );
-    }
-    for (here, was) in [(Some(false), true), (None, true), (Some(true), false)] {
-        assert_eq!(
-            said(here, was),
-            None,
-            "{here:?} after unsure {was} was said again"
-        );
-    }
 }
 
 #[test]

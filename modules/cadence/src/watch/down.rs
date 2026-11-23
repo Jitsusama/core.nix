@@ -22,6 +22,7 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -29,8 +30,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::mesh::Mesh;
 
+mod reach;
 mod telling;
 
+use reach::{Reach, reach, reaches};
 use telling::notify;
 pub use telling::tell;
 
@@ -52,6 +55,11 @@ const FORGET: i64 = 2 * 86_400;
 /// How long a node may take to answer: one stalled on a peer it can't reach
 /// would otherwise hold the whole tick, and every alarm with it.
 const ASK_WITHIN: Duration = Duration::from_secs(30);
+/// How long a battery heard stands against readings of none, so a laptop
+/// whose charge a tick couldn't read isn't told down for a shut lid, while
+/// a desktop that one wrong reading gave a battery is held silent a day at
+/// most.
+const BATTERY_FOR: i64 = 86_400;
 /// How close together machines must have last been heard from to have
 /// dropped at once: a lost link loses each peer as its own link times out,
 /// tens of seconds apart, where machines sleeping or failing on their own
@@ -83,30 +91,6 @@ pub struct Seen {
     pub battery: Option<bool>,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
-}
-
-/// The probe every node adds to say whether a call is on here, which says
-/// nothing of what this machine reaches.
-const CALL: &str = "call";
-
-/// Whether this machine's own record, in what `mycelium machines` answers,
-/// says it reaches every network its node probes for it (`Some(true)`) or
-/// not (`Some(false)`); `None` when it declares none, or has no record.
-#[must_use]
-pub fn reach(machines: &str, this: &str) -> Option<bool> {
-    crate::elsewhere::machines(machines)
-        .unwrap_or_default()
-        .iter()
-        .filter(|machine| machine["name"] == this)
-        .filter_map(|machine| machine["reached"].as_object())
-        .find_map(|reached| {
-            let mut networks = reached
-                .iter()
-                .filter(|(probe, _)| *probe != CALL)
-                .peekable();
-            networks.peek()?;
-            Some(networks.all(|(_, one)| one.as_bool() == Some(true)))
-        })
 }
 
 /// Each machine the realm's node lists but this one, from what `mycelium
@@ -163,10 +147,10 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
 pub struct Told {
     #[serde(default)]
     pub machines: BTreeMap<String, Spell>,
-    /// Whether this machine was last unsure of its own reach, so the
-    /// journal says so once when it starts and once when it ends.
+    /// How sure this machine last read of its own reach, so the journal
+    /// says each change once.
     #[serde(default)]
-    pub unsure: bool,
+    pub reach: Reach,
 }
 
 /// One machine's readings.
@@ -187,11 +171,14 @@ pub struct Spell {
     /// as a battery, so what can't be read leans silent.
     #[serde(default)]
     pub battery: bool,
-    /// Its power as heard, kept across its spells by [`power`], so a
-    /// battery once heard stands and a tick whose power is unread keeps
+    /// Its power as heard, kept across its spells by [`keep_power`], so a
+    /// battery heard stands a while and a tick whose power is unread keeps
     /// what was heard before; none until a realm reads it.
     #[serde(default)]
     pub power: Option<bool>,
+    /// When a realm last heard it has a battery.
+    #[serde(default)]
+    pub battery_at: Option<i64>,
     /// When it first read down while busy and untold this spell, since its
     /// `battery` holds it back, which the journal says once.
     #[serde(default)]
@@ -241,10 +228,9 @@ pub enum Tell {
     },
 }
 
-/// Two readings of a machine's power as one, across realms or ticks: a
-/// battery either heard stands, as a machine doesn't lose its battery and
-/// one realm's node may not read what another's did, and no battery heard
-/// speaks over power that couldn't be read.
+/// Two realms' readings of a machine's power in one tick as one: a battery
+/// either heard stands, as one realm's node may not read what another's
+/// did, and no battery heard speaks over power that couldn't be read.
 fn power(was: Option<bool>, heard: Option<bool>) -> Option<bool> {
     match (was, heard) {
         (Some(true), _) | (_, Some(true)) => Some(true),
@@ -253,36 +239,22 @@ fn power(was: Option<bool>, heard: Option<bool>) -> Option<bool> {
     }
 }
 
-/// Two realms' words on whether this machine reaches every network its
-/// node probes, as one: a network one realm's record says it misses
-/// outranks another's saying it reaches them all, and a realm with no
-/// word leaves the other's standing.
-fn reaches(was: Option<bool>, realm: Option<bool>) -> Option<bool> {
-    match (was, realm) {
-        (Some(false), _) | (_, Some(false)) => Some(false),
-        (_, Some(true)) => Some(true),
-        (was, None) => was,
+/// Keeps in `spell` a machine's power as a tick `heard` it at `now`: a
+/// battery heard stands for `BATTERY_FOR` against readings of none, as a
+/// laptop's charge may go unread for a tick, and power a tick couldn't
+/// read keeps what was heard before. Power never heard may be a battery,
+/// so it leans silent.
+fn keep_power(spell: &mut Spell, heard: Option<bool>, now: i64) {
+    match heard {
+        Some(true) => {
+            spell.power = Some(true);
+            spell.battery_at = Some(now);
+        }
+        Some(false) if spell.battery_at.is_some_and(|at| now - at < BATTERY_FOR) => {}
+        Some(false) => spell.power = Some(false),
+        None => {}
     }
-}
-
-/// The journal's word when this machine's being sure of its own reach
-/// changes, from `was_unsure` to what `here` says, so it's said once as it
-/// starts and once as it ends rather than each tick.
-fn unsure_said(this: &str, here: Option<bool>, was_unsure: bool) -> Option<String> {
-    let then = "so with none ready no machine is told down until it does";
-    match (here, was_unsure) {
-        (Some(true), true) => Some(format!(
-            "{this} reads every network its node probes as reached again, so a machine down \
-             can be told"
-        )),
-        (Some(false), false) => Some(format!(
-            "{this} doesn't read every network its node probes as reached, {then}"
-        )),
-        (None, false) => Some(format!(
-            "{this}'s record says nothing of the networks it reaches, {then}"
-        )),
-        _ => None,
-    }
+    spell.battery = spell.power.unwrap_or(true);
 }
 
 /// The journal's word for each machine newly held back, down while busy
@@ -307,6 +279,22 @@ fn held_back(before: &BTreeSet<String>, told: &Told, now: i64) -> Vec<String> {
             )
         })
         .collect()
+}
+
+/// What's due this tick, as [`due`] finds it, with the journal's word for
+/// each machine it newly holds back, so each is said once a spell.
+fn watched(
+    seen: &[Seen],
+    asked: &[String],
+    answered: &[String],
+    told: &mut Told,
+    now: i64,
+    sure: bool,
+) -> (Vec<Tell>, Vec<String>) {
+    let held = held_now(told);
+    let tells = due(seen, asked, answered, told, now, sure);
+    let said = held_back(&held, told, now);
+    (tells, said)
 }
 
 /// The machines whose being held back the journal has said this spell.
@@ -480,7 +468,7 @@ pub fn due(
                         notice: spell.notice,
                     });
                 }
-                *spell = Spell {
+                let mut next = Spell {
                     ready_at: Some(now),
                     working: one.working.unwrap_or(
                         spell.working && spell.said_at.is_some_and(|at| now - at <= SAID_FOR),
@@ -490,15 +478,15 @@ pub fn due(
                     } else {
                         spell.said_at
                     },
-                    // Power no realm could read may be a battery, so it
-                    // leans silent, unless an earlier tick heard it.
-                    power: power(spell.power, one.battery),
-                    battery: power(spell.power, one.battery).unwrap_or(true),
+                    power: spell.power,
+                    battery_at: spell.battery_at,
                     read_at: Some(now),
                     realms: std::mem::take(&mut spell.realms),
                     listed_at: now,
                     ..Spell::default()
                 };
+                keep_power(&mut next, one.battery, now);
+                *spell = next;
             }
             Reading::Down => {
                 let begun = spell.notice.is_some() || !spell.sent.is_empty();
@@ -510,8 +498,7 @@ pub fn due(
                 // A down reading's power is its node's last word of it,
                 // which may be the first heard, so power unread at the
                 // last ready tick needn't hold it silent.
-                spell.power = power(spell.power, one.battery);
-                spell.battery = spell.power.unwrap_or(true);
+                keep_power(spell, one.battery, now);
                 let since = spell.down_since.unwrap_or(now);
                 let lately = spell
                     .ready_at
@@ -617,10 +604,13 @@ fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> 
         .stderr(Stdio::null())
         .spawn()?;
     let mut out = child.stdout.take().expect("its output was piped");
-    // Read beside the wait, so an answer past a pipe's buffer can't stall it.
-    let reader = thread::spawn(move || {
+    // Read beside the wait, so an answer past a pipe's buffer can't stall
+    // it, and waited on only until the deadline, so a child the program
+    // left holding its output open can't either.
+    let (sent, reader) = mpsc::channel();
+    thread::spawn(move || {
         let mut said = String::new();
-        out.read_to_string(&mut said).map(|_| said)
+        sent.send(out.read_to_string(&mut said).map(|_| said)).ok();
     });
     let deadline = Instant::now() + within;
     let status = loop {
@@ -638,8 +628,16 @@ fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> 
         thread::sleep(Duration::from_millis(100));
     };
     let said = reader
-        .join()
-        .map_err(|_| io::Error::other("reading its answer failed"))??;
+        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .map_err(|_| {
+            io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!(
+                    "{program} {} left its output open past {within:?}",
+                    args.join(" ")
+                ),
+            )
+        })??;
     if status.success() {
         Ok(said)
     } else {
@@ -705,16 +703,15 @@ pub fn run(
         read.extend(seen(realm, machines, &sessions, &this));
     }
     let sure = here == Some(true);
-    if let Some(line) = unsure_said(&this, here, told.unsure) {
+    let reading = Reach::of(!answered.is_empty(), here);
+    if let Some(line) = reach::heard(&this, &mut told.reach, reading) {
         println!("{line}");
     }
-    told.unsure = !sure;
     for realm in realms.iter().filter(|realm| !answered.contains(realm)) {
         println!("The {realm} realm's node didn't answer, so no machine is told down");
     }
-    let held = held_now(&told);
-    let tells = due(&read, realms, &answered, &mut told, now, sure);
-    for line in held_back(&held, &told, now) {
+    let (tells, held) = watched(&read, realms, &answered, &mut told, now, sure);
+    for line in held {
         println!("{line}");
     }
     promise_then_tell(

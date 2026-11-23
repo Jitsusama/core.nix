@@ -12,17 +12,21 @@ fn powered(reading: Reading, battery: Option<bool>) -> Seen {
     }
 }
 
-/// How many times a machine read down from five to thirty minutes on is
-/// told, after `ready`, each a minute apart from `NOW`.
-fn told_after(ready: Vec<Seen>, down: &Seen) -> usize {
+/// How many times a machine read down from five to thirty minutes after
+/// the last of `ready` is told, each of `ready` read `apart` seconds after
+/// the one before from `NOW`, and whether it was held back by its power.
+fn told_after(ready: &[Seen], apart: i64, down: &Seen) -> (usize, bool) {
     let mut told = Told::default();
-    for (at, seen) in [0, 60].into_iter().zip(ready) {
-        step(&mut told, NOW + at, &[seen]);
+    let mut at = NOW;
+    for (n, seen) in ready.iter().enumerate() {
+        at = NOW + apart * i64::try_from(n).expect("a few readings");
+        step(&mut told, at, std::slice::from_ref(seen));
     }
-    (5..=30)
+    let times = (5..=30)
         .step_by(5)
-        .map(|minutes| step(&mut told, NOW + minutes * 60, std::slice::from_ref(down)).len())
-        .sum()
+        .map(|minutes| step(&mut told, at + minutes * 60, std::slice::from_ref(down)).len())
+        .sum();
+    (times, told.machines["yonder"].held_at.is_some())
 }
 
 #[test]
@@ -35,47 +39,83 @@ fn power_once_heard_stands_and_a_down_readings_word_settles_power_unread() {
         battery: Some(true),
         ..lost("yonder", 200)
     };
+    let desktop = powered(Reading::Ready, Some(false));
+    let laptop = powered(Reading::Ready, Some(true));
+    let unread = powered(Reading::Ready, None);
     let cases = [
         (
-            "a desktop heard, then a tick its power couldn't be read",
-            vec![
-                powered(Reading::Ready, Some(false)),
-                powered(Reading::Ready, None),
-            ],
-            lost("yonder", 200),
-            1,
+            "a desktop heard, then ticks its power couldn't be read",
+            vec![desktop.clone(), unread.clone(), unread.clone()],
+            60,
+            lost_unread.clone(),
+            (1, false),
         ),
         (
             "power unread while ready, a down reading hearing no battery",
-            vec![powered(Reading::Ready, None)],
+            vec![unread.clone()],
+            60,
             lost("yonder", 200),
-            1,
+            (1, false),
         ),
         (
             "power never heard",
-            vec![powered(Reading::Ready, None)],
-            lost_unread,
-            0,
+            vec![unread.clone()],
+            60,
+            lost_unread.clone(),
+            (0, true),
         ),
         (
             "a laptop heard, then a tick reading no battery",
-            vec![
-                powered(Reading::Ready, Some(true)),
-                powered(Reading::Ready, Some(false)),
-            ],
-            lost("yonder", 200),
-            0,
+            vec![laptop.clone(), desktop.clone()],
+            60,
+            lost_unread.clone(),
+            (0, true),
+        ),
+        (
+            "a battery heard a day before, then none heard",
+            vec![laptop, desktop.clone()],
+            BATTERY_FOR,
+            lost_unread,
+            (1, false),
         ),
         (
             "a desktop heard, then a down reading hearing a battery",
-            vec![powered(Reading::Ready, Some(false))],
+            vec![desktop],
+            60,
             lost_battery,
-            0,
+            (0, true),
         ),
     ];
-    for (case, ready, down, expected) in cases {
-        assert_eq!(told_after(ready, &down), expected, "{case}: told wrongly");
+    for (case, ready, apart, down, expected) in cases {
+        assert_eq!(
+            told_after(&ready, apart, &down),
+            expected,
+            "{case}: told wrongly, or held for another reason"
+        );
     }
+}
+
+/// What the journal says of holding a machine back over two spells of
+/// going down, ready between, each tick as a tick watches.
+fn said_over_two_spells(battery: Option<bool>) -> Vec<String> {
+    let mut told = Told::default();
+    let down = Seen {
+        battery,
+        ..lost("yonder", 200)
+    };
+    let mut said = Vec::new();
+    for start in [NOW, NOW + 3_600] {
+        let ready = powered(Reading::Ready, battery);
+        watched(&[ready], &work(), &work(), &mut told, start, true);
+        for minutes in (5..=30).step_by(5) {
+            let now = start + minutes * 60;
+            let down = std::slice::from_ref(&down);
+            let (tells, lines) = watched(down, &work(), &work(), &mut told, now, true);
+            assert!(tells.is_empty(), "a machine held back was told: {tells:?}");
+            said.extend(lines);
+        }
+    }
+    said
 }
 
 #[test]
@@ -84,26 +124,14 @@ fn a_busy_machine_held_back_by_its_power_is_said_once_a_spell() {
         (None, "its power is unread, which may be a battery"),
         (Some(true), "its node heard a battery"),
     ] {
-        let mut told = Told::default();
-        step(&mut told, NOW, &[powered(Reading::Ready, battery)]);
-        let down = Seen {
-            battery,
-            ..lost("yonder", 200)
-        };
-        let mut said = Vec::new();
-        for minutes in (5..=30).step_by(5) {
-            let before = held_now(&told);
-            let now = NOW + minutes * 60;
-            step(&mut told, now, std::slice::from_ref(&down));
-            said.extend(held_back(&before, &told, now));
-        }
+        let line = format!(
+            "yonder has read down 10 min with a session busy but isn't told, as {why}, so a \
+             shut lid may have slept it"
+        );
         assert_eq!(
-            said,
-            [format!(
-                "yonder has read down 10 min with a session busy but isn't told, as {why}, so \
-                 a shut lid may have slept it"
-            )],
-            "a machine held back as {battery:?} wasn't said once"
+            said_over_two_spells(battery),
+            [line.clone(), line],
+            "a machine held back as {battery:?} wasn't said once each spell"
         );
     }
 }
