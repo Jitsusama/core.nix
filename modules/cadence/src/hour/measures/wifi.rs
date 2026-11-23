@@ -137,45 +137,27 @@ fn minute(entry: &Value) -> Option<Minute> {
 /// The hour's held minutes, from wifid's journal as journalctl printed it,
 /// or none where it couldn't be read. Behind the figure, each access point
 /// its minutes held on, most first, with its worst minute, so the owner
-/// reads which radio jammed and when. Minutes whose video went mostly
-/// unanswered, and wifid's minutes that couldn't be read, are counted
-/// beside the figure. An hour with no minute judged is unjudged, saying
-/// why: the journal unread, no wifid line at all, as journalctl prints
-/// when it may not read the journal, no Wi-Fi minute, wired or asleep,
-/// minutes unread, no video echo sent, a wifid writing no video figure,
-/// or every minute's video unanswered.
+/// reads which radio jammed and when. Each Wi-Fi minute not judged is
+/// counted beside the figure by why: its video mostly unanswered, its line
+/// unread, no video echo sent, or a wifid writing no video figure. An hour
+/// judging fewer than half its Wi-Fi minutes is unjudged, saying those
+/// counts, unless already past its target, since what went unjudged could
+/// only add to it; so is one with the journal unread, no wifid line, as
+/// when wired or asleep or the journal unreadable here, or no Wi-Fi minute.
 #[must_use]
 pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
-    let mut tally = journal.map(tallied);
-    let (minutes, aside): (Vec<Minute>, Vec<Minute>) = tally
-        .as_mut()
-        .map(|t| std::mem::take(&mut t.minutes))
-        .unwrap_or_default()
+    let Some(mut tally) = journal.map(tallied) else {
+        return unjudged(": wifid's journal unread");
+    };
+    if tally.lines == 0 {
+        return unjudged(": no wifid line, as when wired or asleep, or the journal unread here");
+    }
+    if tally.wifi == 0 {
+        return unjudged(": no Wi-Fi minute");
+    }
+    let (minutes, aside): (Vec<Minute>, Vec<Minute>) = std::mem::take(&mut tally.minutes)
         .into_iter()
         .partition(Minute::answered);
-    let unjudged = match &tally {
-        None => Some(": wifid's journal unread".to_owned()),
-        Some(r) if r.lines == 0 => {
-            Some(": no wifid line, so the journal may be unreadable here or wifid stopped".into())
-        }
-        Some(r) if r.wifi == 0 => Some(": no Wi-Fi minute".to_owned()),
-        Some(_) if !minutes.is_empty() => None,
-        Some(r) if r.unread > 0 => Some(format!(": {} of wifid's minutes unread", r.unread)),
-        Some(_) if !aside.is_empty() => Some(": every minute's video went unanswered".into()),
-        Some(r) if r.unmeasured > 0 => Some(": no video echo sent".to_owned()),
-        Some(_) => Some(": wifid writes no video figure".to_owned()),
-    };
-    if let Some(why) = unjudged {
-        return Measure {
-            key: KEY.to_owned(),
-            class: Class::Apps,
-            says: format!("{SAYS}{why}"),
-            now: 0.0,
-            target: None,
-            owner: OWNER.to_owned(),
-            behind: Vec::new(),
-        };
-    }
     let mut points: BTreeMap<&str, Vec<&Minute>> = BTreeMap::new();
     for m in &minutes {
         points.entry(&m.bssid).or_default().push(m);
@@ -190,22 +172,36 @@ pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
         .collect();
     behind.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let held: usize = behind.iter().map(|(n, _)| n).sum();
-    let unanswered = match aside.len() {
-        0 => String::new(),
-        n => format!(", {n} more with its video unanswered"),
-    };
-    let unread = match tally.map_or(0, |t| t.unread) {
-        0 => String::new(),
-        n => format!(", {n} unread"),
-    };
+    let judged = format!(
+        "{} of {} Wi-Fi minutes judged{}",
+        minutes.len(),
+        tally.wifi,
+        tally.left(aside.len())
+    );
+    if minutes.len() * 2 < tally.wifi && count(held) <= TARGET {
+        return unjudged(&format!(": {judged}"));
+    }
     Measure {
         key: KEY.to_owned(),
         class: Class::Apps,
-        says: format!("{SAYS}, of {} read{unanswered}{unread}", minutes.len()),
+        says: format!("{SAYS}, {judged}"),
         now: count(held),
         target: Some(TARGET),
         owner: OWNER.to_owned(),
         behind: behind.into_iter().map(|(_, line)| line).collect(),
+    }
+}
+
+/// The measure unjudged, saying `why`.
+fn unjudged(why: &str) -> Measure {
+    Measure {
+        key: KEY.to_owned(),
+        class: Class::Apps,
+        says: format!("{SAYS}{why}"),
+        now: 0.0,
+        target: None,
+        owner: OWNER.to_owned(),
+        behind: Vec::new(),
     }
 }
 
@@ -217,12 +213,35 @@ struct Tally {
     wifi: usize,
     unmeasured: usize,
     unread: usize,
+    older: usize,
     minutes: Vec<Minute>,
 }
 
+impl Tally {
+    /// The Wi-Fi minutes left unjudged, by why, with `aside` read but set
+    /// aside, in parentheses; nothing when every one was judged.
+    fn left(&self, aside: usize) -> String {
+        let left: Vec<String> = [
+            (aside, "set aside, their video unanswered"),
+            (self.unread, "unread"),
+            (self.unmeasured, "with no video echo sent"),
+            (self.older, "from a wifid writing no video figure"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, why)| format!("{n} {why}"))
+        .collect();
+        if left.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", left.join("; "))
+        }
+    }
+}
+
 /// The tally of `journal`, as journalctl's json printed it. A minute with
-/// no video clause, as an older wifid writes, is neither unmeasured nor
-/// unread.
+/// no video clause, or the clause of wifid's first version, whose echoes
+/// were lost rather than answered late, is from an older wifid.
 fn tallied(journal: &str) -> Tally {
     let mut tally = Tally::default();
     for entry in lines(journal) {
@@ -238,8 +257,10 @@ fn tallied(journal: &str) -> Tally {
             tally.minutes.push(read);
         } else if message.contains("; video unmeasured") {
             tally.unmeasured += 1;
-        } else if message.contains("; video ") {
+        } else if message.contains("; video ") && message.contains(" answered past ") {
             tally.unread += 1;
+        } else {
+            tally.older += 1;
         }
     }
     tally

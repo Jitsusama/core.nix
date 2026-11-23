@@ -53,29 +53,80 @@ fn journal(entries: &[String]) -> String {
 #[test]
 fn a_minute_whose_video_went_mostly_unanswered_is_set_aside_not_clean() {
     let read = |message: &str| minute(&serde_json::from_str(&entry(AT, message)).ok()?);
-    let none = read(&said_by_wifid(NEAR, Some(NONE), false));
+    // Mostly unanswered, judged only by answers late past 1%.
+    let few = |late: &str| {
+        let clause = format!(
+            "none at p95, {late}% of 120 echoes answered past 1 s, 70 unanswered, too few to time"
+        );
+        read(&said_by_wifid(NEAR, Some(&clause), false))
+            .as_ref()
+            .is_some_and(Minute::answered)
+    };
     assert!(
-        none.as_ref().is_some_and(|m| !m.held() && !m.answered()),
-        "a minute with every video echo unanswered was judged: {none:?}"
+        !few("1.0") && few("1.1"),
+        "a minute mostly unanswered wasn't judged by its late answers past 1%"
     );
-    let dark = said_by_wifid(NEAR, Some(&clause("9.0", "0.0")), false)
+}
+
+/// A minute held 300 ms at p95 while every best-effort echo went
+/// unanswered.
+fn dark(n: i64) -> String {
+    let held = said_by_wifid(NEAR, Some(&clause("300.0", "0.0")), false)
         .replace("5.3 ms at p50, 15.0 ms at p95", "none at p50, none at p95");
-    let dark = read(&dark);
-    assert!(
-        dark.as_ref()
-            .is_some_and(|m| m.best.is_none() && m.p95.is_some_and(|p95| p95 > 8.0)),
-        "a minute whose best-effort echoes all went unanswered lost its video: {dark:?}"
-    );
-    let text = journal(&[
-        entry(AT, &said_by_wifid(NEAR, Some(&clause("300.0", "0.0")), false)),
-        entry(AT + 60, &said_by_wifid(NEAR, Some(NONE), false)),
-        entry(AT + 120, &said_by_wifid(NEAR, Some(LOST), false)),
+    entry(AT + 60 * n, &held)
+}
+
+#[test]
+fn minutes_not_judged_are_counted_by_why_and_too_many_leave_the_hour_unjudged() {
+    let on = |n: i64, video: Option<&str>| entry(AT + 60 * n, &said_by_wifid(NEAR, video, false));
+    let quick = clause("9.0", "0.0");
+    let unread = clause("soon", "0.0");
+    let mixed = journal(&[
+        dark(0),
+        on(1, Some(&quick)),
+        on(2, Some(&quick)),
+        on(3, Some(NONE)),
+        on(4, Some(&unread)),
+        on(5, Some(LOST)),
     ]);
-    let m = video(Some(&text), &TimeZone::UTC);
+    let m = video(Some(&mixed), &TimeZone::UTC);
+    assert_eq!(
+        (m.says.as_str(), m.now.to_string(), m.behind.as_slice()),
+        (
+            "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it past 1 s, \
+             this hour, 3 of 6 Wi-Fi minutes judged (1 set aside, their video unanswered; 1 \
+             unread; 1 from a wifid writing no video figure)",
+            "1".to_owned(),
+            [format!(
+                "on {NEAR}, 1 of 3 minutes held, the worst 300.0 ms at p95 and 0.0% past 1 s at \
+                 11:25, best effort then unanswered"
+            )]
+            .as_slice(),
+        ),
+        "a mixed hour's minutes weren't each counted by why, or its held one misnamed"
+    );
+    let sliver = journal(&[
+        dark(0),
+        on(1, Some(NONE)),
+        on(2, Some(NONE)),
+        on(3, Some("unmeasured")),
+    ]);
+    let m = video(Some(&sliver), &TimeZone::UTC);
     assert!(
-        m.says.ends_with("this hour, of 1 read, 1 more with its video unanswered, 1 unread")
-            && (m.now - 1.0).abs() < f64::EPSILON,
-        "minutes unanswered or unread weren't said beside the one judged: {m:?}"
+        m.target.is_none()
+            && m.says.ends_with(
+                ": 1 of 4 Wi-Fi minutes judged (2 set aside, their video unanswered; 1 with no \
+                 video echo sent)"
+            ),
+        "an hour judged on under half its minutes was judged: {m:?}"
+    );
+    let past: Vec<String> = (0..10)
+        .map(|n| if n < 3 { dark(n) } else { on(n, Some(NONE)) })
+        .collect();
+    let m = video(Some(&journal(&past)), &TimeZone::UTC);
+    assert!(
+        m.past().is_some(),
+        "three held minutes went unjudged for the minutes set aside beside them: {m:?}"
     );
 }
 
@@ -155,7 +206,7 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
     assert_eq!(
         m.says,
         "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it past 1 s, \
-         this hour, of 6 read, 1 more with its video unanswered"
+         this hour, 6 of 7 Wi-Fi minutes judged (1 set aside, their video unanswered)"
     );
     assert!(
         (m.now - 4.0).abs() < f64::EPSILON && m.target == Some(TARGET) && m.past().is_some(),
@@ -192,22 +243,26 @@ fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why(
     let only = |message: &str| journal(&[entry(AT, message)]);
     let unmeasured = only(&said_by_wifid(NEAR, Some("unmeasured"), false));
     let older = only(&said_by_wifid(NEAR, None, false));
-    let lost = only(&said_by_wifid(NEAR, Some(LOST), false));
-    let unanswered = only(&said_by_wifid(NEAR, Some(NONE), false));
+    let first = only(&said_by_wifid(NEAR, Some(LOST), false));
     let other = only("wlp0s20f3 is done looking");
     for (text, why) in [
         (None, ": wifid's journal unread"),
         (
             Some(""),
-            ": no wifid line, so the journal may be unreadable here or wifid stopped",
+            ": no wifid line, as when wired or asleep, or the journal unread here",
         ),
         (Some(other.as_str()), ": no Wi-Fi minute"),
-        (Some(unmeasured.as_str()), ": no video echo sent"),
-        (Some(older.as_str()), ": wifid writes no video figure"),
-        (Some(lost.as_str()), ": 1 of wifid's minutes unread"),
         (
-            Some(unanswered.as_str()),
-            ": every minute's video went unanswered",
+            Some(unmeasured.as_str()),
+            ": 0 of 1 Wi-Fi minutes judged (1 with no video echo sent)",
+        ),
+        (
+            Some(older.as_str()),
+            ": 0 of 1 Wi-Fi minutes judged (1 from a wifid writing no video figure)",
+        ),
+        (
+            Some(first.as_str()),
+            ": 0 of 1 Wi-Fi minutes judged (1 from a wifid writing no video figure)",
         ),
     ] {
         let m = video(text, &TimeZone::UTC);
