@@ -4221,6 +4221,11 @@
     a floating surface over another, as the launcher's drawer over its card on a narrow screen,
     meets it with a square foot and region, its top and the card's foot staying round
   '';
+  the-drawer-search-keeps-pace = ''
+    a drawer's search over 400 lines of hyphenated names finds every line within six times the
+    same lines with no joiners take, and those within a multiple of the plainest search, in the
+    fastest of five processes
+  '';
   the-ergodox-command-reaches-the-board = ''
     `ergodox` writes each command whole to the board's channel alone, and nothing for --help or a
     word too many or too few

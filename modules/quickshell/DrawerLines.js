@@ -25,16 +25,15 @@ function runsOn(raw, kept) {
     return PARAGRAPH_BREAK.test(rest) ? null : rest;
 }
 
-// Pieces as lines, top to bottom, those sharing a baseline one line. A
-// line runs on into the next, as its last piece's `on` says, only where
-// the next is one piece of the same words: a fact's value runs on from
-// the line it shares with its name, but never into a line another text
-// shares, nor a search from one text into another but along a line.
+// Pieces as lines, top to bottom, those sharing a baseline one line, each
+// line's pieces its parts from left to right. Each piece keeps what it
+// wrapped at, its `on`, which a search runs on across into its own words'
+// piece on the next line, wherever on it that stands (DrawerPage.textsOf).
 function linesOf(pieces) {
     pieces.sort((one, other) => one.base - other.base || one.x - other.x);
     const found = [];
     const lineOf = piece => ({ base: piece.base, top: piece.top, height: piece.height,
-        caps: piece.caps, length: piece.length, on: piece.on ?? null, parts: [piece] });
+        caps: piece.caps, length: piece.length, parts: [piece] });
     for (const piece of pieces) {
         const line = found[found.length - 1];
         const together = line && Math.abs(line.base - piece.base) < 2;
@@ -57,11 +56,5 @@ function linesOf(pieces) {
             found.push(lineOf(piece));
         }
     }
-    found.forEach((line, at) => {
-        const next = found[at + 1];
-        const last = line.parts[line.parts.length - 1];
-        const into = next && next.parts.length === 1 && next.parts[0].words === last.words;
-        line.on = into ? last.on ?? null : null;
-    });
     return found;
 }

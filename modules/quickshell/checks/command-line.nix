@@ -6,6 +6,7 @@
   noFonts,
   pkgs,
   shellFolderLint,
+  timedQml,
   ...
 }:
 {
@@ -127,4 +128,18 @@
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml query-keys.qml
       touch $out
     '';
+
+  # A drawer's search over hyphenated names, as Emoji's every part is, keeps
+  # within a multiple of the same words with no joiners, and that within one of
+  # the plainest search there is, timed as the drawer runs it, DrawerPage.js's
+  # matchesIn, in at least one of five processes of Qt's own engine
+  # (modules/quickshell/tests/drawer-search-pace.qml).
+  the-drawer-search-keeps-pace = pkgs.runCommandLocal "the-drawer-search-keeps-pace" { } ''
+    cp ${../tests/drawer-search-pace.qml} drawer-search-pace.qml
+    ${copied [ "DrawerPage.js" ]}
+    export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+    export FONTCONFIG_FILE=${noFonts}
+    ${timedQml "drawer-search-pace.qml"}
+    touch $out
+  '';
 }

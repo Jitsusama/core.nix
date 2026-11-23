@@ -1110,46 +1110,7 @@ QtObject {
         // looking for nothing would find it in place for ever.
         holds("a pattern of joiners alone finds nothing",
             Search.found("\u2060\u200b", "a-\u2060b"), []);
-        searchKeepsPace(holds);
-    }
-
-    // A search over a drawer of hyphenated names, as Emoji's every part
-    // is, reads each line by its code rather than a letter at a time,
-    // which took a median 56 ms a key against 10 (2026-11-20). It's held to
-    // a multiple of the same lines with no joiners, which need no map: the
-    // fastest of five batches of ten each, a batch of one timed beside one
-    // of the other so both see the same machine, since a slower one is the
-    // builder's other work or the collector. A batch is long beside the
-    // clock's millisecond, so the bound needs no slack, and every search
-    // must find every line, so one quick from finding nothing passes none.
-    // By code took 2.8 times as long as with no joiners on a builder, and a
-    // letter at a time 12 (2026-11-22), so six holds one and refuses the
-    // other, twice over each way. It times the finder alone, as DrawerPage's
-    // walk over lines, the same with joiners or none, made it 3.0 and 6.4.
-    function searchKeepsPace(holds) {
-        const linesWith = joiner => Array.from({ length: 400 }, (_, at) =>
-            `Face-${joiner}with-${joiner}tears-${joiner}of-${joiner}joy ${at} \u00b7 `
-                + `t-${joiner}shirt \u00b7 wi-${joiner}fi \u00b7 pirate-${joiner}flag`);
-        const joined = linesWith("\u2060");
-        const plain = linesWith("");
-        const counts = new Set();
-        const batch = lines => {
-            const began = Date.now();
-            for (let round = 0; round < 10; round += 1) {
-                const find = Search.finder("shirt");
-                counts.add(lines.filter(line => find(line).length > 0).length);
-            }
-            return Date.now() - began;
-        };
-        let byCode = Infinity;
-        let bare = Infinity;
-        for (let pass = 0; pass < 5; pass += 1) {
-            byCode = Math.min(byCode, batch(joined));
-            bare = Math.min(bare, batch(plain));
-        }
-        holds("a search over joined words finds every line", [...counts], [400]);
-        holds(`and a batch of them takes ${byCode} ms, at most six of ${bare} ms`,
-            byCode <= 6 * bare, true);
+        // How fast a drawer's search runs is drawer-search-pace.qml's.
     }
 
     function drawerSearch(holds) {
@@ -1267,16 +1228,23 @@ QtObject {
             { at: 1, of: 3 });
         holds("the cursor off a match says none", Page.found(lines, "deploy", 1, 0), null);
         holds("nor where nothing's sought", Page.found(lines, "", 0, 0), null);
-        // A line Qt wrapped runs on into the next, as Vim's search runs on
-        // across its wrap, with what it broke at between them: a space, or
-        // nothing at a zero-width space or inside a word. A line's end,
-        // null, stops it, as Vim's does, as the wash reads its text whole.
+        // A text Qt wrapped runs on into its next line, as Vim's search runs
+        // on across its wrap, with what its piece broke at between them: a
+        // space, or nothing at a zero-width space or inside a word. Its end,
+        // null, stops it, as Vim's does, as the wash reads each text whole.
+        const part = (words, text, on) => ({ words, text, length: text.length, on });
+        const laid = (...parts) => {
+            const text = parts.map(each => each.text).join("");
+            return { text, length: text.length, parts };
+        };
+        const [server, sparkling, plain, pairs] = [{}, {}, {}, {}];
         const wrapped = [
-            { text: "Server time.\u200b", on: "" }, { text: "harbour.\u200btest", on: null },
-            { text: "Sparkling", on: " " }, { text: "heart", on: null },
-            { text: "plain", on: null }, { text: "end" },
-            { text: "aa x", on: " " }, { text: "bb", on: " " }, { text: "x cc", on: "  " },
-            { text: "dd", on: null }
+            laid(part(server, "Server time.\u200b", "")),
+            laid(part(server, "harbour.\u200btest", null)),
+            laid(part(sparkling, "Sparkling", " ")), laid(part(sparkling, "heart", null)),
+            laid(part(plain, "plain", null)), laid(part(plain, "end", null)),
+            laid(part(pairs, "aa x", " ")), laid(part(pairs, "bb", " ")),
+            laid(part(pairs, "x cc", "  ")), laid(part(pairs, "dd", null))
         ];
         const runningOn = [
             ["across every line of a wrap", "aa x bb x cc  dd", [[6, 0]]],
@@ -1293,6 +1261,29 @@ QtObject {
         for (const [what, pattern, want] of runningOn)
             holds(`the drawer's search runs on ${what}`,
                 Page.matchesIn(wrapped, pattern).map(match => [match.line, match.letter]), want);
+        // A fact's name and its value wrap side by side, each a text of its
+        // own along its own pieces, as the wash reads them: a search runs on
+        // along each, never from one into the other, and a piece's `on` with
+        // no next of its own words lands nowhere, the end of its text.
+        const [name, value, last] = [{}, {}, {}];
+        const beside = [
+            laid(part(name, "Where it", " "), part(value, "Toronto is", " ")),
+            laid(part(name, "lives", null), part(value, "Ottawa", null)),
+            laid(part(last, "ends now", " "))
+        ];
+        const besideOn = [
+            ["a value across its own wrap, beside its name's", "is Ottawa", [[0, 16]]],
+            ["a name across its own, beside its value's", "it lives", [[0, 6]]],
+            ["never from a name into its value", "itToronto", []],
+            ["nor from one on the next line", "livesOttawa", []],
+            ["each text's matches back in order down the page", "i", [[0, 6], [0, 16], [1, 1]]],
+            ["nor past a text's end, whatever its last piece wrapped at", "now ", []],
+            ["so a space finds only the spaces a text holds", " ",
+                [[0, 5], [0, 15], [1, 0], [1, 5], [2, 4]]]
+        ];
+        for (const [what, pattern, want] of besideOn)
+            holds(`the drawer's search runs on ${what}`,
+                Page.matchesIn(beside, pattern).map(match => [match.line, match.letter]), want);
     }
 
     // What would change the drawer, which a page can't be: Vim's E21, as
@@ -1940,28 +1931,20 @@ QtObject {
         ];
         for (const [what, raw, kept, want] of runsOn)
             holds(`a laid line runs on with ${what}`, Lines.runsOn(raw, kept), want);
-        // Which laid lines run on (DrawerLines.linesOf): only one of a
-        // single piece into its own words' next line, never into another
-        // text's or past the last, nor one that shares its baseline.
+        // How pieces become laid lines (DrawerLines.linesOf): those sharing
+        // a baseline one line, its parts left to right, each keeping what
+        // it wrapped at, which a search runs on with (DrawerPage.textsOf).
         const story = {};
         const label = {};
         const piece = (words, base, x, on) => ({ words, base, x, on, top: base - 8,
             height: 12, caps: 7, length: 4 });
-        const onOf = pieces => Lines.linesOf(pieces).map(line => line.on);
-        holds("a wrapped line runs on into its words' next",
-            onOf([piece(story, 8, 0, " "), piece(story, 32, 0, null)]), [" ", null]);
-        holds("but not into another text's",
-            onOf([piece(story, 8, 0, " "), piece(label, 32, 0, null)]), [null, null]);
-        holds("nor past the last line", onOf([piece(story, 8, 0, "")]), [null]);
-        holds("nor from a line another text ends",
-            onOf([piece(story, 8, 0, " "), piece(label, 8, 40, " "), piece(story, 32, 0, null)]),
-            [null, null]);
-        holds("but from one it shares, as a fact's value does with its name, into its own",
-            onOf([piece(label, 8, 0, null), piece(story, 8, 40, " "), piece(story, 32, 0, null)]),
-            [" ", null]);
-        holds("nor into a line another text shares",
-            onOf([piece(story, 8, 0, " "), piece(story, 32, 0, null), piece(label, 32, 40, null)]),
-            [null, null]);
+        const partsOf = pieces => Lines.linesOf(pieces)
+            .map(line => line.parts.map(each => [each.words === story ? "story" : "label",
+                each.on]));
+        holds("laid lines keep each piece's wrap, left to right along a baseline",
+            partsOf([piece(story, 8, 40, " "), piece(label, 8, 0, null),
+                piece(story, 32, 0, null)]),
+            [[["label", null], ["story", " "]], [["story", null]]]);
 
         // What visual takes (DrawerPage.chosen), from where it began to the
         // cursor, either way round, on lines ten letters long but the 3rd,

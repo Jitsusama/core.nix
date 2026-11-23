@@ -3,9 +3,9 @@
 // takes the cursor and the view, read apart from the drawing (Drawer.qml)
 // so tests/query-keys.qml can hold it in Qt's own engine.
 //
-// A page is its lines, each { top, height, length, text, on } in pixels
-// down the drawer's content, letters along it, the words it says and what
-// it wrapped at (DrawerLines.js), as Qt laid them out, in order; the
+// A page is its lines, each { top, height, length, text, parts } in pixels
+// down the drawer's content, letters along it, the words it says and the
+// pieces of texts it holds (DrawerLines.js), as Qt laid them out, in order; the
 // cursor's line and letter, and `want`, how far along the line it wants to
 // be, as Vim's curswant keeps the column j and k go back to; the view's top
 // and height, and `end`, the furthest its top goes; the pitch its body's
@@ -46,51 +46,74 @@ function margin(page) {
 }
 
 // Every match of a search in lines as they're shown, as { line, letter },
-// in order down the page, matched by smartcase as Search.js matches. A
-// line Qt wrapped runs on into the next with what it broke at between
-// them, its `on`, as Vim's search runs on across its wrap and the wash
-// reads a text whole; a line's end, an `on` of null or none, stops it.
+// in order down the page, matched by smartcase as Search.js matches. It
+// reads each text whole, as the wash does: along its pieces, wherever on
+// a line each stands, and on across a line Qt wrapped with what the piece
+// broke at, its `on`, as Vim's search runs on across its wrap. A text's
+// end, or a piece's `on` of null or none, stops it, and so does another
+// text beside it, which the wash never runs into either. Matches never
+// overlap, as the wash's don't, so one crossing a wrap takes letters
+// another would have begun the next line with.
 function matchesIn(lines, pattern) {
     const find = Search.finder(pattern);
     const matches = [];
-    for (let first = 0; first < lines.length;) {
-        const { wrap, text } = wrappedFrom(lines, first);
+    for (const { text, places } of textsOf(lines)) {
         let along = 0;
         for (const [start] of find(text)) {
-            while (along + 1 < wrap.length && wrap[along + 1].from <= start) {
+            while (along + 1 < places.length && places[along + 1].from <= start) {
                 along += 1;
             }
-            // One begun at the spaces a line wrapped at lands on the next,
-            // and so do all the others begun there, one place to the eye.
-            const { line, from, length } = wrap[along];
-            const match = start - from < length || along + 1 === wrap.length
-                ? { line, letter: start - from } : { line: wrap[along + 1].line, letter: 0 };
-            const before = matches[matches.length - 1];
-            if (before?.line !== match.line || before?.letter !== match.letter) {
-                matches.push(match);
-            }
+            // One begun at the spaces a piece wrapped at lands on the
+            // next, which a text's `on` is only ever put before.
+            const { line, at, from, length } = places[along];
+            const next = places[along + 1];
+            matches.push(start - from < length ? { line, letter: at + start - from }
+                : { line: next.line, letter: next.at });
         }
-        first = wrap[wrap.length - 1].line + 1;
     }
-    return matches;
+    // Texts side by side are read one after the other, so their matches
+    // go back in order down the page, those begun at one wrap's spaces
+    // one place to the eye.
+    matches.sort((one, other) => one.line - other.line || one.letter - other.letter);
+    return matches.filter((match, at) => at === 0 || match.line !== matches[at - 1].line
+        || match.letter !== matches[at - 1].letter);
 }
 
-// The lines from `first` as each Qt wrapped runs on into the next, each
-// with where its letters start in their text.
-function wrappedFrom(lines, first) {
-    const wrap = [];
-    let text = "";
-    for (let line = first; line < lines.length; line += 1) {
-        const said = lines[line].text ?? "";
-        wrap.push({ line, from: text.length, length: said.length });
-        text += said;
-        const on = lines[line].on ?? null;
-        if (on === null) {
-            break;
+// Each text on the lines, its letters along its pieces as one, with what
+// each piece wrapped at between it and the next: { text, places }, each
+// place { line, at, from, length }, its piece's line, its first letter
+// there and in the text, and how many letters it has. A line's parts are
+// its pieces, each { words, length, on } (DrawerLines.linesOf), its text
+// theirs in turn; a line with none is one piece of a text of its own. A
+// piece runs on only into its own words' piece on the very next line.
+function textsOf(lines) {
+    const texts = [];
+    let open = new Map();
+    lines.forEach((line, at) => {
+        const said = line.text ?? "";
+        const parts = line.parts ?? [{ words: line, length: said.length, on: null }];
+        const going = new Map();
+        let letter = 0;
+        for (const { words, length, on } of parts) {
+            const was = open.get(words);
+            const text = was?.text ?? { text: "", places: [] };
+            if (was) {
+                text.text += was.on;
+            } else {
+                texts.push(text);
+            }
+            const letters = said.slice(letter, letter + length);
+            text.places.push({ line: at, at: letter, from: text.text.length,
+                length: letters.length });
+            text.text += letters;
+            if ((on ?? null) !== null) {
+                going.set(words, { text, on });
+            }
+            letter += length;
         }
-        text += on;
-    }
-    return { wrap, text };
+        open = going;
+    });
+    return texts;
 }
 
 // Which match the cursor stands on, of how many, as { at, of } counting
@@ -109,9 +132,9 @@ function found(lines, pattern, line, letter) {
 // count going on that many, round past either end as Vim's wrapscan does,
 // `wrapped` naming the end it went round, "bottom" or "top", as the rows'
 // Finding.matchTo does, else ""; matched by smartcase as Search.js
-// matches. A match runs on across a line Qt wrapped but never a line's
-// end (matchesIn), and the view follows the cursor there as a move's
-// does.
+// matches. A match runs on across a text's wrap but never past its end
+// nor into another text (matchesIn), and the view follows the cursor
+// there as a move's does.
 function sought(page, pattern, forward, count) {
     const matches = matchesIn(page.lines, pattern);
     if (matches.length === 0) {
