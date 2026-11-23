@@ -1,12 +1,14 @@
 # shellcheck shell=bash # The check runs it with bash.
-# Runs chunks-given-back.sh, the script named first, with a stand-in for
-# btrfs that answers only the two calls the script may make, on /. Its
-# usage says the disk's size and the bytes in no chunk, kept in files,
-# and each balance step adds what a file of steps gives that step, or
-# fails for a step named in it as failing. It balances only by night and
-# while short, stops at the first step that frees enough, goes past a
-# step that fails, stops at half-full chunks, and fails when it ends
-# short or can't read the usage.
+# Runs chunks-given-back.sh, the script named first, with stand-ins for
+# btrfs, date and timeout, each answering only the calls the script may
+# make. btrfs's usage says the disk's size and the bytes in no chunk,
+# kept in files, and each balance step adds what a file of steps gives
+# that step, fails, or runs until timeout ends it at 06:00. date reads a
+# clock a step can move, and timeout notes each step's deadline. It
+# balances only from 01:00 to 06:00 and while short, ends a step at
+# 06:00, stops at the first step that frees enough, goes past a step
+# that fails, stops at half-full chunks, and fails when it ends short or
+# can't read the usage.
 set -euo pipefail
 
 given=$1
@@ -33,16 +35,44 @@ if [ "\$#" -ne 4 ] || [ "\$1 \$2" != "balance start" ] || [ "\$4" != / ] \
 fi
 step=\${3#-dusage=}
 echo "\$step" >>"$work/steps"
-gives=\$(awk -v step="\$step" '\$1 == step { print \$2 }' "$work/gives")
-if [ "\$gives" = fails ]; then
-  exit 1
+read -r gives after < <(awk -v step="\$step" '\$1 == step { print \$2, \$3 }' "$work/gives")
+if [ -n "\${after:-}" ]; then
+  echo "\$after" >"$work/clock"
 fi
-echo \$((\$(cat "$work/free") + \${gives:-0})) >"$work/free"
+case "\${gives:-0}" in
+fails) exit 1 ;;
+ends)
+  echo 06:00:00 >"$work/clock"
+  exit 124
+  ;;
+*) echo \$((\$(cat "$work/free") + \${gives:-0})) >"$work/free" ;;
+esac
 EOF
-chmod +x "$work/bin/btrfs"
+
+cat >"$work/bin/date" <<EOF
+#!$BASH
+if [ "\$*" != "+%H:%M:%S" ]; then
+  echo "the stand-in for date was asked: \$*" >&2
+  exit 99
+fi
+cat "$work/clock"
+EOF
+
+cat >"$work/bin/timeout" <<EOF
+#!$BASH
+if [ "\$1" != --kill-after=60 ] || ! [[ \$2 =~ ^[0-9]+$ ]] || [ "\$3" != btrfs ]; then
+  echo "the stand-in for timeout was asked: \$*" >&2
+  exit 99
+fi
+echo "\$2" >>"$work/deadlines"
+shift 2
+exec "\$@"
+EOF
+chmod +x "$work/bin/btrfs" "$work/bin/date" "$work/bin/timeout"
 
 # A disk of SIZE GiB with FREE GiB in no chunk, whose steps give what
-# each line of the rest says: a step's fullness, then GiB or "fails".
+# each line of the rest says: a step's fullness, then GiB, "fails" or
+# "ends", and the clock after it, if the step moves it.
 disk() {
   rm -f "$work/garbled"
   echo $(($1 * gib)) >"$work/size"
@@ -50,20 +80,21 @@ disk() {
   shift 2
   : >"$work/steps"
   : >"$work/gives"
+  : >"$work/deadlines"
   for line in "$@"; do
-    read -r step gives <<<"$line"
-    if [ "$gives" = fails ]; then
-      echo "$step fails" >>"$work/gives"
-    else
-      echo "$step $((gives * gib))" >>"$work/gives"
-    fi
+    read -r step gives after <<<"$line"
+    case "$gives" in
+    fails | ends) echo "$step $gives $after" >>"$work/gives" ;;
+    *) echo "$step $((gives * gib)) $after" >>"$work/gives" ;;
+    esac
   done
 }
 
-# Runs the script at HOUR (03 unless given), and says how it ended.
+# Runs the script at CLOCK (03:00:00 unless given), and notes how it ended.
 give() {
   local status=0
-  HOUR=${HOUR:-03} PATH="$work/bin:$PATH" bash "$given" / >/dev/null 2>"$work/err" || status=$?
+  echo "${CLOCK:-03:00:00}" >"$work/clock"
+  PATH="$work/bin:$PATH" bash "$given" / >/dev/null 2>"$work/err" || status=$?
   echo "$status" >"$work/status"
 }
 
@@ -74,6 +105,15 @@ expect() {
   if [ "$steps" != "$1" ] || [ "$status" != "$2" ]; then
     echo "$3, but the steps run were '$steps' and it ended $status, not '$1' and $2"
     cat "$work/err"
+    exit 1
+  fi
+}
+
+expect_deadlines() {
+  local deadlines
+  deadlines=$(tr '\n' ' ' <"$work/deadlines")
+  if [ "$deadlines" != "$1" ]; then
+    echo "$2, but the steps' deadlines were '$deadlines', not '$1'"
     exit 1
   fi
 }
@@ -89,6 +129,7 @@ expect "" 0 "a small disk with a tenth of it in no chunk is left alone"
 disk 950 0 "0 5" "5 10" "10 40" "20 40"
 give
 expect "0 5 10 " 0 "balancing stops at the first step that frees enough"
+expect_deadlines "10800 10800 10800 " "each step at 03:00 is given until 06:00"
 
 disk 950 0 "0 50"
 give
@@ -112,9 +153,30 @@ give
 expect "" 65 "usage it can't read balances nothing and fails"
 
 disk 950 0 "0 50"
-HOUR=09 give
+CLOCK=09:00:00 give
 expect "" 0 "a start by day balances nothing"
 
 disk 950 0 "0 50"
-HOUR=00 give
+CLOCK=00:59:59 give
 expect "" 0 "a start before 01:00 balances nothing"
+
+disk 950 0 "0 50"
+CLOCK=06:00:00 give
+expect "" 0 "a start at 06:00 balances nothing"
+
+disk 950 0 "0 50"
+CLOCK=01:00:00 give
+expect "0 " 0 "a start at 01:00 balances"
+
+disk 950 0 "0 50"
+CLOCK=05:59:00 give
+expect "0 " 0 "a step begun a minute before 06:00 runs"
+expect_deadlines "60 " "a step begun a minute before 06:00 is given that minute"
+
+disk 950 0 "0 1 06:00:00" "5 50"
+CLOCK=05:00:00 give
+expect "0 " 1 "a night that reaches 06:00 between steps stops and fails short"
+
+disk 950 0 "0 ends" "5 50"
+CLOCK=05:30:00 give
+expect "0 " 1 "a step ended at 06:00 is the last, and the night fails short"

@@ -10,11 +10,12 @@
 #
 #   chunks-given-back MOUNT   MOUNT a Btrfs file system's mount point
 #
-# It balances only from 01:00 to 06:00, checked before each step, since a
-# laptop asleep at night fires its timer as it wakes and a switch can
-# fire it at any hour. A step that fails is said and the next is tried,
-# since a fuller step can find room an emptier one didn't. HOUR stands in
-# for the clock's hour, for its check. Its help and failures take the
+# It balances only from 01:00 to 06:00, since a laptop asleep at night
+# fires its timer as it wakes and a switch can fire it at any hour: it
+# starts no step outside those hours, and a step still running at 06:00
+# is ended, which the kernel takes as cancelling the balance once the
+# chunk in hand is moved. A step that fails is said and the next is
+# tried, since a fuller step can find room an emptier one didn't. Its help and failures take the
 # shape every command of ours does (docs/commands.md), by hand.
 set -euo pipefail
 
@@ -64,20 +65,24 @@ usage() {
   echo "$bytes"
 }
 
-# Reads the clock's hour into hour, as a number, so the night's hours can
-# be checked without a function in a condition, where set -e is off.
-read_hour() {
-  local clock=${HOUR:-}
-  if [ -z "$clock" ]; then
-    clock=$(date +%H)
+# Reads into left the seconds until 06:00, or 0 outside 01:00 to 06:00,
+# so the night's hours can be checked without a function in a condition,
+# where set -e is off.
+read_clock() {
+  local now hours minutes seconds since
+  now=$(date +%H:%M:%S)
+  IFS=: read -r hours minutes seconds <<<"$now"
+  since=$((10#$hours * 3600 + 10#$minutes * 60 + 10#$seconds))
+  left=0
+  if [ "$since" -ge 3600 ] && [ "$since" -lt 21600 ]; then
+    left=$((21600 - since))
   fi
-  hour=$((10#$clock))
 }
 
 gib=$((1024 * 1024 * 1024))
 
-read_hour
-if [ "$hour" -lt 1 ] || [ "$hour" -ge 6 ]; then
+read_clock
+if [ "$left" -eq 0 ]; then
   echo "it's outside 01:00 to 06:00, so nothing is balanced until the night"
   exit 0
 fi
@@ -96,13 +101,17 @@ fi
 echo "$((free / gib)) GiB of $mount is in no chunk, short of $((want / gib)), so data chunks are balanced"
 ran=0
 for full in 0 5 10 20 30 40 50; do
-  read_hour
-  if [ "$hour" -lt 1 ] || [ "$hour" -ge 6 ]; then
+  read_clock
+  if [ "$left" -eq 0 ]; then
     echo "it's past 06:00 with $((free / gib)) GiB in no chunk, so the rest waits for the next night"
     exit 1
   fi
-  if btrfs balance start -dusage="$full" "$mount"; then
+  status=0
+  timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" || status=$?
+  if [ "$status" -eq 0 ]; then
     ran=$((ran + 1))
+  elif [ "$status" -eq 124 ]; then
+    echo "balancing data chunks up to $full% full was ended at 06:00"
   else
     echo "balancing data chunks up to $full% full failed, so the next step is tried"
   fi
