@@ -92,13 +92,17 @@ fn waited(turns: &Path, name: &str, count: u32) -> io::Result<fs::File> {
 }
 
 /// One of `count` turns named `name`, locked, if any is free: a turn is
-/// a file's lock, so a run that dies gives its turn back with it.
+/// a file's lock, so a run that dies gives its turn back with it. A turn's
+/// file that's a link isn't followed, so none points a lock at a file of
+/// this account's elsewhere.
 fn free(turns: &Path, name: &str, count: u32) -> io::Result<Option<fs::File>> {
+    use std::os::unix::fs::OpenOptionsExt;
     for turn in 1..=count {
         let file = fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
+            .custom_flags(libc::O_NOFOLLOW)
             .open(turns.join(format!("{name}-{turn}")))?;
         match file.try_lock() {
             Ok(()) => return Ok(Some(file)),
