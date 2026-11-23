@@ -1,0 +1,122 @@
+// The cases of realtime.rules, run by duktape, polkit's own engine, after
+// modules/slices/agents-ask-polkit.rules, which stands in for polkitd,
+// polkit's init.js and the 10-nixos.rules of a workstation with the
+// Pebble X Plus's tuning chain as polkitd reads it (modules/pipewire/
+// checks.nix). Each sound case is asked both by the account with no
+// session at the seat yet, as PipeWire is when the account's manager
+// starts it, and with one, so the grant is shown to go by place alone.
+var account = "/user.slice/user-1000.slice/user@1000.service/";
+var where = {
+  pipewire: account + "session.slice/pipewire.service",
+  pulse: account + "session.slice/pipewire-pulse.service",
+  wireplumber: account + "session.slice/wireplumber.service",
+  chain: account + "session.slice/pebble-x-plus-tuning.service",
+  chainInApps: account + "app.slice/pebble-x-plus-tuning.service",
+  another: "/user.slice/user-1001.slice/user@1001.service/session.slice/pipewire.service",
+  below: account + "session.slice/pipewire-pulse.service/sub",
+  stray: account + "app.slice/run-u21.service",
+  service: account + "session.slice/jobs-sorter.service",
+  suffixed: account + "session.slice/pipewire-x.service",
+  mismatched: "/user.slice/user-1000.slice/user@1001.service/session.slice/pipewire.service",
+  app: account + "app.slice/app-niri-kitty-41.scope",
+  near: account + "session.slice.d/pipewire.service",
+  system: "/system.slice/pipewire.service",
+  brokered: account + "app.slice/pi-jobs-qestabc-1.scope",
+  markedBelow: account + "app.slice/pebble-x-plus-tuning.service/pi-jobs-q-1.scope",
+  host: account + "agents.slice/pi-host-work-background.service",
+  command: account + "jobs.slice/jobs.service",
+  work: account + "jobs.slice/jobs-work.slice/run-u7.service",
+};
+var pids = {};
+var next = 10;
+for (var place in where) {
+  pids[place] = next;
+  processes[next] = where[place];
+  next += 1;
+}
+
+function asker(pid, atTheSeat) {
+  var subject = new Subject();
+  subject.pid = pid;
+  subject.user = "jitsusama";
+  subject.groups = ["users", "wheel"];
+  subject.seat = atTheSeat ? "seat0" : "";
+  subject.session = atTheSeat ? "2" : "1";
+  subject.local = atTheSeat;
+  subject.active = atTheSeat;
+  return subject;
+}
+
+function asking(id) {
+  var action = new Action();
+  action.id = id;
+  return action;
+}
+
+var failed = 0;
+function expectOf(what, action, place, said, atTheSeat) {
+  var answer = polkit._runRules(action, asker(pids[place] || 99, atTheSeat));
+  if (answer !== said) {
+    failed += 1;
+    print("FAIL " + what + " from " + place + ": " + answer + ", not " + said);
+  }
+}
+function expect(what, action, place, said) {
+  expectOf(what, action, place, said, false);
+}
+
+var realTime = asking("org.freedesktop.RealtimeKit1.acquire-real-time");
+var highPriority = asking("org.freedesktop.RealtimeKit1.acquire-high-priority");
+// PipeWire's three, a tuning chain in either slice, and another account's
+// own PipeWire take real time and a high priority, before the seat has a
+// session and after.
+var sound = ["pipewire", "pulse", "wireplumber", "chain", "chainInApps", "another"];
+for (var i = 0; i < sound.length; i += 1) {
+  expect("real time", realTime, sound[i], "yes");
+  expect("a high priority", highPriority, sound[i], "yes");
+  expectOf("real time at the seat", realTime, sound[i], "yes", true);
+}
+// Anything else of the account's keeps rtkit's own answer: a process below
+// a sound service, a unit systemd-run starts in app.slice, another
+// service, a near name, a manager not the slice's own account's, an app's
+// scope, and the system's units.
+var others = [
+  "below",
+  "stray",
+  "service",
+  "suffixed",
+  "mismatched",
+  "app",
+  "near",
+  "system",
+];
+for (var j = 0; j < others.length; j += 1) {
+  expect("real time", realTime, others[j], null);
+  expect("a high priority", highPriority, others[j], null);
+}
+// Agents' places, an agent's mark below a sound service among them, and a
+// process gone, are refused, as agents-ask-last.rules refuses what
+// nothing grants them.
+var agents = ["brokered", "markedBelow", "host", "command", "work", "gone"];
+for (var k = 0; k < agents.length; k += 1) {
+  expect("real time", realTime, agents[k], "no");
+  expect("a high priority", highPriority, agents[k], "no");
+}
+// Another action from a sound service is no business of the rule's.
+expect("another action", asking("org.example.another"), "pipewire", null);
+
+// Each grant leaves its line, naming the process and where it runs.
+var granted = "granted org.freedesktop.RealtimeKit1.acquire-real-time to pid " + pids.pipewire;
+var said = false;
+for (var n = 0; n < logged.length; n += 1) {
+  said = said || logged[n] === granted + " in " + where.pipewire;
+}
+if (!said) {
+  failed += 1;
+  print("FAIL PipeWire's grant left no line saying so");
+}
+
+if (failed > 0) {
+  throw new Error(failed + " cases failed");
+}
+print("every case held");
