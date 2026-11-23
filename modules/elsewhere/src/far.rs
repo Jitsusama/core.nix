@@ -240,17 +240,29 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<String>, String> {
 /// Leaves `paths`, files of the tree at `root`, in the job's folder of
 /// the handover as archives each a share carries whole, and lists the
 /// archives last so the list is never ahead of them, each at the size it
-/// was written at.
+/// was written at. It answers the bytes they take in all.
 pub fn left<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
     job: &Path,
 ) -> io::Result<u64> {
+    leave(root, paths, job, LARGEST_FILE, MOST_BYTES)
+}
+
+/// What `left` does, with archives each at most `most` bytes, and `all`
+/// in all, so a test can leave several without writing 64 MiB.
+fn leave<'a>(
+    root: &Path,
+    paths: impl IntoIterator<Item = &'a str>,
+    job: &Path,
+    most: u64,
+    all: u64,
+) -> io::Result<u64> {
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
     let mut bytes = 0;
-    for part in archive::write(root, paths, &tree, LARGEST_FILE)? {
+    for part in archive::write(root, paths, &tree, most, all)? {
         // Writing to a String can't fail.
         let _ = writeln!(list, "{}\t{}", part.size, part.name);
         bytes += part.size;
@@ -264,10 +276,10 @@ pub fn left<'a>(
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
 /// for the job's archives, `bytes` in all, to cross, unpacks them in
 /// `scratch` within the quest's own scratch there, the one folder a
-/// strict fence lets it write, runs the kind's setup and then the job, its program found on
-/// the far path by its name, in the job's folder `within` the tree, then
-/// leaves what the kind brings back in the handover and takes its copy
-/// away.
+/// strict fence lets it write, runs the kind's setup and then the job,
+/// its program found on the far path by its name, in the job's folder
+/// `within` the tree, then leaves what the kind brings back in the
+/// handover and takes its copy away.
 pub fn script(
     quest: &str,
     id: &str,

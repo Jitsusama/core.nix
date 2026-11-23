@@ -177,7 +177,8 @@ fn every_archive_is_unpacked_in_turn_into_one_tree() {
     std::fs::write(made.join("in/d/c"), "3").unwrap();
     // Room for one file's entry and the close, so each goes in its own.
     let most = archive::taken("d/b", 1) + archive::CLOSED;
-    let parts = archive::write(&made.join("in"), ["a", "d/b", "d/c"], &made, most).unwrap();
+    let parts =
+        archive::write(&made.join("in"), ["a", "d/b", "d/c"], &made, most, u64::MAX).unwrap();
     assert_eq!(parts.len(), 3, "the files didn't go in an archive each");
     let texts: Vec<_> = parts
         .iter()
@@ -228,7 +229,7 @@ fn a_link_one_archive_makes_is_refused_before_the_next_writes_through_it() {
     let first = String::from_utf8(first.stdout).unwrap();
     std::fs::create_dir_all(made.join("second/l")).unwrap();
     std::fs::write(made.join("second/l/f"), "through").unwrap();
-    archive::write(&made.join("second"), ["l/f"], &made, 1 << 20).unwrap();
+    archive::write(&made.join("second"), ["l/f"], &made, 1 << 20, u64::MAX).unwrap();
     let second = String::from_utf8(std::fs::read(made.join("0.tar")).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&made);
     let list = format!("{}\t0.tar\n{}\t1.tar\nend\n", first.len(), second.len());
@@ -258,7 +259,7 @@ fn an_archive_naming_a_member_outside_its_tree_is_refused_before_it_s_unpacked()
     let made = scratch("climbing");
     std::fs::create_dir_all(made.join("in")).unwrap();
     std::fs::write(made.join("out"), "no").unwrap();
-    let parts = archive::write(&made.join("in"), ["../out"], &made, 1 << 20).unwrap();
+    let parts = archive::write(&made.join("in"), ["../out"], &made, 1 << 20, u64::MAX).unwrap();
     assert_eq!(parts.len(), 1, "one file made other than one archive");
     let text = String::from_utf8(std::fs::read(made.join("0.tar")).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&made);

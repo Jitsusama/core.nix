@@ -48,6 +48,7 @@ fn what_goes_in_comes_out_of_the_system_s_tar_as_it_was() {
         files.iter().map(|(path, _)| *path),
         &parts,
         1 << 20,
+        u64::MAX,
     )
     .unwrap();
     assert_eq!(
@@ -92,7 +93,7 @@ fn a_tree_past_one_archive_is_split_over_several_each_within_the_most() {
     std::fs::create_dir_all(&parts).unwrap();
     // Room for one 600 byte file's header, data and close, not two.
     let most = 3000;
-    let written = write(&root, names, &parts, most).unwrap();
+    let written = write(&root, names, &parts, most, u64::MAX).unwrap();
     assert_eq!(
         written
             .iter()
@@ -136,7 +137,7 @@ fn what_a_file_takes_is_its_entry_and_the_archives_stay_within_their_bound() {
     // Alone, each file's archive is what it takes and a close, a pax
     // header and all.
     for (path, size) in files {
-        let alone = write(&tree, [path], &parts, 1 << 20).unwrap();
+        let alone = write(&tree, [path], &parts, 1 << 20, u64::MAX).unwrap();
         assert_eq!(
             alone[0].size,
             takes(path, size) + CLOSED,
@@ -145,12 +146,17 @@ fn what_a_file_takes_is_its_entry_and_the_archives_stay_within_their_bound() {
     }
     // Two files fit one archive at just their room, and not a byte less.
     let both = takes("a", 600) + takes("c", 513) + CLOSED;
-    assert_eq!(write(&tree, ["a", "c"], &parts, both).unwrap().len(), 1);
-    assert_eq!(write(&tree, ["a", "c"], &parts, both - 1).unwrap().len(), 2);
+    let fall = |most| {
+        write(&tree, ["a", "c"], &parts, most, u64::MAX)
+            .unwrap()
+            .len()
+    };
+    assert_eq!(fall(both), 1);
+    assert_eq!(fall(both - 1), 2);
     // However they fall, the archives come to no more than their bound.
     let all: u64 = files.iter().map(|&(path, size)| takes(path, size)).sum();
     for most in [both - 1, both, 6 * 1024, 1 << 20] {
-        let written = write(&tree, files.map(|(path, _)| path), &parts, most).unwrap();
+        let written = write(&tree, files.map(|(path, _)| path), &parts, most, u64::MAX).unwrap();
         let came: u64 = written.iter().map(|part| part.size).sum();
         assert!(
             came <= archived(all, most),
@@ -167,13 +173,67 @@ fn a_file_no_archive_within_the_most_holds_is_refused() {
     std::fs::write(root.join("big"), [0u8; 2000]).unwrap();
     let parts = root.join("parts");
     std::fs::create_dir_all(&parts).unwrap();
-    let refused = write(&root, ["big"], &parts, 2048);
+    let refused = write(&root, ["big"], &parts, 2048, u64::MAX);
     assert!(
         refused
             .as_ref()
             .is_err_and(|error| error.to_string().contains("big is past the 2048 bytes")),
         "a file past the most was written: {refused:?}"
     );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_file_itself_past_the_most_is_refused_as_it_is_opened_not_once_read() {
+    let root = crate::far::tests::scratch("archive-larger");
+    std::fs::write(root.join("big"), [0u8; 3000]).unwrap();
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    let refused = write(&root, ["big"], &parts, 2048, u64::MAX);
+    // The opened file's own path names it, where an entry found too big
+    // once read would be named by its path in the tree.
+    let opened = format!("{} is past the 2048 bytes", root.join("big").display());
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|error| error.to_string().starts_with(&opened)),
+        "a file past the most was read before it was refused: {refused:?}"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
+    let root = crate::far::tests::scratch("archive-total");
+    let names = ["a", "b", "c"];
+    for name in names {
+        std::fs::write(root.join(name), [b'x'; 600]).unwrap();
+    }
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    // One file an archive, and room in all for two of them.
+    let one = taken("a", 600) + CLOSED;
+    let written = write(&root, ["a", "b"], &parts, 3000, 2 * one).unwrap();
+    assert_eq!(
+        written.len(),
+        2,
+        "two archives within the total weren't written"
+    );
+    for all in [2 * one, 3 * one - 1] {
+        let _ = std::fs::remove_dir_all(&parts);
+        std::fs::create_dir_all(&parts).unwrap();
+        let refused = write(&root, names, &parts, 3000, all);
+        assert!(
+            refused.as_ref().is_err_and(|error| error
+                .to_string()
+                .contains(&format!("c would take the archives past the {all} bytes"))),
+            "a third archive past {all} bytes in all wasn't refused: {refused:?}"
+        );
+        assert!(
+            !parts.join("2.tar").exists(),
+            "the archive past the total was begun before it was refused"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -190,7 +250,7 @@ fn a_link_or_a_pipe_in_a_file_s_place_is_refused_not_followed_or_waited_on() {
     let parts = root.join("parts");
     std::fs::create_dir_all(&parts).unwrap();
     for name in ["link", "pipe"] {
-        let refused = write(&root, [name], &parts, 1 << 20);
+        let refused = write(&root, [name], &parts, 1 << 20, u64::MAX);
         assert!(
             refused.as_ref().is_err_and(|error| error
                 .to_string()
