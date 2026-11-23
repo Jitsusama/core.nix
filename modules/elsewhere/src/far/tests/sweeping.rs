@@ -1,8 +1,10 @@
 //! The far line clearing the copies of runs here that are gone: which it
-//! clears, which it leaves, and that it never reaches through a link.
+//! clears, which it leaves, and that it never reaches through a link, nor
+//! writes through one a job left among the copies or in its handover.
 
-use super::{Left, far_line, far_line_in, kind, scratch, work};
+use super::{Left, far_line, far_line_in, handover, kind, scratch, work};
 use crate::far::steps::{RUN, sweeping};
+use crate::far::{BROUGHT, HANDOVER};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -155,6 +157,8 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     // A run's file that names no number, and one that is empty.
     copy(&runs, "5", &format!("x {here}"));
     copy(&runs, "8", "");
+    // One that says more than a run writes, which no run here wrote.
+    copy(&runs, "12", &format!("{gone} {here} more"));
     // A run this sweep may not signal, which may well be alive: launchd,
     // on a Mac. In a Linux build's sandbox, the first process is the
     // build's own, alive either way.
@@ -179,6 +183,8 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     let kept = [
         "10",
         "10.run",
+        "12",
+        "12.run",
         "3",
         "3.back",
         "3.back.run",
@@ -227,7 +233,10 @@ exec rm \"$@\""
     let said = sweep_with(&runs.join("9"), &[("rm", &rm)]);
     assert_eq!(
         said,
-        format!("elsewhere: couldn't clear {}\n", runs.join(job).display()),
+        format!(
+            "elsewhere: couldn't clear {}, an earlier run's copy\n",
+            runs.join(job).display()
+        ),
         "the sweep didn't name the copy it couldn't clear, once and alone"
     );
     assert_eq!(
@@ -372,6 +381,70 @@ exec uname \"$@\"";
 }
 
 #[test]
+fn a_link_at_the_copies_folder_is_cleared_rather_than_written_through() {
+    // A uname that, the first time it's asked, leaves the copies' folder
+    // a link to a folder beyond them.
+    let uname = "PATH=${PATH#*:}
+runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+if mkdir \"$HOME/planting\" 2>/dev/null; then
+  mkdir \"$HOME/beyond\" && ln -s \"$HOME/beyond\" \"$runs\" && touch \"$HOME/planted\"
+fi
+exec uname \"$@\"";
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "1")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[("uname", uname)],
+    );
+    assert!(
+        home.join("planted").exists(),
+        "no link was put at the copies' folder ({code:?}): {err}"
+    );
+    let runs = work(&home);
+    assert!(
+        code == Some(0)
+            && !std::fs::symlink_metadata(&runs).unwrap().is_symlink()
+            && runs.join("ran").exists(),
+        "the job didn't run in a copies' folder of its own ({code:?}): {err}"
+    );
+    assert!(
+        left_in(&home.join("beyond")).is_empty(),
+        "the far line wrote through the link at the copies' folder"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_link_a_job_leaves_at_what_it_brings_back_is_never_written_through() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // From its copy, a job reaches the lists of what it brings back,
+    // beside the copy and in the handover.
+    let job = format!(
+        "mkdir out && printf a > out/a && echo kept > \"$HOME/beyond\" &&
+         ln -s \"$HOME/beyond\" ../1.back && ln -s \"$HOME/beyond\" ../1.back.lost &&
+         ln -s \"$HOME/beyond\" ../../{HANDOVER}/1/{BROUGHT}"
+    );
+    let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
+    assert_eq!(
+        std::fs::read_to_string(home.join("beyond")).unwrap_or_default(),
+        "kept\n",
+        "what's brought back was written through a link the job left ({code:?}): {err}"
+    );
+    let list = handover(&home).join(BROUGHT);
+    let listed = std::fs::read_to_string(&list).unwrap_or_default();
+    assert!(
+        code == Some(0)
+            && !std::fs::symlink_metadata(&list).unwrap().is_symlink()
+            && listed == "1\tout/a\nend\n",
+        "what the job made wasn't listed whole in a list of its own ({code:?}): {listed:?} {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_linux_far_line_that_cant_read_its_process_space_clears_nothing() {
     let root = scratch("far-swept-unknown");
     let runs = root.join("s");
@@ -411,11 +484,12 @@ fn a_far_line_clears_a_gone_run_s_copy_and_leaves_nothing_of_its_own() {
     // here that has gone, as the far line begins.
     let uname = "PATH=${PATH#*:}
 runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
-if mkdir \"$HOME/left\" 2>/dev/null; then
+if mkdir \"$HOME/leaving\" 2>/dev/null; then
   sh -c : & gone=$!
   wait \"$gone\"
   mkdir -p \"$runs/7\" && touch \"$runs/7/f\" &&
-    printf '%s %s %s\\n' \"$gone\" \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" > \"$runs/7.run\"
+    printf '%s %s %s\\n' \"$gone\" \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" > \"$runs/7.run\" &&
+    printf '%s' \"$runs\" > \"$HOME/left\"
 fi
 exec uname \"$@\"";
     let (code, err, home) = far_line(
@@ -430,7 +504,12 @@ exec uname \"$@\"";
         code == Some(0) && work(&home).join("ran").exists(),
         "the job never ran ({code:?}): {err}"
     );
-    assert!(home.join("left").exists(), "no gone run's copy was left");
+    // Where the job ran, so a copy left anywhere else is seen to miss.
+    assert_eq!(
+        std::fs::read_to_string(home.join("left")).unwrap_or_default(),
+        work(&home).display().to_string(),
+        "no gone run's copy was left where the far line sweeps"
+    );
     assert_eq!(
         left_in(&work(&home)),
         ["ran"],
@@ -464,6 +543,11 @@ exec rm \"$@\"";
     assert!(
         runs.join("1/a").exists() && number.parse::<u32>().is_ok(),
         "a stop cut short left no copy or no run's file to clear it by: {run:?}"
+    );
+    assert_eq!(
+        number,
+        std::fs::read_to_string(home.join("pid")).unwrap(),
+        "the run's file doesn't name the far line's own process"
     );
     assert_eq!(
         run.trim_end_matches('\n')
