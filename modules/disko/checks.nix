@@ -17,6 +17,16 @@
     touch $out
   '';
 
+  # Data chunks are balanced only while too little of the disk is in no
+  # chunk, a step fuller each time, stopping as soon as enough is free.
+  chunks-are-given-back-only-while-short =
+    pkgs.runCommandLocal "chunks-are-given-back-only-while-short" { }
+      ''
+        PATH=${pkgs.gawk}/bin:$PATH ${pkgs.bash}/bin/bash \
+          ${./chunks-given-back-check.sh} ${./chunks-given-back.sh}
+        touch $out
+      '';
+
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
   disks-go-by-their-name =

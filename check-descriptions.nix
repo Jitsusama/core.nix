@@ -6215,6 +6215,11 @@
   vm-first-passes-clippy = ''
     clippy finds nothing in vm-first or its tests
   '';
+  chunks-are-given-back-only-while-short = ''
+    Btrfs's data chunks are balanced only while too little of the disk is in no chunk, stopping at
+    the first step that frees enough, going past a step that fails, and stopping at half-full
+    chunks
+  '';
   swap-file-grows-only-when-it-may = ''
     a swap file smaller than asked for grows as the machine starts, and one in use, holding a
     hibernation, short of room or big enough stays as it is

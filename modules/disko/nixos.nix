@@ -26,6 +26,14 @@ let
     ];
     text = builtins.readFile ./swap-file-grows.sh;
   };
+  chunksGivenBack = pkgs.writeShellApplication {
+    name = "chunks-given-back";
+    runtimeInputs = [
+      pkgs.btrfs-progs
+      pkgs.gawk
+    ];
+    text = builtins.readFile ./chunks-given-back.sh;
+  };
   initrdSystemd = config.boot.initrd.systemd.package;
 
   # Where the initrd says, for each volume in its crypttab that a YubiKey
@@ -226,6 +234,31 @@ in
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${swapFileGrows}/bin/swap-file-grows /swap/swapfile ${cfg.swapSize}";
+    };
+  };
+
+  # Deletes leave data chunks part empty, and Btrfs never gives one back
+  # to metadata by itself, so a disk can be all chunks with a sixth of it
+  # free, and then fail writes as full (chunks-given-back.sh says how). It
+  # runs at night, outside the working day, so a balance's reads and writes
+  # never land on a call, and behind everything else on the processor and
+  # the disk. A night missed while the machine was off waits for the next
+  # night, rather than running as it starts, mid-day.
+  config.systemd.services.chunks-given-back = {
+    description = "Give Btrfs back room for its metadata";
+    restartIfChanged = false;
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${chunksGivenBack}/bin/chunks-given-back /";
+      Slice = "background.slice";
+      IOSchedulingClass = "idle";
+    };
+  };
+  config.systemd.timers.chunks-given-back = {
+    description = "Give Btrfs back room for its metadata each night";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*-*-* 03:00";
     };
   };
 
