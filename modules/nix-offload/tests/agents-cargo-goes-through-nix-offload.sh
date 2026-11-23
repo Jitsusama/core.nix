@@ -52,6 +52,14 @@ expect "a person's cargo didn't run cargo itself" \
 	"$(printf '%s\n' cargo test 'a b')" \
 	env -i PATH="$knowing" "$shim" test 'a b'
 
+expect "a cargo with the session's variable set empty didn't run cargo itself" \
+	"$(printf '%s\n' cargo test)" \
+	env -i PATH="$knowing" PI_SESSION_ID= "$shim" test
+
+expect "a hosted session's cargo on a lent builder didn't run cargo itself" \
+	"$(printf '%s\n' cargo test)" \
+	env -i PATH="$knowing" PI_SESSION_ID=x WORK_RUNS_ELSEWHERE=1 "$shim" test
+
 expect "an agent's cargo on a lent builder didn't run cargo itself" \
 	"$(printf '%s\n' cargo test)" \
 	env -i PATH="$knowing" PI_CODING_AGENT=1 WORK_RUNS_ELSEWHERE=1 "$shim" test
