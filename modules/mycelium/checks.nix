@@ -606,8 +606,7 @@ in
           let
             warning = staleWarning name;
             saysOf =
-              file: said:
-              if said == null then !(lib.hasInfix file warning) else lib.hasInfix said warning;
+              file: said: if said == null then !(lib.hasInfix file warning) else lib.hasInfix said warning;
           in
           !(keepsTheLed (standIn name))
           && !(carriesIn staleAccounts.${name})
@@ -627,7 +626,10 @@ in
         ]
         && !(lib.elem "--eases-carry" staleMacArguments)
         && warnedOf (withoutAs (easing // { easesCarry = false; })) == [ ]
-        && warnedOf (withoutAs { easesCarry = true; }) == [ ]
+        &&
+          warnedOf (withoutAs {
+            easesCarry = true;
+          }) == [ ]
       );
 
   # A machine in a realm reads each minute how evenly the home realm's
