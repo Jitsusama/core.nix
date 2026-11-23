@@ -158,28 +158,51 @@
   # ran out in a repository of 265 packs and then called a sound object
   # corrupt, though the same command worked in a shell. systemd reads a
   # bare number as both limits and "soft:hard" as each, either of them a
-  # count or infinity. The hard limit has to stay at the kernel's 524288
+  # count or infinity. The hard limit has to stay at or above the 524288
   # the manager itself holds, or every unit would lose what it may raise
-  # itself to, and the soft one has to match it. A count may be written
-  # with leading zeros, which lib.toInt refuses, so they're dropped first.
+  # itself to, and the soft one has to match it. A count is written as
+  # plain decimal of at most 18 digits: a leading zero may read as octal
+  # or be refused, and a longer count would overflow Nix's integers and
+  # stop evaluation rather than fail the check. The check holds the rule
+  # itself to the settings it must take and refuse, so a looser rule
+  # fails here too.
   a-unit-opens-as-many-files-as-a-shell =
     let
-      said = toString (graphical.config.systemd.user.settings.Manager.DefaultLimitNOFILE or "");
-      parts = builtins.match "([0-9]+|infinity)(:([0-9]+|infinity))?" said;
-      soft = if parts == null then null else lib.elemAt parts 0;
-      hard = if parts == null then null else lib.elemAt parts 2;
-      count =
-        value:
+      fits =
+        said:
         let
-          digits = lib.elemAt (builtins.match "0*([0-9]+)" value) 0;
+          limit = "([1-9][0-9]{0,17}|infinity)";
+          parts = builtins.match "${limit}(:${limit})?" said;
+          soft = lib.elemAt parts 0;
+          hard = lib.elemAt parts 2;
+          ceiling = if hard == null then soft else hard;
         in
-        if value == "infinity" then null else lib.toInt digits;
-      atLeast = least: value: value == "infinity" || count value >= least;
-      ceiling = if hard == null then soft else hard;
+        parts != null && soft == ceiling && (ceiling == "infinity" || lib.toInt ceiling >= 524288);
+      takes = [
+        "524288:524288"
+        "524288"
+        "1048576:1048576"
+        "infinity"
+        "infinity:infinity"
+      ];
+      refuses = [
+        "65536"
+        "65536:65536"
+        "1024:524288"
+        "65536:524288"
+        "524288:infinity"
+        "infinity:524288"
+        "0524288:0524288"
+        "1000000000000000000000:1000000000000000000000"
+        ""
+        "abc"
+        "0"
+      ];
+      said = toString (graphical.config.systemd.user.settings.Manager.DefaultLimitNOFILE or "");
     in
     holds "a-unit-opens-as-many-files-as-a-shell"
-      "The account's units start with a soft open-files limit below their hard one, or a hard one below the manager's 524288."
-      (soft != null && (soft == ceiling || count soft == count ceiling) && atLeast 524288 ceiling);
+      "The account's units start with a soft open-files limit below their hard one, or a hard one below the manager's 524288, or the rule no longer takes and refuses what it should."
+      (fits said && lib.all fits takes && !(lib.any fits refuses));
 
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes
