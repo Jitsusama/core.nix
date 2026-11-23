@@ -85,18 +85,20 @@ const UNBUILT: [&str; 5] = [
     "no lent builder took",
 ];
 
-/// Whether a gate's `words` say nix-offload left part of it unbuilt: a
-/// part no builder took, or a nearby machine's part that ended untaken.
+/// Whether a gate's `words` say nix-offload left part of it unbuilt, a
+/// part no builder took, or say a nearby machine's part ended other than
+/// passing. nix-offload names a nearby part only when it didn't pass, and
+/// a check that failed there is named without its system, so the excuse
+/// would run it again as this system's check of the same name, which can
+/// pass (round 3's F9, 23 November): such a red holds rather than be
+/// excused.
 fn left_unbuilt(words: &str) -> bool {
     words
         .lines()
         .filter_map(|line| line.trim().strip_prefix("nix-offload: "))
         .any(|said| {
             UNBUILT.iter().any(|unbuilt| said.contains(unbuilt))
-                || (said.contains("'s part, ")
-                    && said
-                        .rsplit_once(" ended ")
-                        .is_some_and(|(_, code)| crate::watch::untaken(code.parse().ok())))
+                || (said.contains("'s part, ") && said.contains(" ended "))
         })
 }
 

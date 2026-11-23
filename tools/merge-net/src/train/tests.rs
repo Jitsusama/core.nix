@@ -218,8 +218,9 @@ fn a_red_whose_words_say_a_part_went_unbuilt_isnt_whole() {
                 "{failed}nix-offload: mac's part, checks.aarch64-darwin.a, ended 1\n{WHOLE}\n"
             )
         ),
-        Gated::Red { whole: true },
-        "a nearby part that ran and failed read as one left unbuilt"
+        Gated::Red { whole: false },
+        "a nearby part that failed, whose check the excuse would run again as this \
+         system's, read as whole"
     );
     assert_eq!(
         gated(

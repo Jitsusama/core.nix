@@ -27,8 +27,10 @@
 //! `train/no-excuse` appears. A red the gate's words don't wholly explain
 //! by checks that failed to build of themselves, one breaking more than
 //! `MOST` checks, or one breaking a VM test, whose derivation isn't named
-//! as its check is, is never excused. A file `train/no-excuse` turns
-//! every excuse off.
+//! as its check is, is never excused; nor is a red whose gate nix-offload
+//! didn't say ran every part to its end, or one beside a nearby machine's
+//! part that didn't pass, whose checks only that machine runs. A file
+//! `train/no-excuse` turns every excuse off.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
