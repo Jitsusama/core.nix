@@ -153,6 +153,18 @@
         && !delegated laptop
       );
 
+  # A unit the account's manager starts opens as many files as a login
+  # shell does. Left to systemd's soft 1024, a git fetch in a transient unit
+  # ran out in a repository of 265 packs and then called a sound object
+  # corrupt, though the same command worked in a shell.
+  a-unit-opens-as-many-files-as-a-shell =
+    let
+      limit = lib.splitString ":" graphical.config.systemd.user.settings.Manager.DefaultLimitNOFILE;
+    in
+    holds "a-unit-opens-as-many-files-as-a-shell"
+      "The account's units start with a soft open-files limit below their hard one, or near systemd's 1024."
+      (lib.length limit == 2 && lib.head limit == lib.last limit && lib.toInt (lib.head limit) >= 65536);
+
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes
   # one wait, and not his programs making each other wait.
