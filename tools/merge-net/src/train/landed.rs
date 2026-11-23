@@ -26,8 +26,9 @@ pub(super) fn boarded_at(root: &Path, heads: &[String]) -> Vec<Option<u64>> {
         .collect()
 }
 
-/// Keep what landed at `landed`, the heads it carried, when each boarded
-/// and how long since its run began. The run's length isn't a rider's
+/// Keep what landed at `landed`, the heads it carried, when each boarded,
+/// how long since `run` began and the checks that excused its red. The
+/// run's length isn't a rider's
 /// wait: one boarded behind a split waited through every run before, which
 /// only its boarding time shows.
 pub(super) fn keep_landed(
@@ -35,14 +36,15 @@ pub(super) fn keep_landed(
     landed: &str,
     heads: &[String],
     boarded: &[Option<u64>],
-    seconds: u64,
+    run: &super::Run,
 ) {
     let line = json!({
         "at": crate::state::now(),
         "landed": landed,
+        "excused": run.excused,
         "heads": heads,
         "boarded": boarded,
-        "seconds": seconds,
+        "seconds": crate::state::now().saturating_sub(run.began),
     });
     keep(root, &line, &format!("landing at {landed}"));
 }

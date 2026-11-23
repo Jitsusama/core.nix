@@ -340,6 +340,20 @@ impl State {
             .collect()
     }
 
+    /// The logs of `check`'s runs at `commit` that failed, neither excused
+    /// nor stalled.
+    pub fn failed_logs(&self, commit: &str, check: &str) -> Vec<PathBuf> {
+        let Ok(text) = fs::read_to_string(self.root.join("results.jsonl")) else {
+            return Vec::new();
+        };
+        text.lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(|line| line["commit"] == commit && line["check"] == check)
+            .filter(|line| line["passed"] != true && line["stalled"] != true)
+            .filter_map(|line| line["log"].as_str().map(PathBuf::from))
+            .collect()
+    }
+
     pub fn record(
         &self,
         commit: &str,
