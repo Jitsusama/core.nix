@@ -2629,6 +2629,52 @@ def test_a_folder_filling_the_disk_says_its_session_as_agents_says_it(shell: She
             time.sleep(0.1)
 
 
+@pytest.mark.usefixtures("at_shots_scale")
+def test_a_session_waiting_on_joel_is_drawn_in_his_mark_not_the_agents(
+    shell: Shell, shoot: Callable[[str], None]
+) -> None:
+    """A row waiting on Joel wears his mark in the alert's ink, so a narrow row says it unworded.
+
+    The word at a row's right is the first thing cut, so the mark alone has to say it waits
+    on him (Joel, 2026-11-20: "no clue how to see from that view that a thing is waiting").
+    """
+    wants = {"kind": "approval", "since": datetime.now(UTC).isoformat(), "said": "May I?"}
+    lay("ASKING", "Waiting Quest", {"state": "listening", "busy": False, "wants": wants})
+    lay("IDLING", "Idle Quest", {"state": "listening", "busy": False})
+    names = ("Waiting Quest", "Idle Quest")
+    try:
+        shell.as_account(shell.ipc("collection", "agents"))
+        shell.launcher_ready()
+        shell.launcher_until(lambda shown: all(name in shown["rows"] for name in names))
+        shell.down_to("Waiting Quest")
+        assert shell.showing()["selected"]["hue"] == "alert", shell.showing()["selected"]
+        laid = json.loads(shell.as_account(shell.ipc("laidOut")))
+        # A row's first word is its mark.
+        marks = {
+            name: row["words"][0]
+            for row in laid["rows"]
+            for name in names
+            if any(word["text"] == name for word in row["words"])
+        }
+        assert set(marks) == set(names), laid["rows"]
+        waiting, idle = marks["Waiting Quest"], marks["Idle Quest"]
+        assert waiting["text"] != idle["text"], f"a waiting row wears the agent's mark: {marks}"
+        assert waiting["ink"] != idle["ink"], f"a waiting row's mark is a live one's ink: {marks}"
+        shoot("launcher-agents-waiting-on-joel")
+    finally:
+        # Gone first, so a launcher that won't close still leaves no asking session for the
+        # cases after.
+        for address in ("asking", "idling"):
+            (PRESENCE / f"{address}.json").unlink(missing_ok=True)
+        shell.close_launcher()
+        # A session asking for Joel's yes, left for the cases after, would stand first in
+        # For You and Agents, so it's gone from the node before they begin.
+        deadline = time.monotonic() + 10
+        while {"session:s-asking", "session:s-idling"} & set(held_by_node()):
+            assert time.monotonic() < deadline, "the node still holds the sessions"
+            time.sleep(0.1)
+
+
 def test_a_looks_choice_steers_its_answer_to_the_session_that_left_it(shell: Shell) -> None:
     """A look's choice, a step into its row in For You, reaches its session's inbox as an answer.
 
