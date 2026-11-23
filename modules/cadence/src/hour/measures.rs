@@ -16,6 +16,7 @@ pub mod apps;
 mod balanced;
 mod broken;
 mod card;
+mod carried;
 mod cells;
 mod locked;
 mod misses;
@@ -34,6 +35,7 @@ pub mod unresolved;
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
 pub use card::{card_if_fresh, card_median, merge_to_on};
+pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
 pub use misses::{

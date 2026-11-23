@@ -53,7 +53,8 @@ const BUMPS: &str = "0FX11G";
 /// orchestrator's; one without `--to` is a look, keeping nothing. Each
 /// checkout is another repository whose main says which of the misses'
 /// checks merged, beside core's and the harness's; each realm's node says
-/// whether a machine is crowded beside one with room.
+/// whether a machine is crowded beside one with room, and where its
+/// sessions run.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut to = None;
     let mut checkouts = Vec::new();
@@ -132,6 +133,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         let quests = quests();
         // The kit's reader, which every tool matching mycelium's names shares.
         let here = terminal_kit::environment::machine();
+        measures.push(measures::carried(&sessions, &answers, &here));
         measures.extend(measures::cells(
             &sessions,
             quests.as_deref(),
