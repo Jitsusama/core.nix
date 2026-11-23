@@ -246,7 +246,13 @@ mod tests {
         asks: &pins::tests::Fake,
     ) -> Result<(), String> {
         let rounds: HashSet<seen::Read> = read.iter().map(|one| round(one, None)).collect();
-        gated_with(repo, head, Ok(rounds), &[], asks)
+        read_in_repo(
+            repo,
+            (head, "main", &[]),
+            || Ok(rounds),
+            || mirror(&[], &[], &[]),
+            asks,
+        )
     }
 
     /// What the review gate says of `head` in `repo`, given `rounds` here
