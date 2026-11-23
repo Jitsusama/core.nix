@@ -114,6 +114,28 @@ impl Walks {
     }
 }
 
+#[cfg(test)]
+impl Walks {
+    /// Walks with `top` settled for `pattern`, holding no log, for the
+    /// daemon's tests.
+    pub fn settled_at(pattern: &str, top: &Path) -> Walks {
+        let mut walks = Walks::default();
+        let walked = Walked {
+            logs: Vec::new(),
+            read: Vec::new(),
+        };
+        walks
+            .settled
+            .insert((pattern.to_owned(), top.to_path_buf()), walked);
+        walks
+    }
+
+    /// Whether any folder is settled.
+    pub fn any_settled(&self) -> bool {
+        !self.settled.is_empty()
+    }
+}
+
 /// When `path` was last written, none where it isn't there.
 fn written(path: &Path) -> Option<SystemTime> {
     std::fs::metadata(path)
@@ -1286,6 +1308,7 @@ mod tests {
         let mut walks = Walks::default();
         reviewer(dir.path(), "r1", "a", true);
         let late = empty(dir.path(), "r1", "reviewers", "c", true);
+        let later = empty(dir.path(), "r1", "reviewers", "d", true);
         read(&history, &config, &mut walks);
         assert_eq!(turns(&history), 1);
         written_in(&late);
@@ -1294,6 +1317,37 @@ mod tests {
         walks.swept = SystemTime::now().checked_sub(SWEEP);
         read(&history, &config, &mut walks);
         assert_eq!(turns(&history), 2, "the sweep didn't walk the run again");
+        // A clock set back sweeps at once rather than waiting to catch up.
+        age(&late.join("2026_late.jsonl"));
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 1, "the swept run didn't settle again");
+        let header = HEADER.replace("\"s1\"", "\"later\"");
+        std::fs::write(
+            later.join("2026_later.jsonl"),
+            format!("{header}\n{TURN}\n"),
+        )
+        .unwrap();
+        walks.swept = SystemTime::now().checked_add(Duration::from_hours(1));
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 3, "a clock set back didn't sweep");
+    }
+
+    // A log written lately keeps its run walked though every folder above
+    // it is a day old, as a reviewer's appending leaves them.
+    #[test]
+    fn a_run_with_a_log_written_today_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        let log = reviewer(dir.path(), "r1", "a", true);
+        std::fs::File::open(&log)
+            .unwrap()
+            .set_modified(SystemTime::now())
+            .unwrap();
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 1);
+        assert!(walks.settled.is_empty(), "a run with a fresh log settled");
     }
 
     // A settled run's logs are still read each pass, so a turn written to
