@@ -124,15 +124,23 @@ let
   # minutes waits ten minutes, so a harness that fails as it starts costs
   # a start every few minutes rather than six a minute. Until the harness
   # ships the program there is nothing to run, so it looks again ten
-  # minutes on. The socket and the scratch of the host's conversations go
-  # in the account's own temporary folder, where mycelium and the harness
-  # look on a Mac, which has no XDG_RUNTIME_DIR, and which only the account
-  # may read, unlike /tmp. Its path isn't known until the account asks the
-  # system for it, so sh asks, checks that what it was told is a folder,
-  # not a link, that the account owns and nobody else may read, and then
-  # becomes node, the process launchd signals, through env, which takes any
-  # name a realm gives and drops every variable that would run code as
-  # node starts (host-launch.nix's loadsCode), as Linux's unit does.
+  # minutes on. The socket goes in the account's own cache folder, named
+  # AGENTS_RUNTIME_DIR, where the harness and mycelium look first on a Mac,
+  # and the scratch of the host's conversations in its temporary folder;
+  # each is the account's with mode 700, unlike /tmp. The socket stays out
+  # of the temporary folder because, by confstr(3), the system may remove
+  # what sits there unaccessed for three days, and a host's socket lives as
+  # long as the host; the cache folder it never cleans by itself, only a
+  # safe boot empties it, which ends every host anyway. A host
+  # already running keeps its socket where it was until it starts again.
+  # The XDG_RUNTIME_DIR launchd gives is taken away, since disk-guard reads
+  # it for a folder of its own; a realm naming one gets what it named.
+  # Neither path is known until the account asks the system, so sh asks,
+  # checks each is a whole path to a folder with no . or .. in it, not a
+  # link, the account's with mode 700, and then becomes node, the process
+  # launchd signals, through env, which takes any name a realm gives and
+  # drops every variable that would run code as node starts
+  # (host-launch.nix's loadsCode), as Linux's unit does.
   startOf = realm: host: kind: ''
     log=${lib.escapeShellArg (logOf realm kind)}
     /bin/mkdir -p "''${log%/*}"
@@ -160,17 +168,27 @@ let
       exit 1
     fi
     temporary=$(/usr/bin/getconf DARWIN_USER_TEMP_DIR)
-    if [ -z "$temporary" ] || [ -L "''${temporary%/}" ] || [ ! -d "$temporary" ] ||
-      [ "$(/usr/bin/stat -f '%u %Lp' "$temporary")" != "$(/usr/bin/id -u) 700" ]; then
-      echo "pi-host: the account's own temporary folder wasn't found, or isn't its alone"
-      exit 1
-    fi
-    exec /usr/bin/env ${lib.concatMapStringsSep " " (name: "-u ${name}") launch.loadsCode} \
+    cache=$(/usr/bin/getconf DARWIN_USER_CACHE_DIR)
+    for folder in "$temporary" "$cache"; do
+      bare=$folder
+      while [ "''${bare%/}" != "$bare" ]; do bare=''${bare%/}; done
+      dotted=
+      case "$bare/" in */./* | */../*) dotted=yes ;; esac
+      if [ -n "$dotted" ] || [ "''${folder#/}" = "$folder" ] || [ -L "$bare" ] ||
+        [ ! -d "$folder" ] ||
+        [ "$(/usr/bin/stat -f '%u %Lp' "$folder")" != "$(/usr/bin/id -u) 700" ]; then
+        echo "pi-host: the account's own temporary or cache folder wasn't found, or isn't its alone: '$folder'"
+        exit 1
+      fi
+    done
+    exec /usr/bin/env ${
+      lib.concatMapStringsSep " " (name: "-u ${name}") (launch.loadsCode ++ [ "XDG_RUNTIME_DIR" ])
+    } \
     ${
       lib.concatMapStrings (word: "  ${word} \\\n") (
         lib.mapAttrsToList (name: value: lib.escapeShellArg "${name}=${value}") (environmentOf realm host)
         ++ [
-          ''XDG_RUNTIME_DIR="$temporary"''
+          ''AGENTS_RUNTIME_DIR="$cache"''
           ''TMPDIR="$temporary"''
         ]
       )

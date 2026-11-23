@@ -4910,12 +4910,17 @@
     shellcheck, moves only a log past 10 MB aside, waits before a fourth start in ten minutes,
     counting from the oldest of three, and not after two or one recent start of three, saying
     that removing its record of starts ends the wait, which then ends within ten seconds,
-    says why and fails on a missing harness or a temporary folder that isn't there, is a link,
-    is another's or others may read, and otherwise becomes the realm's node in its own place
-    with its words, its output in its log, every environment value whole, the realm's LANG and
-    no LC_ALL to outrank it, the account's home realm, TMPDIR and XDG_RUNTIME_DIR the account's
-    temporary folder, the probes its own restart waits on with their % single, and none of the
-    eight variables that would run code as node starts
+    says why and fails on a missing harness, on a temporary or cache folder that isn't there, is
+    a file, is a link, is another's, the cache folder alone included, or others may read, and on
+    a cache folder that is a link named with two slashes or a dot, or is named by a relative
+    path or through .., each through the one check both folders pass, naming the folder, and
+    otherwise becomes the
+    realm's node in its own place with its words, its output in its log, every environment value
+    whole, the realm's LANG and no LC_ALL to outrank it, the account's home realm, TMPDIR the
+    account's temporary folder, AGENTS_RUNTIME_DIR its cache folder, and no XDG_RUNTIME_DIR
+    even when launchd gives one, since disk-guard reads it for its own, the probes
+    its own restart waits on with their % single, and none of the eight variables that would run
+    code as node starts
   '';
   the-macs-faces-are-the-themes = ''
     the graphical role's fontconfig, asked for a Mac's system or monospaced font by a name pages give
