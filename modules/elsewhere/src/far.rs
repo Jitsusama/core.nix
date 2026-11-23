@@ -64,6 +64,13 @@ const LARGEST_FILE: u64 = 64 << 20;
 /// a minute's worth of a busy link's looks, five times over.
 pub const CROSSES_WITHIN: u64 = 300;
 
+/// The slowest a job's files may cross at, in bytes a second, however
+/// steadily they keep crossing: past it, the far line waits no longer
+/// than `CROSSES_WITHIN` and a second for each of these. A quarter of the
+/// MiB a second the near side waits on a share for, so a share the near
+/// side took as whole is never given up on here.
+const CROSSES_AT: u64 = 256 << 10;
+
 /// How many seconds the near side waits for what comes home before it
 /// says it is waiting: past a few looks, so a share keeping pace is quiet.
 const SAYS_IT_WAITS: u64 = 10;
@@ -301,17 +308,25 @@ say() {{ printf '\n%s\n' "$1"; }}
 # By the clock, since a pass over a large tree takes long itself, and
 # from the last time more crossed, as the near side waits, or the clock
 # stepped back. A pass counts after its second, so passes are never short.
-now=0 began=0 counting=yes; tick; grown
-began=$now had=$got
+# However steadily they cross, the whole wait is held to its ceiling.
+now=0 began=0 started=0 counting=yes listed=; tick; grown
+began=$now had=$got started=$now
 until arrived; do
   sleep 1
   tick
   grown
   if [ "$got" -gt "$had" ] || [ "$now" -lt "$began" ]; then
+    [ "$now" -lt "$began" ] && started=$((started + now - began))
     began=$now had=$got
   fi
   if [ "$((now - began))" -ge {CROSSES_WITHIN} ]; then
     printf "elsewhere: the job's files didn't reach %s, none crossing for {CROSSES_WITHIN}s, waiting on %s\n" "$(uname -n)" "$waiting" >&2
+    say {untaken}
+    exit {UNTAKEN}
+  fi
+  ceiling
+  if [ "$((now - started))" -ge "$most" ] && ! arrived; then
+    printf "elsewhere: the job's files didn't reach %s within %ss, still crossing too slowly, waiting on %s\n" "$(uname -n)" "$most" "$waiting" >&2
     say {untaken}
     exit {UNTAKEN}
   fi

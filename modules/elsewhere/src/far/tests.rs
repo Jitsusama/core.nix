@@ -175,6 +175,10 @@ fn a_word_is_quoted_only_when_a_shell_would_split_it() {
 /// seconds, rather than the five minutes a real crossing gets.
 pub(super) const WAITS: u64 = 5;
 
+/// The slowest a job's files may cross at in these tests, in bytes a
+/// second, so a test can outlast its ceiling in seconds.
+pub(super) const SLOWEST: u64 = 100;
+
 /// How many files, and bytes, a share carries in these tests' far lines,
 /// so a test can pass them without making ten thousand files.
 pub(super) const SHARE_FILES: usize = 4;
@@ -311,6 +315,16 @@ pub(super) fn far_line_in(
     let line = script("QEST-20261115-ABC123", "1", "s", folder, kind, &command);
     assert!(line.contains(&waits), "the far line's wait moved:\n{line}");
     let line = line.replace(&waits, &format!("-ge {WAITS}"));
+    let ceiling = format!(
+        "most=$(({} + bytes / {}))",
+        super::CROSSES_WITHIN,
+        super::CROSSES_AT
+    );
+    assert!(
+        line.contains(&ceiling),
+        "the far line's ceiling moved:\n{line}"
+    );
+    let line = line.replace(&ceiling, &format!("most=$(({WAITS} + bytes / {SLOWEST}))"));
     let most = format!(
         "most_files={} most_bytes={}",
         super::MOST_FILES,

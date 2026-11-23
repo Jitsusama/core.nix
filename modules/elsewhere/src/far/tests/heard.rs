@@ -271,6 +271,38 @@ fn a_far_clock_that_steps_back_restarts_the_wait() {
 }
 
 #[test]
+fn files_crossing_too_slowly_are_given_up_on_however_steadily_they_cross() {
+    // A name a second, never the listed file, so the wait from the last
+    // that crossed never ends, and only the ceiling, the wait and a
+    // second for each `SLOWEST` bytes listed, ends the whole.
+    let listed = 3 * super::SLOWEST;
+    let (code, err, home) = far_line(
+        Left::Listed(&format!("{listed}\tx\nend\n")),
+        &[],
+        "touch ../ran",
+        &kind(""),
+        Some(&|tree| {
+            for at in 0..3 * super::WAITS {
+                let _ = std::fs::create_dir_all(tree);
+                let _ = std::fs::write(tree.join(format!("trickle-{at}")), "");
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
+        }),
+        &[],
+    );
+    let most = super::WAITS + listed / super::SLOWEST;
+    assert!(
+        code == Some(75) && err.contains(&format!("within {most}s, still crossing too slowly")),
+        "a trickle was waited on past its ceiling ({code:?}): {err}"
+    );
+    assert!(
+        !work(&home).join("ran").exists(),
+        "it ran without its files"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // Each step of making the tree failing, as a full disk, a fenced
     // scratch or a program missing would, ahead of the far machine's own

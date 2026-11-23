@@ -9,13 +9,17 @@
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
 
-use super::{BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES, MOST_FILES, TREE, quoted};
+use super::{
+    BACK, BROUGHT, CROSSES_AT, CROSSES_WITHIN, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES,
+    MOST_FILES, TREE, quoted,
+};
 use crate::settings::Kind;
 
 /// The far line's watch on the job's archives as they cross: `arrived`,
 /// once the list is whole and each archive on it is its listed size, with
 /// `waiting` naming what it still waits on; `grown`, how much has crossed
-/// so far, as `got`; and `tick`, the time in seconds as `now`.
+/// so far, as `got`; `ceiling`, the longest they may take in all, as
+/// `most`; and `tick`, the time in seconds as `now`.
 pub(super) fn crossing() -> String {
     format!(
         r#"arrived() {{
@@ -29,6 +33,27 @@ pub(super) fn crossing() -> String {
   done < "$job/{LEFT}"
   return 1
 }}
+# The longest the files may take to cross in all, in seconds, as `most`,
+# however steadily a trickle of them keeps the wait above from ending:
+# that wait, and a second for each {CROSSES_AT} bytes they are listed at,
+# or the most a job may be until the list has crossed. A size no number
+# can be is left out, as unpacking refuses its list anyway.
+ceiling() {{
+  [ -n "$listed" ] && return 0
+  bytes={MOST_BYTES}
+  if [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ]; then
+    bytes=0 listed=yes
+    while IFS="$tab" read -r size path; do
+      case $size in {END}) break ;; ''|*[!0-9]*|0?*) continue ;; esac
+      if [ "${{#size}}" -gt 12 ] || [ "$((bytes + size))" -gt {MOST_BYTES} ]; then
+        bytes={MOST_BYTES}
+        break
+      fi
+      bytes=$((bytes + size))
+    done < "$job/{LEFT}"
+  fi
+  most=$(({CROSSES_WITHIN} + bytes / {CROSSES_AT}))
+}}
 # How much has crossed, list or not, as its names and kilobytes.
 grown() {{
   kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
@@ -36,11 +61,13 @@ grown() {{
   got=$((${{kb:-0}} + ${{names:-0}}))
 }}
 # The time in seconds, or where a date can't say it, one more each pass;
-# what was counted before it first could, with this pass, carries over.
+# what was counted before it first could, with this pass, carries over,
+# to the last time more crossed and to when the wait began.
 tick() {{
   t=$(date +%s 2>/dev/null)
   case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
-    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
+    [ -n "$counting" ] && began=$((t - now - 1 + began)) started=$((t - now - 1 + started)) counting=
+    now=$t ;; esac
 }}"#
     )
 }
