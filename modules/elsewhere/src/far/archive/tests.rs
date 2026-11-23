@@ -178,6 +178,30 @@ fn a_file_no_archive_within_the_most_holds_is_refused() {
 }
 
 #[test]
+fn a_link_or_a_pipe_in_a_file_s_place_is_refused_not_followed_or_waited_on() {
+    let root = crate::far::tests::scratch("archive-odd");
+    std::fs::write(root.join("outside"), "secret").unwrap();
+    std::os::unix::fs::symlink(root.join("outside"), root.join("link")).unwrap();
+    let made = std::process::Command::new("mkfifo")
+        .arg(root.join("pipe"))
+        .status()
+        .unwrap();
+    assert!(made.success(), "mkfifo couldn't make a pipe");
+    let parts = root.join("parts");
+    std::fs::create_dir_all(&parts).unwrap();
+    for name in ["link", "pipe"] {
+        let refused = write(&root, [name], &parts, 1 << 20);
+        assert!(
+            refused.as_ref().is_err_and(|error| error
+                .to_string()
+                .starts_with(&format!("{} can't go in", root.join(name).display()))),
+            "a {name} in a file's place was taken: {refused:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn a_pax_record_s_length_counts_itself_across_a_digit_more() {
     for length in 1..200 {
         let value = "v".repeat(length);

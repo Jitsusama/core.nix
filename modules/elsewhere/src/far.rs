@@ -1,11 +1,11 @@
 //! A job sent to a far machine by mycelium alone. Its tracked files, and
-//! nothing else, are left in the quest's handover, which crosses to every
-//! machine the quest is shared with; `mycelium run` then runs a shell line
-//! there that waits for them to arrive, copies them out to a folder of its
-//! own, runs the kind's setup and the job, and leaves what the kind brings
-//! back in the handover to cross home. No ssh and no copy of its own,
-//! since mycelium already says which machines may be reached, by whom, and
-//! fences an agent's run where it lands.
+//! nothing else, are left in the quest's handover as a few archives, which
+//! cross to every machine the quest is shared with; `mycelium run` then
+//! runs a shell line there that waits for them to arrive, unpacks them in
+//! a folder of its own, runs the kind's setup and the job, and leaves what
+//! the kind brings back in the handover to cross home. No ssh and no copy
+//! of its own, since mycelium already says which machines may be reached,
+//! by whom, and fences an agent's run where it lands.
 //!
 //! Each end of a shared quest looks once a second and files arrive in no
 //! set order, so each side lists what it left, with sizes and an end line
@@ -36,8 +36,9 @@ use terminal_kit::Exit;
 /// Where a job's folder lies within a quest's scratch.
 pub const HANDOVER: &str = "handover/elsewhere";
 
-/// The list of what's left, a `SIZE<TAB>PATH` line a file, and the list of
-/// what's brought back, the same; each ends with [`END`].
+/// The list of what's left, a `SIZE<TAB>NAME` line an archive, and the
+/// list of what's brought back, a `SIZE<TAB>PATH` line a file; each ends
+/// with [`END`].
 const LEFT: &str = "elsewhere-files";
 const BROUGHT: &str = "elsewhere-back";
 const END: &str = "end";
@@ -46,8 +47,8 @@ const END: &str = "end";
 /// at once rather than waiting out what will never come.
 const CUT: &str = "cut";
 
-/// The folders the job's files lie in, under their paths as crossed, and
-/// what it brings back lies in, each named by its line in the list.
+/// The folders the job's archives lie in, under their names, and what it
+/// brings back lies in, each file named by its line in the list.
 const TREE: &str = "tree";
 const BACK: &str = "back";
 
@@ -232,10 +233,11 @@ pub fn left<'a>(
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
 /// for the job's archives to cross, unpacks them in `scratch` within the
-/// quest's own scratch there, the one folder a strict fence lets it write, runs
-/// the kind's setup and then the job, its program found on the far path by
-/// its name, in the job's folder `within` the tree, then leaves what the
-/// kind brings back in the handover and takes its copy away.
+/// quest's own scratch there, the one folder a strict fence lets it
+/// write, runs the kind's setup and then the job, its program found on
+/// the far path by its name, in the job's folder `within` the tree, then
+/// leaves what the kind brings back in the handover and takes its copy
+/// away.
 pub fn script(
     quest: &str,
     id: &str,

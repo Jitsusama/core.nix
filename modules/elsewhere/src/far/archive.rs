@@ -13,7 +13,7 @@
 
 use std::fs;
 use std::io::{self, Write};
-use std::os::unix::fs::{MetadataExt, PermissionsExt};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
@@ -107,19 +107,17 @@ pub fn write<'a>(
 }
 
 /// The plain file at `path`, read whole through one opening, with what
-/// that opening says of it. A link put where the file was gathered from
-/// is refused, not followed, so nothing outside the tree goes in.
+/// that opening says of it. A link or a pipe put where the file was
+/// gathered from is refused, neither followed nor waited on, so nothing
+/// outside the tree goes in and nothing holds the job.
 fn read(path: &Path) -> io::Result<(Vec<u8>, fs::Metadata)> {
-    let mut file = fs::File::open(path)?;
+    let mut file = super::landing::opened_plain(path).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("{} can't go in: {error}", path.display()),
+        )
+    })?;
     let meta = file.metadata()?;
-    let named = fs::symlink_metadata(path)?;
-    if !meta.is_file() || !named.is_file() || (named.dev(), named.ino()) != (meta.dev(), meta.ino())
-    {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!("{} is no longer a plain file of the tree", path.display()),
-        ));
-    }
     let mut data = Vec::new();
     io::Read::read_to_end(&mut file, &mut data)?;
     Ok((data, meta))
