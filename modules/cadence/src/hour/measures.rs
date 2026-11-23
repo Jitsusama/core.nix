@@ -29,6 +29,7 @@ pub mod spent;
 mod tracked;
 pub mod unbilled;
 pub mod unresolved;
+pub mod wifi;
 
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
