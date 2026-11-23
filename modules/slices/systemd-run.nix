@@ -26,6 +26,12 @@ let
     lib.filter (option: letter option != "-") options
   );
   longs = lib.concatMapStringsSep " " (option: ''"${long option}"'') options;
+  filled = {
+    "@real@" = real;
+    "@cgroup@" = cgroup;
+    "@shorts@" = shorts;
+    "@longs@" = longs;
+  };
   holds = runCommandLocal "systemd-run-options-hold" { nativeBuildInputs = [ jq ]; } ''
     ${bash}/bin/bash ${./systemd-run-options-hold.sh} ${./systemd-run-options.txt} \
       ${systemd}/bin/systemd-run
@@ -36,9 +42,7 @@ lib.hiPrio (writeShellApplication {
   name = "systemd-run";
   # Asked for so the wrapper can't be built while its table doesn't hold.
   derivationArgs = { inherit holds; };
-  text =
-    builtins.replaceStrings
-      [ "@real@" "@cgroup@" "@shorts@" "@longs@" ]
-      [ real cgroup shorts longs ]
-      (builtins.readFile ./systemd-run.sh);
+  text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
+    builtins.readFile ./systemd-run.sh
+  );
 })

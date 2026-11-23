@@ -606,13 +606,8 @@
     in
     pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
       ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
-        ${./systemd-run-options.txt}
-      # A table short of one option the systemd takes isn't held to.
-      sed '$d' ${./systemd-run-options.txt} >short
-      if ${pkgs.bash}/bin/bash ${./systemd-run-options-hold.sh} short \
-        ${pkgs.systemd}/bin/systemd-run; then
-        echo "a table short of an option held" && exit 1
-      fi
+        ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
+        ${pkgs.systemd}/bin/systemd-run
       touch $out
     '';
 

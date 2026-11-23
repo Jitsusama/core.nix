@@ -4,14 +4,26 @@
 # and the spawner scopes directly inside jobs, and pi's host and
 # conversation units in agents.slice, reading a call's options as
 # systemd-run's parser does by the table it's built from, which is held
-# to the wrapped systemd's own as it's built. Usage:
-# systemd-run-test <wrapper> <options table>, where the wrapper was built
-# in front of a stand-in that echoes what it's given and reads its
-# caller's cgroup from ./cgroup.
+# to the wrapped systemd's own as it's built, and that the hold refuses a
+# table short of an option. Usage:
+# systemd-run-test <wrapper> <options table> <the hold> <systemd's systemd-run>,
+# where the wrapper was built in front of a stand-in that echoes what it's
+# given and reads its caller's cgroup from ./cgroup.
 set -euo pipefail
 run=$1
-rows=$(grep -v '^#' "$2")
+table=$2
+hold=$3
+systemd_run=$4
+rows=$(grep -v '^#' "${table}")
 manager=0::/user.slice/user-1000.slice/user@1000.service
+
+# The hold passes the table and refuses one short of its last option.
+bash "${hold}" "${table}" "${systemd_run}" >/dev/null
+sed '$d' "${table}" >short
+if bash "${hold}" short "${systemd_run}" >/dev/null; then
+  echo "the hold passed a table short of an option"
+  exit 1
+fi
 
 # says <cgroup> <what the real one should be given> <the call...>
 says() {
