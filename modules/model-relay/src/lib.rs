@@ -60,35 +60,18 @@
 //! through few records and a kernel holding little unsent, and on a slow
 //! uplink a ping is answered in time.
 //!
-//! Past 15 in 100 failed of the requests it finished in ten minutes, 20
-//! at least, it stands down (src/standing.rs says why): it retires its
-//! connections and answers each request with its own 421, forwarding
-//! nothing, so pi sends it direct. After a minute, as many times longer as
-//! the stand-down has doubled, and every half minute after, it tries its
-//! path: it opens a trial connection, counted with its trials apart from
-//! those opened for requests, and asks the origin three times in a row for the head
-//! of its root. Answered each time with anything but a 5xx, the path
-//! carries requests again, and so does the relay, at once; a trial ends
-//! only the stand-down it was begun in. Otherwise it stands down at most ten minutes, or
-//! twice the last stand-down, to an hour, when the last ended under an
-//! hour before. A request is judged once its answer ends, so one broken
-//! off midway fails, and only one that went down a connection, or that
-//! each connection it was offered closed under before it went: one that
-//! never reached the origin, as when none would open, would fail direct
-//! too, so it says nothing of the relay's connections. Nor does a reset
-//! giving the origin's own verdict, such as to calm down, so it isn't
-//! judged. Standing down, and for its idle time after, it doesn't leave,
-//! which would forget it; taking requests again, it retires the
-//! connections opened meanwhile by requests it had already taken, and
-//! judges none of those. The last stand-down, which the next doubles, is
-//! forgotten when it leaves or restarts. A sleep forgets a stand-down,
-//! and what was sent before it, as the clock it ran on stopped and the
-//! network it judged may be gone.
+//! It never stands down from its origin as a whole: each request it can't
+//! carry is sent direct alone, as above, so no failing burst sends every
+//! pi on the machine past the relay. One that stood down on a share
+//! failed was tried. Its 33 stand-downs before a reset request went again
+//! on another connection lasted 1 to 6 minutes each, while the origin kept
+//! resetting through them, so they spared little, and in the day after,
+//! none came at all.
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
-//! every ten minutes and as it leaves once idle; stopped by systemd, it
-//! says nothing of the stretch since the last.
+//! every ten minutes and as it leaves, idle or stopped, unless a logout or
+//! a shutdown kills it first.
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
@@ -97,8 +80,19 @@
 //! body over 64 MiB is a 413, one pi leaves unfinished a 400 and one
 //! still coming after a minute a 408, both counted as pi's cancel.
 //!
-//! A switch leaves a running relay be, since a restart would end every
-//! answer still streaming. So it leaves on its own once nothing has been
+//! Stopped by systemd, with SIGTERM, it leaves at once rather than once
+//! idle: it closes each connection it holds as its answer ends, and sends
+//! every request on one taken meanwhile direct with a 421, since nothing
+//! else can answer them before it's gone. It takes connections until those
+//! answers have ended or `--drain-within` runs out, and cuts the answers
+//! still going then. It gives those it sent direct a few seconds more and
+//! leaves, all inside the unit's stop timeout; a pi connecting in those
+//! seconds waits on the socket for the relay systemd starts next. A second
+//! SIGTERM cuts everything at once.
+//!
+//! A switch leaves a running relay be, since a restart would send every
+//! request direct until each answer still streaming ended, and cut those
+//! that outlast the drain. So it leaves on its own once nothing has been
 //! forwarded for a while, with no answer in flight: it stops taking
 //! connections, gives one it took just then a moment to say its request,
 //! then closes each as its answer ends. systemd keeps the socket, so
@@ -133,12 +127,8 @@ use hyper_util::rt::{TokioExecutor, TokioIo, TokioTimer};
 use rustls::pki_types::pem::PemObject;
 use rustls::pki_types::{CertificateDer, ServerName};
 use tokio::net::{TcpStream, UnixListener};
-use tokio::sync::{Mutex, Notify, watch};
+use tokio::sync::{Mutex, Notify, mpsc, watch};
 use tokio_rustls::TlsConnector;
-
-use standing::{Standing, Taking};
-
-mod standing;
 
 /// The port an https origin names when it names none.
 const HTTPS_PORT: u16 = 443;
@@ -148,18 +138,11 @@ pub const CONNECT_WITHIN: Duration = Duration::from_secs(10);
 /// How long the relay waits, asked nothing and answering nothing, before
 /// it leaves, unless told otherwise.
 pub const IDLE_EXIT: Duration = Duration::from_secs(120);
-/// How long its first stand-down lasts, unless the relay is told
-/// otherwise.
-pub const STANDS_DOWN_FOR: Duration = Duration::from_secs(600);
-/// The longest a first stand-down may be told to last.
-pub const STANDS_DOWN_FOR_AT_MOST: Duration = Duration::from_hours(24);
-/// How often it tries its path while it stands down, the first time
-/// twice as long in, unless the relay is told otherwise.
-pub const TRIES_ITS_PATH_EVERY: Duration = Duration::from_secs(30);
-/// How many times in a row a trial asks the origin, each to be answered.
-/// On 18 November fresh connections were reset after one to three
-/// requests, so one answer alone says little.
-const TRIED_TIMES: usize = 3;
+/// How long a stopped relay waits on the answers it holds before it cuts
+/// them, unless told otherwise: past most turns' answers, and with
+/// `SAYS_GO_DIRECT_WITHIN` after it, under the stop timeout its unit sets,
+/// so it leaves on its own and says its counts rather than being killed.
+pub const DRAINS_WITHIN: Duration = Duration::from_secs(80);
 /// How often an open connection is pinged, so one the network lost is
 /// found before a request is sent down it.
 const PING_EVERY: Duration = Duration::from_secs(20);
@@ -229,6 +212,10 @@ const OPEN_BEHIND_AGAIN_AFTER: Duration = Duration::from_secs(30);
 /// How long a leaving relay still takes connections, to send each direct,
 /// when its idle time is longer.
 const TAKES_LATE_CONNECTIONS_FOR: Duration = Duration::from_secs(10);
+/// How long a stopped relay, its answers ended, gives the connections it
+/// was sending direct to finish their 421: a few lines each, so a few
+/// seconds is plenty on a loaded machine.
+const SAYS_GO_DIRECT_WITHIN: Duration = Duration::from_secs(5);
 /// How long a connection taken just as the relay leaves has to say its
 /// request, which pi sends as it connects.
 const LEAVING_GRACE: Duration = Duration::from_millis(500);
@@ -410,18 +397,17 @@ impl Roots {
     }
 }
 
-/// How long a relay gives things: a connection to open, and itself to
-/// sit idle before it leaves (never, when none).
+/// How long a relay gives things: a connection to open, itself to sit
+/// idle before it leaves (never, when none), and its answers to end once
+/// stopped.
 #[derive(Clone, Copy, Debug)]
 pub struct Clocks {
     /// How long a connection to the origin may take to open.
     pub connect_within: Duration,
     /// How long it sits asked nothing before it leaves, if ever.
     pub idle_exit: Option<Duration>,
-    /// How long its first stand-down lasts, at most.
-    pub stands_down_for: Duration,
-    /// How often it tries its path while it stands down.
-    pub tries_its_path_every: Duration,
+    /// How long, once stopped, it waits on the answers it holds.
+    pub drains_within: Duration,
 }
 
 impl Default for Clocks {
@@ -429,9 +415,19 @@ impl Default for Clocks {
         Clocks {
             connect_within: CONNECT_WITHIN,
             idle_exit: Some(IDLE_EXIT),
-            stands_down_for: STANDS_DOWN_FOR,
-            tries_its_path_every: TRIES_ITS_PATH_EVERY,
+            drains_within: DRAINS_WITHIN,
         }
+    }
+}
+
+/// What a relay that has left says last: the counts once more, once its
+/// runtime has dropped the answers it cut, which count only then.
+pub struct LastWord(Arc<Counts>);
+
+impl LastWord {
+    /// Says the counts, when the answers dropped since moved them.
+    pub fn say(&self) {
+        self.0.say();
     }
 }
 
@@ -447,23 +443,20 @@ struct Counts {
     /// didn't are with the failed ones reset or left out.
     again: AtomicU64,
     cancelled: AtomicU64,
-    /// Connections opened for requests; trials' are counted apart, so a
-    /// relay trying its path as it stands down isn't read as one opening
-    /// connections for requests it should be sending direct.
+    /// Answers the relay cut as it was stopped, rather than pi, so a
+    /// restart's cuts aren't read as Escape pressed.
+    cut: AtomicU64,
+    /// Whether an answer dropped unfinished from now on was cut by the
+    /// relay's stop rather than given up by pi.
+    cutting: AtomicBool,
     opened: AtomicU64,
-    /// Trials of its path as it stood down, each counted as it's begun,
-    /// so one whose connection wouldn't open is counted too.
-    tried: AtomicU64,
     open: AtomicUsize,
-    /// Requests refused as it stood down, so each went direct, counted
-    /// with the refused too.
-    stood_down: AtomicU64,
-    /// Answers broken off midway, judged or not, so a stand-down for
-    /// streams that broke shows in the counts as well as resets do.
+    /// Answers broken off midway, so streams that broke show in the
+    /// counts as well as resets do.
     broken: AtomicU64,
     /// What the counts were when last said, but for how many connections
     /// were taking requests.
-    said_as: Held<[u64; 10]>,
+    said_as: Held<[u64; 9]>,
 }
 
 impl Counts {
@@ -485,9 +478,8 @@ impl Counts {
             &self.reset,
             &self.again,
             &self.cancelled,
+            &self.cut,
             &self.opened,
-            &self.tried,
-            &self.stood_down,
             &self.broken,
         ]
         .map(|count| count.load(Ordering::Relaxed));
@@ -505,17 +497,15 @@ impl Counts {
             reset,
             again,
             cancelled,
+            cut,
             opened,
-            tried,
-            stood_down,
             broken,
         ] = now;
         Some(format!(
             "model-relay: {asked} asked, {refused} refused, {failed} failed, {reset} of them \
              reset or left out; {again} reset or left out and sent again; pi cancelled \
-             {cancelled}; {opened} \
-             connections opened, {} taking requests; {tried} trials of its path; \
-             {stood_down} refused as it stood down; {broken} broken off midway",
+             {cancelled}; {cut} cut as it was stopped; {opened} connections opened, {} taking \
+             requests; {broken} broken off midway",
             self.open.load(Ordering::Relaxed),
         ))
     }
@@ -533,7 +523,7 @@ enum ForAgain {
 
 /// A request reset and waiting on a connection to go once more. Should pi
 /// leave meanwhile, hyper drops the request with nothing said, so it's
-/// counted as pi's cancel.
+/// counted as pi's cancel, or as cut when a stop's cut drops it.
 struct WaitingAgain<'a>(Option<&'a Counts>);
 
 impl<'a> WaitingAgain<'a> {
@@ -551,7 +541,11 @@ impl<'a> WaitingAgain<'a> {
 impl Drop for WaitingAgain<'_> {
     fn drop(&mut self) {
         if let Some(counts) = self.0 {
-            counts.cancelled.fetch_add(1, Ordering::Relaxed);
+            if counts.cutting.load(Ordering::SeqCst) {
+                counts.cut.fetch_add(1, Ordering::Relaxed);
+            } else {
+                counts.cancelled.fetch_add(1, Ordering::Relaxed);
+            }
         }
     }
 }
@@ -573,6 +567,7 @@ struct Tally {
     number: u64,
     asked: AtomicU64,
     cancelled: AtomicU64,
+    cut: AtomicU64,
 }
 
 impl Tally {
@@ -583,6 +578,7 @@ impl Tally {
             number,
             asked: AtomicU64::new(0),
             cancelled: AtomicU64::new(0),
+            cut: AtomicU64::new(0),
         }
     }
 
@@ -603,10 +599,12 @@ impl Drop for Tally {
         // to say.
         if asked > 0 {
             eprintln!(
-                "model-relay: connection {}.{} carried {asked} asked, {} of them cancelled",
+                "model-relay: connection {}.{} carried {asked} asked, {} of them cancelled \
+                 and {} cut",
                 self.at,
                 self.number,
-                self.cancelled.load(Ordering::Relaxed)
+                self.cancelled.load(Ordering::Relaxed),
+                self.cut.load(Ordering::Relaxed)
             );
         }
     }
@@ -614,14 +612,12 @@ impl Drop for Tally {
 
 /// One request on a connection, from when it's sent down it until its
 /// answer ends or fails. Dropped before either, pi gave up on it, and it's
-/// counted as cancelled.
+/// counted as cancelled, or the relay's stop cut it, and it's counted as
+/// cut.
 struct OnTheWay {
     tally: Arc<Tally>,
     counts: Arc<Counts>,
     ended: AtomicBool,
-    /// When it was sent, so a request sent before a sleep, or before the
-    /// relay took requests again, isn't judged.
-    sent: Instant,
 }
 
 impl OnTheWay {
@@ -632,7 +628,6 @@ impl OnTheWay {
             tally: Arc::clone(tally),
             counts: Arc::clone(counts),
             ended: AtomicBool::new(false),
-            sent: Instant::now(),
         }
     }
 
@@ -651,7 +646,13 @@ impl OnTheWay {
 
 impl Drop for OnTheWay {
     fn drop(&mut self) {
-        if !self.ended.load(Ordering::Relaxed) {
+        if self.ended.load(Ordering::Relaxed) {
+            return;
+        }
+        if self.counts.cutting.load(Ordering::SeqCst) {
+            self.tally.cut.fetch_add(1, Ordering::Relaxed);
+            self.counts.cut.fetch_add(1, Ordering::Relaxed);
+        } else {
             self.tally.cancelled.fetch_add(1, Ordering::Relaxed);
             self.counts.cancelled.fetch_add(1, Ordering::Relaxed);
         }
@@ -659,25 +660,22 @@ impl Drop for OnTheWay {
 }
 
 /// An answer's body, whose request ends once the body has: read to its
-/// end, or as far as its length said, or failed. The relay judges the
-/// request then, so one broken off midway is judged failed.
+/// end, or as far as its length said, or failed, so one broken off midway
+/// is counted as broken rather than as pi's cancel.
 struct Answering<B> {
     body: B,
     on_the_way: OnTheWay,
     left: Option<u64>,
-    relay: Arc<Relay>,
 }
 
 impl<B: HttpBody> Answering<B> {
-    /// `body`, the answer to the request `on_the_way`, which `relay`
-    /// carried.
-    fn new(body: B, on_the_way: OnTheWay, relay: Arc<Relay>) -> Self {
+    /// `body`, the answer to the request `on_the_way`.
+    fn new(body: B, on_the_way: OnTheWay) -> Self {
         let left = body.size_hint().exact();
         let answering = Self {
             body,
             on_the_way,
             left,
-            relay,
         };
         if left == Some(0) {
             answering.ended(None);
@@ -687,18 +685,14 @@ impl<B: HttpBody> Answering<B> {
 }
 
 impl<B> Answering<B> {
-    /// Ends the request, answered whole or failing with `why`, and has
-    /// the relay judge it, once, as `fails_the_path` says.
+    /// Ends the request, answered whole or failing with `why`, counting
+    /// it broken off once when it failed.
     fn ended(&self, why: Option<&(dyn std::error::Error + 'static)>) {
-        if !self.on_the_way.end() {
-            return;
-        }
-        let Some(why) = why else {
-            return self.relay.finished(self.on_the_way.sent, false);
-        };
-        self.relay.counts.broken.fetch_add(1, Ordering::Relaxed);
-        if fails_the_path(why) {
-            self.relay.finished(self.on_the_way.sent, true);
+        if self.on_the_way.end() && why.is_some() {
+            self.on_the_way
+                .counts
+                .broken
+                .fetch_add(1, Ordering::Relaxed);
         }
     }
 }
@@ -825,6 +819,17 @@ impl Unreachable {
             Unreachable::Unfit => said(StatusCode::MISDIRECTED_REQUEST, CANT_CARRY),
         }
     }
+}
+
+/// How far a relay is through leaving, as each connection it took hears.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Leave {
+    /// It takes requests.
+    Not,
+    /// It closes each connection it holds as its answer ends.
+    AsAnswersEnd,
+    /// It cuts the answers it holds, its drain having run out.
+    Now,
 }
 
 /// How many of pi's connections a relay holds, and a way to hear when it
@@ -1049,53 +1054,36 @@ pub struct Relay {
     /// Whether it has begun to leave, when a request is sent direct.
     leaving: AtomicBool,
     connections: Arc<Connections>,
+    /// Those of `connections` taken before it began to leave, whose
+    /// answers a stopped relay waits on.
+    kept: Arc<Connections>,
+    /// Those of `connections` taken once it had begun to leave, each
+    /// sending what it's asked direct.
+    late: Arc<Connections>,
     counts: Arc<Counts>,
     busy: Arc<Busy>,
-    /// Whether it takes requests, judged by those it finished lately.
-    standing: Standing,
-    /// Told each time it stands down, so it tries its path.
-    stood_down: Notify,
-    /// The number the next trial connection is known by.
-    trials: AtomicU64,
 }
 
-/// Which connection one opened is, as it's said: a slot's, for requests,
-/// by its slot and its number there, or one trying its path, by its own.
+/// Which connection one opened is, as it's said: by its slot and its
+/// number there.
 #[derive(Clone, Copy)]
-enum Named {
-    Slot(usize, u64),
-    Trial(u64),
+struct Named {
+    at: usize,
+    number: u64,
 }
 
 impl Named {
-    /// What one that couldn't be made is said as: a slot's by its slot,
-    /// as the number goes to the next one tried.
+    /// What one that couldn't be made is said as: by its slot alone, as
+    /// the number goes to the next one tried.
     fn tried(self) -> String {
-        match self {
-            Named::Slot(at, _) => format!("connection {at}"),
-            Named::Trial(number) => format!("trial connection {number}"),
-        }
+        format!("connection {}", self.at)
     }
 }
 
 impl fmt::Display for Named {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Named::Slot(at, number) => write!(f, "connection {at}.{number}"),
-            Named::Trial(number) => write!(f, "trial connection {number}"),
-        }
+        write!(f, "connection {}.{}", self.at, self.number)
     }
-}
-
-/// How long a stand-down lasting `lasting`, of a first one lasting
-/// `first`, waits for its first trial, on trials `every` apart: two
-/// periods, times as many as it has doubled, so a path that answers its
-/// trials and then fails again is tried less and less often.
-fn first_trial_after(every: Duration, lasting: Duration, first: Duration) -> Duration {
-    let times = lasting.as_nanos() / first.as_nanos().max(1);
-    every
-        .saturating_mul(2)
-        .saturating_mul(u32::try_from(times).unwrap_or(u32::MAX).max(1))
 }
 
 impl Relay {
@@ -1130,63 +1118,74 @@ impl Relay {
             asked_at: Held::new((Instant::now(), SystemTime::now())),
             leaving: AtomicBool::new(false),
             connections: Arc::new(Connections::default()),
+            kept: Arc::new(Connections::default()),
+            late: Arc::new(Connections::default()),
             counts: Arc::new(Counts::default()),
             busy: Arc::new(Busy {
                 now: AtomicUsize::new(0),
                 quiet_since: Held::new(Instant::now()),
             }),
-            standing: Standing::new(clocks.stands_down_for),
-            stood_down: Notify::new(),
-            trials: AtomicU64::new(0),
         })
     }
 
-    /// Answers `listener` until the process is stopped, or until it has
-    /// sat idle as long as its clocks say. Then it leaves: each connection
-    /// it holds is closed as its answer ends, and while any is open, a
-    /// request on a connection taken since is sent direct with a 421, so
-    /// no pi waits on a relay that's going.
-    pub async fn serve(self, listener: UnixListener) {
+    /// Answers `listener` until it has sat idle as long as its clocks say,
+    /// or `stops` says, as systemd's stop does. Then it leaves: each
+    /// connection it holds is closed as its answer ends, and while any is
+    /// open, a request on a connection taken since is sent direct with a
+    /// 421, so no pi waits on a relay that's going. Stopped, it takes them
+    /// until its answers have ended or its drain runs out, since a
+    /// restart's new relay can't answer them until this one is gone. It waits on its answers its
+    /// clocks' `drains_within` at most and then cuts them, and a second
+    /// stop cuts them at once. Those it sends direct get
+    /// `SAYS_GO_DIRECT_WITHIN` once its answers have ended, as they do when
+    /// it's stopped as it leaves idle. What it hands back says the counts
+    /// once more, for the answers it cut, which end only as its runtime
+    /// drops them.
+    pub async fn serve_until(
+        self,
+        listener: UnixListener,
+        mut stops: mpsc::Receiver<()>,
+    ) -> LastWord {
         eprintln!(
             "model-relay: forwarding to {} over at most {} connections",
             self.origin.authority,
             self.slots.len()
         );
-        let (every, lasting) = (
-            self.clocks.tries_its_path_every,
-            self.clocks.stands_down_for,
-        );
-        if first_trial_after(every, lasting, lasting) >= lasting {
-            eprintln!(
-                "model-relay: it stands down {} s, too short to try its path every {} s, so a \
-                 stand-down ends on its timer alone",
-                lasting.as_secs(),
-                every.as_secs()
-            );
-        }
         let relay = Arc::new(self);
         tokio::spawn(say_counts(Arc::clone(&relay.counts)));
-        tokio::spawn(Arc::clone(&relay).tries_its_path());
-        let (leave, leaving) = watch::channel(false);
-        loop {
-            tokio::select! {
-                () = relay.accept(&listener, &leaving) => {}
-                () = relay.idle() => {}
+        let (leave, leaving) = watch::channel(Leave::Not);
+        let was_stopped = loop {
+            let stopping = tokio::select! {
+                never = relay.accept(&listener, &leaving) => match never {},
+                () = relay.idle() => false,
+                () = stopped(&mut stops) => true,
+            };
+            // A stop leaves whatever comes, so it gives nothing more the
+            // moment to begin an answer it would then wait on.
+            if stopping {
+                break true;
             }
             // Taking no more, it gives a connection it took just now the
             // moment pi needs to say its request, which then holds it here.
             tokio::time::sleep(LEAVING_GRACE).await;
             if relay.is_idle() {
-                break;
+                break false;
             }
-        }
+        };
         // Said as it leaves too, or the last stretch's would go unsaid.
         relay.counts.say();
+        let last_word = LastWord(Arc::clone(&relay.counts));
+        if was_stopped {
+            relay
+                .leave_as_stopped(&listener, &leave, &leaving, &mut stops)
+                .await;
+            return last_word;
+        }
         let idle_for = relay.clocks.idle_exit.unwrap_or_default().as_secs();
         eprintln!("model-relay: idle for {idle_for} s, so it leaves; its socket starts it again");
         relay.leaving.store(true, Ordering::SeqCst);
         // Nobody is left to tell when every connection has gone already.
-        let _ = leave.send(true);
+        let _ = leave.send(Leave::AsAnswersEnd);
         // Pis that keep connecting would keep a relay taking them going for
         // ever, so it takes them only a while; after that they wait on the
         // socket for whatever systemd starts next.
@@ -1198,28 +1197,132 @@ impl Relay {
             });
         let drained = relay.connections.none_held();
         tokio::pin!(drained);
-        tokio::select! {
-            () = relay.accept(&listener, &leaving) => {}
-            () = tokio::time::sleep(taking_for) => drained.await,
-            () = &mut drained => {}
+        // Whether it was stopped as it left, when it's done taking pis.
+        let taking = tokio::select! {
+            never = relay.accept(&listener, &leaving) => match never {},
+            () = tokio::time::sleep(taking_for) => None,
+            () = &mut drained => Some(false),
+            () = stopped(&mut stops) => Some(true),
+        };
+        let stopped_as_it_left = if let Some(was) = taking {
+            was
+        } else {
+            tokio::select! {
+                () = &mut drained => false,
+                () = stopped(&mut stops) => true,
+            }
+        };
+        if stopped_as_it_left {
+            eprintln!("model-relay: stopped as it left, so it ends what it was sending direct");
+            relay.lets_the_late_finish(&mut stops).await;
         }
         // Once more for those refused while it left.
         relay.counts.say();
+        last_word
     }
 
-    /// Answers each connection `listener` takes. One taken before `leaving`
-    /// says so is closed as its answer ends once it does; one taken after
-    /// answers a request and closes.
-    async fn accept(self: &Arc<Relay>, listener: &UnixListener, leaving: &watch::Receiver<bool>) {
+    /// Leaves as `serve_until` says once stopped, its counts said.
+    async fn leave_as_stopped(
+        self: &Arc<Relay>,
+        listener: &UnixListener,
+        leave: &watch::Sender<Leave>,
+        leaving: &watch::Receiver<Leave>,
+        stops: &mut mpsc::Receiver<()>,
+    ) {
+        let drains_within = self.clocks.drains_within;
+        eprintln!(
+            "model-relay: stopped with {} connections taken, so it sends what it's asked direct \
+             until their answers have ended, {} s at most",
+            self.kept.now.load(Ordering::SeqCst),
+            drains_within.as_secs()
+        );
+        self.leaving.store(true, Ordering::SeqCst);
+        // Nobody is left to tell when every connection has gone already.
+        let _ = leave.send(Leave::AsAnswersEnd);
+        let began = Instant::now();
+        let ended = tokio::select! {
+            never = self.accept(listener, leaving) => match never {},
+            () = self.kept.none_held() => true,
+            () = tokio::time::sleep(drains_within) => false,
+            () = stopped(stops) => {
+                eprintln!(
+                    "model-relay: stopped again, so it leaves now, cutting the {} connections \
+                     it had taken and the {} it was sending direct",
+                    self.kept.now.load(Ordering::SeqCst),
+                    self.late.now.load(Ordering::SeqCst)
+                );
+                self.counts.cutting.store(true, Ordering::SeqCst);
+                self.counts.say();
+                return;
+            }
+        };
+        if ended {
+            eprintln!(
+                "model-relay: the connections it had taken ended within {} s",
+                began.elapsed().as_secs()
+            );
+        } else {
+            eprintln!(
+                "model-relay: {} connections it had taken hadn't ended within {} s, so they're cut",
+                self.kept.now.load(Ordering::SeqCst),
+                drains_within.as_secs()
+            );
+            self.counts.cutting.store(true, Ordering::SeqCst);
+            // Nobody is left to tell when every connection has gone already.
+            let _ = leave.send(Leave::Now);
+        }
+        self.lets_the_late_finish(stops).await;
+        // Once more for those refused while it left.
+        self.counts.say();
+    }
+
+    /// Taking no more, gives those it was sending direct the moment they
+    /// need to finish saying so, and cuts one taking longer, or every one
+    /// at a second stop.
+    async fn lets_the_late_finish(&self, stops: &mut mpsc::Receiver<()>) {
+        let late = tokio::time::timeout(SAYS_GO_DIRECT_WITHIN, self.late.none_held());
+        tokio::select! {
+            finished = late => if finished.is_err() {
+                self.counts.cutting.store(true, Ordering::SeqCst);
+                eprintln!(
+                    "model-relay: {} connections hadn't finished within {} s, so they're cut",
+                    self.late.now.load(Ordering::SeqCst),
+                    SAYS_GO_DIRECT_WITHIN.as_secs()
+                );
+            },
+            () = stopped(stops) => {
+                self.counts.cutting.store(true, Ordering::SeqCst);
+                eprintln!(
+                    "model-relay: stopped again, so it cuts the {} connections it was \
+                     sending direct",
+                    self.late.now.load(Ordering::SeqCst)
+                );
+            }
+        }
+    }
+
+    /// Answers each connection `listener` takes, for as long as it's asked
+    /// to. One taken before `leaving` says so is closed as its answer ends
+    /// once it does, or cut when it says to; one taken after answers a
+    /// request and closes.
+    async fn accept(
+        self: &Arc<Relay>,
+        listener: &UnixListener,
+        leaving: &watch::Receiver<Leave>,
+    ) -> Infallible {
         loop {
             match listener.accept().await {
                 Ok((stream, _)) => {
                     let relay = Arc::clone(self);
                     let mut leaving = leaving.clone();
+                    // Told apart here, not in the task, so a stop sees each
+                    // connection taken before it as kept, on any runtime.
                     let holding = self.connections.one();
+                    let late = *leaving.borrow_and_update() != Leave::Not;
+                    let which = if late { &self.late } else { &self.kept };
+                    let which = which.one();
                     tokio::spawn(async move {
-                        let _holding = holding;
-                        let late = *leaving.borrow_and_update();
+                        let (_holding, _which) = (holding, which);
                         let service = hyper::service::service_fn(move |request| {
                             let relay = Arc::clone(&relay);
                             async move { Ok::<_, Infallible>(relay.forward(request).await) }
@@ -1237,11 +1340,15 @@ impl Relay {
                         }
                         tokio::select! {
                             _ = connection.as_mut() => return,
-                            _ = leaving.wait_for(|leave| *leave) => {
+                            _ = leaving.wait_for(|leave| *leave != Leave::Not) => {
                                 connection.as_mut().graceful_shutdown();
                             }
                         }
-                        let _ = connection.await;
+                        // Dropped, the connection and its answer are cut.
+                        tokio::select! {
+                            _ = connection.as_mut() => {}
+                            _ = leaving.wait_for(|leave| *leave == Leave::Now) => {}
+                        }
                     });
                 }
                 Err(why) => {
@@ -1267,14 +1374,12 @@ impl Relay {
         }
     }
 
-    /// Whether it has had nothing in hand for its idle time, and hasn't
-    /// stood down within it, which leaving would forget.
+    /// Whether it has had nothing in hand for its idle time.
     fn is_idle(&self) -> bool {
         self.clocks.idle_exit.is_some_and(|idle_exit| {
             self.busy
                 .quiet_for()
                 .is_some_and(|quiet| quiet >= idle_exit)
-                && !self.standing.holds_on(Instant::now(), idle_exit)
         })
     }
 
@@ -1320,13 +1425,7 @@ impl Relay {
                 "this relay is leaving, so go directly\n",
             );
         }
-        // The sleep looked for first, as a sleep forgets a stand-down, and
-        // the stand-down's 421 said for a body too large too, as the origin
-        // asked directly may take one the relay won't.
         self.retire_after_a_sleep();
-        if let Some(standing_down) = self.standing_down() {
-            return standing_down;
-        }
         let whole = match read {
             Ok(whole) => whole,
             Err(unread) => return self.unread(unread),
@@ -1343,163 +1442,11 @@ impl Relay {
         without_connection_headers(&mut parts.headers);
         // The request stays in hand until its answer is sent or given up on,
         // so the relay never leaves mid-answer.
-        let body = Answering::new(body, on_the_way, Arc::clone(self)).map_err(move |why| {
+        let body = Answering::new(body, on_the_way).map_err(move |why| {
             let _ = &in_hand;
             why
         });
         Response::from_parts(parts, body.boxed())
-    }
-
-    /// The relay's own 421, sending pi direct, while it stands down; or
-    /// none, said as it takes requests again when it does just now.
-    fn standing_down(&self) -> Option<Response<Body>> {
-        match self.standing.taking(Instant::now()) {
-            Taking::Yes => None,
-            Taking::Again(lasted) => {
-                // Requests it had taken before it stood down may have
-                // opened connections since, on the path it stood down from.
-                self.retire_every();
-                eprintln!(
-                    "model-relay: it stood down {} s, so it takes requests again, on \
-                     connections opened afresh",
-                    lasted.as_secs()
-                );
-                None
-            }
-            Taking::No(more) => {
-                self.counts.refused.fetch_add(1, Ordering::Relaxed);
-                self.counts.stood_down.fetch_add(1, Ordering::Relaxed);
-                // One of the four sentences pi goes direct on, word for
-                // word, so it's worded anew only with pi taught it too.
-                let mut answer = said(
-                    StatusCode::MISDIRECTED_REQUEST,
-                    "this relay forwards to its own origin alone, and stands down from it for \
-                     now, so go directly\n",
-                );
-                answer
-                    .headers_mut()
-                    .insert(header::RETRY_AFTER, (more.as_secs() + 1).into());
-                Some(answer)
-            }
-        }
-    }
-
-    /// Hears a request `sent` down a connection, and answered or `failed`
-    /// for its path, and stands down when the share failed lately says to.
-    /// A sleep is looked for first, as the streams it cut break before pi
-    /// asks anything new, and they're not to be judged. No test can sleep
-    /// the machine, so this order is held by reading it alone.
-    fn finished(&self, sent: Instant, failed: bool) {
-        self.retire_after_a_sleep();
-        let Some(stood) = self.standing.heard(Instant::now(), sent, failed) else {
-            return;
-        };
-        eprintln!(
-            "model-relay: {} of the {} requests it finished in ten minutes failed, so it \
-             stands down for {} s, retiring its connections, and pi goes directly",
-            stood.failed,
-            stood.finished,
-            stood.lasting.as_secs()
-        );
-        self.retire_every();
-        self.stood_down.notify_one();
-    }
-
-    /// Tries its path each time it stands down, until the path answers or
-    /// the stand-down ends, and takes requests again once it answers. Each
-    /// stand-down is known by when it ends, so a trial begun in one never
-    /// ends the next; one begun while it waits is told, and waits its own
-    /// first trial from then, not from when a wait for the last would end.
-    /// One begun while a trial is under way waits from that trial's end.
-    async fn tries_its_path(self: Arc<Relay>) {
-        let every = self.clocks.tries_its_path_every;
-        let mut told = false;
-        loop {
-            if !told {
-                self.stood_down.notified().await;
-            }
-            told = false;
-            let Some((until, lasting)) = self.standing.down(Instant::now()) else {
-                continue;
-            };
-            let mut wait = first_trial_after(every, lasting, self.clocks.stands_down_for);
-            loop {
-                tokio::select! {
-                    () = tokio::time::sleep(wait) => {}
-                    () = self.stood_down.notified() => {
-                        told = true;
-                        break;
-                    }
-                }
-                wait = every;
-                if self.standing.down(Instant::now()).map(|(ends, _)| ends) != Some(until) {
-                    break;
-                }
-                if !self.path_answers().await {
-                    continue;
-                }
-                if let Some(lasted) = self.standing.mend(Instant::now(), until) {
-                    self.retire_every();
-                    eprintln!(
-                        "model-relay: it stood down {} s, and its path answers again, so it \
-                         takes requests again, on connections opened afresh",
-                        lasted.as_secs()
-                    );
-                }
-                break;
-            }
-        }
-    }
-
-    /// Whether a connection opened afresh, as one for requests would be,
-    /// carries `TRIED_TIMES` requests in a row as far as their answers'
-    /// heads, and says how it went. Any head but a 5xx shows the path
-    /// carried the request there and back, as the origin's root answers a
-    /// request with no key 401; a 5xx may be the origin failing behind
-    /// it, which a trial mustn't take for its path answering.
-    async fn path_answers(&self) -> bool {
-        let number = self.trials.fetch_add(1, Ordering::Relaxed);
-        self.counts.tried.fetch_add(1, Ordering::Relaxed);
-        let Ok(mut sender) = self.connect(Named::Trial(number)).await else {
-            eprintln!("model-relay: its path couldn't be tried, so it stands down still");
-            return false;
-        };
-        for asked in 1..=TRIED_TIMES {
-            let trial = Uri::builder()
-                .scheme(Scheme::HTTPS)
-                .authority(self.origin.authority.clone())
-                .path_and_query("/")
-                .build()
-                .map(|uri| {
-                    let mut trial = Request::new(InPieces::new(Full::new(Bytes::new())));
-                    *trial.method_mut() = hyper::Method::HEAD;
-                    *trial.uri_mut() = uri;
-                    trial
-                });
-            let Ok(trial) = trial else {
-                return false;
-            };
-            let asking = async {
-                sender.ready().await?;
-                sender.send_request(trial).await
-            };
-            let why = match tokio::time::timeout(self.clocks.connect_within, asking).await {
-                Ok(Ok(answer)) if !answer.status().is_server_error() => continue,
-                Ok(Ok(answer)) => format!("answered {}", answer.status()),
-                Ok(Err(why)) => with_causes(&why),
-                Err(_) => "no answer in time".to_owned(),
-            };
-            eprintln!(
-                "model-relay: its path, tried on trial connection {number}, failed request \
-                 {asked} of {TRIED_TIMES}: {why}; so it stands down still"
-            );
-            return false;
-        }
-        eprintln!(
-            "model-relay: its path, tried on trial connection {number}, answered \
-             {TRIED_TIMES} requests in a row"
-        );
-        true
     }
 
     /// Points a request pi asked of the origin at the origin itself, or
@@ -1573,16 +1520,15 @@ impl Relay {
         parts: &hyper::http::request::Parts,
         whole: &Bytes,
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
-        let (mut request, mut went) = (sendable(parts, whole), Instant::now());
+        let mut request = sendable(parts, whole);
         let mut sent = 0;
         let mut taken = self.sender().await;
         // The connection the origin reset this request on, once it has.
         // Sent again, it's answered or fails on that send, so a request
         // reset is one not yet sent again for as long as the loop goes.
         let mut reset_on: Option<(usize, u64)> = None;
-        // Whether that first failure was the path's, judged however its
-        // resend fails, and whether a goodbye's rather than a reset.
-        let (mut reset_judged, mut left_out) = (false, false);
+        // Whether that first failure was a goodbye's rather than a reset.
+        let mut left_out = false;
         let mut down;
         let answered = loop {
             let (
@@ -1596,23 +1542,16 @@ impl Relay {
                 Ok(taken) => taken,
                 Err(why) => {
                     self.counts.failed.fetch_add(1, Ordering::Relaxed);
-                    // Never sent, it says nothing of the connections, as
-                    // it would have failed direct too, so it isn't judged.
                     let Some(was) = reset_on else {
                         return Err(Box::new(why.said()));
                     };
-                    return Err(Box::new(self.not_sent_again(
-                        went,
-                        was,
-                        reset_judged,
-                        left_out,
-                    )));
+                    return Err(Box::new(self.not_sent_again(was, left_out)));
                 }
             };
             // Dropped while it waits for the answer, as when pi hangs up, it's
-            // counted as cancelled here; judged, it's by when this attempt went.
+            // counted as cancelled here.
             let on_the_way = OnTheWay::sent(&tally, &self.counts);
-            (went, down) = (on_the_way.sent, (at, number, tally));
+            down = (at, number, tally);
             let tried = sender.try_send_request(request).await;
             let mut unread = None;
             let failed = match tried {
@@ -1674,7 +1613,6 @@ impl Relay {
                                 "it goes once more, if another connection will take it",
                             );
                             reset_on = Some((at, number));
-                            reset_judged = fails_the_path(failed.error());
                             left_out = goodbye_saying(failed.error()).is_some();
                             request = sendable(parts, whole);
                             taken = self.another(at, number).await;
@@ -1684,32 +1622,13 @@ impl Relay {
                 }
             }
         };
-        // Answered, it's judged once its answer ends, as it may break off;
-        // failed, it's judged if its path failed, first try or again.
-        if answered
-            .as_ref()
-            .is_err_and(|why| reset_judged || fails_the_path(why))
-        {
-            self.finished(went, true);
-        }
         answered.map_err(|why| Box::new(self.not_carried(&why, &down, reset_on)))
     }
 
     /// What pi is answered for a request first failed on slot `was_at`'s
     /// connection `was` that no other connection would take again: the 421
-    /// that sends pi direct. It's judged against the path, as of when it
-    /// `went`, only if `judged`, as a reset is and a goodbye saying nothing
-    /// was wrong isn't, since that says nothing of the path.
-    fn not_sent_again(
-        &self,
-        went: Instant,
-        (was_at, was): (usize, u64),
-        judged: bool,
-        left_out: bool,
-    ) -> Response<Body> {
-        if judged {
-            self.finished(went, true);
-        }
+    /// that sends pi direct.
+    fn not_sent_again(&self, (was_at, was): (usize, u64), left_out: bool) -> Response<Body> {
         // Reset or left out, and then not sent again, so it's counted with
         // the requests reset or left out that failed, and sent direct.
         self.counts.reset.fetch_add(1, Ordering::Relaxed);
@@ -1759,8 +1678,8 @@ impl Relay {
         // 19 November to fail on this one again. So does one a goodbye
         // left out again. Reset or left out again saying to calm down, or
         // with an error of the origin's own, is the origin's verdict rather
-        // than the path's, so it's a 502, for pi's retry to wait out: the
-        // path's failure is judged as the stand-down judges it.
+        // than the path's, so it's a 502, for pi's retry to wait out, as
+        // `fails_the_path` tells them apart.
         let (answer, then) = if goes_direct(why, reset_on.is_some()) {
             (goes_directly(), "pi goes directly")
         } else {
@@ -1916,9 +1835,6 @@ impl Relay {
         }
         eprintln!("model-relay: the machine slept, so its connections are opened afresh");
         self.retire_every();
-        if self.standing.forget(now.0) {
-            eprintln!("model-relay: the machine slept, so it no longer stands down");
-        }
     }
 
     /// Retires every connection, so each is opened afresh when next asked
@@ -1976,7 +1892,7 @@ impl Relay {
     async fn open_now(&self, at: usize) -> Result<Kept, Unreachable> {
         let number = self.slots[at].next_number();
         let tally = Arc::new(Tally::of(at, number));
-        match self.connect(Named::Slot(at, number)).await {
+        match self.connect(Named { at, number }).await {
             Ok(sender) => {
                 let kept = self.slots[at].keep(number, sender, tally);
                 // The origin is back, so others may be opened behind.
@@ -1992,8 +1908,7 @@ impl Relay {
     }
 
     /// Opens a connection to the origin, saying so as it's `named`, and
-    /// says when it's retired. A slot's takes requests, and is counted so;
-    /// a trial's isn't counted here, as its trial is counted as it begins.
+    /// says when it's retired, counting it as one taking requests.
     async fn connect(&self, named: Named) -> Result<SendRequest<Sent>, Unreachable> {
         let within = self.clocks.connect_within;
         let opening = async {
@@ -2065,18 +1980,6 @@ impl Relay {
                 return Err(Unreachable::Late);
             }
         };
-        if let Named::Trial(_) = named {
-            eprintln!("model-relay: {named} opened");
-            tokio::spawn(async move {
-                // A trial's closes once its sender is dropped, its last
-                // request answered.
-                match connection.await {
-                    Ok(()) => eprintln!("model-relay: {named} closed"),
-                    Err(why) => eprintln!("model-relay: {named} closed on {}", with_causes(&why)),
-                }
-            });
-            return Ok(sender);
-        }
         self.counts.opened.fetch_add(1, Ordering::Relaxed);
         let open = self.counts.open.fetch_add(1, Ordering::Relaxed) + 1;
         eprintln!("model-relay: {named} opened, {open} taking requests");
@@ -2131,15 +2034,15 @@ fn goes_again(reason: h2::Reason) -> bool {
 }
 
 /// Whether a request failing with `why` failed for the relay's path to
-/// the origin, and so is judged: its connection lost, or the origin
-/// resetting it or saying goodbye with a refused stream or a protocol
-/// error, as on 18 November. The origin's own verdict, such as to calm
-/// down or an error of its own, says nothing of the path, as it would
-/// fail direct too. What hyper or h2 raise themselves is judged, whether
-/// a connection's task gone, which hyper calls the user's error, or h2
-/// refusing to send what was asked: the request's body is whole in
-/// memory and can't fail, and pi direct speaks HTTP/1.1, so it wouldn't
-/// meet h2's refusals, and a stand-down sending it there is the cure.
+/// the origin, and so goes direct once sent again: its connection lost,
+/// or the origin resetting it or saying goodbye with a refused stream or
+/// a protocol error, as on 18 November. The origin's own verdict, such as
+/// to calm down or an error of its own, says nothing of the path, as it
+/// would fail direct too. What hyper or h2 raise themselves fail the
+/// path, whether a connection's task gone, which hyper calls the user's
+/// error, or h2 refusing to send what was asked: the request's body is
+/// whole in memory and can't fail, and pi direct speaks HTTP/1.1, so it
+/// wouldn't meet h2's refusals, and sending it there is the cure.
 fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
     let mut beneath = Some(why);
     while let Some(cause) = beneath {
@@ -2159,9 +2062,8 @@ fn fails_the_path(why: &(dyn std::error::Error + 'static)) -> bool {
 /// path failed again, or a goodbye saying nothing was wrong left it out
 /// again, as a drain before a deploy that ends every connection does. A
 /// request a goodbye left out was never begun, so direct is the safest
-/// place for it; the goodbye isn't judged, since it says nothing of the
-/// path, so an origin that drains every connection it's given costs each
-/// request a connection or two before its 421, and never stands it down.
+/// place for it, so an origin that drains every connection it's given
+/// costs each request a connection or two before its 421.
 fn goes_direct(why: &(dyn std::error::Error + 'static), resent: bool) -> bool {
     resent && (fails_the_path(why) || left_by_a_goodbye(why))
 }
@@ -2277,8 +2179,7 @@ async fn reach_any(addresses: &[SocketAddr], within: Duration) -> io::Result<Tcp
 /// clock and the wall's: the wall ran more than `SLEPT_AT_LEAST` ahead.
 /// This takes `Instant` to stand still in a suspend, as Linux's monotonic
 /// clock does; a wall clock set back is no sleep. One stepped forward
-/// reads as one, ending a stand-down early, which costs a return judged
-/// afresh.
+/// reads as one, which costs only connections opened afresh.
 fn slept(then: (Instant, SystemTime), now: (Instant, SystemTime)) -> bool {
     let on_the_wall = now.1.duration_since(then.1).unwrap_or_default();
     on_the_wall > now.0.duration_since(then.0) + SLEPT_AT_LEAST
@@ -2391,6 +2292,13 @@ where
     }
 }
 
+/// Ends at the next stop `stops` says, or never once nothing can say one.
+async fn stopped(stops: &mut mpsc::Receiver<()>) {
+    if stops.recv().await.is_none() {
+        std::future::pending::<()>().await;
+    }
+}
+
 /// Says the counts every `COUNTS_EVERY`, when any has moved since.
 async fn say_counts(counts: Arc<Counts>) {
     loop {
@@ -2427,8 +2335,8 @@ mod tests {
 
     use super::{
         BODY_WITHIN, Counts, HELD_AHEAD_AT_MOST, InPieces, Origin, Retiring, SAID_AT_MOST,
-        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, first_trial_after, goes_again,
-        goes_direct, goes_once_more, reach, reach_any, read_whole, slept, with_causes,
+        SLEPT_AT_LEAST, Sender, Slot, Unread, fails_the_path, goes_again, goes_direct,
+        goes_once_more, reach, reach_any, read_whole, slept, with_causes,
     };
 
     /// How the origin ends a request it hasn't answered.
@@ -2526,18 +2434,19 @@ mod tests {
     }
 
     /// A request that a goodbye saying nothing was wrong left out goes once
-    /// more, unjudged, as the goodbye promises the origin did nothing with
-    /// it, and direct only once left out again; one saying to calm down is
-    /// the origin's verdict, a 502; one saying a protocol error goes once
-    /// more too, but judged, as the path's, and direct once resent. A reset saying nothing was
-    /// wrong is no drain, and a request the goodbye had begun is lost with
-    /// its connection, judged and not sent again.
+    /// more, as no failure of the path's, since the goodbye promises the
+    /// origin did nothing with it, and direct only once left out again; one
+    /// saying to calm down is the origin's verdict, a 502; one saying a
+    /// protocol error goes once more too, but as the path's failure, and
+    /// direct once resent. A reset saying nothing was wrong is no drain, and
+    /// a request the goodbye had begun is lost with its connection, the
+    /// path's failure and not sent again.
     #[tokio::test(flavor = "current_thread")]
     async fn a_request_a_drain_left_out_goes_once_more_then_direct_unlike_other_endings() {
         let drained = left_out_by(Ending::Goodbye, h2::Reason::NO_ERROR).await;
         assert!(
             goes_once_more(&drained) && goes_direct(&drained, true) && !fails_the_path(&drained),
-            "a request a drain left out wasn't sent once more, then direct, unjudged: {}",
+            "a request a drain left out wasn't sent once more, then direct, unfailed: {}",
             with_causes(&drained)
         );
         let calm = left_out_by(Ending::Goodbye, h2::Reason::ENHANCE_YOUR_CALM).await;
@@ -2549,7 +2458,7 @@ mod tests {
         let broken = left_out_by(Ending::Goodbye, h2::Reason::PROTOCOL_ERROR).await;
         assert!(
             goes_once_more(&broken) && goes_direct(&broken, true) && fails_the_path(&broken),
-            "a protocol error's goodbye wasn't sent once more, judged, then direct: {}",
+            "a protocol error's goodbye wasn't sent once more, failed, then direct: {}",
             with_causes(&broken)
         );
         let reset = left_out_by(Ending::Reset, h2::Reason::NO_ERROR).await;
@@ -2578,38 +2487,33 @@ mod tests {
     }
 
     #[test]
-    fn the_counts_say_trials_apart_from_connections_for_requests() {
+    fn the_counts_are_said_once_each_time_they_move() {
         let counts = Counts::default();
         counts.opened.store(2, Ordering::Relaxed);
-        counts.tried.store(3, Ordering::Relaxed);
+        counts.broken.store(3, Ordering::Relaxed);
         let line = counts.line().expect("counts that moved went unsaid");
         assert!(
-            line.contains("; 2 connections opened, 0 taking requests; 3 trials of its path; "),
-            "the counts didn't say trials apart: {line}"
+            line.ends_with("; 2 connections opened, 0 taking requests; 3 broken off midway"),
+            "the counts didn't say what was opened and broken off: {line}"
         );
         assert_eq!(
             counts.line(),
             None,
             "counts that hadn't moved were said again"
         );
-        counts.tried.store(4, Ordering::Relaxed);
+        counts.broken.store(4, Ordering::Relaxed);
         assert!(
             counts.line().is_some(),
-            "a trial alone didn't move the counts"
+            "an answer broken off alone didn't move the counts"
         );
-    }
-
-    #[test]
-    fn a_stand_down_doubled_waits_as_many_times_longer_for_its_first_trial() {
-        let every = Duration::from_secs(30);
-        let first = Duration::from_secs(600);
-        for (lasting, waits) in [(600, 60), (1200, 120), (2400, 240), (3600, 360), (300, 60)] {
-            assert_eq!(
-                first_trial_after(every, Duration::from_secs(lasting), first),
-                Duration::from_secs(waits),
-                "a stand-down of {lasting} s didn't wait {waits} s for its first trial"
-            );
-        }
+        counts.cut.store(1, Ordering::Relaxed);
+        let line = counts
+            .line()
+            .expect("an answer cut alone didn't move the counts");
+        assert!(
+            line.contains("; pi cancelled 0; 1 cut as it was stopped;"),
+            "the counts didn't say what the stop cut apart from pi's cancels: {line}"
+        );
     }
 
     #[tokio::test(start_paused = true)]
@@ -3022,14 +2926,20 @@ mod tests {
     #[test]
     fn what_the_socket_and_h2_raise_fails_the_path() {
         let lost = std::io::Error::from(std::io::ErrorKind::BrokenPipe);
-        assert!(fails_the_path(&lost), "a socket lost wasn't judged");
+        assert!(
+            fails_the_path(&lost),
+            "a socket lost wasn't the path's failure"
+        );
         for reason in [
             h2::Reason::PROTOCOL_ERROR,
             h2::Reason::CANCEL,
             h2::Reason::INTERNAL_ERROR,
         ] {
             let raised = Beneath("http2 error", h2::Error::from(reason));
-            assert!(fails_the_path(&raised), "h2's own {reason:?} wasn't judged");
+            assert!(
+                fails_the_path(&raised),
+                "h2's own {reason:?} wasn't the path's failure"
+            );
         }
     }
 
@@ -3067,7 +2977,7 @@ mod tests {
         );
         assert!(
             fails_the_path(&why),
-            "a connection's task gone wasn't judged: {why:?}"
+            "a connection's task gone wasn't the path's failure: {why:?}"
         );
     }
 

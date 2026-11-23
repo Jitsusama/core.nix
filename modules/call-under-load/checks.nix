@@ -9,10 +9,14 @@
 # call-under-load drives Chrome on Linux, and builds only there.
 onLinux {
   # call-under-load's tests run as it builds: the call's frame rates are
-  # counted by frame slots, its freezes per ten minutes, the calendar
+  # counted by frame slots, its freezes per ten minutes, whether its
+  # sound was heard, the share made up, its jitter and packets lost, and
+  # why any is missing, and that only Chromium's fake devices are taken, the calendar
   # keeps a run ten minutes from a meeting and refuses a stale read, the
-  # apps' waits come from lag-watch's last hour, and the hour is written
-  # in cadence's shape.
+  # apps' waits come from lag-watch's last hour, the launcher's openings
+  # during the run are set against the span before on their medians, or
+  # can't be told under three a side or from a journal not read whole,
+  # and the hour is written in cadence's shape.
   call-under-load-tells-the-hour = pkgs.callPackage ./package.nix { };
   # clippy finds nothing in call-under-load, its tests included.
   call-under-load-passes-clippy = passesClippy "call-under-load-passes-clippy" (

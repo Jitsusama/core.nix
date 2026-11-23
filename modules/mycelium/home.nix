@@ -133,6 +133,31 @@ let
         pathsToLink = [ "/bin" ];
       }}"
     ];
+  # What the home realm's node lends the worker machines it made, from the
+  # store as the declaration is, so the lend is the one the machine's
+  # configuration says, not a file in the account's config folder that a
+  # command run as the account could change in passing. It guards the lend
+  # from the machines lent to, not from the account itself: a command run as
+  # the account unfenced could as well give the node words of its own, or
+  # bind the relay's socket in the runtime folder, and it already reaches
+  # every key that account holds, so the lend opens it nothing new. A key
+  # left out is left out of the file, as mycelium reads a budget whose
+  # upstream adds its own. Only Linux lends: on a Mac the runtime folder the
+  # upstream sits in is DARWIN_USER_TEMP_DIR, every pi session's TMPDIR,
+  # which fenced agents write, so one could bind the socket and be handed
+  # the key; and model-relay, the upstream a lend is built for, is Linux's
+  # alone.
+  lendArgs = lib.optionals (isLinux && cfg.lend != null) [
+    "--lend"
+    "${pkgs.writeText "mycelium-lend.json" (
+      builtins.toJSON {
+        inherit (cfg.lend) vms;
+        budgets = lib.mapAttrs (
+          _: budget: lib.filterAttrs (_: value: value != null) budget
+        ) cfg.lend.budgets;
+      }
+    )}"
+  ];
   # The person's table of which receptors' climbs the node says, from the
   # store as the declaration is: the node refuses one any other account
   # could write, and a table naming nothing is no table, so every source is
@@ -168,6 +193,7 @@ let
     mycelium's PROTOCOL.md says what the program is asked.
   '';
   providersExample = lib.literalExpression ''[ "''${cistern-cell}/bin/cistern-cell" ]'';
+  lend = import ./lend.nix { inherit lib; };
   further = lib.types.submodule (
     { name, ... }:
     {
@@ -287,10 +313,12 @@ let
   builders = import ./builders.nix;
   # The home realm's node writes, as it judges the machine, the carry it
   # would make to ease it, and makes none, so a day of those lines can be read
-  # before it may act; a further realm's sessions aren't its to move.
+  # before it may act; a further realm's sessions aren't its to move. It
+  # alone lends, since the machines it lends to are the ones it made.
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
+    ++ lendArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
     ++ kitArgs cfg.realm cfg.kit;
@@ -513,6 +541,32 @@ in
       type = lib.types.listOf lib.types.package;
       description = kitDescription;
     };
+    lend = lib.mkOption {
+      type = lib.types.nullOr lend;
+      default = null;
+      example = lib.literalExpression ''
+        {
+          vms = [ { prefix = "agents-"; budget = "models"; requests_a_day = 500; } ];
+          budgets.models = {
+            upstream = "model-relay/agents.sock";
+            host = "models.example";
+            paths = [ "/v1/messages" ];
+            auth_header = "authorization";
+            key = [ "''${models-key}/bin/models-key" ];
+          };
+        }
+      '';
+      description = ''
+        What the home realm's node lends the worker machines it made, or
+        null to lend nothing, so each one's lend is refused; only Linux
+        lends. Its names are those of the file mycelium reads, a store file
+        it reads at every request; mycelium's PROTOCOL.md says what each
+        means. Lending a machine model calls through a budget hands it no
+        key: the node adds the key to each request it carries upstream. To
+        stop lending at once, set it to null and switch, which restarts the
+        node.
+      '';
+    };
     healthSocket = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default =
@@ -543,8 +597,8 @@ in
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
-    # never looser; a Mac declares only fenced, but runs its strict, which
-    # writes only the run's folder.
+    # never looser; a Mac runs its strict for either, which writes the
+    # run's folder and the account's temporary folder, its runtime folder.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
       default = [
@@ -559,8 +613,8 @@ in
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
-        strict, on Linux and on a Mac, which declares only its fenced
-        fence, since its strict still reads the home folder but a denylist.
+        strict, on Linux and on a Mac, whose strict reads the home folder
+        but what it hides, where Linux's reads only what it lists.
         Null says none, so every agent's run is refused.
       '';
     };
@@ -594,11 +648,34 @@ in
           message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
         }
         {
-          # A Mac's sandbox-exec profile reads the home folder but a
-          # denylist, where Linux's strict reads only what it lists, so a
-          # strict run sent to a Mac would land on the weaker fence.
-          assertion = isDarwin -> cfg.declares == null || cfg.declares.fence.strict == null;
-          message = "jitsusama.mycelium.declares.fence.strict is set on a Mac, whose fence reads the home folder but what it hides, so it isn't strict: declare fence instead.";
+          assertion = cfg.lend != null -> cfg.realm != null;
+          message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, the realm whose node lends.";
+        }
+        {
+          # As lendArgs says, a Mac's runtime folder is one its agents write.
+          assertion = isDarwin -> cfg.lend == null;
+          message = "jitsusama.mycelium.lend is set on a Mac, whose runtime folder is every pi session's TMPDIR, so an agent could bind the upstream and take the key: lend from Linux.";
+        }
+        {
+          assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;
+          message = "jitsusama.mycelium.lend.vms names a budget jitsusama.mycelium.lend.budgets doesn't hold.";
+        }
+        {
+          # mycelium refuses a machine whose name starts as two prefixes do,
+          # so two that overlap would refuse every machine they both match.
+          # Compared by place, so a prefix named twice is caught too.
+          assertion =
+            cfg.lend != null
+            -> (
+              let
+                prefixes = map (vm: vm.prefix) cfg.lend.vms;
+                places = lib.range 0 (lib.length prefixes - 1);
+                at = builtins.elemAt prefixes;
+                apart = one: other: one == other || !(lib.hasPrefix (at one) (at other));
+              in
+              lib.all (one: lib.all (apart one) places) places
+            );
+          message = "jitsusama.mycelium.lend.vms has two prefixes where one starts the other, so every machine both match is refused.";
         }
         {
           assertion = !(cfg.alsoJoins ? balance);

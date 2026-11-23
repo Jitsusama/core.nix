@@ -2,10 +2,12 @@
 <meta charset="utf-8">
 <title>call under load</title>
 <script>
-// Both ends of the hour's test call, as a Meet call sends: VP9 SVC both ways, each end's stats
-// sampled each second. The near end offers with Chromium's fake camera; the far end, a second
-// Chromium, answers with its own and sends its samples back over a data channel. call-under-load
-// drives both over DevTools. Nothing here writes a frame anywhere.
+// Both ends of the hour's test call, as a Meet call sends: VP9 SVC and Opus both ways, each end's
+// stats sampled each second. The near end offers with Chromium's fake camera and microphone; the
+// far end, a second Chromium, answers with its own and sends its samples back over a data channel.
+// It plays what it hears, since Chromium decodes a call's sound only for something playing it, into
+// the fake output its Chromium is started with. call-under-load drives both over DevTools. Nothing
+// here writes a frame or a sound anywhere.
 'use strict';
 
 // How often each end samples its stats, in ms.
@@ -25,6 +27,8 @@ let pc;
 let dc;
 const last = {};
 let tapped = 0;
+// What became of playing what the far end hears: unset until it plays or is refused.
+let played;
 
 const b64 = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o))));
 const unb64 = (s) => JSON.parse(decodeURIComponent(escape(atob(s))));
@@ -52,10 +56,36 @@ function gathered() {
   });
 }
 
-function camera({ width, height, fps }) {
+// Chromium's fake camera and microphone, the only devices it lists when started with
+// --use-fake-device-for-media-stream: a moving picture and a beep each second.
+function media({ width, height, fps }) {
   return navigator.mediaDevices.getUserMedia({
     video: { width: { ideal: width }, height: { ideal: height }, frameRate: { ideal: fps } },
+    audio: true,
   });
+}
+
+// Plays what the far end hears, so Chromium decodes it as Meet's tab does.
+// Held for the whole call, so the element playing it is never collected partway.
+let speaker;
+
+// Plays the far end's sound, and marks it stopped if the player stops or fails partway, so that
+// reads as unheard rather than as sound heard well over the part that played. A track muted by
+// packets ceasing isn't marked: the player plays on, and that shows in the made-up share.
+// That last part is untested: whether the counts keep growing while muted hasn't been tried.
+function play(track) {
+  speaker = new Audio();
+  speaker.srcObject = new MediaStream([track]);
+  const stopped = (event) => {
+    played = `stopped: ${event.type}`;
+  };
+  for (const stop of ['pause', 'ended', 'emptied', 'error']) {
+    speaker.addEventListener(stop, stopped);
+  }
+  track.addEventListener('ended', () => {
+    played = 'stopped: the track ended';
+  });
+  return speaker.play();
 }
 
 const pick = (r, keys) =>
@@ -78,6 +108,14 @@ async function sample() {
   // can take a while between the ask and the gathering.
   const timed = video.find((r) => r.type === 'media-source' || r.type === 'outbound-rtp');
   const s = { t: Math.round(timed?.timestamp ?? asked), state: pc.connectionState };
+  const heard = [...stats.values()].find((r) => r.type === 'inbound-rtp' && r.kind === 'audio');
+  if (played) {
+    s.played = played;
+  }
+  if (heard) {
+    s.aud = pick(heard, ['concealedSamples', 'totalSamplesReceived', 'packetsLost',
+      'packetsReceived', 'jitter']);
+  }
   for (const r of video) {
     if (r.type === 'outbound-rtp') {
       s.out = pick(r, ['frameWidth', 'frameHeight', 'framesPerSecond', 'qualityLimitationReason',
@@ -103,8 +141,9 @@ globalThis.offer = async (sends) => {
   pc = new RTCPeerConnection();
   dc = pc.createDataChannel('stats');
   dc.onmessage = (m) => globalThis.remote.push(JSON.parse(m.data));
-  const stream = await camera(sends);
+  const stream = await media(sends);
   const [track] = stream.getVideoTracks();
+  const [voice] = stream.getAudioTracks();
   track.contentHint = 'motion';
   const t = pc.addTransceiver(track, {
     direction: 'sendrecv',
@@ -116,9 +155,10 @@ globalThis.offer = async (sends) => {
     }],
   });
   preferVp9(t);
+  pc.addTransceiver(voice, { direction: 'sendrecv', streams: [stream] });
   await pc.setLocalDescription(await pc.createOffer());
   await gathered();
-  return { offer: b64(pc.localDescription), label: track.label };
+  return { offer: b64(pc.localDescription), label: track.label, voice: voice.label };
 };
 
 globalThis.accept = async (answer) => {
@@ -134,11 +174,31 @@ globalThis.answer = async (offer, maxBitrate) => {
     dc = e.channel;
   };
   await pc.setRemoteDescription(unb64(offer));
-  const stream = await camera(FAR);
+  const stream = await media(FAR);
   const [track] = stream.getVideoTracks();
+  const [voice] = stream.getAudioTracks();
   const t = pc.getTransceivers().find((x) => x.receiver.track.kind === 'video');
   t.direction = 'sendrecv';
   await t.sender.replaceTrack(track);
+  const said = pc.getTransceivers().find((x) => x.receiver.track.kind === 'audio');
+  said.direction = 'sendrecv';
+  await said.sender.replaceTrack(voice);
+  // Not waited on: nothing plays until the call connects, which needs the answer first. A
+  // refused play leaves the sound's figures unread rather than ending the call, and each
+  // sample says why, so the hour does too.
+  Promise.resolve()
+    .then(() => play(said.receiver.track))
+    .then(
+      () => {
+        played ??= 'playing';
+      },
+      (e) => {
+        played =
+          e?.name === 'NotAllowedError'
+            ? 'refused: NotAllowedError'
+            : `failed: ${e?.name ?? 'Error'}: ${e?.message ?? e}`;
+      },
+    );
   preferVp9(t);
   await pc.setLocalDescription(await pc.createAnswer());
   const p = t.sender.getParameters();
@@ -147,7 +207,7 @@ globalThis.answer = async (offer, maxBitrate) => {
   await t.sender.setParameters(p).catch(() => null);
   await gathered();
   setInterval(sample, SAMPLE_MS);
-  return { answer: b64(pc.localDescription), label: track.label };
+  return { answer: b64(pc.localDescription), label: track.label, voice: voice.label };
 };
 
 // A stand-in for how quickly Chrome answers Joel's input while a call runs: the near end is

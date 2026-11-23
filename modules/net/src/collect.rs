@@ -584,6 +584,21 @@ mod tests {
     }
 
     #[test]
+    fn a_tv_leaving_its_name_blank_keeps_eeros() {
+        let blank =
+            samsung::tests::answer().replace("\"name\": \"Living Room\"", "\"name\": \" \"");
+        let said = Said {
+            televisions: vec![samsung::tests::answered(blank)],
+            ..contract()
+        };
+        let (tv, _) = the_tv(said);
+        assert_eq!(
+            tv.name, "samsung",
+            "a blank name from the TV stood for eero's"
+        );
+    }
+
+    #[test]
     fn a_source_that_didnt_answer_is_said_and_the_rest_kept() {
         let said = Said {
             modem: Err("timed out".into()),

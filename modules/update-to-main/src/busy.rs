@@ -1,5 +1,5 @@
 //! What the machine is busy with, as its `refuse_while` commands say: a
-//! call, someone at the keys, a Mac past its room. Each command answers as
+//! call, someone at the keys, a Mac over its load. Each command answers as
 //! `test` does, 0 busy and 1 not, and anything else, or no answer within
 //! 30 seconds, counts as busy, since it couldn't tell. An update asks at
 //! three moments, each reading only the commands meant for it: as an ask
@@ -36,10 +36,11 @@ const WAITS_EVERY: Duration = Duration::from_secs(1);
 const WAITS_AT_MOST: Duration = Duration::from_hours(1);
 
 /// How long after the last refusal a stretch of them ends, so the next
-/// starts its count again: a follower asks again within a minute while
-/// busy, and every half hour at most otherwise, so a longer gap means
-/// another check refused first, or the machine slept.
-const A_STRETCH_ENDS_AFTER: u64 = 30 * 60;
+/// starts its count again: a refused follower asks again within a minute,
+/// or at heads the machine already runs at its usual every, at most twenty
+/// minutes on (`follow`),
+/// so a longer gap means another check refused first, or the machine slept.
+pub(crate) const A_STRETCH_ENDS_AFTER: u64 = 30 * 60;
 
 /// What the machine is busy with, when any of its busy commands says so,
 /// as an ask comes, once it has built or before a waiting switch. Those a

@@ -36,8 +36,9 @@ RETRY_MS = 35000
 # What system.json comes to: two machines, each worth a look for what it says of itself.
 COUNTED = "Two machines, both worth a look."
 # What a first visit to the page may cost, drawn from system.json: 25 files,
-# about 477 KB and 397 elements since the list of what is worth a look, six to a row.
-BUDGET = Budget(files=25, kilobytes=480, elements=400)
+# about 437 KB and 397 elements since the list of what is worth a look, six to a row,
+# and since no comment is sent, its styles' included.
+BUDGET = Budget(files=25, kilobytes=442, elements=400)
 
 
 @pytest.fixture

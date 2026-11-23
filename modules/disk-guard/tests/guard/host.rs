@@ -454,6 +454,37 @@ fn a_folder_offered_as_a_cache_entry_is_refused_untouched() {
 }
 
 #[test]
+fn a_reaching_pass_waits_with_a_system_daemon_whose_deletes_wait() {
+    // A user daemon asks for the store's garbage, and the system daemon
+    // kept it for its rest or a writer, so what costs the account more to
+    // lose waits with it rather than going in its place.
+    let proc = tempfile::tempdir().unwrap();
+    let sockets = crate::daemon::socket_dir();
+    let socket = sockets.path().join("system.socket");
+    let _heard = crate::daemon::fake_system_ending(&socket, false, "waiting");
+    let store = tempfile::tempdir().unwrap();
+    let offers = [offer(
+        store.path(),
+        Class::Garbage {
+            kept: false,
+            order: 0,
+        },
+        Action::Ask {
+            root: store.path().to_owned(),
+            socket,
+        },
+    )];
+    let mut scan = empty_scan(proc.path());
+    let mut reclaim = Reclaim::new(&offers, &mut scan).during(Band::Filling);
+    let outcome = reclaim.reclaim(&offers[0].candidate);
+    assert!(
+        matches!(outcome, Outcome::Kept(_)),
+        "a wait was counted reclaimed: {outcome:?}"
+    );
+    assert!(reclaim.waiting(), "the pass went on past the wait");
+}
+
+#[test]
 fn a_workspace_goes_and_its_worktrees_are_pruned() {
     use crate::finished::git;
     let proc = tempfile::tempdir().unwrap();

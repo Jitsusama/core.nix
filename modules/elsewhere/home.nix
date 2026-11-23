@@ -85,9 +85,11 @@ in
       description = "The machines a job may go to, as mycelium names them; one mycelium places it on elsewhere stays here.";
     };
     scratch = lib.mkOption {
-      type = lib.types.str;
-      default = ".cache/elsewhere";
-      description = "The folder under a far machine's home a job's copy runs in, taken away once it ends.";
+      # One hidden name, as elsewhere checks it, so a bad one fails the build
+      # rather than every elsewhere command after it.
+      type = lib.types.strMatching "[.]([^./][^/]*|[.][^/]+)";
+      default = ".elsewhere-runs";
+      description = "The one folder within the quest's scratch on a far machine that a job's copy runs in, taken away once it ends; a strict fence there writes nowhere else. Hidden, so no share carries a copy home, and so never the handover.";
     };
     realm = lib.mkOption {
       type = lib.types.nullOr lib.types.str;

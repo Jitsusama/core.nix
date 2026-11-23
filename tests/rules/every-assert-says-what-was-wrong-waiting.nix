@@ -67,7 +67,7 @@
   "modules/disk-guard/tests/guard/entries.rs" = 1;
   "modules/disk-guard/tests/guard/finished.rs" = 10;
   "modules/disk-guard/tests/guard/freezer.rs" = 4;
-  "modules/disk-guard/tests/guard/garbage.rs" = 5;
+  "modules/disk-guard/tests/guard/garbage.rs" = 4;
   "modules/disk-guard/tests/guard/generations.rs" = 2;
   "modules/disk-guard/tests/guard/git.rs" = 7;
   "modules/disk-guard/tests/guard/holders.rs" = 12;
@@ -280,7 +280,7 @@
   "modules/wifid/daemon/src/service.rs" = 5;
   "modules/wifid/daemon/src/state.rs" = 18;
   "modules/wifid/daemon/src/store.rs" = 17;
-  "modules/wifid/daemon/src/supplicant.rs" = 8;
+  "modules/wifid/daemon/src/supplicant.rs" = 7;
   "modules/wifid/sign-in/src/main.rs" = 6;
   "modules/wifid/sign-in/src/socks.rs" = 4;
   "modules/zathura/next-document/src/main.rs" = 4;
@@ -309,7 +309,7 @@
   "tests/vm/guide/guide-install-vm-test.py" = 1;
   "tests/vm/network/wifi/wifi-joins-when-asked-vm-test.py" = 1;
   "tools/merge-net/src/ready.rs" = 4;
-  "tools/merge-net/src/rules.rs" = 17;
+  "tools/merge-net/src/rules/mod.rs" = 17;
   "tools/merge-net/src/watch.rs" = 24;
   "tools/merge-net/src/world.rs" = 11;
   "tools/run-subtests/run-subtests-test.py" = 5;

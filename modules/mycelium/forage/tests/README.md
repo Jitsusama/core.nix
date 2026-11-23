@@ -26,6 +26,21 @@ run by Node's own test runner when the local sites build the page.
   it said or drawn while the node sends none; and a branch drawn solid
   only for a start the node's book holds, dashed otherwise, and each tie
   the book doesn't hold said "as claimed" in the panel at either end.
+- `floor.test.ts` tries which cells the floor draws of a list longer
+  than it holds: the first 48 with no cursor, and otherwise the cell it's
+  drawn around, the cells that grew straight from that one and those nearest it,
+  each with every cell it grew from, once round a ring, so a booked start
+  far down the list still draws solid, and a line deeper than the floor
+  cut at its top, but stopped at a cell already drawn; the cells the
+  node's book holds started before those only claimed; that a step draws
+  the floor again only for a cell it leaves off or one that grew a cell it
+  leaves off, no cursor at all not among them; that a live
+  redraw keeps the floor around the same cell while it holds the cursor,
+  through a page's steps and records in turn, though a cell added near it
+  shifts those beside it; that a floor stepped off is drawn again
+  over the list it was worked out for; and that with no cursor a floor
+  whose own cell ends goes back to the first 48, and stays there when
+  that cell comes back.
 - `goes.test.ts` tries where the open cell's panel goes: to the map, and
   to its Talk in the launcher by the link saying the machine it stands
   on, offered only where its address is one the launcher can reach.
@@ -39,5 +54,16 @@ headless browser through the sites' server beside a stand-in node holding
 `node.json`, four cells' forage on one machine with a wait, a plan, a
 need served, a start the node's book holds and a split. It steps the
 cursor by keys, follows the records as they change, stop and come back,
-and keeps the page within its budget and passing the web-design skill's
-page checks.
+lets a cell a purpose takes out of the view of cells without purpose
+take the cursor with it, find or not, and keeps the page within its
+budget and passing the web-design skill's page checks. Beside a second
+stand-in holding 60 cells, more than the
+floor draws, it follows the cursor to a booked start past the 48th, drawn
+solid. A step on the floor leaves the floor drawn as it is, and a find
+narrowing the list to the cell the cursor is on keeps it on the same
+cells, as one matching nothing keeps the cursor and the floor through
+its end. A record hollowing a cell on it is drawn there with the floor
+kept, and a step off it draws it again over the list the record left.
+During a find matching nothing, a link naming the cell the cursor is on
+in another form than the page's own brings its row back, and that cell
+ending leaves a floor drawn around another cell where it was.

@@ -125,10 +125,11 @@ fn said_of(day: &Day) -> Vec<(&'static str, String)> {
             said.push((
                 "memory",
                 format!(
-                    "{name}: {}; largest {}, oldest {}; at most {} at {}",
+                    "{name}: {}; largest {}, oldest {}; {}at most {} at {}",
                     holding(held),
                     memory::size(held.largest_kib),
                     memory::age(held.oldest),
+                    typical(held),
                     memory::size(held.most_kib),
                     clock(held.most_at)
                 ),
@@ -167,6 +168,19 @@ fn the_dead(agents: &Agents) -> Option<String> {
         agents.died.len(),
         agents::most_in_ten_minutes(&times)
     ))
+}
+
+/// A typical and a heavy copy at the last look, as cadence holds them,
+/// when more than one was running then: a lone copy is its largest.
+fn typical(held: &Memory) -> String {
+    if held.copies < 2 {
+        return String::new();
+    }
+    format!(
+        "typical {}, heavy {}; ",
+        memory::size(held.median_kib),
+        memory::size(held.p95_kib)
+    )
 }
 
 /// What a watched program's copies held at the last look.
@@ -663,13 +677,23 @@ mod tests {
         assert!(
             line.starts_with(
                 "memory    pi: 2 hold 6.0 GiB, 2.0 GiB in swap; largest 4.0 GiB, oldest 22 h; \
-                 at most 6.0 GiB at "
+                 typical 2.0 GiB, heavy 4.0 GiB; at most 6.0 GiB at "
             ),
             "{shown}"
         );
         assert!(
             !shown.contains("quickshell"),
             "not running all day: {shown}"
+        );
+        let mut single = Memory::default();
+        single.saw(0, &[copy(3 << 20, 600)]);
+        assert!(typical(&single).is_empty(), "a lone copy is its largest");
+        let mut quiet = Memory::default();
+        quiet.saw(0, &[copy(3 << 20, 600), copy(1 << 20, 600)]);
+        quiet.saw(1, &[]);
+        assert!(
+            quiet.most_kib > 0 && typical(&quiet).is_empty(),
+            "ran earlier in the day, with no copies now"
         );
         let aged = asked(&minded, "memory");
         assert!(!aged.contains("quickshell"), "not running all day: {aged}");

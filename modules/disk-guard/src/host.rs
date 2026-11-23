@@ -344,6 +344,11 @@ pub struct Reclaim<'a> {
     stale: bool,
     /// The store's paths the system refused to let a delete change.
     refused: Vec<String>,
+    deletes: Deletes,
+    /// Whether the system daemon this asked kept the store's garbage for
+    /// its rest or a writer, so a pass reaching for room waits with it.
+    /// Apart from `deletes`, whose wait has this guard look again itself.
+    system_waits: bool,
     band: Band,
     pacer: Option<Rc<RefCell<Pacer>>>,
     /// The other filesystems the guard watches, which this pass gives way
@@ -351,6 +356,31 @@ pub struct Reclaim<'a> {
     elsewhere: Vec<Elsewhere>,
     /// When `elsewhere` was last measured.
     looked: Cell<Option<Instant>>,
+}
+
+/// What a pass's deletes of Nix's garbage came to. Nix ends each delete
+/// it runs by reading every entry of its links folder, minutes whatever it
+/// deleted, so short of nearly full a pass makes one and the guard rests
+/// after it.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Deletes {
+    /// How long the last delete Nix ran this pass took, in seconds: the
+    /// one a rest follows, as a pass nearly full runs them back to back
+    /// and a sum of those would hold the next for hours.
+    pub last: Option<f64>,
+    /// Whether garbage was kept for the rest or for another process
+    /// writing Nix's database, so it's looked at again once that's over:
+    /// a pass of another kind may meet it, and nothing else would.
+    pub again: bool,
+    /// Whether the guard's rest after the last delete still ran as the
+    /// pass began, so it makes none short of nearly full.
+    resting: bool,
+    /// Whether the store's disk read short of nearly full as the guard
+    /// last measured it, so this pass spaces its deletes and waits for
+    /// other writers. It's the disk's own band, not the one a pass aims
+    /// for or a user daemon's ask names: a garbage pass aims for healthy
+    /// whatever the disk reads, and any account may ask in any band.
+    spaced: bool,
 }
 
 /// Another filesystem the guard watches, as it was when a pass began.
@@ -367,8 +397,11 @@ pub struct Elsewhere {
 const LOOK_ELSEWHERE: Duration = Duration::from_secs(5);
 
 /// How long the system daemon may take over the garbage a user daemon asks
-/// it to collect: a pass of many batches, each measured.
-const COLLECT_TIMEOUT: Duration = Duration::from_mins(30);
+/// it to collect: a pass of many batches, each measured, and a delete that
+/// runs to its own half-hour limit with room for one more. A disk nearly
+/// full deletes back to back and may take longer; the user daemon then
+/// counts its ask failed and goes on while the system daemon's pass does.
+const COLLECT_TIMEOUT: Duration = Duration::from_hours(1);
 
 impl<'a> Reclaim<'a> {
     pub fn new(offers: &[Offer], scan: &'a mut Scan) -> Self {
@@ -383,6 +416,8 @@ impl<'a> Reclaim<'a> {
             gentle: false,
             stale: false,
             refused: Vec::new(),
+            deletes: Deletes::default(),
+            system_waits: false,
             band: Band::Healthy,
             pacer: None,
             elsewhere: Vec::new(),
@@ -436,6 +471,16 @@ impl<'a> Reclaim<'a> {
         self
     }
 
+    /// For a pass on a store whose disk the guard last measured short of
+    /// nearly full, `spaced`, which spaces its deletes, and begun while the
+    /// guard rests after its last delete, `resting`.
+    #[must_use]
+    pub fn spacing_deletes(mut self, spaced: bool, resting: bool) -> Self {
+        self.deletes.spaced = spaced;
+        self.deletes.resting = resting;
+        self
+    }
+
     /// For a pass that can wait: the commands it runs do so at idle
     /// priority, so a collection never slows the work it makes room for.
     #[must_use]
@@ -447,16 +492,31 @@ impl<'a> Reclaim<'a> {
     /// Deletes a batch of Nix's garbage, unless one this pass was refused
     /// for garbage come alive, which its listing's others would meet too.
     /// A path holding a file a running program has by its hard link alone
-    /// is left for a later pass, as Nix can't tell it's held.
+    /// is left for a later pass, as Nix can't tell it's held. Short of
+    /// nearly full a pass deletes once, and none while the guard rests
+    /// after the last; and none while another process writes Nix's
+    /// database, which would wait on it and keep that writer waiting.
+    /// Nearly full and past, room comes first.
     fn collect(
         &mut self,
         nix: PathBuf,
         roots: PathBuf,
+        database: &Path,
         paths: Vec<String>,
         links: &BTreeSet<crate::held::File>,
     ) -> Outcome {
         if self.stale {
             return Outcome::Kept("its listing was found stale this pass".to_owned());
+        }
+        if self.deletes.spaced {
+            if self.deletes.resting || self.deletes.last.is_some() {
+                self.deletes.again = true;
+                return Outcome::Kept("Nix's deletes rest, each reading all its links".to_owned());
+            }
+            if crate::nix_database::database_written(database) {
+                self.deletes.again = true;
+                return Outcome::Kept("another process is writing Nix's database".to_owned());
+            }
         }
         let free: Vec<String> = paths
             .into_iter()
@@ -467,10 +527,26 @@ impl<'a> Reclaim<'a> {
         }
         let gentle = self.gentle;
         let tried = free.len();
-        let outcome = match self.waiting(move || garbage::delete(&nix, &roots, &free, gentle)) {
-            Ok(Ok(refused)) => {
-                let all = refused.len() == tried;
-                self.refused.extend(refused);
+        let began = Instant::now();
+        let spaced = self.deletes.spaced;
+        let database = database.to_owned();
+        let writing = move || spaced && crate::nix_database::database_written(&database);
+        let deleting = self.waiting(move || garbage::delete(&nix, &roots, &free, gentle, writing));
+        if !matches!(
+            deleting,
+            Ok(Ok(garbage::Deleted { ran: false, .. })) | Err(Stopped)
+        ) {
+            self.deletes.last = Some(began.elapsed().as_secs_f64());
+        }
+        let outcome = match deleting {
+            Ok(Ok(deleted)) if deleted.put_off => {
+                self.refused.extend(deleted.refused);
+                self.deletes.again = true;
+                Outcome::Kept("another process is writing Nix's database".to_owned())
+            }
+            Ok(Ok(deleted)) => {
+                let all = deleted.refused.len() == tried;
+                self.refused.extend(deleted.refused);
                 if all {
                     return Outcome::Kept("the system refuses to let it go".to_owned());
                 }
@@ -489,6 +565,11 @@ impl<'a> Reclaim<'a> {
         std::mem::take(&mut self.refused)
     }
 
+    /// What this pass's deletes came to.
+    pub fn deletes(&self) -> Deletes {
+        self.deletes
+    }
+
     /// What went wrong after a reclaim that freed its space anyway.
     pub fn notes(&self) -> &[String] {
         &self.notes
@@ -504,6 +585,27 @@ impl<'a> Reclaim<'a> {
         match &self.pacer {
             Some(pacer) => pacer.borrow_mut().waiting(work),
             None => Ok(work()),
+        }
+    }
+
+    /// Asks the system daemon at `socket` to collect the garbage of the
+    /// store at `root`. Its deletes waiting, for its rest or a writer, keep
+    /// the garbage and have this pass wait with it, rather than take what
+    /// costs more to lose while the store's garbage stays.
+    fn ask(&mut self, root: PathBuf, socket: PathBuf) -> Outcome {
+        let collect = socket::Request::Collect {
+            path: root,
+            band: self.band,
+        };
+        match self.waiting(move || socket::ask(&socket, &collect, COLLECT_TIMEOUT)) {
+            Ok(Ok(socket::Reply::Collected(end))) if end == crate::pass::WAITING => {
+                self.system_waits = true;
+                Outcome::Kept("the system daemon's deletes wait".to_owned())
+            }
+            Ok(Ok(socket::Reply::Collected(_))) => Outcome::Reclaimed,
+            Ok(Ok(other)) => Outcome::Failed(format!("the system daemon answered {other:?}")),
+            Ok(Err(error)) => Outcome::Failed(format!("asking the system daemon: {error}")),
+            Err(Stopped) => stopped(),
         }
     }
 
@@ -535,6 +637,10 @@ impl Reclaimer for Reclaim<'_> {
             path.display()
         );
         true
+    }
+
+    fn waiting(&self) -> bool {
+        self.deletes.again || self.system_waits
     }
 
     fn reclaim(&mut self, candidate: &Candidate) -> Outcome {
@@ -590,19 +696,8 @@ impl Reclaimer for Reclaim<'_> {
             // Nix judges liveness itself, under its own lock.
             // What it freed is measured, like any command's.
             Action::Ask { socket, .. } => {
-                let collect = socket::Request::Collect {
-                    path: root_path.to_owned(),
-                    band: self.band,
-                };
-                let socket = socket.clone();
-                match self.waiting(move || socket::ask(&socket, &collect, COLLECT_TIMEOUT)) {
-                    Ok(Ok(socket::Reply::Collected(_))) => Outcome::Reclaimed,
-                    Ok(Ok(other)) => {
-                        Outcome::Failed(format!("the system daemon answered {other:?}"))
-                    }
-                    Ok(Err(error)) => Outcome::Failed(format!("asking the system daemon: {error}")),
-                    Err(Stopped) => stopped(),
-                }
+                let (root_path, socket) = (root_path.to_owned(), socket.clone());
+                self.ask(root_path, socket)
             }
             Action::Expire {
                 nix,
@@ -621,13 +716,14 @@ impl Reclaimer for Reclaim<'_> {
             Action::Collect {
                 nix,
                 roots,
+                database,
                 paths,
                 links,
                 ..
             } => {
                 let (nix, roots, paths) = (nix.clone(), roots.clone(), paths.clone());
-                let links = links.clone();
-                self.collect(nix, roots, paths, &links)
+                let (database, links) = (database.clone(), links.clone());
+                self.collect(nix, roots, &database, paths, &links)
             }
             Action::Trim { .. } => reclaim::trimmed(&root, root_path, candidate),
             Action::Workspace { .. } => {

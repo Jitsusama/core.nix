@@ -4,7 +4,7 @@
 use super::*;
 
 #[test]
-fn a_test_chrome_takes_the_fake_camera_and_keeps_off_joel_s_secrets() {
+fn a_test_chrome_takes_the_fake_devices_and_keeps_off_joel_s_secrets_and_speakers() {
     let memory = Path::new("/run/x/call-under-load-1");
     let command = chrome_command(
         Path::new("chrome"),
@@ -18,6 +18,8 @@ fn a_test_chrome_takes_the_fake_camera_and_keeps_off_joel_s_secrets() {
         "--use-fake-ui-for-media-stream",
         "--password-store=basic",
         "--disable-background-networking",
+        // Without it, the far end's beep each second would play on Joel's speakers.
+        "--disable-audio-output",
     ] {
         assert!(args.contains(&flag), "{flag} is missing from {args:?}");
     }
@@ -27,13 +29,32 @@ fn a_test_chrome_takes_the_fake_camera_and_keeps_off_joel_s_secrets() {
         .collect();
     for (key, value) in [
         ("HOME", "/run/x/call-under-load-1/home"),
+        // Its own runtime folder, so it finds neither PipeWire nor Pulse.
+        ("XDG_RUNTIME_DIR", "/run/x/call-under-load-1"),
         ("XDG_CONFIG_HOME", "/run/x/call-under-load-1/config"),
         ("TSS2_FAPICONF", "/nonexistent/fapi-config.json"),
         ("TPM2_PKCS11_TCTI", "mssim:host=127.0.0.1,port=9"),
+        ("PULSE_SERVER", "unix:/nonexistent/pulse"),
     ] {
         assert!(
             env.contains(&(key, value)),
             "{key}={value} is missing from {env:?}"
+        );
+    }
+    let removed: Vec<_> = command
+        .get_envs()
+        .filter(|(_, v)| v.is_none())
+        .filter_map(|(k, _)| k.to_str())
+        .collect();
+    for key in [
+        "DBUS_SESSION_BUS_ADDRESS",
+        "PULSE_RUNTIME_PATH",
+        "PIPEWIRE_REMOTE",
+        "PIPEWIRE_RUNTIME_DIR",
+    ] {
+        assert!(
+            removed.contains(&key),
+            "{key} is passed to the browser: {removed:?}"
         );
     }
 }
@@ -175,8 +196,9 @@ fn a_step_broken_off_for_joel_s_call_counts_as_stopped_and_any_other_as_failed()
     let broken = || Err(Step::Failed("Chrome's DevTools pipe closed".into()));
     let watch = Watch::asking(on, Duration::from_millis(10));
     assert!(heard(&watch), "the watch never heard of Joel's call");
+    let ended = settled(broken(), &watch);
     assert!(
-        matches!(settled(broken(), &watch), Ok(Ended::Stopped(ref why)) if why == "Joel's call began"),
+        matches!(ended, Ok(Ended::Stopped(ref why)) if why == "Joel's call began"),
         "a step the watch broke off read as a failed hour"
     );
     drop(watch);
@@ -214,17 +236,46 @@ fn a_call_that_never_connected_fails() {
 }
 
 #[test]
-fn only_the_fake_camera_is_taken_at_either_end() {
+fn only_the_fake_camera_and_microphone_are_taken_at_either_end() {
+    // The labels Chromium 157 gave its fake devices in a trial on 22 Nov.
+    let fakes = json!({"label": "fake_device_0", "voice": "Fake Default Audio Input"});
     assert!(
-        fake(&json!({"label": "fake_device_0"}), "near").is_ok(),
-        "Chromium's fake camera was refused"
+        fake(&fakes, "near").is_ok(),
+        "Chromium's fake camera or microphone was refused"
     );
-    let refused = |said: Value| matches!(fake(&said, "far"), Err(Step::Refused(_)));
+    let refused = |said: Value, device: &str| match fake(&said, "far") {
+        Err(Step::Refused(why)) => why.contains(device),
+        _ => false,
+    };
     assert!(
-        refused(json!({"label": "MX Brio 705 for Business"})),
-        "a real camera was taken"
+        refused(
+            json!({"label": "MX Brio 705 for Business", "voice": "Fake Default Audio Input"}),
+            "camera"
+        ),
+        "a real camera was taken, or the refusal named the wrong device"
     );
-    assert!(refused(json!({})), "a camera with no name is refused");
+    assert!(
+        refused(
+            json!({"label": "Fake Webcam", "voice": "Fake Default Audio Input"}),
+            "camera"
+        ),
+        "a virtual camera named fake was taken for Chromium's"
+    );
+    assert!(
+        refused(
+            json!({"label": "fake_device_0", "voice": "Built-in Audio Analog Stereo"}),
+            "microphone"
+        ),
+        "a real microphone was taken, or the refusal named the wrong device"
+    );
+    assert!(
+        refused(json!({"label": "fake_device_0"}), "microphone"),
+        "a microphone with no name is refused"
+    );
+    assert!(
+        refused(json!({}), "camera"),
+        "a camera with no name is refused"
+    );
 }
 
 #[test]

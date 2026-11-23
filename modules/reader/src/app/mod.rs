@@ -87,7 +87,7 @@ const LOOKS_AGAIN_AFTER: Duration = Duration::from_millis(1);
 
 /// What gf and Ctrl+] say in the moment between a page set again and its
 /// lines read, when what the cursor's character is under can't be said.
-const STILL_READING: &str = "Still reading the page";
+pub(crate) const STILL_READING: &str = "Still reading the page";
 
 /// The file as last saved, set and drawing while the page before it still
 /// shows. It takes the page's place at once, whole, when its bands cover

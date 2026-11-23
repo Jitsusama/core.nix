@@ -1,3 +1,6 @@
+//! Long because a selection's motions, objects, copies and names are each
+//! proven over the one page this file sets, beside it.
+
 use super::*;
 use crate::numbers::f64_of;
 
@@ -116,6 +119,23 @@ fn page() -> Layout {
 
 fn at(line: usize, ch: usize) -> Pos {
     Pos { line, ch }
+}
+
+/// A line of the file the page wraps over three of its own, hyphenating
+/// a word, and a paragraph whose two lines the file breaks.
+fn wrapped() -> Layout {
+    Layout::new(
+        vec![
+            line(20.0, "Some words wrap "),
+            line(41.0, "here, and hy\u{ad}"),
+            line(62.0, "phens too."),
+            line(100.0, "Its own line."),
+            line(121.0, "And another."),
+        ],
+        vec![unit(20.0, 1, 1), unit(100.0, 3, 4)],
+        &[5.0, 90.0],
+        "Some words wrap here, and hyphens too.\n\nIts own line.\nAnd another.\n".into(),
+    )
 }
 
 fn chars(page: &Layout, from: Pos, to: Pos) -> String {
@@ -367,6 +387,155 @@ fn characters_copy_the_files_bytes_and_a_spans_markup_only_when_its_words_are_wh
 }
 
 #[test]
+fn a_selection_names_what_it_holds_on_one_line_as_vims_v_gf_takes_it() {
+    let page = page();
+    let named = |kind, from, to| {
+        let mut selection = Selection::new(kind, from);
+        selection.cursor = to;
+        page.named(&selection)
+    };
+    let bold = Some("bold words".to_string());
+    assert_eq!(named(Kind::Chars, at(1, 5), at(1, 14)), bold);
+    assert_eq!(
+        named(Kind::Chars, at(1, 15), at(1, 4)),
+        bold,
+        "blanks off, either way"
+    );
+    assert_eq!(
+        named(Kind::Chars, at(1, 4), at(1, 4)),
+        None,
+        "a blank names nothing"
+    );
+    assert_eq!(
+        named(Kind::Chars, at(1, 18), at(2, 3)),
+        None,
+        "over two lines"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(1, 5), at(1, 14)).as_deref(),
+        Some("Some bold words and a"),
+        "V gives its line whole, as Vim's does"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(1, 5), at(2, 3)),
+        None,
+        "V over two lines"
+    );
+}
+
+#[test]
+fn a_name_the_page_wraps_is_still_on_one_line_of_the_file() {
+    let page = wrapped();
+    let named = |kind, from, to| {
+        let mut selection = Selection::new(kind, from);
+        selection.cursor = to;
+        page.named(&selection)
+    };
+    assert_eq!(
+        named(Kind::Chars, at(0, 11), at(1, 3)).as_deref(),
+        Some("wrap here"),
+        "v over the page's wrap"
+    );
+    assert_eq!(
+        named(Kind::Pieces, at(1, 2), at(1, 2)).as_deref(),
+        Some("Some words wrap here, and hyphens too."),
+        "V gives the file's line over every page line it's set on"
+    );
+}
+
+#[test]
+fn a_set_pages_names_are_on_the_files_lines_wherever_the_page_breaks_them() {
+    // The page joins a paragraph's lines and wraps them where it likes,
+    // so neither its lines nor their ends are the file's.
+    let page = set("named-joined", "See the file\nnotes.md\nfor more.\n");
+    let row = holding(&page, "notes.md");
+    let text = &page.lines[row].text;
+    let ch = |words: &str| {
+        text[..text.find(words).expect("on the line")]
+            .chars()
+            .count()
+    };
+    let named = |page: &Layout, kind, from, to| {
+        let mut selection = Selection::new(kind, from);
+        selection.cursor = to;
+        page.named(&selection)
+    };
+    let (name, file) = (ch("notes.md"), ch("file"));
+    assert_eq!(
+        named(&page, Kind::Pieces, at(row, name), at(row, name)).as_deref(),
+        Some("notes.md"),
+        "V gives its line of the file, set beside the others on {text:?}"
+    );
+    assert_eq!(
+        named(&page, Kind::Chars, at(row, name), at(row, name + 7)).as_deref(),
+        Some("notes.md"),
+        "v over it"
+    );
+    assert_eq!(
+        named(&page, Kind::Chars, at(row, file), at(row, name + 7)),
+        None,
+        "v over two of the file's lines set on one of the page's"
+    );
+    // As vaw takes it, with the blank the file's line break is set as,
+    // which decides nothing, as a blank ahead of the name doesn't.
+    assert_eq!(
+        text.chars().nth(name + 8),
+        Some(' '),
+        "the break is a blank"
+    );
+    for (from, to, what) in [(name, name + 8, "after"), (name - 1, name + 8, "round")] {
+        assert_eq!(
+            named(&page, Kind::Chars, at(row, from), at(row, to)).as_deref(),
+            Some("notes.md"),
+            "v with the blanks {what} it"
+        );
+    }
+    // V on a blank: the line break the page set it for ends the line
+    // before it, as the blank before the name ends "See the file".
+    for (on, line) in [(name + 8, "notes.md"), (name - 1, "See the file")] {
+        assert_eq!(
+            named(&page, Kind::Pieces, at(row, on), at(row, on)).as_deref(),
+            Some(line),
+            "V on the blank at {on}"
+        );
+    }
+    let eyebrow = (page.lines.iter())
+        .position(|line| line.text.starts_with("READER-SELECT-"))
+        .expect("an eyebrow");
+    let eyebrowed = named(&page, Kind::Pieces, at(eyebrow, 0), at(eyebrow, 0));
+    assert!(
+        eyebrowed
+            .as_deref()
+            .is_some_and(|it| it.starts_with("READER-SELECT-")),
+        "V on the eyebrow, which the file doesn't hold, gives its words: {eyebrowed:?}"
+    );
+    assert_ne!(eyebrow, row, "the eyebrow is a line of its own");
+    assert_eq!(
+        named(&page, Kind::Chars, at(eyebrow, 0), at(row, 0)),
+        None,
+        "v from the eyebrow onto the file's first word"
+    );
+    let words = "Words that run on past the measure. ".repeat(12);
+    let page = set("named-wrapped", &format!("{words}\n"));
+    let first = holding(&page, "Words");
+    assert_eq!(
+        page.of_line[first],
+        page.of_line[first + 1],
+        "the paragraph wraps"
+    );
+    assert_eq!(
+        named(&page, Kind::Pieces, at(first + 1, 0), at(first + 1, 0)).as_deref(),
+        Some(words.trim()),
+        "V on its second line gives the file's line whole"
+    );
+    let end = page.lines[first].text.chars().count() - 1;
+    assert!(
+        named(&page, Kind::Chars, at(first, end), at(first + 1, 0)).is_some(),
+        "v over the page's wrap is on one line of the file"
+    );
+}
+
+#[test]
 fn i_backtick_selects_a_code_spans_words() {
     let page = page();
     let mut s = Selection::new(Kind::Chars, at(4, 8));
@@ -409,18 +578,7 @@ fn a_backtick_takes_the_ticks_and_the_blank_after_them() {
 
 #[test]
 fn a_line_the_page_wraps_is_copied_and_shown_as_one() {
-    let page = Layout::new(
-        vec![
-            line(20.0, "Some words wrap "),
-            line(41.0, "here, and hy\u{ad}"),
-            line(62.0, "phens too."),
-            line(100.0, "Its own line."),
-            line(121.0, "And another."),
-        ],
-        vec![unit(20.0, 1, 1), unit(100.0, 3, 4)],
-        &[5.0, 90.0],
-        "Some words wrap here, and hyphens too.\n\nIts own line.\nAnd another.\n".into(),
-    );
+    let page = wrapped();
     let mut s = Selection::new(Kind::Chars, at(0, 5));
     s.cursor = at(2, 4);
     assert_eq!(page.copied(&s), "words wrap here, and hyphens");
@@ -605,6 +763,30 @@ fn words_the_file_doesnt_hold_copy_as_the_page_sets_them() {
 /// The file set as the reader sets it, its words read for selecting.
 fn set(name: &str, markdown: &str) -> Layout {
     set_as(name, markdown, 0)
+}
+
+#[test]
+fn a_file_it_cant_read_gives_no_lines_rather_than_empty_ones() {
+    let dir = std::env::temp_dir().join(format!("reader-select-{}-unread", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).expect("a folder");
+    let file = dir.join("page.md");
+    std::fs::write(&file, "Words.\n").expect("the file");
+    let (page, _) = crate::page::Setter::new(file.to_str().expect("a path"))
+        .set()
+        .expect("set");
+    std::fs::remove_file(&file).expect("gone");
+    let gone = Layout::read_file(&page.frame, &file, 0);
+    std::fs::write(&file, "Words.\n").expect("back");
+    let back = Layout::read_file(&page.frame, &file, 0);
+    // The folder goes before the asserts, so a failing run leaves none.
+    std::fs::remove_dir_all(&dir).expect("cleaned");
+    assert!(
+        gone.is_none(),
+        "none for a file gone since the page was set"
+    );
+    let layout = back.expect("lines for one it reads");
+    assert_eq!(layout.source(), "Words.\n", "read as it is now");
 }
 
 #[test]

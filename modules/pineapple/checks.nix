@@ -156,6 +156,49 @@ onLinux {
           };
         })
       );
+  # A machine naming a tool gateway hears Slack through it with a second
+  # reader, started as Slack's is but only ever in shadow, keeping its
+  # own state and telling For You in a file there that nothing reads;
+  # and a machine naming none has no such reader.
+  pineapple-slack-hears-a-gateway-in-shadow =
+    let
+      withGateway =
+        gateway:
+        account (bareNixos [
+          {
+            home-manager.sharedModules = [
+              self.homeModules.pineapple
+              { jitsusama.pineapple.gateway = gateway; }
+            ];
+          }
+        ]);
+      signIn = pkgs.writeShellScript "stand-in-sign-in" "echo stand-in-token";
+      at = url: withGateway { inherit url signIn; };
+      home = at "https://gateway.example.com/mcp";
+      unit = home.systemd.user.services.pineapple-slack-gateway;
+      command = lib.concatStringsSep " " (lib.toList unit.Service.ExecStart);
+      percent = (at "https://gateway.example.com/mcp?x=a%2Fb").systemd.user.services;
+      encoded = lib.concatStringsSep " " (lib.toList percent.pineapple-slack-gateway.Service.ExecStart);
+      refused = (at "http://gateway.example.com/mcp").assertions;
+    in
+    holds "pineapple-slack-hears-a-gateway-in-shadow"
+      "The gateway's reader lacks its command, shadow or start, moves the state its sign-in reads, mangles a URL's %, takes plain http, or runs unnamed."
+      (
+        lib.hasInfix (
+          "/bin/pineapple-slack pineapple-slack-gateway run"
+          + " --gateway https://gateway.example.com/mcp --gateway-sign-in /nix/store/"
+        ) command
+        && !(lib.hasInfix "--live" command)
+        && lib.hasSuffix ", in shadow" unit.Unit.Description
+        && (unit.Service.Environment or [ ]) == [ ]
+        && lib.hasInfix "mcp?x=a%%2Fb" encoded
+        && lib.any (said: !said.assertion && lib.hasInfix "gateway.url" said.message) refused
+        && lib.elem "default.target" unit.Install.WantedBy
+        && unit.Unit.X-SwitchMethod == "restart"
+        && unit.Service.Restart == "on-failure"
+        && unit.Service.Slice == "background.slice"
+        && !((withGateway null).systemd.user.services ? pineapple-slack-gateway)
+      );
   # pineapple, the daemon showing stops in the launcher, is started at
   # login for its socket, which systemd holds where the launcher looks,
   # knocks with notify-send, and reads its words from the launcher's

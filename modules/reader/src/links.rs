@@ -129,34 +129,44 @@ pub fn name_here(
 
 /// Where gf goes for the name it took: a heading on the page shown, which
 /// the page's own words say is there or not, or a file `is_file` found, at
-/// the heading its link names, if any, as Ctrl+] goes.
+/// the heading its link names, if any, as Ctrl+] goes, a link to the page
+/// itself with none going to its top; or the page shown itself, its name
+/// written, where gf stays, as Vim's does on the file it's editing.
 #[derive(Debug, PartialEq)]
 pub enum Going {
     Heading(String),
     File(PathBuf, Option<String>),
+    Here,
 }
 
 /// Where gf goes for `name` from `page`, when it names a heading here or
 /// a file on this machine that `is_file` finds.
 pub fn going(name: &Name, page: &Path, is_file: impl Fn(&Path) -> bool) -> Option<Going> {
-    if let Name::Link(href) = name {
-        match target(href, page) {
+    let (file, heading) = match name {
+        Name::Link(href) => match target(href, page) {
             Target::Here(anchor) => return Some(Going::Heading(anchor)),
-            Target::Page(file, heading) => {
-                return is_file(&file).then_some(Going::File(file, heading));
-            }
-            Target::Elsewhere(_) => {}
-        }
+            Target::Page(file, heading) => (Some(file), heading),
+            Target::Elsewhere(_) => (file_of(name, page), None),
+        },
+        Name::Written(_) => (file_of(name, page), None),
+    };
+    let file = file.filter(|file| is_file(file))?;
+    // Only a written name gets here naming the page shown, since a link
+    // to it is a heading here. It's where he is: reopening it would jump
+    // to where it was last left.
+    if same(&file, page) {
+        return Some(Going::Here);
     }
-    let file = file_of(name, page).filter(|file| is_file(file))?;
-    Some(Going::File(file, None))
+    Some(Going::File(file, heading))
 }
 
 /// Where gf goes with a character `x_pt` across `line` on the page `page`:
 /// for the name under or after it, when it names a heading here or a file
 /// `is_file` finds. The name is settled first and only then asked of the
 /// disk, so one naming no file here is said, as Vim's E447, rather than
-/// passed for the next; none at all is `Err(None)`, as Vim's E446.
+/// passed for the next; none at all is `Err(None)`, as Vim's E446. The
+/// page's own name written after it is passed for a name further on, as
+/// gf from a line skips it too, and taken only when there's none.
 pub fn file_here(
     pieces: &[Link],
     line: &crate::text::Line,
@@ -164,10 +174,40 @@ pub fn file_here(
     page: &Path,
     is_file: impl Fn(&Path) -> bool,
 ) -> Result<Going, Option<String>> {
-    let there =
-        |path: &str| file_of(&Name::Written(path.into()), page).is_some_and(|f| is_file(&f));
-    let name = name_here(pieces, line, x_pt, there).ok_or(None)?;
+    let there = |path: &str, own: bool| {
+        file_of(&Name::Written(path.into()), page)
+            .is_some_and(|f| is_file(&f) && (own || !same(&f, page)))
+    };
+    let name = name_here(pieces, line, x_pt, |path| there(path, false))
+        .or_else(|| name_here(pieces, line, x_pt, |path| there(path, true)))
+        .ok_or(None)?;
     going(&name, page, &is_file).ok_or_else(|| Some(name.said().to_string()))
+}
+
+/// What gf says staying on the page shown, as Vim's says of a file it
+/// edits again: its name, and how many lines and bytes `text` takes.
+pub fn file_info(page: &Path, text: &str) -> String {
+    let name = page
+        .file_name()
+        .unwrap_or(page.as_os_str())
+        .to_string_lossy();
+    let unended = usize::from(!text.is_empty() && !text.ends_with('\n'));
+    let lines = text.matches('\n').count() + unended;
+    format!("\"{name}\" {lines}L, {}B", text.len())
+}
+
+/// What gf says staying on the page: its file info counted from `shown`,
+/// the words its lines were read from, or from what `read` gives before
+/// they're read, and Vim's E484 when the file can't be read.
+pub fn staying(
+    page: &Path,
+    shown: Option<&str>,
+    read: impl FnOnce() -> std::io::Result<String>,
+) -> String {
+    match shown.map_or_else(read, |text| Ok(text.to_string())) {
+        Ok(text) => file_info(page, &text),
+        Err(_) => format!("E484: Can't open file {}", page.display()),
+    }
 }
 
 /// Where gf goes from a whole line, `from_pt` down the page, in a view
@@ -195,7 +235,8 @@ pub fn going_down(
             continue;
         }
         for (path, ..) in crate::moves::written_paths(line) {
-            if let Some(going) = going(&Name::Written(path), page, &is_file) {
+            // The page's own name, written, is no other file.
+            if let Some(going @ Going::File(..)) = going(&Name::Written(path), page, &is_file) {
                 named.push((line.baseline_pt.round(), f64::INFINITY, going));
             }
         }

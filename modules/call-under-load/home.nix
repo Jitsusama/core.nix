@@ -1,5 +1,5 @@
 # call-under-load makes a test call shaped as Meet's each hour, on
-# Chromium's fake camera, while the machine carries whatever it carries, and writes
+# Chromium's fake camera and microphone, while the machine carries whatever it carries, and writes
 # what it did, with Chrome's, Slack's and the launcher's figures, for
 # cadence to judge (src/main.rs says how). It never runs into a call of
 # Joel's or within ten minutes of a meeting. `call-under-load` says the

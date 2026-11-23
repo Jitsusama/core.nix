@@ -337,6 +337,21 @@ Provider {
         replaceLately();
     }
     onLauncherChanged: Qt.callLater(retime)
+
+    // A walk from outside, as a terminal reads Date (`launcher show`),
+    // reads the time and the date placed as it begins, since those placed
+    // shut were made as a showing would ask: a calendar reader's standing
+    // refusal reached a terminal as still asking, for good. As it ends
+    // they're placed shut again, at once, so neither an opening's first
+    // frame nor Now's kept rows hold a row the walk made: with a refusal
+    // standing, that one's Calendars only closes.
+    Connections {
+        target: provider.launcher
+
+        function onCataloguingChanged() {
+            provider.retime();
+        }
+    }
     onWantedChanged: {
         if (wanted)
             Qt.callLater(retimeIfStale);
@@ -557,8 +572,9 @@ Provider {
         // How the clock is kept, in Time's word for it (Clocks.qml), and
         // how far off it was at the last poll, signed, as Time says it.
         // Chrony is asked only while home shows, so until the reader
-        // answers it's left out; that nothing keeps the time is said only
-        // once the reader refused, as on a machine without chrony.
+        // answers it's left out, but for a reading kept from the minute
+        // before (Timekeeping.qml); that nothing keeps the time is said
+        // only once the reader refused, as on a machine without chrony.
         const time = source("time");
         const kept = time?.kept ?? null;
         const offset = kept?.exchange ? time.millis(kept.exchange.offset, true) : "";

@@ -28,18 +28,9 @@
 # left out again the same way, lost on its path when sent again, or with no
 # other connection to go on, it's the relay's own 421, so pi sends it direct
 # at once. Reset or said goodbye to saying anything else, first or again,
-# it's a 502, for pi's own retry. Past 15 in 100 failed of what it
-# finished in ten minutes, 20 at least, it stands down, sending each request
-# direct with its 421. After a minute, longer as stand-downs double, and
-# every half minute after, it tries its path on a connection of its own, and
-# takes requests again once the origin answers three in a row. Otherwise it
-# stands down ten minutes, or twice as long as the last when that ended
-# within the hour, to an hour, while it runs: one that leaves once idle, or
-# is restarted, starts over. A stand-down begun while it waits to try its
-# path again waits its own first trial from when it began, or, begun during
-# a trial, from that trial's end. The journal says when it
-# stands down, each trial, and when it takes requests again; restarting it
-# ends a stand-down.
+# it's a 502, for pi's own retry. It never stands down from the origin as a
+# whole: each request it can't carry goes direct alone, so a failing burst
+# never sends every agent past it at once.
 #
 # The relay runs in background.slice, which the shaper sends in the agents'
 # lane, and its connections are the account's own, so they ride the work VPN
@@ -60,6 +51,12 @@ let
   cfg = config.jitsusama.model-relay;
   package = pkgs.callPackage ./package.nix { };
   folder = "model-relay";
+  # How long a stopped relay waits on the answers it streams before it
+  # cuts them, in seconds. The stop timeout gives it this and ten more:
+  # five for those it sends direct to finish their 421 (its source's
+  # SAYS_GO_DIRECT_WITHIN, which the check reads), five to spare, so
+  # it leaves on its own and says its counts rather than being killed.
+  drainsWithin = 80;
 in
 {
   options.jitsusama.model-relay.origin = lib.mkOption {
@@ -98,23 +95,33 @@ in
         Description = "Relays the agents' model requests over a few shared connections";
         Requires = [ "model-relay-agents.socket" ];
         After = [ "model-relay-agents.socket" ];
-        # A restart ends every answer the relay is streaming, each a turn
-        # some agent is taking, so a switch leaves a running relay be. It
-        # leaves on its own once it has forwarded nothing for two minutes,
-        # and isn't standing down nor stood down within them,
+        # A restart lets each answer the relay is streaming, each a turn
+        # some agent is taking, end first, sending every new request direct
+        # meanwhile, and cuts one still going after drainsWithin. A second
+        # SIGTERM cuts them at once: systemctl --user kill model-relay-agents
+        # sends one, while a second stop or restart sends none, joining the
+        # stop already going. A logout or a shutdown gives it only the user
+        # manager's own stop timeout, 5 s under this repository's systemd
+        # module, so a busy relay is killed mid-drain, with what it cuts
+        # and its last counts unsaid. A restart sends a busy machine's
+        # agents past the relay for as long as its longest answer, so a
+        # switch leaves it be. It leaves on its own once it has forwarded
+        # nothing for two minutes,
         # and its socket starts the new build and origin at the next
         # request. Agents busy enough never to leave it two quiet minutes
         # keep the old one until they do, or until it's restarted by hand
-        # with systemctl --user restart model-relay-agents, which is also
-        # how a build switched to during a stand-down takes over at once.
+        # with systemctl --user restart model-relay-agents.
         X-SwitchMethod = "keep-old";
       };
       Service = {
         ExecStart = lib.escapeShellArgs [
           (lib.getExe package)
+          "--drain-within"
+          (toString drainsWithin)
           "--origin"
           cfg.origin
         ];
+        TimeoutStopSec = drainsWithin + 10;
         # The agents' lane, never app.slice, where it would ride Joel's.
         Slice = "background.slice";
         Restart = "on-failure";

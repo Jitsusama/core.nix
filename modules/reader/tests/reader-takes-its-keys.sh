@@ -725,9 +725,30 @@ logged '^key Last None' $((lasts + 1))
 press mz
 logged '^key SetMark\(.z.\)' 1
 
-# gf opens the file the top's link names, and Ctrl+] follows it.
+# Selecting, gf ends the selection and takes the words it held on one
+# line as the name, as Vim's v_gf does, here the lede's, which no file
+# has, never the link they hold.
 press gg
 logged '^key First None' $((tops + 6))
+press '2jv$'
+ended=$(how_many '^selected: nothing')
+e447=$(how_many '^said: E447')
+press gf
+logged '^selected: nothing' $((ended + 1))
+logged '^said: E447: Can.t find file "Some of it is on .*" in path' $((e447 + 1))
+# Over two lines, as Vim's, it names none, even with its cursor on the
+# lede's start, where the link after it would be gf's without a selection.
+press 0
+press jVk
+ended=$(how_many '^selected: nothing')
+e446=$(how_many '^said: E446')
+press gf
+logged '^selected: nothing' $((ended + 1))
+logged '^said: E446: No file name under cursor' $((e446 + 1))
+
+# gf opens the file the top's link names, and Ctrl+] follows it.
+press gg
+logged '^key First None' $((tops + 7))
 press gf
 logged '^file: (.*/)?second.md' 3
 logged '^opened: (.*/)?second.md, ' 5

@@ -676,11 +676,32 @@ fn written(runtime: &std::path::Path, name: &str) -> String {
 #[cfg(not(target_os = "linux"))]
 fn rewrites(_runtime: &std::path::Path, _wake: Sender<Wake>) {}
 
+/// The history at `path`, said in the journal as it's brought up from an
+/// older shape: that holds it for minutes on a large one with nothing
+/// else to show, and a restart meanwhile only starts the move again.
+fn opened(path: &Path) -> Result<History, String> {
+    let Some(shape) = History::older(path) else {
+        return History::open(path);
+    };
+    let to = crate::history::SCHEMA;
+    eprintln!(
+        "bringing the history from shape {shape} to {to}, a few minutes on a large one; \
+         a restart starts it again"
+    );
+    let began = Instant::now();
+    let history = History::open(path)?;
+    eprintln!(
+        "the history is in shape {to}, after {:.0} s",
+        began.elapsed().as_secs_f64()
+    );
+    Ok(history)
+}
+
 pub fn run(config: &Config) -> Result<(), String> {
     let _lock = lock(&config.state)?;
     config.runtime()?;
     hold(config)?;
-    let history = History::open(&config.history())?;
+    let history = opened(&config.history())?;
     let (wake, inbox): (Sender<Wake>, Receiver<Wake>) = mpsc::channel();
     let hub = hub(config)?;
     hub.doing(doer(config, wake.clone()));

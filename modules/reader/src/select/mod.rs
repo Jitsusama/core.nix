@@ -366,6 +366,19 @@ impl Layout {
         }
     }
 
+    /// The page's words read off its frame, with `file` as it is now, for
+    /// the page's `version`; none for a file it can't read, rather than
+    /// words matched to nothing, which would copy and count as empty.
+    pub fn read_file(frame: &Frame, file: &std::path::Path, version: u32) -> Option<Self> {
+        match std::fs::read_to_string(file) {
+            Ok(source) => Some(Self::read(frame, source, version)),
+            Err(error) => {
+                eprintln!("reader: can't read {}: {error}", file.display());
+                None
+            }
+        }
+    }
+
     /// These lines, when they were read from the page's setting `version`:
     /// read from another, they no longer say where the page's links are.
     pub fn of(&self, version: u32) -> Option<&Self> {

@@ -173,6 +173,16 @@ pub(crate) fn socket_dir() -> tempfile::TempDir {
 /// collects on every filesystem watched when `collects`, and collects
 /// whenever asked, telling what it heard.
 pub(crate) fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Receiver<Request> {
+    fake_system_ending(socket, collects, "reached")
+}
+
+/// A fake system daemon as [`fake_system`], whose every collect ends as
+/// `ended` says, in the journal's words.
+pub(crate) fn fake_system_ending(
+    socket: &Path,
+    collects: bool,
+    ended: &'static str,
+) -> std::sync::mpsc::Receiver<Request> {
     let mut server = disk_guard::socket::Server::bind(socket, std::time::Duration::ZERO).unwrap();
     let (telling, heard) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
@@ -186,7 +196,7 @@ pub(crate) fn fake_system(socket: &Path, collects: bool) -> std::sync::mpsc::Rec
                         }),
                         Request::Watching { paths } if collects => Reply::Collects(paths.clone()),
                         Request::Watching { .. } => Reply::Collects(Vec::new()),
-                        Request::Collect { .. } => Reply::Collected("reached".to_owned()),
+                        Request::Collect { .. } => Reply::Collected(ended.to_owned()),
                         Request::Footprint { paths } => Reply::Footprints(vec![None; paths.len()]),
                     };
                     let _ = telling.send(request);

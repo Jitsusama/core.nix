@@ -243,6 +243,7 @@
           "launcher/Calculator.qml"
           "launcher/Characters.qml"
           "launcher/Clocks.qml"
+          "launcher/Held.js"
           "launcher/Networks.qml"
           "launcher/Provider.qml"
           "launcher/Today.qml"
@@ -274,7 +275,14 @@
           // day the check runs on.
           property var reading: Object.assign((${builtins.readFile ../timekeeping/calendars-reading.json}),
             { day: Qt.formatDate(new Date(), "yyyy-MM-dd") })
-          function ask(day) { asked = day; }
+          // As the real one asks: a refusal is cleared at once, and a day
+          // already asked, with none standing, isn't asked again.
+          function ask(day) {
+            if (day === asked && !refused)
+              return;
+            refused = false;
+            asked = day;
+          }
         ''} Calendars.qml
         cp ${../tests/part-names.qml} shell.qml
         export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime LANG=C.UTF-8 QT_QPA_PLATFORM=offscreen

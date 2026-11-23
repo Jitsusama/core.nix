@@ -249,6 +249,10 @@ fn passed(last: &LastPass, after: &Status) -> Notice {
             "{cleared}. Deleting stopped freeing space, so the guard waits a little before \
              trying again; nothing is needed from you yet."
         ),
+        "waiting" => format!(
+            "{cleared}. Nix's store holds more to delete, which the guard takes once Nix's \
+             database is free and its last delete has rested; nothing is needed from you yet."
+        ),
         failed => format!("{cleared}. The guard {failed}. disk-guard journal says more."),
     };
     // Left short, whoever is filling it is worth knowing.

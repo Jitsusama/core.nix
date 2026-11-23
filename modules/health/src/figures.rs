@@ -12,6 +12,7 @@ use serde::Serialize;
 
 use crate::day::{Boot, Day, Thing};
 use crate::feel::Pain;
+use crate::memory::Memory;
 use crate::show::KINDS;
 use crate::typing;
 
@@ -96,12 +97,7 @@ pub fn of(day: &Day) -> BTreeMap<String, f64> {
         crashes.saturating_sub(his) as f64,
     );
     felt(&day.feel, &mut figures);
-    for (name, memory) in &day.memory {
-        figures.insert(
-            format!("memory.{name}.most-mib"),
-            memory.most_kib as f64 / 1024.0,
-        );
-    }
+    held(&day.memory, &mut figures);
     figures.insert("agents.died".to_owned(), day.agents.died.len() as f64);
     figures.insert(
         "defunct.most-under-one-parent".to_owned(),
@@ -189,6 +185,33 @@ fn felt(feel: &[Pain], figures: &mut BTreeMap<String, f64>) {
     let corrections: u32 = feel.iter().map(|pain| pain.signs.corrections).sum();
     figures.insert("feel.stopped".to_owned(), f64::from(stopped));
     figures.insert("feel.corrections".to_owned(), f64::from(corrections));
+}
+
+/// What each watched program held, in MiB: the most its copies held
+/// together, and a typical and a heavy copy, each the mean over the day's
+/// looks, when it was seen running.
+#[expect(
+    clippy::cast_precision_loss,
+    reason = "a figure only needs to be near: mebibytes and counts"
+)]
+fn held(memory: &BTreeMap<String, Memory>, figures: &mut BTreeMap<String, f64>) {
+    for (name, memory) in memory {
+        figures.insert(
+            format!("memory.{name}.most-mib"),
+            memory.most_kib as f64 / 1024.0,
+        );
+        if memory.looks > 0 {
+            let mean = |sum: u64| sum as f64 / memory.looks as f64 / 1024.0;
+            figures.insert(
+                format!("memory.{name}.copy-median-mib"),
+                mean(memory.median_sum_kib),
+            );
+            figures.insert(
+                format!("memory.{name}.copy-p95-mib"),
+                mean(memory.p95_sum_kib),
+            );
+        }
+    }
 }
 
 /// The most any disk was in use, and each by its mount, so a full one is
@@ -310,6 +333,39 @@ mod tests {
                 (Some(1.0), Some(2.0)),
             ),
             "a figure wasn't worked out from the day's tally: {figures:?}"
+        );
+    }
+
+    #[test]
+    fn a_typical_and_a_heavy_copy_are_figured_over_the_days_looks() {
+        let mut day = Day::new("2026-11-21");
+        day.memory.insert(
+            "pi-conversation".into(),
+            Memory {
+                looks: 4,
+                median_sum_kib: (4 * 300) << 10,
+                p95_sum_kib: (2 * (500 + 700)) << 10,
+                ..Memory::default()
+            },
+        );
+        day.memory.insert("quickshell".into(), Memory::default());
+        let figures = of(&day);
+        let figure = |name: &str| figures.get(name).copied();
+        assert_eq!(
+            (
+                figure("memory.pi-conversation.copy-median-mib"),
+                figure("memory.pi-conversation.copy-p95-mib"),
+            ),
+            (Some(300.0), Some(600.0)),
+            "each the mean of the day's looks, in MiB"
+        );
+        assert_eq!(
+            (
+                figure("memory.quickshell.copy-median-mib"),
+                figure("memory.quickshell.copy-p95-mib"),
+            ),
+            (None, None),
+            "never seen running, so no typical or heavy copy"
         );
     }
 

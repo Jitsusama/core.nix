@@ -817,7 +817,16 @@ let
       pkgs.inotify-tools
       pkgs.quickshell
       pkgs.systemd
+      pkgs.util-linux
     ];
+    # Whom it refuses to ask for, read from the file the agent that holds
+    # Joel's keys reads at each connection, so a switch, or a gate opening
+    # with watch, changes both at once; where that file is gone, the gate it
+    # was built with.
+    runtimeEnv = {
+      SSH_ASKPASS_GATE = "${config.xdg.configHome}/ssh-tpm-agent/gate";
+      SSH_ASKPASS_GATE_BUILT = "${../ssh-tpm-agent/gate.conf}";
+    };
     text = builtins.readFile ./askpass.sh;
   };
 
@@ -1917,6 +1926,24 @@ in
     # them.
     home.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
     systemd.user.sessionVariables.SSH_ASKPASS = lib.getExe askpass;
+    # niri's session imports the login's environment into the account's
+    # systemd, which outranks environment.d, so a switch alone leaves units
+    # started after it on the askpass of the login before: each switch
+    # gives systemd this one, before it restarts the units the switch
+    # changed, so they start on it too. Without the account's systemd, as
+    # before the first login, the login takes it from the variables above.
+    # What already runs keeps the askpass it started with until it
+    # restarts: what niri started, its windows and what they start, until
+    # the next login, and units the switch doesn't restart until they do.
+    # Agents' commands are given no askpass by the harness that runs them,
+    # so it's Joel's own programs that keep the old one.
+    home.activation.askpassFollowsTheSwitch =
+      lib.hm.dag.entryBetween [ "reloadSystemd" ] [ "writeBoundary" ]
+        ''
+          run env XDG_RUNTIME_DIR="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" \
+            ${lib.getExe' pkgs.systemd "systemctl"} --user set-environment \
+            SSH_ASKPASS=${lib.getExe askpass} || true
+        '';
 
     # run0 waits for polkit's prompt inside one D-Bus call, which systemd
     # gives up on after 25 seconds, cancelling a prompt Joel hadn't reached

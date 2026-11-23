@@ -4,14 +4,24 @@
 // Pacing.feltTicked keeps and Heap gives (modules/quickshell/heap).
 
 // What the collector took of an opening, in its longest stall and in all,
-// said after the stall's parts, or nothing when it took under a
-// millisecond.
+// said after the stall's parts, or nothing when it took under half a
+// millisecond, which rounds to none.
 function collectorSaid(inStall, inAll) {
     const all = Math.round(inAll);
     if (all < 1) {
         return "";
     }
     return `; the collector ${Math.round(inStall)} ms of the stall, ${all} of the opening`;
+}
+
+// What the collector took of an opening's working, from its ask to its
+// first frame's work done, said on its line beside what its thread did, or
+// nothing when it took under half a millisecond: Joel's slow openings into Now
+// asked 15 to 22 ms, and none said whether a collection was among it
+// (2026-11-21).
+function workingSaid(inWorking) {
+    const working = Math.round(inWorking);
+    return working < 1 ? "" : `; the collector ${working} ms of its working`;
 }
 
 // Where the heap stood against the collector as the opening was asked, as

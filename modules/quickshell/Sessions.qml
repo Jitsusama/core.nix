@@ -715,6 +715,11 @@ Singleton {
     // sent on a connection that closed, so Reopen Them All waits no more
     // than screensPatience on it, rather than never reopening at all.
     property var screens: ({})
+    // The screens connected now, of those last said (Places.connected), for
+    // anything sending a window or a workspace to one.
+    function screensThere() {
+        return Places.connected(screens, Object.values(Niri.workspaces ?? {}));
+    }
     property var screensWaiting: []
     function lookAtScreens(then) {
         screensWaiting = screensWaiting.concat([then]);
@@ -1547,7 +1552,8 @@ Singleton {
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
         const placeable = keptPlaces.map(Reopening.placeOf);
-        const places = Places.placed(placeable, screens, Niri.workspace()?.output ?? null,
+        const places = Places.placed(placeable, root.screensThere(),
+            Niri.workspace()?.output ?? null,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
@@ -2306,7 +2312,8 @@ Singleton {
         const at = going.kept[index];
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
-        const output = found.output ?? Places.whereKept(at, going.kept, screens)
+        const there = root.screensThere();
+        const output = found.output ?? Places.whereKept(at, going.kept, there)
             ?? Niri.workspace()?.output ?? null;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
@@ -2320,9 +2327,9 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.whereKept(at, going.kept, screens) === undefined)
+        if (into !== null && Places.whereKept(at, going.kept, there) === undefined)
             root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output, others: Places.othersGone(at, going.kept, screens) }, into);
+                output: at.output, others: Places.othersGone(at, going.kept, there) }, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;

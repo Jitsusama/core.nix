@@ -3,7 +3,7 @@
     "at": 1794421209,
     "commit": "042387bc604aa8b10fbf53100b0230c1f552e504",
     "due": "2026-11-25",
-    "due_why": "Its owner, 2DZF5Z, given it by the orchestrator on 22 Nov after its date of 21 Nov passed with it failing 6 of the 39 net runs from 20 Nov 19:27 to 22 Nov 05:23 UTC. In all six, calendars_from_now pressed Return on Date's Calendars while that row still read Calendars with an ellipsis, asking, just after timekeeping.socket started again, and its Return closed the launcher: the launcher's own report in 40c0beb33200's log, gone with the net's three days of logs, had it open, holding Now and Date, on Calendars reading Calendars, a middle dot and an ellipsis, with the verb close, and the home rows a failed wait last heard are the closed launcher's. Ask 203, on jitsusama/calendars-wait-for-the-reader, makes that Return step in, and rewrites this entry as it lands. It comes off once twenty net runs in a row after the fix exit 0, counted by exit code, since a failure only here is recorded as passed: at 6 in 39, twenty pass by luck about one time in thirty, and at the net's pace in the twelve hours to 22 Nov 05:23 UTC, about eighteen runs a day, they take a little over a day. If the fix hasn't merged by the end of 23 Nov UTC, or twenty in a row haven't passed by the end of 24 Nov UTC, its owner moves the due and sends the new one before this one passes. Firmware, listed beside it, came off on 22 Nov: all seven net runs after #5869 passed it, six exiting 0 and one failing only the time here. While it stands, nothing catches a change that breaks what the subtest checks: Date's calendars with the reader gone and back, the clock's figures, chrony's servers and their drawers, Time with chronyd stopped, and Time keeping one Clock when its reader answers late",
+    "due_why": "Its owner, 2DZF5Z, given it by the orchestrator on 22 Nov after its date of 21 Nov passed with it failing 6 of the 39 net runs from 20 Nov 19:27 to 22 Nov 05:23 UTC. In all six, calendars_from_now pressed Return on Date's Calendars while that row still read Calendars with an ellipsis, asking, just after timekeeping.socket started again, and that row's Return only closed, so the launcher closed under Joel's way to the calendars. Ask 203 (#6078) makes Return on it step in, to a place the calendars fill as they come, which the-launcher-names-the-parts-it-builds proves on every run in Qt's engine; with a drop-in giving timekeeping.service ExecStartPre=sleep 15, run by run-subtests, the old launcher fails at that Return and the new one passes. It comes off once twenty net runs in a row after the fix exit 0, counted by exit code, since a failure only here is recorded as passed: at 6 in 39, twenty pass by luck about one time in thirty. A launcher closed at that Return means the fix is wrong. A wait for the four calendars that runs out, its 60 s covering the reader's start, means the fix is wrong if the journal says 'calendars held' at any point after the socket started again while the step still holds no rows, and a slow or hung reader if it doesn't; back at Date means the reader refused. Only a closed launcher and an answer that never filled the step count against the fix; any other failure restarts the count. If twenty in a row haven't passed by the end of 24 Nov UTC, its owner moves the due and sends the new one before this one passes. Firmware, listed beside it, came off on 22 Nov: all seven net runs after #5869 passed it, six exiting 0 and one failing only the time here. While it stands, nothing catches a change that breaks what the subtest checks: Date's calendars with the reader gone and back, the clock's figures, chrony's servers and their drawers, Time with chronyd stopped, and Time keeping one Clock when its reader answers late",
     "owner_pr": 3304,
     "owner_session": "2DZF5Z",
     "reason": "failed, then passed, at 042387bc604a",
@@ -77,5 +77,58 @@
       "test_a_fenced_command_reads_no_secret_copy_through_x11"
     ],
     "test": "vm-desktop-keeps-copies"
+  },
+  {
+    "at": 1795369415,
+    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
+    "due": "2026-11-26",
+    "due_why": "Its owner, the still-windows check's, takes it off once twenty net runs in a row exit 0 after #6132 merges, about two and a quarter days at the net's pace of about nine a day, and moves the due and says why before this date if a run fails. It failed on loaded builders for changes that never touch it, #6065 among them, which the case doesn't import: each start then lasted a fixed 600 ms and lost frames that came late. #6132 ends every start on quiet instead. While it stands, nothing catches a still window drawing as animations start",
+    "owner_pr": 6132,
+    "owner_session": "XY9H5C",
+    "reason": "failed on loaded builders while each start lasted a fixed 600 ms; #6132 fixes it forward",
+    "test": "still-windows-draw-nothing-as-animations-start-on-niri"
+  },
+  {
+    "at": 1795370179,
+    "commit": "f7ac6f58a5082a2265c27068330e16230cdb9f9b",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at f7ac6f58a508",
+    "test": "the-margin-cat-sits-above-its-column"
+  },
+  {
+    "at": 1795371090,
+    "commit": "0e420d94fa7838778caa94587407fceeacb91fec",
+    "due": "2026-11-24",
+    "owner_pr": 6065,
+    "owner_session": "orchestrator",
+    "reason": "has been broken since #6065, whose revert won't apply; its owner fixes it forward and takes it off this list",
+    "test": "the-launcher-lists-inkscapes-drawings-lately"
+  },
+  {
+    "at": 1795384050,
+    "commit": "e9a62305b022e4f5beb11f49f70ba293926c50d2",
+    "due": "2026-11-24",
+    "owner_pr": 6086,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at e9a62305b022",
+    "subtests": [
+      "test_a_session_turning_beside_return_into_for_you_draws_nothing"
+    ],
+    "test": "an-agents-return-does-its-harmless-act-on-niri"
+  },
+  {
+    "at": 1795355612,
+    "commit": "a6901f968d038fc3be538ac699ffda63c7fb8f49",
+    "due": "2026-11-28",
+    "due_why": "Its owner, the margin cat's, by 2026-11-24 23:00 UTC, about three and a half days before its due, reads why the cat drew with the launcher under load and fixes it or the case's floor, splitting the frame count into a subtest of its own so the walk's holds guard again whatever stays listed. It failed at a6901f968d03, the net's run 1 of 2, and on 22 Nov on a loaded lender at 847f070456cd, a branch touching only the launcher's stall clocks, the same way both times: the cat drew 8 frames of its own under the launcher, {'cat winit': 8, 'launcher': 8}. The still neighbours it takes as its floor, the notices and the talk line, drew none there, so the floor was 0 and the cat matched the launcher frame for frame. The same count twice points to a cause that load sets off rather than noise, though that is untested; the fix reads it with Qt's render loop log on. It comes off once the fix merges, passes on a loaded lender, and twenty net runs in a row after it exit 0. While it stands, nothing catches the cat drawing or stepping under the launcher, or its walk not going on from where it was held. The twenty runs take about two and a quarter days at the net's pace of about nine a day; its owner moves the due and says why before this date if a run fails",
+    "owner_pr": 5815,
+    "owner_session": "XY9H5C",
+    "reason": "failed, then passed, at a6901f968d03",
+    "subtests": [
+      "test_a_walk_holds_where_it_got_to_while_the_launcher_is_up"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
   }
 ]

@@ -81,7 +81,10 @@ let
       };
       Install.WantedBy = [ "default.target" ];
     };
-  inherit (config.jitsusama.pineapple) sites;
+  inherit (config.jitsusama.pineapple) sites gateway;
+  # A word systemd reads as itself in ExecStart, which expands `%` and `$`
+  # even inside quotes, as night-shift's units say.
+  literal = lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ];
 in
 {
   imports = [ ../quickshell/providers.nix ];
@@ -167,29 +170,92 @@ in
     );
   };
 
+  options.jitsusama.pineapple.gateway = lib.mkOption {
+    description = ''
+      A tool gateway reading Slack for Joel, heard by a second reader in
+      shadow beside the one asking Slack itself, so the two can be compared
+      before the gateway's is trusted; none unless a machine names one.
+    '';
+    default = null;
+    type = lib.types.nullOr (
+      lib.types.submodule {
+        options = {
+          url = lib.mkOption {
+            description = "Where the gateway answers MCP, such as https://gateway.example.com/mcp.";
+            type = lib.types.str;
+          };
+          signIn = lib.mkOption {
+            description = ''
+              A program printing Joel's sign-in to the gateway, run when
+              asked, that fetches it as it runs, never one holding it, since
+              the program sits in the store where anyone can read it.
+            '';
+            type = lib.types.path;
+          };
+        };
+      }
+    );
+  };
+
   config = lib.mkMerge [
+    (lib.mkIf (gateway != null) {
+      # The Slack reader again, hearing Slack through the gateway
+      # (src/ears.rs), only ever in shadow, as the reader refuses --live
+      # with --gateway: it keeps to pineapple-gateway beside the live
+      # reader's state, its row of what waits included, however it's run,
+      # so a gateway it can't hear never reaches Joel while the reader he
+      # trusts goes on. The environment is left alone, for the sign-in
+      # program it runs.
+      systemd.user.services.pineapple-slack-gateway = {
+        Unit = {
+          Description = "Reads Slack through a tool gateway for the safe word, in shadow";
+          X-SwitchMethod = "restart";
+        };
+        Service = {
+          Slice = "background.slice";
+          ExecStart = lib.escapeShellArgs [
+            "@${pineapple}/bin/pineapple-slack"
+            "pineapple-slack-gateway"
+            "run"
+            "--gateway"
+            (literal gateway.url)
+            "--gateway-sign-in"
+            (literal "${gateway.signIn}")
+          ];
+          Restart = "on-failure";
+          RestartSec = 30;
+        };
+        Install.WantedBy = [ "default.target" ];
+      };
+    })
     {
       # A name is a unit's and a file's, and GitHub's and Slack's are taken.
       # A site allows 30 searches a minute and a round spends one a
       # repository, so the reader refuses more than 20; refused here, a
       # switch fails rather than the reader restarting on it for good.
-      assertions = lib.concatLists (
-        lib.mapAttrsToList (name: site: [
-          {
-            assertion =
-              builtins.match "[a-z0-9-]+" name != null
-              && !lib.elem name [
-                "github"
-                "slack"
-              ];
-            message = "jitsusama.pineapple.sites.${name}: a site's name is lowercase letters, digits and dashes, and neither github nor slack.";
-          }
-          {
-            assertion = lib.length site.repos <= 20;
-            message = "jitsusama.pineapple.sites.${name}: a site reads at most 20 repositories, since each round spends one of its 30 searches a minute on each.";
-          }
-        ]) sites
-      );
+      # The gateway is given Joel's sign-in with every request.
+      assertions =
+        lib.optional (gateway != null) {
+          assertion = lib.hasPrefix "https://" gateway.url;
+          message = "jitsusama.pineapple.gateway.url is sent Joel's sign-in, so it's https.";
+        }
+        ++ lib.concatLists (
+          lib.mapAttrsToList (name: site: [
+            {
+              assertion =
+                builtins.match "[a-z0-9-]+" name != null
+                && !lib.elem name [
+                  "github"
+                  "slack"
+                ];
+              message = "jitsusama.pineapple.sites.${name}: a site's name is lowercase letters, digits and dashes, and neither github nor slack.";
+            }
+            {
+              assertion = lib.length site.repos <= 20;
+              message = "jitsusama.pineapple.sites.${name}: a site reads at most 20 repositories, since each round spends one of its 30 searches a minute on each.";
+            }
+          ]) sites
+        );
       systemd.user.services = lib.mapAttrs' siteReader sites;
     }
     {

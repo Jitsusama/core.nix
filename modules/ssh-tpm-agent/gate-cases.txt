@@ -36,11 +36,13 @@ refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs.service
 refuse /user.slice/user-1000.slice/user@1000.service/background.slice/pi-jobs-ab12.scope
 # A shell Joel opens in a tab of a session window, in its kitty's scope.
 refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
-# A unit a hosted conversation's command starts with systemd-run, given its
-# caller's slice, named or not; one started from agents' work placed in the
-# awaited or background slice, refused with Joel's own there, which looks
-# the same; and a scope from Joel's awaited work, as nix-offload's uploads
-# take, judged by its caller.
+# A unit an agent's command starts with systemd-run, in jobs-work.slice
+# from jobs.service or a spawner's scope, or given its caller's slice, named
+# or not; one started from agents' work placed in the awaited or background
+# slice, refused with Joel's own there, which looks the same; and a scope
+# from Joel's awaited work, as nix-offload's uploads take, judged by its
+# caller.
+refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/jobs-work.slice/run-p800970-i5013961.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-p800969-i5013960.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/queue-2af2dh-1028.service /user.slice/user-1000.slice/user@1000.service/init.scope
 refuse /user.slice/user-1000.slice/user@1000.service/jobs.slice/run-u9.scope /user.slice/user-1000.slice/user@1000.service/init.scope

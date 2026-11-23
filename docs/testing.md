@@ -30,10 +30,10 @@ core's main broke on 30 October on a change whose run named checks and
 built only some, and `--name-only` is for naming alone. With no
 `--system` it compares the system with the most checks, since core holds
 its checks about checks on Linux alone, and that change's run, on a Mac,
-compared only the Mac's. `nix flake check` runs only for a
-change every check reads, such as `flake.lock`: on a machine shared with
-other work, a whole run is what makes the loop slow, and the load it adds
-is what makes VM tests time out.
+compared only the Mac's. No change needs `nix flake check`, a
+`flake.lock` one included, which `changed-checks` and `merge-net needs`
+read as any other: on a machine shared with other work, a whole run is what
+makes the loop slow, and the load it adds is what makes VM tests time out.
 
 `nix fmt` lints as it formats, at each linter's strictest, test code
 included: ruff with every rule and mypy `--strict` for Python (`ruff.toml`,
@@ -191,12 +191,26 @@ kernel, the disk and LUKS, the TPM, secure boot, the install, the stick and
 its guide, the greeter or lock, `flake.lock` or nix-offload
 (`tools/merge-net/must-run.txt`). Of those, it names only the ones whose
 derivation moved from main, since the rest would give main's result. A
+`flake.lock` change that moves only inputs `tools/merge-net/lock-after.txt`
+names, mycelium alone today, leaves the lock's area untouched, since no
+unit before sign-in waits on them; its VM tests run after on the net,
+unless it moves a machine's initrd, which still runs the boot tests first,
+or `changed-checks` can't say what it moved, which runs every VM test. A
+broken node can still hold off sleep, and refuse a reboot or poweroff the
+account asks for until it is stopped, but can't stop a machine booting,
+unlocking or signing in, and a revert's switch needs no reboot. The list is
+read from the change's merge base, so a change asked against main from a
+clean tree can't widen it for itself, and `merge-net needs` says why a
+lock it keeps runs first. A
 change to nix-offload, which moves none, sends one VM test's subtests
 through itself with `run-subtests --there` instead. `merge-net ready COMMIT`,
 asked before a head merges, refuses one that doesn't sit on origin's main
 as it is now, or at which no `changed-checks` run that built what it named
 passed, from nix-offload's record of what passed at each commit. It refuses
-one no review round read too, from the rounds the harness keeps, unless it
+one no review round read too, from the rounds the harness keeps, and only
+when none of those read it, from those mirrored from other machines into
+`review/runs-from` beside them, where a range counts only when its base
+was given as a commit. It passes, too, when the head
 is a clean rebase of a commit one read, by the same patch id taken with
 its context lines and whitespace, so a block moved within its file is
 another change. A round over a range of commits stands for its head only
@@ -575,8 +589,10 @@ Given `LAB_BACK` too, it steps back out of that place with - each round
 and prints that step's line; without `LAB_STEP` it refuses to run.
 `LAB_CHORD`, a place's name as its chord asks
 for it, such as `windows`, opens that place from shut each round and steps
-out of it to home with nothing typed, as Super+Tab then - does, and
-`LAB_WINDOWS` opens that many windows first, so Windows holds some. Those
+out of it to home with nothing typed, as Super+Tab then - does. Each
+round prints the opening's own line as `lab-into`, what its thread ran,
+waited and slept of its working among it, and the step out as
+`lab-chord`. `LAB_WINDOWS` opens that many windows first, so Windows holds some. Those
 windows join home's rows too, so the typed keys' medians change with them.
 Out of Windows over 10, holding fell from 7.5 to 5 ms once the foot was
 fitted once a step (2026-11-18). `LAB_AGENTS` lays that many live
@@ -601,10 +617,12 @@ or commas, such as `keep pick`, each call of them is profiled apart as
 `within-<name>`, the call and what it ran, by own and whole time, so the
 function's whole time there says what its calls took. Only what runs
 within the call counts, not what it sets off later. A name that's no
-function of Launcher.qml's, or `LAB_WITHIN` without `LAB_PROFILE`, fails
-the run at once, and a function never called is said to be. Inside `keep`, the 8
-rows "c" reused cost about 1 ms each at the least, spread over the row's
-bindings, Qt laying out its name again the largest (2026-11-17).
+function of Launcher.qml's, `LAB_WITHIN` without `LAB_PROFILE`, or
+`LAB_PROFILE` with no `--debug 3768` in `QS_GIVEN`, fails the run at once,
+since a shell not open to the profiler's port never lets it connect, and
+a function never called is said to be. Inside `keep`, the 8 rows "c"
+reused cost about 1 ms each at the least, spread over the row's bindings,
+Qt laying out its name again the largest (2026-11-17).
 The profiler stretches what it times, so a cut's figures
 come from runs without it. The home it types into
 holds this niri's few windows and programs, where Joel's holds about a

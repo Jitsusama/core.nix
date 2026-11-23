@@ -6,8 +6,9 @@
 # host's patches (checks.nix, pi-hosted-keeps-turns-its-own), and every pi
 # an account starts by hand stays unpatched. Each host may run a
 # conversation in a process of its own, from a template unit beside it
-# (conversationOf). A machine that names no realm gets no host. Linux only,
-# for now.
+# (conversationOf). A machine that names no realm gets no host. These are
+# Linux's; a Mac's are launchd daemons (darwin.nix), started the same way
+# (host-launch.nix).
 #
 # No pi reaches a host unproven. The harness's scripts/host-prove.ts writes a
 # runtime's proof once `pnpm test:host` passes on it with no case skipped,
@@ -24,12 +25,9 @@
 let
   cfg = config.jitsusama.pi.hosts;
 
-  # The harness's host program, in the version pi-packages calls current.
-  # node follows the link as it loads it, so a running host keeps the version
-  # it started with through an update, and the next start takes the new one.
-  entry = "${config.jitsusama.pi-packages.root}/github.com/Jitsusama/agentic-harness.pi/current/scripts/pi-host.ts";
-
-  homeRealm = lib.attrByPath [ "jitsusama" "mycelium" "realm" ] null config;
+  launch = import ./host-launch.nix { inherit lib; };
+  inherit (launch) kinds loadsCode stopSeconds;
+  entry = launch.entry config;
 
   # Whether pi's SSH agent proxy runs here, as home.nix decides it, so a
   # host is pointed at its socket only where there is one. Hosts are Linux
@@ -67,58 +65,9 @@ let
     text = builtins.readFile ./host-down.sh;
   };
 
-  # How long systemd gives a host to stop at a restart or a switch, in
-  # seconds. The unit tells the host the same number (PI_HOST_STOP_USEC),
-  # which parks within three quarters of it, so its own limit comes first
-  # there. At logout, reboot or poweroff the manager's 5 s comes first.
-  stopSeconds = 150;
-
-  # What would run code as the host as its node starts, so a host's unit
-  # clears each and a realm giving one is refused: NODE_OPTIONS, whose
-  # --require or --import runs a script and whose --inspect opens the
-  # inspector; NODE_PATH, where a require that finds nothing beside it looks,
-  # as a library's optional require does; NODE_COMPILE_CACHE, whose folder
-  # wins over the host's own and whose compiled code node runs as its
-  # modules' (host/service/compile-cache.ts); the loader's LD_PRELOAD, LD_AUDIT
-  # and LD_LIBRARY_PATH, which load a library; and OpenSSL's OPENSSL_CONF and
-  # OPENSSL_MODULES, whose configuration loads a module. mycelium keeps the
-  # same list in its src/node/asker.rs, once its lock here carries the change
-  # that proves a hosted session by its spawner: it then takes no host's word
-  # whose environment gives any of them, but for a blank NODE_OPTIONS. The two
-  # lists are kept alike by hand: nothing here reads mycelium's yet. These are
-  # node's, the loader's and OpenSSL's doors only. pi's own variables, such
-  # as PI_CODING_AGENT_DIR, which moves the extensions it loads, are the
-  # account's doors, like HOME: a process of the account can as well write
-  # the host's own code where pi-packages keeps it, or a module in node's
-  # home folders (~/.node_modules), which no variable names.
-  loadsCode = [
-    "NODE_OPTIONS"
-    "NODE_PATH"
-    "NODE_COMPILE_CACHE"
-    "LD_PRELOAD"
-    "LD_AUDIT"
-    "LD_LIBRARY_PATH"
-    "OPENSSL_CONF"
-    "OPENSSL_MODULES"
-  ];
-
-  # What a host's own restart waits out (the harness's host/service/quiet.ts),
-  # as the JSON its unit names: each probe's words and its command, which
-  # exits 0 while its reason holds and 1 while it doesn't. A % is doubled,
-  # so systemd reads none in a probe's path as a specifier.
-  restartWaitsOn = lib.replaceStrings [ "%" ] [ "%%" ] (
-    builtins.toJSON (
-      map (probe: {
-        "while" = probe.why;
-        run = probe.command;
-      }) config.jitsusama.pi.hostRestartWaitsWhile
-    )
-  );
-
-  kinds = {
-    attended = "the pi conversations Joel watches";
-    background = "the pi conversations that run in the background";
-  };
+  # What a host's own restart waits out, as the JSON its unit names, with
+  # each % doubled so systemd reads none in a probe's path as a specifier.
+  restartWaitsOn = lib.replaceStrings [ "%" ] [ "%%" ] (launch.restartWaitsOn config);
 
   # How long systemd gives a conversation's own process to stop, in seconds.
   # It parks one conversation, not many, and is told the same number, so its
@@ -143,88 +92,40 @@ let
           lib.concatMapStringsSep ":" (lib.replaceStrings [ "%" "$" ] [ "%%" "$$" ]) host.path
         }:\${PATH}"
       ]
-      ++ [
-        host.node
-        # Any process of the account may send SIGUSR1, which would open
-        # node's inspector and let it run code as the host. mycelium takes
-        # the host's word for which conversation each pi-spawner serves
-        # only where this is the first option on the host's command line
-        # and no option there opens the inspector; once its lock here
-        # carries its list, also only where the host's environment gives
-        # none of loadsCode, which the unit clears below. It refuses the
-        # word of a host started otherwise, and logs why.
-        "--disable-sigusr1"
-      ]
-      # After the flag above, which must come first; asyncContextFrame's
-      # description says why a realm sets it.
-      ++ lib.optional host.asyncContextFrame "--experimental-async-context-frame"
-      ++ [
-        # The harness's package.json names no module type, on purpose.
-        "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON"
-        "--max-old-space-size=${toString heapMb}"
-        entry
-      ]
-      ++ rest
+      ++ [ host.node ]
+      ++ launch.words config host heapMb rest
     );
 
   # The environment a host and a conversation's own process share, quoted,
-  # as systemd splits an unquoted entry at its spaces; `own` comes last.
-  # `many` is whether the process holds many conversations, as a host does,
-  # and so wants the pools sized for them; a conversation's own process
-  # keeps the defaults a plain pi has.
+  # as systemd splits an unquoted entry at its spaces; host-launch.nix says
+  # what `many` and `own` are.
   environmentOf =
     realm: host: many: own:
     lib.mapAttrsToList (name: value: ''"${name}=${lib.escape [ "\\" "\"" ] value}"'') (
-      lib.optionalAttrs many {
-        # The host reads its conversations' mesh folders off its loop, on
-        # libuv's pool, which is four threads by default. On 16 November a
-        # stalled disk held those reads for up to 17 s, and four stalled
-        # reads would leave every other conversation's reads, lookups and
-        # hashing waiting behind them. libuv sizes the pool when it first
-        # starts, before any of the host's code runs, so it is set here. A
-        # machine's own value still wins.
-        UV_THREADPOOL_SIZE = "16";
-        # pi gives a process two codemode workers, which suits one
-        # conversation but is shared here by every conversation the host
-        # holds. After the reset of 17 November the background host's
-        # forty conversations had one cell's six-minute script and one
-        # other holding both, and every other script failed after waiting
-        # a minute. A worker starts only for a script, so a bigger limit
-        # costs nothing while idle. pi reads it at each script.
-        PI_CODEMODE_MAX_WORKERS = "16";
-      }
-      // lib.optionalAttrs agentProxied {
-        # A hosted conversation's commands run with the host's own
-        # environment, so they reach the agents' SSH agent, as a fenced
-        # command does, rather than whichever agent the user manager was
-        # told of before the host started. After the reset of 17 November
-        # the hosts started before the session told the manager of any, and
-        # every ssh from a hosted conversation was refused.
-        SSH_AUTH_SOCK = "%t/pi-agent.sock";
-      }
-      // {
-        # The harness's browser tool starts each browser on a profile of its
-        # own, made fresh. On Linux a fresh Google Chrome profile enrols
-        # itself as a new browser with whatever cloud management a policy
-        # in /etc/opt/chrome names, and takes that policy's forced
-        # extensions, so every agent's look at a page added one more browser
-        # to an organisation's books. Chromium reads only /etc/chromium's
-        # policies. A machine names its own browser once, in the account's
-        # CHROME_PATH (home.nix sets Chromium as its default), and its hosts
-        # follow it; a realm's environment still wins over both.
-        CHROME_PATH = config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium);
-      }
-      // host.environment
-      // {
-        MYCELIUM_REALM = realm;
-        # pi reads its own files from here, and a subagent a hosted
-        # conversation starts runs this pi too.
-        PI_PACKAGE_DIR = host.pi;
-        # The host checks it against its pi as it starts.
-        PI_HOST_PROOF = "${host.proof}";
-      }
-      // lib.optionalAttrs (homeRealm != null) { PI_HOME_REALM = homeRealm; }
-      // own
+      launch.environment config realm host many (
+        lib.optionalAttrs agentProxied {
+          # A hosted conversation's commands run with the host's own
+          # environment, so they reach the agents' SSH agent, as a fenced
+          # command does, rather than whichever agent the user manager was
+          # told of before the host started. After the reset of 17 November
+          # the hosts started before the session told the manager of any,
+          # and every ssh from a hosted conversation was refused.
+          SSH_AUTH_SOCK = "%t/pi-agent.sock";
+        }
+        // {
+          # The harness's browser tool starts each browser on a profile of its
+          # own, made fresh. On Linux a fresh Google Chrome profile enrols
+          # itself as a new browser with whatever cloud management a policy
+          # in /etc/opt/chrome names, and takes that policy's forced
+          # extensions, so every agent's look at a page added one more
+          # browser to an organisation's books. Chromium reads only
+          # /etc/chromium's policies. A machine names its own browser once,
+          # in the account's CHROME_PATH (home.nix sets Chromium as its
+          # default), and its hosts follow it; a realm's environment still
+          # wins over both.
+          CHROME_PATH = config.home.sessionVariables.CHROME_PATH or (lib.getExe pkgs.chromium);
+        }
+      ) own
     );
 
   # The user manager names the TPM's agent, Joel's own keys, to everything
@@ -370,16 +271,9 @@ let
         Type = "notify";
         NotifyAccess = "all";
         ExecStart = startOf host host.heapMb [ kind ];
-        Environment = environmentOf realm host true {
-          # The stop limit below, which the host parks within.
-          PI_HOST_STOP_USEC = toString (stopSeconds * 1000000);
-          # A host restarts itself onto a new pi or harness once it's
-          # installed, or for its heap. At 16:38 on 19 November the attended
-          # host did so mid-call as its install moved, and every window on it
-          # went with it, so it waits until no call is on and nothing a
-          # machine adds holds.
-          PI_HOST_RESTART_WAITS_ON = restartWaitsOn;
-        };
+        # The stop limit below, which the host parks within, and what its
+        # restart waits on (host-launch.nix's hostOwn).
+        Environment = environmentOf realm host true (launch.hostOwn restartWaitsOn);
         UnsetEnvironment = unsetEnvironment;
         # The host parks its conversations and keeps their records when told
         # to stop, so only its own failure restarts it; a crash's next start
@@ -501,7 +395,10 @@ in
               built for; the host runs on it, given --disable-sigusr1, so it
               must be a node that knows that flag: 22.14 or later in 22, or
               23.7 or later. An older one is refused only as its host starts,
-              which then stops and is said to be down.
+              which then stops and is said to be down. It must be node's own
+              program, not a script that runs it: a Mac runs a copy of it
+              named pi-host, and refuses a script, which would run node
+              under node's name.
             '';
           };
           path = lib.mkOption {

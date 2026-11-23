@@ -45,6 +45,10 @@ KEY_PACE_MS = 50
 TO_THE_CORNER = -10000
 # The modes the launcher's line types in: the find, and insert while a row asks for words.
 TYPING = ("find", "insert")
+# How many of the rows it made last a place names by key (Provider.qml's tallyKept).
+LATELY_KEPT = 16
+# How long a place makes no row before an opening's work is taken as done: many frames.
+SETTLED = 0.5
 
 # QEMU's names for the keys the desktop's tests press, as wtype's arguments.
 KEYS = {
@@ -250,13 +254,17 @@ class Shell:
         words = os.environ.get("WINDOWS_WORDS")
         self.daemon("windows", os.environ["WINDOWS"], *(["--words", words] if words else []))
 
-    def daemon_stopped(self, name: str) -> None:
-        """Stop the daemon started as `name`, so a case may stand in on its socket."""
+    def daemon_stopped(self, name: str, socket: Path | None = None) -> None:
+        """Stop the daemon started as `name`, so a case may stand in on its socket.
+
+        One that keeps a socket of its own, as spend-watch does, is given it.
+        """
         process = self.daemons.pop(name, None)
         if process is not None:
             process.terminate()
             process.wait(timeout=10)
-        (Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / f"{name}.sock").unlink(missing_ok=True)
+        socket = socket or Path(os.environ["XDG_RUNTIME_DIR"]) / "daemons" / f"{name}.sock"
+        socket.unlink(missing_ok=True)
 
     def stop(self) -> None:
         """End the shell."""
@@ -303,6 +311,37 @@ class Shell:
     def showing(self) -> Json:
         """Give what the launcher shows, from its showing call."""
         return cast("Json", json.loads(self.as_account(self.ipc("showing"))))
+
+    def made(self) -> Json:
+        """Give what each place has made since the shell started (Provider.qml's tally)."""
+        return cast("Json", json.loads(self.as_account(self.ipc("made"))))
+
+    def rows_made(self, place: str) -> int:
+        """Give how many rows the place has made since the shell started."""
+        return int(self.made()["rows"][place])
+
+    def made_lately(self, place: str) -> str:
+        """Say the last rows the place made, each marked shut or walked as the launcher was."""
+        return ", ".join(self.made()["lately"][place]) or "none"
+
+    def made_since(self, place: str, before: int) -> list[str]:
+        """Give the keys of the rows the place made after it had made `before`, oldest first."""
+        made = self.made()
+        count = int(made["rows"][place]) - before
+        lately = made["lately"][place]
+        assert count <= LATELY_KEPT, f"{place} made {count} rows: {', '.join(lately)}"
+        return [key.split(" ")[0] for key in (lately[-count:] if count else [])]
+
+    def made_settled(self, place: str) -> None:
+        """Wait until the place has made no row for a while, the opening's work done."""
+        deadline = time.monotonic() + 10
+        made, still_since = self.rows_made(place), time.monotonic()
+        while time.monotonic() - still_since < SETTLED:
+            assert time.monotonic() < deadline, f"{place} never stopped making rows"
+            time.sleep(0.1)
+            now = self.rows_made(place)
+            if now != made:
+                made, still_since = now, time.monotonic()
 
     def mark(self) -> int:
         """Mark how far the shell's log has reached."""

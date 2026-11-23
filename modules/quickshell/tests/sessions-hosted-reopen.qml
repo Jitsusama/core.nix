@@ -19,11 +19,18 @@ pragma ComponentBehavior: Bound
 // outlived its host's list is begun; and one parked in its holder here is
 // woken, told to carry on, its place kept for its window to open there as it
 // wakes. One whose folder is gone starts its quest afresh, under an id of its
-// own, in the folder the harness's quest index says a new one starts in. One
-// kept on a workspace named for its orchestrator goes back to the one named
-// so now, whatever its number, and one whose name no workspace has names the
-// empty one it opens on. It exits 0 once that holds, and otherwise 1, saying
-// what didn't.
+// own, in the folder the harness's quest index says a new one starts in. A
+// viewer or plain pi goes back where the boot kept it, ahead of its
+// orchestrator's workspace; a plain pi kept nowhere comes back held, with no
+// window, its folder gone or not, the walk going on at its pace; and with
+// no boot's places known, one kept nowhere opens in a window. One kept on a
+// workspace named for its orchestrator goes back to the one named so now,
+// whatever its number, and one whose name no workspace has names the empty
+// one it opens on. It exits 0 once that holds, and otherwise 1, saying what
+// didn't. Long because its
+// stages run in turn on one walk, one stand-in niri and node, and one
+// windows daemon, each stage's workspaces and windows the next one's
+// ground, so a split would build that world again for each half.
 import qs
 import Quickshell
 import Quickshell.Io
@@ -156,6 +163,12 @@ ShellRoot {
                 raised();
             else if (stage === "guarded")
                 guarded();
+            else if (stage === "chief")
+                chief();
+            else if (stage === "led")
+                led();
+            else if (stage === "unarranged")
+                unarranged();
             else if (stage === "naming")
                 naming();
             else if (stage === "named")
@@ -346,8 +359,10 @@ ShellRoot {
     // The windows niri opens for those the walk waits on, beside Joel.
     readonly property var openedFor: ({ "s-carried": 59, "s-drifted": 68, "s-floated": 69 })
 
+    // The id as a whole word, since a viewer's words end in its own pi's,
+    // and s-led-viewer's would be read as s-led's.
     function piFor(id) {
-        return Niri.spawns.filter(command => command.includes(` pi --session ${id}`));
+        return Niri.spawns.filter(command => `${command} `.includes(` pi --session ${id} `));
     }
     function asked() {
         // niri opens the one carried here as its kitty does, beside Joel,
@@ -466,8 +481,12 @@ ShellRoot {
             && spawned[0].includes("mycelium --realm harbour holds add -- "
                 + `${titling} \u03c0 - Reef - harbour ` + waitingView("s-waiting").join(" ")),
             spawned[0]);
-        Expect.expect("niri is told where it opens", opensOn("s-waiting").length === 1
-            && typeof opensOn("s-waiting")[0].reference.Id === "number"
+        // Its boot kept it on DP-4. A kept workspace's number names none
+        // after a boot, so with nothing kept beside it, it opens on that
+        // screen's empty workspace, 42 (walked).
+        Expect.expect("niri is told it opens on the screen the boot kept it on, on its empty one",
+            opensOn("s-waiting").length === 1
+            && opensOn("s-waiting")[0].reference.Id === 42
             && opensOn("s-waiting")[0].column === 1, JSON.stringify(Niri.acts));
         const on = opensOn("s-waiting")[0].reference.Id;
         Expect.expect("it opens off the workspace Joel is on",
@@ -591,6 +610,13 @@ ShellRoot {
             viewerSpawns("s-asked").length === 0, Niri.spawns.join("\n"));
         Expect.expect("and the walk goes on without waiting out its patience for it",
             Date.now() - walkedAt < 10000, `${Date.now() - walkedAt} ms`);
+        // niri opens s-next's viewer, so the walk is done with it rather
+        // than waiting out its patience behind the stages after.
+        const next = { id: 66, pid: 660, workspace_id: waitedOn, session: true,
+            opened: "pi-hosted.s-next", layout: { pos_in_scrolling_layout: [5, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "66": next });
+        Niri.revision += 1;
+        Niri.windowOpenedOrChanged(next);
         // Two kept with words to wait by on a workspace Joel isn't on: one
         // whose viewer is open already, which viewKept leaves be, and one
         // whose viewer was asked for moments ago, which stays kept, so a
@@ -636,6 +662,159 @@ ShellRoot {
             Niri.acts.some(act => act.FocusWindow?.id === 63)
             && viewerSpawns("s-goto").length === 0,
             `${JSON.stringify(Niri.acts)} ${Niri.spawns.join("\n")}`);
+        // An orchestrator its host serves, its viewer on the third
+        // workspace, where the sessions it leads go home to. niri says
+        // that workspace holds a window now, and keeps an empty one after
+        // it, as it always does, so a place kept elsewhere can't land on
+        // the orchestrator's workspace by chance.
+        const window = { id: 65, pid: 650, workspace_id: waitedOn, session: true,
+            opened: "pi-hosted.s-chief", layout: { pos_in_scrolling_layout: [4, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "65": window });
+        Niri.workspaces = Object.assign({}, Niri.workspaces, {
+            [waitedOn]: Object.assign({}, Niri.workspaces[waitedOn], { active_window_id: 65 }),
+            "43": { id: 43, idx: 4, output: "DP-4", is_focused: false, active_window_id: null }
+        });
+        Niri.revision += 1;
+        stage = "chief";
+        // A session's window is the one the windows daemon says is its,
+        // so the daemon tells it too, or the orchestrator has none.
+        windowsTell({ changed: [windowRecord(65, "pi-hosted.s-chief", waitedOn)] });
+        Watch.tell(root.watch, { changed: [Object.assign(hosted("s-chief", "CHIEF"),
+            { told: "0000000000000010" })] });
+    }
+
+    // Reopen Them All brings back a viewer and three plain pis that sat
+    // here as the boot ended: the viewer and one pi it leads, kept off its
+    // workspace, and two pis kept nowhere, one in a folder given back since.
+    function chief() {
+        if (find("CHIEF")?.window?.id !== 65 || Sessions.reopening !== null)
+            return;
+        actsFrom = Niri.acts.length;
+        heldBefore = Object.keys(Sessions.startedHeld);
+        adriftBefore = startedOn("QEST-ADRIFT").length;
+        stage = "led";
+        const viewer = Object.assign(waitingEntry("s-led-viewer"), { orchestratedBy: "CHIEF" });
+        Sessions.reopenAll([viewer,
+            { id: "s-led", cwd: "/tmp", way: "boot", orchestratedBy: "CHIEF" },
+            { id: "s-unwindowed", cwd: "/tmp", way: "boot" },
+            { id: "s-lost", cwd: "/given-back", quest: "QEST-ADRIFT", way: "boot" }],
+            (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone, and nothing started afresh`),
+            kept({ "s-led-viewer": keptOn(2), "s-led": keptOn(2) }), Sessions.carryOn);
+    }
+    property int actsFrom: 0
+    // The sessions started held before this walk, so the one it starts
+    // afresh is told by its new id.
+    property var heldBefore: []
+    // How many were started on QEST-ADRIFT before it, s-adrift's in a window.
+    property int adriftBefore: 0
+    property bool unarrangedAsked: false
+    function startedOn(quest) {
+        return Niri.spawns.filter(command =>
+            command.includes(`QUEST_WORKFLOW_AUTOLOAD_ID=${quest} `));
+    }
+
+    // niri opens a walk's window on the workspace it was asked for, as
+    // its kitty does, so the walk goes on without waiting out its patience.
+    function opensAsked(window, classed) {
+        const asked = Niri.acts.filter(act => act.OpenNextWindowOn?.app_id === classed);
+        if (asked.length === 0 || Niri.windows[window])
+            return;
+        const workspace = asked[asked.length - 1].OpenNextWindowOn.reference.Id;
+        const opened = { id: window, pid: window * 10, workspace_id: workspace, session: true,
+            opened: classed, layout: { pos_in_scrolling_layout: [5, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { [window]: opened });
+        Niri.workspaces = Object.assign({}, Niri.workspaces, { [workspace]:
+            Object.assign({}, Niri.workspaces[workspace], { active_window_id: window }) });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(window, classed, workspace)] });
+        Niri.windowOpenedOrChanged(opened);
+    }
+    function opensWaiting(id, window) {
+        const waiting = Sessions.reopening?.waiting;
+        if (waiting?.id === id && waiting.classed && waiting.opened === null)
+            opensAsked(window, waiting.classed);
+    }
+    function heldFor(word) {
+        return Niri.spawns.filter(command => command.includes(word)
+            && command.includes('holds add --detached --folder "$1" -- '));
+    }
+
+    // The viewer and the pi it leads open where they were kept, on their
+    // screen's empty workspace, ahead of its orchestrator's; each kept
+    // nowhere comes back held, with no window, the
+    // second begun at the walk's pace after the first rather than waiting
+    // out its patience; and the one whose folder went starts its quest
+    // afresh, held too.
+    function led() {
+        if (viewerSpawns("s-led-viewer").length > 0)
+            opensAsked(67, "pi-hosted.s-led-viewer");
+        opensWaiting("s-led", 64);
+        // Opened in a window, it would never be stamped held, and the stage
+        // would wait out the timer rather than say so.
+        if (piFor("s-unwindowed").some(command => command.includes("/pi-sessions/kitty.sock")))
+            Expect.fail(`one kept nowhere opened in a window: ${Niri.spawns.join("\n")}`);
+        // When each began, as the walk stamps a held start.
+        const unwindowedAt = Sessions.startedHeld["s-unwindowed"] ?? 0;
+        const fresh = Object.keys(Sessions.startedHeld).filter(id => id !== "s-unwindowed"
+            && !heldBefore.includes(id));
+        const lostAt = fresh.length === 1 ? Sessions.startedHeld[fresh[0]] : 0;
+        if (viewerSpawns("s-led-viewer").length === 0 || piFor("s-led").length === 0
+            || unwindowedAt === 0 || startedOn("QEST-ADRIFT").length === adriftBefore)
+            return;
+        // 42 holds the orchestrator's window, so its screen's empty
+        // workspace is 43, where nothing but a kept place sends them.
+        Expect.expect("a viewer it leads, kept off its workspace, opens on its kept screen's "
+            + "empty workspace, not its orchestrator's",
+            opensOn("s-led-viewer").length === 1
+            && opensOn("s-led-viewer")[0].reference.Id === 43 && waitedOn === 42,
+            JSON.stringify(Niri.acts));
+        const classed = asOpened(piFor("s-led")[0]);
+        const acts = Niri.acts.slice(actsFrom);
+        const opens = acts.filter(act => act.OpenNextWindowOn?.app_id === classed);
+        Expect.expect("one kept where its orchestrator isn't opens on its kept screen's empty "
+            + "workspace, not its orchestrator's",
+            classed !== "" && opens.length === 1 && opens[0].OpenNextWindowOn.reference.Id === 43,
+            `${classed} ${JSON.stringify(Niri.acts)}`);
+        const lost = heldFor("QEST-ADRIFT");
+        Expect.expect("one kept nowhere whose folder went starts its quest afresh, held",
+            lost.length === 1 && lost[0].startsWith("env QUEST_WORKFLOW_AUTOLOAD_ID=QEST-ADRIFT ")
+            && /pi --session-id [0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab]/u.test(lost[0])
+            && lost[0].endsWith(`${Quickshell.env("XDG_STATE_HOME")}/trees/keel`)
+            && !Niri.spawns.some(command => command.includes("s-lost")),
+            Niri.spawns.join("\n"));
+        // A walk that stops pacing after a held start never gets here: no
+        // patience is left running to start the next, so the case timer
+        // names the stage and what the walk still holds.
+        Expect.expect("one kept nowhere after another begins at the walk's pace, not its patience",
+            lostAt - unwindowedAt >= Sessions.reopenPace - 200
+            && lostAt - unwindowedAt < 10000, `${lostAt - unwindowedAt} ms`);
+        // Asked as the launcher asks, with no places of its own, and no
+        // boot's places kept here, one that sat here kept nowhere can't be
+        // told from one whose place went unrecorded, so it opens in a window.
+        // Asked once this walk is done, as the launcher's press comes.
+        stage = "unarranged";
+    }
+    // The app id a spawn opens its window with, or "".
+    function asOpened(command) {
+        return / (pi-session\.\d+) /.exec(command)?.[1] ?? "";
+    }
+
+    function unarranged() {
+        if (!unarrangedAsked) {
+            if (Sessions.reopening !== null)
+                return;
+            unarrangedAsked = true;
+            Sessions.reopenAll([{ id: "s-unarranged", cwd: "/tmp", way: "boot" }],
+                (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`), undefined,
+                Sessions.carryOn);
+            return;
+        }
+        const started = piFor("s-unarranged");
+        if (started.length === 0)
+            return;
+        Expect.expect("with no boot's places known, one kept nowhere opens in a window",
+            started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
+            && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
         // KELP's workspace, named for its orchestrator, comes back fifth
         // this boot, with a window of its own, and niri's empty one after.
         Niri.workspaces = Object.assign({}, Niri.workspaces, {
@@ -649,8 +828,8 @@ ShellRoot {
         Niri.revision += 1;
         stage = "naming";
         Watch.tell(root.watch, { changed: [
-            Object.assign(hosted("s-kelp", "KELPER"), { told: "0000000000000010" }),
-            Object.assign(hosted("s-reef", "REEFER"), { told: "0000000000000011" })] });
+            Object.assign(hosted("s-kelp", "KELPER"), { told: "0000000000000011" }),
+            Object.assign(hosted("s-reef", "REEFER"), { told: "0000000000000012" })] });
     }
 
     // One kept on a workspace named for its orchestrator goes back to the
@@ -781,7 +960,10 @@ ShellRoot {
     Timer {
         running: true
         interval: 110000
-        onTriggered: Expect.fail(`still at ${root.stage}: ${JSON.stringify(Niri.acts)} `
+        onTriggered: Expect.fail(`still at ${root.stage}, the walk holding `
+            + JSON.stringify((Sessions.reopening?.queue ?? []).map(next => next.one?.id))
+            + ` and waiting on ${Sessions.reopening?.waiting?.id ?? "none"}, held starts `
+            + `${JSON.stringify(Sessions.startedHeld)}: ${JSON.stringify(Niri.acts)} `
             + JSON.stringify(Sessions.keptPlaces))
     }
 }

@@ -263,8 +263,13 @@ impl App {
         self.take_kept_marks();
         self.last_jump = None;
         self.selected = None;
-        // The cursor's character was on the other file's line.
+        // The cursor's character, the selection and the lines read were
+        // the other file's, and opening a file ends visual mode, as :e
+        // does. Until this one's are read, keys act as before the first
+        // read, or v would start on the other file's lines.
         self.character = None;
+        self.drop_selection();
+        self.layout = None;
         if !self.measuring
             && let Err(error) = showing::keep(&file)
         {

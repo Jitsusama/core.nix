@@ -17,6 +17,13 @@ answered and a cell going, say broken when the node stops with its cells kept
 and live again, its cells read again, when it's back, say stale when the
 server goes and keep what it drew, keep to its budget, and pass the
 web-design skill's page checks at a phone's width and a desk's in both looks.
+Beside a node holding more cells than the floor draws, its floor must follow the
+cursor to a booked start past the floor's 48th, drawn solid, and hold still as
+the cursor steps on it, a find narrows the list and a record arrives, until a
+step leaves it. A find matching nothing keeps the cursor and the floor, a link
+naming its cell in another form ends that find, and that cell ending meanwhile
+leaves a floor drawn around another cell where it was. A cell a record takes out
+of the view of cells without purpose takes the cursor with it, a find or not.
 Anything the page logs fails it, but for the browser's own lines once the test
 takes the server away. The server, the browser and the tab are
 modules/local-sites/tests/live_page.py's.
@@ -55,7 +62,7 @@ CELLS = ["KESTRL", "SKIFFS", "TERNAA", "OSPREY"]
 # at what the page asks for now, on purpose: each module is one more file a first visit waits
 # on, so splitting one out raises this as a choice rather than slipping past it. The kit's
 # cell.ts is the 23rd, the one way every site names a cell.
-BUDGET = Budget(files=23, kilobytes=545, elements=255)
+BUDGET = Budget(files=23, kilobytes=513, elements=255)
 
 
 @pytest.fixture
@@ -226,6 +233,142 @@ def test_the_keys_step_the_cursor(forage_page: Page) -> None:
     selected(forage_page, "KESTRL", "g didn't go to the first row")
 
 
+# The tops a node longer than the floor holds, CELLAA to CELLCG, then the one
+# the last of them started, as its book holds: the list's 60th.
+TOPS = [f"CELL{chr(65 + at // 26)}{chr(65 + at % 26)}" for at in range(59)]
+SHOOT = "SHOOTS"
+
+
+def long_record(cell: str, started_by: str | None = None) -> dict[str, object]:
+    """Give a forage record for `cell` as the node does, started by `started_by` by its book."""
+    lineage: dict[str, object] = {"started_by": started_by, "parent": None}
+    if started_by is not None:
+        lineage |= {"started_by_from": "book", "parent": f"QEST-20261116-{started_by}"}
+    return {
+        "key": f"forage:{cell}",
+        "kind": "forage",
+        "heard": 0,
+        "cell": cell,
+        "session": f"0000-{cell.lower()}",
+        "machine": "kestrel",
+        "quest": f"QEST-20261116-{cell}",
+        "purpose": f"{cell} keeps one field.",
+        "status": "active",
+        "documents": [],
+        "lineage": lineage,
+    }
+
+
+@pytest.fixture
+def long_node(tmp_path: Path) -> Iterator[StandIn]:
+    records = [long_record(cell) for cell in TOPS] + [long_record(SHOOT, TOPS[-1])]
+    reading = tmp_path / "long.json"
+    reading.write_text(json.dumps({"domain": "node", "kinds": {"forage": records}}))
+    yield from standing_in(tmp_path / "long.sock", "node", reading)
+
+
+@pytest.fixture
+def long_page(browser: Browser, tmp_path: Path, long_node: StandIn) -> Iterator[Page]:
+    feed = {"socket": str(long_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"forage": os.environ["FORAGE_SITE"]}, {"node": feed}) as (root, _):
+        opened = Opened(browser, f"{root}forage/", SIZES[-1], "dark")
+        yield opened.page
+        opened.close()
+
+
+def on_the_floor(page: Page) -> list[str]:
+    """Give the cells the floor draws a compartment for, in its order."""
+    marks = page.locator("#floor rect[data-cell]")
+    return [str(each) for each in marks.evaluate_all("all => all.map((m) => m.dataset.cell)")]
+
+
+def ringed_on_the_floor(page: Page, name: str, why: str) -> None:
+    expect(page.locator("#floor rect.on"), why).to_have_attribute("data-cell", name)
+
+
+def test_the_floor_follows_the_cursor_down_a_long_list_and_holds_still_on_it(
+    long_page: Page, long_node: StandIn
+) -> None:
+    says_it_stands(long_page, "live")
+    marks = long_page.locator("#floor rect[data-cell]")
+    expect(marks, "the floor didn't draw 48 of the 60 cells").to_have_count(48)
+    cell(long_page, SHOOT).click()
+    selected(long_page, SHOOT, f"{SHOOT}'s row didn't take the cursor")
+    branch = long_page.locator(f'#floor path.hypha[data-cell="{SHOOT}"]')
+    expect(branch, f"the floor didn't follow the cursor to {SHOOT}").to_have_count(1)
+    expect(branch, f"{SHOOT}'s booked branch was dashed").to_have_css("stroke-dasharray", "none")
+    drawn = on_the_floor(long_page)
+    # The floor around the shoot holds the list's 21st; one drawn around it draws the first 48.
+    # A mark on the floor drawn shows whether a step draws it again.
+    held = TOPS[20]
+    long_page.evaluate("document.querySelector('#floor svg').dataset.kept = 'yes'")
+    cell(long_page, held).click()
+    selected(long_page, held, f"{held}'s row didn't take the cursor")
+    ringed_on_the_floor(long_page, held, "the ring didn't follow a step on the floor")
+    assert on_the_floor(long_page) == drawn, "a step the floor holds moved it"
+    kept = long_page.evaluate("document.querySelector('#floor svg')?.dataset.kept ?? ''")
+    assert kept == "yes", "a step the floor holds drew it again"
+    # A find leaving only the cell the cursor is on narrows the list, not the floor.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill(held)
+    expect(cell(long_page, TOPS[0]), "the find left a cell it doesn't match").to_have_count(0)
+    ringed_on_the_floor(long_page, held, "a find moved the ring")
+    assert on_the_floor(long_page) == drawn, "a find moved the floor"
+    long_page.locator("#find").press("Escape")
+    expect(cell(long_page, TOPS[0]), "ending the find didn't bring the list back").to_have_count(1)
+    assert on_the_floor(long_page) == drawn, "ending a find moved the floor"
+    # A find that matches nothing, as a typo does, keeps the cursor and the floor through its end.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill("ZZZZZZ")
+    expect(long_page.locator("#cells .none"), "the find matched a cell").to_have_count(1)
+    ringed_on_the_floor(long_page, held, "a find that matched nothing moved the ring")
+    assert on_the_floor(long_page) == drawn, "a find that matched nothing moved the floor"
+    long_page.locator("#find").press("Escape")
+    selected(long_page, held, "ending a find that matched nothing lost the cursor")
+    assert on_the_floor(long_page) == drawn, "ending a find that matched nothing moved the floor"
+    # A record hollows a cell the floor draws: it's drawn hollow, and the floor holds still.
+    # The floor a step off draws holds that cell too, so it shows which list the step drew.
+    recorded = TOPS[30]
+    long_node.tell("forage", changed=[{"key": f"forage:{recorded}", "purpose": ""}])
+    hollowed = long_page.locator(f'#floor rect.hollow[data-cell="{recorded}"]')
+    expect(hollowed, "the floor didn't draw the record").to_have_count(1, timeout=PACE_MS)
+    ringed_on_the_floor(long_page, held, "a record moved the ring")
+    assert on_the_floor(long_page) == drawn, "a record moved the floor"
+    long_page.keyboard.press("g")
+    selected(long_page, TOPS[0], "g didn't go to the first row")
+    ringed_on_the_floor(long_page, TOPS[0], "a step off the floor didn't draw it around the cursor")
+    expect(hollowed, "a step off the floor drew the list from before the record").to_have_count(1)
+
+
+def test_a_find_matching_nothing_keeps_the_cursor_until_a_link_or_its_cell_ending(
+    long_page: Page, long_node: StandIn
+) -> None:
+    says_it_stands(long_page, "live")
+    cell(long_page, SHOOT).click()
+    branch = long_page.locator(f'#floor path.hypha[data-cell="{SHOOT}"]')
+    expect(branch, f"the floor didn't follow the cursor to {SHOOT}").to_have_count(1)
+    # The floor around the shoot holds the list's 21st, so a step there keeps it.
+    held = TOPS[20]
+    cell(long_page, held).click()
+    ringed_on_the_floor(long_page, held, "the ring didn't follow a step on the floor")
+    # A link naming the held cell, in another form, ends the find that hides it.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill("ZZZZZZ")
+    expect(cell(long_page, held), "the find left the held cell").to_have_count(0)
+    ringed_on_the_floor(long_page, held, "a find matching nothing dropped the cursor")
+    long_page.evaluate(f"location.hash = '#cell={held}%40kestrel'")
+    selected(long_page, held, "a link to the held cell didn't bring its row back")
+    # The held cell ending during the find leaves the floor drawn around the shoot.
+    long_page.keyboard.press("/")
+    long_page.locator("#find").fill("ZZZZZZ")
+    expect(long_page.locator("#cells .none"), "the find matched a cell").to_have_count(1)
+    long_node.tell("forage", gone=[f"forage:{held}"])
+    expect(
+        long_page.locator(f'#floor rect[data-cell="{held}"]'), "the floor kept a cell gone"
+    ).to_have_count(0, timeout=PACE_MS)
+    expect(branch, "a cell gone during the find moved the floor").to_have_count(1)
+
+
 # A cell named by its whole link, as a notice or another page gives it.
 LINKED = "TERNAA"
 LINKED_AS = f"mycelium:cell/{LINKED}@kestrel#notice:4"
@@ -273,6 +416,26 @@ def test_a_purpose_written_and_a_cell_gone_are_followed(
     expect(headline, "the count didn't follow the cell going").to_have_text(
         "3 cells, each with its purpose."
     )
+
+
+def test_a_cell_leaving_the_view_without_purpose_takes_the_cursor(
+    forage_page: Page, mycelium_node: StandIn
+) -> None:
+    says_it_stands(forage_page, "live")
+    every_cell_drawn(forage_page)
+    forage_page.locator('#headline a[data-show="without"]').click()
+    expect(forage_page.locator("#cells [role=option]"), "the view held more").to_have_count(1)
+    opened_on(forage_page, "OSPREY")
+    # A find matching the cell keeps it, so only the view can drop it.
+    forage_page.keyboard.press("/")
+    forage_page.locator("#find").fill("OSP")
+    selected(forage_page, "OSPREY", "a find matching OSPREY moved the cursor")
+    mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": WRITTEN}])
+    expect(cell(forage_page, "OSPREY"), "the view kept a cell with purpose").to_have_count(
+        0, timeout=PACE_MS
+    )
+    expect(forage_page.locator("#panel-body"), "the cursor stayed on a cell dropped").to_be_empty()
+    expect(forage_page.locator("#floor rect.on"), "a dropped cell stayed ringed").to_have_count(0)
 
 
 def test_a_wait_answered_is_no_longer_said(forage_page: Page, mycelium_node: StandIn) -> None:

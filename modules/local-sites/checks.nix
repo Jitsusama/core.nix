@@ -77,7 +77,11 @@ in
   # skip link, saying only that it's an app, and reads the theme from the
   # sites' one copy with no kit/ of its own; and a page that carries its own
   # strip, reads no theme from that copy, or whose styles read a kit/ of
-  # their own, fails its build, saying so
+  # their own, fails its build, saying so; and so does a sheet esbuild
+  # refuses, warns on or crashes on, or a sheet or a script keeping a
+  # comment, saying which; and the sheets a site, the kit and the theme
+  # build reach a page without their comments, and a site's scripts without
+  # one marked to stay
   # (tests/each-live-page-opens-with-the-strip.sh).
   each-live-page-opens-with-the-strip =
     pkgs.runCommandLocal "each-live-page-opens-with-the-strip" { }
@@ -88,9 +92,14 @@ in
             ./site.sh
             (lib.getExe' pkgs.typescript "tsc")
             (lib.getExe pkgs.nodejs)
+            (lib.getExe pkgs.esbuild)
+            ../theme/web/bare-sheet.sh
+            ./kept-comments.sh
             "${./kit}"
             "${../system/site}"
             "system"
+            "${sites.kit}/kit"
+            "${webKit}"
           ]
         }
         touch $out

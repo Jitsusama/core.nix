@@ -477,6 +477,13 @@ impl State {
             .collect()
     }
 
+    /// The address of the access point the card is at, where it hears it,
+    /// whether or not it has a gateway yet.
+    pub fn point_of(&self, card: &str) -> Option<String> {
+        let path = self.at.get(card)?;
+        Some(self.heard.get(path)?.bssid.clone())
+    }
+
     /// Each card on a network through an access point it hears, with a
     /// gateway to echo.
     pub fn joined(&self) -> Vec<Joined> {
@@ -1304,6 +1311,14 @@ mod tests {
 
         assert_eq!(unheard.joined(), [], "its access point unheard");
         assert_eq!(unrouted.joined(), [], "its gateway gone");
+        let joined = at_the_inn().joined();
+        let Joined { card, point, .. } = joined.first().expect("the inn's card is joined");
+        assert_eq!(
+            unrouted.point_of(card).as_ref(),
+            Some(point),
+            "its access point still known, for a move to go back to"
+        );
+        assert_eq!(unheard.point_of(card), None, "none known where unheard");
         assert!(
             gone.gateways.is_empty(),
             "a card that goes takes its gateway"

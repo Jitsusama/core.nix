@@ -91,6 +91,9 @@ pub fn plain_quest(quest: &str) -> bool {
     )
 }
 
+/// Where each quest's scratch lies within the cache, on either machine.
+const WORKSPACE: &str = "pi/agentic-harness.pi/quest-workspace";
+
 /// The folder holding each quest's scratch, as the harness and mycelium
 /// both find it.
 pub fn scratches() -> PathBuf {
@@ -100,7 +103,7 @@ pub fn scratches() -> PathBuf {
             || PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
             PathBuf::from,
         );
-    cache.join("pi/agentic-harness.pi/quest-workspace")
+    cache.join(WORKSPACE)
 }
 
 /// The tree a kind copies for a job in `folder`: the folder, or the
@@ -249,7 +252,8 @@ pub fn left<'a>(
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's files to cross, copies them to the far `scratch` and
+/// for the job's files to cross, copies them to `scratch` within the
+/// quest's own scratch there, the one folder a strict fence lets it write, and
 /// takes the mark off each name a share would have kept home, runs
 /// the kind's setup and then the job, its program found on the far path by
 /// its name, in the job's folder `within` the tree, then leaves what the
@@ -262,11 +266,10 @@ pub fn script(
     kind: &Kind,
     command: &[String],
 ) -> String {
-    let job = format!(
-        "\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/pi/agentic-harness.pi/quest-workspace/{quest}/{HANDOVER}/{id}"
-    );
+    let scratches = format!("\"${{XDG_CACHE_HOME:-$HOME/.cache}}\"/{WORKSPACE}/{quest}");
+    let job = format!("{scratches}/{HANDOVER}/{id}");
     let work = format!(
-        "\"$HOME\"/{}",
+        "{scratches}/{}",
         quoted(&format!("{}/{id}", scratch.trim_matches('/')))
     );
     let folder = match within.to_string_lossy() {
@@ -784,6 +787,7 @@ pub fn quoted(word: &str) -> String {
 
 mod heard;
 mod landing;
+pub mod spent;
 mod steps;
 
 use steps::{bringing, copying};

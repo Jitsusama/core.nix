@@ -13,9 +13,11 @@
 onLinux {
   # elsewhere's tests run as it builds, against a stand-in realm: a job
   # mycelium places far goes by the quest's handover and mycelium's run,
-  # never ssh or rsync, runs in a far copy of its tracked files alone, those
-  # under a folder a share keeps home included, after its kind's setup, and
-  # brings back what the kind names as plain files within the job's folder;
+  # never ssh or rsync, starts in the quest's scratch and runs in a copy
+  # of its tracked files alone, those under a folder a share keeps home
+  # included, made within it as a far strict fence allows, after its kind's
+  # setup, and brings back what the kind names as plain files within the
+  # job's folder;
   # the far job's code is its own, and a bring-back that falls short says
   # whether another try can help; a job placed here, with no quest or that
   # mycelium doesn't run far stays, unless --there; a program its kind
@@ -28,8 +30,9 @@ onLinux {
   );
 
   # The machines and kinds a machine repository declares reach elsewhere's
-  # settings in the words the program reads, and an account that declares
-  # none still has it on its path, sending nothing.
+  # settings in the words the program reads, an account that declares
+  # none still has it on its path, sending nothing, and a scratch elsewhere
+  # would refuse fails the build.
   elsewhere-reads-what-a-machine-declares =
     let
       declared = account (bareNixos [
@@ -53,15 +56,26 @@ onLinux {
       none = account (bareNixos [
         { home-manager.users.someone.imports = [ self.homeModules.elsewhere ]; }
       ]);
+      scratched =
+        scratch:
+        account (bareNixos [
+          {
+            home-manager.users.someone = {
+              imports = [ self.homeModules.elsewhere ];
+              jitsusama.elsewhere.scratch = scratch;
+            };
+          }
+        ]);
+      taken = scratch: (builtins.tryEval (read (scratched scratch)).scratch).success;
       read = machine: builtins.fromJSON machine.xdg.configFile."elsewhere/settings.json".text;
       settings = read declared;
       check = settings.kinds.model-check;
     in
     holds "elsewhere-reads-what-a-machine-declares"
-      "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, or an account declaring none sends somewhere or lacks the program."
+      "A machine's declared machines or kinds don't reach elsewhere's settings as it reads them, an account declaring none sends somewhere or lacks the program, or a scratch elsewhere refuses builds."
       (
         settings.machines == [ "far" ]
-        && settings.scratch == ".cache/elsewhere"
+        && settings.scratch == ".elsewhere-runs"
         && check.programs == [ "tla-rs" ]
         && check.copies == "folder"
         && check.brings_back == [ "states" ]
@@ -73,5 +87,13 @@ onLinux {
         && (read none).machines == [ ]
         && (read none).kinds == { }
         && pkgs.lib.any (package: package.pname or "" == "elsewhere") none.home.packages
+        && taken ".runs"
+        && !pkgs.lib.any taken [
+          "runs"
+          "handover"
+          "."
+          ".."
+          ".a/b"
+        ]
       );
 }

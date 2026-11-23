@@ -1,5 +1,5 @@
 //! What elsewhere is told: the machines it may send to, the first taken
-//! by `--there`, the folder under each machine's home its copies run in, and
+//! by `--there`, the hidden folder in the quest's far scratch its copies run in, and
 //! each kind of job it may send. A machine repository writes them, through
 //! home.nix, to `$XDG_CONFIG_HOME/elsewhere/settings.json`, since which
 //! machines a realm holds and what each needs to run a kind are its
@@ -49,7 +49,10 @@ pub struct Settings {
     /// The machines it may send to; a placement on any other stays here.
     /// `--there` takes the first.
     pub machines: Vec<String>,
-    /// The folder under a far machine's home its copies run in.
+    /// The folder within the quest's scratch on a far machine that its
+    /// copies run in: a strict fence there writes only the quest's
+    /// scratch, so a copy anywhere else in its home can't be made. Hidden
+    /// by default, so no share carries a copy home.
     pub scratch: String,
     /// The realm mycelium is asked about, or the one it's set to.
     pub realm: Option<String>,
@@ -62,7 +65,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             machines: Vec::new(),
-            scratch: ".cache/elsewhere".to_owned(),
+            scratch: ".elsewhere-runs".to_owned(),
             realm: None,
             kinds: BTreeMap::new(),
             mycelium: "mycelium".to_owned(),
@@ -95,6 +98,12 @@ pub fn read(text: &str) -> Result<Settings, String> {
         if let Some(text) = value.get(key).and_then(Value::as_str) {
             text.clone_into(slot);
         }
+    }
+    if !one_hidden_folder(&settings.scratch) {
+        return Err(format!(
+            "scratch is one hidden folder's name in the quest's scratch, such as .elsewhere-runs, not {:?}",
+            settings.scratch
+        ));
     }
     settings.realm = value
         .get("realm")
@@ -169,6 +178,14 @@ fn plain(path: &str) -> bool {
             .all(|part| !part.is_empty() && !part.starts_with('.'))
 }
 
+/// Whether `name` names one hidden folder within the quest's scratch: a
+/// job's copy is emptied before it's made, so it must never land on the
+/// handover, in any case a far disk may fold, or outside the quest; and a
+/// share carries home every name that isn't hidden.
+fn one_hidden_folder(name: &str) -> bool {
+    name.len() > 1 && name.starts_with('.') && name != ".." && !name.contains('/')
+}
+
 fn strings(value: &Value, what: &str) -> Result<Vec<String>, String> {
     value
         .as_array()
@@ -203,7 +220,7 @@ mod tests {
             "a kind asked mycelium for what it wasn't given"
         );
         assert_eq!(
-            settings.scratch, ".cache/elsewhere",
+            settings.scratch, ".elsewhere-runs",
             "the scratch didn't default"
         );
         assert_eq!(
@@ -227,6 +244,39 @@ mod tests {
             assert!(
                 problem.contains(says),
                 "{text} was refused as {problem}, not {says}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_scratch_that_isn_t_one_folder_of_the_quest_s_own_is_refused() {
+        for scratch in [
+            "",
+            ".",
+            "..",
+            "../x",
+            "a/b",
+            "/runs/",
+            "-x",
+            "runs",
+            "handover",
+            "Handover",
+            "handover/elsewhere",
+            ".runs/x",
+        ] {
+            let text = serde_json::json!({ "scratch": scratch }).to_string();
+            let problem = read(&text).expect_err(&format!("the scratch {scratch:?} was taken"));
+            assert!(
+                problem.contains("one hidden folder's name"),
+                "the scratch {scratch:?} was refused as {problem}"
+            );
+        }
+        for scratch in [".elsewhere-runs", "..."] {
+            let text = serde_json::json!({ "scratch": scratch }).to_string();
+            assert_eq!(
+                read(&text).map(|settings| settings.scratch),
+                Ok(scratch.to_owned()),
+                "the scratch {scratch:?} wasn't taken"
             );
         }
     }
