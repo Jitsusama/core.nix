@@ -31,6 +31,12 @@ const VERSION: u64 = 3;
 /// meets it, however many databases kitty's page and Code read.
 static TOLD: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
 
+/// The same of each database a caller let go of past its deadline, kept
+/// apart from `TOLD`, since the read it let go of may still end, late,
+/// and reads the database through `visits_in`, which would say it read
+/// fine.
+static LATE: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
+
 /// The record a key names, or none for a key of another kind or a path
 /// that isn't whole.
 #[must_use]
@@ -83,6 +89,26 @@ pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
     }
 }
 
+/// Says in the log that the database at `database` gave nothing back
+/// within `deadline`, whether its read was stuck or ended without an
+/// answer, once until `answered` says a read came back in time, so a
+/// caller that let its read go says why nothing is ordered; true when it
+/// said it.
+pub fn late(database: &Path, deadline: Duration) -> bool {
+    let why = format!(
+        "zoxide's database at {} gave nothing back within {} seconds",
+        database.display(),
+        deadline.as_secs()
+    );
+    tell(&LATE, database, Some(why))
+}
+
+/// Says a read of the database at `database` came back within its
+/// deadline, so its being late is told again should it be late again.
+pub fn answered(database: &Path) {
+    tell(&LATE, database, None);
+}
+
 /// Says `trouble` in the log once it differs from the last `told` of
 /// `database`, so a database left unreadable is told once, and again only
 /// once it changes; true when it said it.
@@ -123,7 +149,7 @@ pub fn resolved(visits: Vec<(String, u64)>, placed: impl Fn(&str) -> bool) -> Ve
         .collect()
 }
 
-/// What `work` answers, run on a thread of its own, or `fallback` when it
+/// What `work` answers, run on a thread of its own, or none when it
 /// hasn't answered within `deadline`, or when one run before it still
 /// hasn't, as `late` counts them. So a folder on a mount that no longer
 /// answers holds one thread, never its caller, and no further thread
@@ -131,11 +157,10 @@ pub fn resolved(visits: Vec<(String, u64)>, placed: impl Fn(&str) -> bool) -> Ve
 pub fn within<T: Send + 'static>(
     deadline: Duration,
     late: &Arc<AtomicUsize>,
-    fallback: T,
     work: impl FnOnce() -> T + Send + 'static,
-) -> T {
+) -> Option<T> {
     if late.load(Ordering::SeqCst) > 0 {
-        return fallback;
+        return None;
     }
     let (sent, answer) = mpsc::channel();
     // Whichever of the work and its caller comes second, after the work
@@ -155,13 +180,13 @@ pub fn within<T: Send + 'static>(
         let _ = sent.send(answered);
     });
     if let Ok(answered) = answer.recv_timeout(deadline) {
-        return answered;
+        return Some(answered);
     }
     late.fetch_add(1, Ordering::SeqCst);
     if ended.swap(true, Ordering::SeqCst) {
         late.fetch_sub(1, Ordering::SeqCst);
     }
-    fallback
+    None
 }
 
 /// The end of a run `within` its deadline, as its thread sees it.
@@ -356,19 +381,19 @@ mod tests {
     fn work_past_its_deadline_holds_its_own_thread_and_starts_no_other() {
         let late = Arc::new(AtomicUsize::new(0));
         assert_eq!(
-            within(Duration::from_secs(30), &late, 0, || 7),
-            7,
+            within(Duration::from_secs(30), &late, || 7),
+            Some(7),
             "work that answered in time wasn't taken"
         );
         let (release, held) = mpsc::channel::<()>();
-        let stalled = within(Duration::from_millis(50), &late, 0, move || {
+        let stalled = within(Duration::from_millis(50), &late, move || {
             let _ = held.recv();
             7
         });
-        assert_eq!(stalled, 0, "work past its deadline held its caller");
+        assert_eq!(stalled, None, "work past its deadline held its caller");
         assert_eq!(
-            within(Duration::from_secs(30), &late, 0, || 9),
-            0,
+            within(Duration::from_secs(30), &late, || 9),
+            None,
             "work started while an earlier run was still out"
         );
         release.send(()).unwrap();
@@ -381,22 +406,46 @@ mod tests {
             std::thread::sleep(Duration::from_millis(1));
         }
         assert_eq!(
-            within(Duration::from_secs(30), &late, 0, || 9),
-            9,
+            within(Duration::from_secs(30), &late, || 9),
+            Some(9),
             "work once the late run ended wasn't started again"
+        );
+    }
+
+    #[test]
+    fn a_late_database_is_told_once_until_a_read_answers_in_time() {
+        let database = Path::new("/nowhere/late/db.zo");
+        let deadline = Duration::from_secs(2);
+        let told = [late(database, deadline), late(database, deadline)];
+        // Read as a read let go of past its deadline ends, finding it gone,
+        // which says nothing of the read its caller let go.
+        let read = visits_in(database);
+        assert!(read.is_empty(), "a database that isn't there named folders");
+        let after_a_late_read = late(database, deadline);
+        answered(database);
+        assert_eq!(
+            [
+                told[0],
+                told[1],
+                after_a_late_read,
+                late(database, deadline)
+            ],
+            [true, false, false, true],
+            "a database that didn't answer was told on every pass, again once a read \
+             let go of ended, or not again once a read answered in time"
         );
     }
 
     #[test]
     fn work_that_panics_leaves_the_next_run_free_to_start() {
         let late = Arc::new(AtomicUsize::new(0));
-        let panicked = within(Duration::from_secs(30), &late, 0, || -> u32 {
+        let panicked = within(Duration::from_secs(30), &late, || -> u32 {
             panic!("a resolving that panics, as a stand-in")
         });
-        assert_eq!(panicked, 0, "work that panicked didn't fall back");
+        assert_eq!(panicked, None, "work that panicked didn't fall back");
         assert_eq!(
-            within(Duration::from_secs(30), &late, 0, || 9),
-            9,
+            within(Duration::from_secs(30), &late, || 9),
+            Some(9),
             "work that panicked kept every later run from starting"
         );
     }
