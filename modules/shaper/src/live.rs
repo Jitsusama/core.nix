@@ -302,10 +302,14 @@ impl Follow {
     /// `CARRIED_MS` of a moment in ms since 1970 and in this stay: a
     /// recorder gone silent, or a move to another link or network, says
     /// nothing of what the link carries now (download hold round 1's F1).
+    /// A second stamped more than a second after the moment, more than its
+    /// stamp's rounding to a whole second, is of a clock since stepped
+    /// back, so it says nothing of now either (download hold round 2's
+    /// F25).
     pub fn carried(&self, at_ms: u64) -> Option<(&str, f64)> {
         let link = self.last_link.as_deref()?;
         let began_ms = self.last_at?.saturating_mul(1_000);
-        if began_ms.saturating_add(CARRIED_MS) < at_ms {
+        if began_ms.saturating_add(CARRIED_MS) < at_ms || began_ms > at_ms.saturating_add(1_000) {
             return None;
         }
         Some((link, self.last.as_ref()?.down_kbit))
@@ -643,6 +647,14 @@ mod tests {
         assert!(
             follow.carried(began + CARRIED_MS + 1).is_none(),
             "a stale second was carried"
+        );
+        assert!(
+            follow.carried(began - 1_000).is_some(),
+            "a second a whole second ahead, as its stamp rounds, carried nothing"
+        );
+        assert!(
+            follow.carried(began - 1_001).is_none(),
+            "a second from after a clock stepped back was carried"
         );
         follow.take(&parse(&pool(NOV3 + 6_100, Some("elsewhere"))).expect("a sample"));
         assert!(

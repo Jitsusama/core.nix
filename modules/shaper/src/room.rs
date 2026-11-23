@@ -42,7 +42,10 @@ impl Room {
     /// begins while a call is on, `call`, and the download carried,
     /// `carried` in kbit/s, at least `ROOM` of the network's declared
     /// `line`, and holds at `ROOM` of it until the call ends or the
-    /// network declares none. A link the recorder doesn't follow carries
+    /// network declares none. A line that changes under a hold, as when
+    /// the link moves to another network, lets it go unless the download
+    /// fills the new one, so a hold is never carried to a line it didn't
+    /// fill (download hold round 2's F7 and F24). A link the recorder doesn't follow carries
     /// nothing known, so it starts no hold, but keeps one it has, as it
     /// does through a second the recorder missed: a call held through a
     /// spell costs the download a tenth, where one let go a second costs
@@ -59,9 +62,9 @@ impl Room {
             .zip(line)
             .is_some_and(|(carried, line)| carried >= float(line) * ROOM);
         let was = self.held;
-        self.held = room.filter(|_| was.is_some() || full);
+        self.held = room.filter(|&room| was == Some(room) || full);
         let said = match (was, self.held) {
-            (None, Some(room)) => Some(format!(
+            (was, Some(room)) if was != Some(room) => Some(format!(
                 "{name}: a call is on and the download fills the line, so it's held to \
                  {room} kbit/s, where its own queue puts the call first"
             )),
@@ -153,6 +156,33 @@ mod tests {
             "the journal says the hold ends"
         );
         assert_eq!(room.held(), None, "and holds nothing after");
+    }
+
+    #[test]
+    fn a_hold_is_let_go_on_a_new_line_the_download_doesnt_fill() {
+        let mut room = Room::default();
+        room.step("eth1", true, Some(90_000.0), Some(LINE));
+        let (held, said) = room.step("eth1", true, Some(190_000.0), Some(200_000));
+        assert_eq!(held, Some(180_000), "a new line filled at once wasn't held");
+        assert!(
+            said.as_deref()
+                .is_some_and(|s| s.contains("held to 180000")),
+            "the journal didn't say the hold moved: {said:?}"
+        );
+        let (held, said) = room.step("eth1", true, Some(70_000.0), Some(LINE));
+        assert_eq!(held, None, "a hold was carried to a line it didn't fill");
+        assert_eq!(
+            said.as_deref(),
+            Some("eth1: the download is no longer held for a call"),
+            "the journal didn't say the hold ended"
+        );
+        let (held, said) = room.step("eth1", true, Some(180_000.0), Some(200_000));
+        assert_eq!(
+            held,
+            Some(180_000),
+            "a new line the download fills wasn't held"
+        );
+        assert!(said.is_some(), "the journal didn't say the new hold began");
     }
 
     #[test]

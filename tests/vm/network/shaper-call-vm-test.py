@@ -7,7 +7,8 @@ datagrams of a video call's size and rate both ways. Every machine on a call's p
 datagrams as it meets them (shaper-call-path.nft), so what a call lost is placed: between the
 machines, in the router's queues or the shaper's, or in the receiving socket, which a reader
 starved of the builder's CPU overflows. CAKE's own drop counts say whether the shaper's queues
-were the ones that lost them.
+were the ones that lost them. Long because its subtests share the one rig, its calls, counters
+and loads, which a split would only pass between files.
 """
 
 from __future__ import annotations
@@ -84,8 +85,13 @@ UP_DROPPED_MOST = DOWN_MOST
 # Only test_a_call_goes_ahead_of_its_own_uploads judges the shaper's, in the video tin, and its
 # counts span every time the calls are made, so a connect the shaper dropped still counts
 # there. Any other may have been lost in the shaper's IFB, so it's excused only when the IFB
-# dropped nothing meanwhile.
+# dropped nothing meanwhile in the tins a call comes down in, CALL_TINS: while a call's hold
+# stands, the IFB drops the jobs' downloads in bulk and the app's in best effort, which no
+# call's datagram shares (download hold round 2's F5).
 HANDSHAKES = 2
+# The tins a call's datagrams come down in, its connection's class copied from its conntrack
+# mark as they come: video, where a call goes up, and voice.
+CALL_TINS = slice(TINS.index("video"), None)
 # What iperf3 says when a stream's handshake went unanswered, before the call's first second.
 # It sends a stream's connect once and takes the first datagram back for the reply
 # (iperf_udp_connect in 3.21's iperf_udp.c). With none in 30 s the error ends "Resource
@@ -115,6 +121,12 @@ CALL_FLAG = "/run/call-is-on"
 # line's declared 90 Mbit/s (ROOM in src/room.rs).
 ROOM_HELD = "held to 81000 kbit/s, where its own queue puts the call first"
 ROOM_KBIT = 81_000
+# Where the client notes, once a second while the calls run, whether the download is held
+# for them (Rig.watch).
+WATCHED = "/run/room-watched"
+# The least of those seconds a watch must note: one in two of the calls' own, since a starved
+# builder may slow its loop, but never so few that a hold let go a while goes unseen.
+WATCHED_LEAST = CALL_SECONDS // 2
 # What systemctl exits with when it's asked to stop a unit that isn't loaded.
 NOT_LOADED = 5
 
@@ -178,16 +190,61 @@ class Rig:
         index = int(self.client.succeed("cat /sys/class/net/eth1/ifindex"))
         return f"shaper{index:x}"
 
-    def download_held(self) -> int | None:
-        """Give the rate eth1's download is held to in its IFB's CAKE, in kbit/s.
+    def room(self) -> int | None:
+        """Give the rate the shaper says a call's room holds eth1's download to, in kbit/s.
 
-        None while it goes straight in, past the IFB, or its CAKE has no rate.
+        None while no call's room holds it, or the shaper has no status.
         """
-        _, turn = self.client.execute("tc filter show dev eth1 ingress 2>/dev/null")
-        if "mirred" not in turn:
-            return None
-        bandwidth = self.cake(self.ifb())["options"]["bandwidth"]
-        return int(bandwidth) * 8 // 1000 if isinstance(bandwidth, int) else None
+        status, text = self.client.execute("cat /run/shaper/status.json")
+        links: list[Json] = json.loads(text) if status == 0 and text.strip() else []
+        return next((link.get("room") for link in links if link["name"] == "eth1"), None)
+
+    def watch(self) -> None:
+        """Note once a second in WATCHED, until watched, how eth1's download is held.
+
+        Each second's line is whether the download is turned through the IFB, the IFB's queues,
+        and the shaper's status, so a hold is seen standing through the calls rather than once
+        after them, and the shaper's room is told from the controller's own cut.
+        """
+        turned = "tc filter show dev eth1 ingress | grep -c mirred"
+        each = (
+            f'printf "%s\\t%s\\t%s\\n" "$({turned})" "$(tc -j qdisc show dev {self.ifb()})"'
+            ' "$(cat /run/shaper/status.json)"'
+        )
+        self.client.succeed(
+            f"rm -f {WATCHED}; systemd-run --unit=room-watch --collect --setenv=PATH={BIN}"
+            f" {BIN}/bash -c 'while true; do {each} >> {WATCHED}; sleep 1; done'"
+        )
+
+    def watched(self) -> list[tuple[bool, int | None, int | None]]:
+        """Stop the watch, and give what it noted of each second.
+
+        Whether the download was turned through the IFB, the IFB's CAKE's rate, and the room
+        the shaper said held eth1, both in kbit/s, None where there was none. A line the stop
+        cut short, or a status read as it was written, is passed over.
+        """
+        self.client.execute("systemctl stop room-watch")
+        _, text = self.client.execute(f"cat {WATCHED}")
+        seconds = []
+        for line in text.splitlines():
+            turned, _, rest = line.partition("\t")
+            ifb, _, status = rest.partition("\t")
+            try:
+                queues: list[Json] = json.loads(ifb)
+                links: list[Json] = json.loads(status)
+            except json.JSONDecodeError:
+                continue
+            cake = next((q for q in queues if q["kind"] == "cake" and q["handle"] == "2:"), {})
+            rate = cake.get("options", {}).get("bandwidth")
+            room = next((link.get("room") for link in links if link["name"] == "eth1"), None)
+            kbit = int(rate) * 8 // 1000 if isinstance(rate, int) else None
+            seconds.append((turned.strip() not in {"", "0"}, kbit, room))
+        return seconds
+
+    def router_drops(self) -> int:
+        """Give what the router's download queue, the fq_codel on its eth1, has dropped."""
+        queues: list[Json] = json.loads(self.router.succeed("tc -s -j qdisc show dev eth1"))
+        return sum(int(q["drops"]) for q in queues if q["kind"] == "fq_codel")
 
     def holding(self) -> bool:
         """Give whether the controller holds eth1 under a queue it took back.
@@ -230,8 +287,9 @@ class Rig:
         """Hold calls at once from an app, both unless named, and give what iperf3 made of each.
 
         When a call's handshake goes unanswered and its loss is excused (lost going up, or
-        anywhere while the IFB dropped nothing), and no call failed any other way, every call
-        is made again, so the calls that count ran together, up to HANDSHAKES times in all. A
+        anywhere while the IFB dropped nothing in CALL_TINS), and no call failed any other way,
+        every call is made again, so the calls that count ran together, up to HANDSHAKES times
+        in all. A
         call whose handshake is never answered still fails, saying how many times it was made
         and what was heard.
         """
@@ -247,7 +305,7 @@ class Rig:
                     way: [a - b for a, b in zip(now[name][way], walked[name][way], strict=True)]
                     for way in WAYS
                 }
-            dropped = sum(self.downs()) - sum(before)
+            dropped = sum(self.downs()[CALL_TINS]) - sum(before[CALL_TINS])
             heard = {name: n - connects[name] for name, n in self.handshakes(self.server).items()}
             came = {name: n - replies[name] for name, n in self.handshakes(self.client).items()}
             lost = [name for name in held if unanswered(results[name])]
@@ -264,13 +322,14 @@ class Rig:
             print(
                 f"the {', '.join(lost)} call's handshake went unanswered, its server hearing"
                 f" {[heard[name] for name in lost]} connects and the client getting"
-                f" {[came[name] for name in lost]} replies, with the IFB dropping {dropped},"
-                " so the calls are made again"
+                f" {[came[name] for name in lost]} replies, with the IFB dropping {dropped}"
+                " in the calls' tins, so the calls are made again"
             )
         for name in lost:
             results[name]["error"] += (
                 f" (made {made} of {HANDSHAKES} times, its server hearing {heard[name]} connects"
-                f" and the client getting {came[name]} replies, with the IFB dropping {dropped},"
+                f" and the client getting {came[name]} replies, with the IFB dropping {dropped}"
+                " in the calls' tins,"
                 f" {stopped(made, failed, over, down)})"
             )
         return results
@@ -557,22 +616,33 @@ def under_load(
             retry(
                 lambda last_try: met(
                     rig,
-                    now=ROOM_HELD in said(rig.client, "journalctl -u shaper -o cat --no-pager"),
+                    # The status too, written after the journal's line in the same step.
+                    now=ROOM_HELD in said(rig.client, "journalctl -u shaper -o cat --no-pager")
+                    and rig.room() == ROOM_KBIT,
                     last_try=last_try,
                     otherwise="the download was never held under the line for the call",
                 ),
                 timeout=FILLING,
             )
+            rig.watch()
         results = rig.calls(names)
         if room:
-            # Read before the loads stop, the call still on: the hold the journal said
-            # began has to have stood on the IFB through the calls.
-            held = rig.download_held()
-            assert held is not None, "the download went straight in while held for a call"
-            assert held <= ROOM_KBIT, f"the IFB's CAKE was at {held} kbit/s, over the room"
+            # Every second from the hold's start until the calls ended, the shaper said its
+            # room held the download, and the IFB's CAKE held it there or under, so the hold
+            # stood through the calls and was the room's, not the controller's own cut.
+            seconds = rig.watched()
+            assert len(seconds) >= WATCHED_LEAST, (
+                f"only {len(seconds)} seconds of the calls were watched: {seconds}"
+            )
+            let_go = [second for second in seconds if not held_for_a_call(*second)]
+            assert not let_go, (
+                f"the download wasn't held for the calls throughout, its seconds turned, at,"
+                f" and room said: {let_go} of {len(seconds)}\n{rig.trace()}"
+            )
     finally:
         # Every load, started or not: a start can fail after making its unit.
         stuck = rig.stop(*(unit for unit, _, _, _ in loads))
+        rig.client.execute("systemctl stop room-watch")
     lost: dict[str, dict[str, int]] = {}
     for name, result in results.items():
         # The messages are made only on a failure, so the trace is taken only then.
@@ -599,6 +669,15 @@ def under_load(
     # Last, so a load that wouldn't stop never takes the place of what the calls met.
     assert not stuck, f"the loads in {stuck} wouldn't stop"
     return lost
+
+
+def held_for_a_call(turned: bool, kbit: int | None, room: int | None) -> bool:
+    """Give whether a watched second held the download for a call.
+
+    Turned through the IFB, its CAKE at the room or under, and the shaper saying its room
+    held it, so a cut of the controller's own under the room can't stand in for it.
+    """
+    return turned and kbit is not None and kbit <= ROOM_KBIT and room == ROOM_KBIT
 
 
 def unanswered(result: Json) -> bool:
@@ -682,6 +761,7 @@ def test_a_call_loses_little(rig: Rig) -> None:
     """
     ifb = rig.ifb()
     before = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
+    router_before = rig.router_drops()
     try:
         rig.client.succeed(f"touch {CALL_FLAG}")
         lost = under_load(rig, room=True)
@@ -689,30 +769,40 @@ def test_a_call_loses_little(rig: Rig) -> None:
         # A call left on would put the next tests' calls in the video tin by the flag alone.
         rig.client.succeed(f"rm -f {CALL_FLAG}")
     after = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
-    # Once the call ends, the hold goes, and with nothing else limiting the download, it
-    # goes straight in again.
-    rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat | sed -n '/no longer held for a call/,$p'"
-        " | grep -q 'goes straight in'",
-        timeout=HEARING,
-    )
+    router = rig.router_drops() - router_before
     dropped = {
         dev: dict(
             zip(TINS, (a - b for a, b in zip(after[dev], before[dev], strict=True)), strict=True)
         )
         for dev in after
     }
-    print(f"dropped by tin meanwhile: {dropped}")
-    # Held under the line, the download's excess is dropped in the IFB's CAKE, not the
-    # router's queue; with no drop there, the queue stood elsewhere whatever the rate read.
-    assert sum(dropped[ifb].values()) > 0, f"the IFB dropped none of the download: {dropped}"
+    print(f"dropped by tin meanwhile: {dropped}, and by the router's download queue {router}")
     if any(ways["down"] > DOWN_MOST for ways in lost.values()):
         trace = rig.trace()
         for name, ways in lost.items():
             assert ways["down"] <= DOWN_MOST, (
                 f"the {name} call lost {ways['down']} datagrams down before the client's socket,"
-                f" over {DOWN_MOST}; dropped by tin: {dropped}\n{trace}"
+                f" over {DOWN_MOST}; dropped by tin: {dropped}, by the router {router}\n{trace}"
             )
+    # Held under the line, the download's excess is dropped in the IFB's CAKE rather than
+    # the router's queue, which the hold keeps short: with the IFB dropping less, the queue
+    # stood in the router whatever the IFB's rate read.
+    ifb_dropped = sum(dropped[ifb].values())
+    assert ifb_dropped > router, (
+        f"the IFB dropped {ifb_dropped} of the download, the router's queue {router}: {dropped}"
+    )
+    # Once the call ends, the room goes at once. The download goes straight in again once
+    # nothing limits it, which with the loads stopped takes the controller's own cut, if it
+    # made one, the spell's few seconds to let go too.
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat | grep -q 'no longer held for a call'", timeout=HEARING
+    )
+    assert rig.room() is None, "the shaper said its room held the download once the call ended"
+    rig.client.wait_until_succeeds(
+        "journalctl -u shaper -o cat | sed -n '/no longer held for a call/,$p'"
+        " | grep -q 'goes straight in'",
+        timeout=FILLING,
+    )
 
 
 def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:

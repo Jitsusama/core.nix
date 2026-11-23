@@ -8,8 +8,9 @@
 # the video tin too, and the shaper holds the download under the line it's
 # told, so it queues in its CAKE rather than the router's. Each call loses
 # at most a hundredth of its datagrams coming down, counted from the server
-# to the client's input hook, a bar the router meets alone with the shaper
-# stopped; the socket's own overflow, which a starved builder causes, is
+# to the client's input hook, a bar the router alone missed about one run in
+# fifty, so the shaper's hold on the download is what meets it; the
+# socket's own overflow, which a starved builder causes, is
 # only printed, though a builder's stall before the hook still counts. With
 # the upload held low and the app uploading beside its video call, the
 # shaper drops at most a hundredth of the call going up. The tests are
