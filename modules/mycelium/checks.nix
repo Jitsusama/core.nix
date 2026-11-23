@@ -353,7 +353,7 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, either node is left its service manager's few open files or Linux's has its hard limit lowered, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
@@ -428,7 +428,8 @@ in
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
         && (mac links).launchd.agents.mycelium.config.SoftResourceLimits.NumberOfFiles == 10240
-        && (linux links).systemd.user.services.mycelium.Service.LimitNOFILE == 65536
+        && (linux links).systemd.user.services.mycelium.Service.LimitNOFILE == "65536:524288"
+        && (mac links).launchd.agents.mycelium.config.HardResourceLimits or null == null
         &&
           (mac links).launchd.agents.mycelium.config.EnvironmentVariables.PATH
           == "/usr/bin:/bin:${(mac links).home.profileDirectory}/bin"
