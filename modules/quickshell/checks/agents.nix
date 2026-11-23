@@ -253,10 +253,10 @@
   # worded, and the sessions beside the one drawn are found to watch their
   # drawers ahead, as modules/quickshell/tests/session-row.qml holds
   # launcher/SessionRow.js and SessionDrawer.js to them in Qt's own engine, and
-  # Landed what they landed, kept past their end (Landed.js), and Reopen Them
-  # All counts what each walk found gone on its own (ReopenTally.js). How Agents
-  # lays sessions out, and what its drawer says, is the agents daemon's, proven
-  # in its crate.
+  # Landed what they landed, kept past their end (Landed.js), and how Agents
+  # says what a Reopen Them All walk found gone (ReopenTally.js), which Sessions
+  # counts (Reopening.js). How Agents lays sessions out, and what its drawer
+  # says, is the agents daemon's, proven in its crate.
   the-launcher-says-how-each-session-stands =
     let
       qt = pkgs.qt6.qtdeclarative;
