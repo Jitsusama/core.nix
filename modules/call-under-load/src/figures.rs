@@ -256,8 +256,18 @@ pub fn call(mine: &[Value], far: &[Value], clicks: &[f64]) -> Call {
             .zip(first["t"].as_f64())
             .map(|(b, a)| b - a);
         let tenths = span_ms.filter(|ms| *ms > 0.0).unwrap_or(f64::NAN) / 600_000.0;
-        let change = |key: &str| last["in"][key].as_f64().zip(first["in"][key].as_f64());
-        freezes = change("freezeCount").map(|(b, a)| ((b - a) / tenths * 10.0).round() / 10.0);
+        // A count that fell came from a stream that restarted, so it says
+        // nothing of the call's freezes rather than reading as none.
+        let change = |key: &str| {
+            last["in"][key]
+                .as_f64()
+                .zip(first["in"][key].as_f64())
+                .filter(|(b, a)| b >= a)
+        };
+        // Rounded up to the tenth, its worse side, as cadence shows it.
+        freezes = change("freezeCount")
+            .map(|(b, a)| (((b - a) / tenths * 10.0 - 1e-9).ceil() + 0.0) / 10.0)
+            .filter(|f| f.is_finite());
         frozen_s = change("totalFreezesDuration").map(|(b, a)| ((b - a) * 100.0).round() / 100.0);
     }
     let sound = heard(far);
@@ -404,6 +414,18 @@ mod tests {
             row["t"] = json!(t * 1200);
         }
         assert_eq!(call(&mine, &far, &[]).freezes, Some(8.5));
+        // A count that fell, as a restarted stream's does, is unknown, not
+        // a call with fewer than no freezes.
+        far[69]["in"]["freezeCount"] = json!(0);
+        far[69]["in"]["totalFreezesDuration"] = json!(0.0);
+        far[SKIP]["in"]["freezeCount"] = json!(1);
+        far[SKIP]["in"]["totalFreezesDuration"] = json!(0.4);
+        let fell = call(&mine, &far, &[]);
+        assert_eq!(
+            (fell.freezes, fell.frozen_s),
+            (None, None),
+            "a fallen count read as a figure"
+        );
     }
 
     #[test]

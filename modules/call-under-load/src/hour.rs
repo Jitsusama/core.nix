@@ -65,7 +65,8 @@ fn measure(
     };
     Measure {
         measure,
-        now: now.map(tenth),
+        // A figure that isn't a number reads as unread, never on target.
+        now: now.filter(|x| x.is_finite()).map(tenth),
         target,
         lower_is_better,
         owner: OWNER,
@@ -279,6 +280,11 @@ mod tests {
         );
         assert_eq!(now(1.1, true), Some(1.1), "a whole tenth moved up");
         assert_eq!(now(28.8, false), Some(28.8), "a whole tenth moved down");
+        // Float error leaves 0.1 * 3 just over 0.3 and 1 - 0.9 just under
+        // 0.1; the nudge keeps each on its tenth.
+        assert_eq!(now(0.1 * 3.0, true), Some(0.3), "float error moved up");
+        assert_eq!(now(1.0 - 0.9, false), Some(0.1), "float error moved down");
+        assert_eq!(now(f64::NAN, true), None, "NaN read as a figure");
         let none = now(0.0, true).unwrap_or(f64::NAN);
         assert!(
             none == 0.0 && none.is_sign_positive(),
