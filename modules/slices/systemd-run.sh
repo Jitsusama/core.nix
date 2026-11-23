@@ -16,14 +16,26 @@
 # them. pi writes each process it starts into jobs.service, which holds the
 # efficient cores, but the slice it would inherit is jobs.slice, which holds
 # none, since Joel's terminal work and timed work sit under it
-# (efficient-work.nix). A host's spawner scope is made by a systemd-run pi
-# has written there, so it moves too. On 22 November 92 units agents
-# started that way, and 54 spawner scopes, ran on every core, and 17 of 37
-# threads in five samples of the performance cores sat in jobs.slice. A
-# call from a slice inside jobs, or from one of Joel's own units in
-# jobs.slice, sccache's and load-proof's, keeps inheriting. The place is
-# read from just below the manager, so a path only naming jobs.slice
-# further down, inside another's scope, is no agents' place.
+# (efficient-work.nix). On 22 November 92 units agents started that way,
+# and 54 spawner scopes, ran on every core, and 17 of 37 threads in five
+# samples of the performance cores sat in jobs.slice. A call from a slice
+# inside jobs, or from one of Joel's own units in jobs.slice, sccache's
+# and load-proof's, keeps inheriting. The place is read from just below
+# the manager, so a path only naming jobs.slice further down, inside
+# another's scope, is no agents' place.
+#
+# pi's own units in agents.slice, its hosts' and conversations', are
+# agents' places too. A host starts each spawner's scope with systemd-run,
+# naming no slice, and pi writes that systemd-run into jobs.service only
+# once it's running, off its own thread, 5 to 7 ms a move (the harness's
+# priority/place.ts). So where a scope landed was a race: of the 16
+# spawner scopes started in this wrapper's first twelve minutes live, on
+# 22 November, 11 reached jobs-work.slice, 4 jobs.slice, on every core,
+# and 1 agents.slice, as the move came before this script read its
+# cgroup, between that and systemd's answer, or after both. Read from
+# pi's unit or from jobs.service, a call now names jobs-work.slice either
+# way. The kitty windows pi opens name agents.slice, so they pass through
+# unchanged.
 #
 # In jobs-work.slice such a unit is judged as agents' work everywhere else
 # too: polkit's agents-ask-first.rules refuses it rather than asking Joel,
@@ -39,6 +51,14 @@
 # last Slice= a unit is given, so an added --slice-inherit put the units
 # of a night's runs back in agents.slice, made for jobs.slice that way.
 #
+# Only systemd-run's own options are read, as its parser reads them: up to
+# `--` or the command, each option's value skipped. The words after belong
+# to the command, so `curl -H` or `grep -H` there is no other host, and a
+# command's own `--user`, as in `pip install --user`, is no user manager's
+# call. Read as options, the first passed such a call through unsliced,
+# to land among Joel's apps, and the second gave a system call a --slice
+# from jobs-work.slice.
+#
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand. It answers --help alone; -h, or --help with anything beside it,
 # reaches systemd's own, since that's where its flags are.
@@ -50,14 +70,14 @@ systemd-run  run a unit, an agent's kept in its own slice
   A --user call naming no slice, from anywhere but
   app.slice or session.slice, runs in its caller's slice
   rather than among the apps, or in jobs-work.slice when
-  its caller is an agent's, in jobs.service or a pi-spawner
-  scope. Every other call reaches systemd's own systemd-run
-  unchanged.
+  its caller is an agent's, in jobs.service, a pi-spawner
+  scope or a pi host's or conversation's unit. Every other
+  call reaches systemd's own systemd-run unchanged.
 
 EXAMPLES
   systemd-run --user --scope true  in the caller's slice, or
                                    jobs-work.slice from an
-                                   agent's place in jobs
+                                   agent's place
   systemd-run -h                   systemd's own help
 
 EXIT
@@ -65,26 +85,41 @@ EXIT
 EOF
   exit 0
 fi
+# The options systemd 262's systemd-run takes a value for, which may come
+# as the next word. --slice, --host, --machine and --capsule pass the call
+# through before their value is reached.
+valued='^(-[HMCupE]|--(host|machine|capsule|unit|property|description|slice|'
+valued+='expand-environment|service-type|uid|gid|nice|working-directory|'
+valued+='root-directory|setenv|output|json|job-mode|background|path-property|'
+valued+='socket-property|timer-property|on-active|on-boot|on-startup|'
+valued+='on-unit-active|on-unit-inactive|on-calendar))$'
 user=false
 before=""
 for arg in "$@"; do
   if [[ "${before}" == -p || "${before}" == --property ]] && [[ "${arg}" == Slice=* ]]; then
     exec "${real}" "$@"
   fi
+  if [[ "${before}" =~ ${valued} ]]; then
+    before=""
+    continue
+  fi
   case "${arg}" in
     --slice | --slice=* | --slice-inherit | -pSlice=* | --property=Slice=* | -M* | --machine* | \
-      -H* | --host*)
+      -H* | --host* | -C* | --capsule*)
       exec "${real}" "$@"
       ;;
     --user) user=true ;;
-    *) ;;
+    --) break ;;
+    -*) ;;
+    *) break ;;
   esac
   before=${arg}
 done
 cgroup=""
 read -r cgroup <"@cgroup@" || true
-agents='^0::/user\.slice/user-[0-9]+\.slice/user@[0-9]+\.service/jobs\.slice/'
-agents+='(jobs\.service|pi-spawner-[^/]+\.scope)(/|$)'
+agents='^0::/user\.slice/user-[0-9]+\.slice/user@[0-9]+\.service/'
+agents+='(jobs\.slice/(jobs\.service|pi-spawner-[^/]+\.scope)'
+agents+='|agents\.slice/pi-(host|conversation)-[^/]+\.service)(/|$)'
 if [[ "${user}" == true && "${cgroup}" =~ ${agents} ]]; then
   exec "${real}" --slice=jobs-work.slice "$@"
 fi
