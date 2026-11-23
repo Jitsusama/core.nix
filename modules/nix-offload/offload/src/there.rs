@@ -1839,13 +1839,13 @@ fn turns_folder_in(runtime: Option<PathBuf>, temp: &Path, uid: u32) -> Result<Pa
     let alone = runtime.is_absolute()
         && fs::symlink_metadata(&runtime)
             .is_ok_and(|found| found.is_dir() && found.uid() == uid && found.mode() & 0o022 == 0);
-    let ours = if !alone {
+    let ours = if alone {
+        turn_folder_at(&runtime.join("nix-offload-there"), uid)
+    } else {
         Err(format!(
             "{} isn't a runtime folder of this account's alone",
             runtime.display()
         ))
-    } else {
-        turn_folder_at(&runtime.join("nix-offload-there"), uid)
     };
     ours.or_else(|first| in_temp().map_err(|then| format!("{first}, and {then}")))
 }
@@ -6624,7 +6624,8 @@ mod tests {
         let neither = turns_folder_in(Some(base.path().join("gone")), base.path(), uid)
             .expect_err("a linked temp folder, with no runtime folder to use");
         assert!(
-            neither.contains("can't be made") && neither.contains("isn't a folder"),
+            neither.contains("isn't a runtime folder of this account's alone")
+                && neither.contains("isn't a folder"),
             "neither folder's cause was said: {neither}"
         );
     }
