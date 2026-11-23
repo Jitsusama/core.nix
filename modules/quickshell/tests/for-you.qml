@@ -1,7 +1,7 @@
 // How For You weighs what needs Joel, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `for-you-weighs-what-needs-joel` check copies
-// modules/quickshell/launcher/ForYou.js, Looks.js and Order.js
-// beside this file and runs `qml -platform offscreen for-you.qml`. Each case
+// modules/quickshell/launcher/ForYou.js, LookForm.js, Looks.js and
+// Order.js beside this file and runs `qml -platform offscreen for-you.qml`. Each case
 // is one of the design's rules (VKCF3Z, 2026-11-08): what blocks a session
 // counts most, then what's due, what he can do now, its kind and how long it
 // has waited; the heaviest leads and ties keep the order they came in; a
@@ -12,7 +12,11 @@
 // only one that changed parsed again, and one waiting three days gone quiet;
 // what other sources give For You, as Passwords' one to-do, is gathered into
 // what waits and what's done, and weighed beside the rest. How each stands
-// under its cell is for-you-cells.qml's.
+// under its cell is for-you-cells.qml's. Long because a look's cases, its
+// second form's and its answers' among them, read the same records the
+// weighing cases build, in the one run of the files its check copies;
+// LookForm.js's own cases are the first to go to a file of their own if
+// it grows past this.
 import QtQuick
 import "ForYou.js" as ForYou
 import "LookForm.js" as LookForm
@@ -461,9 +465,14 @@ QtObject {
                 LookForm.poses("Clear It\udb40\udd00", ["Clear It"]),
                 LookForm.poses("Talk\u180b", ["Talk"]),
                 LookForm.poses("Ta\u17b4lk", ["Talk"]),
+                LookForm.poses("Clear It\ud834\udd73", ["Clear It"]),
+                LookForm.poses("Talk\ud82f\udca0", ["Talk"]),
+                LookForm.poses("Clear\u2065 It\ufff0", ["Clear It"]),
+                LookForm.poses("Clear It\udb40\uddf0", ["Clear It"]),
                 LookForm.poses("Keep It", ["Clear It", "Talk"]),
                 LookForm.poses("Clear It Away", ["Clear It"])],
-            [true, true, true, true, true, true, true, true, false, false]);
+            [true, true, true, true, true, true, true, true, true, true, true, true, false,
+                false]);
         expect("it asks back wanting a choice or his words, or offering choices, in the second"
             + " form only",
             [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },

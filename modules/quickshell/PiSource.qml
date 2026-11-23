@@ -217,6 +217,12 @@ Singleton {
     readonly property var sessions: Pi.sessions(sorting, machine, made)
     readonly property var made: ({})
 
+    // Whether an ask made now would reach the node: with no connection it's
+    // answered none at once and never sent (Daemon.qml's sent).
+    function reaches() {
+        return node !== null && node.wire !== null;
+    }
+
     // Puts a steer in a session's inbox by its address: `{ text, id }`
     // talks to it, `{ act }` pauses, resumes, stops or closes it, and
     // `{ act: "wake" }` only wakes one parked, putting nothing in. The
@@ -225,12 +231,6 @@ Singleton {
     // session, one parked included, carrying it over the link when that's
     // another machine's. `told` is given the node's answer, or null where
     // there's no node to ask.
-    // Whether an ask made now would reach the node: with no connection it's
-    // answered none at once and never sent (Daemon.qml's sent).
-    function reaches() {
-        return node !== null && node.wire !== null;
-    }
-
     function steer(address, fields, told) {
         const said = Object.assign({ at: new Date().toISOString(), from: "joel" }, fields);
         if (!node) {

@@ -15,16 +15,17 @@ const SPACES = /\s+/gu;
 // for another, the blank fillers of Hangul and Braille among them; and the
 // stops a name may end in. Ranges rather than property escapes, which Qt's
 // engine may not read.
-const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/gu;
+const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
-// And what draws as nothing after a letter that a range of Qt's engine's
-// can't be trusted to reach, past U+FFFF: selectors of a letter's variant
-// (Mongolian's, Unicode's and the supplement's), Khmer's inherent vowels,
-// and the tags; each by code point, from first to last.
+// And the rest of what Unicode says may draw as nothing, some of it past
+// U+FFFF: selectors of a letter's variant (Mongolian's and Unicode's),
+// Khmer's inherent vowels, shorthand's and music's format controls, and
+// the whole of the tags' plane, its selectors' supplement among them;
+// each by code point, from first to last.
 const UNDRAWN = [[0x17b4, 0x17b5], [0x180b, 0x180d], [0x180f, 0x180f], [0xfe00, 0xfe0f],
-    [0xe0000, 0xe007f], [0xe0100, 0xe01ef]];
+    [0x1bca0, 0x1bca3], [0x1d173, 0x1d17a], [0xe0000, 0xe0fff]];
 
 // `text` with what UNDRAWN names left out. It walks the text by code
 // point itself, since Qt's engine's Array.from walks a string by halves

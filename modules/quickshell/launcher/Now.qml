@@ -1376,12 +1376,13 @@ Provider {
             }
             const failed = provider.answerFailed(reached, answer);
             const words = {
-                unsent: "wasn't connected to the node, so never sent",
-                dropped: "lost the node before it said it took",
-                untaken: `was refused ${JSON.stringify(answer?.error?.message ?? "")} by the node`
+                unsent: "never sent, with no node connected",
+                dropped: "sent, but the node went before saying it took it",
+                untaken: "not given by the node, which said "
+                    + JSON.stringify(answer?.error?.message ?? "nothing of why")
             };
-            console.warn(`Now: ${words[failed]} the answer to look ${JSON.stringify(one.id)}`
-                + ` for ${JSON.stringify(told.address)}`);
+            console.warn(`Now: the answer to look ${JSON.stringify(one.id)} for`
+                + ` ${JSON.stringify(told.address)} was ${words[failed]}`);
             left[one.id] = { label: choice.label, at: Date.now(), sent: sent, failed: failed };
             provider.lookAnswers = left;
         });
