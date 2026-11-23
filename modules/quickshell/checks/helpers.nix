@@ -246,22 +246,25 @@ let
           '';
         };
       inherit (pkgs) mesa;
-      # A setting of the account's shell unit, by its name: the last of its Environment
-      # entries, each one assignment as home.nix writes them, as systemd takes the last. One
-      # the unit no longer sets, or unsets, which systemd does last, fails the evaluation
-      # rather than going unsaid. Only the settings named below are carried; the unit's
-      # others aren't.
+      # A setting of the account's shell unit, by its name: the last assignment of it in
+      # its Environment, as systemd takes the last, an entry holding several split at its
+      # spaces as systemd splits them (home.nix quotes none). One the unit no longer sets,
+      # or unsets by its name or an assignment, which systemd does last, fails the
+      # evaluation rather than going unsaid. Only the settings named below are carried;
+      # the unit's others aren't.
       unitSets =
         setting:
         let
           asked = "${setting}=";
           unit = home.systemd.user.services.quickshell.Service;
-          environment = lib.toList (unit.Environment or [ ]);
+          words = entries: lib.concatMap (lib.splitString " ") (lib.toList entries);
+          named = word: lib.head (lib.splitString "=" word);
+          environment = words (unit.Environment or [ ]);
           said = lib.findFirst (lib.hasPrefix asked) null (lib.reverseList environment);
         in
         if said == null then
           throw "The shell's unit no longer sets ${setting}."
-        else if lib.elem setting (lib.toList (unit.UnsetEnvironment or [ ])) then
+        else if lib.elem setting (map named (words (unit.UnsetEnvironment or [ ]))) then
           throw "The shell's unit unsets ${setting}, so the checks can't run with it set."
         else
           lib.removePrefix asked said;
