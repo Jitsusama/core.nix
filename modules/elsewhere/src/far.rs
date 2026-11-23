@@ -176,10 +176,11 @@ fn within_tree(path: &str) -> bool {
             .all(|part| matches!(part, Component::Normal(_)))
 }
 
-/// The files of the tree at `root` that travel, with their sizes: git's
-/// tracked files, read where they lie, not links or folders, or why the
-/// job can't travel.
-pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> {
+/// The files of the tree at `root` that travel: git's tracked files,
+/// read where they lie, not links or folders, or why the job can't
+/// travel. What they take as archives is counted again as they're
+/// written, so the far line's ceiling is what was left.
+pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<String>, String> {
     let output = Command::new("git")
         .args(["ls-files", "-z"])
         .current_dir(root)
@@ -224,7 +225,7 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
             ));
         }
         bytes += taken;
-        files.push((path.to_owned(), meta.len()));
+        files.push(path.to_owned());
     }
     let bytes = archive::archived(bytes, LARGEST_FILE);
     if bytes > MOST_BYTES {

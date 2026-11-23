@@ -3,6 +3,17 @@ use crate::far::{Heard, relay};
 use std::path::Path;
 use terminal_kit::Exit;
 
+/// A file listed that never crosses, its near side saying it sent enough
+/// that the ceiling, the wait and a second for each `SLOWEST` bytes, is
+/// three times the wait: only the wait from the last that crossed can end
+/// these tests in time, so one that never ended them fails rather than
+/// passing on the ceiling's second.
+const NEVER_CROSSING: Left<'static> = Left::Sized("3\tx\nend\n", 2 * super::WAITS * super::SLOWEST);
+
+/// What the far line says when the wait from the last that crossed ends
+/// it, never the ceiling.
+const NONE_CROSSING: &str = "none crossing for";
+
 #[test]
 fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
     // An archive the share is still writing is there, but short, until
@@ -29,7 +40,7 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
     );
     let _ = std::fs::remove_dir_all(&home);
     // One the share never finishes ends the wait with nothing run.
-    let (code, err, home) = far_run(Left::Listed("3\tx\nend\n"), &[("x", "x")], "touch ../ran");
+    let (code, err, home) = far_run(NEVER_CROSSING, &[("x", "x")], "touch ../ran");
     assert_eq!(
         code,
         Some(75),
@@ -71,7 +82,7 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
     // three times as long as its limit says.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
-        Left::Listed("3\tx\nend\n"),
+        NEVER_CROSSING,
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -80,7 +91,7 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
     );
     let took = started.elapsed();
     assert!(
-        code == Some(75) && err.contains("didn't reach"),
+        code == Some(75) && err.contains(NONE_CROSSING),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
     // Its limit, a last pass begun just inside it of two wc calls, one
@@ -100,6 +111,13 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
 /// together past it.
 const A_GAP: std::time::Duration = std::time::Duration::from_secs(3);
 
+/// What the near side says the files crossing a gap apart come to: as
+/// much as sets the ceiling, the wait and a second for each `SLOWEST`
+/// bytes, at three times the wait, past the second and three gaps the
+/// crossing takes, so the ceiling is chosen, not left to a list still to
+/// come.
+const GAP_SENT: u64 = 2 * super::WAITS * super::SLOWEST;
+
 /// Runs a far line over a tree that crosses in three steps a gap apart,
 /// the last well past the wait from its start but inside it from the one
 /// before, as a large tree crosses, with its list empty until all of it
@@ -108,7 +126,7 @@ const A_GAP: std::time::Duration = std::time::Duration::from_secs(3);
 /// giving up, and why: what crossed is no archive, so it goes no further.
 fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, String) {
     let (code, err, home) = far_line(
-        Left::Listed(""),
+        Left::Sized("", GAP_SENT),
         &[],
         "touch ../ran",
         &kind(""),
@@ -179,7 +197,7 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
     // ending at once.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
-        Left::Listed("3\tx\nend\n"),
+        NEVER_CROSSING,
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -187,7 +205,7 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
         &[("date", "echo not a time")],
     );
     assert!(
-        code == Some(75) && err.contains("didn't reach") && err.contains("waiting on x"),
+        code == Some(75) && err.contains(NONE_CROSSING) && err.contains("waiting on x"),
         "a far date with no time ended the line unsaid ({code:?}): {err}"
     );
     assert!(
@@ -224,7 +242,7 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
              echo $((1000000 + {step} * n))"
         );
         let (code, err, home) = far_line(
-            Left::Listed("3\tx\nend\n"),
+            NEVER_CROSSING,
             &[("x", "x")],
             "touch ../ran",
             &kind(""),
@@ -232,7 +250,7 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
             &[("date", date.as_str())],
         );
         assert!(
-            code == Some(75) && err.contains("didn't reach"),
+            code == Some(75) && err.contains(NONE_CROSSING),
             "a file that never crossed wasn't waited out ({code:?}): {err}"
         );
         let read = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
@@ -272,7 +290,7 @@ fn a_far_clock_that_steps_back_or_stands_still_spends_the_second_a_pass_slept() 
              {clock}"
         );
         let (code, err, home) = far_line(
-            Left::Listed("3\tx\nend\n"),
+            NEVER_CROSSING,
             &[("x", "x")],
             "touch ../ran",
             &kind(""),
@@ -281,7 +299,7 @@ fn a_far_clock_that_steps_back_or_stands_still_spends_the_second_a_pass_slept() 
         );
         let readings = std::fs::read_to_string(home.join("clock")).unwrap_or_default();
         assert!(
-            code == Some(75) && err.contains("didn't reach"),
+            code == Some(75) && err.contains(NONE_CROSSING),
             "a file that never crossed wasn't waited out ({code:?}): {err}"
         );
         // The first, then a pass a second, however the clock moved.
