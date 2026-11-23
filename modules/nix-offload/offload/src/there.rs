@@ -3155,7 +3155,10 @@ pub fn reach(
         if !hidden(Path::new(key)) {
             command.args(["-o", "IdentityAgent=none"]);
         } else if let Some(host_key) = &lent.host_key {
-            vouched(&vouching(), alias, host_key, VOUCHED_PATIENCE)?;
+            // Root's own file, never the one a caller names, since it's
+            // what the fence's agent reads: this check says why before the
+            // agent refuses, and one reading another file stops saying so.
+            vouched(Path::new(VOUCHED), alias, host_key, VOUCHED_PATIENCE)?;
         }
         command.args(["-i", key]);
     }
@@ -3313,7 +3316,12 @@ pub fn builder_stands(dir: &Path) -> bool {
 
 /// Whether `dir`'s builder stands but root doesn't vouch for it.
 pub fn unvouched(dir: &Path) -> bool {
-    builder_stands(dir) && vouched_store(dir).is_none()
+    unvouched_in(dir, &vouching())
+}
+
+/// [`unvouched`], as root's `file` says.
+fn unvouched_in(dir: &Path, file: &Path) -> bool {
+    builder_stands(dir) && vouched_store_in(dir, file).is_none()
 }
 
 /// Whether `file` is a key hidden from this process, as the fence hides
@@ -4146,8 +4154,10 @@ pub const VM_ROOM: usize = 4;
 /// It gives the builder's folder, the room claimed there, and what is left
 /// of `waiting` once the time it held for root is taken from its
 /// `longest`, for the run's first wait as it's sent, so a run waits on
-/// root once, not here and again once sent. Later waits, for a builder
-/// lost mid-run, are the run's own.
+/// root once, not here and again once sent. Only a hold the claim follows
+/// at once is taken: a run that then waits for room may find its builder
+/// gone by the time it has it, and is owed the whole wait for the next.
+/// Later waits, for a builder lost mid-run, are the run's own.
 pub fn admitted<'a>(
     dir: &'a Path,
     others: &[&'a Path],
@@ -4156,7 +4166,8 @@ pub fn admitted<'a>(
     rank: Rank,
     waiting: Waiting,
 ) -> (&'a Path, Option<Claim>, Waiting) {
-    let (dir, claim, held) = admitted_holding(dir, others, count, room, rank, waiting);
+    let file = vouching();
+    let (dir, claim, held) = admitted_holding(dir, others, count, room, rank, waiting, &file);
     let left = Waiting {
         longest: waiting.longest.saturating_sub(held),
         ..waiting
@@ -4164,7 +4175,8 @@ pub fn admitted<'a>(
     (dir, claim, left)
 }
 
-/// [`admitted`], giving how long it held for root rather than what's left.
+/// [`admitted`], as root's `file` says, giving how long it held for root
+/// straight before its claim rather than what's left.
 fn admitted_holding<'a>(
     dir: &'a Path,
     others: &[&'a Path],
@@ -4172,6 +4184,7 @@ fn admitted_holding<'a>(
     room: usize,
     rank: Rank,
     waiting: Waiting,
+    file: &Path,
 ) -> (&'a Path, Option<Claim>, std::time::Duration) {
     use std::os::fd::AsRawFd;
     let wants = count.clamp(1, room.max(1));
@@ -4181,6 +4194,9 @@ fn admitted_holding<'a>(
     // Time held for root, counted only while holding, so a run that
     // waited for room before a hand-over is still held its full time.
     let mut held = std::time::Duration::ZERO;
+    // Time held since it last waited for room, which is all a claim made
+    // at once after the hold may take off the run's wait.
+    let mut owed = std::time::Duration::ZERO;
     let mut holding_since: Option<std::time::Instant> = None;
     loop {
         let was_holding = holding_since.take();
@@ -4191,11 +4207,11 @@ fn admitted_holding<'a>(
         // rather than passed by every run that queued there after it, and
         // still goes back here if root vouches for this one and it has
         // room first.
-        if unvouched(dir) {
+        if unvouched_in(dir, file) {
             if let Some(vouched) = others
                 .iter()
                 .copied()
-                .find(|other| vouched_store(other).is_some())
+                .find(|other| vouched_store_in(other, file).is_some())
             {
                 eprintln!(
                     "nix-offload: root doesn't vouch for this VM builder yet, so this waits on \
@@ -4210,8 +4226,9 @@ fn admitted_holding<'a>(
                     longest: waiting.longest.saturating_sub(held),
                     ..waiting
                 };
-                let (dir, claim, more) = admitted_holding(vouched, &rest, count, room, rank, left);
-                return (dir, claim, held + more);
+                let (dir, claim, more) =
+                    admitted_holding(vouched, &rest, count, room, rank, left, file);
+                return (dir, claim, owed + more);
             }
             // With none vouched, nothing is claimed while root may yet
             // vouch for this one or another, for as long as a run sent
@@ -4221,8 +4238,17 @@ fn admitted_holding<'a>(
             // that never asks waits for nothing, so it isn't held.
             if waiting.asks && held < waiting.longest {
                 let now = std::time::Instant::now();
-                held += was_holding.map_or(std::time::Duration::ZERO, |since| now - since);
+                let more = was_holding.map_or(std::time::Duration::ZERO, |since| now - since);
+                held += more;
+                owed += more;
                 holding_since = Some(now);
+                // Its place in the queue is taken as it starts holding, so
+                // when root vouches, runs held together go in the order
+                // and rank they came in, rather than whichever looks
+                // first, and those splitting meanwhile count them.
+                if place.is_none() {
+                    place = queued(dir, wants, rank);
+                }
                 if !held_said {
                     eprintln!(
                         "nix-offload: root vouches for none of the VM builders yet, so this \
@@ -4235,11 +4261,11 @@ fn admitted_holding<'a>(
             }
         }
         let Ok(lock) = fs::File::create(dir.join("sending.lock")) else {
-            return (dir, claim(dir, wants), held);
+            return (dir, claim(dir, wants), owed);
         };
         // SAFETY: flock only locks the file it's given, open until dropped.
         if unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } != 0 {
-            return (dir, claim(dir, wants), held);
+            return (dir, claim(dir, wants), owed);
         }
         let busy = claimed(dir);
         let before = ahead(dir, place.as_ref(), rank, busy, room);
@@ -4248,7 +4274,7 @@ fn admitted_holding<'a>(
             // as dropping it does.
             let claimed = claim(dir, wants);
             drop(place);
-            return (dir, claimed, held);
+            return (dir, claimed, owed);
         }
         if place.is_none() {
             place = queued(dir, wants, rank);
@@ -4261,7 +4287,7 @@ fn admitted_holding<'a>(
         let here_warm = warm(dir);
         if let Some((other, claimed)) = others
             .iter()
-            .filter(|other| !unvouched(other) && (!here_warm || warm(other)))
+            .filter(|other| !unvouched_in(other, file) && (!here_warm || warm(other)))
             .find_map(|other| Some((*other, free(other, wants, room, rank)?)))
         {
             eprintln!(
@@ -4269,8 +4295,11 @@ fn admitted_holding<'a>(
                  there"
             );
             drop(place);
-            return (other, Some(claimed), held);
+            return (other, Some(claimed), owed);
         }
+        // It waits for room now, so a hold before this is no longer
+        // what its claim follows.
+        owed = std::time::Duration::ZERO;
         if !said {
             let queue = match before {
                 0 => String::new(),
@@ -7444,6 +7473,114 @@ mod tests {
             began.elapsed() >= QUICK.longest,
             "it gave up at the answer, not the longest wait"
         );
+    }
+
+    /// A VM lender's folder whose builder stands, run by this process,
+    /// and root's file in it naming no VM builder.
+    fn unvouched_lender() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("lender"),
+            format!("{}\n", std::process::id()),
+        )
+        .unwrap();
+        let store = concat!(
+            "ssh-ng://nix-offload-vm?",
+            "base64-ssh-public-host-key=c3NoLWVkMjU1MTkgQUFBQQ==\n"
+        );
+        fs::write(dir.path().join("store"), store).unwrap();
+        let lent = dir.path().join("lent");
+        fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+        (dir, lent)
+    }
+
+    #[test]
+    fn a_run_held_for_root_its_whole_wait_claims_then_and_waits_no_more_once_sent() {
+        let (dir, lent) = unvouched_lender();
+        let began = std::time::Instant::now();
+        let (to, claim, held) = std::thread::scope(|scope| {
+            let holding = scope
+                .spawn(|| admitted_holding(dir.path(), &[], 1, VM_ROOM, Rank::Plain, QUICK, &lent));
+            // Within its hold, well short of QUICK's 5 s.
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            assert_eq!(
+                claimed(dir.path()),
+                0,
+                "it claimed room while held for root"
+            );
+            assert_eq!(
+                waiting(dir.path()),
+                1,
+                "it held no place in the queue while held for root"
+            );
+            holding.join().unwrap()
+        });
+        assert_eq!(to, dir.path());
+        assert!(claim.is_some(), "it claimed no room once its hold ran out");
+        assert!(
+            held >= QUICK.longest && began.elapsed() < QUICK.longest * 2,
+            "it held {held:?} of a {:?} wait, in {:?}",
+            QUICK.longest,
+            began.elapsed()
+        );
+        // Its claim followed the hold at once, so the hold is its wait.
+        let left = Waiting {
+            longest: QUICK.longest.saturating_sub(held),
+            ..QUICK
+        };
+        let sent = std::time::Instant::now();
+        assert_eq!(waited_vouching(dir.path(), left, &lent), None);
+        assert!(
+            sent.elapsed() < std::time::Duration::from_secs(1),
+            "it waited on root again once sent, {:?}",
+            sent.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_hold_is_taken_off_the_wait_only_when_the_claim_follows_it_at_once() {
+        let (dir, lent) = unvouched_lender();
+        let vouched = "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm vm-1 ssh-ed25519 AAAA\n";
+        // Root vouches within the hold, and there's room: the claim
+        // follows, so the hold counts.
+        let (_, claim, held) = std::thread::scope(|scope| {
+            let holding = scope
+                .spawn(|| admitted_holding(dir.path(), &[], 1, VM_ROOM, Rank::Plain, QUICK, &lent));
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            fs::write(&lent, vouched).unwrap();
+            holding.join().unwrap()
+        });
+        assert!(
+            held >= std::time::Duration::from_millis(500) && held < QUICK.longest,
+            "a hold its claim followed counted {held:?}"
+        );
+        drop(claim);
+        // Root vouches within the hold, but the builder is full, so the
+        // run waits for room: the hold no longer counts.
+        fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+        let (_, claim, held) = std::thread::scope(|scope| {
+            let full = claim_of(dir.path(), VM_ROOM);
+            let holding = scope
+                .spawn(|| admitted_holding(dir.path(), &[], 1, VM_ROOM, Rank::Plain, QUICK, &lent));
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            fs::write(&lent, vouched).unwrap();
+            // Past a look or two for room, at 500 ms each.
+            std::thread::sleep(std::time::Duration::from_millis(1500));
+            drop(full);
+            holding.join().unwrap()
+        });
+        assert!(claim.is_some(), "it claimed no room once room was free");
+        assert_eq!(
+            held,
+            std::time::Duration::ZERO,
+            "a hold followed by a wait for room was taken off the wait"
+        );
+    }
+
+    /// A claim of `count` VM tests on `dir`'s builder, as another run
+    /// here would hold.
+    fn claim_of(dir: &Path, count: usize) -> Claim {
+        claim(dir, count).expect("a claim")
     }
 
     #[test]

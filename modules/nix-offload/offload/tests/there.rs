@@ -6226,6 +6226,18 @@ fn a_vm_run_holds_for_root_while_none_is_vouched_then_goes() {
         !sent.contains("#checks.x.vm-"),
         "a VM test went out before root vouched: {sent}"
     );
+    // Held, it claims no room a run root vouches for could use, but
+    // holds its place in the queue, so its order holds once root vouches.
+    assert_eq!(
+        entries(&rig.vm.join("sending")),
+        0,
+        "it claimed room on a builder root doesn't vouch for"
+    );
+    assert_eq!(
+        entries(&rig.vm.join("waiting")),
+        1,
+        "it held no place in the queue while held for root"
+    );
     fs::write(
         &lent,
         "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm vm-1 ssh-ed25519 AAAA\n",
@@ -6233,6 +6245,47 @@ fn a_vm_run_holds_for_root_while_none_is_vouched_then_goes() {
     .unwrap();
     let (built, said) = rig.finish(running);
     assert_eq!(tests_on(&built, "nix-offload-vm"), 3, "{built:?} {said}");
+}
+
+/// How many files `folder` holds, none where it isn't there.
+fn entries(folder: &Path) -> usize {
+    fs::read_dir(folder).map_or(0, Iterator::count)
+}
+
+// What the hold is for: with no VM builder vouched, a run claimed at once
+// stayed on its own after root vouched for another with room, so it goes
+// to the one root vouches for first.
+#[test]
+fn a_vm_run_held_for_root_goes_to_whichever_builder_root_vouches_for_first() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    let lent = rig.folder.path().join("lent");
+    fs::write(&lent, "nix-offload lend-1 ssh-ed25519 AAAA\n").unwrap();
+    let running = rig.start_with(3, &[("NIX_OFFLOAD_VOUCHED", lent.as_path())]);
+    let began = std::time::Instant::now();
+    while !rig
+        .said()
+        .contains("root vouches for none of the VM builders yet")
+    {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never held for root: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    fs::write(
+        &lent,
+        "nix-offload lend-1 ssh-ed25519 AAAA\nnix-offload-vm-more vm-2 ssh-ed25519 AAAA\n",
+    )
+    .unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 0, "{built:?} {said}");
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-more"),
+        3,
+        "{built:?} {said}"
+    );
 }
 
 // A run that never asks waits for nothing, so with no VM builder vouched
