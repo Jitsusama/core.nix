@@ -433,9 +433,9 @@ impl Late {
         } + &match away {
             0 => String::new(),
             1 => ", 1 round past five run on another machine, what it caught unread".to_owned(),
-            many => format!(
-                ", {many} rounds past five run on another machine, what they caught unread"
-            ),
+            many => {
+                format!(", {many} rounds past five run on another machine, what they caught unread")
+            }
         };
         // What a round elsewhere caught is kept there, so nothing caught is
         // known only of the rounds run here.
