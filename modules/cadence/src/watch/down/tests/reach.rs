@@ -99,11 +99,7 @@ fn each_change_in_how_sure_it_is_of_its_reach_is_said_once() {
                 line.as_ref().is_some_and(|line| line.contains(words)),
                 "tick {tick}, reading {now:?}, said {line:?}, not {words:?}"
             ),
-            None => assert_eq!(
-                line,
-                None,
-                "tick {tick}, reading {now:?}, said it again"
-            ),
+            None => assert_eq!(line, None, "tick {tick}, reading {now:?}, said it again"),
         }
     }
 }
