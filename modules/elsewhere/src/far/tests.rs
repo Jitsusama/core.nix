@@ -105,7 +105,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             "QEST-20261115-ABC123",
             "1",
             0,
-            "s",
+            ".s",
             Path::new(""),
             &kind(""),
             &command
@@ -118,7 +118,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
             "QEST-20261115-ABC123",
             "1",
             0,
-            "s",
+            ".s",
             Path::new(""),
             &kind(""),
             &command
@@ -205,10 +205,10 @@ pub(super) fn said(home: &Path) -> Vec<u8> {
     std::fs::read(home.join("said")).unwrap()
 }
 
-/// The folder the far line's copies run in under `home`, the `s` within
+/// The folder the far line's copies run in under `home`, the `.s` within
 /// the quest's scratch that `far_line_in` names.
 pub(super) fn work(home: &Path) -> PathBuf {
-    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s")
+    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s")
 }
 
 /// The job's handover folder in a far run's `home`.
@@ -306,7 +306,7 @@ pub(super) fn far_line_in(
         "QEST-20261115-ABC123",
         "1",
         bytes,
-        "s",
+        ".s",
         folder,
         kind,
         &command,
