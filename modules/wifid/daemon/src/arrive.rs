@@ -134,7 +134,7 @@ impl Saved {
     /// Whether the move has a point to go back to, and so kept the card's
     /// other networks off.
     pub fn goes_back(&self) -> bool {
-        self.0.from.is_some()
+        self.0.from.is_some() && self.0.way == Way::Returns
     }
 }
 
@@ -146,6 +146,8 @@ struct Move {
     /// until it's handed back. None for a way back, or a card already off
     /// its point when it was held.
     from: Option<String>,
+    /// What kind of move it is, and so where a card that misses goes.
+    way: Way,
     asked: Instant,
     /// When it was first said to have left the point it was on.
     left: Option<Instant>,
@@ -155,8 +157,19 @@ struct Move {
     looked: Option<Instant>,
     /// Whether it's been said lost already.
     lost: bool,
-    /// Whether it's a way back, followed past a join elsewhere.
-    back: bool,
+}
+
+/// What kind of move one is.
+#[derive(Clone, Copy, PartialEq)]
+enum Way {
+    /// A move that goes back to `from` should it miss.
+    Returns,
+    /// A move away from a point that warned it drops the card, so one
+    /// that misses is still timed, and ended, without going back there:
+    /// its card is let join what it hears.
+    LetsJoin,
+    /// A way back, followed past a join elsewhere.
+    Back,
 }
 
 /// How a move ended.
@@ -196,6 +209,9 @@ pub struct Unreached {
     /// The point it didn't reach.
     pub to: String,
     pub why: Short,
+    /// Whether it goes back to `from`, rather than let join what it hears
+    /// (`Arrivals::wont_return`).
+    pub returns: bool,
 }
 
 /// Why a move is sent back.
@@ -230,12 +246,12 @@ impl Arrivals {
         let moved = Move {
             to,
             from: from.map(str::to_owned),
+            way: Way::Returns,
             asked,
             left: None,
             looking: false,
             looked: None,
             lost: false,
-            back: false,
         };
         self.moves.insert(card.to_owned(), moved);
     }
@@ -250,12 +266,12 @@ impl Arrivals {
         let moved = Move {
             to: to.to_owned(),
             from: None,
+            way: Way::Back,
             asked: now,
             left: None,
             looking: false,
             looked: None,
             lost: false,
-            back: true,
         };
         self.moves.insert(card.to_owned(), moved);
     }
@@ -272,14 +288,42 @@ impl Arrivals {
         let moved = Move {
             to,
             from: None,
+            way: Way::Returns,
             asked: now,
             left: Some(now),
             looking: false,
             looked: None,
             lost: false,
-            back: false,
         };
         self.moves.insert(card.to_owned(), moved);
+    }
+
+    /// Has the card's move, should it have begun on that access point, let
+    /// the card join what it hears if it misses rather than go back there,
+    /// as the point warned it drops the card. It's timed as it was, so a
+    /// move that never leaves, or falls short, still ends with its card
+    /// let go and its other networks on, rather than held to a point it
+    /// never reached until it's dropped.
+    pub fn wont_return(&mut self, card: &str, from: &str) {
+        if let Some(moving) = self.moves.get_mut(card)
+            && moving.way == Way::Returns
+            && moving
+                .from
+                .as_deref()
+                .is_some_and(|on| on.eq_ignore_ascii_case(from))
+        {
+            moving.way = Way::LetsJoin;
+        }
+    }
+
+    /// Whether the card is on a move away from a point that warned it
+    /// drops the card, so isn't to be moved elsewhere until it lands: a
+    /// move asked meanwhile would take its time, or hold it back to the
+    /// point it's leaving.
+    pub fn leaves_a_drop(&self, card: &str) -> bool {
+        self.moves
+            .get(card)
+            .is_some_and(|moving| moving.way == Way::LetsJoin)
     }
 
     /// When the next move with a way back is due to take it, or the next
@@ -288,7 +332,7 @@ impl Arrivals {
         self.moves
             .values()
             .filter_map(|moving| {
-                if moving.back {
+                if moving.way == Way::Back {
                     Some(moving.asked + BACK_FOR)
                 } else {
                     moving
@@ -332,7 +376,7 @@ impl Arrivals {
         let Some(moving) = self.moves.get_mut(card) else {
             return false;
         };
-        if moving.looking || moving.left.is_some() || moving.back {
+        if moving.looking || moving.left.is_some() || moving.way == Way::Back {
             return false;
         }
         moving.from = Some(from.to_owned());
@@ -350,7 +394,7 @@ impl Arrivals {
         let Some(moving) = self.moves.get_mut(card) else {
             return false;
         };
-        if moving.left.is_some() || moving.back {
+        if moving.left.is_some() || moving.way == Way::Back {
             return false;
         }
         moving.from = Some(from.to_owned());
@@ -364,7 +408,9 @@ impl Arrivals {
     /// got there 279 ms after it was sent (2026-11-20). So a card on its way
     /// back is given until it's stranded, rather than judged by its steps.
     pub fn going_back(&self, card: &str) -> bool {
-        self.moves.get(card).is_some_and(|moving| moving.back)
+        self.moves
+            .get(card)
+            .is_some_and(|moving| moving.way == Way::Back)
     }
 
     /// Whether a move of the card's, or its way back, is still followed.
@@ -393,7 +439,7 @@ impl Arrivals {
         let stranded: Vec<String> = self
             .moves
             .iter()
-            .filter(|(_, moving)| moving.back && now >= moving.asked + BACK_FOR)
+            .filter(|(_, moving)| moving.way == Way::Back && now >= moving.asked + BACK_FOR)
             .map(|(card, _)| card.clone())
             .collect();
         let mut stranded: Vec<_> = stranded
@@ -436,6 +482,7 @@ impl Arrivals {
                     from,
                     to,
                     why,
+                    returns: moving.way == Way::Returns,
                 })
             })
             .collect();
@@ -457,6 +504,7 @@ impl Arrivals {
             from,
             to: moving.to.clone(),
             why: Short::Off,
+            returns: moving.way == Way::Returns,
         })
     }
 
@@ -485,7 +533,7 @@ impl Arrivals {
         }
         // A way back is judged by where it gets in its time alone, as it
         // says it disconnected on its way as it goes well.
-        if !gave_up || moving.lost || moving.back {
+        if !gave_up || moving.lost || moving.way == Way::Back {
             return None;
         }
         moving.lost = true;
@@ -510,7 +558,7 @@ impl Arrivals {
         // A way back joined where wifid can't name is ended, as one at
         // its point is: its network is held there, and followed it would
         // be stranded and let go of a join that likely got there.
-        let followed = moving.back && on.is_some() && !reached;
+        let followed = moving.way == Way::Back && on.is_some() && !reached;
         let done = if followed {
             None
         } else {
@@ -853,7 +901,8 @@ mod tests {
                 card: "wlan0".into(),
                 from: FAR.into(),
                 to: DESK.into(),
-                why: Short::Off
+                why: Short::Off,
+                returns: true,
             }),
             "falling off, sent back to the point it left, missing the newer one"
         );
@@ -899,7 +948,8 @@ mod tests {
                 card: "wlan0".into(),
                 from: DESK.into(),
                 to: HALL.into(),
-                why: Short::Off
+                why: Short::Off,
+                returns: true,
             }),
             "put back, sent back to where the first move began"
         );
@@ -942,9 +992,86 @@ mod tests {
                 card: "wlan0".into(),
                 from: DESK.into(),
                 to: FAR.into(),
-                why: Short::Late { after: BACK_FOR }
+                why: Short::Late { after: BACK_FOR },
+                returns: true,
             }],
             "handed back once its time is up"
+        );
+    }
+
+    #[test]
+    fn a_move_from_a_point_that_drops_the_card_is_timed_and_handed_back_without_return() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.wont_return("wlan0", DESK);
+
+        let due = arrivals.due();
+        let unstarted = arrivals.unreached(now + BACK_AFTER);
+
+        assert_eq!(
+            due,
+            Some(now + BACK_AFTER),
+            "timed as a move that goes back is"
+        );
+        assert!(
+            arrivals.leaves_a_drop("wlan0"),
+            "leaving a point that drops it"
+        );
+        assert_eq!(
+            unstarted,
+            [Unreached {
+                card: "wlan0".into(),
+                from: DESK.into(),
+                to: FAR.into(),
+                why: Short::Unstarted,
+                returns: false,
+            }],
+            "handed back with no way back to the point that drops it"
+        );
+    }
+
+    #[test]
+    fn a_move_falling_off_from_a_point_that_drops_the_card_has_no_way_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.step("wlan0", "authenticating", now + ms(20));
+        arrivals.wont_return("wlan0", DESK);
+
+        let off = arrivals.fell_off("wlan0");
+        let kept = arrivals.saved("wlan0").map(|saved| saved.goes_back());
+
+        assert_eq!(
+            off.map(|off| off.returns),
+            Some(false),
+            "handed back as it falls off, with no way back"
+        );
+        assert_eq!(kept, Some(false), "said to keep nothing off, if put back");
+    }
+
+    #[test]
+    fn only_a_move_begun_on_the_point_that_drops_the_card_loses_its_way_back() {
+        let mut arrivals = Arrivals::default();
+        let now = Instant::now();
+        arrivals.asked("wlan0", Some(DESK), FAR, now);
+        arrivals.wont_return("wlan0", HALL);
+        arrivals.back("wlan1", DESK, now);
+        arrivals.wont_return("wlan1", DESK);
+
+        let late = arrivals.unreached(now + BACK_AFTER);
+
+        assert!(
+            late.iter().all(|late| late.returns),
+            "a move from another point keeps its way back: {late:?}"
+        );
+        assert!(
+            !arrivals.leaves_a_drop("wlan0"),
+            "not leaving a point that drops it"
+        );
+        assert!(
+            !arrivals.leaves_a_drop("wlan1"),
+            "a way back is no move away from one"
         );
     }
 
@@ -990,7 +1117,8 @@ mod tests {
                 card: "wlan0".into(),
                 from: DESK.into(),
                 to: FAR.into(),
-                why: Short::Late { after: BACK_FOR }
+                why: Short::Late { after: BACK_FOR },
+                returns: true,
             }],
             "handed back late, still joining"
         );
@@ -1019,7 +1147,8 @@ mod tests {
                 card: "wlan0".into(),
                 from: DESK.into(),
                 to: FAR.into(),
-                why: Short::Unstarted
+                why: Short::Unstarted,
+                returns: true,
             }],
             "still on the point it would go back to"
         );
@@ -1196,7 +1325,8 @@ mod tests {
                 card: "wlan0".into(),
                 from: DESK.into(),
                 to: FAR.into(),
-                why: Short::Off
+                why: Short::Off,
+                returns: true,
             }),
             "handed back as it falls off, with the point it left"
         );

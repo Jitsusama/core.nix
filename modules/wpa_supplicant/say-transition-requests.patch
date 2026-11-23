@@ -21,7 +21,9 @@ candidate list holds; and Candidates (a(ayn)), each as its BSSID and its
 preference, or -1 where the access point gave none, in the order given.
 How upstream answers the request is left as it was. Both times are
 worked out from beacon intervals in 64 bits: the access point sets the
-interval and the counts, and their product can pass a signed int.
+interval and the counts, and their product can pass a signed int. Each
+is then said in 32 bits, which only a beacon interval past 64000 TU,
+over a minute, could pass.
 diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 --- a/wpa_supplicant/dbus/dbus_new.c
 +++ b/wpa_supplicant/dbus/dbus_new.c

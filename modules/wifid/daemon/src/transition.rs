@@ -160,8 +160,8 @@ impl Request {
     /// their address and signal, goes for this request: to the candidate
     /// the point asking would rather, of those heard and not ruled out,
     /// the more strongly heard of two it would as soon. Only a card wifid
-    /// holds, `held`, is moved, and only to a point `heard` names, which
-    /// leaves out one a move would take another card to.
+    /// holds, `held`, is moved, and only to a point `heard` names: one the
+    /// card itself heard on its network.
     pub fn heed(&self, from: Option<&str>, heard: &[(String, i16)], held: bool) -> Heed {
         if !self.warns {
             return Heed::Stay;
