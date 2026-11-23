@@ -26,16 +26,19 @@ fn the_newest_file_and_width_are_taken_and_setting_again_adds_nothing() {
     );
 }
 
+/// What `edited` holds: each set against the words last taken, which then
+/// it holds. That a set let go for a width the window left is never taken
+/// is `App::saved`'s, which returns before `take_incoming` asks; this
+/// holds `edited` alone.
 #[test]
-fn an_edit_counts_until_its_words_show_however_many_sets_go_unshown() {
+fn an_edit_is_held_against_the_words_last_taken_and_then_holds_them() {
     let (before, after) = (1, 2);
     let mut shown = before;
     assert!(
         !edited(&mut shown, before),
         "pictures come or a width: the same words"
     );
-    // A save's set let go for a width the window has left is never held
-    // against the page shown, so the set at the new width still says it.
+    // The save's words, first taken in the set at the new width.
     assert!(
         edited(&mut shown, after),
         "the save's words, set at the new width"

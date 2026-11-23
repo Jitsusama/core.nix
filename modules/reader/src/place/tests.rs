@@ -1,5 +1,5 @@
 use super::{
-    Block, Landed, Mark, Opens, Place, Said, as_read, at, heading_of, heights_known,
+    Block, Landed, Mark, Opens, Place, Said, Taking, as_read, at, heading_of, heights_known,
     keep_window_in, kept_at, landed_again, letter, line_in, listed_in, mark, mark_at, moved,
     on_lines, opening, pt_of, read_in, set_again, still_waiting, take_kept, through, window_in,
     write_in,
@@ -552,7 +552,11 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
     ];
     let mut marks = HashMap::from([('e', 999.0)]);
     let mut landed = Vec::new();
-    take_kept(&mut waiting, &mut marks, &mut landed, &starts, false);
+    let first = Taking {
+        whole: false,
+        learns: true,
+    };
+    take_kept(&mut waiting, &mut marks, &mut landed, &starts, first);
     let letters: Vec<char> = waiting.iter().map(|one| one.letter).collect();
     assert_eq!(letters, ['d'], "d waits for its block's height");
     assert_eq!(
@@ -569,14 +573,18 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
         [('a', Some(80.0)), ('b', Some(80.0)), ('c', None)],
         "b takes its block's height here; c's block's isn't known on the first screen"
     );
-    // The whole page, at the same width, has the block after c's.
-    let whole = [(0, 36.0), (1, 120.0), (2, 200.0), (3, 260.0)];
+    // The whole page, at the same width, has the block after c's, and its
+    // block 1 stands taller than a and b were kept against.
+    let whole = [(0, 36.0), (1, 120.0), (2, 220.0), (3, 280.0)];
     heights_known(&mut landed, &whole);
-    let c = landed.iter().find(|one| one.kept.letter == 'c');
+    let heights: Vec<(char, Option<f64>)> = landed
+        .iter()
+        .map(|one| (one.kept.letter, one.kept.block_pt))
+        .collect();
     assert_eq!(
-        c.and_then(|one| one.kept.block_pt),
-        Some(60.0),
-        "c takes its block's height once the whole page has it"
+        heights,
+        [('a', Some(80.0)), ('b', Some(80.0)), ('c', Some(60.0))],
+        "c takes its block's height once the whole page has it; a and b keep theirs"
     );
     // Set again at another width, blocks 1 and 2 twice as tall: b and c
     // scale with them.
@@ -585,6 +593,42 @@ fn kept_marks_are_taken_as_read_and_one_kept_without_a_height_takes_its_blocks()
         landed_again(&mut landed, &marks, &after),
         vec![('a', 200.0), ('b', 160.0), ('c', 300.0)],
         "b and c land as far through their blocks as a does"
+    );
+}
+
+#[test]
+fn a_page_at_another_width_lends_no_kept_mark_its_blocks_height() {
+    // b, kept without its block's height, first finds its block on a page
+    // set at another width than its distance was kept at.
+    let mut waiting = vec![Mark {
+        letter: 'b',
+        block: 1,
+        into_pt: 20.0,
+        block_pt: None,
+        said: Said::default(),
+    }];
+    let (mut marks, mut landed) = (HashMap::new(), Vec::new());
+    let wider = Taking {
+        whole: true,
+        learns: false,
+    };
+    take_kept(
+        &mut waiting,
+        &mut marks,
+        &mut landed,
+        &[(0, 36.0), (1, 120.0), (2, 280.0)],
+        wider,
+    );
+    assert_eq!(
+        landed.first().map(|one| one.kept.block_pt),
+        Some(None),
+        "b takes no height its distance was never kept against"
+    );
+    // Back at the width it was kept at, it lands as far in as it was kept.
+    assert_eq!(
+        landed_again(&mut landed, &marks, &[(0, 36.0), (1, 120.0), (2, 200.0)]),
+        vec![('b', 140.0)],
+        "b lands where it was kept, not scaled by another width's block"
     );
 }
 

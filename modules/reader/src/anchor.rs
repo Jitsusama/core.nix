@@ -73,6 +73,15 @@ mod tests {
     }
 
     #[test]
+    fn a_mark_on_a_page_an_edit_renumbered_goes_with_its_words() {
+        // A paragraph saved in above it: a mark on "two" goes with "two",
+        // where its block's number would now name the paragraph before.
+        let old = [line(20.0, "one"), line(40.0, "two")];
+        let new = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
+        assert_eq!(anchored(&old, &new, 40.0, false, 500.0), 60.0);
+    }
+
+    #[test]
     fn a_view_moved_past_a_shorter_pages_end_stops_at_it() {
         let old = [line(20.0, "one"), line(40.0, "two"), line(60.0, "three")];
         let new = [line(10.0, "one"), line(20.0, "two"), line(30.0, "three")];

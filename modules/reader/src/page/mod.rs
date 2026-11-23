@@ -277,12 +277,15 @@ const PAGE: &str = r#"#import "/mitex/specs/mod.typ": mitex-scope
       // Its first stretch joins what's held to it, and its last goes on
       // to the piece held after. Of those between, a span crafted of
       // thousands would cost a measure each, so past eight only the eight
-      // of most characters are measured: in the mono a stretch's width
-      // follows its characters, and eight leave room for a wide one.
+      // likely widest are measured. In the mono an ASCII character takes
+      // one cell, and one beyond ASCII, a CJK character or an emoji in its
+      // colour face, about two, so each such cluster counts twice; a
+      // stretch of accents counted twice is only measured sooner.
       let texts = p.piece.matches(unbroken).map(m => m.text).filter(t => t != "")
       if texts.len() == 0 { texts = ("",) }
       let middle = texts.slice(1, calc.max(1, texts.len() - 1))
-      if middle.len() > 8 { middle = middle.sorted(key: t => -t.clusters().len()).slice(0, 8) }
+      let cells(t) = t.clusters().map(c => if c.len() == 1 { 1 } else { 2 }).sum(default: 0)
+      if middle.len() > 8 { middle = middle.sorted(key: t => -cells(t)).slice(0, 8) }
       let (head, tail) = (measure(raw(texts.first())).width, measure(raw(texts.last())).width)
       let first = if p.held { run + by + head } else { head }
       widest = calc.max(widest, first, tail, ..middle.map(t => measure(raw(t)).width))

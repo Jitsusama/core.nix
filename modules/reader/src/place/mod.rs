@@ -506,26 +506,37 @@ pub fn as_read(landed: &[Landed], letter: char, pt: f64) -> Option<&Mark> {
         .map(|one| &one.kept)
 }
 
-/// Takes the kept marks whose blocks the page starting at `starts` has,
-/// `whole` when no block past them comes, into `marks`, each kept as read
-/// in `landed`; the others wait in `kept`. A mark set while it waited is
-/// his, and beats it. One kept before its block's height was would land
-/// unscaled at every width, so it takes the height its block has here,
-/// where its distance is read as it was, once that's known.
+/// How kept marks are taken onto a page: `whole` when no block past the
+/// page's comes, and `learns` when the page is set at the width they were
+/// read at, where a block's height is the one a distance was kept against.
+#[derive(Clone, Copy, Debug)]
+pub struct Taking {
+    pub whole: bool,
+    pub learns: bool,
+}
+
+/// Takes the kept marks whose blocks the page starting at `starts` has
+/// into `marks`, each kept as read in `landed`; the others wait in `kept`.
+/// A mark set while it waited is his, and beats it. One kept before its
+/// block's height was would land unscaled at every width, so on a page
+/// that `learns` it takes the height its block has, once that's known; a
+/// page at another width would give it a height its distance never had.
 pub fn take_kept(
     kept: &mut Vec<Mark>,
     marks: &mut HashMap<char, f64>,
     landed: &mut Vec<Landed>,
     starts: &[(usize, f64)],
-    whole: bool,
+    taking: Taking,
 ) {
     kept.retain(|one| {
-        let Some(pt) = mark_at(starts, whole, one.block, one.into_pt, one.block_pt) else {
+        let Some(pt) = mark_at(starts, taking.whole, one.block, one.into_pt, one.block_pt) else {
             return true;
         };
         if let std::collections::hash_map::Entry::Vacant(mark) = marks.entry(one.letter) {
             mark.insert(pt);
-            let block_pt = one.block_pt.or_else(|| height_of(starts, one.block));
+            let block_pt = one
+                .block_pt
+                .or_else(|| height_of(starts, one.block).filter(|_| taking.learns));
             landed.push(Landed {
                 kept: Mark {
                     block_pt,
@@ -540,10 +551,12 @@ pub fn take_kept(
 }
 
 /// Gives each landed mark kept without its block's height the height its
-/// block has on the page starting at `starts`, once that's known. One in
-/// the first screen's last block lands before the block after it is set,
-/// so it learns its height only from the whole page; without it, a resize
-/// would land it unscaled for good.
+/// block has on the page starting at `starts`, once that's known, and
+/// leaves every other as it was kept. One in the first screen's last block
+/// lands before the block after it is set, so it learns its height only
+/// from the whole page; without it, a resize would land it unscaled for
+/// good. The page must be set at the width the marks were read at, which
+/// the caller knows.
 pub fn heights_known(landed: &mut [Landed], starts: &[(usize, f64)]) {
     for one in landed.iter_mut().filter(|one| one.kept.block_pt.is_none()) {
         one.kept.block_pt = height_of(starts, one.kept.block);

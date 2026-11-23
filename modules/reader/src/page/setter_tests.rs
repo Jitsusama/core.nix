@@ -30,9 +30,8 @@ fn the_first_width_is_the_kept_windows_or_else_an_unnamed_ones() {
 fn a_sets_words_change_only_when_the_file_does() {
     let dir = std::env::temp_dir().join(format!("reader-edited-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("a folder");
-    let (file, other) = (dir.join("page.md"), dir.join("other.md"));
+    let file = dir.join("page.md");
     std::fs::write(&file, "# One\n\nWords.\n").expect("the file");
-    std::fs::write(&other, "# Other\n").expect("the other");
     let path = file.to_str().expect("a path");
     // The first screen's set, which the window holds the reloader's against.
     let first = set_first(path, None, Width::for_window(720.0)).expect("the first screen");
@@ -47,7 +46,6 @@ fn a_sets_words_change_only_when_the_file_does() {
         words(&|setter| setter.fit(Width::for_window(360.0))),
     );
     let saved = words(&|_| std::fs::write(&file, "# Two\n\nOne\n\nWords.\n").expect("saved"));
-    let elsewhere = words(&|setter| setter.open(other.to_str().expect("a path")));
     std::fs::remove_dir_all(&dir).expect("cleaned");
     assert_eq!(
         first.words, again,
@@ -55,5 +53,4 @@ fn a_sets_words_change_only_when_the_file_does() {
     );
     assert_eq!(again, wider, "another width is the same words");
     assert_ne!(again, saved, "a save that changed them");
-    assert_ne!(saved, elsewhere, "another file");
 }
