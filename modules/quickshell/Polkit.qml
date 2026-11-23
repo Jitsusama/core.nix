@@ -3,7 +3,8 @@
 // kind (docs/design.md, Shape and Kinds): dead centre, the accent frame as
 // it holds the keys, who's asking and why in words, then the padlock beside
 // the dots, then what the keys do. A wrong password turns the frame to the
-// alert and says so. Escape refuses.
+// alert and says so. Escape refuses. The journal says as each ask begins
+// and how it ended, after how long, and whether niri gave it the keys.
 //
 // Who asks is the command that called polkit, read from /proc by the pid
 // polkit gives with each ask, so an agent's run0 shows the command it would
@@ -75,6 +76,62 @@ Scope {
 
     readonly property string why: flow ? Said.reason(flow.message, cmdline, flow.details) : ""
 
+    // The ask the journal follows, from its prompt showing to its end, reports
+    // on or not, so a failed ask is read from the record rather than guessed
+    // (Polkit.js, began and finished). askHow is how it ended, once known.
+    property string askAction: ""
+    property real askShownAt: 0
+    property var askKeysMs: null
+    property int askWrong: 0
+    property string askHow: ""
+
+    function askEnds() {
+        if (askAction === "")
+            return;
+        console.info(Said.finished({
+            action: askAction,
+            how: askHow,
+            ms: Date.now() - askShownAt,
+            keysMs: askKeysMs,
+            wrong: askWrong
+        }));
+        askAction = "";
+    }
+
+    onFlowChanged: {
+        askEnds();
+        if (!flow)
+            return;
+        askAction = flow.actionId;
+        askShownAt = Date.now();
+        askKeysMs = null;
+        askWrong = 0;
+        askHow = "";
+        console.info(Said.began(askAction));
+    }
+
+    Connections {
+        target: root.flow
+
+        function onIsSuccessfulChanged() {
+            if (root.flow.isSuccessful)
+                root.askHow = "answered";
+        }
+        function onIsCancelledChanged() {
+            if (root.flow.isCancelled && root.askHow === "")
+                root.askHow = "dropped";
+        }
+        function onAuthenticationFailed() {
+            root.askWrong += 1;
+        }
+        // Later, so how it ended is set first, whichever order the flow says
+        // its end in.
+        function onIsCompletedChanged() {
+            if (root.flow.isCompleted)
+                Qt.callLater(root.askEnds);
+        }
+    }
+
     PanelWindow {
         Counted { name: "polkit" }
 
@@ -96,6 +153,15 @@ Scope {
             name: "polkit"
         }
 
+        // When niri gives the prompt the keys, for the journal's line on the ask.
+        Item {
+            readonly property bool keys: Window.active
+            onKeysChanged: {
+                if (keys && root.askAction !== "" && root.askKeysMs === null)
+                    root.askKeysMs = Date.now() - root.askShownAt;
+            }
+        }
+
         Rectangle {
             id: scrim
             anchors.fill: parent
@@ -112,7 +178,10 @@ Scope {
             failed: root.failed
             secret: !(root.flow && root.flow.responseVisible)
             onSubmitted: text => root.flow.submit(text)
-            onRefused: root.flow.cancelAuthenticationRequest()
+            onRefused: {
+                root.askHow = "refused";
+                root.flow.cancelAuthenticationRequest();
+            }
         }
     }
 }

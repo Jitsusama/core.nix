@@ -333,3 +333,37 @@ function reason(message, cmdline, details) {
     const account = runner === "pkexec" ? details?.user ?? "root" : run0As(argv);
     return account === null ? "To run it with root's powers." : `To run it as ${account}.`;
 }
+
+// How an ask can end, as the journal says it: Joel's password taken, his
+// Escape, or polkit taking the ask back once its asker stopped waiting.
+// systemd waits 25 s for polkit's answer to run0 or systemctl, so an ask
+// left unanswered that long ends the third way.
+const endings = new Map([
+    ["answered", "answered"],
+    ["refused", "refused with Escape"],
+    ["dropped", "given up by its asker, unanswered"]
+]);
+
+// What the journal says as an ask begins, whether or not reports are on, so
+// an ask is seen even when the shell ends before it does. Never the command,
+// which polkit-asks journals with its cgroup, nor anything typed.
+function began(action) {
+    return `polkit: ${action} asked, the prompt shown`;
+}
+
+// What the journal says once an ask ends: how, after how long, after how
+// many wrong passwords, and whether niri gave the prompt the keys. On
+// 2026-11-23 three asks ended 25 s in, and nothing said whether the prompt
+// had held the keys or nobody had typed. ask is {action, how, ms, keysMs,
+// wrong}, keysMs null while the prompt never had them.
+function finished(ask) {
+    const how = endings.get(ask.how) ?? "ended without saying how";
+    const up = `${(ask.ms / 1000).toFixed(1)} s`;
+    const wrong = ask.wrong > 0
+        ? `, after ${ask.wrong} wrong ${ask.wrong === 1 ? "password" : "passwords"}`
+        : "";
+    const keys = ask.keysMs === null
+        ? "it never had the keys"
+        : `it had the keys ${Math.round(ask.keysMs)} ms after it showed`;
+    return `polkit: ${ask.action} ${how} after ${up}${wrong}; ${keys}`;
+}

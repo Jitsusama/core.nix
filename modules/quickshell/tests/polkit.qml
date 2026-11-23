@@ -229,6 +229,38 @@ QtObject {
         if (tagged !== "run0 echo '&lt;b&gt;a&lt;/b&gt; &amp; b'")
             failures.push(`a tagged command said ${tagged}`);
 
+        // What the journal says of each ask, whatever the reports: as it
+        // begins, and how it ended, so an ask that failed is read, not guessed.
+        const journalled = [
+            ["a beginning", Polkit.began(units),
+                "polkit: org.freedesktop.systemd1.manage-units asked, the prompt shown"],
+            ["an answer", Polkit.finished({
+                action: units, how: "answered", ms: 4512, keysMs: 38.6, wrong: 0
+            }), "polkit: org.freedesktop.systemd1.manage-units answered after 4.5 s;"
+                + " it had the keys 39 ms after it showed"],
+            ["an answer after a wrong password", Polkit.finished({
+                action: exec, how: "answered", ms: 9700, keysMs: 12, wrong: 1
+            }), "polkit: org.freedesktop.policykit.exec answered after 9.7 s,"
+                + " after 1 wrong password; it had the keys 12 ms after it showed"],
+            ["an Escape after wrong passwords", Polkit.finished({
+                action: exec, how: "refused", ms: 15000, keysMs: 0, wrong: 2
+            }), "polkit: org.freedesktop.policykit.exec refused with Escape after 15.0 s,"
+                + " after 2 wrong passwords; it had the keys 0 ms after it showed"],
+            ["an ask left 25 s", Polkit.finished({
+                action: units, how: "dropped", ms: 25004, keysMs: null, wrong: 0
+            }), "polkit: org.freedesktop.systemd1.manage-units given up by its asker,"
+                + " unanswered after 25.0 s; it never had the keys"],
+            ["an end nothing said", Polkit.finished({
+                action: units, how: "", ms: 300, keysMs: null, wrong: 0
+            }), "polkit: org.freedesktop.systemd1.manage-units ended without saying how"
+                + " after 0.3 s; it never had the keys"]
+        ];
+        for (const [what, got, wanted] of journalled) {
+            asked++;
+            if (got !== wanted)
+                failures.push(`${what} journalled\n  ${got}\nnot\n  ${wanted}`);
+        }
+
         for (const failure of failures)
             console.log(failure);
         console.log(`${asked - failures.length} of ${asked} asks read as they should`);

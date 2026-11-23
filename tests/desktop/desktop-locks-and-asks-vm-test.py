@@ -238,6 +238,13 @@ def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop
     desktop.shoot("polkit")
     machine.send_chars(f"{desktop.values['secret']}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
+    # The journal says how each ask ended whether reports are on or not, and whether niri gave
+    # the prompt the keys, so an ask that fails on Joel's machine is read rather than guessed.
+    ended = "polkit: org.freedesktop.systemd1.manage-units answered after .*; it had the keys"
+    machine.wait_until_succeeds(
+        desktop.in_session(f"journalctl --user -u quickshell -o cat | grep -q '{ended}'"),
+        timeout=timedelta(seconds=30),
+    )
 
 
 def test_the_askpass_asks_for_a_yes_a_pin_and_a_touch(desktop: Desktop) -> None:
