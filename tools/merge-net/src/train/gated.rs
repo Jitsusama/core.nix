@@ -51,7 +51,11 @@ pub(super) enum Gated {
 /// part is cut short would miss one it doesn't name (round 3, 23
 /// November), where a missing line, reworded or never printed, fails
 /// closed. So too the code: only one a failed build ends with, 1 or nix's
-/// 100 to 104, can be whole (round 4).
+/// 100 to 104, can be whole (round 4). changed-checks ends 1 only when
+/// every build ran and one failed, and both it and nix-offload abort at a
+/// panic rather than end 101 (round 5); nix itself still ends 1 when it is
+/// interrupted, which its `error: interrupted` line names, and
+/// `excused::broken` refuses every `error:` line it doesn't know.
 pub(super) fn gated(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
