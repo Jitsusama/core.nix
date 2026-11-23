@@ -254,11 +254,40 @@ fn a_red_is_whole_only_when_nix_offload_says_every_part_ran() {
             "a red nix-offload didn't say ran whole read as whole: {cut}"
         );
     }
+    // nix-offload's own word of a part cut short outranks its word that
+    // every part ran whole, which it should never say beside one.
+    for cut in [
+        "nix-offload: it takes x from this machine alone, so no builder can build it\n",
+        "nix-offload: couldn't send the VM tests on: gone\n",
+        "nix-offload: the build of 2 VM tests was cut short\n",
+    ] {
+        assert_eq!(
+            gated(Some(100), &format!("{failed}{cut}{WHOLE}\n")),
+            Gated::Red { whole: false },
+            "a red with a part cut short read as whole beside the word: {cut}"
+        );
+    }
     assert_eq!(
-        gated(Some(100), &format!("{failed}  {WHOLE}\n")),
-        Gated::Red { whole: true },
-        "a red nix-offload said ran whole read as cut short"
+        gated(None, &format!("{failed}{WHOLE}\n")),
+        Gated::Red { whole: false },
+        "a gate a signal ended read as whole"
     );
+    // Only a failed build's own codes are whole: a lost builder's 255, an
+    // untaken 75, an unbuilt 69, a broken 70 or a signal's 137 aren't.
+    for code in [255, 75, 69, 70, 137, 2] {
+        assert_ne!(
+            gated(Some(code), &format!("{failed}{WHOLE}\n")),
+            Gated::Red { whole: true },
+            "a red that ended {code} read as whole"
+        );
+    }
+    for code in [1, 100, 104] {
+        assert_eq!(
+            gated(Some(code), &format!("{failed}  {WHOLE}\n")),
+            Gated::Red { whole: true },
+            "a red that ended {code}, which nix-offload said ran whole, read as cut short"
+        );
+    }
 }
 
 /// A builder's words can hold any byte, and nix-offload sets aside a
@@ -288,6 +317,17 @@ fn a_gate_is_read_by_what_its_last_run_said() {
         gated(Some(75), &words_of(&log)),
         Gated::Unsent,
         "a replay nix-offload set aside made an untaken run read as red"
+    );
+    // A check that prints the same words sets nothing aside.
+    let echoed = format!(
+        "{failed}a-check> nix-offload: x over main failed, so the change runs again on \
+         its own base\nnix-offload: no builder took it\n"
+    );
+    fs::write(&log, echoed).unwrap();
+    assert_eq!(
+        gated(Some(75), &words_of(&log)),
+        Gated::Red { whole: false },
+        "a check's own words set aside the failure before them"
     );
     fs::remove_dir_all(&root).unwrap();
 }

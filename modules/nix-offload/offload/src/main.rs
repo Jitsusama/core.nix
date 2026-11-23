@@ -1858,6 +1858,11 @@ fn changed_there(
         drop(going);
         return changed_there(given, waiting, false);
     }
+    // Said of the run as it ends, never of a part: a run named on one
+    // builder and built on another (`built_named`) is never whole.
+    if finished.whole {
+        eprintln!("{RAN_WHOLE}");
+    }
     ended::status(finished.status, || {
         "the changed checks didn't pass, as the lines above say".to_owned()
     })
@@ -2284,14 +2289,21 @@ impl Finished {
 const RAN_WHOLE: &str = "nix-offload: every part of the run ran to its end";
 
 /// Whether a part of a run that ended `status` ran to its end of itself:
-/// not one ssh lost its builder for, turned away, kept here, or no
-/// builder took or built.
+/// it passed, or failed as nix or changed-checks fails a build that ran,
+/// 1 or nix's 100 to 104. Every other status is cut short, a list of the
+/// ways not kept (round 4, 23 November): ssh losing its builder, a turn
+/// away, a run kept here or no builder taking it, a signal as 128 and
+/// more, and changed-checks' 69 for a build of its own that a signal or
+/// a lost builder ended, which it would otherwise read as a failure.
 fn ran_to_its_end(status: i32) -> bool {
-    !matches!(
-        status,
-        there::UNREACHED | there::BUSY | there::STAYS | there::UNSENT
-    ) && status != i32::from(changed::UNBUILT)
+    matches!(status, 0 | 1 | NIX_FAILED_FIRST..=NIX_FAILED_LAST)
 }
+
+/// The statuses `nix build` ends a failed build with, `--keep-going`'s
+/// among them: 100, and 101 to 104 for a timeout, a hash or a check that
+/// differed, alone or together.
+const NIX_FAILED_FIRST: i32 = 100;
+const NIX_FAILED_LAST: i32 = 104;
 
 /// What a `there --changed` run sends wherever it goes: the tree's
 /// source, the checks `told` passed at its commit already, the tree's
@@ -2392,9 +2404,6 @@ impl Sent<'_> {
         {
             let home = state().join("nix-offload/changed-runs.jsonl");
             changed::runs::bring(&lent, self.scratch, before, &home);
-        }
-        if finished.as_ref().is_some_and(|finished| finished.whole) {
-            eprintln!("{RAN_WHOLE}");
         }
         finished
     }
@@ -4410,18 +4419,25 @@ mod tests {
 
     #[test]
     fn a_part_ran_to_its_end_only_when_a_builder_took_it_and_kept_it() {
-        for status in [0, 1, 100] {
+        for status in [0, 1, 100, 101, 104] {
             assert!(
                 ran_to_its_end(status),
                 "a part that ended {status} read as cut short"
             );
         }
+        // A signal (137, 130), a broken program (70), a status nothing
+        // names (2, 105) and changed-checks' own cut (69) are cut too.
         for status in [
             there::UNREACHED,
             there::BUSY,
             there::STAYS,
             there::UNSENT,
             i32::from(changed::UNBUILT),
+            137,
+            130,
+            70,
+            2,
+            105,
         ] {
             assert!(
                 !ran_to_its_end(status),

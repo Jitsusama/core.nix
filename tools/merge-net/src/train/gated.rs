@@ -50,19 +50,24 @@ pub(super) enum Gated {
 /// part did, and no line says one went unbuilt: a list of the ways a
 /// part is cut short would miss one it doesn't name (round 3, 23
 /// November), where a missing line, reworded or never printed, fails
-/// closed.
+/// closed. So too the code: only one a failed build ends with, 1 or nix's
+/// 100 to 104, can be whole (round 4).
 pub(super) fn gated(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
         _ if crate::watch::untaken(code) && !names_a_failure(words) => Gated::Unsent,
         _ => Gated::Red {
-            whole: code.is_some()
-                && !crate::watch::untaken(code)
+            whole: matches!(code, Some(1 | NIX_FAILED_FIRST..=NIX_FAILED_LAST))
                 && ran_whole(words)
                 && !left_unbuilt(words),
         },
     }
 }
+
+/// The statuses `nix build` ends a failed build with: 100, and 101 to 104
+/// for a timeout, a hash or a check that differed, alone or together.
+const NIX_FAILED_FIRST: i32 = 100;
+const NIX_FAILED_LAST: i32 = 104;
 
 /// What nix-offload says once a run on a lent builder ends with every
 /// part of it run to its end (`RAN_WHOLE` in
@@ -76,13 +81,16 @@ fn ran_whole(words: &str) -> bool {
 }
 
 /// What nix-offload says of a part of its run that no builder took or
-/// built, whatever code the run ended with.
-const UNBUILT: [&str; 5] = [
+/// built, or that was cut short, whatever code the run ended with.
+const UNBUILT: [&str; 8] = [
     "but no builder took their build",
     "weren't built",
     "no lent builder builds",
     "no lent builder takes",
     "no lent builder took",
+    "so no builder can build it",
+    "couldn't send the VM tests on",
+    "was cut short",
 ];
 
 /// Whether a gate's `words` say nix-offload left part of it unbuilt, a
@@ -116,13 +124,21 @@ fn names_a_failure(words: &str) -> bool {
 const RUNS_AGAIN: &str = "so the change runs again on its own base";
 
 /// The words of the gate whose log is at `log` that speak for its run:
-/// those after the last replay nix-offload set aside, any byte that isn't
-/// UTF-8 read as a stand-in rather than losing the rest.
+/// those after the line of nix-offload's own that last set a replay
+/// aside, any byte that isn't UTF-8 read as a stand-in rather than losing
+/// the rest. A check's output saying the same words, which nix prefixes
+/// with its name, cuts nothing (round 4's F10).
 pub(super) fn words_of(log: &Path) -> String {
     let bytes = fs::read(log).unwrap_or_default();
     let words = String::from_utf8_lossy(&bytes);
-    words
-        .rfind(RUNS_AGAIN)
-        .map_or(&*words, |at| &words[at + RUNS_AGAIN.len()..])
-        .to_owned()
+    let mut from = 0;
+    let mut at = 0;
+    for line in words.split_inclusive('\n') {
+        at += line.len();
+        let said = line.trim();
+        if said.starts_with("nix-offload: ") && said.contains(RUNS_AGAIN) {
+            from = at;
+        }
+    }
+    words[from..].to_owned()
 }

@@ -2467,13 +2467,26 @@ pub fn here_when_idle(
     ran
 }
 
+/// The status a process ended with, a signal's as a shell gives it,
+/// 128 and the signal: a nix killed mid-build, by the OOM killer or a
+/// stop, then reads apart from a build that failed, which nix ends 1 or
+/// from 100, so whoever reads it knows not every build ran to its end.
+pub fn status_of(status: std::process::ExitStatus) -> i32 {
+    use std::os::unix::process::ExitStatusExt;
+    status
+        .code()
+        .or_else(|| status.signal().map(|signal| SIGNALLED + signal))
+        .unwrap_or(1)
+}
+
+/// What a shell adds to a signal to say a process it ended ended it.
+const SIGNALLED: i32 = 128;
+
 fn here(asked: &Asked, nix: &str) -> Ran {
     let mut command = Command::new(nix);
     command.args(asked.build());
     let status = match &asked.out {
-        None => command
-            .status()
-            .map_or(1, |status| status.code().unwrap_or(1)),
+        None => command.status().map_or(1, status_of),
         // Its log still shows: output() would keep standard error too.
         Some(out) => command
             .stdout(Stdio::piped())
@@ -2481,9 +2494,9 @@ fn here(asked: &Asked, nix: &str) -> Ran {
             .output()
             .map_or(1, |built| {
                 let path = String::from_utf8_lossy(&built.stdout).trim().to_owned();
-                match built.status.code() {
-                    Some(0) => copied(Path::new(&path), out),
-                    code => code.unwrap_or(1),
+                match status_of(built.status) {
+                    0 => copied(Path::new(&path), out),
+                    code => code,
                 }
             }),
     };
@@ -2514,7 +2527,7 @@ fn here_until(asked: &Asked, nix: &str, busy: &dyn Fn() -> bool) -> Option<Ran> 
     let mut read = std::time::Instant::now();
     let status = loop {
         match build.try_wait() {
-            Ok(Some(status)) => break status.code().unwrap_or(1),
+            Ok(Some(status)) => break status_of(status),
             Ok(None) => {}
             Err(_) => break 1,
         }
