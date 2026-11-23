@@ -22,9 +22,9 @@ const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
 const OFFERED = 4;
 // How long an answer shows as given while the node hasn't said it took
 // it, before saying it may not have gone: "no answer in 5 s" (docs/
-// design.md); and how long from then its side says so, its choices back.
+// design.md). Its side says so from then until a word comes, since
+// nothing times out a steer the node was asked.
 const ANSWER_HEARD = 5 * 1000;
-const ANSWER_TAKES = 60 * 1000;
 // How long a look waits before it goes quiet: it leaves what waits, and so
 // every count of it, for History, where it's still opened as it was. By then
 // why it came is lost (Joel, 2026-11-11: "by the time i find them the context
@@ -335,13 +335,14 @@ function answering(one, answered, now) {
 }
 
 // Why Joel's answer to a look still waiting may not have gone, "nobody"
-// to tell, "untaken" where the node didn't say it took it, or "unheard"
-// past ANSWER_HEARD with no word, for ANSWER_TAKES, else "": its choices
-// coming back unsaid left him no way "to in any way follow through"
-// (Joel, 2026-11-22).
+// to tell, "untaken" where the node answered without taking it,
+// "dropped" where it went before saying, or "unheard" past ANSWER_HEARD
+// with no word, else "", said until he answers again: his choices coming
+// back unsaid left him no way "to in any way follow through" (Joel,
+// 2026-11-22), however much later he comes back to it.
 function unanswered(one, answered, now) {
     const given = answered?.[one.id];
-    if (one.state !== "waiting" || !given || given.taken || now - given.at >= ANSWER_TAKES) {
+    if (one.state !== "waiting" || !given || given.taken) {
         return "";
     }
     if (typeof given.failed === "string") {
@@ -350,22 +351,24 @@ function unanswered(one, answered, now) {
     return now - given.at >= ANSWER_HEARD ? "unheard" : "";
 }
 
-// Whether Joel's answer to a look still waiting may yet reach its session:
-// given, not said to have failed, nor taken, within ANSWER_TAKES. Its
-// choices stay away meanwhile, so a second answer can't follow one still
-// on its way and the session hear both.
-function awaiting(one, answered, now) {
+// Whether Joel's answer to a look still waiting may have reached, or yet
+// reach, its session: given and not taken, with no word yet, or the node
+// gone before saying, which a session may have heard. Its choices stay
+// away meanwhile, so a second answer can't follow one still on its way
+// and the session hear both; only nobody to tell or the node's refusal
+// brings them back.
+function awaiting(one, answered) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && !!given && !given.failed && !given.taken
-        && now - given.at < ANSWER_TAKES;
+    return one.state === "waiting" && !!given && !given.taken
+        && (!given.failed || given.failed === "dropped");
 }
 
-// How long until an answer's side next changes as time passes, or null.
+// How long until an answer's side next changes as time passes, or null:
+// its 5 s, while no word has come.
 function answersChange(answered, now) {
-    // Qt's engine has no flatMap, so each answer's two times are joined.
-    const ahead = [].concat(...Object.values(answered ?? {}).filter(given => !given?.taken)
-        .map(given => [given.at + ANSWER_HEARD, given.at + ANSWER_TAKES]))
-        .filter(at => at > now);
+    const ahead = Object.values(answered ?? {})
+        .filter(given => given && !given.taken && !given.failed)
+        .map(given => given.at + ANSWER_HEARD).filter(at => at > now);
     return ahead.length === 0 ? null : Math.min(...ahead) - now;
 }
 

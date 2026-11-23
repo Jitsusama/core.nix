@@ -12,9 +12,12 @@ const ENDED = /[.!?\u2026]["'\u2019\u201d)\]]*$/u;
 const ACT_WORDS = 4;
 const SPACES = /\s+/gu;
 // What draws as nothing, or as a space, which a name may hide in to pass
-// for another; and the stops a name may end in. Ranges rather than
-// property escapes, which Qt's engine may not read.
-const UNSEEN = /[\u00ad\u061c\u180e\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/gu;
+// for another, the blank fillers of Hangul and Braille among them; and the
+// stops a name may end in. Ranges rather than property escapes, which Qt's
+// engine may not read.
+const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/gu;
+const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
+const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
 
 // `value` where it's a string, else "".
@@ -42,8 +45,8 @@ function wordsOf(read) {
 // A name as it reads, to tell two apart: what draws as nothing gone, its
 // spaces one, its closing stops gone, in small letters.
 function readAs(name) {
-    return String(name).replace(UNSEEN, "").replace(SPACES, " ").replace(STOPS, "").trim()
-        .toLowerCase();
+    return String(name).replace(UNSEEN, "").replace(UNMARKED, "").replace(FILLERS, " ")
+        .replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
 }
 
 // What Joel presses for a look in its second form, in its own words, as
@@ -55,9 +58,15 @@ function readAs(name) {
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
     const read = readAs(act);
-    const same = name => readAs(name) === read;
-    return read === "" || read.split(" ").length > ACT_WORDS || taken.some(same)
-        || (one.offers ?? []).some(choice => same(choice.label)) ? "" : act;
+    return read === "" || read.split(" ").length > ACT_WORDS || poses(act, taken)
+        || (one.offers ?? []).some(choice => readAs(choice.label) === read) ? "" : act;
+}
+
+// Whether a name reads as one of `taken`, however it's spaced, stopped or
+// hides what draws as nothing, so a choice can't pass for Clear It.
+function poses(name, taken) {
+    const read = readAs(name);
+    return taken.some(each => readAs(each) === read);
 }
 
 // Whether a look in its second form asks Joel back: it wants a choice or

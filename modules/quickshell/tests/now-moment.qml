@@ -1044,8 +1044,55 @@ ShellRoot {
             waiting = "";
             Timekeeping.keptFor = 60000;
             Timekeeping.trying = true;
-            Qt.exit(0);
+            answerLapses();
         }
+    }
+
+    // An answer with no word come, its 5 s let come on its own: the timer
+    // hands Now its answers anew, with nothing the case does, which is what
+    // redraws an idle For You's rows (lookAnswers), and the look then reads
+    // unheard (answersLapse).
+    readonly property var lapsing: ({ id: "lapsing", kind: "page", title: "Read L",
+        state: "waiting" })
+    function answerLapses() {
+        now.lookAnswers = { lapsing: { label: "Keep It", at: Date.now() - 4700, sent: -1 } };
+        lapseStage.given = answersHanded;
+        lapseStage.at = Date.now();
+        waiting = "answer lapses";
+    }
+    // How many times Now's answers were handed it anew.
+    property int answersHanded: 0
+    Connections {
+        target: now
+
+        function onLookAnswersChanged() {
+            root.answersHanded += 1;
+        }
+    }
+    Timer {
+        id: lapseStage
+
+        property int given: 0
+        property real at: 0
+
+        running: root.waiting === "answer lapses"
+        interval: 20
+        repeat: true
+        onTriggered: root.answerLapsed()
+    }
+    function answerLapsed() {
+        const since = Date.now() - lapseStage.at;
+        if (answersHanded === lapseStage.given && since < 3000)
+            return;
+        const side = now.lookSide(lapsing, Date.now(), now.forYouSaid(Date.now()));
+        if (!tried(() => expect("its 5 s come, the timer hands Now its answers anew, unheard",
+            answersHanded === lapseStage.given + 1 && now.answersDue === -1
+                && side === "Keep It not answered yet \u00b7 no answer",
+            JSON.stringify([answersHanded - lapseStage.given, now.answersDue, side]))))
+            return;
+        waiting = "";
+        now.lookAnswers = {};
+        Qt.exit(0);
     }
 
     // What Moved: no row while nothing moved; a workstream that moved is
@@ -1969,15 +2016,15 @@ ShellRoot {
             secondActs[0]?.key === "verb:on:look:answer:s:Keep It"
                 && keepDrawer.title === "Keep It" && keepDrawer.body === "It stays as it is.",
             JSON.stringify([secondActs[0]?.key, keepDrawer.title, keepDrawer.body]));
-        // An answer the node didn't take, or with nobody to tell, says so at
-        // its side for a minute, its choices back, rather than silently
-        // nothing (Joel, 2026-11-22: "to in any way follow through").
+        // An answer the node refused, or with nobody to tell, says so at its
+        // side, its choices back, rather than silently nothing (Joel,
+        // 2026-11-22: "to in any way follow through").
         Sessions.puts = false;
         secondActs[0]?.run();
         Sessions.puts = true;
         const untaken = secondRow();
-        expect("an answer the node didn't say it took says so, its choices back",
-            untaken?.side === "Keep It not answered yet \u00b7 the node didn't say it took it"
+        expect("an answer the node refused says so, its choices back",
+            untaken?.side === "Keep It not answered \u00b7 the node refused it"
                 && (untaken?.verbs() ?? [])[0]?.key === "verb:on:look:answer:s:Keep It",
             JSON.stringify([untaken?.side, (untaken?.verbs() ?? []).map(act => act.key)]));
         const nobody = { id: "n", kind: "page", title: "Read N", state: "waiting" };
@@ -1989,51 +2036,64 @@ ShellRoot {
                     === "Keep It not answered \u00b7 no session to tell",
             JSON.stringify(now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))));
         // An answer the node is slow to say it took: shown as given, its
-        // choices away while it may yet come, so no second follows it, and
-        // the sides redrawn as its 5 s and its minute come; then said not
-        // heard; and a late word for an earlier answer leaves a newer alone.
+        // choices away while it may yet come, however long, so no second
+        // follows it, even from acts drawn before it was given, and the side
+        // redrawn at its 5 s; then said not heard; the node going before
+        // saying keeps them away, the session may have heard it; and a late
+        // word for an answer since replaced leaves the newer alone.
         const answers = () => (secondRow()?.verbs() ?? [])
             .filter(act => act.key.startsWith("verb:on:look:answer:s:"));
         const aged = by => {
             now.lookAnswers = Object.assign({}, now.lookAnswers,
                 { s: Object.assign({}, now.lookAnswers.s, { at: now.lookAnswers.s.at - by }) });
         };
+        // Each held word given by a plain call: an optional call of one
+        // read from the stand-in's list crashed the shell here (2026-11-23).
+        const heard = (at, put, answer) => {
+            const then = Sessions.held[at];
+            if (typeof then === "function")
+                then(put, answer);
+        };
         now.lookAnswers = {};
         Sessions.holds = true;
         Sessions.held = [];
-        answers()[0]?.run();
+        const drawnBefore = answers();
+        if (drawnBefore.length > 0)
+            drawnBefore[0].run();
         expect("an answer on its way, shown as given, its choices away, redrawn at its 5 s",
             secondRow()?.side === "answered Keep It" && answers().length === 0
-                && now.answersDue > 4000 && now.answersDue <= 5000,
+                && now.answersDue > 0 && now.answersDue <= 5000,
             JSON.stringify([secondRow()?.side, answers().length, now.answersDue]));
-        aged(6 * 1000);
-        expect("unheard in 5 s, said so, its choices away still, redrawn at its minute",
+        const steersHeld = Sessions.steered.length;
+        if (drawnBefore.length > 1)
+            drawnBefore[1].run();
+        expect("a choice drawn before it, run while it's on its way, sends nothing",
+            Sessions.steered.length === steersHeld && Sessions.held.length === 1
+                && now.lookAnswers.s?.label === "Keep It",
+            JSON.stringify([Sessions.steered.length - steersHeld, now.lookAnswers.s]));
+        aged(60 * 60 * 1000);
+        expect("unheard an hour on, said so, its choices away still, nothing left to redraw",
             secondRow()?.side === "Keep It not answered yet \u00b7 no answer"
-                && answers().length === 0 && now.answersDue > 53000 && now.answersDue <= 54000,
+                && answers().length === 0 && now.answersDue === -1,
             JSON.stringify([secondRow()?.side, answers().length, now.answersDue]));
-        aged(55 * 1000);
-        const later = answers().find(act => act.key === "verb:on:look:answer:s:Roll It Back");
-        expect("past its minute, its choices back, nothing left to redraw",
-            later !== undefined && now.answersDue === -1,
-            JSON.stringify([answers().map(act => act.key), now.answersDue]));
-        // Each held word given by a plain call: an optional call of one
-        // read from the stand-in's list crashed the shell here (2026-11-23).
-        const heard = (at, put) => {
-            const then = Sessions.held[at];
-            if (typeof then === "function")
-                then(put);
-        };
-        if (later !== undefined)
-            later.run();
-        heard(0, false);
-        expect("the earlier answer's late refusal leaves the newer one alone",
-            now.lookAnswers.s?.label === "Roll It Back" && now.lookAnswers.s?.failed === undefined
-                && Sessions.held.length === 2,
-            JSON.stringify([now.lookAnswers.s, Sessions.held.length]));
-        heard(1, true);
-        expect("and its own late word takes it, nothing left to redraw",
-            now.lookAnswers.s?.taken === true && now.answersDue === -1,
-            JSON.stringify([now.lookAnswers.s, now.answersDue]));
+        heard(0, false, null);
+        expect("the node gone before saying, said so, its choices away, as it may have gone",
+            secondRow()?.side === "Keep It sent \u00b7 the node went before saying it took it"
+                && answers().length === 0,
+            JSON.stringify([secondRow()?.side, answers().length]));
+        // An answer since replaced, as by a shell answered again, hears its
+        // late word change nothing.
+        Sessions.held = [];
+        now.lookAnswers = {};
+        const drawnAgain = answers();
+        if (drawnAgain.length > 0)
+            drawnAgain[0].run();
+        const newer = { label: "Roll It Back", at: Date.now(), sent: -1 };
+        now.lookAnswers = { s: newer };
+        heard(0, true, { steered: { machine: "here" } });
+        expect("a late word for an answer since replaced leaves the newer one alone",
+            JSON.stringify(now.lookAnswers.s) === JSON.stringify(newer),
+            JSON.stringify(now.lookAnswers.s));
         Sessions.holds = false;
         Sessions.held = [];
         now.lookAnswers = {};

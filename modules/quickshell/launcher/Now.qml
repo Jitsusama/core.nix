@@ -1302,9 +1302,12 @@ Provider {
     // failed } }`, each shown as given while the node is asked (Looks.js's
     // answering), then, once it took it, in History (Looks.js's taken), or
     // said not to have gone (Looks.js's unanswered). Replaced whole, so
-    // what reads it hears, and again as each side's time comes, so one
-    // shown on an idle For You changes when it should (answersLapse).
+    // what reads it hears, and again as its 5 s comes, so one shown on an
+    // idle For You changes when it should (answersLapse).
     property var lookAnswers: ({})
+    // How many answers have been sent, each answer's `sent` its count, so
+    // two are told apart however close in time.
+    property int answersSent: 0
 
     onLookAnswersChanged: {
         const wait = Looks.answersChange(lookAnswers, Date.now());
@@ -1335,35 +1338,53 @@ Provider {
     // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
     // leaves what waits at once. One with nobody to tell, that the node
-    // didn't say it took, or that no word came for, says so at its side
-    // (Looks.js's unanswered), and the journal says why, its choices back.
-    // An answer heard after Joel answered again is the older one's, so it
-    // changes nothing (`sent`).
+    // refused or went before saying it took, or that no word came for, says
+    // so at its side (Looks.js's unanswered), the journal saying why where
+    // a word came. Its choices come back only where nobody was told or the
+    // node refused (Looks.js's awaiting), and one run while an answer may
+    // still reach its session, from acts drawn before it was given, sends
+    // nothing. A word for an answer since replaced changes nothing (`sent`).
     function answerLook(one, choice) {
-        const sent = Date.now();
-        const told = Looks.answer(one, choice, lookCell(one), sent);
+        if (Looks.awaiting(one, lookAnswers)) {
+            console.warn(`Now: not sending ${JSON.stringify(choice.label)} to look`
+                + ` ${JSON.stringify(one.id)}, whose answer may still reach its session`);
+            return;
+        }
+        answersSent += 1;
+        const sent = answersSent;
+        const at = Date.now();
+        const told = Looks.answer(one, choice, lookCell(one), at);
         if (told === null) {
             console.warn(`Now: nobody to tell the answer to look ${JSON.stringify(one.id)}:`
                 + ` address ${JSON.stringify(one.address ?? null)},`
                 + ` quest ${JSON.stringify(one.quest ?? null)}`);
             lookAnswers = Object.assign({}, lookAnswers, { [one.id]: { label: choice.label,
-                at: sent, sent: sent, failed: "nobody" } });
+                at: at, sent: sent, failed: "nobody" } });
             return;
         }
         lookAnswers = Object.assign({}, lookAnswers,
-            { [one.id]: { label: choice.label, at: sent, sent: sent } });
-        Sessions.steer(told.address, told.steer, put => {
+            { [one.id]: { label: choice.label, at: at, sent: sent } });
+        // The node's answer is none where it went before answering, the
+        // steer perhaps already in the session's inbox (Daemon.qml's gone),
+        // or else what it said, a refusal where it didn't put it.
+        Sessions.steer(told.address, told.steer, (put, answer) => {
             const left = Object.assign({}, provider.lookAnswers);
             if (left[one.id]?.sent !== sent)
                 return;
+            const dropped = !put && (answer === null || answer === undefined);
             if (put) {
                 left[one.id] = Object.assign({}, left[one.id], { taken: true });
-            } else {
-                console.warn(`Now: the node didn't say it took the answer to look`
+            } else if (dropped) {
+                console.warn(`Now: the node went before saying it took the answer to look`
                     + ` ${JSON.stringify(one.id)} for ${JSON.stringify(told.address)}`);
-                left[one.id] = { label: choice.label, at: Date.now(), sent: sent,
-                    failed: "untaken" };
+            } else {
+                console.warn(`Now: the node refused the answer to look`
+                    + ` ${JSON.stringify(one.id)} for ${JSON.stringify(told.address)}:`
+                    + ` ${JSON.stringify(answer?.error?.message ?? "")}`);
             }
+            if (!put)
+                left[one.id] = { label: choice.label, at: Date.now(), sent: sent,
+                    failed: dropped ? "dropped" : "untaken" };
             provider.lookAnswers = left;
         });
     }
@@ -1446,11 +1467,19 @@ Provider {
         return one.quest ? WaitingOnYou.ownerOf(one.quest) : null;
     }
 
-    // The choices a look offers while it waits and no answer given may yet
-    // reach its session (Looks.js's awaiting).
+    // The names of the launcher's own acts on a look, which neither its act
+    // nor a choice may pass for (LookForm.js's actOf and poses).
+    readonly property var lookActNames: ["verb:on:look:open", "verb:on:look:answer",
+        "verb:on:look:clear", "verb:on:waiting:go", "verb:on:waiting:explain",
+        "verb:agent:talk"].map(id => Words.name(id))
+
+    // The choices a look offers while it waits and no answer given may have
+    // reached its session (Looks.js's awaiting), but for one named as the
+    // launcher's own acts are, which a look's writer could word to pass for
+    // Clear It.
     function lookChoices(one, now) {
-        return one.state === "waiting" && !Looks.awaiting(one, lookAnswers, now)
-            ? one.offers : [];
+        return one.state === "waiting" && !Looks.awaiting(one, lookAnswers)
+            ? one.offers.filter(choice => !LookForm.poses(choice.label, lookActNames)) : [];
     }
 
     // A look's row: its title, who asks in its note, its kind's mark, and
@@ -1500,9 +1529,7 @@ Provider {
             // What Joel presses, in the look's own words where it says them;
             // the verb stays the launcher's, since the foot and the : line
             // read a verb as what an act does, never a look's to choose.
-            name: LookForm.actOf(one, ["verb:on:look:open", "verb:on:look:answer",
-                "verb:on:look:clear", "verb:on:waiting:go", "verb:on:waiting:explain",
-                "verb:agent:talk"].map(id => Words.name(id))) || Words.name(opens),
+            name: LookForm.actOf(one, provider.lookActNames) || Words.name(opens),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,

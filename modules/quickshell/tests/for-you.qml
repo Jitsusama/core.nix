@@ -445,8 +445,20 @@ QtObject {
                 LookForm.actOf(second({ act: "Roll It Back\u2060" })),
                 LookForm.actOf(second({ act: "Clear\u00a0It" }), ["Clear It"]),
                 LookForm.actOf(second({ act: "Clear It\u200b!" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Clear\u3164It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Cle\u034far It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Clear\u2800It" }), ["Clear It"]),
                 LookForm.actOf(second({ act: "\u200b" }))],
-            ["", "", "", "", "", ""]);
+            ["", "", "", "", "", "", "", "", ""]);
+        // A choice can't pass for one of the launcher's own acts either, since
+        // pressing it to clear a look would answer it.
+        expect("a choice named as one of the launcher's own acts poses, however written",
+            [LookForm.poses("Clear It", ["Clear It", "Talk"]),
+                LookForm.poses(" clear\u00a0it.", ["Clear It"]),
+                LookForm.poses("Talk\u200b", ["Clear It", "Talk"]),
+                LookForm.poses("Keep It", ["Clear It", "Talk"]),
+                LookForm.poses("Clear It Away", ["Clear It"])],
+            [true, true, true, false, false]);
         expect("it asks back wanting a choice or his words, or offering choices, in the second"
             + " form only",
             [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },
@@ -515,41 +527,45 @@ QtObject {
             [Looks.answering(choosing, given, now + 4 * 1000),
                 Looks.answering(choosing, given, now + 6 * 1000),
                 Looks.answering(choosing, {}, now)], ["Posted", "", ""]);
-        // An answer nobody could be told, that the node didn't say it took,
-        // or that no word came for in 5 s (docs/design.md), says so for a
-        // minute, rather than its choices just coming back (Joel,
-        // 2026-11-22: "to in any way follow through").
+        // An answer nobody could be told, that the node refused or went before
+        // saying it took, or that no word came for in 5 s (docs/design.md),
+        // says so until he answers again, an hour on too, rather than its
+        // choices just coming back (Joel, 2026-11-22: "to in any way follow
+        // through").
         const failed = how => ({ P: { label: "Posted", at: now, failed: how } });
-        expect("an answer that may not have gone, said so for a minute, and never as given",
-            [Looks.unanswered(choosing, failed("nobody"), now + 59 * 1000),
+        const hourOn = now + 60 * 60 * 1000;
+        expect("an answer that may not have gone, said so an hour on, and never as given",
+            [Looks.unanswered(choosing, failed("nobody"), hourOn),
                 Looks.unanswered(choosing, failed("untaken"), now),
-                Looks.unanswered(choosing, failed("nobody"), now + 61 * 1000),
+                Looks.unanswered(choosing, failed("dropped"), hourOn),
                 Looks.unanswered(choosing, given, now + 4 * 1000),
                 Looks.unanswered(choosing, given, now + 6 * 1000),
-                Looks.unanswered(choosing, given, now + 61 * 1000),
+                Looks.unanswered(choosing, given, hourOn),
                 Looks.unanswered(choosing, { P: { label: "Posted", at: now, taken: true } },
                     now + 6 * 1000),
                 Looks.answering(choosing, failed("nobody"), now),
                 Looks.unanswered(Object.assign({}, choosing, { state: "resolved" }), given,
                     now + 6 * 1000)],
-            ["nobody", "untaken", "", "", "unheard", "", "", "", ""]);
-        // While an answer may yet reach its session its choices stay away, so
-        // a second can't follow it and the session hear both.
-        expect("an answer that may yet go, for a minute, never once failed or taken",
-            [Looks.awaiting(choosing, given, now + 6 * 1000),
-                Looks.awaiting(choosing, given, now + 61 * 1000),
-                Looks.awaiting(choosing, failed("untaken"), now),
-                Looks.awaiting(choosing, { P: { label: "Posted", at: now, taken: true } }, now),
-                Looks.awaiting(Object.assign({}, choosing, { state: "resolved" }), given, now),
-                Looks.awaiting(choosing, {}, now)],
-            [true, false, false, false, false, false]);
-        expect("when an answer's side next changes, as its 5 s and its minute come, never"
-            + " once taken",
+            ["nobody", "untaken", "dropped", "", "unheard", "unheard", "", "", ""]);
+        // While an answer may have reached its session, or yet reach it, its
+        // choices stay away, so a second can't follow it and the session hear
+        // both: with no word yet, however long, or the node gone before
+        // saying. Only nobody to tell or the node's refusal brings them back.
+        expect("an answer that may have gone or yet go, never once refused or taken",
+            [Looks.awaiting(choosing, given),
+                Looks.awaiting(choosing, failed("dropped")),
+                Looks.awaiting(choosing, failed("untaken")),
+                Looks.awaiting(choosing, failed("nobody")),
+                Looks.awaiting(choosing, { P: { label: "Posted", at: now, taken: true } }),
+                Looks.awaiting(Object.assign({}, choosing, { state: "resolved" }), given),
+                Looks.awaiting(choosing, {})],
+            [true, true, false, false, false, false, false]);
+        expect("when an answer's side next changes, at its 5 s, never once said or taken",
             [Looks.answersChange(given, now + 1000), Looks.answersChange(given, now + 6 * 1000),
-                Looks.answersChange(given, now + 61 * 1000),
+                Looks.answersChange(failed("dropped"), now + 1000),
                 Looks.answersChange({ P: { label: "Posted", at: now, taken: true } }, now),
                 Looks.answersChange({}, now)],
-            [4000, 54000, null, null, null]);
+            [4000, null, null, null, null]);
         const saying = label => `answered ${label}`;
         // Once the node takes it, the look leaves what waits for History at once
         // (VKCF3Z, 2026-11-12), though its file waits until its session writes it.

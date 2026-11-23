@@ -1879,13 +1879,13 @@ works the same way everywhere.
   disconnected yet · no answer", the yet saying it may still come.
   The failure's mark and what didn't happen are in alert and the why
   muted, and short of room the why gives way from its end. A look's
-  answer is the one exception: it's said at the look's side for a
-  minute, "Keep It not answered yet · no answer", since Joel comes back
-  to a look later rather than at the next key, and its choices stay
-  away while the answer may still come, so the session never hears two.
-  Going into
-  one lists its acts, led by Return's own, which there does it and
-  closes, so
+  answer is the one exception: it's said at the look's side until Joel
+  answers again, "Keep It not answered yet · no answer", since he comes
+  back to a look later rather than at the next key. Its choices stay
+  away while the session may have heard it, or may yet, the node gone
+  before saying included, so the session never hears two; nobody to
+  tell, or the node's refusal, brings them back. Going into a row lists
+  its acts, led by Return's own, which there does it and closes, so
   there's no Ctrl+Return to learn (Joel, 2 November: "all of those ctrl
   keys do not feel very vim to me"); a power profile's stays even there,
   since a pick lost to a closing launcher goes unseen (Joel, 8

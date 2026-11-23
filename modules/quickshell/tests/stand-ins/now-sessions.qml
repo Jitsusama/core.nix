@@ -3,8 +3,9 @@
 // Joel, those parked, and those to reopen, each as the case gives;
 // Go To says the session it went to, as it was handed it, and each steer
 // is kept as it was sent, and said put or not as the case sets (puts),
-// or, while the case holds them (holds), kept unanswered (held) for it to
-// answer later, as a node slow to say comes back after other keys;
+// a node's answer given with it, a refusal where not put, or, while the
+// case holds them (holds), kept unanswered (held) for it to answer later,
+// as a node slow to say comes back after other keys;
 // and each Put It Off asked is kept as its session's address and the
 // ask it names, which the case sets by address (knowns).
 pragma Singleton
@@ -41,7 +42,7 @@ Singleton {
         if (then && holds)
             held = held.concat([then]);
         else if (then)
-            then(puts);
+            then(puts, puts ? { steered: { machine: "here" } } : { error: { message: "no" } });
     }
 
     function wanted(wants) {
