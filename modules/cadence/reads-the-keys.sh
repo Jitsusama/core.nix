@@ -9,9 +9,15 @@
 # A field's serde attributes, and its struct's, are pinned with it, as
 # serde can rename the key cadence reads without touching the field, and
 # a serde attribute the check can't read whole, as one split over lines
-# or inside another, fails it rather than reading as none.
+# or inside another, fails it rather than reading as none. Each struct
+# written must derive Serialize, as one written by hand, in any file, can
+# write any key its fields don't say, and a derived one can't be written
+# by hand beside it. The runtime folder is pinned from the variable each
+# side reads it from.
 # It takes cadence's unbilled.rs, unresolved.rs and watch/budgets.rs, then
-# spend-watch's collection.rs, detect.rs, standing.rs and status.rs.
+# spend-watch's collection.rs, detect.rs, standing.rs, status.rs,
+# config.rs and daemon.rs, then cadence's main.rs.
+# reads-the-keys-catches.sh shows it fails each rename it guards.
 set -euo pipefail
 
 unbilled=$1
@@ -21,10 +27,39 @@ collection=$4
 detect=$5
 standing=$6
 status=$7
+config=$8
+daemon=$9
+cadence=${10}
 
 line() {
   grep -qxF -- "$2" "$1" || {
     echo "$1 no longer has the line: $2" >&2
+    exit 1
+  }
+}
+
+# Two lines, the second straight after the first, as a folder and the
+# variable it is made from.
+follows() {
+  awk -v first="$2" -v second="$3" '
+    $0 == second && last == first { found = 1; exit }
+    { last = $0 }
+    END { exit !found }' "$1" || {
+    echo "$1 no longer has the line: $3, straight after: $2" >&2
+    exit 1
+  }
+}
+
+# A struct whose derive, among the attributes just above its opening
+# line, names Serialize, on one line.
+derived() {
+  awk -v open="pub struct $2 {" '
+    $0 == open { found = 1; exit }
+    /^[[:space:]]*#\[derive\((.*,)?[[:space:]]*(serde::)?Serialize[[:space:]]*[,)]/ { ok = 1; next }
+    /^[[:space:]]*(#\[|\/\/)/ { next }
+    { ok = 0 }
+    END { exit !(found && ok) }' "$1" || {
+    echo "$1's $2 no longer derives Serialize, so a hand-written one may write its keys" >&2
     exit 1
   }
 }
@@ -38,6 +73,8 @@ within() {
   got=$(awk -v open="pub struct $2 {" -v want="$3" '
     function said() { printf "found:%s", attrs; found = 1; exit }
     /serde\(/ && !/^[[:space:]]*(\/\/|#\[serde\(.*\)\][[:space:]]*$)/ { unread = 1; exit }
+    /#\[[[:space:]]*serde/ && !/^[[:space:]]*#\[serde\(.*\)\][[:space:]]*$/ { unread = 1; exit }
+    /^[[:space:]]*serde[[:space:]]*(\(|$)/ { unread = 1; exit }
     $0 == open { if (want == "") said(); inside = 1; attrs = ""; next }
     inside && /^}/ { exit }
     /^[[:space:]]*(#\[|\/\/|$)/ {
@@ -77,7 +114,25 @@ line "$detect" 'pub const UNRESOLVED: &str = "unresolved";'
 line "$detect" '        format!("{UNRESOLVED}:{budget}"),'
 
 # budgets.json, written whole from spend-watch's Standing, of the version
-# cadence reads.
+# cadence reads, in spend-watch's own folder of the runtime directory,
+# where its daemon writes unless its config names another.
+follows "$config" '            None => std::env::var_os("XDG_RUNTIME_DIR")' \
+  '                .map(|dir| PathBuf::from(dir).join("spend-watch"))'
+line "$daemon" '    writer.write(&config.runtime()?, &shown, &collection, Some(&standing))?;'
+derived "$standing" Standing
+derived "$standing" Budget
+derived "$standing" Allowance
+for file in "$collection" "$detect" "$standing" "$status" "$config" "$daemon"; do
+  if grep -Eq \
+    '^[[:space:]]*impl(<[^>]*>)?[[:space:]]+([[:alnum:]_:]*::)?Serialize[[:space:]]+for ' \
+    "$file"; then
+    echo "$file writes Serialize by hand, whose keys this check can't read" >&2
+    exit 1
+  fi
+done
+follows "$cadence" '    let budgets = watch::budgets::gather(' \
+  '        std::env::var_os("XDG_RUNTIME_DIR")'
+line "$budgets" '    match std::fs::read_to_string(runtime.join("spend-watch/budgets.json")) {'
 line "$status" '        let path = runtime.join("budgets.json");'
 line "$status" '        budgets: Option<&Standing>,'
 line "$status" \

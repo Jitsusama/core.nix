@@ -174,6 +174,17 @@ pub fn standing(s: &Snapshot) -> Vec<Breach> {
         .collect()
 }
 
+/// A key for each allowance read in `s`, at its lowest level, so what's
+/// remembered of its window follows its reset on every read, not only
+/// while a level stands. None while no budget is watched.
+#[must_use]
+pub fn windows(s: &Snapshot) -> Vec<String> {
+    if s.budgets_unwatched.is_some() {
+        return Vec::new();
+    }
+    s.budgets.iter().map(|a| key(a, LEVELS[0])).collect()
+}
+
 /// The keys a breach at `key` stands for: an allowance's own and each
 /// level beneath it in the same window, so one told past 90% isn't told
 /// as new past 80% as it eases, and the unwatched alarm's own, so it's
@@ -183,36 +194,107 @@ pub fn stands_for(key: &str) -> Vec<String> {
     if key == UNWATCHED {
         return vec![UNWATCHED.to_owned()];
     }
-    // Read from the left, as a reset time holds colons of its own.
-    let mut parts = key
-        .strip_prefix("budget:")
-        .unwrap_or_default()
-        .splitn(4, ':');
-    let (Some(budget), Some(name), Some(level), Some(resets)) =
-        (parts.next(), parts.next(), parts.next(), parts.next())
-    else {
-        return Vec::new();
-    };
-    let Ok(level) = level.parse::<u32>() else {
+    let Some((allowance, level, resets)) = parts(key) else {
         return Vec::new();
     };
     LEVELS
         .iter()
         .filter(|&&beneath| beneath <= level)
-        .map(|beneath| format!("budget:{budget}:{name}:{beneath}:{resets}"))
+        .map(|beneath| format!("budget:{allowance}{beneath}:{resets}"))
         .collect()
 }
 
-/// An allowance's key at a level. Its window is named by the hour it
-/// resets in, as a plan's feed reports a reset to the second, worked out
-/// at each read, and a second's drift would read as a new window. A colon
-/// in a budget's or an allowance's name reads as a dot, as `stands_for`
-/// splits the key on colons.
+/// How far one read of an allowance's reset may stand from the last and
+/// still name one window: a plan's feed works out each reset at its read,
+/// so one window's drifts by seconds, while an allowance's windows are
+/// hours apart.
+const SAME_WINDOW_S: i64 = 5 * 60;
+/// How far a reset may stand from a remembered whole hour and name its
+/// window: keys written before resets were kept to the second named a
+/// window by its reset rounded to the hour, so one standing at an upgrade
+/// keeps its window told. A reset that rounded to the hour stood within
+/// half an hour of it, and the next read within one drift of that reset,
+/// still hours short of an allowance's next window.
+const ROUNDED_TO_HOUR_S: i64 = 30 * 60 + SAME_WINDOW_S;
+
+/// Where `key`'s window is remembered under resets read earlier, each key
+/// of that window in `remembered`, under every reset that matches, beside
+/// the one it is remembered as now, so a window told once isn't told again
+/// as its reset drifts. Each read is matched to the last rather than the
+/// first, so a reset that creeps one way over a window's life stays its
+/// window while it is read; through a stretch nothing is read, as a
+/// sleep, a creep past `SAME_WINDOW_S` is told again, which a plan's feed,
+/// whose reset jitters by under a second, never does. No rounding keeps
+/// every drift to one side of an edge, wherever the edge falls, so the
+/// reset is matched instead. Empty where it is remembered as it reads, or
+/// isn't remembered.
+#[must_use]
+pub fn moved<'a>(
+    key: &str,
+    remembered: impl IntoIterator<Item = &'a str>,
+) -> Vec<(String, String)> {
+    let Some((allowance, _, resets)) = parts(key) else {
+        return Vec::new();
+    };
+    let Some(at) = instant(resets) else {
+        return Vec::new();
+    };
+    let windows: Vec<(&str, u32, &str)> = remembered
+        .into_iter()
+        .filter_map(parts)
+        .filter(|(other, _, _)| *other == allowance)
+        .collect();
+    if windows.iter().any(|(_, _, was)| *was == resets) {
+        return Vec::new();
+    }
+    let same = |was: &&str| {
+        instant(was).is_some_and(|was| {
+            let apart = (was - at).abs();
+            apart <= SAME_WINDOW_S || (was % 3600 == 0 && apart <= ROUNDED_TO_HOUR_S)
+        })
+    };
+    windows
+        .iter()
+        .filter(|(_, _, was)| same(was))
+        .map(|(_, level, was)| {
+            (
+                format!("budget:{allowance}{level}:{was}"),
+                format!("budget:{allowance}{level}:{resets}"),
+            )
+        })
+        .collect()
+}
+
+/// A budget's key read from the left, as a reset time holds colons of its
+/// own: its budget and allowance, as `budget:allowance:`, its level and its
+/// reset. None for another alarm's key.
+fn parts(key: &str) -> Option<(&str, u32, &str)> {
+    let rest = key.strip_prefix("budget:")?;
+    let mut colons = rest.match_indices(':').map(|(at, _)| at);
+    let (_, named) = (colons.next()?, colons.next()?);
+    let (allowance, rest) = rest.split_at(named + 1);
+    let (level, resets) = rest.split_once(':')?;
+    Some((allowance, level.parse().ok()?, resets))
+}
+
+/// A reset as seconds since the epoch, when it's a time.
+fn instant(resets: &str) -> Option<i64> {
+    resets
+        .parse::<jiff::Timestamp>()
+        .ok()
+        .map(jiff::Timestamp::as_second)
+}
+
+/// An allowance's key at a level. Its window is named by when it resets,
+/// to the second, which `moved` matches to the window already told
+/// as a plan's feed works it out afresh at each read. A colon in a
+/// budget's or an allowance's name reads as a dot, as `stands_for` splits
+/// the key on colons.
 fn key(a: &Allowance, level: u32) -> String {
     let window = a.resets.as_deref().map_or_else(String::new, |resets| {
         resets
             .parse::<jiff::Timestamp>()
-            .and_then(|at| at.round(jiff::Unit::Hour))
+            .and_then(|at| at.round(jiff::Unit::Second))
             .map_or_else(|_| resets.to_owned(), |at| at.to_string())
     });
     let bare = |name: &str| name.replace(':', ".");
@@ -325,17 +407,102 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_keyed_by_the_hour_it_resets_in() {
-        for resets in [
-            "2026-11-21T05:00:00Z",
-            "2026-11-21T04:59:59.902Z",
-            "2026-11-21T05:00:01Z",
+    fn a_window_is_keyed_by_its_reset_and_matched_to_the_one_told() {
+        assert_eq!(
+            keys(&said(&[(
+                "day",
+                Some(0.95),
+                Some("2026-11-21T04:59:58.6Z")
+            )])),
+            ["budget:proxy:day:90:2026-11-21T04:59:59Z"],
+            "a reset wasn't keyed to its nearest second"
+        );
+        let told = [
+            "budget:proxy:day:80:2026-11-21T04:59:59Z",
+            "budget:proxy:day:90:2026-11-21T04:59:59Z",
+            "budget:proxy:five:80:2026-11-21T16:29:59Z",
+            "budget:proxy:edge:80:2026-11-21T10:00:30Z",
+            // As keys were written before resets were kept to the second.
+            "budget:proxy:hour:80:2026-11-21T17:00:00Z",
+            // A window split across two hours by the old rounding.
+            "budget:proxy:split:80:2026-11-21T16:00:00Z",
+            "budget:proxy:split:90:2026-11-21T17:00:00Z",
+        ];
+        let moves = |pairs: &[(&str, &str)]| -> Vec<(String, String)> {
+            pairs
+                .iter()
+                .map(|(was, now)| ((*was).to_owned(), (*now).to_owned()))
+                .collect()
+        };
+        let none = moves(&[]);
+        for (key, moved_as) in [
+            // A reset drifting across the hour or the half hour moves its
+            // window's every level, a level past the one told included.
+            (
+                "budget:proxy:day:80:2026-11-21T05:00:01Z",
+                moves(&[
+                    (
+                        "budget:proxy:day:80:2026-11-21T04:59:59Z",
+                        "budget:proxy:day:80:2026-11-21T05:00:01Z",
+                    ),
+                    (
+                        "budget:proxy:day:90:2026-11-21T04:59:59Z",
+                        "budget:proxy:day:90:2026-11-21T05:00:01Z",
+                    ),
+                ]),
+            ),
+            (
+                "budget:proxy:five:90:2026-11-21T16:30:01Z",
+                moves(&[(
+                    "budget:proxy:five:80:2026-11-21T16:29:59Z",
+                    "budget:proxy:five:80:2026-11-21T16:30:01Z",
+                )]),
+            ),
+            ("budget:proxy:day:80:2026-11-21T04:59:59Z", none.clone()),
+            // Five minutes is one window, a second past it the next.
+            (
+                "budget:proxy:edge:80:2026-11-21T10:05:30Z",
+                moves(&[(
+                    "budget:proxy:edge:80:2026-11-21T10:00:30Z",
+                    "budget:proxy:edge:80:2026-11-21T10:05:30Z",
+                )]),
+            ),
+            ("budget:proxy:edge:80:2026-11-21T10:05:31Z", none.clone()),
+            // A window remembered by its hour stays told within half an
+            // hour and one drift of it.
+            (
+                "budget:proxy:hour:90:2026-11-21T16:30:01Z",
+                moves(&[(
+                    "budget:proxy:hour:80:2026-11-21T17:00:00Z",
+                    "budget:proxy:hour:80:2026-11-21T16:30:01Z",
+                )]),
+            ),
+            ("budget:proxy:hour:80:2026-11-21T17:35:01Z", none.clone()),
+            // Half an hour from each of its two hours exactly, every level
+            // under each moves.
+            (
+                "budget:proxy:split:80:2026-11-21T16:30:00Z",
+                moves(&[
+                    (
+                        "budget:proxy:split:80:2026-11-21T16:00:00Z",
+                        "budget:proxy:split:80:2026-11-21T16:30:00Z",
+                    ),
+                    (
+                        "budget:proxy:split:90:2026-11-21T17:00:00Z",
+                        "budget:proxy:split:90:2026-11-21T16:30:00Z",
+                    ),
+                ]),
+            ),
+            ("budget:proxy:day:80:2026-11-22T05:00:00Z", none.clone()),
+            ("budget:other:day:80:2026-11-21T05:00:00Z", none.clone()),
+            ("budget:proxy:weekly:90:", none.clone()),
+            (UNWATCHED, none.clone()),
         ] {
             assert_eq!(
-                keys(&said(&[("day", Some(0.95), Some(resets))])),
-                ["budget:proxy:day:90:2026-11-21T05:00:00Z"],
-                "a reset at {resets} wasn't keyed by its hour, so a second's drift \
-                 would tell a window again"
+                moved(key, told),
+                moved_as,
+                "{key} was matched to the wrong window: a drift would tell one again, or \
+                 the next window or another budget's would go untold"
             );
         }
         assert_eq!(
@@ -343,6 +510,55 @@ mod tests {
             ["budget:proxy:day:90:not a time"],
             "a reset that isn't a time lost its window"
         );
+    }
+
+    #[test]
+    fn a_window_remembered_by_its_hour_moves_from_a_read_a_drift_past_the_half_hour() {
+        let told = [
+            "budget:proxy:rim:90:2026-11-21T16:00:00Z",
+            "budget:proxy:late:80:2026-11-21T17:00:00Z",
+            // A window split across two hours by the old rounding.
+            "budget:proxy:torn:80:2026-11-21T16:00:00Z",
+            "budget:proxy:torn:90:2026-11-21T17:00:00Z",
+        ];
+        let pair = |was: &str, now: &str| (was.to_owned(), now.to_owned());
+        for (key, moved_as) in [
+            (
+                "budget:proxy:rim:90:2026-11-21T16:30:01Z",
+                vec![pair(
+                    "budget:proxy:rim:90:2026-11-21T16:00:00Z",
+                    "budget:proxy:rim:90:2026-11-21T16:30:01Z",
+                )],
+            ),
+            (
+                "budget:proxy:late:80:2026-11-21T16:29:59Z",
+                vec![pair(
+                    "budget:proxy:late:80:2026-11-21T17:00:00Z",
+                    "budget:proxy:late:80:2026-11-21T16:29:59Z",
+                )],
+            ),
+            // Split, it moves whole from a read a second past the half hour.
+            (
+                "budget:proxy:torn:90:2026-11-21T16:30:01Z",
+                vec![
+                    pair(
+                        "budget:proxy:torn:80:2026-11-21T16:00:00Z",
+                        "budget:proxy:torn:80:2026-11-21T16:30:01Z",
+                    ),
+                    pair(
+                        "budget:proxy:torn:90:2026-11-21T17:00:00Z",
+                        "budget:proxy:torn:90:2026-11-21T16:30:01Z",
+                    ),
+                ],
+            ),
+        ] {
+            assert_eq!(
+                moved(key, told),
+                moved_as,
+                "{key} wasn't matched to the window its hour remembers, so it would be told \
+                 again at the upgrade"
+            );
+        }
     }
 
     #[test]
