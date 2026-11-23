@@ -96,6 +96,65 @@ let
       ++ launch.words config host heapMb rest
     );
 
+  # A conversation's allocator tuning: its realm's, with the trim threshold
+  # beside it unless the realm names its own. 128 KiB is glibc's own
+  # starting trim threshold, but glibc raises it, and the size it maps
+  # apart, each time a big block is freed, to 64 MB and 32 MB, so a long
+  # conversation keeps what it once grew to. Naming it fixes both where
+  # they start, so freed heap goes back to the system. Measured on 22
+  # November in four runs of 150 prompts each way, a conversation held 71
+  # MB less resident and swapped on average (493 to 422 MB) and 113 MB less
+  # at the end (605 to 492 MB), for 0.2% more instructions. The harness
+  # keeps GLIBC_TUNABLES, a realm's own value too, from every command and
+  # subagent a conversation runs (host/service/program.ts, HOST_ONLY, from
+  # its 23 November main on), as a fixed threshold would pin their mmap
+  # threshold too; a realm's own MALLOC_TRIM_THRESHOLD_ reaches them, as it
+  # does a plain pi's. Unlike a plain pi's, they never get the login's
+  # GLIBC_TUNABLES or MALLOC_TRIM_THRESHOLD_ (loginAllocator below), so an
+  # allocator setting meant for a hosted conversation's commands goes in its
+  # realm as MALLOC_TRIM_THRESHOLD_, or in the command itself. The hosts
+  # themselves aren't given it, so a conversation a host holds in its own
+  # process, rather than one of its own, keeps glibc's growing thresholds.
+  # A realm names its own threshold in GLIBC_TUNABLES or in glibc's
+  # older MALLOC_TRIM_THRESHOLD_, and then nothing is added, since which of
+  # two glibc reads last is not the realm's to choose; what it names already
+  # reaches the conversation with the rest of its environment.
+  trimmedTunables =
+    host:
+    let
+      trim = "glibc.malloc.trim_threshold=131072";
+      own = host.environment.GLIBC_TUNABLES or "";
+      named =
+        host.environment ? MALLOC_TRIM_THRESHOLD_ || lib.hasInfix "glibc.malloc.trim_threshold=" own;
+    in
+    lib.optionalAttrs (!named) {
+      GLIBC_TUNABLES = if own == "" then trim else "${own}:${trim}";
+    };
+
+  # The allocator variables a conversation's own process takes from the
+  # login rather than its realm or its unit, which it is kept from: a
+  # login's GLIBC_TUNABLES where its realm names its threshold only as
+  # MALLOC_TRIM_THRESHOLD_, and a login's MALLOC_TRIM_THRESHOLD_ where its
+  # realm names none, which would sit beside the added threshold with
+  # glibc's read order deciding between them. Neither reaches the
+  # conversation's commands either, since they inherit its environment.
+  # systemd applies UnsetEnvironment after every Environment=, so a name
+  # the realm or this unit sets must stay off the list or its own value
+  # goes too; and one of the two that neither the realm nor the trim sets
+  # is dropped even when added to the unit elsewhere, so a conversation's
+  # allocator settings come only from its realm's environment. Dropping a
+  # login's GLIBC_TUNABLES drops every tunable it names, not only the
+  # allocator's.
+  loginAllocator =
+    host:
+    let
+      set = host.environment // trimmedTunables host;
+    in
+    lib.filter (name: !(set ? ${name})) [
+      "GLIBC_TUNABLES"
+      "MALLOC_TRIM_THRESHOLD_"
+    ];
+
   # The environment a host and a conversation's own process share, quoted,
   # as systemd splits an unquoted entry at its spaces; host-launch.nix says
   # what `many` and `own` are.
@@ -202,13 +261,16 @@ let
           # It says nothing to systemd: its host follows it on its socket.
           Type = "exec";
           ExecStart = startOf host host.conversationHeapMb [ "--child" ];
-          Environment = environmentOf realm host false {
-            PI_HOST_CHILD_KEY = key;
-            PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
-            # The stop limit below, which it parks within.
-            PI_HOST_STOP_USEC = toString (conversationStopSeconds * 1000000);
-          };
-          UnsetEnvironment = unsetEnvironment;
+          Environment = environmentOf realm host false (
+            {
+              PI_HOST_CHILD_KEY = key;
+              PI_HOST_CHILD_SOCKET = "%t/pi-host/${key}.d/%i.sock";
+              # The stop limit below, which it parks within.
+              PI_HOST_STOP_USEC = toString (conversationStopSeconds * 1000000);
+            }
+            // trimmedTunables host
+          );
+          UnsetEnvironment = unsetEnvironment ++ loginAllocator host;
           # Its host decides what comes after an ending: a crash's
           # conversation is resumed by the host in a new process, so systemd
           # never restarts one, and no watchdog kills one for a long turn.
@@ -460,6 +522,21 @@ in
               host's unit clears since each could make its node run code:
               evaluation refuses a realm giving one, and a command that needs
               one sets it itself.
+
+              Each conversation's own process is given GLIBC_TUNABLES with
+              glibc.malloc.trim_threshold=131072 beside the realm's own value,
+              so it hands freed heap back; the login's own GLIBC_TUNABLES,
+              with every tunable it names, and MALLOC_TRIM_THRESHOLD_ are not
+              read there, nor by its commands, and whichever of the two neither
+              the realm nor the trim sets is dropped even when set on its unit
+              elsewhere. A realm that names its own threshold, in GLIBC_TUNABLES
+              or MALLOC_TRIM_THRESHOLD_, keeps it alone; a large one, such as
+              4294967295, turns the trim off. The conversation's commands get
+              the realm's MALLOC_TRIM_THRESHOLD_ but not its GLIBC_TUNABLES,
+              which the harness keeps from them from its 23 November main on.
+              Any named threshold also holds the size glibc maps apart at its
+              128 KiB start, so none gives back glibc's own growing
+              thresholds.
             '';
           };
         };

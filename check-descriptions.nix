@@ -3121,7 +3121,10 @@
     socket in the slot systemd names under the host's runtime folder, with the host's
     environment, proof, node, frame flag and SSH agent, the browser its account names in
     place of Chromium where the machine names one, but a plain pi's pools, its realm's
-    conversation heap, its inspector shut and the variables that load code cleared, in
+    conversation heap, its inspector shut and the variables that load code cleared, glibc's
+    trim threshold fixed at 128 KiB beside its realm's own allocator tuning, unless the realm
+    names its own threshold there or in glibc's older variable, neither read from the login
+    where neither the realm nor the unit sets it, the realm's tuning kept for its hosts too, in
     agents.slice slowed past 12 GB, no core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
@@ -3138,7 +3141,7 @@
     kernel killing one of its commands for memory, watched by a two-minute watchdog whose abort is followed by a kill 10 s
     on, given 20 minutes to start and 150 s to park its conversations
     when stopped and told that limit, its main process signalled first and what is left ended
-    with it, keeping no core, sixteen codemode workers and
+    with it, keeping no core, given no conversation's allocator tuning, sixteen codemode workers and
     sixteen libuv threads for its conversations to share, Chromium as its browser, the account's
     home realm, node's heap limit set to its realm's heapMb,
     --experimental-async-context-frame after --disable-sigusr1 only where its realm asks for V8's
