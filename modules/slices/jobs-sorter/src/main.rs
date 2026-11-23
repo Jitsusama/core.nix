@@ -1766,8 +1766,21 @@ fn fit_floors(
         // A child that can't be read has most likely just gone, so it claims nothing, while a
         // unit that can't be read counts as holding its whole floor, below.
         let claim = |path: &PathBuf| Some((holds::current(path)?, memory_low(path)?));
-        let room = budget::room(low, windows.iter().filter_map(claim));
-        let strays = budget::claimed(strays.iter().filter_map(claim));
+        let windows: Vec<(u64, u64)> = windows.iter().filter_map(claim).collect();
+        // A scope counts as a window by its name alone, and the sorter gives a window no more
+        // than focus::FLOOR, so what one claims past that is claimed as a stray's is, after the
+        // units Joel is at: an agent naming a scope as a window and asking for max would
+        // otherwise take their floors.
+        let room = budget::room(
+            low,
+            windows
+                .iter()
+                .map(|&(current, floor)| (current, floor.min(focus::FLOOR))),
+        );
+        let past = windows
+            .iter()
+            .map(|&(current, floor)| (current.min(floor).saturating_sub(focus::FLOOR), u64::MAX));
+        let strays = budget::claimed(strays.iter().filter_map(claim).chain(past));
         let signs: Vec<hosts::Signs> = mine.iter().map(|&at| ranked[at].signs).collect();
         let order: Vec<usize> = budget::order(&signs)
             .into_iter()
@@ -4676,6 +4689,40 @@ mod tests {
         assert_eq!(
             ranked[0].rank.floor, last,
             "a floor set within a step of what fits is kept, its own floor counted once"
+        );
+    }
+
+    #[test]
+    fn a_scope_named_like_a_window_claims_no_more_than_a_windows_floor() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        // A scope any agent could start, named as a window, holding 3 GiB under a floor of max.
+        let slice = slice_with(
+            "fit-window-max",
+            4096 * MIB,
+            &[
+                ("kitty-9-9.scope", 3072 * MIB, "max"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut ranked = [ranked_in(&slice, unit, 0, focus::FLOOR, viewed)];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut HashSet::new(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            ranked[0].rank.floor,
+            focus::FLOOR,
+            "the unit Joel is at keeps its floor: past a window's own, the scope claims as a \
+             stray does, after it"
         );
     }
 
