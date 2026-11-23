@@ -11,13 +11,14 @@
 #
 # macOS answers to name.local only while some service it advertises points
 # at the machine, and drops the name everywhere once none does. Remote
-# Login's ssh is often the only one, and launchd doesn't advertise it again
-# after mDNSResponder restarts, so a Mac can go unfound with every setting
-# right. A second job advertises the machine itself, as a workstation on
-# port 9, the way Avahi announces a Linux machine: it claims no service the
-# Mac may not run, and it can't clash with Remote Login's. dns-sd ends when
-# mDNSResponder goes away, so launchd starts it again and the name comes back
-# with the daemon. A Mac that declares no local name is left as it is.
+# Login's ssh is often the only one, and once mDNSResponder had restarted
+# launchd was seen not advertising it at all, so a Mac can go unfound with
+# every setting right. A second job advertises the machine itself, as a
+# workstation on port 9, the way Avahi announces a Linux machine: it claims
+# no service the Mac may not run, and it can't clash with Remote Login's.
+# dns-sd ends when mDNSResponder goes away, so launchd starts it again and
+# the name comes back with the daemon. A Mac that declares no local name is
+# left as it is.
 {
   config,
   lib,
