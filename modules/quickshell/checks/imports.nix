@@ -310,7 +310,10 @@
     "launcher/Sounds.js"
     "launcher/Targets.js"
   ];
-  "launcher/Spend.qml" = [ "Fuzzy.js" ];
+  "launcher/Spend.qml" = [
+    "Fuzzy.js"
+    "launcher/SpendNow.js"
+  ];
   "launcher/StartsStopped.js" = [ "launcher/Sprouting.js" ];
   "launcher/Stepped.js" = [ "launcher/Order.js" ];
   "launcher/Subnets.js" = [
