@@ -23,6 +23,8 @@ use super::{
     stand_in, the_one_reply_in, until_decided_in,
 };
 
+mod cut;
+
 /// Where the reader over a gateway keeps all it writes, under its home.
 const OWN: &str = "state/pineapple-gateway";
 

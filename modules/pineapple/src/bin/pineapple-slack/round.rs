@@ -20,6 +20,9 @@ use slack_people::Account;
 
 use super::{LOOK_BACK, MICROS, MILLIS, SLACK_RESUMES_LIVE, millis, seconds};
 
+/// The safe word, as its search asks for it.
+const PHRASE: &str = "pineapple";
+
 /// What the reader acts with: where replies go, the words they say, and
 /// whether its stops, replies and resumes are only written down.
 pub(super) struct Reader {
@@ -61,9 +64,9 @@ pub(super) fn round(
     let tag = format!("<@{me}>");
     // A sign-in refused or missing for the first isn't asked for again; an
     // answer that couldn't be read is, so the other may still be heard.
-    let (phrase, tagged) = match ears.search("pineapple") {
+    let (phrase, tagged) = match ears.search(PHRASE, judged.back_to(PHRASE)) {
         Err(deaf @ Round::Deaf(Deafness::Refused | Deafness::NoSignIn)) => return deaf,
-        phrase => (phrase, ears.search(&tag)),
+        phrase => (phrase, ears.search(&tag, judged.back_to(&tag))),
     };
     let unread = Round::Deaf(Deafness::Unreadable);
     let (phrase, tagged, deaf) = match (phrase, tagged) {
@@ -101,6 +104,10 @@ pub(super) fn round(
         judge(ears, reader, account, state, &joel, message);
         judged.judged(message);
     }
+    // Only a search whose messages were all judged has read as far as
+    // they reach; one deaf gave none, so stays where it was.
+    judged.reached(PHRASE, phrase.last());
+    judged.reached(&tag, tagged.last());
     // judged.json's read_at says when Slack was last read whole, so a
     // round with one search deaf leaves it as it was. Only a gateway's
     // answers are ever half read, and in shadow the gateway reader keeps

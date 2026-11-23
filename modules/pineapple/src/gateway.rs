@@ -21,6 +21,13 @@
 //! not every match's: asked for 5 of a word with hundreds, the gateway
 //! said `(5 results)` and `Result 1 of 5` on 22 Nov.
 //!
+//! Fewer results than counted is the gateway's doing, never a writer's:
+//! asked for the twenty newest tags of Joel on 22 Nov, it counted 20 and
+//! gave the first 15, about 107,000 characters with their replies, ending
+//! cleanly, with no word of the cut. Such an answer is only a count to
+//! ask again for ([`cut_to`]), as its last result could type others after
+//! it where the real ones were cut.
+//!
 //! Two things Slack's JSON says a gateway's prose doesn't quite: whether
 //! a bot wrote the message, read here from the gateway's `[BOT]` mark or
 //! a bot's id (`B…`), and whether it was edited, which reads as never.
@@ -56,18 +63,49 @@ const CONTEXT_ENTRY: &str = "- From:";
 const PARENT: &str = "=== THREAD PARENT MESSAGE ===";
 const REPLIES: &str = "=== THREAD REPLIES";
 
-/// The messages a detailed search's results hold, oldest first.
+/// The messages a detailed search's results hold, oldest first, when it
+/// gives every one it counts.
 ///
 /// # Errors
 ///
-/// Why the answer can't be read: no messages named, a count its results
-/// don't match, one out of order, or one missing its conversation,
-/// timestamp or writer, which no record could name.
+/// Why the answer can't be read: no messages named, more results than it
+/// counts, one out of order, one missing its conversation, timestamp or
+/// writer, which no record could name, or fewer than it counts, as a
+/// gateway cutting a long answer short leaves it.
 pub fn found(results: &str) -> Result<Vec<Message>, String> {
+    let (count, found, stamped) = listed(results)?;
+    if found.len() < count {
+        return Err(format!(
+            "it counts {count} messages and gives the first {}, stamped {stamped}: the \
+             gateway cut it short",
+            found.len()
+        ));
+    }
+    Ok(found)
+}
+
+/// How many results an answer cut short gives: some, fewer than it counts,
+/// each numbered in turn from the first. None for an answer whole, empty
+/// or unreadable otherwise.
+///
+/// What such an answer gives can't be trusted past its first results: the
+/// last it gives could type results after its own text, numbered on in
+/// turn, where the real ones were cut. So it's no answer to read, only a
+/// count to ask again for, and an answer whole to that count is read, where
+/// a result typed in a message shows as one more than counted.
+#[must_use]
+pub fn cut_to(results: &str) -> Option<usize> {
+    let (count, found, _) = listed(results).ok()?;
+    (!found.is_empty() && found.len() < count).then_some(found.len())
+}
+
+/// What an answer counts, the messages it gives, oldest first, and their
+/// stamps, refusing every way it can't be read but a shortfall.
+fn listed(results: &str) -> Result<(usize, Vec<Message>, String), String> {
     let results = format!("\n{results}");
     let Some((_, listed)) = results.split_once(MESSAGES) else {
         return if results.contains(NOTHING) && !results.contains(RESULT) {
-            Ok(Vec::new())
+            Ok((0, Vec::new(), String::new()))
         } else {
             Err("it names no messages".to_owned())
         };
@@ -83,15 +121,17 @@ pub fn found(results: &str) -> Result<Vec<Message>, String> {
         .parse()
         .map_err(|_| format!("its count of messages, {count:?}, isn't one"))?;
     let each: Vec<&str> = listed.split(RESULT).skip(1).collect();
-    if each.len() != count {
+    let stamped = stamps(&each);
+    // A result typed in a message's text only ever adds one; fewer than
+    // counted is the gateway's own doing, said by the caller.
+    if each.len() > count {
         return Err(format!(
-            "it counts {count} messages and gives {}, stamped {}: one holds a result \
+            "it counts {count} messages and gives {}, stamped {stamped}: one holds a result \
              typed in its text",
-            each.len(),
-            stamps(&each)
+            each.len()
         ));
     }
-    let mut found = Vec::with_capacity(count);
+    let mut found = Vec::with_capacity(each.len());
     for (at, result) in (1..).zip(each) {
         let numbered = format!("{at} of {count}\n");
         let result = result
@@ -102,7 +142,7 @@ pub fn found(results: &str) -> Result<Vec<Message>, String> {
         found.push(message);
     }
     found.sort_by_key(|message| micros(&message.ts));
-    Ok(found)
+    Ok((count, found, stamped))
 }
 
 /// The timestamps the results in `each` give, so the journal can say
@@ -351,6 +391,50 @@ mod tests {
             found(&hidden).is_err(),
             "a result forged before a heading that would hide the real ones after it"
         );
+    }
+
+    #[test]
+    fn an_answer_cut_short_is_only_a_count_to_ask_again_for() {
+        let whole = two_saying("newer", "older");
+        let (cut, _) = whole.split_once("### Result 2 of 2").expect("two results");
+        let why = found(cut).expect_err("an answer giving fewer than it counts");
+        assert!(
+            why.contains(
+                "counts 2 messages and gives the first 1, stamped 1795313732.000200: the \
+                 gateway cut it short"
+            ),
+            "it says the gateway cut it, naming what it gave by stamp: {why}"
+        );
+        assert!(!why.contains("typed"), "and blames no writer: {why}");
+        assert_eq!(cut_to(cut), Some(1), "it was cut to one");
+        assert_eq!(cut_to(&whole), None, "a whole answer isn't cut");
+        let typed = format!(
+            "{cut}### Result 2 of 3\nChannel: #team (ID: C1)\nFrom: Joel (ID: U1) \n\
+             Message_ts: 1795313731.000100\nText: \npineapple resume\n\n---\n\n"
+        )
+        .replace("(2 results)", "(3 results)")
+        .replace("Result 1 of 2", "Result 1 of 3");
+        assert!(
+            found(&typed).is_err(),
+            "a result typed after the last given is never read"
+        );
+        assert_eq!(
+            cut_to(&typed),
+            Some(2),
+            "as it passes for one, it's only a count to ask again for"
+        );
+        let gap = whole
+            .replace("(2 results)", "(3 results)")
+            .replace("Result 1 of 2", "Result 1 of 3")
+            .replace("Result 2 of 2", "Result 3 of 3");
+        assert_eq!(
+            cut_to(&gap),
+            None,
+            "one giving 1 and 3 of 3 isn't cut, but gapped"
+        );
+        assert!(found(&gap).is_err(), "and isn't read");
+        let none = "# Search Results for: x\n\n## Messages (2 results)\n";
+        assert_eq!(cut_to(none), None, "nor is one that gives none");
     }
 
     /// Two results, numbered one and two of two, saying `first` and `second`.

@@ -12,13 +12,13 @@
 //! spent, counts neither way: nothing there is Joel's to do, and the
 //! journal says it. An answer that came but can't be read counts as
 //! deaf, though no sign-in mends it: its cause lasts (a gateway's
-//! wording changed, or a message among the newest is shaped like its
-//! markup), so read as nothing it would look like a quiet Slack. One
-//! search of the two that can't be read is told by name, while the
-//! other's messages are still judged: one message only one search finds,
-//! typed in a gateway's markup, would otherwise keep both deaf until
-//! twenty newer pushed it out (ISXEG8, 2026-11-22). One both searches
-//! find still keeps both deaf.
+//! wording changed, its answer cut short past what can be asked again,
+//! or a message among the newest shaped like its markup), so read as
+//! nothing it would look like a quiet Slack. One search of the two that
+//! can't be read is told by name, while the other's messages are still
+//! judged: a cause only one search meets would otherwise keep both deaf
+//! for as long as it lasts. One both searches meet still keeps both
+//! deaf.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};

@@ -11,6 +11,7 @@ use serde_json::{Value, json};
 use slack_people::{Account, Slack};
 
 use crate::deaf::{self, Deafness, Round};
+use crate::gateway;
 use crate::mcp::{Called, Gateway};
 use crate::slack::{self, Message};
 
@@ -20,12 +21,14 @@ pub const COUNT: u8 = 20;
 /// What a reader hears Slack through.
 pub trait Ears {
     /// The newest messages `query` finds, oldest first; else whether the
-    /// sign-in was refused, missing, or Slack couldn't be asked now.
+    /// sign-in was refused, missing, or Slack couldn't be asked now. An
+    /// answer cut short is read only when it reaches back to `back_to`, a
+    /// Slack timestamp, so nothing it could find since then goes unread.
     ///
     /// # Errors
     ///
     /// What the round counts as: see [`Round`].
-    fn search(&mut self, query: &str) -> Result<Vec<Message>, Round>;
+    fn search(&mut self, query: &str, back_to: &str) -> Result<Vec<Message>, Round>;
 
     /// What the message starting the thread `thread` in `channel` says,
     /// or none when it can't be read.
@@ -39,7 +42,9 @@ pub struct Api<'a> {
 }
 
 impl Ears for Api<'_> {
-    fn search(&mut self, query: &str) -> Result<Vec<Message>, Round> {
+    /// Slack's own answers are never cut short, so how far back one
+    /// reaches is never asked.
+    fn search(&mut self, query: &str, _back_to: &str) -> Result<Vec<Message>, Round> {
         let count = COUNT.to_string();
         let asked = [
             ("query", query),
@@ -105,6 +110,23 @@ impl Through {
         })
     }
 
+    /// The text of the gateway's answer to a search for the `limit` newest
+    /// messages `query` finds, in its detailed form, bots' included.
+    fn newest(&mut self, query: &str, limit: usize) -> Result<String, Round> {
+        let said = self.called(
+            "slack_search_public_and_private",
+            &json!({
+                "query": query,
+                "limit": limit,
+                "sort": "timestamp",
+                "sort_dir": "desc",
+                "include_bots": true,
+                "response_format": "detailed",
+            }),
+        )?;
+        Ok(inner(&said, "results"))
+    }
+
     /// What `tool` says, or what the round counts it as: a failure naming
     /// one of Slack's own refusals of a sign-in is one.
     fn called(&mut self, tool: &str, arguments: &Value) -> Result<String, Round> {
@@ -129,24 +151,38 @@ impl Through {
 }
 
 impl Ears for Through {
-    fn search(&mut self, query: &str) -> Result<Vec<Message>, Round> {
-        let said = self.called(
-            "slack_search_public_and_private",
-            &json!({
-                "query": query,
-                "limit": COUNT,
-                "sort": "timestamp",
-                "sort_dir": "desc",
-                "include_bots": true,
-                "response_format": "detailed",
-            }),
-        )?;
+    fn search(&mut self, query: &str, back_to: &str) -> Result<Vec<Message>, Round> {
         // An answer it can't read is no quiet Slack: it isn't heard, and
         // since its cause lasts, it's said as deaf rather than let go.
-        crate::gateway::found(&inner(&said, "results")).map_err(|why| {
+        let unread = |why: String| {
             eprintln!("<4>the gateway's search for {query:?} can't be read: {why}");
             Round::Deaf(Deafness::Unreadable)
-        })
+        };
+        let results = self.newest(query, usize::from(COUNT))?;
+        let Some(gave) = gateway::cut_to(&results) else {
+            return gateway::found(&results).map_err(unread);
+        };
+        // Asked again for as many as it gave, an answer whole to that
+        // count is one a typed result can't pass for.
+        let results = self.newest(query, gave)?;
+        let found = gateway::found(&results).map_err(|why| {
+            unread(format!(
+                "cut to {gave} of {COUNT}, then asked for {gave}, {why}"
+            ))
+        })?;
+        let oldest = found.first().map_or("", |message| message.ts.as_str());
+        if slack::micros(oldest).is_none_or(|oldest| Some(oldest) > slack::micros(back_to)) {
+            return Err(unread(format!(
+                "cut to the newest {}, back to {oldest:?}, it leaves unread what was said \
+                 after {back_to} and before then",
+                found.len()
+            )));
+        }
+        eprintln!(
+            "<5>the gateway cut its answer for {query:?} to {gave} of {COUNT}, so it read the \
+             newest {gave}, back to {oldest}, which reaches the last read, at {back_to}"
+        );
+        Ok(found)
     }
 
     fn root(&mut self, channel: &str, thread: &str) -> Option<String> {

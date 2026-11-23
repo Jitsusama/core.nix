@@ -81,6 +81,7 @@ fn what_was_judged_is_kept_whole_across_a_restart() {
     assert_eq!(read_at(&state), None, "and was never read");
     let mut judged = Judged::starting(1_795_000_000);
     judged.judged(&said("C1", "1795000001.000000"));
+    judged.reached("pineapple", Some(&said("C1", "1795000001.000000")));
     write(&state, &judged, Some(1_795_000_002_000)).expect("kept");
     assert_eq!(
         read(&state, FRESH),
@@ -126,6 +127,51 @@ fn what_cant_be_read_starts_afresh_and_says_why() {
         read(&state, FRESH),
         (Judged::starting(FRESH), Some(Afresh::Unreadable)),
         "one that's there but can't be opened can't be read, and is no first start"
+    );
+    std::fs::remove_dir_all(&state).expect("the case's state goes");
+}
+
+#[test]
+fn an_answer_cut_short_reaches_back_to_the_last_read_or_since_whichever_is_later() {
+    let mut judged = Judged::starting(1_795_000_000);
+    assert_eq!(
+        judged.back_to("pineapple"),
+        "1795000000.000000",
+        "before any answer to it was read, nothing earlier than since is judged"
+    );
+    judged.reached("pineapple", Some(&said("C1", "1795000009.000100")));
+    assert_eq!(
+        (judged.back_to("pineapple"), judged.back_to("<@U1>")),
+        ("1795000009.000100", "1795000000.000000"),
+        "once read, to its newest message, and each search to its own"
+    );
+    judged.reached("pineapple", None);
+    assert_eq!(
+        judged.back_to("pineapple"),
+        "1795000009.000100",
+        "an answer giving nothing leaves it where it was"
+    );
+    judged.reached("pineapple", Some(&said("C1", "1794999999.000000")));
+    assert_eq!(
+        judged.back_to("pineapple"),
+        "1795000000.000000",
+        "one earlier than since reaches only since, as nothing before it is judged"
+    );
+}
+
+#[test]
+fn how_far_each_search_reached_that_cant_be_read_is_let_go() {
+    let state = state("newest");
+    std::fs::create_dir_all(&state).expect("the case's state");
+    let kept = r#"{"since": "1795000000.000000", "keys": [],
+        "newest": {"pineapple": "1795000009.000100", "<@U1>": "soon", "x": 3}}"#;
+    std::fs::write(state.join(FILE), kept).expect("kept");
+    let (judged, afresh) = read(&state, FRESH);
+    assert_eq!(afresh, None, "how far it read is whole");
+    assert_eq!(
+        judged.newest.into_iter().collect::<Vec<_>>(),
+        [("pineapple".to_owned(), "1795000009.000100".to_owned())],
+        "only a search's newest that's a timestamp is kept"
     );
     std::fs::remove_dir_all(&state).expect("the case's state goes");
 }
@@ -193,6 +239,7 @@ fn a_since_later_than_ten_minutes_ago_looks_back_keeping_its_keys() {
     let mut ahead = Judged {
         since: "1795000600.000001".to_owned(),
         keys: keys.clone(),
+        ..Judged::starting(0)
     };
     assert!(ahead.look_back_to(FRESH), "one later looks back");
     assert_eq!(
