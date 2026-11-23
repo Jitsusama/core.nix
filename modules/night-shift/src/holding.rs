@@ -8,12 +8,18 @@ use std::fs::{self, File};
 use std::path::Path;
 use std::time::SystemTime;
 
-/// A job's name as a note or a mark writes it: every control character
-/// a space, so a tab or line break can't shift the fields read after it,
-/// and an escape can't reach the terminal of a job that names it.
+/// A job's name as a note or a mark writes it, and as one read back is
+/// said, since anything of the account can write those files: every
+/// control character, bidi override and bidi isolate a space, so a tab or
+/// line break can't shift the fields read after it, an escape can't reach
+/// the terminal of a job that names it, and a name can't turn the rest of
+/// a waiting line around.
 pub fn shown(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_control() { ' ' } else { c })
+        .map(|c| {
+            let turns = matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}');
+            if c.is_control() || turns { ' ' } else { c }
+        })
         .collect()
 }
 
@@ -42,11 +48,15 @@ pub fn note(runtime: &Path, name: &str) {
 }
 
 /// Who holds `lock` in `runtime`, as the kernel names them: the note's
-/// job when its process is among them, or the processes themselves.
-pub fn holder_of(runtime: &Path, lock: &File) -> String {
+/// job when its process is among them, or the processes themselves. It's
+/// nothing when the kernel names no holder this process can see, as when
+/// the holder let go between the caller's look and this read, so the
+/// caller looks again before it says anyone has the turn.
+pub fn holder_of(runtime: &Path, lock: &File) -> Option<String> {
     match lock_holders(lock) {
-        Ok(holders) => named(runtime, &holders),
-        Err(_) => named(runtime, &[]),
+        Ok(holders) if holders.is_empty() => None,
+        Ok(holders) => Some(named(runtime, &holders)),
+        Err(why) => Some(format!("a holder the kernel can't name, as {why}")),
     }
 }
 
@@ -58,7 +68,7 @@ fn named(runtime: &Path, holders: &[i32]) -> String {
         return described(&noted);
     }
     match holders {
-        [] => "a job that doesn't say".into(),
+        [] => "a holder the kernel doesn't name".into(),
         [one] => format!("process {one}"),
         many => {
             let pids: Vec<String> = many.iter().map(i32::to_string).collect();
@@ -88,7 +98,7 @@ fn noted(runtime: &Path) -> Option<(String, i32, u64)> {
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |now| now.as_secs());
     let minutes = now.saturating_sub(since.parse().unwrap_or(now)) / 60;
-    Some((name.to_owned(), pid, minutes))
+    Some((shown(name), pid, minutes))
 }
 
 /// Who holds `lock`, as far as the kernel says.
@@ -98,8 +108,47 @@ pub enum Held {
     Above(String),
     /// Another process, as named, and none of this process's parents.
     Elsewhere(String),
-    /// Whether a parent holds it couldn't be told, as given.
+    /// Whether a parent holds it couldn't be told, as `why` says, and
+    /// `holder` holds it, as the kernel named them.
+    Unread { why: String, holder: String },
+    /// The kernel named no holder this process can see, as given: one
+    /// that let go between the look and the read, one in a pid namespace
+    /// this process can't see, or a file id the kernel names otherwise.
+    Unnamed(String),
+}
+
+/// Where a walk up from a process found a holder.
+#[derive(Debug, PartialEq)]
+enum Walked {
+    /// At this process, the start or one of its parents.
+    Above(i32),
+    /// Nowhere above it: the walk reached the first process.
+    Elsewhere,
+    /// It couldn't tell, as given.
     Unread(String),
+}
+
+/// Walks up from `start` by `parent` until it meets one of `holders`. The
+/// kernel names only live holders this process can see, so even pid 1, a
+/// pid namespace's first process, is asked; a parent of 0 or less ends
+/// the walk there. A chain longer than any real one is a loop read
+/// mid-change, and a parent that can't be read is said, never taken for
+/// the walk's end.
+fn walk(start: i32, holders: &[i32], parent: impl Fn(i32) -> Option<i32>) -> Walked {
+    let mut at = start;
+    for _ in 0..4096 {
+        if holders.contains(&at) {
+            return Walked::Above(at);
+        }
+        if at <= 1 {
+            return Walked::Elsewhere;
+        }
+        let Some(next) = parent(at) else {
+            return Walked::Unread(format!("process {at}'s parent can't be read"));
+        };
+        at = next;
+    }
+    Walked::Unread("this process's parents never ended".into())
 }
 
 /// Whether the turn in `runtime` is held by this process or one above it,
@@ -119,52 +168,48 @@ pub enum Held {
 pub fn held_above(runtime: &Path, lock: &File) -> Held {
     let holders = match lock_holders(lock) {
         Ok(holders) if holders.is_empty() => {
-            // Nobody, a holder in a pid namespace this process can't see,
-            // or a file id the kernel names otherwise, which only the ids
-            // looked for can tell apart.
-            return Held::Unread(format!(
+            // Only the ids looked for can tell the causes apart.
+            return Held::Unnamed(format!(
                 "the kernel names no holder of its lock this process can see, looking for {}",
-                file_ids(lock).join(" or ")
+                file_ids(lock).map_or_else(|why| why, |ids| ids.join(" or "))
             ));
         }
         Ok(holders) => holders,
-        Err(why) => return Held::Unread(why),
-    };
-    let Ok(mut at) = i32::try_from(std::process::id()) else {
-        return Held::Unread("this process's number can't be read".into());
-    };
-    // A chain longer than any real one is a loop read mid-change.
-    for _ in 0..4096 {
-        // The kernel names only live holders this process can see, so
-        // even pid 1, a pid namespace's first process, is asked.
-        if holders.contains(&at) {
-            let named = noted(runtime)
-                .filter(|(_, pid, _)| *pid == at)
-                .map_or_else(|| format!("process {at}"), |noted| described(&noted));
-            return Held::Above(named);
+        Err(why) => {
+            return Held::Unread {
+                why,
+                holder: "a holder the kernel can't name".into(),
+            };
         }
-        if at <= 1 {
-            return Held::Elsewhere(named(runtime, &holders));
-        }
-        let Some(parent) = ahead::stat(&at.to_string()).and_then(|stat| stat.get(1)?.parse().ok())
-        else {
-            return Held::Unread(format!("process {at}'s parent can't be read"));
+    };
+    let Ok(own) = i32::try_from(std::process::id()) else {
+        return Held::Unread {
+            why: "this process's number can't be read".into(),
+            holder: named(runtime, &holders),
         };
-        at = parent;
+    };
+    let parent = |at: i32| ahead::stat(&at.to_string()).and_then(|stat| stat.get(1)?.parse().ok());
+    match walk(own, &holders, parent) {
+        Walked::Above(at) => Held::Above(
+            noted(runtime)
+                .filter(|(_, pid, _)| *pid == at)
+                .map_or_else(|| format!("process {at}"), |noted| described(&noted)),
+        ),
+        Walked::Elsewhere => Held::Elsewhere(named(runtime, &holders)),
+        Walked::Unread(why) => Held::Unread {
+            why,
+            holder: named(runtime, &holders),
+        },
     }
-    Held::Unread("this process's parents never ended".into())
 }
 
 /// The processes holding a flock on `lock`, as the kernel's `/proc/locks`
 /// says: lines `ID: FLOCK ADVISORY WRITE PID MAJ:MIN:INODE` for the lock's
-/// file, a waiter's lines being marked `->`. Each process is named once.
+/// file, a waiter's lines being marked `->`. Each process is named once,
+/// since a read torn across the kernel's pages may say a line twice.
 fn lock_holders(lock: &File) -> Result<Vec<i32>, String> {
-    let ids = file_ids(lock);
-    if ids.is_empty() {
-        return Err("the lock can't be read".into());
-    }
-    let locks = fs::read_to_string("/proc/locks")
-        .map_err(|error| format!("/proc/locks can't be read: {error}"))?;
+    let ids = file_ids(lock)?;
+    let locks = kernel_locks()?;
     let mut holders: Vec<i32> = locks
         .lines()
         .filter_map(|line| {
@@ -181,6 +226,29 @@ fn lock_holders(lock: &File) -> Result<Vec<i32>, String> {
     Ok(holders)
 }
 
+/// `/proc/locks` as the kernel gives it, read in reads of 64 KiB until
+/// it's done. The kernel writes it a page at a time and lets the locks
+/// change between reads, so a line can be said twice or not at all, which
+/// is what the sandbox's [429, 429] on 23 November points at: few reads make that
+/// rarer but not impossible, so what one look reads is good for that look
+/// alone, and a look that finds no holder looks again before saying so.
+fn kernel_locks() -> Result<String, String> {
+    use std::io::Read;
+    let unread = |error: std::io::Error| format!("/proc/locks can't be read: {error}");
+    let mut file = File::open("/proc/locks").map_err(unread)?;
+    let mut read = Vec::new();
+    let mut buffer = vec![0; 64 * 1024];
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(count) => read.extend_from_slice(&buffer[..count]),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(unread(error)),
+        }
+    }
+    Ok(String::from_utf8_lossy(&read).into_owned())
+}
+
 /// The ids `/proc/locks` may name `lock`'s file by, `MAJ:MIN:INODE`, as
 /// it prints them. The kernel names a file by its filesystem's device,
 /// which stat's needn't be: on a btrfs subvolume stat gives the
@@ -191,19 +259,19 @@ fn lock_holders(lock: &File) -> Result<Vec<i32>, String> {
 /// inode numbers kept apart, stat's inode may differ from the kernel's
 /// too, which no id here covers; the lock lives in the runtime folder, a
 /// tmpfs, so it isn't met.
-fn file_ids(lock: &File) -> Vec<String> {
+fn file_ids(lock: &File) -> Result<Vec<String>, String> {
     use std::os::unix::fs::MetadataExt;
-    let Ok(held) = lock.metadata() else {
-        return Vec::new();
-    };
+    let held = lock
+        .metadata()
+        .map_err(|error| format!("the lock can't be read: {error}"))?;
     let mut devices = Vec::new();
     devices.extend(mounted_device(lock));
     devices.push(stat_device(held.dev()));
     devices.dedup();
-    devices
+    Ok(devices
         .into_iter()
         .map(|(major, minor)| format!("{major:02x}:{minor:02x}:{}", held.ino()))
-        .collect()
+        .collect())
 }
 
 /// A device number as stat gives it, split by Linux's own encoding into
@@ -256,9 +324,11 @@ mod tests {
         let lock = File::create(folder.join("lock")).unwrap();
         lock.lock().unwrap();
         let holders = lock_holders(&lock);
-        let ids = file_ids(&lock);
+        let ids = file_ids(&lock).unwrap();
         let said = locks_naming(&ids);
+        let by_mount = locks_naming(&ids[..1]);
         let mounted = mounted_device(&lock);
+        let above = held_above(&folder, &lock);
         let other = File::create(folder.join("other")).unwrap();
         let unheld = lock_holders(&other);
         let unread = held_above(&folder, &other);
@@ -270,11 +340,73 @@ mod tests {
             Ok(vec![own]),
             "the kernel's word on {ids:?} was misread: {said:?}"
         );
-        assert!(mounted.is_some(), "the lock's mount gave no device");
+        let Some((major, minor)) = mounted else {
+            panic!("the lock's mount gave no device");
+        };
+        assert!(
+            ids[0].starts_with(&format!("{major:02x}:{minor:02x}:")),
+            "the first id looked for, {}, isn't the mount's device",
+            ids[0]
+        );
+        assert!(
+            !by_mount.is_empty(),
+            "the mount's id alone, {}, doesn't name the lock: {said:?}",
+            ids[0]
+        );
+        assert_eq!(
+            above,
+            Held::Above(format!("process {own}")),
+            "this process wasn't found holding its own lock"
+        );
         assert_eq!(unheld, Ok(vec![]), "a file nobody locked was read as held");
         assert!(
-            matches!(&unread, Held::Unread(why) if why.contains("no holder")),
+            matches!(&unread, Held::Unnamed(why) if why.contains("no holder")),
             "a lock nobody holds wasn't said to be unexplained: {unread:?}"
+        );
+    }
+
+    // A walk up the parents finds a holder wherever it is, the first
+    // process included, and says rather than guesses when a parent can't
+    // be read or the parents run round in a loop.
+    #[test]
+    fn a_walk_finds_a_holder_above_or_says_why_it_cant() {
+        let parents = |at: i32| match at {
+            9 => Some(8),
+            8 => Some(1),
+            5 => Some(6),
+            6 => Some(5),
+            4 => Some(0),
+            _ => None,
+        };
+        assert_eq!(
+            walk(9, &[1], parents),
+            Walked::Above(1),
+            "a holder at the first process wasn't found"
+        );
+        assert_eq!(
+            walk(9, &[8], parents),
+            Walked::Above(8),
+            "a parent holding it wasn't found"
+        );
+        assert_eq!(
+            walk(9, &[7], parents),
+            Walked::Elsewhere,
+            "a holder no parent is was taken for one"
+        );
+        assert_eq!(
+            walk(4, &[7], parents),
+            Walked::Elsewhere,
+            "a parent of 0 didn't end the walk"
+        );
+        assert_eq!(
+            walk(3, &[7], parents),
+            Walked::Unread("process 3's parent can't be read".into()),
+            "a parent that can't be read was taken for the walk's end"
+        );
+        assert_eq!(
+            walk(5, &[7], parents),
+            Walked::Unread("this process's parents never ended".into()),
+            "parents in a loop weren't said"
         );
     }
 
@@ -298,14 +430,29 @@ mod tests {
         fs::create_dir_all(&folder).unwrap();
         let own = i32::try_from(std::process::id()).unwrap();
         let mut read = Vec::new();
-        for name in ["x\t1", "x\n1", "x\u{1b}1", ""] {
+        for name in ["x\t1", "x\n1", "x\u{1b}1", "x\u{202e}1", "x\u{2066}1", ""] {
             note(&folder, name);
             read.push(noted(&folder));
         }
+        // A note written by anything of the account but this program is
+        // made safe as it's read.
+        fs::write(
+            folder.join("holder"),
+            format!("x\u{1b}[2J\u{202e}1\t{own}\t0\n"),
+        )
+        .unwrap();
+        let planted = noted(&folder).map(|(name, _, _)| name);
         fs::remove_dir_all(&folder).unwrap();
+        assert_eq!(
+            planted.as_deref(),
+            Some("x [2J 1"),
+            "a planted note's name was said as written"
+        );
         assert_eq!(
             read,
             [
+                Some(("x 1".to_owned(), own, 0)),
+                Some(("x 1".to_owned(), own, 0)),
                 Some(("x 1".to_owned(), own, 0)),
                 Some(("x 1".to_owned(), own, 0)),
                 Some(("x 1".to_owned(), own, 0)),
@@ -336,6 +483,9 @@ mod tests {
             format!("process {}", own + 1),
             "a note was named for a process that doesn't hold the lock"
         );
-        assert_eq!(nobody, "a job that doesn't say");
+        assert_eq!(
+            nobody, "a holder the kernel doesn't name",
+            "no holder at all was said as one"
+        );
     }
 }

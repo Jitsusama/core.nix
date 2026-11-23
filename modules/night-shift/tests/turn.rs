@@ -158,6 +158,15 @@ fn warned(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).into_owned()
 }
 
+/// The last line of `said` saying it waits for the turn, or nothing: a
+/// wait is judged by where it settled, since a look torn by the kernel's
+/// changing locks may say something else once before it.
+fn last_waiting(said: &str) -> &str {
+    said.lines()
+        .rfind(|line| line.contains("waiting for the turn"))
+        .unwrap_or_default()
+}
+
 /// Waits up to `most` for `what` to hold, polling, since what a test
 /// waits on here says so nowhere it can wait on.
 fn within(most: Duration, what: impl Fn() -> bool) -> bool {
@@ -213,12 +222,13 @@ fn a_second_heavy_job_waits_its_turn_and_says_whose_it_is() {
     let said = fs::read_to_string(account.path("said")).unwrap();
     assert!(status.success(), "{said}");
     assert!(account.path("second").exists(), "the second job never ran");
+    let last = last_waiting(&said);
     assert!(
-        said.contains("waiting for the turn, which stamp (process"),
-        "{said}"
+        last.contains("waiting for the turn, which stamp (process"),
+        "its wait didn't name the job holding the turn: {said}"
     );
     assert!(
-        !said.contains("can't be told"),
+        !last.contains("can't be told"),
         "a sibling's wait couldn't tell whether its holder was its parent: {said}"
     );
 }
@@ -376,7 +386,7 @@ fn a_turn_below_a_holder_of_another_lock_waits_while_another_holds_the_turn() {
         "it took a parent holding another lock for the turn's holder: {said}"
     );
     assert!(
-        !said.contains("can't be told"),
+        !last_waiting(&said).contains("can't be told"),
         "its wait couldn't tell whether its holder was its parent: {said}"
     );
 }
@@ -410,9 +420,14 @@ fn a_turn_below_a_holder_that_let_go_waits_while_another_holds_the_lock() {
         !account.path("ran").exists(),
         "it ran beside the job holding the lock"
     );
+    let last = last_waiting(&said);
     assert!(
-        said.contains("waiting for the turn, which process "),
-        "its wait named a note whose process holds nothing: {said}"
+        last.ends_with(&format!("which process {} has", first.child.id())),
+        "its wait didn't name the process holding the lock: {said}"
+    );
+    assert!(
+        !last.contains("can't be told"),
+        "its wait couldn't tell whether its holder was its parent: {said}"
     );
 }
 

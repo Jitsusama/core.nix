@@ -58,7 +58,7 @@
 //! src/holding.rs says who holds the turn, by the kernel's word.
 
 use crate::ahead::{self, Ahead, Waiter};
-use crate::holding::{Held, held_above, holder_of, note};
+use crate::holding::{Held, held_above, note};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::{self, File, TryLockError};
@@ -470,23 +470,35 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
     let began = Instant::now();
     let mut told: Option<String> = None;
     let mut left = None;
+    let mut looked_again = false;
     loop {
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
             Ok(Look::Taken) => match held_above(runtime, lock) {
                 Held::Above(holder) => return Ok(Some(holder)),
                 Held::Elsewhere(holder) => format!("waiting for the turn, which {holder} has"),
+                // A holder that let go between the look and the kernel's
+                // word leaves no line, so the turn is looked at again at
+                // once, and only a second look naming nobody is said.
+                Held::Unnamed(_) if !looked_again => {
+                    looked_again = true;
+                    continue;
+                }
                 // Said, since a turn inside its holder's command then
                 // waits on its own parent, and only this line shows it.
-                Held::Unread(why) => format!(
-                    "waiting for the turn, which {} has, though whether it's this job's own \
-                     parent can't be told, as {why}",
-                    holder_of(runtime, lock)
+                Held::Unnamed(why) => format!(
+                    "waiting for the turn, which a holder the kernel doesn't name has, though \
+                     whether it's this job's own parent can't be told, as {why}"
+                ),
+                Held::Unread { why, holder } => format!(
+                    "waiting for the turn, which {holder} has, though whether it's this job's \
+                     own parent can't be told, as {why}"
                 ),
             },
             Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
             Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
         };
+        looked_again = false;
         if told.as_ref() != Some(&said) {
             say(&turn.name, &said);
             told = Some(said);

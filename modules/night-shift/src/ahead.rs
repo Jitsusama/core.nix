@@ -86,8 +86,10 @@ pub fn next_but(runtime: &Path, passed_over: &HashSet<String>) -> Option<Waiter>
         if !started(&pid).is_some_and(|ticks| since.parse() == Ok(ticks)) {
             continue;
         }
+        // Anything of the account can write a mark, so its name is made
+        // safe to say as it's read, not only as it's written.
         let waiter = Waiter {
-            name: name.to_owned(),
+            name: shown(name),
             pid,
             paused: fields.next() == Some(PAUSED),
         };

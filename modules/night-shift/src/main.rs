@@ -348,6 +348,27 @@ fn run(job: &Job) -> Result<(), Failure> {
     }
 }
 
+/// Whether `job` was done within its rest, saying so when it was.
+fn done_lately(job: &Job, places: &Folders) -> bool {
+    let done = places.state.join(format!("{}.done", job.name));
+    let Some(ago) = fs::metadata(&done)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .filter(|ago| *ago < job.rests)
+    else {
+        return false;
+    };
+    say(
+        job,
+        &format!(
+            "already done {} minutes ago, nothing to run",
+            ago.as_secs() / 60
+        ),
+    );
+    true
+}
+
 /// The lock and the machine's pressure a job starts at; none when it
 /// doesn't start and leaves a later try its turn: done already, another
 /// job running, or the machine short of memory.
@@ -357,20 +378,7 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
             failed(job, &format!("can't make {}", place.display())).because(error.to_string())
         })?;
     }
-    let done = places.state.join(format!("{}.done", job.name));
-    if let Some(ago) = fs::metadata(&done)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|at| at.elapsed().ok())
-        .filter(|ago| *ago < job.rests)
-    {
-        say(
-            job,
-            &format!(
-                "already done {} minutes ago, nothing to run",
-                ago.as_secs() / 60
-            ),
-        );
+    if done_lately(job, places) {
         return Ok(None);
     }
 
@@ -380,6 +388,7 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
     let began = Instant::now();
     let mut told: Option<String> = None;
     let mut left = None;
+    let mut looked_again = false;
     loop {
         // A free turn is left a while to a job Joel waits on, waiting for
         // it too.
@@ -399,7 +408,19 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                     let why = format!("the turn is left to {}", next.why());
                     (why.clone(), format!("waiting, as {why}"))
                 } else {
-                    let who = holding::holder_of(&places.runtime, &lock);
+                    // A holder that let go between the look and the
+                    // kernel's word leaves no line, so the turn is looked
+                    // at again at once, and only a second look naming
+                    // nobody is said.
+                    let who = match holding::holder_of(&places.runtime, &lock) {
+                        Some(who) => who,
+                        None if !looked_again => {
+                            looked_again = true;
+                            continue;
+                        }
+                        None => "a holder the kernel doesn't name".into(),
+                    };
+                    looked_again = false;
                     (
                         format!("another heavy job is running, {who}, and only one runs at a time"),
                         format!("waiting for the turn, which {who} has"),
