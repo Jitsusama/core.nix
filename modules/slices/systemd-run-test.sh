@@ -25,12 +25,18 @@ says() {
 # a host makes its spawners' scopes, and anything below them, goes in
 # jobs-work.slice: jobs.slice holds no cores, so the slice it would
 # inherit lets the unit onto every one.
-for place in jobs.service jobs.service/sub jobs.service/x.slice/y pi-spawner-9-a1.scope \
-  pi-spawner-9-a1.scope/sub; do
-  says "${manager}/jobs.slice/${place}" "--slice=jobs-work.slice --user --scope true" \
+# So does one from pi's own units in agents.slice, a host's or a
+# conversation's: pi starts a host's spawner scope with systemd-run and
+# writes it into jobs.service only once it's running, so the wrapper reads
+# the unit pi runs in.
+for place in jobs.slice/jobs.service jobs.slice/jobs.service/sub \
+  jobs.slice/jobs.service/x.slice/y jobs.slice/pi-spawner-9-a1.scope \
+  jobs.slice/pi-spawner-9-a1.scope/sub agents.slice/pi-host-work-attended.service \
+  agents.slice/pi-conversation-work-background@01a1f76b-7f2d.service; do
+  says "${manager}/${place}" "--slice=jobs-work.slice --user --scope true" \
     --user --scope true
   # An explicit --slice-inherit is the caller's own choice, and still inherits.
-  says "${manager}/jobs.slice/${place}" "--user --slice-inherit true" --user --slice-inherit true
+  says "${manager}/${place}" "--user --slice-inherit true" --user --slice-inherit true
 done
 # One from a slice inside jobs keeps that slice: Joel's terminal work and
 # timed work stay free, and pi's sorted work stays where it was sorted. So
