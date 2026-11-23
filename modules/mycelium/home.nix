@@ -312,7 +312,7 @@ let
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
   builders = import ./builders.nix;
   # What the home realm's node may do to ease the machine (eases.nix).
-  eases = import ./eases.nix { inherit config lib; };
+  eases = import ./eases.nix { inherit config lib mycelium; };
   # The home realm's node alone eases the machine, since a further realm's
   # sessions aren't its to move, and alone lends, since the machines it
   # lends to are the ones it made.
@@ -636,6 +636,7 @@ in
   // eases.options;
 
   config = lib.mkMerge [
+    { inherit (eases) warnings; }
     {
       assertions = [
         {

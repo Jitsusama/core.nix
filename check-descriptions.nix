@@ -2172,8 +2172,9 @@
     and as Play From the Start does, from its start
   '';
   mycelium-node-takes-its-flags = ''
-    the mycelium core locks takes every flag a workstation's node is started with, so a flag
-    can't reach the node's service before the mycelium that reads it
+    the mycelium core locks takes every flag a workstation's node is started with, each with a
+    value where its line gives one and none where it doesn't, so a flag can't reach the node's
+    service before the mycelium that reads it
   '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
@@ -2188,8 +2189,22 @@
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
     the home realm's node writes how it would ease the machine, asking the harness to park
-    sessions and making its carries only where told to, and a further realm's doesn't; one
-    naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
+    sessions and making its carries only where told to, on Linux and a Mac alike, and a further
+    realm's doesn't; one naming none runs it dialling nothing, and one in no realm has neither a
+    realm nor a node
+  '';
+  mycelium-carry-guards-match-its-lock = ''
+    the mycelium core locks has a line of code matching each of carry-guards.nix's patterns, so
+    a lock moving to one that wrote either guard in another form fails here rather than every
+    machine on core's lock ceasing to carry
+  '';
+  mycelium-carries-only-with-its-guards = ''
+    a workstation's node is told to carry only where the mycelium it is built from has a line of
+    code, not a line comment, for each guard that keeps the person's and the leading sessions,
+    each tried alone, and keeps carrying where both are written in forms the patterns accept;
+    where one is missing the switch warns, in the system's warnings, naming that mycelium and the
+    files lacking one, rather than refusing the machine, and a machine that doesn't carry or runs
+    no node is never warned
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
