@@ -589,10 +589,11 @@ the relay's log. The wait is that long because the first frame can come
 40 s after the start even once the loop is free: on 23 November, under
 load, the HAL waited that long for its capture buffers while the kernel
 compacted memory to give them out. A 10 s wait started the camera again
-before it could give one, every time, and no call got a picture. The relay comes first for the processor and the disk, is
-kept out of swap, and writes the HAL's log a line at a time. The HAL's
-complaints about a sensor control and its tuning at every start are
-harmless: a start that worked logs them too.
+before it could give one, every time, and no call got a picture. The relay
+comes first for the processor and the disk, is kept out of swap, and writes
+the HAL's log a line at a time. The HAL's complaints about a sensor control
+and its tuning at every start are harmless: a start that worked logs them
+too.
 
 Omarchy also sharpens the picture and lowers its exposure. Whether that looks
 better is for the laptop to show, as is the camera itself.
