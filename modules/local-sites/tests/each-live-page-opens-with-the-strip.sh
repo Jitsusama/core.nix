@@ -99,6 +99,11 @@ sed -i '\|href="../local-sites/web/theme.css"|d' "${work}/themeless/index.html"
 refused "${work}/themeless" "index.html doesn't read the theme from the sites' one copy" \
   "a page reading no theme"
 
+# And one that leaves a face the first screen sets to be found late.
+copied "${work}/late"
+sed -i '\|href="../local-sites/web/fonts/monaspace.woff2"|d' "${work}/late/index.html"
+refused "${work}/late" "index.html doesn't preload monaspace.woff2" "a page preloading no mono"
+
 # The built sheets hold no comment, so each sheet's write in place landed,
 # and nor do the kit's sheets or the theme's base.css, so their builds still
 # send each through the same script: those builds take no source but their

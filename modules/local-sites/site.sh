@@ -129,6 +129,19 @@ for page in "${out}"/*.html; do
     echo "${page##*/} doesn't read the theme from the sites' one copy: ${theme}" >&2
     exit 1
   fi
+  # A face the first screen sets, not asked for ahead, is found only once the
+  # styles are read, so the words paint late or jump as it lands: three pages
+  # did on 22 November. These are the theme's web kit's own file names
+  # (modules/theme/web/web.nix); its italic mono sets nothing on a first
+  # screen, so it's left to load when asked.
+  for face in fraunces fraunces-italic monaspace; do
+    preload="<link rel=\"preload\" href=\"../local-sites/web/fonts/${face}.woff2\" as=\"font\""
+    if ! grep -qF "${preload}" "${page}"; then
+      echo "${page##*/} doesn't preload ${face}.woff2, so its words paint late: ${preload}" \
+        "type=\"font/woff2\" crossorigin>" >&2
+      exit 1
+    fi
+  done
   skips=$(grep -c '<a class="skip"' "${page}" || true)
   if [[ ${skips} != 1 ]]; then
     echo "${page##*/} has ${skips} skip links, and the strip goes after its one" >&2
