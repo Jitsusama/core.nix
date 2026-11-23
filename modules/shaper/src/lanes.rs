@@ -62,11 +62,14 @@
 //!
 //! While the VPN's flow waits past our queues beside what agents straight
 //! send (src/oneway.rs), and they wait, they're held to a share of what
-//! they'd get, never under the whole quarter, and that is all their class
-//! may borrow. Held so, the quarter is theirs alone: the VPN asks for half
-//! the quarter less, falling to it at a fifth a second, so it comes from
-//! the VPN's agents, never from Joel's part in it or what's held of his
-//! straight lane. What waits then is the VPN's own flow, which more room
+//! they'd get, and that is all their class may borrow. They're owed the
+//! whole quarter: where their part of the split, less what's held of
+//! Joel's straight lane, comes to less, the VPN asks for what they lack,
+//! at most half the quarter, so it comes from the VPN's agents, never from
+//! Joel's part in it or what's held of his straight lane. The VPN falls to
+//! it at a fifth a second, so for those seconds they may have less, as
+//! they may where Joel's hold of his straight lane takes past half the
+//! quarter. What waits then is the VPN's own flow, which more room
 //! inside it would only feed, while a copy straight to a builder held to
 //! half the quarter carried about 130 kB/s of an 11 Mbit/s line on 23
 //! November. The VPN's own CAKE keeps it from taking what
@@ -380,13 +383,23 @@ impl Lanes {
         let left = rate - straight_now - joel_vpn;
         // Held for the VPN's wait beside the VPN's agents, agents straight
         // are owed the whole quarter, `held_floor`, and the VPN asks for
-        // the half of it its agents had, falling to that as it falls: Joel's
-        // part in the VPN and what's held of his straight lane are bounded by
-        // agents' own part, `straight_floor`, as when nothing is held.
+        // what they lack of it, `give_up`, falling to that as it falls:
+        // their half of what's left, less all that's held of Joel's straight
+        // lane past what he carries, which may come from them. It's at most
+        // the half of the quarter its agents had, so Joel's part in the VPN
+        // and what's held of his straight lane are bounded by agents' own
+        // part, `straight_floor`, as when nothing is held. Asked for more
+        // than they lack, it went unsent (carry lane round 2's F3, F11 and
+        // F15).
+        let extra = self.joel_held(straight_now, rate, dt) - straight_now;
         let held = beside && within && seen.agents_held.is_some();
+        let give_up = if held {
+            (floor - (left / 2.0 - extra)).clamp(0.0, floor / 2.0)
+        } else {
+            0.0
+        };
         let (to_vpn, straight_floor) = match (beside, within) {
-            (true, true) if held => ((left - floor) / 2.0, floor / 2.0),
-            (true, true) => (left / 2.0, floor / 2.0),
+            (true, true) => (left / 2.0 - give_up, floor / 2.0),
             (true, false) => (0.0, floor),
             (false, _) => (left, 0.0),
         };
@@ -399,7 +412,6 @@ impl Lanes {
         // held is what his straight lane was given, not what he'd have
         // wanted: busy on both lanes, the room shrank it, and holding more
         // took the VPN down by a third in a second's dip, his lane in it too.
-        let extra = self.joel_held(straight_now, rate, dt) - straight_now;
         let from_vpn = if within && !beside {
             extra.min(room - straight_now - joel_vpn).max(0.0)
         } else {
@@ -455,8 +467,12 @@ impl Lanes {
         // or an upload starting then would get the least a class has.
         let agents = rate - joel - vpn;
         // The share is of what they'd get unheld, not of what the VPN gave
-        // up for the quarter, or a hold would give them more than none.
-        let unheld = (agents - (held_floor - straight_floor)).max(0.0);
+        // up for the quarter, or a hold would give them more than none. What
+        // it gave is only what it has fallen by, so a VPN still falling to
+        // what it asks takes nothing more from them (carry lane round 2's
+        // F5).
+        let given = (joel_vpn + left / 2.0 - vpn).clamp(0.0, give_up);
+        let unheld = (agents - given).max(0.0);
         let agents_most = seen
             .agents_held
             .filter(|_| beside)
@@ -1868,23 +1884,31 @@ mod tests {
     // would, never under the whole quarter, beside the VPN's agents or
     // alone, and borrow nothing past it: beside the VPN's agents the
     // quarter can be more than they'd get free. Joel keeps what he had, and
-    // the VPN gives up just the half of the quarter its agents had, or
-    // nothing with none of them waiting, so the three add up to no more
-    // than the rate.
+    // the VPN gives up just what agents straight lack of the quarter, at
+    // most the half of it its agents had, or nothing with none of them
+    // waiting, so the three add up to no more than the rate. Joel at
+    // 1,000 and 2,000 needs 2,200 and 3,400, leaving agents straight half
+    // of 4,400, 300 short; at nothing he leaves them 4,000, past it; and
+    // at 3,000 each he's scaled into the room, leaving them 1,250.
     #[test]
     fn a_held_share_caps_agents_straight_never_under_their_floor() {
         let floor = RATE * AGENTS_FLOOR;
-        for (agents, given) in [
-            ((waiting(4), waiting(4)), floor / 2.0),
-            ((waiting(4), Agents::default()), 0.0),
+        let both = (waiting(4), waiting(4));
+        for (joel, agents, given) in [
+            ((1_000.0, 2_000.0), both, 300.0),
+            ((0.0, 0.0), both, 0.0),
+            ((3_000.0, 3_000.0), both, floor / 2.0),
+            ((1_000.0, 2_000.0), (waiting(4), Agents::default()), 0.0),
         ] {
-            let free = Lanes::default().split(&seen((1_000.0, 2_000.0), agents), 1.0);
+            let free = Lanes::default().split(&seen(joel, agents), 1.0);
             assert_eq!(free.agents_most, None, "agents not held were capped");
-            for share in [0.5, 0.1] {
+            // Four fifths of 4,000 lands over the floor (carry lane round
+            // 2's F8); the others land on it.
+            for share in [0.8, 0.5, 0.1] {
                 let held = Lanes::default().split(
                     &Seen {
                         agents_held: held_to(share),
-                        ..seen((1_000.0, 2_000.0), agents)
+                        ..seen(joel, agents)
                     },
                     1.0,
                 );
@@ -1926,8 +1950,10 @@ mod tests {
 
     // What's held of Joel's straight lane past what he carries isn't taken
     // for agents straight held to the whole quarter: the VPN's agents give
-    // it, the VPN falling to it by at most a fifth a second, and once it
-    // has, agents straight have the quarter.
+    // what it takes from them, the VPN falling to it by at most a fifth a
+    // second. As his hold falls, agents straight's half of what's left,
+    // 3,100, comes to the quarter again, so the VPN settles where it stands
+    // free, and they have the quarter.
     #[test]
     fn holding_agents_straight_takes_nothing_held_of_joel_s_lane() {
         let agents = (waiting(4), waiting(4));
@@ -1975,16 +2001,59 @@ mod tests {
             last = Some((f, h));
         }
         // The VPN stands still within a twentieth of what it's asked, so it
-        // may stop a little over it, leaving that unsent.
+        // may stop a little under where it stands free.
         let (f, h) = last.expect("ten seconds");
-        let asked = f.vpn - floor / 2.0;
         assert!(
             near(h.joel, f.joel)
-                && h.vpn >= asked - 1.0
-                && h.vpn <= asked * (1.0 + STILL) + 1.0
+                && h.vpn >= f.vpn * (1.0 - STILL) - 1.0
+                && h.vpn <= f.vpn + 1.0
                 && near(h.agents, floor),
-            "settled, held agents straight didn't have the quarter from the VPN's agents: \
+            "settled, the VPN gave more than held agents straight lacked of the quarter: \
              free {f:?}, held {h:?}"
+        );
+    }
+
+    // Where what's held of Joel's straight lane is past the room left him,
+    // the spare bound, holding agents straight gives him no less, and them
+    // no less than their own part: five loud seconds hold him at 4,600, a
+    // fifth less a quiet second after, 3,680, where free he has 3,450
+    // (carry lane round 2's F2 and F7).
+    #[test]
+    fn holding_agents_straight_at_joel_s_spare_bound_takes_nothing_of_his() {
+        let agents = (waiting(4), waiting(4));
+        let floor = RATE * AGENTS_FLOOR;
+        let mut lanes = Lanes::default();
+        for _ in 0..5 {
+            lanes.split(&seen((3_000.0, 1_000.0), agents), 1.0);
+        }
+        let quiet = seen((500.0, 1_000.0), agents);
+        let hold = (3_000.0 * HEADROOM + JOEL_LEAST) * (1.0 - FALL);
+        let f = lanes.clone().split(&quiet, 1.0);
+        let h = lanes.split(
+            &Seen {
+                agents_held: held_to(0.1),
+                ..quiet
+            },
+            1.0,
+        );
+        assert!(
+            f.joel < hold - 1.0,
+            "free, Joel's hold of {hold} wasn't bounded by the spare: {f:?}"
+        );
+        assert!(
+            h.joel >= f.joel - 1.0,
+            "held agents took Joel's straight lane from {} to {}",
+            f.joel,
+            h.joel
+        );
+        assert!(
+            h.agents >= floor / 2.0 - 1.0,
+            "held agents straight got {} under their own part",
+            h.agents
+        );
+        assert!(
+            h.joel + h.vpn + h.agents <= RATE + 1.0,
+            "the lanes promised more than the rate: {h:?}"
         );
     }
 
