@@ -181,8 +181,8 @@ impl Reviewed {
             .filter_map(|run| {
                 let id = run["id"].as_str()?;
                 // A judge or a critique reads a council's findings; only a
-                // council is a round of review.
-                if !id.starts_with("council-") || !answered(run) {
+                // council or a stack's round is a round of review.
+                if !answered(run) {
                     return None;
                 }
                 Some((id.to_owned(), seconds(&run["startedAt"])?))
@@ -236,27 +236,31 @@ impl Reviewed {
     }
 }
 
-/// Whether `run` was collected, neither open nor closed, and one of its
-/// reviewers answered: didn't fail, and either finished or filed a finding
-/// before it was stopped. Merge-net counts a round whose reviewers were all
-/// cancelled as read, but no one reviewed in it, so it isn't a round here.
-/// A reviewer stopped at its wall having filed nothing is silent too: a
-/// stop's record can't tell nothing found from nothing read, and the one
-/// such round on record, on 17 November, left its answers empty. A stop
-/// is an object naming its limit; one written `true`, as merge-net's test
-/// fixture writes it though no record does, is taken as a stop too.
+/// Whether `run` is a council or stack round, collected, neither open nor
+/// closed nor unpinned, and one of whose reviewers answered, as merge-net's
+/// `speaks` reads a round, so the two count the same rounds: didn't fail,
+/// and either finished, leaving its answer's file, or filed a finding
+/// before it was stopped. A round whose reviewers were all cancelled, or
+/// stopped at their wall having filed nothing, said nothing. An answer is
+/// a sign it left, never the lack of a sign it didn't, so an outcome naming
+/// neither its answer nor a finding, or a failure or stop of any value,
+/// `null` among them, answers nothing.
 fn answered(run: &Value) -> bool {
     let flag = |name: &str| run[name].as_bool().unwrap_or(false);
-    let stopped = |s: &Value| s.is_object() || s.as_bool() == Some(true);
-    let answer = |o: &Value| {
-        o.get("failure").is_none()
-            && (!o.get("stopped").is_some_and(stopped)
-                || o["findingIds"]
-                    .as_array()
-                    .is_some_and(|ids| !ids.is_empty()))
+    let filed = |o: &Value| {
+        o["findingIds"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty())
     };
-    !flag("open")
+    let answer = |o: &Value| {
+        let finished = o.get("stopped").is_none() && o["answerPath"].is_string();
+        o.get("failure").is_none() && (finished || filed(o))
+    };
+    matches!(run["round"].as_str(), Some("council" | "stack"))
+        && !flag("open")
         && !flag("closed")
+        && run.get("unpinned").is_none()
+        && run["startedAt"].is_string()
         && run["outcomes"]
             .as_array()
             .is_some_and(|outcomes| outcomes.iter().any(answer))
@@ -504,7 +508,9 @@ pub fn rounds(
         .filter_map(|r| Reviewed::read(r))
         .collect();
     let away = away(&here, &there);
-    let reviewed: Vec<&Reviewed> = here.iter().chain(&there).collect();
+    // This machine's own copy of a round comes last, so where a mirror
+    // holds it too, its witness, basis and start are the ones kept.
+    let reviewed: Vec<&Reviewed> = there.iter().chain(&here).collect();
     let bases: BTreeMap<&str, &str> = reviewed
         .iter()
         .flat_map(|r| &r.bases)
@@ -627,7 +633,7 @@ mod tests {
         let at = jiff::Timestamp::from_second(NOW - ago).expect("a moment the tests read");
         format!(
             r#"{{"id": "{id}", "round": "council", "startedAt": "{at}",
-                "outcomes": [{{"participantId": "one"}}]}}"#
+                "outcomes": [{{"participantId": "one", "answerPath": "/answers/one.md"}}]}}"#
         )
     }
 
@@ -985,74 +991,90 @@ mod tests {
         );
     }
 
+    /// One reviewer's outcome as the harness writes it, with `rest`: as
+    /// merge-net's own tests read them, a finished one names its answer's
+    /// file, a stop is an object naming its limit, and a failure a string.
+    fn outcome(rest: &str) -> String {
+        format!(r#"{{"participantId": "one", "findingIds": []{rest}}}"#)
+    }
+
+    /// What a finished outcome carries.
+    const FINISHED: &str = r#", "answerPath": "/answers/one.md""#;
+
+    /// What a council's run carries.
+    const COUNCIL: &str = r#", "round": "council""#;
+
+    /// Whether a run holding `outcomes`, with `rest` beside them, counts.
+    fn counted(outcomes: &[String], rest: &str) -> bool {
+        let text = format!(
+            r#"{{"startedAt": "2026-11-23T07:00:00Z", "outcomes": [{}]{rest}}}"#,
+            outcomes.join(", ")
+        );
+        answered(&serde_json::from_str(&text).expect("a run the test writes"))
+    }
+
+    #[test]
+    fn only_a_collected_council_or_stack_round_counts() {
+        let finished = [outcome(FINISHED)];
+        for (rest, counts, why) in [
+            (COUNCIL, true, "a council a reviewer finished didn't count"),
+            (r#", "round": "stack""#, true, "a stack's round didn't count"),
+            (r#", "round": "judge""#, false, "a judge counted as a round"),
+            ("", false, "a run naming no kind of round counted"),
+            (r#", "round": "council", "open": true"#, false, "an open round counted"),
+            (r#", "round": "council", "closed": true"#, false, "a closed round counted"),
+            (
+                r#", "round": "council", "unpinned": "main""#,
+                false,
+                "a round that read no pinned commit counted",
+            ),
+        ] {
+            assert_eq!(counted(&finished, rest), counts, "{why}");
+        }
+    }
+
     #[test]
     fn a_round_counts_once_one_reviewer_answered() {
-        // Outcomes as the harness writes them: a stop is an object naming
-        // its limit, and a failure is a string.
-        let one = |rest: &str| format!(r#"{{"participantId": "one", "findingIds": []{rest}}}"#);
-        let cancelled = one(r#", "stopped": {"limit": "cancelled", "detail": "asked to stop"}"#);
-        let finished = one("");
+        let cancelled =
+            outcome(r#", "stopped": {"limit": "cancelled", "detail": "asked to stop"}"#);
         let cases = [
+            (vec![outcome(FINISHED)], true, "a reviewer that finished didn't answer"),
+            (vec![outcome("")], false, "an outcome with no sign of an answer counted"),
             (
-                vec![finished.clone()],
-                "",
-                true,
-                "a reviewer that finished didn't answer",
-            ),
-            (
-                vec![finished.clone()],
-                r#", "open": true"#,
-                false,
-                "an open round counted",
-            ),
-            (
-                vec![finished],
-                r#", "closed": true"#,
-                false,
-                "a closed round counted",
-            ),
-            (
-                vec![one(r#", "failure": "the wall""#)],
-                "",
+                vec![outcome(r#", "answerPath": "/a.md", "failure": "the wall""#)],
                 false,
                 "a failure answered",
             ),
-            (vec![], "", false, "a round with no outcome counted"),
             (
-                vec![cancelled.clone()],
-                "",
+                vec![outcome(r#", "answerPath": "/a.md", "failure": null"#)],
                 false,
-                "a cancel filing nothing answered",
+                "a failure written null answered",
             ),
+            (vec![], false, "a round with no outcome counted"),
+            (vec![cancelled.clone()], false, "a cancel filing nothing answered"),
             (
-                vec![one(r#", "stopped": {"limit": "soft-deadline"}"#)],
-                "",
+                vec![outcome(r#", "stopped": {"limit": "soft-deadline"}"#)],
                 false,
                 "a reviewer stopped at its wall with nothing filed answered",
             ),
             (
                 vec![cancelled.replace("[]", "[7]")],
-                "",
                 true,
                 "a finding filed before a cancel didn't count",
             ),
             (
-                vec![cancelled, one(r#", "stopped": null"#)],
-                "",
-                true,
-                "a null stop read as a stop",
+                vec![cancelled, outcome(r#", "answerPath": "/a.md", "stopped": null"#)],
+                false,
+                "a stop written null, filing nothing, answered",
             ),
             (
-                vec![one(r#", "stopped": true"#)],
-                "",
+                vec![outcome(r#", "stopped": true"#)],
                 false,
                 "a stop written as true, filing nothing, answered",
             ),
         ];
-        for (outcomes, rest, counts, why) in cases {
-            let text = format!(r#"{{"outcomes": [{}]{rest}}}"#, outcomes.join(", "));
-            let run: Value = serde_json::from_str(&text).expect("a run the test writes");
-            assert_eq!(answered(&run), counts, "{why}: {text}");
+        for (outcomes, counts, why) in cases {
+            assert_eq!(counted(&outcomes, COUNCIL), counts, "{why}: {outcomes:?}");
         }
     }
 
@@ -1061,10 +1083,14 @@ mod tests {
         let log = format!(
             "aaaa {} Merge pull request #33 from Jitsusama/here/c\n\
              dddd {} Merge pull request #34 from Jitsusama/here/d\n\
-             bbbb {} Merge pull request #32 from Jitsusama/here/b\n",
+             bbbb {} Merge pull request #32 from Jitsusama/here/b\n\
+             eeee {} Merge pull request #35 from Jitsusama/here/e\n\
+             ffff {} Merge pull request #36 from Jitsusama/here/f\n",
             NOW - 60,
             NOW - 90,
-            NOW - 120
+            NOW - 120,
+            NOW - 150,
+            NOW - 180
         );
         let runs = |change: &str, each: std::ops::Range<i64>| -> Vec<String> {
             each.map(|n| started(&format!("council-{change}-{n}"), 3600 - 60 * n))
@@ -1075,18 +1101,25 @@ mod tests {
         // filed nothing, which isn't a round.
         let mut d = runs("d", 0..6);
         d.push(started("council-d-cancelled", 3000).replace(
-            r#"[{"participantId": "one"}]"#,
-            r#"[{"participantId": "one", "findingIds": [], "stopped": {"limit": "cancelled"}}]"#,
+            r#""answerPath": "/answers/one.md""#,
+            r#""findingIds": [], "stopped": {"limit": "cancelled"}"#,
         ));
         let ours = [
             on("32", &runs("b", 0..6)),
             on("33", &runs("c", 0..5)),
             on("34", &d),
+            on("35", &runs("e", 0..6)),
+            on("36", &runs("f", 0..6)),
         ];
         // The Mac holds #32's sixth too, which is read here and counts
         // once, its seventh and eighth, and its ninth, whose fix is kept
-        // here; and #33's sixth.
-        let theirs = kept(&[on("32", &runs("b", 5..9)), on("33", &runs("c", 5..6))]);
+        // here; #33's sixth; #35's seventh; and #36's seventh and eighth.
+        let theirs = kept(&[
+            on("32", &runs("b", 5..9)),
+            on("33", &runs("c", 5..6)),
+            on("35", &runs("e", 6..7)),
+            on("36", &runs("f", 6..8)),
+        ]);
         let fixed = kept(&[fixes(&[("council-b-8", "in the ninth", Some("committed"))])]);
         let ours = kept(&ours);
         let mains = [Main {
@@ -1096,9 +1129,10 @@ mod tests {
         }];
         let landed = || BTreeMap::from([("core.nix#34".to_owned(), "LANDER".to_owned())]);
         let all = rounds(&mains, &ours, &theirs, &fixed, landed, NOW, "ORCH");
-        assert_eq!(
-            all[0].now, 6.0,
-            "the median of #32's 9, #33's 6 and #34's 6"
+        assert!(
+            (all[0].now - 7.0).abs() < f64::EPSILON,
+            "the median of #32's 9, #33's 6, #34's 6, #35's 7 and #36's 8: {}",
+            all[0].now
         );
         assert_eq!(
             all[0].behind,
@@ -1106,6 +1140,15 @@ mod tests {
                 concat!(
                     "core.nix#32: 9 rounds, past five caught in the ninth, ",
                     "3 rounds past five run on another machine, what 2 of them caught unread"
+                ),
+                "core.nix#33: 6 rounds, those past five run on another machine, unread",
+                concat!(
+                    "core.nix#36: 8 rounds, those past five caught nothing here, ",
+                    "2 rounds past five run on another machine, what they caught unread"
+                ),
+                concat!(
+                    "core.nix#35: 7 rounds, those past five caught nothing here, ",
+                    "1 round past five run on another machine, what it caught unread"
                 ),
                 "core.nix#33: 6 rounds, those past five run on another machine, unread",
                 "core.nix#34: 6 rounds, those past five caught nothing",
@@ -1129,9 +1172,13 @@ mod tests {
             each[unread].trouble.push("can't be listed".to_owned());
             let [local, mirrored, kept_fixes] = each;
             let all = rounds(&mains, &local, &mirrored, &kept_fixes, landed, NOW, "ORCH");
+            let unsaid = [NO_RUNS, NO_MIRROR, NO_FIXES]
+                .iter()
+                .filter(|no| **no != said)
+                .all(|no| !all[0].says.contains(no));
             assert!(
-                all.len() == 1 && !read_whole(&all[0]) && all[0].says.contains(said),
-                "a merge was filed, or its drag closed, while records went unread: {}",
+                all.len() == 1 && !read_whole(&all[0]) && all[0].says.contains(said) && unsaid,
+                "a merge was filed, its drag closed, or records read were said unread: {}",
                 all[0].says
             );
         }
