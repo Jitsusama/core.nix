@@ -91,10 +91,17 @@ let
   sleepingNode =
     toString
       (linux (links // { easesSleep = true; })).systemd.user.services.mycelium.Service.ExecStart;
-  # The home realm's node of a machine that makes the carries it chooses.
+  # The home realm's node of a machine that makes the carries it chooses
+  # and parks the sessions it would put to sleep, as a busy machine would.
   carryingNode =
     toString
-      (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
+      (linux (
+        links
+        // {
+          easesSleep = true;
+          easesCarry = true;
+        }
+      )).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -613,6 +620,7 @@ in
             stimulatingNode
             lendingNode
             sleepingNode
+            carryingNode
           ]
         )
       );

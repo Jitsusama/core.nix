@@ -25,9 +25,9 @@ in
       description = ''
         Whether the home realm's node makes the carries it chooses while
         this machine is over its room and another has some, under its own
-        name, rather than only saying so. It carries one idle session at a
-        time, off the screen and part way through nothing, at most six a
-        day, and only to a peer heard from lately. The session's harness
+        name, rather than only saying so. Mycelium, not this option, bounds
+        what it carries: one sleeping session at a time, off the screen and part
+        way through nothing, and at most six a day. The session's harness
         must take a carry from the node, or the carry is kept and told but
         never made. Off, the node only writes what it would do.
       '';
@@ -35,10 +35,10 @@ in
   };
 
   # The node always writes, as it judges the machine, what it would do to
-  # ease it, so its lines can be read before it may act. Each only where
-  # the machine says so, it makes those carries, and asks the harness to
-  # park the idle sessions it would put to sleep, in the folder each
-  # session's harness reads.
+  # ease it, so its lines can be read before it may act. Where the machine
+  # says so, it makes the carries it chooses. Where the machine says so,
+  # it asks the harness to park the idle sessions it would put to sleep,
+  # in the folder each session's harness reads.
   args = [
     "--eases"
   ]
