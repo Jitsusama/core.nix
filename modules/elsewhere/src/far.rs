@@ -262,9 +262,9 @@ pub fn left<'a>(
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's archives, `bytes` in all, to cross, unpacks them in `scratch` within the
-/// quest's own scratch there, the one folder a strict fence lets it
-/// write, runs the kind's setup and then the job, its program found on
+/// for the job's archives, `bytes` in all, to cross, unpacks them in
+/// `scratch` within the quest's own scratch there, the one folder a
+/// strict fence lets it write, runs the kind's setup and then the job, its program found on
 /// the far path by its name, in the job's folder `within` the tree, then
 /// leaves what the kind brings back in the handover and takes its copy
 /// away.

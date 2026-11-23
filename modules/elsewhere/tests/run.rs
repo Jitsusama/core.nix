@@ -313,7 +313,7 @@ fn a_job_placed_far_runs_there_by_mycelium_and_brings_back_its_output() {
 }
 
 #[test]
-fn the_far_line_holds_its_wait_to_the_ceiling_the_job_s_archives_set() {
+fn the_far_line_is_told_the_bytes_the_job_s_archives_take() {
     let realm = Realm::new(true);
     realm.tracked("Spec.tla", &"s".repeat(300_000));
     let output = realm.check(&[], "true");
