@@ -7,7 +7,7 @@
 //! Never a result typed in a message, whether after the last one given or
 //! making up the count.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use serde_json::{Value, json};
 
@@ -176,34 +176,47 @@ fn a_search_cut_short_is_read_when_it_reaches_back_before_anything_judged() {
     );
 }
 
+/// The tag search's answers for a gap: read whole, its newest five
+/// minutes back; then cut to three, the oldest of them later than a
+/// minute before that newest, as one Slack found late may lie between.
+fn a_gap(rounds: &AtomicUsize, asked: &Value, now: u64) -> String {
+    let stop = stop();
+    read_then_cut(
+        rounds,
+        asked,
+        &[(now - 300, "a word"), (now - 400, "an older word")],
+        &[
+            (now - 60, &stop),
+            (now - 200, "a newer word"),
+            (now - 330, "a word found late"),
+            (now - 300, "a word"),
+            (now - 400, "an older word"),
+        ],
+        3,
+    )
+}
+
+/// Where in the journal the tag search's gap was told in Joel's row, and
+/// where it was read on, each if it was.
+fn told_and_read_on(journal: &str) -> (Option<usize>, Option<usize>) {
+    (
+        journal.find("told Joel in For You: The safe word's search of Slack for your tag"),
+        journal.find("told in Joel's row, reads on: what was said then is never read"),
+    )
+}
+
 #[test]
 fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
     static TAGS: AtomicUsize = AtomicUsize::new(0);
     let came = hearing(
         |tool, asked, now| {
             if tool != "slack_search_public_and_private" {
-                return said(tool, now);
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                nothing()
+            } else {
+                a_gap(&TAGS, asked, now)
             }
-            if asked["query"] == "pineapple" {
-                return poisoned();
-            }
-            let stop = stop();
-            // Read whole, its newest five minutes back; then cut to three,
-            // the oldest of them later than a minute before that newest,
-            // as one Slack found late may lie between.
-            read_then_cut(
-                &TAGS,
-                asked,
-                &[(now - 300, "a word"), (now - 400, "an older word")],
-                &[
-                    (now - 60, &stop),
-                    (now - 200, "a newer word"),
-                    (now - 330, "a word found late"),
-                    (now - 300, "a word"),
-                    (now - 400, "an older word"),
-                ],
-                3,
-            )
         },
         &Until {
             judging: 5,
@@ -211,29 +224,99 @@ fn a_search_cut_short_of_the_last_answer_read_is_told_then_read_on() {
             read_at: None,
         },
     );
-    assert!(
-        came.why
-            .starts_with("Slack's answers to the safe word can't be read"),
-        "an answer leaving unread what was said since the last read is told, here beside \
-         the phrase's: {}",
-        came.why
-    );
-    let unread = came
-        .journal
-        .matches("it leaves unread what was said after")
+    let (told, read_on) = told_and_read_on(&came.journal);
+    let deaf = format!("search for \"<@{JOEL}>\" can't be read:");
+    let before = came.journal[..read_on.unwrap_or_default()]
+        .matches(&deaf)
         .count();
-    let read_on = came
-        .journal
-        .find("reads on: what was said then is never read");
     assert!(
-        unread >= 2 && read_on > came.journal.find("it leaves unread"),
-        "deaf for two rounds, so Joel is told, and then read on, the span named: {}",
+        told.is_some() && read_on > told && before >= 2,
+        "deaf two rounds, so the row tells Joel the tag's search can't be read, and only \
+         then read on: {}",
+        came.journal
+    );
+    assert!(
+        came.journal.contains("what was said from a minute before"),
+        "the span named starts a minute before the last read: {}",
         came.journal
     );
     assert_eq!(
         each(&came.said, "verdict"),
         ["nothing", "nothing", "nothing", "nothing", "stop"],
         "and the stop it reads on to is judged, not left deaf for good"
+    );
+}
+
+#[test]
+fn a_gap_beside_a_round_the_other_search_went_unasked_in_waits_for_the_row() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    static PHRASES: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] != "pineapple" {
+                a_gap(&TAGS, asked, now)
+            } else if PHRASES.fetch_add(1, Ordering::SeqCst) == 2 {
+                // The phrase's search in the gap's second round, rate-limited.
+                format!("{}Slack said: ratelimited", super::FAILS)
+            } else {
+                nothing()
+            }
+        },
+        &Until {
+            judging: 5,
+            asks: 0,
+            read_at: None,
+        },
+    );
+    let (told, read_on) = told_and_read_on(&came.journal);
+    assert!(
+        told.is_some() && read_on > told,
+        "a round counted neither way doesn't count toward telling, so the gap is read on \
+         only once the row says so: {}",
+        came.journal
+    );
+}
+
+#[test]
+fn an_answer_cut_to_the_last_read_in_a_quiet_stretch_is_read() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing(
+        |tool, asked, now| {
+            // Said at the second the case began, so a second passing
+            // mid-case says nothing new.
+            static BEGAN: AtomicU64 = AtomicU64::new(0);
+            if tool != "slack_search_public_and_private" {
+                return said(tool, now);
+            }
+            if asked["query"] == "pineapple" {
+                return poisoned();
+            }
+            let began = BEGAN
+                .compare_exchange(0, now, Ordering::SeqCst, Ordering::SeqCst)
+                .map_or_else(|began| began, |_| now);
+            // Read whole as one word; then, nothing new said, cut to it alone.
+            read_then_cut(
+                &TAGS,
+                asked,
+                &[(began - 300, "a word")],
+                &[(began - 300, "a word"), (began - 400, "an older word")],
+                1,
+            )
+        },
+        &Until {
+            judging: 1,
+            asks: 12,
+            read_at: None,
+        },
+    );
+    assert!(
+        !came
+            .journal
+            .contains(&format!("search for \"<@{JOEL}>\" can't be read")),
+        "an answer holding the last read has all said since, so it's no gap: {}",
+        came.journal
     );
 }
 

@@ -51,7 +51,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use pineapple::deaf::{self, Deaf, Deafness, Round, Waiting};
+use pineapple::deaf::{self, Change, Deaf, Deafness, Round, Search, Waiting};
 use pineapple::ears::{Api, Through};
 use pineapple::judged::{self, Afresh, Judged};
 use pineapple::mcp::Gateway;
@@ -409,9 +409,20 @@ fn told_in(named: Option<&OsStr>) -> Waiting {
 /// Tells For You whether this round heard Slack, as it changes.
 fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
     let change = deaf.heard(heard, millis());
-    if let Err(error) = deaf::make(&waiting.file, &change) {
-        eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
-        deaf.failed(&change);
+    match deaf::make(&waiting.file, &change) {
+        Err(error) => {
+            eprintln!("<3>couldn't tell Joel in For You whether Slack is heard: {error}");
+            deaf.failed(&change);
+        }
+        // Said, so what was read on after it can be seen to follow it.
+        Ok(()) => {
+            if let Change::Tell(waits) = &change {
+                eprintln!(
+                    "<5>told Joel in For You: {}",
+                    waits["items"][0]["why"].as_str().unwrap_or_default()
+                );
+            }
+        }
     }
 }
 
@@ -518,6 +529,11 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
             Err(round) => round,
         };
         tell_deaf(&mut deaf, &waiting, heard);
+        // A search's gap is read on only once the row says so.
+        if let Some(user) = &me {
+            through.told(round::PHRASE, deaf.tells(Search::Phrase));
+            through.told(&round::tag(user), deaf.tells(Search::Tag));
+        }
         std::thread::sleep(how.every);
     }
 }

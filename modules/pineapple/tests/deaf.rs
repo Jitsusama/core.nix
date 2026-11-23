@@ -350,6 +350,41 @@ fn a_why_that_flips_each_round_is_no_row_of_its_own() {
 }
 
 #[test]
+fn a_search_deaf_every_round_is_told_while_its_partner_flickers() {
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let _ = deaf.heard(tag, AT);
+    assert!(matches!(deaf.heard(tag, AT + 30_000), Change::Tell(_)));
+    assert!(
+        deaf.tells(Search::Tag) && !deaf.tells(Search::Phrase),
+        "the row says the tag's search can't be read, and only that"
+    );
+    // The phrase goes deaf for good, while the tag flickers back and forth.
+    let phrase = Round::Deaf(Deafness::Unread(Search::Phrase));
+    let both = Round::Deaf(Deafness::Unreadable);
+    assert_eq!(deaf.heard(phrase, AT + 60_000), Change::Keep, "held once");
+    assert_eq!(
+        deaf.heard(both, AT + 90_000),
+        Change::Tell(waits(Deafness::Unreadable, AT + 90_000, AT + 90_000)),
+        "the phrase deaf two rounds running is told, though no one why held twice"
+    );
+    assert!(deaf.tells(Search::Phrase), "and the row now says so");
+}
+
+#[test]
+fn a_row_that_failed_to_write_tells_nothing() {
+    let mut deaf = Deaf::new();
+    let tag = Round::Deaf(Deafness::Unread(Search::Tag));
+    let _ = deaf.heard(tag, AT);
+    let told = deaf.heard(tag, AT + 30_000);
+    deaf.failed(&told);
+    assert!(
+        !deaf.tells(Search::Tag),
+        "a row that couldn't be written doesn't count as Joel told"
+    );
+}
+
+#[test]
 fn a_row_for_another_why_is_never_the_one_marked_done() {
     let every = [
         Deafness::Refused,

@@ -7,7 +7,7 @@
 //! asked is said as the reader counts it: a sign-in refused, none to give,
 //! or a Slack that couldn't be asked this round.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{Value, json};
 use slack_people::{Account, Slack};
@@ -102,14 +102,16 @@ impl Ears for Api<'_> {
 /// is numbered "of" one count, so the same text can't pass for both, as
 /// it could for one answer the gateway cut short where the real results
 /// were dropped. And one full answer is read only when it reaches back to
-/// the last read; one that doesn't is deaf for [`deaf::ROUNDS`] rounds, so
-/// Joel is told, and is then read on past what it left unread, as the
-/// span between can never be asked for again.
+/// the last read; one that doesn't is deaf until Joel's row says that
+/// search can't be read, and is then read on past what it left unread,
+/// as the span between can never be asked for again.
 pub struct Through {
     gateway: Gateway,
-    /// How many rounds in a row each search's answer, by its query, left
+    /// How many rounds each search's answer, by its query, has left
     /// unread what was said since the last read.
     gaps: HashMap<String, u32>,
+    /// The searches, by query, whose gap Joel's row has told him of.
+    told: HashSet<String>,
 }
 
 impl Through {
@@ -119,6 +121,19 @@ impl Through {
         Through {
             gateway,
             gaps: HashMap::new(),
+            told: HashSet::new(),
+        }
+    }
+
+    /// Whether the row Joel has, as written, says the search for `query`
+    /// can't be read. A gap is read on only once it does, so a round the
+    /// other search went unasked in, or a row that failed to write, never
+    /// skips a span untold.
+    pub fn told(&mut self, query: &str, told: bool) {
+        if !told {
+            self.told.remove(query);
+        } else if self.gaps.contains_key(query) {
+            self.told.insert(query.to_owned());
         }
     }
 
@@ -219,29 +234,30 @@ impl Ears for Through {
                 ))));
             }
         }
-        // Fewer than asked for is every message it finds.
-        if found.len() == asked {
+        // Fewer than asked for is every message it finds, and one holding
+        // the last read has all said since, as a quiet stretch's does.
+        if found.len() == asked && found.iter().all(|message| message.ts != back_to) {
             let oldest = found.first().map_or("", |message| message.ts.as_str());
             let reaches = slack::micros(oldest).zip(slack::micros(back_to));
             if reaches.is_none_or(|(oldest, back_to)| oldest.saturating_add(FOUND_LATE) > back_to) {
                 let gaps = self.gaps.entry(query.to_owned()).or_default();
                 *gaps = gaps.saturating_add(1);
                 let unheard = format!(
-                    "back to {oldest:?}, it leaves unread what was said after {back_to} and \
-                     before a minute ahead of then"
+                    "back to {oldest:?}, it leaves unread what was said from a minute before \
+                     {back_to} to then"
                 );
-                if *gaps <= deaf::ROUNDS {
+                if *gaps <= deaf::ROUNDS || !self.told.contains(query) {
                     return Err(unread(cut_to(unheard)));
                 }
                 eprintln!(
-                    "<4>the gateway's search for {query:?}, {}, deaf {} rounds and so told, \
-                     reads on: what was said then is never read",
-                    cut_to(unheard),
-                    deaf::ROUNDS
+                    "<4>the gateway's search for {query:?}, {}, told in Joel's row, reads on: \
+                     what was said then is never read",
+                    cut_to(unheard)
                 );
             }
         }
         self.gaps.remove(query);
+        self.told.remove(query);
         if cut {
             eprintln!(
                 "<5>the gateway cut its answer for {query:?} to {asked} of {COUNT}, so it read \
