@@ -76,7 +76,8 @@ fi
 # handleExposure, handleObscurity, windowDestroyed, polishAndSync), so
 # one can't pass for animationStarted()'s; the one exception, a polish
 # that starts an animation in the same polishAndSync that then finds bad
-# vsync, says badVSync=1 on its timer line. The timer's line, the
+# vsync, says badVSync=1 on its timer line, so a line saying that is
+# marked -other even straight after a start. The timer's line, the
 # animationStarted() line before it and the (RT) mark on the render
 # thread's lines are Qt's own wording, which a Qt bump may change: a
 # render-thread line without the mark, or a new line from the GUI thread
@@ -108,8 +109,11 @@ counts=$(awk '
     shown = $0
     sub(/.*exposedWindows=/, "", shown)
     sub(/ .*/, "", shown)
-    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown (started ? "" : "-other")
-    if (started && shown == 3) {
+    # A polish that starts an animation and finds bad vsync starts the
+    # timer itself, and says so; that line comes from no start.
+    ours = started && !/badVSync=1/
+    seen[starts] = seen[starts] (seen[starts] == "" ? "" : ",") shown (ours ? "" : "-other")
+    if (ours && shown == 3) {
       timed[starts] = 1
     }
     started = 0
