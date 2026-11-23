@@ -271,11 +271,13 @@
     if (stops.length === 0) {
       return null;
     }
-    return stops.flatMap((stop, at) =>
-      at === 0
-        ? [stop]
-        : [1, 2, 3, 4, 5, 6, 7, 8].map((eighth) => between(stops[at - 1], stop, eighth / 8)),
-    );
+    const colours = [stops[0]];
+    for (let at = 1; at < stops.length; at += 1) {
+      for (let eighth = 1; eighth <= 8; eighth += 1) {
+        colours.push(between(stops[at - 1], stops[at], eighth / 8));
+      }
+    }
+    return colours;
   };
   // How many ways a word's pixels are worked out at most before it's left
   // to a person.
