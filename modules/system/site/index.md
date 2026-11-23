@@ -36,10 +36,11 @@ Every health is good, watch, bad or not read, each with its own mark.
   stands for several cells, and the drawing says how many. Under each
   pier, where it meets the network, as "Hall, 2.4 GHz". A wide screen
   draws four piers, a narrow one two, and the drawing says how many
-  more are below. The drawing is hidden from a screen reader, since
+  more are below. A machine the mycelium can't reach stands no pier;
+  the drawing says how many are out of reach. The drawing is hidden from a screen reader, since
   every word in it is said again below.
-- **A section for each machine,** worst first, at most eight, then how
-  many more, linked to the map. Each has its name, linked to it on the
+- **A section for each machine in reach,** worst first, at most eight,
+  then how many more, linked to the map. Each has its name, linked to it on the
   map, its kind (model and system, and whether it is this one) and how
   it stands, then four ties:
   - Cells: how many of the mycelium's cells are busy and idle on it,
@@ -54,6 +55,13 @@ Every health is good, watch, bad or not read, each with its own mark.
   Then what can be done with it: Open in the Launcher, which opens the
   launcher's Machines at that machine, and its commands, each with a
   copy button.
+- **Out of reach:** the machines the mycelium can't reach, under one
+  mark and one line saying how many, then a line each: its name, linked
+  to it on the map, and when it was last heard. It names 24 at most,
+  then how many more, linked to the map. The headline counts them apart
+  from those in trouble, and what is worth a look gives them one row
+  between them, so many gone at once leave room for the few that need
+  you.
 - **Across them:** the mycelium, the network and the code, each with its
   mark, its name, what it says, what in it is worth a look, a link to
   its whole page and the command that says more.
@@ -84,7 +92,7 @@ Every health is good, watch, bad or not read, each with its own mark.
 | ------ | ------------------------------------------------------------------- |
 | a      | Go to the next thing worth a look, the first again after the last   |
 | j, k   | Step through what is worth a look, then each machine and its ties   |
-| 1 to 8 | Go to a machine, in the order they're drawn                         |
+| 1 to 8 | Go to a machine in reach, in the order they're drawn                |
 | 0      | Go to the mycelium, the network and the code across them            |
 | g, G   | Go to the first or the last                                         |
 | Return | Open what you're on: the map, the network, the code or the launcher |

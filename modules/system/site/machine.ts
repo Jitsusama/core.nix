@@ -33,6 +33,23 @@ const STANDS: readonly (readonly [Health, string])[] = [
   ["unread", "not read"],
 ];
 
+/** How each health ranks, the worst last, as the daemon orders them. */
+const WORSE: readonly Health[] = ["good", "watch", "bad", "unread"];
+
+/** The worst health among `things`, as the daemon ranks them, good for none. */
+function worstOf(things: readonly Thing[]): Health {
+  return things.reduce<Health>(
+    (worst, thing) => (WORSE.indexOf(thing.health) > WORSE.indexOf(worst) ? thing.health : worst),
+    "good",
+  );
+}
+
+/** Where `health` ranks in the headline, as STANDS orders them, good after all. */
+function headlineRank(health: Health): number {
+  const at = STANDS.findIndex(([each]) => each === health);
+  return at < 0 ? STANDS.length : at;
+}
+
 /** A tie said: its main words and what goes beside them. */
 interface Said {
   readonly said: string;
@@ -75,12 +92,23 @@ function machineHeadline(system: System): MachineHeadline {
   if (all === 0) {
     return { machines, stand: "none known", health: "unread" };
   }
-  const stands = STANDS.map(([health, words]) => {
-    const untold = health === "unread" ? part.untold : 0;
-    const count = things.filter((thing) => thing.health === health).length + untold;
-    return { health, count, words };
-  }).filter((each) => each.count > 0);
-  const [worst] = stands;
+  // Those out of reach are counted apart, first, in the worst health among
+  // them, so "seven in trouble" never hides that six are only gone quiet.
+  const away = things.filter((thing) => !thing.ties.reached);
+  const reached = things.filter((thing) => thing.ties.reached);
+  const outOfReach = { health: worstOf(away), count: away.length, words: "out of reach" };
+  const stands = [
+    outOfReach,
+    ...STANDS.map(([health, words]) => {
+      const untold = health === "unread" ? part.untold : 0;
+      const count = reached.filter((thing) => thing.health === health).length + untold;
+      return { health, count, words };
+    }),
+  ].filter((each) => each.count > 0);
+  // The headline's colour is the worst it says, in the order STANDS ranks them.
+  const [worst] = [...stands].sort(
+    (one, other) => headlineRank(one.health) - headlineRank(other.health),
+  );
   if (worst === undefined) {
     return { machines, stand: "all ready", health: "good" };
   }
@@ -401,4 +429,5 @@ export {
   placeWords,
   standing,
   whenSaid,
+  worstOf,
 };

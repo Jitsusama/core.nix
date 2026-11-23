@@ -19,19 +19,20 @@ import { askedOf, landingOf, recordsOf, type Watch } from "./address.ts";
 import { bridgeOf } from "./bridge.ts";
 import { cursorOver } from "./cursor.ts";
 import {
+  awayOf,
   headlineOf,
   legend,
   looksDrawn,
   MACHINES_DRAWN,
-  machinesOf,
   NOT_KNOWN,
   NOTHING,
   partsOf,
   placesOf,
+  reachedOf,
 } from "./draw.ts";
 import { looksOf } from "./looks.ts";
 import { machineHeadline, whenSaid } from "./machine.ts";
-import { allTold, type System, systemOf } from "./model.ts";
+import { allTold, type System, systemOf, type Thing } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -115,8 +116,8 @@ let askedSince = 0;
 /** A minute's milliseconds, how often the ties' times are said again. */
 const MINUTE = 60_000;
 
-/** A look's link to a machine drawn on this page, its section's id caught. */
-const MACHINE_HERE = /^#(machine-\d+)$/u;
+/** A look's link to a machine drawn here, or to those out of reach, its section's id caught. */
+const MACHINE_HERE = /^#(machine-\d+|away)$/u;
 
 /** A time as the ties say it, from now. */
 function when(at: string): string {
@@ -288,11 +289,8 @@ function landAsked(read: System, overdue = Date.now() - askedSince >= PATIENCE):
     return;
   }
   const records = recordsOf(read, machineWatch(), overdue);
-  const landing = landingOf(
-    machinesOf(read).map((thing) => thing.name),
-    asked,
-    records,
-  );
+  const names = (things: readonly Thing[]): string[] => things.map((thing) => thing.name);
+  const landing = landingOf(names(reachedOf(read)), asked, records, names(awayOf(read)));
   if (landing.waits) {
     return;
   }
@@ -332,7 +330,8 @@ function draw(): void {
   title.innerHTML = headlineOf(heading);
   drawLooks(system);
   document.title = `${heading.machines}, ${heading.stand}. Your machines, now`;
-  drawnBridge = redraw(bridge, bridgeOf(machinesOf(system)), drawnBridge, "data-row");
+  const away = awayOf(system).length;
+  drawnBridge = redraw(bridge, bridgeOf(reachedOf(system), away), drawnBridge, "data-row");
   drawnPlaces = redraw(places, placesOf(system), drawnPlaces, "data-place");
   drawParts(system);
   landAsked(system);

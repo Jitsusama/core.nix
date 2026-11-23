@@ -5,7 +5,16 @@
 // nothing the `system` command doesn't; each says whose it is and leads
 // to where it can be seen whole. Nothing here touches the page.
 
-import { capital, type Health, named, type Part, type System } from "./model.ts";
+import { worstOf } from "./machine.ts";
+import {
+  capital,
+  type Health,
+  named,
+  numbered,
+  type Part,
+  type System,
+  type Thing,
+} from "./model.ts";
 
 /** The most looks listed, so a bad night keeps the list a glance. */
 const LOOKS_LISTED = 8;
@@ -14,6 +23,12 @@ const LOOKS_LISTED = 8;
 // Worst first as the daemon ranks them: a part not read at all before a
 // look, since nothing it holds can be told.
 const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch: 2, good: 3 };
+
+/** What a machine's side says of it when the node can't reach it, as the daemon says it. */
+const OUT_OF_REACH = "out of reach";
+
+/** The most machines out of reach the one look for them names, the rest counted. */
+const AWAY_NAMED = 3;
 
 /** The item a side ends with when it had more than it lists, as the daemon says it. */
 const MORE = /^and \d+ more worth a look$/u;
@@ -95,21 +110,68 @@ function ownLooks(part: Part): readonly Look[] {
   return keyed(own).map(({ words, key }) => lookOf(part, "good", words, key));
 }
 
-/** Each machine's side, a look a word, leading to its section or the map. */
+/**
+ * Each machine's side, a look a word, leading to its section or the map;
+ * one drawn whole is told by its place among those in reach, `drawn` of
+ * them drawn. Those out of reach are one look between them, in the place
+ * the first of them would have, so many gone at once read as one thing to
+ * know and leave room for the few that need Joel; anything else their sides
+ * say stays a look of its own.
+ */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
-  return part.things.flatMap((thing, at) =>
-    keyed(thing.side).map(({ words, key }) => ({
-      health: thing.health,
-      whose: thing.name,
+  const reached = part.things.filter((thing) => thing.ties.reached);
+  const away = part.things.filter((thing) => !thing.ties.reached);
+  const hrefOf = (thing: Thing): string => {
+    const at = reached.indexOf(thing);
+    if (at < 0) {
+      return "#away";
+    }
+    return at < drawn
+      ? `#machine-${at + 1}`
+      : `../mycelium/#machine=${encodeURIComponent(thing.name)}`;
+  };
+  return part.things.flatMap((thing) => {
+    const own = keyed(thing.side)
+      .filter(({ words }) => thing.ties.reached || words !== OUT_OF_REACH)
+      .map(({ words, key }) => ({
+        health: thing.health,
+        whose: thing.name,
+        machine: true,
+        words: capital(words),
+        href: hrefOf(thing),
+        row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
+      }));
+    return thing === away[0] ? [awayLook(away), ...own] : own;
+  });
+}
+
+/** The one look for every machine out of reach: how many, and the first few by name. */
+function awayLook(away: readonly Thing[]): Look {
+  const [only] = away;
+  if (only !== undefined && away.length === 1) {
+    return {
+      health: only.health,
+      whose: only.name,
       machine: true,
-      words: capital(words),
-      href:
-        at < drawn
-          ? `#machine-${at + 1}`
-          : `../mycelium/#machine=${encodeURIComponent(thing.name)}`,
-      row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
-    })),
-  );
+      words: capital(OUT_OF_REACH),
+      href: "#away",
+      row: "look:away",
+    };
+  }
+  const names = away.slice(0, AWAY_NAMED).map((thing) => thing.name);
+  const past = away.length - names.length;
+  const listed =
+    past > 0
+      ? `${names.join(", ")} and ${past.toLocaleString("en-CA")} more`
+      : `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
+  return {
+    health: worstOf(away),
+    whose: `${capital(numbered(away.length))} machines`,
+    machine: false,
+    words: `${capital(OUT_OF_REACH)}: ${listed}`,
+    href: "#away",
+    row: "look:away",
+  };
 }
 
 /** One look in the part `part`, keyed `key` among its own. */

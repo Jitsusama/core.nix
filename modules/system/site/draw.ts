@@ -2,7 +2,11 @@
 // between the mycelium, the network and the code (Joel, 2026-11-17), so
 // each has a section of its own: its name and how it stands, then its four
 // ties, each said in words with the way to see it whole, then what can be
-// done from here. The other three parts follow, said across the machines.
+// done from here. A machine the node can't reach carries nothing to draw,
+// so those out of reach are named together after the rest, in a line each,
+// and never take the room of one that carries the work (Joel, 2026-11-23:
+// "this view shows a shit ton of machines down, and in that state, its UX
+// is rather shit"). The other three parts follow, said across the machines.
 // How a thing stands is its health in the system's own words, good, watch,
 // bad or not read, each with its own mark so none is told by colour. Every
 // row the keys step through is a link marked data-row, in reading order,
@@ -18,6 +22,7 @@ import {
   networkSaid,
   type Said,
   standing,
+  worstOf,
 } from "./machine.ts";
 import type { Look, Looks } from "./looks.ts";
 import {
@@ -36,6 +41,15 @@ const MACHINES_DRAWN = 8;
 
 /** The row the machines past those drawn are reached by. */
 const MORE_ROW = "machines:more";
+
+/** The most machines out of reach named, the rest counted, so a fleet gone stays a glance. */
+const AWAY_NAMED = 24;
+
+/** The section the machines out of reach are named in. */
+const AWAY = "away";
+
+/** The row the machines out of reach past those named are reached by. */
+const AWAY_MORE_ROW = `${AWAY}:more`;
 
 /** The row a machine's name sits on, the first of its section. */
 function machineRow(name: string): string {
@@ -112,22 +126,44 @@ function machinesOf(system: System): readonly Thing[] {
   return system.parts.find((part) => part.part === "machines")?.things ?? [];
 }
 
+/** The machines in reach, worst first, which the bridge and the sections draw whole. */
+function reachedOf(system: System): readonly Thing[] {
+  return machinesOf(system).filter((thing) => thing.ties.reached);
+}
+
+/** The machines the node can't reach, worst first, named together after the rest. */
+function awayOf(system: System): readonly Thing[] {
+  return machinesOf(system).filter((thing) => !thing.ties.reached);
+}
+
 /** The headline: how many machines, then how they stand in their worst health's colour. */
 function headlineOf(heading: MachineHeadline): string {
   return `${escaped(heading.machines)}, <em class="${heading.health}">${escaped(heading.stand)}.</em>`;
 }
 
-/** The places at the top: the machines drawn whole, then the parts across them. */
+/**
+ * The places at the top: the machines drawn whole, then those out of reach,
+ * together, then the parts across them.
+ */
 function placesOf(system: System): string {
-  const machines = machinesOf(system)
+  const away = awayOf(system);
+  const awayPlace =
+    away.length === 0
+      ? []
+      : [
+          `<a class="place" href="#${AWAY}" data-place="${AWAY}">${mark(worstOf(away))}Out of reach${spoken(worstOf(away))}</a>`,
+        ];
+  const machines = reachedOf(system)
     .slice(0, MACHINES_DRAWN)
     .map(
       (thing, at) =>
         `<a class="place" href="#machine-${at + 1}" data-place="machine-${at + 1}" translate="no">${mark(thing.health)}${escaped(thing.name)}${spoken(thing.health)}</a>`,
     );
-  return [...machines, '<a class="place" href="#across" data-place="across">Across them</a>'].join(
-    "",
-  );
+  return [
+    ...machines,
+    ...awayPlace,
+    '<a class="place" href="#across" data-place="across">Across them</a>',
+  ].join("");
 }
 
 /** A command and the button that copies it, which y presses for its section's first. */
@@ -238,14 +274,56 @@ function acrossOf(part: Part): string {
   return `<section class="tie part ${part.health}" data-part="part-${escaped(part.part)}"><h3>${mark(part.health)}${name}${spoken(part.health)}</h3><p class="said">${escaped(said.said)}</p><p class="aside">${escaped(said.aside)}</p><div class="onward"><a class="row deeper" data-row="part:${escaped(part.part)}" data-health="${part.health}" href="../${escaped(part.deeper.site)}">${escaped(WHOLE[part.part] ?? `See all of ${named(part.part)}`)}</a>${command(part.deeper.command)}</div></section>`;
 }
 
-/** The machines beyond those drawn whole, said as a row to the map. */
+/** The machines in reach beyond those drawn whole, said as a row to the map. */
 function moreOf(system: System): string {
-  const more = machinesOf(system).length - MACHINES_DRAWN;
+  const more = reachedOf(system).length - MACHINES_DRAWN;
   if (more <= 0) {
     return "";
   }
   const words = `And ${more.toLocaleString("en-CA")} more ${more === 1 ? "machine" : "machines"}, on the map`;
   return `<p class="more"><a class="row" data-row="${MORE_ROW}" href="../mycelium/">${escaped(words)}</a></p>`;
+}
+
+/**
+ * One machine out of reach, a line: its name, leading to the map, where its
+ * last word is, and when the node last heard from it.
+ */
+function awayRow(thing: Thing, when: (at: string) => string): string {
+  const heard =
+    thing.ties.heardAt === undefined
+      ? "Not heard here yet"
+      : `Last heard ${when(thing.ties.heardAt)}`;
+  return `<li><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(onTheMap(thing))}"><span translate="no">${escaped(thing.name)}</span>${spoken(thing.health)}</a><span class="heard">${escaped(heard)}</span></li>`;
+}
+
+/**
+ * The machines the node can't reach, named together after those it can: how
+ * many, in one line of their worst health, then a line each, the rest past
+ * what it names counted and left to the map. None draws a section of its
+ * own, since it has no cells, network or figures to say but its last.
+ */
+function awaySection(system: System, when: (at: string) => string): string {
+  const away = awayOf(system);
+  if (away.length === 0) {
+    return "";
+  }
+  const health = worstOf(away);
+  const count = `${numbered(away.length)} ${away.length === 1 ? "machine" : "machines"}`;
+  const stands = `${WORDS[health]}: ${count} the mycelium can't reach`;
+  const rows = away
+    .slice(0, AWAY_NAMED)
+    .map((thing) => awayRow(thing, when))
+    .join("");
+  const past = away.length - AWAY_NAMED;
+  const more =
+    past > 0
+      ? `<p class="more"><a class="row" data-row="${AWAY_MORE_ROW}" href="../mycelium/">${escaped(`And ${past.toLocaleString("en-CA")} more, on the map`)}</a></p>`
+      : "";
+  return `<section class="${AWAY} ${health}" id="${AWAY}" data-part="${AWAY}" aria-labelledby="name-${AWAY}">
+  <h2 class="name" id="name-${AWAY}">Out of <em>reach</em></h2>
+  <p class="standing health ${health}">${mark(health)}${escaped(stands)}</p>
+  <ul class="gone" role="list">${rows}</ul>${more}
+</section>`;
 }
 
 /**
@@ -270,14 +348,14 @@ function bareOf(system: System): string {
  * the machine the page reads from; `when` says a time, as "at 02:19".
  */
 function partsOf(system: System, when: (at: string) => string): string {
-  const machines = machinesOf(system)
+  const machines = reachedOf(system)
     .slice(0, MACHINES_DRAWN)
     .map((thing, at) => machineOf(thing, at, system.machine, when));
   const across = ACROSS.map((name) => system.parts.find((part) => part.part === name))
     .filter((part) => part !== undefined)
     .map(acrossOf)
     .join("");
-  return `${bareOf(system)}${machines.join("\n")}${moreOf(system)}
+  return `${bareOf(system)}${machines.join("\n")}${moreOf(system)}${awaySection(system, when)}
 <section class="across" id="across" data-part="across" aria-labelledby="name-across">
   <h2 class="name" id="name-across">Across <em>them</em></h2>
   <div class="ties">${across}</div>
@@ -336,6 +414,10 @@ function legend(): string {
 }
 
 export {
+  AWAY,
+  AWAY_MORE_ROW,
+  AWAY_NAMED,
+  awayOf,
   escaped,
   headlineOf,
   legend,
@@ -348,4 +430,5 @@ export {
   NOTHING,
   partsOf,
   placesOf,
+  reachedOf,
 };
