@@ -51,6 +51,35 @@ fn journal(entries: &[String]) -> String {
 }
 
 #[test]
+fn a_minute_whose_video_went_mostly_unanswered_is_set_aside_not_clean() {
+    let read = |message: &str| minute(&serde_json::from_str(&entry(AT, message)).ok()?);
+    let none = read(&said_by_wifid(NEAR, Some(NONE), false));
+    assert!(
+        none.as_ref().is_some_and(|m| !m.held() && !m.answered()),
+        "a minute with every video echo unanswered was judged: {none:?}"
+    );
+    let dark = said_by_wifid(NEAR, Some(&clause("9.0", "0.0")), false)
+        .replace("5.3 ms at p50, 15.0 ms at p95", "none at p50, none at p95");
+    let dark = read(&dark);
+    assert!(
+        dark.as_ref()
+            .is_some_and(|m| m.best.is_none() && m.p95.is_some_and(|p95| p95 > 8.0)),
+        "a minute whose best-effort echoes all went unanswered lost its video: {dark:?}"
+    );
+    let text = journal(&[
+        entry(AT, &said_by_wifid(NEAR, Some(&clause("300.0", "0.0")), false)),
+        entry(AT + 60, &said_by_wifid(NEAR, Some(NONE), false)),
+        entry(AT + 120, &said_by_wifid(NEAR, Some(LOST), false)),
+    ]);
+    let m = video(Some(&text), &TimeZone::UTC);
+    assert!(
+        m.says.ends_with("this hour, of 1 read, 1 more with its video unanswered, 1 unread")
+            && (m.now - 1.0).abs() < f64::EPSILON,
+        "minutes unanswered or unread weren't said beside the one judged: {m:?}"
+    );
+}
+
+#[test]
 fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
     let read = |message: &str| minute(&serde_json::from_str(&entry(AT, message)).ok()?);
     assert_eq!(
@@ -58,7 +87,7 @@ fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
         Some(Minute {
             at: AT,
             bssid: NEAR.to_owned(),
-            best: 15.0,
+            best: Some(15.0),
             p95: Some(2400.0),
             late: 37.5,
             call: true,
@@ -113,7 +142,7 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
         on(FAR, 4, &clause("10.0", "0.0"), false),
         // Held by its late answers, though too few were answered to time.
         on(FAR, 5, FEW, false),
-        // Read, but not held, as no echo answered late.
+        // Set aside, neither held nor clean, as no echo answered late.
         on(FAR, 6, NONE, false),
         entry(AT + 370, "wlp0s20f3 is authenticating"),
     ]);
@@ -126,7 +155,7 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
     assert_eq!(
         m.says,
         "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it past 1 s, \
-         this hour, of 7 read"
+         this hour, of 6 read, 1 more with its video unanswered"
     );
     assert!(
         (m.now - 4.0).abs() < f64::EPSILON && m.target == Some(TARGET) && m.past().is_some(),
@@ -140,7 +169,7 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
                  at 11:25, best effort then 15.0 ms"
             ),
             format!(
-                "on {FAR}, 2 of 4 minutes held, the worst 37.5% past 1 s at 11:30, best effort \
+                "on {FAR}, 2 of 3 minutes held, the worst 37.5% past 1 s at 11:30, best effort \
                  then 15.0 ms"
             ),
         ]
@@ -160,13 +189,26 @@ fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why(
         (m.now - 2.0).abs() < f64::EPSILON && m.past().is_none(),
         "one bad moment, in the two lines covering it, was filed with wifid's owner: {m:?}"
     );
-    let unmeasured = said_by_wifid(NEAR, Some("unmeasured"), false);
-    let before = journal(&[entry(AT, &unmeasured)]);
+    let only = |message: &str| journal(&[entry(AT, message)]);
+    let unmeasured = only(&said_by_wifid(NEAR, Some("unmeasured"), false));
+    let older = only(&said_by_wifid(NEAR, None, false));
+    let lost = only(&said_by_wifid(NEAR, Some(LOST), false));
+    let unanswered = only(&said_by_wifid(NEAR, Some(NONE), false));
+    let other = only("wlp0s20f3 is done looking");
     for (text, why) in [
         (None, ": wifid's journal unread"),
-        (Some(""), ": no Wi-Fi minute"),
-        (Some("wlp0s20f3 is done looking"), ": no Wi-Fi minute"),
-        (Some(before.as_str()), ": no video echo sent"),
+        (
+            Some(""),
+            ": no wifid line, so the journal may be unreadable here or wifid stopped",
+        ),
+        (Some(other.as_str()), ": no Wi-Fi minute"),
+        (Some(unmeasured.as_str()), ": no video echo sent"),
+        (Some(older.as_str()), ": wifid writes no video figure"),
+        (Some(lost.as_str()), ": 1 of wifid's minutes unread"),
+        (
+            Some(unanswered.as_str()),
+            ": every minute's video went unanswered",
+        ),
     ] {
         let m = video(text, &TimeZone::UTC);
         assert!(
@@ -180,7 +222,8 @@ fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why(
 fn the_journal_is_read_for_the_hour_without_a_grep() {
     let args = super::journal(AT);
     assert!(
-        args.contains(&"wifid.service".to_owned())
+        args.windows(2).any(|pair| pair == ["-u", "wifid.service"])
+            && args.windows(2).any(|pair| pair == ["-o", "json"])
             && args.contains(&format!("--since=@{}", AT - 3600))
             && args.contains(&format!("--until=@{AT}"))
             && !args.iter().any(|a| a.starts_with("--grep")),
