@@ -1,8 +1,8 @@
 // Start New Work, Agents' act that begins new work from a link or words, run
 // in Qt's own JavaScript engine, the one the shell runs it in. The
 // `start-new-work-asks-only-a-sprout` check copies
-// modules/quickshell/launcher/Sprouting.js and tests/lib/Expect.js beside
-// this file and runs it offscreen.
+// modules/quickshell/launcher/Sprouting.js, tests/lib/Expect.js and the
+// launcher's words.json beside this file and runs it offscreen.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Sprouting.js" as Sprouting
@@ -19,11 +19,22 @@ QtObject {
         empty: "say what the work is",
         unplaced: "that folder isn't a whole path",
         actRepository: "start it In a repository",
-        actRoom: "once a machine has room, Return starts it",
-        actNode: "once the node runs, Return starts it",
+        actPlaced: "once one can take it, say it again",
+        actNode: "once the node runs, say it again",
         offered: "a page offered this work; read it to its end, then Return starts it",
         offeredFrom: "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"
     })
+
+    // What Start New Work says, as the launcher's words.json the check copies
+    // beside this file holds it.
+    function writtenSaid() {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("words.json"), false);
+        request.send();
+        const thing = JSON.parse(request.responseText).things
+            .find(one => one.id === "agents:start-new-work");
+        return thing?.said ?? {};
+    }
 
     function cases() {
         // Only Joel's own Return sprouts, failing closed.
@@ -208,7 +219,9 @@ QtObject {
             "no machine can take it");
 
         // A refusal one of the launcher's acts gets past ends with that act, the
-        // command line's own cut, in the node's or the daemon's words as each says it.
+        // command line's own cut, in the node's or the daemon's words as each says it:
+        // mycelium 8f1b0e66's sprout.rs folder and node placement, and Rust's words
+        // for a missing socket and a refused one in the agents daemon's sprout.rs.
         const refusal = why => Sprouting.told({ started: false, why }, said);
         Expect.same("one needing a repository says the launcher's act, not the command line's",
             refusal("it needs a repository to work in, and /home/j isn't one: say which, as "
@@ -222,12 +235,35 @@ QtObject {
         Expect.same("a folder not here is started In another",
             refusal("/home/j/src/gone isn't a folder here"),
             "/home/j/src/gone isn't a folder here; start it In a repository");
-        Expect.same("one with no room says when Return starts it",
-            refusal("nowhere: kestrel is full"),
-            "nowhere: kestrel is full; once a machine has room, Return starts it");
-        Expect.same("one whose node wasn't reached says when Return starts it",
-            refusal("the node couldn't be reached: no such file"),
-            "the node couldn't be reached: no such file; once the node runs, Return starts it");
+        Expect.same("one placed nowhere says to say it again once a machine can take it",
+            refusal("nowhere: skiff lacks system macos; tern is out of reach"),
+            "nowhere: skiff lacks system macos; tern is out of reach; "
+                + "once one can take it, say it again");
+        Expect.same("one whose node's socket is missing says to say it again once it runs",
+            refusal("the node couldn't be reached: No such file or directory (os error 2)"),
+            "the node couldn't be reached: No such file or directory (os error 2); "
+                + "once the node runs, say it again");
+        Expect.same("and one whose node refused",
+            refusal("the node couldn't be reached: Connection refused (os error 111)"),
+            "the node couldn't be reached: Connection refused (os error 111); "
+                + "once the node runs, say it again");
+        Expect.same("one the node's socket won't let in isn't a node that's down",
+            refusal("the node couldn't be reached: Permission denied (os error 13)"),
+            "the node couldn't be reached: Permission denied (os error 13)");
+        Expect.same("one whose command line's act isn't where it's cut keeps only its words",
+            refusal("it needs a repository to work in, and /home/j isn't one: say which, as "
+                + "`mycelium sprout --in <folder> ...`."),
+            "it needs a repository to work in, and /home/j isn't one: say which, as "
+                + "`mycelium sprout --in <folder> ...`.");
+        Expect.same("and one begun at home whose folder to name runs on",
+            refusal("a session begun in a home folder has none of its repository's skills: "
+                + "name the repository's folder, or a link"),
+            "a session begun in a home folder has none of its repository's skills: "
+                + "name the repository's folder, or a link");
+        Expect.same("words quoting a repository's need further in aren't that refusal",
+            refusal("this asks as a fence, so it runs only there: it needs a repository to "
+                + "work in"),
+            "this asks as a fence, so it runs only there: it needs a repository to work in");
         Expect.same("one unanswered keeps its own words, which say what to do",
             Sprouting.told({ started: false, unanswered: true,
                 why: "the node couldn't be reached in time" }, said),
@@ -237,12 +273,20 @@ QtObject {
             "nowhere: kestrel is full");
         Expect.same("words that only hold a known refusal's aren't it",
             refusal("it said nowhere: and stopped"), "it said nowhere: and stopped");
-        const roomless = { started: false, why: "nowhere: kestrel is full" };
+        const roomless = { started: false,
+            why: "nowhere: kestrel holds the 8 sessions it holds at most" };
         Expect.same("the act is told Joel, and the journal keeps the node's words",
             Sprouting.reach(roomless, said), {
-                journal: "new work wasn't started: nowhere: kestrel is full",
-                told: "nowhere: kestrel is full; once a machine has room, Return starts it"
+                journal: "new work wasn't started: nowhere: kestrel holds the 8 sessions it "
+                    + "holds at most",
+                told: "nowhere: kestrel holds the 8 sessions it holds at most; "
+                    + "once one can take it, say it again"
             });
+        // Each act is said in words Joel reads: a key missing from Start New Work's
+        // words would leave its refusals with no act, as one unknown is.
+        const written = writtenSaid();
+        Expect.same("each refusal's act is in Start New Work's own words",
+            Sprouting.refusalActs().filter(key => String(written[key] ?? "").trim() === ""), []);
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };

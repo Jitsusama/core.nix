@@ -338,31 +338,45 @@ function settled(openings, found, now, patience) {
 }
 
 // The refusals Joel can meet that one act of the launcher's gets past, by
-// the node's or the agents daemon's words (mycelium's sprout.rs and
-// placement, modules/agents/src/sprout.rs), each with the key of that act's
+// the node's or the agents daemon's words, each with the key of that act's
 // words in `said` and, for one naming the command line's act, what to cut
-// from its end so only the launcher's is said: one needing a repository
-// or a folder here is started In one of his repositories, or from the
-// work's whole link, which names its own; one with no room or no node to
-// reach is asked again once there is. A refusal none of these knows is
-// told in its own words alone.
+// from its end so only the launcher's is said. As mycelium 8f1b0e66 says
+// them, in its sprout.rs's folder and its node's placement: one needing a
+// repository, begun at home, or naming a folder not here is started In one
+// of his repositories, or from the work's whole link, which names its own;
+// one placed nowhere, whose words say each machine's reasons (needs it
+// lacks, reach, room, its time), is said again once one of those can take
+// it. One whose node's socket is missing or refuses, as the agents
+// daemon's sprout.rs says from Rust's own words for the two, is said again
+// once the node runs; any other failure to reach it isn't a node that's
+// down. A refusal none of these knows is told in its own words alone.
 const ACTS = [
-    { says: /needs a repository to work in/u, cut: /: say which, as `.*$/u, act: "actRepository" },
-    { says: /begun in a home folder/u, cut: /: name the repository's folder$/u,
+    { says: /^it needs a repository to work in, /u, cut: /: say which, as `[^`]*`$/u,
         act: "actRepository" },
-    { says: /isn't a folder here$/u, cut: null, act: "actRepository" },
-    { says: /^nowhere: /u, cut: null, act: "actRoom" },
-    { says: /^the node couldn't be reached/u, cut: null, act: "actNode" }
+    { says: /^a session begun in a home folder /u, cut: /: name the repository's folder$/u,
+        act: "actRepository" },
+    { says: / isn't a folder here$/u, cut: null, act: "actRepository" },
+    { says: /^nowhere: /u, cut: null, act: "actPlaced" },
+    { says: /^the node couldn't be reached: (?:No such file or directory|Connection refused) /u,
+        cut: null, act: "actNode" }
 ];
 
+// The keys of the words each known refusal's act is said in (ACTS), so a
+// test can hold them to the words Joel reads.
+function refusalActs() {
+    return ACTS.map(one => one.act);
+}
+
 // The refusal `why` as Joel is told it, in `said`'s words: ending with the
-// act that gets past it (ACTS), or as it is when none is known or its
-// words are missing. The journal keeps `why` as it was said.
+// act that gets past it (ACTS), or as it is when none is known, its words
+// are missing, or the command line's act to cut isn't where it's cut from,
+// since saying both acts is worse than saying the node's alone. The
+// journal keeps `why` as it was said.
 function acted(why, said) {
     const words = String(why ?? "");
     const known = ACTS.find(one => one.says.test(words));
     const act = String(said?.[known?.act] ?? "");
-    if (known === undefined || act === "") {
+    if (known === undefined || act === "" || (known.cut !== null && !known.cut.test(words))) {
         return words;
     }
     const cut = known.cut === null ? words : words.replace(known.cut, "");
