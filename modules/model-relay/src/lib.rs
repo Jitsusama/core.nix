@@ -70,8 +70,10 @@
 //!
 //! It says on stderr only what a reader may keep: each connection opened
 //! and retired, why one couldn't be made, and counts of what it served,
-//! every ten minutes and as it leaves, idle or stopped, unless a logout or
-//! a shutdown kills it first.
+//! every ten minutes and as it leaves, idle or stopped, unless a shutdown,
+//! or a logout where the account doesn't linger, kills it first. Leaving,
+//! it says them once it has dropped what it cut, so its last counts hold
+//! every cut.
 //! Nothing of a request's or an answer's headers or body is said, a failure
 //! included, and nothing is written to disk. A request it couldn't carry is
 //! answered as a 502, or a 504 when the origin couldn't be reached in time,
@@ -420,12 +422,13 @@ impl Default for Clocks {
     }
 }
 
-/// What a relay that has left says last: the counts once more, once its
-/// runtime has dropped the answers it cut, which count only then.
+/// What a relay that has left says last: its counts, once its runtime
+/// has dropped the answers it cut, which count only then. Said earlier,
+/// they'd say none was cut just before a later line said some were.
 pub struct LastWord(Arc<Counts>);
 
 impl LastWord {
-    /// Says the counts, when the answers dropped since moved them.
+    /// Says the counts as they stand once everything it cut has ended.
     pub fn say(&self) {
         self.0.say();
     }
@@ -521,15 +524,16 @@ enum ForAgain {
     Closed,
 }
 
-/// A request reset and waiting on a connection to go once more. Should pi
-/// leave meanwhile, hyper drops the request with nothing said, so it's
-/// counted as pi's cancel, or as cut when a stop's cut drops it.
-struct WaitingAgain<'a>(Option<&'a Counts>);
+/// A request waiting on a connection to go on, first or once more after a
+/// reset. Should pi leave meanwhile, hyper drops the request with nothing
+/// said, so it's counted as pi's cancel, or as cut when a stop's cut drops
+/// it; otherwise it would be counted as asked and nothing else.
+struct WaitingOnAConnection<'a>(Option<&'a Counts>);
 
-impl<'a> WaitingAgain<'a> {
+impl<'a> WaitingOnAConnection<'a> {
     /// A request starting to wait, for `counts`.
     fn new(counts: &'a Counts) -> Self {
-        WaitingAgain(Some(counts))
+        WaitingOnAConnection(Some(counts))
     }
 
     /// Its wait is over, with or without a connection.
@@ -538,7 +542,7 @@ impl<'a> WaitingAgain<'a> {
     }
 }
 
-impl Drop for WaitingAgain<'_> {
+impl Drop for WaitingOnAConnection<'_> {
     fn drop(&mut self) {
         if let Some(counts) = self.0 {
             if counts.cutting.load(Ordering::SeqCst) {
@@ -1138,9 +1142,9 @@ impl Relay {
     /// clocks' `drains_within` at most and then cuts them, and a second
     /// stop cuts them at once. Those it sends direct get
     /// `SAYS_GO_DIRECT_WITHIN` once its answers have ended, as they do when
-    /// it's stopped as it leaves idle. What it hands back says the counts
-    /// once more, for the answers it cut, which end only as its runtime
-    /// drops them.
+    /// it's stopped as it leaves idle. It says its counts as it begins to
+    /// leave; what it hands back says them last, for the answers it cut,
+    /// which end only as its runtime drops them.
     pub async fn serve_until(
         self,
         listener: UnixListener,
@@ -1216,12 +1220,12 @@ impl Relay {
             eprintln!("model-relay: stopped as it left, so it ends what it was sending direct");
             relay.lets_the_late_finish(&mut stops).await;
         }
-        // Once more for those refused while it left.
-        relay.counts.say();
+        // Those refused while it left are said in its last word.
         last_word
     }
 
-    /// Leaves as `serve_until` says once stopped, its counts said.
+    /// Leaves as `serve_until` says once stopped, leaving its last counts
+    /// to the word `serve_until` hands back.
     async fn leave_as_stopped(
         self: &Arc<Relay>,
         listener: &UnixListener,
@@ -1252,7 +1256,6 @@ impl Relay {
                     self.late.now.load(Ordering::SeqCst)
                 );
                 self.counts.cutting.store(true, Ordering::SeqCst);
-                self.counts.say();
                 return;
             }
         };
@@ -1272,8 +1275,6 @@ impl Relay {
             let _ = leave.send(Leave::Now);
         }
         self.lets_the_late_finish(stops).await;
-        // Once more for those refused while it left.
-        self.counts.say();
     }
 
     /// Taking no more, gives those it was sending direct the moment they
@@ -1522,7 +1523,7 @@ impl Relay {
     ) -> Result<(Response<Incoming>, OnTheWay), Box<Response<Body>>> {
         let mut request = sendable(parts, whole);
         let mut sent = 0;
-        let mut taken = self.sender().await;
+        let mut taken = self.sender_waited_on().await;
         // The connection the origin reset this request on, once it has.
         // Sent again, it's answered or fails on that send, so a request
         // reset is one not yet sent again for as long as the loop goes.
@@ -1595,7 +1596,7 @@ impl Relay {
                             // could hand it.
                             taken = match reset_on {
                                 Some((at, number)) => self.another(at, number).await,
-                                None => self.sender().await,
+                                None => self.sender_waited_on().await,
                             };
                         }
                         // Reset before its answer began, saying the origin
@@ -1644,7 +1645,7 @@ impl Relay {
     /// more on, or why there's none: `fresh`'s, refused when it has none.
     /// It's counted as waiting again until it has its answer.
     async fn another(&self, at: usize, number: u64) -> Result<(usize, Kept), Unreachable> {
-        let waiting = WaitingAgain::new(&self.counts);
+        let waiting = WaitingOnAConnection::new(&self.counts);
         let another = self.fresh(at, number).await.unwrap_or_else(|| {
             // Said, so a journal of these isn't read as an origin refusing
             // connections, when the relay chose to open none.
@@ -1794,6 +1795,15 @@ impl Relay {
         (1..count)
             .map(|step| (at + step) % count)
             .find_map(|other| self.slots[other].sender().map(|kept| (other, kept)))
+    }
+
+    /// `sender`'s connection, with the request waiting on it counted should
+    /// it be dropped meanwhile.
+    async fn sender_waited_on(self: &Arc<Relay>) -> Result<(usize, Kept), Unreachable> {
+        let waiting = WaitingOnAConnection::new(&self.counts);
+        let taken = self.sender().await;
+        waiting.over();
+        taken
     }
 
     /// A connection to send down: the next in turn if it's open, or any
