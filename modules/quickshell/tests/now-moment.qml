@@ -1906,7 +1906,15 @@ ShellRoot {
         const textsFirst = now.lookTexts;
         now.lookTexts = Object.assign({}, textsFirst, { "s.json": secondText("s", {}),
             "i.json": secondText("i", { choices: [], wants: undefined,
-                ask: "Review It." }) });
+                ask: "Review It." }),
+            // One choice saying what follows and one not, its want naming only
+            // the first; a first form whose choices say what follows; and
+            // one whose act would pass itself off as Clear It.
+            "m.json": secondText("m", { choices: [{ value: "Keep It", label: "Keep It",
+                follows: "It stays as it is." }, { value: "Roll It Back", label: "Roll It Back" }],
+                wants: { choices: [{ label: "Keep It", follows: "It stays as it is." }] } }),
+            "f.json": secondText("f", { happened: "" }),
+            "c.json": secondText("c", { act: "Clear It" }) });
         const secondRow = () => looked().find(row => row.key === "on:look:s");
         const seconds = secondRow();
         const informing = looked().find(row => row.key === "on:look:i");
@@ -1926,9 +1934,31 @@ ShellRoot {
                     ["Roll It Back", "The old bar comes back tonight."]])
                 && !secondFacts.some(each => each[0] === "Choices"),
             JSON.stringify([secondDrawer.body, secondFacts]));
+        const mixedFacts = (looked().find(row => row.key === "on:look:m")?.drawer().facts ?? [])
+            .map(each => [each.label, each.value]);
+        expect("a choice that doesn't say what follows is a fact still, saying so",
+            JSON.stringify(mixedFacts.slice(0, 2)) === JSON.stringify([
+                ["Keep It", "It stays as it is."],
+                ["Roll It Back", "it doesn't say what follows"]]),
+            JSON.stringify(mixedFacts));
         const secondActs = seconds?.verbs() ?? [];
-        const firstOpen = (looked().find(row => row.key === "on:look:a")?.verbs() ?? [])
-            .find(act => act.key === "verb:on:look:open:a");
+        const plain = looked().find(row => row.key === "on:look:a");
+        const firstOpen = (plain?.verbs() ?? []).find(act => act.key === "verb:on:look:open:a");
+        expect("its row's Return the launcher's own, as a first form's is",
+            seconds?.verb === plain?.verb && seconds?.later === plain?.later
+                && seconds?.stays === plain?.stays,
+            JSON.stringify([[seconds?.verb, seconds?.later, seconds?.stays],
+                [plain?.verb, plain?.later, plain?.stays]]));
+        const firstActs = looked().find(row => row.key === "on:look:f")?.verbs() ?? [];
+        expect("a first form's choices have no drawer, though they say what follows",
+            firstActs[0]?.key === "verb:on:look:answer:f:Keep It"
+                && firstActs[0]?.drawer === undefined,
+            JSON.stringify([firstActs[0]?.key, typeof firstActs[0]?.drawer]));
+        const posing = (looked().find(row => row.key === "on:look:c")?.verbs() ?? [])
+            .find(act => act.key === "verb:on:look:open:c");
+        expect("an act named as another act is, named as the launcher names it",
+            posing !== undefined && posing.name === firstOpen?.name,
+            JSON.stringify([posing?.name, firstOpen?.name]));
         const secondOpen = secondActs.find(act => act.key === "verb:on:look:open:s");
         expect("its act named in its own words, its verb the launcher's",
             secondOpen?.name === "Review It" && secondOpen?.verb === firstOpen?.verb
@@ -1946,8 +1976,8 @@ ShellRoot {
         secondActs[0]?.run();
         Sessions.puts = true;
         const untaken = secondRow();
-        expect("an answer the node didn't take says so, its choices back",
-            untaken?.side === "not answered \u00b7 it didn't reach the session"
+        expect("an answer the node didn't say it took says so, its choices back",
+            untaken?.side === "Keep It not answered yet \u00b7 the node didn't say it took it"
                 && (untaken?.verbs() ?? [])[0]?.key === "verb:on:look:answer:s:Keep It",
             JSON.stringify([untaken?.side, (untaken?.verbs() ?? []).map(act => act.key)]));
         const nobody = { id: "n", kind: "page", title: "Read N", state: "waiting" };
@@ -1956,7 +1986,7 @@ ShellRoot {
         expect("an answer with nobody to tell steers nothing and says so",
             Sessions.steered.length === steersNobody
                 && now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))
-                    === "not answered \u00b7 no session to tell",
+                    === "Keep It not answered \u00b7 no session to tell",
             JSON.stringify(now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))));
         now.lookTexts = textsFirst;
         // Later cases count the steers the shell itself sends from none.

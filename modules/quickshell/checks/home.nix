@@ -37,10 +37,12 @@
   # heaviest first and ties the oldest first in each, says each row's
   # strongest reason, reads the looks' texts into what waits and what's
   # history, a look three days old gone quiet into History, says a
-  # look's ask under its why, offers its choices, each answered by a steer
-  # to the session that left it or its quest's, and gathers what other
-  # sources give it, as Passwords' one to-do, weighed beside the rest or
-  # done, as modules/quickshell/tests/for-you.qml holds ForYou.js and
+  # look's ask under its why, or in its second form what happened and why
+  # it matters, offers its choices with what follows each, each answered by
+  # a steer to the session that left it or its quest's, saying so when it
+  # may not have gone, and gathers what other sources give it, as
+  # Passwords' one to-do, weighed beside the rest or done, as
+  # modules/quickshell/tests/for-you.qml holds ForYou.js, LookForm.js and
   # Looks.js to it in Qt's own engine.
   for-you-weighs-what-needs-joel =
     let
@@ -49,6 +51,7 @@
     pkgs.runCommandLocal "for-you-weighs-what-needs-joel" { } ''
       cp ${../tests/for-you.qml} for-you.qml
       cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/LookForm.js} LookForm.js
       cp ${../launcher/Looks.js} Looks.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
@@ -72,6 +75,7 @@
     pkgs.runCommandLocal "a-look-leads-to-its-cell" { } ''
       cp ${../tests/look-cells.qml} look-cells.qml
       cp ${../launcher/ForYou.js} ForYou.js
+      cp ${../launcher/LookForm.js} LookForm.js
       cp ${../launcher/Looks.js} Looks.js
       cp ${../launcher/Order.js} Order.js
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen

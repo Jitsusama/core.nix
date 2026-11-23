@@ -28,6 +28,7 @@ import "ForYou.js" as ForYou
 import "ForYouCells.js" as Cells
 import "ForYouFilter.js" as Filter
 import "Lately.js" as Lately
+import "LookForm.js" as LookForm
 import "Looks.js" as Looks
 import "NowGroups.js" as Groups
 import "Showing.js" as Showing
@@ -1295,11 +1296,29 @@ Provider {
         onChanged: provider.changed()
     }
 
-    // The answers Joel gave looks, `{ [look id]: { label, at, taken } }`,
-    // each shown as given while the node is asked (Looks.js's answering),
-    // then, once it took it, in History (Looks.js's taken). Replaced
-    // whole, so what reads it hears.
+    // The answers Joel gave looks, `{ [look id]: { label, at, sent, taken,
+    // failed } }`, each shown as given while the node is asked (Looks.js's
+    // answering), then, once it took it, in History (Looks.js's taken), or
+    // said not to have gone (Looks.js's unanswered). Replaced whole, so
+    // what reads it hears, and again as each side's time comes, so one
+    // shown on an idle For You changes when it should (answersLapse).
     property var lookAnswers: ({})
+
+    onLookAnswersChanged: {
+        const wait = Looks.answersChange(lookAnswers, Date.now());
+        if (wait === null) {
+            answersLapse.stop();
+        } else {
+            answersLapse.interval = Math.max(1, wait);
+            answersLapse.restart();
+        }
+    }
+
+    Timer {
+        id: answersLapse
+
+        onTriggered: provider.lookAnswers = Object.assign({}, provider.lookAnswers)
+    }
 
     // Answers a look with one of its choices where it is, rather than in a
     // session that has moved on (Joel, 2026-11-11: "engaging with drops me
@@ -1309,29 +1328,35 @@ Provider {
     // Talk reaches, or the look's own where the cell only lists that, never
     // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
-    // leaves what waits at once. One with nobody to tell, or that the node
-    // didn't take, says so at its side for a minute (Looks.js's unanswered)
-    // and the journal says why, and its choices come back.
+    // leaves what waits at once. One with nobody to tell, that the node
+    // didn't say it took, or that no word came for, says so at its side
+    // (Looks.js's unanswered), and the journal says why, its choices back.
+    // An answer heard after Joel answered again is the older one's, so it
+    // changes nothing (`sent`).
     function answerLook(one, choice) {
-        const told = Looks.answer(one, choice, lookCell(one), Date.now());
+        const sent = Date.now();
+        const told = Looks.answer(one, choice, lookCell(one), sent);
         if (told === null) {
             console.warn(`Now: nobody to tell the answer to look ${JSON.stringify(one.id)}:`
                 + ` address ${JSON.stringify(one.address ?? null)},`
                 + ` quest ${JSON.stringify(one.quest ?? null)}`);
-            lookAnswers = Object.assign({}, lookAnswers,
-                { [one.id]: { label: choice.label, at: Date.now(), failed: "nobody" } });
+            lookAnswers = Object.assign({}, lookAnswers, { [one.id]: { label: choice.label,
+                at: sent, sent: sent, failed: "nobody" } });
             return;
         }
         lookAnswers = Object.assign({}, lookAnswers,
-            { [one.id]: { label: choice.label, at: Date.now() } });
+            { [one.id]: { label: choice.label, at: sent, sent: sent } });
         Sessions.steer(told.address, told.steer, put => {
             const left = Object.assign({}, provider.lookAnswers);
+            if (left[one.id]?.sent !== sent)
+                return;
             if (put) {
                 left[one.id] = Object.assign({}, left[one.id], { taken: true });
             } else {
-                console.warn(`Now: the node didn't take the answer to look`
-                    + ` ${JSON.stringify(one.id)} for ${told.address}`);
-                left[one.id] = { label: choice.label, at: Date.now(), failed: "untaken" };
+                console.warn(`Now: the node didn't say it took the answer to look`
+                    + ` ${JSON.stringify(one.id)} for ${JSON.stringify(told.address)}`);
+                left[one.id] = { label: choice.label, at: Date.now(), sent: sent,
+                    failed: "untaken" };
             }
             provider.lookAnswers = left;
         });
@@ -1354,13 +1379,14 @@ Provider {
         const target = ["pr", "page", "diff"].includes(one.kind) ? one.target : "";
         // Its choices and what happens if Joel does nothing, in place of a
         // weight and when it clears, which told him a score and nothing to
-        // do (Joel, 2026-11-19): in its second form one fact a choice, its
-        // label and what follows it (QGB4ON's layout of 2026-11-22), else
-        // the labels together.
+        // do (Joel, 2026-11-19): in its second form, where it says what
+        // follows any, one fact a choice, its label and what follows it or
+        // that it doesn't say (QGB4ON's layout of 2026-11-22), so none is
+        // left out; else the labels together.
         const offered = lookChoices(one, now);
-        const followed = Looks.secondForm(one)
-            ? offered.filter(choice => choice.follows !== "")
-                .map(choice => ({ label: choice.label, value: choice.follows }))
+        const followed = LookForm.secondForm(one) && offered.some(choice => choice.follows !== "")
+            ? offered.map(choice => ({ label: choice.label,
+                value: choice.follows || waitingSaid("followsUnsaid", {}) }))
             : [];
         const choices = followed.length > 0 ? []
             : [fact("choices", offered.map(choice => choice.label).join(" \u00b7 "))];
@@ -1449,7 +1475,7 @@ Provider {
         };
         // A choice's drawer says what follows it, where the look says, so
         // Joel reads what his Return does before he presses it.
-        const followsOf = choice => choice.follows === "" ? {} : {
+        const followsOf = choice => choice.follows === "" || !LookForm.secondForm(one) ? {} : {
             drawer: () => Object.assign(lookFrom(one, say), {
                 title: choice.label,
                 facts: [],
@@ -1467,7 +1493,9 @@ Provider {
             // What Joel presses, in the look's own words where it says them;
             // the verb stays the launcher's, since the foot and the : line
             // read a verb as what an act does, never a look's to choose.
-            name: Looks.actOf(one) || Words.name(opens),
+            name: LookForm.actOf(one, ["verb:on:look:open", "verb:on:look:answer",
+                "verb:on:look:clear", "verb:on:waiting:go", "verb:on:waiting:explain",
+                "verb:agent:talk"].map(id => Words.name(id))) || Words.name(opens),
             glyph: Words.glyph(opens),
             hue: "action",
             later: true,
@@ -1508,12 +1536,12 @@ Provider {
             return waitingSaid("answering", { choice: given });
         const failed = Looks.unanswered(one, lookAnswers, now);
         if (failed !== "")
-            return waitingSaid(`unanswered:${failed}`, {});
+            return waitingSaid(`unanswered:${failed}`, { choice: lookAnswers[one.id].label });
         if (one.state !== "waiting")
             return ForYou.historySide(one, say);
         const reason = ForYou.reason(lookThing(one), now, say);
-        if (Looks.secondForm(one))
-            return [Looks.asksBack(one) ? waitingSaid("asksYou", {}) : "", reason]
+        if (LookForm.secondForm(one))
+            return [LookForm.asksBack(one) ? waitingSaid("asksYou", {}) : "", reason]
                 .filter(part => part !== "").join(" \u00b7 ");
         return Looks.askOf(one) || reason;
     }

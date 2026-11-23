@@ -6,6 +6,7 @@
 // History's row ready to draw (modules/to-do/src/history.rs), which these rules must agree with.
 .pragma library
 .import "ForYou.js" as ForYou
+.import "LookForm.js" as LookForm
 .import "Order.js" as Order
 
 // What a look is about, and how it stands, as the harness writes them, and
@@ -19,9 +20,10 @@ const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
 // How many of a look's choices are offered, as the harness writes at most
 // four (85PKB2, 2026-11-12).
 const OFFERED = 4;
-// How long an answer shows as given while the look's file still waits:
-// its session writes the look resolved as it reads the steer, so one
-// still waiting a minute on didn't take, and its choices come back.
+// How long an answer shows as given while the node hasn't said it took
+// it, before saying it may not have gone: "no answer in 5 s" (docs/
+// design.md); and how long from then its side says so, its choices back.
+const ANSWER_HEARD = 5 * 1000;
 const ANSWER_TAKES = 60 * 1000;
 // How long a look waits before it goes quiet: it leaves what waits, and so
 // every count of it, for History, where it's still opened as it was. By then
@@ -29,8 +31,6 @@ const ANSWER_TAKES = 60 * 1000;
 // of why they exist is lost"), and VKCF3Z's flows say "a look older than
 // three days goes quiet".
 const QUIET_AFTER = 3 * 24 * 60 * 60 * 1000;
-// How a sentence ends, so a second form's parts read as sentences.
-const ENDED = /[.!?]$/u;
 
 // Whether a file's JSON is a look this reads whole: version 1, with what
 // it's about and how it stands.
@@ -64,42 +64,11 @@ function look(text) {
     }
     return Object.assign(kept, {
         why: typeof read.why === "string" ? read.why : "",
-        words: wordsOf(read),
+        words: LookForm.wordsOf(read),
         since: ForYou.when(read.at),
         resolved: ForYou.when(read.resolvedAt),
         offers: offers(read.choices, read.wants)
     });
-}
-
-// Whether a look is said in its second form (85PKB2's harness #2008):
-// what happened, why it matters, what Joel presses and what it wants back,
-// beside the first form's why and ask, which its harness made from them.
-function secondForm(one) {
-    return written(one.happened).trim() !== "";
-}
-
-// What its drawer leads with, to act on hours on (Joel, 2026-11-11): in
-// its second form what happened then why it matters, each ending as a
-// sentence ends, as its harness writes a why; else its why, then its ask.
-function wordsOf(read) {
-    const ended = text => text === "" || ENDED.test(text) ? text : `${text}.`;
-    return secondForm(read)
-        ? [read.happened, read.matters].map(part => ended(written(part).trim()))
-            .filter(part => part !== "").join(" ")
-        : [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n");
-}
-
-// What Joel presses for a look in its second form, in its own words, as
-// "Review It", else "".
-function actOf(one) {
-    return secondForm(one) ? written(one.act).trim() : "";
-}
-
-// Whether a look in its second form asks Joel back: it wants a choice or
-// his own words. One in its first form says what it asks in its ask.
-function asksBack(one) {
-    return secondForm(one) && (one.wants?.words === true
-        || (Array.isArray(one.wants?.choices) && one.wants.choices.length > 0));
 }
 
 // A quest's id as its title ends with it, "(INV-31016)", which says
@@ -360,18 +329,33 @@ function doneWith(one) {
 // { [look id]: { label, at } }, while it may yet take, or "".
 function answering(one, answered, now) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && given && !given.failed && now - given.at < ANSWER_TAKES
+    return one.state === "waiting" && given && !given.failed && now - given.at < ANSWER_HEARD
         ? given.label : "";
 }
 
-// Why Joel's answer to a look still waiting didn't go, "nobody" to tell
-// or "untaken" by the node, for as long as one given would show, else "":
-// its choices coming back unsaid left him no way "to in any way follow
-// through" (Joel, 2026-11-22).
+// Why Joel's answer to a look still waiting may not have gone, "nobody"
+// to tell, "untaken" where the node didn't say it took it, or "unheard"
+// past ANSWER_HEARD with no word, for ANSWER_TAKES, else "": its choices
+// coming back unsaid left him no way "to in any way follow through"
+// (Joel, 2026-11-22).
 function unanswered(one, answered, now) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && typeof given?.failed === "string"
-        && now - given.at < ANSWER_TAKES ? given.failed : "";
+    if (one.state !== "waiting" || !given || given.taken || now - given.at >= ANSWER_TAKES) {
+        return "";
+    }
+    if (typeof given.failed === "string") {
+        return given.failed;
+    }
+    return now - given.at >= ANSWER_HEARD ? "unheard" : "";
+}
+
+// How long until an answer's side next changes as time passes, or null.
+function answersChange(answered, now) {
+    // Qt's engine has no flatMap, so each answer's two times are joined.
+    const ahead = [].concat(...Object.values(answered ?? {}).filter(given => !given?.taken)
+        .map(given => [given.at + ANSWER_HEARD, given.at + ANSWER_TAKES]))
+        .filter(at => at > now);
+    return ahead.length === 0 ? null : Math.min(...ahead) - now;
 }
 
 // The looks as `looks` splits them, with each waiting one whose answer the

@@ -15,6 +15,7 @@
 // under its cell is for-you-cells.qml's.
 import QtQuick
 import "ForYou.js" as ForYou
+import "LookForm.js" as LookForm
 import "Looks.js" as Looks
 
 QtObject {
@@ -398,7 +399,8 @@ QtObject {
         // happened and why it matters in place of its why and ask, which its
         // harness made from them; what it presses, and what follows each
         // choice, from the choice itself, else what it wants back by label.
-        // It asks Joel back only where it wants a choice or his own words.
+        // It asks Joel back only where it wants a choice or his own words, or
+        // offers choices; its act is never a choice's or another act's name.
         const second = fields => Looks.looks([{ file: "s.json", text: lookOf(Object.assign({
             id: "S", why: "The bar keeps the branch. You couldn't see a cost.",
             ask: "Review It: Keep It, or Roll It Back.",
@@ -422,13 +424,27 @@ QtObject {
                 ["Roll It Back", "The old bar comes back tonight."]]);
         expect("a first form's choices follow with nothing",
             choosing.offers.map(one => one.follows), ["", "", "", ""]);
-        expect("what it presses, in the second form only",
-            [Looks.actOf(secondly), Looks.actOf(read.waiting[1])], ["Review It", ""]);
-        expect("it asks back wanting a choice or his words, not a first form's choices",
-            [Looks.asksBack(secondly), Looks.asksBack(second({ wants: { words: true } })),
-                Looks.asksBack(second({ wants: undefined, choices: undefined })),
-                Looks.asksBack(second({ wants: { choices: [] } })), Looks.asksBack(choosing)],
-            [true, true, false, false, false]);
+        expect("its words end as a sentence ends, after a closing quote or bracket too",
+            second({ happened: "It said \u201cdone.\u201d", matters: "(It wasn't.)" }).words,
+            "It said \u201cdone.\u201d (It wasn't.)");
+        // A first form carrying the second form's fields, but no happened.
+        const firstly = second({ happened: "" });
+        expect("what it presses, in the second form only, never past four words or another's"
+            + " name",
+            [LookForm.actOf(secondly), LookForm.actOf(firstly), LookForm.actOf(read.waiting[1]),
+                LookForm.actOf(second({ act: "keep it" })),
+                LookForm.actOf(secondly, ["Clear It", "review it"]),
+                LookForm.actOf(second({ act: "Read It All the Way" }))],
+            ["Review It", "", "", "", "", ""]);
+        expect("it asks back wanting a choice or his words, or offering choices, in the second"
+            + " form only",
+            [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },
+                choices: undefined })),
+                LookForm.asksBack(second({ wants: undefined })),
+                LookForm.asksBack(second({ wants: undefined, choices: undefined })),
+                LookForm.asksBack(second({ wants: { choices: [] }, choices: undefined })),
+                LookForm.asksBack(firstly), LookForm.asksBack(choosing)],
+            [true, true, true, false, false, false, false]);
         const secondBack = JSON.parse(Looks.rewritten(secondly, "opened", "opened", now));
         expect("written back, its second form as its session wrote it",
             [secondBack.happened, secondBack.act, secondBack.wants.choices[1].follows,
@@ -483,21 +499,33 @@ QtObject {
                 .address, "VP50PC");
         expect("with nowhere to go, none", Looks.answer({ id: "N" }, posted, null, now), null);
         const given = { P: { label: "Posted", at: now } };
-        expect("an answer given, while it may take, then not",
-            [Looks.answering(choosing, given, now + 59 * 1000),
-                Looks.answering(choosing, given, now + 61 * 1000),
+        expect("an answer given, while the node may yet say it took it, then not",
+            [Looks.answering(choosing, given, now + 4 * 1000),
+                Looks.answering(choosing, given, now + 6 * 1000),
                 Looks.answering(choosing, {}, now)], ["Posted", "", ""]);
-        // An answer nobody could be told, or the node didn't take, says so
-        // for as long as one given would show, rather than its choices just
-        // coming back (Joel, 2026-11-22: "to in any way follow through").
+        // An answer nobody could be told, that the node didn't say it took,
+        // or that no word came for in 5 s (docs/design.md), says so for a
+        // minute, rather than its choices just coming back (Joel,
+        // 2026-11-22: "to in any way follow through").
         const failed = how => ({ P: { label: "Posted", at: now, failed: how } });
-        expect("an answer that failed, said so for a minute, and never as given",
+        expect("an answer that may not have gone, said so for a minute, and never as given",
             [Looks.unanswered(choosing, failed("nobody"), now + 59 * 1000),
                 Looks.unanswered(choosing, failed("untaken"), now),
                 Looks.unanswered(choosing, failed("nobody"), now + 61 * 1000),
-                Looks.unanswered(choosing, given, now),
+                Looks.unanswered(choosing, given, now + 4 * 1000),
+                Looks.unanswered(choosing, given, now + 6 * 1000),
+                Looks.unanswered(choosing, given, now + 61 * 1000),
+                Looks.unanswered(choosing, { P: { label: "Posted", at: now, taken: true } },
+                    now + 6 * 1000),
                 Looks.answering(choosing, failed("nobody"), now)],
-            ["nobody", "untaken", "", "", ""]);
+            ["nobody", "untaken", "", "", "unheard", "", "", ""]);
+        expect("when an answer's side next changes, as its 5 s and its minute come, never"
+            + " once taken",
+            [Looks.answersChange(given, now + 1000), Looks.answersChange(given, now + 6 * 1000),
+                Looks.answersChange(given, now + 61 * 1000),
+                Looks.answersChange({ P: { label: "Posted", at: now, taken: true } }, now),
+                Looks.answersChange({}, now)],
+            [4000, 54000, null, null, null]);
         const saying = label => `answered ${label}`;
         // Once the node takes it, the look leaves what waits for History at once
         // (VKCF3Z, 2026-11-12), though its file waits until its session writes it.
