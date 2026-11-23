@@ -2145,8 +2145,8 @@
     finding the system's ssh before the account's programs; the node may hold 65536 open files
     on Linux, under a hard 524288, systemd's own default, and 10240 on a Mac, naming no hard limit;
     the home realm's node writes how it would ease the machine, asking the harness to park
-    sessions only where told to, and a further realm's doesn't; one naming none runs it dialling
-    nothing, and one in no realm has neither a realm nor a node
+    sessions and making its carries only where told to, and a further realm's doesn't; one
+    naming none runs it dialling nothing, and one in no realm has neither a realm nor a node
   '';
   mycelium-watches-its-balance = ''
     a machine in a realm reads each minute how evenly its home realm's machines carry their work,
