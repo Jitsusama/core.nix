@@ -613,8 +613,10 @@ in
           && !(carriesIn staleAccounts.${name})
           && lib.length (warnedOf staleAccounts.${name}) == 1
           && lib.hasInfix "(stand-in-${name})" warning
-          && lib.all (file: saysOf file refusedSays.${name}.${file}) (lib.attrNames guards)
+          # The table must name the guards' files before its rows are read, so
+          # a guard it lacks fails with this check's message, not a missing key.
           && lib.attrNames refusedSays.${name} == lib.attrNames guards
+          && lib.all (file: saysOf file refusedSays.${name}.${file}) (lib.attrNames guards)
         ) refused
         && warnsOfWithout staleMachines.without == 1
         && warnsOfWithout staleMac == 1
