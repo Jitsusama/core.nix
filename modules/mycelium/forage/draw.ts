@@ -469,7 +469,8 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
     forages.length > cells.length
       ? `<text class="note" x="${width - FLOOR.margin}" y="${height - 12}" text-anchor="end">and ${forages.length - cells.length} more in the list</text>`
       : "";
-  return `<svg viewBox="0 0 ${width} ${height}" aria-hidden="true">
+  // At the room's foot, so any room a wide floor leaves on a phone is above it.
+  return `<svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
 <path class="ground" d="M0 ${FLOOR.ground}H${width}"/>
 ${main}${skipped}${branches}${joins}${caps}${compartments}
 <text class="substrate" x="${FLOOR.margin / 2}" y="${height - 12}">${escaped(substrate)}</text>${more}

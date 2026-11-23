@@ -5,6 +5,7 @@
 // list still draws solid; and when a step draws the floor again.
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test as it } from "node:test";
 import { floorAfter, floorFor, floorOf, floorStepped, stepsOff, UNDRAWN } from "../draw.ts";
 import type { Forage } from "../model.ts";
@@ -76,6 +77,9 @@ const runs = (floor: string): number => (floor.match(MAIN)?.[1] ?? "").split("M"
 
 /** A ringed compartment, naming its cell. */
 const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
+
+/** A floor's width and height in its own units. */
+const VIEWED = /viewBox="0 0 (\d+) (\d+)"/u;
 
 /** The cell whose compartment `floor` rings. */
 const ringed = (floor: string): string | undefined => floor.match(RINGED)?.[1];
@@ -431,6 +435,18 @@ it("keeps the floor where it is while it holds the cursor, else draws it around 
   // A record grows a cell from the cursor that the kept floor leaves off.
   const grown = startedOn(LONG, "C05", "C20");
   assert.equal(floorAfter(grown, floorFor(LONG, "C55"), "C20").around, "C20");
+});
+
+it("draws the widest, deepest floor in the room the page holds before the node speaks", () => {
+  const deep = LONG.map((each, at) =>
+    at === 1 ? { ...each, startedBy: named(0), depth: 9 } : each,
+  );
+  const floor = floorOf(floorFor(deep, named(0)), named(0), "kestrel");
+  const [, width = "", height = ""] = floor.match(VIEWED) ?? [];
+  const sheet = readFileSync(new URL("../site.css", import.meta.url), "utf8");
+  // The room is this floor's shape at most half again as large, so a shift can't come of it.
+  const room = `100cqi * ${height} / ${width}, ${(Number(height) * 3) / 2}px`;
+  assert.ok(sheet.includes(room), `site.css holds no room of ${room}`);
 });
 
 it("draws the cursor after a redraw around any kept cell, keeping it there while it can", () => {

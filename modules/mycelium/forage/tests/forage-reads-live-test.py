@@ -525,8 +525,8 @@ SHIFTED = """() => new Promise((done) => {
   }).observe({ type: "layout-shift", buffered: true });
   setTimeout(() => done({ total: 0, moved: [] }), 500);
 })"""
-# A purpose holding a link with nowhere to break, longer than a phone is wide.
-LONG_LINK = "OSPREY reads https://example.org/tides/outer-buoy/hourly-readings-for-the-whole-season"
+# A purpose holding a link with nowhere to break, not even a hyphen, longer than a phone is wide.
+LONG_LINK = "OSPREY reads https://example.org/tides/hourlyreadingsfortheouterbuoythewholeseasonlong"
 
 
 @pytest.mark.parametrize("size", SIZES)
@@ -546,6 +546,12 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         )
         mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])
         expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text("https://")
+        # Open, so the panel draws the link as well as the row.
+        cell(page, "OSPREY").click()
+        selected(page, "OSPREY", "a click didn't open the long link's cell")
+        expect(page.locator("#panel-body .lead"), "the panel lost the link").to_contain_text(
+            "https://"
+        )
         wider = page.evaluate("() => document.documentElement.scrollWidth - innerWidth")
         assert wider <= 0, f"a long link made the page {wider} px wider than {size}"
     finally:

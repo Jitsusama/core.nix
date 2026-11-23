@@ -26,6 +26,8 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   border-block-start: 1px solid var(--rule);
+  /* A purpose or a title holding a long link breaks rather than widening the page. */
+  overflow-wrap: anywhere;
 }
 
 .panel-body:focus {

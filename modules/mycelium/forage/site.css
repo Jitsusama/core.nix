@@ -29,12 +29,6 @@
   text-align: center;
 }
 
-.crest {
-  inline-size: min(15rem, 70vw);
-  block-size: auto;
-  overflow: visible;
-}
-
 .eyebrow {
   margin: 0;
   color: var(--tint-word);
@@ -144,16 +138,18 @@
   gap: var(--mark);
   inline-size: 100%;
   margin: 0 0 var(--items);
+  container-type: inline-size;
 }
 
-/* The floor's room is the widest floor's, 1488 by 178 of its units as
-   draw.ts's FLOOR sets them, drawn at most half again as large, and the
-   crest holds the same room until the node speaks. So the cells arriving
-   move nothing under them, and a floor of fewer cells sits in its middle. */
+/* The floor's room is as tall as the widest floor drawn across the page,
+   1488 by 178 of its units as draw.ts's FLOOR sets them, at most half again
+   as large, and never under 6rem, so a floor of few cells on a phone still
+   reads. The crest holds the same room until the node speaks, so the cells
+   arriving move nothing under them; a floor sits at the room's foot. */
 .drawn {
   position: relative;
-  inline-size: min(100%, 2232px);
-  aspect-ratio: 1488 / 178;
+  inline-size: 100%;
+  block-size: clamp(6rem, 100cqi * 178 / 1488, 267px);
   container-type: inline-size;
 }
 
@@ -262,9 +258,10 @@ rect.hollow {
   text-transform: lowercase;
 }
 
-/* Narrower than this the floor's words would be drawn under 9 px. The
-   eyebrow names the machine and the list holds every cell, so they go. */
-@container (max-width: 64rem) {
+/* Narrower than this the widest floor's words would be drawn under 9 px.
+   The eyebrow names the machine, the headline counts every cell and the
+   list holds them all, so the words go. */
+@container (max-width: 1030px) {
   .drawn text {
     display: none;
   }
