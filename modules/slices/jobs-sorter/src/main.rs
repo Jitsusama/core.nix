@@ -4540,6 +4540,145 @@ mod tests {
         );
     }
 
+    /// A slice under the temporary folder, named for `name`, with the floor `low` and each of
+    /// `children` as its name, what it holds and its memory.low.
+    fn slice_with(name: &str, low: u64, children: &[(&str, u64, &str)]) -> PathBuf {
+        let slice = std::env::temp_dir()
+            .join(format!("{name}-{}", std::process::id()))
+            .join("agents.slice");
+        let _ = fs::remove_dir_all(&slice);
+        for (child, current, floor) in children {
+            let dir = slice.join(child);
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("memory.current"), current.to_string()).unwrap();
+            fs::write(dir.join("memory.low"), floor).unwrap();
+        }
+        fs::write(slice.join("memory.low"), low.to_string()).unwrap();
+        slice
+    }
+
+    /// `unit` in `slice` as ranked with its unit file's floor `own`, the floor `floor` before
+    /// it's fitted, and `signs`, its writeback as that floor gives it.
+    fn ranked_in(slice: &Path, unit: &str, own: u64, floor: u64, signs: hosts::Signs) -> Ranked {
+        Ranked {
+            path: slice.join(unit),
+            rank: hosts::Rank {
+                weight: 100,
+                floor,
+                hard: 0,
+                writeback: hosts::writeback(true, &signs, floor),
+                preference: "none".to_owned(),
+            },
+            asked: floor,
+            signs,
+            own,
+            writeback: true,
+        }
+    }
+
+    #[test]
+    fn a_unit_joel_is_at_trimmed_under_what_it_holds_writes_back_again() {
+        const MIB: u64 = 1 << 20;
+        let slice = slice_with(
+            "fit-writeback",
+            2048 * MIB,
+            &[
+                ("kitty-1-1.scope", 1024 * MIB, "2147483648"),
+                ("pi-host-a.service", 512 * MIB, "0"),
+                ("pi-conversation-b@1.service", 2048 * MIB, "0"),
+            ],
+        );
+        let shown = hosts::Signs {
+            shown: 1,
+            current: Some(512 * MIB),
+            ..hosts::Signs::default()
+        };
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..shown
+        };
+        let mut ranked = [
+            ranked_in(&slice, "pi-host-a.service", 0, 512 * MIB, shown),
+            ranked_in(&slice, "pi-conversation-b@1.service", 0, 2048 * MIB, viewed),
+        ];
+        assert!(
+            !ranked[1].rank.writeback,
+            "the unit Joel is at holds no more than the floor it asks, so starts with writeback off"
+        );
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut HashSet::new(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            ranked[1].rank.floor,
+            1024 * MIB,
+            "it's trimmed to the room the window leaves"
+        );
+        assert!(
+            ranked[1].rank.writeback,
+            "holding past the floor it's fitted to, it writes back again"
+        );
+        assert!(
+            ranked[0].rank.writeback,
+            "and the unit only shown keeps writeback on"
+        );
+    }
+
+    #[test]
+    fn a_floor_set_last_look_within_a_step_is_kept_less_the_units_own() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-last",
+            4096 * MIB,
+            &[
+                ("kitty-1-1.scope", 1024 * MIB, "2147483648"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let own = 256 * MIB;
+        // The 3 GiB the window leaves, less what the unit holds of its own floor, fits 2816 MiB
+        // of the 4 GiB it would add; a step less, 2752.
+        let mut hosts = hosts::Hosts::default();
+        let last = own + 2752 * MIB;
+        let mut set = ranked_in(&slice, unit, own, last, viewed).rank;
+        set.floor = last;
+        hosts.done(unit, set);
+        let mut ranked = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
+        fit_floors(
+            &mut ranked,
+            &["kitty-".to_owned()],
+            &hosts,
+            &mut HashSet::new(),
+        );
+        let mut fresh = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
+        fit_floors(
+            &mut fresh,
+            &["kitty-".to_owned()],
+            &hosts::Hosts::default(),
+            &mut HashSet::new(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            fresh[0].rank.floor,
+            own + 2816 * MIB,
+            "with nothing set before, the unit is given all that fits"
+        );
+        assert_eq!(
+            ranked[0].rank.floor, last,
+            "a floor set within a step of what fits is kept, its own floor counted once"
+        );
+    }
+
     #[test]
     fn a_sessions_scope_is_never_a_stray_whoever_started_it() {
         let under = std::env::temp_dir().join(format!("windows-stay-{}", std::process::id()));
