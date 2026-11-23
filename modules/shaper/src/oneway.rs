@@ -120,12 +120,12 @@ const UNSEEN_FLOOR: f64 = 0.5;
 const STARTING_S: f64 = 30.0;
 /// How fast a full, clear direction climbs, and an idle one drifts, each
 /// second.
-const CLIMB: f64 = 1.05;
+pub(crate) const CLIMB: f64 = 1.05;
 /// How fast a rate climbs, per second, far from any queue it has met:
 /// under this share of what got through when one last stood, or with none
 /// met yet. A remembered rate far under the connection is back in under
 /// ten seconds.
-const FAST_CLIMB: f64 = 1.25;
+pub(crate) const FAST_CLIMB: f64 = 1.25;
 const FAR: f64 = 0.5;
 /// How long where a queue last stood slows the climb: past it, as CUBIC
 /// does, the connection has likely moved since.
