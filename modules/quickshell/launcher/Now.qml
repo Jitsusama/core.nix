@@ -37,6 +37,7 @@ import "Moment.js" as Moment
 import "NeedsYou.js" as NeedsYou
 import "Here.js" as Here
 import "PlaceRow.js" as PlaceRow
+import "Presented.js" as Presented
 import "SessionRow.js" as SessionRow
 import "../pieces/Holding.js" as Holding
 
@@ -1150,8 +1151,13 @@ Provider {
     function lookSettled(file, text, was, answer) {
         if (answer?.done === true)
             return;
-        console.warn(`Now: the to-do daemon didn't settle ${file} (${answer?.error?.message
-            ?? "not there to ask"}), so its look stands as it was`);
+        // A look's file is named for what Joel wrote, and the daemon's words
+        // may quote it, so they're said by letters and as errorShown says them.
+        const why = answer?.error === undefined ? "not there to ask"
+            : Presented.errorShown(answer.error, Options.reports);
+        const named = Presented.typedShown(file, Options.reports);
+        console.warn(`Now: the to-do daemon didn't settle ${named} (${why}),`
+            + " so its look stands as it was");
         if (looksSettling[file]?.text !== text)
             return;
         delete looksSettling[file];

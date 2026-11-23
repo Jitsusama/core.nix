@@ -453,6 +453,15 @@ mod tests {
         read(link).map_err(|failed| failed.what)
     }
 
+    // The cases three copies of the address rule are held to, shared with
+    // the map and the notices daemon, and their one reader.
+    include!("../../../mycelium/site/tests/addresses.rs");
+
+    #[test]
+    fn an_address_is_judged_by_the_shared_cases() {
+        judged_by_every_case(addressed);
+    }
+
     #[test]
     fn a_cell_link_names_its_address_and_nothing_after_it() {
         for link in [

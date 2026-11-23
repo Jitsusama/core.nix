@@ -24,14 +24,6 @@ const VIEWED = foragesOf(
 const cellsOf = (forages: readonly Forage[], sought: string, hollowOnly: boolean): string[] =>
   shownBy(forages, sought, hollowOnly).map((each) => each.cell);
 
-/** Where the cursor on `cursor` rests once the list shows what `sought` finds in its view. */
-const restsOn = (
-  forages: readonly Forage[],
-  cursor: string | null,
-  sought: string,
-  hollowOnly: boolean,
-): string | null => cursorAfter(forages, sought, hollowOnly, cursor);
-
 it("the list shows what the find holds in its view, every cell or those without purpose", () => {
   assert.deepEqual(cellsOf(VIEWED, "", false), ["KESTRL", "OSPREY", "SKIFFS"]);
   assert.deepEqual(cellsOf(VIEWED, "", true), ["OSPREY"]);
@@ -45,46 +37,49 @@ it("the list shows what the find holds in its view, every cell or those without 
   assert.equal(inView(osprey, true), true);
 });
 
-it("the view of cells without purpose takes in the cells the headline and lede count", () => {
-  const unwrittenCells = VIEWED.filter(unwritten).map((each) => each.cell);
+it("a purpose of only spaces is unwritten to the view, the headline and the lede alike", () => {
+  const blank = foragesOf(
+    told([forage("KESTRL"), forage("OSPREY", { purpose: " \n\t" }), forage("SKIFFS")]),
+  ).forages;
+  const unwrittenCells = blank.filter(unwritten).map((each) => each.cell);
   assert.deepEqual(unwrittenCells, ["OSPREY"]);
-  assert.deepEqual(cellsOf(VIEWED, "", true), unwrittenCells);
-  assert.equal(headline(VIEWED).without, unwrittenCells.length);
-  assert.ok(lede(VIEWED).startsWith("OSPREY has no purpose written yet."), lede(VIEWED));
+  assert.deepEqual(cellsOf(blank, "", true), unwrittenCells);
+  assert.equal(headline(blank).without, unwrittenCells.length);
+  assert.ok(lede(blank).startsWith("OSPREY has no purpose written yet."), lede(blank));
 });
 
 it("the cursor stays while the list shows it, else goes to its first row", () => {
-  assert.equal(restsOn(VIEWED, "SKIFFS", "", false), "SKIFFS");
-  assert.equal(restsOn(VIEWED, "SKIFFS", "sk", false), "SKIFFS");
+  assert.equal(cursorAfter(VIEWED, "", false, "SKIFFS"), "SKIFFS");
+  assert.equal(cursorAfter(VIEWED, "sk", false, "SKIFFS"), "SKIFFS");
   // A find that hides the cursor's cell moves it to the find's first match.
-  assert.equal(restsOn(VIEWED, "KESTRL", "sk", false), "SKIFFS");
+  assert.equal(cursorAfter(VIEWED, "sk", false, "KESTRL"), "SKIFFS");
   // The view of cells without purpose moves it to the cell it shows.
-  assert.equal(restsOn(VIEWED, "KESTRL", "", true), "OSPREY");
+  assert.equal(cursorAfter(VIEWED, "", true, "KESTRL"), "OSPREY");
   // No cursor rests on the list's first row.
-  assert.equal(restsOn(VIEWED, null, "", false), "KESTRL");
+  assert.equal(cursorAfter(VIEWED, "", false, null), "KESTRL");
 });
 
 it("a find matching nothing keeps the cursor while its cell lasts and the view takes it in", () => {
-  assert.equal(restsOn(VIEWED, "KESTRL", "zzq", false), "KESTRL");
+  assert.equal(cursorAfter(VIEWED, "zzq", false, "KESTRL"), "KESTRL");
   // In the view of cells without purpose too, so ending the find there finds it again.
-  assert.equal(restsOn(VIEWED, "OSPREY", "zzq", true), "OSPREY");
+  assert.equal(cursorAfter(VIEWED, "zzq", true, "OSPREY"), "OSPREY");
   // A cell that ends meanwhile takes the cursor with it.
   const ended = VIEWED.filter((each) => each.cell !== "KESTRL");
-  assert.equal(restsOn(ended, "KESTRL", "zzq", false), null);
+  assert.equal(cursorAfter(ended, "zzq", false, "KESTRL"), null);
   // So does every cell ending, find or not.
-  assert.equal(restsOn([], "KESTRL", "", false), null);
-  assert.equal(restsOn([], "KESTRL", "zzq", false), null);
+  assert.equal(cursorAfter([], "", false, "KESTRL"), null);
+  assert.equal(cursorAfter([], "zzq", false, "KESTRL"), null);
   // With no cursor, an empty list keeps none.
-  assert.equal(restsOn(VIEWED, null, "zzq", false), null);
+  assert.equal(cursorAfter(VIEWED, "zzq", false, null), null);
 });
 
 it("a cell the view of cells without purpose no longer takes in takes the cursor", () => {
   // A record writes OSPREY's purpose while a find matching nothing hides it.
   const written = foragesOf(told([forage("KESTRL"), forage("OSPREY"), forage("SKIFFS")])).forages;
-  assert.equal(restsOn(written, "OSPREY", "zzq", true), null);
+  assert.equal(cursorAfter(written, "zzq", true, "OSPREY"), null);
   // And while the find matches it, or there's no find, with nothing else in the view.
-  assert.equal(restsOn(written, "OSPREY", "osp", true), null);
-  assert.equal(restsOn(written, "OSPREY", "", true), null);
+  assert.equal(cursorAfter(written, "osp", true, "OSPREY"), null);
+  assert.equal(cursorAfter(written, "", true, "OSPREY"), null);
   // Opening that view while a find matching nothing holds a cell with purpose drops it too.
-  assert.equal(restsOn(VIEWED, "KESTRL", "zzq", true), null);
+  assert.equal(cursorAfter(VIEWED, "zzq", true, "KESTRL"), null);
 });

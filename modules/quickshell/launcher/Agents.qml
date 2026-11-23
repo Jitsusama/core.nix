@@ -49,6 +49,7 @@ import "Landed.js" as Landed
 import "Moment.js" as Moment
 import "Numbers.js" as Numbers
 import "Order.js" as Order
+import "Presented.js" as Presented
 import "SessionDrawer.js" as SessionDrawer
 import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
@@ -1885,7 +1886,10 @@ Provider {
         rowsKind.ask({ ask: "sprout-told", starts: tokens }, answer => {
             if (answer !== null && answer.error === undefined)
                 return;
-            const why = answer?.error?.message ?? "no daemon answered";
+            // The daemon's words can name a session, so they're said as errorShown
+            // says a daemon's error.
+            const why = answer?.error === undefined ? "no daemon answered"
+                : Presented.errorShown(answer.error, Options.reports);
             console.info(`launcher: a start's told wasn't taken: ${why}`);
             tokens.filter(token => sproutTokens[token] === "told").forEach(token => {
                 sproutTokens[token] = "ended";

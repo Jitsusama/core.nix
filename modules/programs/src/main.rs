@@ -661,11 +661,11 @@ fn own(shared: &Arc<Shared>, said: &Value) -> Option<Value> {
         Own::Changed { keys, from } => told::heard(shared, &id, &keys, from),
         Own::Search(asked) => search::answer(shared, &lock(&shared.daemon), &id, &asked),
         Own::Tab(tab) => tabs::act(&id, tab),
-        Own::Terminal(folder) => code::terminal(&id, &folder),
+        Own::Terminal(folder) => code::terminal(shared, &id, &folder),
         Own::Pull(folder) => code::pull(shared, &id, &folder),
         Own::Forget(folder) => code::tend(shared, &id, programs::tend::Act::Forget, &folder),
         Own::Gather(folder) => code::tend(shared, &id, programs::tend::Act::Gather, &folder),
-        Own::Edit(folder) => code::edit(&id, &folder),
+        Own::Edit(folder) => code::edit(shared, &id, &folder),
         Own::Switch { folder, branch } => code::switch(shared, &id, &folder, &branch),
         Own::Settings(settings) => settle(shared, settings),
     })

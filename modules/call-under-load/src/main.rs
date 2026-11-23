@@ -105,6 +105,7 @@ fn help() -> Help {
                     "adds each call's sending waits to the history as it ends",
                 )
                 .exit(Exit::Unavailable, "the apps' slice can't be found")
+                .exit(Exit::Refused, "another watch is running")
                 .exit(Exit::Failed, "a call's line couldn't be written"),
         )
         .exit(Exit::NotFound, "no hour has been measured yet")
@@ -363,10 +364,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         &took,
         read.unread.as_deref(),
     );
-    // Joel's own calls since the last hour written, so calls in hours a
-    // meeting or a call skipped still reach cadence.
-    let since = ran.iter().map(|&(_, ended)| ended).max().unwrap_or(0);
-    measures.extend(hour::real(&watch::heard(&lines, since, at), at));
+    measures.extend(real_calls(&lines, &ran, at));
     // The call's span runs from the run's start, Chromium's own included,
     // to now: the whole of the load the test put beside Joel's programs.
     let launcher = launcher::written(&read, started, at);
@@ -381,10 +379,19 @@ fn run(context: &Context) -> Result<(), Failure> {
         .map_err(|error| unwritten(&error))
 }
 
+/// Joel's own calls' figures: those since the last hour written, so calls
+/// in hours a meeting or a call skipped still reach cadence, and when the
+/// watch last could tell.
+fn real_calls(lines: &str, ran: &[(u64, u64)], at: u64) -> Vec<hour::Measure> {
+    let since = ran.iter().map(|&(_, ended)| ended).max().unwrap_or(0);
+    let clear = watch::clear_at(&folder().join("watch.json"));
+    hour::real(&watch::heard(lines, since, at), since, clear, at)
+}
+
 /// Joel's own calls, watched until the service stops.
 fn watch() -> Result<(), Failure> {
     let cgroup = fs::read_to_string("/proc/self/cgroup").unwrap_or_default();
-    let slice = app_slice(&cgroup).ok_or_else(|| {
+    let account = account(&cgroup).ok_or_else(|| {
         Failure::new(Exit::Unavailable, "the apps' slice can't be found")
             .because(format!(
                 "it runs outside a user's manager: {}",
@@ -392,22 +399,55 @@ fn watch() -> Result<(), Failure> {
             ))
             .try_this("systemctl --user status call-under-load-watch")
     })?;
+    // Without XDG_RUNTIME_DIR, the account's own runtime folder, so an
+    // agent's systemd-run unit is still told from his.
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR").map_or_else(
+        || PathBuf::from(format!("/run/user/{}", uid(&account).unwrap_or_default())),
+        PathBuf::from,
+    );
+    let seat = watch::Seat {
+        proc: PathBuf::from("/proc"),
+        slice: PathBuf::from(format!("/sys/fs/cgroup{account}/app.slice")),
+        account,
+        transient: runtime.join("systemd/transient"),
+    };
     let history = folder().join("history.jsonl");
-    watch::watch(Path::new("/proc"), &slice, &history).map_err(|error| {
+    let unwritable = |error: std::io::Error| {
+        Failure::new(Exit::Failed, "a call's line couldn't be written")
+            .because(error.to_string())
+            .try_this(format!("ls -ld {}", folder().display()))
+    };
+    fs::create_dir_all(folder()).map_err(unwritable)?;
+    let Some(_held) = watch::alone(&folder().join("watch.lock")).map_err(unwritable)? else {
+        return Err(Failure::new(Exit::Refused, "another watch is running")
+            .because("two would write each of Joel's calls twice")
+            .try_this("systemctl --user status call-under-load-watch"));
+    };
+    watch::watch(&seat, &history, &folder().join("watch.json")).map_err(|error| {
         Failure::new(Exit::Failed, "a call's line couldn't be written")
             .because(error.to_string())
             .try_this(format!("ls -ld {}", folder().display()))
     })
 }
 
-/// The apps' slice of the user's manager this runs under, from its own
-/// line in `/proc/self/cgroup`.
-fn app_slice(cgroup: &str) -> Option<PathBuf> {
+/// The path in the cgroup tree of the user's manager this runs under,
+/// from its own line in `/proc/self/cgroup`.
+fn account(cgroup: &str) -> Option<String> {
     let path = cgroup.lines().find_map(|line| line.strip_prefix("0::"))?;
     let (manager, _) = path.split_once(".service/")?;
     manager
         .contains("/user@")
-        .then(|| PathBuf::from(format!("/sys/fs/cgroup{manager}.service/app.slice")))
+        .then(|| format!("{manager}.service"))
+}
+
+/// The account's uid, from its manager's path, `.../user@<uid>.service`.
+fn uid(account: &str) -> Option<u32> {
+    account
+        .rsplit_once("/user@")?
+        .1
+        .strip_suffix(".service")?
+        .parse()
+        .ok()
 }
 
 /// The first program named `name` on PATH.
@@ -487,18 +527,22 @@ mod tests {
     }
 
     #[test]
-    fn the_watch_finds_the_apps_slice_beside_its_own() {
+    fn the_watch_finds_the_manager_it_runs_under() {
         assert_eq!(
-            app_slice(
-                "0::/user.slice/user-1000.slice/user@1000.service/background.slice/\
+            account(
+                "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
                  call-under-load-watch.service\n"
-            ),
-            Some(PathBuf::from(
-                "/sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/app.slice"
-            ))
+            )
+            .as_deref(),
+            Some("/user.slice/user-1000.slice/user@1000.service")
         );
         assert_eq!(
-            app_slice("0::/system.slice/sshd.service\n"),
+            uid("/user.slice/user-1000.slice/user@1000.service"),
+            Some(1000),
+            "the account's runtime folder couldn't be found without XDG_RUNTIME_DIR"
+        );
+        assert_eq!(
+            account("0::/system.slice/sshd.service\n"),
             None,
             "a system service took a slice no user's apps are in"
         );

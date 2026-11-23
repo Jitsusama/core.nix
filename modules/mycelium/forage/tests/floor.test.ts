@@ -51,6 +51,29 @@ const startedOn = (list: readonly Forage[], cell: string, by: string): readonly 
 const compartments = (floor: string): string[] =>
   [...floor.matchAll(/<rect class="[^"]*" data-cell="([^"]+)"/gu)].map((match) => match[1] ?? "");
 
+/**
+ * What `floor` draws along its main line, left to right: each compartment's
+ * cell, and an ellipsis for each gap where it skips cells of its list.
+ */
+const along = (floor: string): string[] =>
+  [
+    ...[...floor.matchAll(/<rect class="[^"]*" data-cell="([^"]+)" x="([^"]+)"/gu)].map(
+      (match) => ({ mark: match[1] ?? "", x: Number(match[2]) + 11 }),
+    ),
+    ...[...floor.matchAll(/<text class="gap" x="([^"]+)"/gu)].map((match) => ({
+      mark: "\u2026",
+      x: Number(match[1]),
+    })),
+  ]
+    .sort((one, other) => one.x - other.x)
+    .map((each) => each.mark);
+
+/** The main line, the one hypha naming no cell. */
+const MAIN = /<path class="hypha" d="([^"]+)"/u;
+
+/** The runs `floor`'s main line is drawn in, broken at each gap. */
+const runs = (floor: string): number => (floor.match(MAIN)?.[1] ?? "").split("M").length - 1;
+
 /** A ringed compartment, naming its cell. */
 const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
 
@@ -73,6 +96,29 @@ it("draws every cell of a list that fits, whatever the cursor", () => {
 // one before, is what pins drawn()'s 48.
 it("draws 48 of a list one cell too long", () => {
   assert.deepEqual(compartments(floorAt(LONG.slice(0, 49), "C00")), span(0, 47));
+});
+
+it("marks no gap on a list that fits, drawing its main line whole and as wide as before", () => {
+  const floor = floorAt(LONG.slice(0, 48), "C47");
+  assert.deepEqual(along(floor), span(0, 47));
+  assert.equal(runs(floor), 1);
+  // Its margins and 48 rooms of 30.
+  assert.ok(floor.startsWith('<svg viewBox="0 0 1488 '), floor);
+});
+
+it("marks each gap where the floor skips cells of its list, before, between and after", () => {
+  const cut = "\u2026";
+  // C00 to C09 come before C10, and C11 and C12 between it and C13.
+  const around = floorAt(LONG, "C55");
+  assert.deepEqual(along(around), [cut, "C10", cut, ...span(13, 59)]);
+  assert.equal(runs(around), 3);
+  assert.ok(around.includes("and 12 more in the list"), around);
+  // The list's first 48 leave its last 12 after them.
+  const first = floorAt(LONG, null);
+  assert.deepEqual(along(first), [...span(0, 47), cut]);
+  assert.equal(runs(first), 2);
+  // Its 48 rooms and a gap's 24 between the margins.
+  assert.ok(first.startsWith('<svg viewBox="0 0 1512 '), first);
 });
 
 it("draws the list's first 48 with no cursor, and counts the rest", () => {
@@ -177,10 +223,36 @@ it("cuts a line deeper than the floor at its top, keeping the 48 nearest the cur
   // C12's starter isn't drawn, so no branch leads to it; C13's is.
   assert.ok(!floor.includes('data-cell="C12" d='), floor);
   assert.ok(floor.includes('data-cell="C13" d='), floor);
-  // Its line fills the floor, so the cell C50 started goes undrawn, and a
-  // step to C50 keeps the floor drawn around it.
-  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(3, 50));
+  // Its line leaves room for the cell C50 started, so it's cut a cell higher
+  // and C51 is drawn with it, and a step to C50 keeps the floor around it.
+  assert.deepEqual(compartments(floorAt(CHAIN, "C50")), span(4, 51));
   assert.equal(stepsOff(floorFor(CHAIN, "C50"), "C50"), false);
+});
+
+/** Forty cells each started by the one before, and forty more the last of them booked. */
+const BROOD: readonly Forage[] = Array.from({ length: 80 }, (_, at) => {
+  if (at === 0) {
+    return forage(named(at));
+  }
+  const by = named(Math.min(at - 1, 39));
+  return forage(named(at), { startedBy: by, booked: true, depth: Math.min(at, 3) });
+});
+
+it("keeps half the floor for a deep line however many cells grew from its cell", () => {
+  // C39's line takes 24 places, and the first 24 of the 40 cells it started the rest.
+  assert.deepEqual(compartments(floorAt(BROOD, "C39")), span(16, 63));
+});
+
+/** A top cell, C00, then a ring of 59 claimed starts: C01 started by C59, each other by the one before. */
+const RING: readonly Forage[] = Array.from({ length: 60 }, (_, at) =>
+  at === 0
+    ? forage(named(at))
+    : forage(named(at), { startedBy: named(at === 1 ? 59 : at - 1), depth: 1 }),
+);
+
+it("fills the floor from a ring longer than the room it leaves, cut at its top", () => {
+  // No whole line of the ring fits beside C00, so C01's is cut to the 47 places left.
+  assert.deepEqual(compartments(floorAt(RING, "C00")), ["C00", "C01", ...span(14, 59)]);
 });
 
 it("stops a line at a cell already drawn, so a long line leaves room for the cells it started", () => {

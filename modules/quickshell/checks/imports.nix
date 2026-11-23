@@ -141,6 +141,7 @@
     "When.js"
     "launcher/Recent.js"
   ];
+  "launcher/ChangesPresented.js" = [ "launcher/Presented.js" ];
   "launcher/Characters.qml" = [ "launcher/Characters.js" ];
   "launcher/Clocks.qml" = [
     "launcher/Ago.js"
@@ -159,6 +160,7 @@
   ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
   "launcher/Explaining.js" = [ "launcher/OnSelection.js" ];
+  "launcher/Firmware.qml" = [ "launcher/Seen.js" ];
   "launcher/ForYou.js" = [ "launcher/Order.js" ];
   "launcher/ForYouFilter.js" = [ "launcher/Order.js" ];
   "launcher/Headings.js" = [ "Operators.js" ];
@@ -229,6 +231,7 @@
     "launcher/NowGroups.js"
     "launcher/Order.js"
     "launcher/PlaceRow.js"
+    "launcher/Presented.js"
     "launcher/SessionRow.js"
     "launcher/Showing.js"
     "pieces/Holding.js"

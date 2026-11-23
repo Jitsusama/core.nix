@@ -45,6 +45,16 @@ fn wants_of(dir: &Path) -> PathBuf {
 /// `kept-listing-<host>` file, or ends 1 without one, counting no run.
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
+# Asked whether ssh reaches a machine nearby whose address doesn't
+# answer: only when the test says ssh's own entry does, and whom it was
+# asked of is kept.
+eval "last=\${$#}"
+if [ "$last" = true ]; then
+  eval "host=\${$(($# - 1))}"
+  echo "$host" >> "$here/reach-was-asked"
+  [ -e "$here/ssh-reaches" ]
+  exit
+fi
 echo "$@" > "$here/ssh-options"
 while [ "$#" -gt 2 ]; do
   if [ "$1" = -E ]; then log=$2; fi
@@ -335,13 +345,17 @@ fn given_to(folder: &Path) -> String {
     format!("{host}\n{}\n", within_far(command))
 }
 
-/// A command sent far, without what makes it end with its caller.
+/// A command sent far, without what makes it end with its caller, or
+/// what a build or a run says of the machine it runs on.
 fn within_far(command: &str) -> &str {
     command
         .split_once("trap 'exit 143' HUP TERM; ")
         .map_or_else(
             || panic!("it doesn't end with its caller: {command}"),
-            |(_, rest)| rest,
+            |(_, rest)| {
+                rest.strip_prefix("(echo \"nix-offload: running on $(uname -n)\" >&2); ")
+                    .unwrap_or(rest)
+            },
         )
 }
 
@@ -2044,6 +2058,12 @@ done
 # writes one, else a quiet one. Whom it was asked of is kept apart, so
 # what tests count of the rest holds.
 case "$2" in
+  # Asked whether ssh reaches it, where its address doesn't answer:
+  # only when the test says ssh's own entry does.
+  true)
+    echo "$1" >> "$here/reach-was-asked"
+    [ -e "$here/ssh-reaches" ]
+    exit ;;
   *"sysctl -n vm.loadavg hw.ncpu"*)
     echo "$1" >> "$here/load-was-asked"
     cat "$here/load" 2>/dev/null || printf '{ 1.00 1.00 1.00 }\n12\n'
@@ -2160,6 +2180,10 @@ fn a_nearby_machine_is_sent_a_folder_flake_and_builds_its_systems() {
     assert_eq!(lines[0]["sent"], 2 * 3812);
     assert_eq!(lines[0]["attributes"][0], "checks.aarch64-darwin.a");
     assert!(lines[1]["on"].is_null());
+    assert!(
+        !bin.join("reach-was-asked").exists(),
+        "ssh was asked whether it reaches a machine whose address answers"
+    );
 }
 
 /// How a run naming a Mac's check and a Linux one is set up: the machine
@@ -2451,6 +2475,7 @@ const BLIND_SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 while [ "$#" -gt 2 ]; do shift; done
 case "$2" in
+  true) exit 255 ;;
   *"sysctl -n vm.loadavg hw.ncpu"*)
     echo "$1" >> "$here/load-was-asked"
     printf '{ 1.00 1.00 1.00 }\n12\n'
@@ -2833,6 +2858,147 @@ fn a_nearby_machine_that_doesnt_answer_is_named_as_its_part_goes_the_other_way()
     assert!(
         !bin.join("ssh-was-given").exists(),
         "an away machine isn't sent anything"
+    );
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap(),
+        "mac\n",
+        "ssh was asked whether it reaches it, once"
+    );
+
+    // A run within the minute reads what ssh said, saying again why the
+    // Mac is taken as away, rather than asking it again.
+    let again = there_command(&bin, &offload, folder.path())
+        .args([
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&again.stderr);
+    assert!(
+        said.contains("mac nearby doesn't answer, so what it takes goes the other way")
+            && said.contains("ssh doesn't reach mac either")
+            && said.contains("as ssh said"),
+        "the second run didn't say why the Mac is away: {said}"
+    );
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap(),
+        "mac\n",
+        "a second run within the minute asked ssh again"
+    );
+}
+
+#[test]
+fn a_nearby_machine_ssh_reaches_takes_its_part_though_its_address_doesnt_answer() {
+    // From 07:01 on 22 November a Mac's `.local` name went unanswered for
+    // hours while ssh reached it through the last address it answered at,
+    // and every build for it failed as away.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("ssh-reaches"), "").unwrap();
+    fs::write(bin.join("status"), "0").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{away} mac aarch64-darwin\n"),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+
+    let ran = there_command(&bin, &offload, folder.path())
+        .args([
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(!said.contains("doesn't answer"), "{said}");
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap_or_default(),
+        "mac\n",
+        "ssh was asked whether it reaches it, once: {said}"
+    );
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap_or_default();
+    assert!(
+        given.starts_with("mac\n") && given.contains("nix build"),
+        "the Mac builds its part: {given} {said}"
+    );
+}
+
+#[test]
+fn a_nearby_machine_ssh_fails_to_reach_as_it_builds_is_asked_again_by_the_next_run() {
+    // ssh said a moment ago that it reaches the Mac, then fails as the
+    // Mac's part is sent, as it did when the Mac slept on 22 November.
+    // What ssh said is forgotten, so the next run asks afresh rather than
+    // sending the Mac its part again for the rest of the minute.
+    let folder = tempfile::tempdir().unwrap();
+    let bin = folder.path().join("bin");
+    fs::create_dir(&bin).unwrap();
+    for (name, script) in [("ssh", NEARBY_SSH), ("nix", NEARBY_NIX)] {
+        executable(&bin.join(name), script);
+    }
+    fs::write(bin.join("ssh-reaches"), "").unwrap();
+    fs::write(bin.join("status"), "255").unwrap();
+    let zone = folder.path().join("zone");
+    fs::create_dir(&zone).unwrap();
+    fs::write(zone.join("flake.nix"), "{ }").unwrap();
+    fs::write(zone.join("flake.lock"), r#"{"nodes": {}}"#).unwrap();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    let config = folder.path().join("config/nix-offload");
+    fs::create_dir_all(&config).unwrap();
+    fs::write(
+        config.join("nearby"),
+        format!("{away} mac aarch64-darwin\n"),
+    )
+    .unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    let asked = || {
+        there_command(&bin, &offload, folder.path())
+            .args([
+                &format!("path:{}", zone.display()),
+                "checks.aarch64-darwin.a",
+            ])
+            .env("XDG_CONFIG_HOME", folder.path().join("config"))
+            .output()
+            .unwrap()
+    };
+
+    let first = asked();
+    let given = fs::read_to_string(bin.join("ssh-was-given")).unwrap_or_default();
+    assert!(
+        given.starts_with("mac\n"),
+        "the Mac ssh reaches wasn't sent its part: {given} {first:?}"
+    );
+    assert!(
+        !folder.path().join("nix-offload-reached/mac").exists(),
+        "what ssh said was kept past its failing there: {first:?}"
+    );
+    let second = asked();
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap_or_default(),
+        "mac\nmac\n",
+        "the run after ssh failed there didn't ask afresh: {first:?} {second:?}"
     );
 }
 
@@ -4495,6 +4661,37 @@ fn a_mac_that_stalls_is_ended_and_kept_as_skipped() {
 }
 
 #[test]
+fn a_mac_ssh_alone_reaches_is_asked_again_after_its_comparison_runs_past_its_time() {
+    // A comparison that runs past its time may be the Mac going, which
+    // what ssh said of it a moment ago can't know, so what it said is
+    // forgotten, and the next run asks afresh rather than believing it
+    // for the rest of the minute.
+    let changed = Changed::new();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    changed.mac_at(away);
+    fs::write(changed.bin.join("ssh-reaches"), "").unwrap();
+    changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("holds-mac"), "60").unwrap();
+
+    let (first, _) = changed.run_bounded(3, &GATE);
+    assert_eq!(first.status.code(), Some(0), "{first:?}");
+    let asked = fs::read_to_string(changed.bin.join("reach-was-asked")).unwrap_or_default();
+    assert_eq!(
+        asked, "mac\n",
+        "ssh wasn't asked once, before the comparison: {first:?}"
+    );
+    let kept = changed.folder.path().join("nix-offload-reached/mac");
+    assert!(
+        !kept.exists(),
+        "what ssh said was kept past a comparison that ran past its time: {first:?}"
+    );
+}
+
+#[test]
 fn a_mac_that_stops_answering_as_it_compares_is_kept_as_skipped() {
     // A Mac that sleeps mid-comparison leaves its build to the lent
     // builder, which can't build for it, so its failure says nothing of
@@ -4527,6 +4724,49 @@ fn a_mac_that_stops_answering_as_it_compares_is_kept_as_skipped() {
     assert_eq!(
         skipped["because"], "mac stopped answering as it compared",
         "{skipped}"
+    );
+}
+
+#[test]
+fn a_mac_ssh_alone_reaches_is_asked_again_once_it_stops_answering_as_it_compares() {
+    // From 07:01 on 22 November a Mac was reached only through ssh's own
+    // entry. One going mid-comparison is asked about afresh, rather than
+    // believed for the minute what ssh said is kept, so its failure is
+    // kept as skipped rather than said of the change.
+    let changed = Changed::new();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    changed.mac_at(away);
+    fs::write(changed.bin.join("ssh-reaches"), "").unwrap();
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("holds-mac"), "3").unwrap();
+    fs::write(changed.bin.join("fails-on-mac"), "").unwrap();
+
+    let ran = std::thread::scope(|scope| {
+        let running = scope.spawn(|| changed.run(&GATE).0);
+        while !changed
+            .sent_to("mac")
+            .iter()
+            .any(|line| line.contains("nix build"))
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        fs::remove_file(changed.bin.join("ssh-reaches")).unwrap();
+        running.join().unwrap()
+    });
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let skipped = skipped_at(&changed, &head);
+    assert_eq!(
+        skipped["because"], "mac stopped answering as it compared",
+        "{skipped}"
+    );
+    assert_eq!(
+        fs::read_to_string(changed.bin.join("reach-was-asked")).unwrap_or_default(),
+        "mac\nmac\n",
+        "ssh wasn't asked once before the comparison and once after it: {ran:?}"
     );
 }
 
@@ -6069,6 +6309,28 @@ fn vm_tests_past_two_vm_builders_room_go_to_a_third_at_once() {
             .iter()
             .all(|line| line["waited"].as_u64().is_some_and(|waited| waited < 30)),
         "each part says how long it waited for its builder: {journal}"
+    );
+}
+
+// A lane kept for the runs that name it, as a bare metal one costing about
+// 21 times another lane for the same builds is, takes none of what other
+// runs spill past the first's room, and takes it again once its
+// `named-only` file goes.
+#[test]
+fn a_lane_kept_for_runs_naming_it_takes_none_of_the_spill() {
+    let rig = TwoVm::new();
+    rig.lend_third();
+    fs::write(rig.third.join("named-only"), "").unwrap();
+    let (built, said) = rig.sent(8);
+    assert_eq!(tests_on(&built, "nix-offload-vm-3"), 0, "{built:?} {said}");
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 8, "{built:?} {said}");
+
+    fs::remove_file(rig.third.join("named-only")).unwrap();
+    let (built, said) = rig.sent(8);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-3"),
+        2,
+        "an ordinary lane takes the spill: {built:?} {said}"
     );
 }
 

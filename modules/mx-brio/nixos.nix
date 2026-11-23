@@ -21,6 +21,12 @@
 # holders say who's on camera. A switch that brings the sharing in takes
 # hold of a Brio already plugged in, so nobody plugs it in again
 # (take-hold.sh).
+#
+# No role imports it while its relay gives no picture: opened by a program,
+# the relay builds no input pipeline, so the loopback shows only its
+# placeholder, and Chrome, which lists a loopback only while one streams,
+# leaves the Brio out of a call. Until the relay is fixed, the seat opens
+# the Brio itself, one program at a time.
 {
   config,
   lib,
@@ -81,6 +87,9 @@ in
     ../usb-camera-holders/nixos.nix
     ../v4l2loopback/nixos.nix
   ];
+  # A machine that imports the sharing chooses it over the graphical role's
+  # seat, which would give the Brio back to the seat at every switch.
+  disabledModules = [ ../mx-brio-seat/nixos.nix ];
 
   # The relay is packaged for x86 machines alone, so elsewhere the Brio
   # stays as it was, the seat's to open directly, one program at a time.

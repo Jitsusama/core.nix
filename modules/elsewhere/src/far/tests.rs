@@ -265,7 +265,8 @@ pub(super) fn far_line(
 /// still crossing would, with each of `programs`, a name and its script,
 /// ahead of the rest on its path, in the tree's `folder`. What it said
 /// for the near side to hear, on stdout, is left in the home's `said`,
-/// and the signal it died by, if one ended it, in its `signal`.
+/// the signal it died by, if one ended it, in its `signal`, and its own
+/// process's number in its `pid`.
 pub(super) fn far_line_in(
     folder: &Path,
     list: Left,
@@ -322,6 +323,7 @@ pub(super) fn far_line_in(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
+    std::fs::write(home.join("pid"), far.id().to_string()).unwrap();
     if !still_crossing.is_empty() {
         std::thread::sleep(std::time::Duration::from_secs(1));
         for (part, whole) in &still_crossing {

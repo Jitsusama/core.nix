@@ -34,10 +34,10 @@ import {
   grewFrom,
   headline,
   holds,
-  inView,
   lede,
   shownBy,
   startedFrom,
+  unwritten,
 } from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
@@ -248,7 +248,7 @@ function openCell(cell: string): void {
     finder.hidden = true;
     sought = "";
   }
-  hollowOnly &&= inView(forage, hollowOnly);
+  hollowOnly &&= unwritten(forage);
   draw();
 }
 

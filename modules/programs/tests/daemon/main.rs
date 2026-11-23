@@ -18,7 +18,9 @@
 //! every repository's row (code.rs), a checkout's branches and the
 //! switch between them (switch.rs), a checkout's gone trees and store
 //! tended (tend.rs), and a page's list read again while it's refused
-//! (refused.rs).
+//! (refused.rs). Long because it also holds the daemon those modules
+//! start, `Running`, and the fixture each one's data folder is made
+//! from, so every module reaches them through the one crate root.
 
 mod agents;
 mod chrome;
@@ -176,6 +178,7 @@ fn fixture(folder: &Path) -> PathBuf {
     previewer(&folder.join("file-preview"));
     recorder(&folder.join("niri"));
     recorder(&folder.join("kitten"));
+    recorder(&folder.join("zoxide"));
     std::fs::write(folder.join("words.json"), WORDS).unwrap();
     file
 }
@@ -237,16 +240,22 @@ impl Running {
     /// Started by `launcher` and its arguments, each given the socket's
     /// path where it says `{socket}`, rather than on its own.
     fn through(test: &str, launcher: &[&str]) -> Running {
-        Running::started(test, launcher, None)
+        Running::started(test, launcher, None, true)
     }
 
     /// Started with a git that runs `before` in sh, then the git the path
     /// finds, as a slow one would.
     fn with_git(test: &str, before: &str) -> Running {
-        Running::started(test, &[], Some(before))
+        Running::started(test, &[], Some(before), true)
     }
 
-    fn started(test: &str, launcher: &[&str], git: Option<&str>) -> Running {
+    /// Started with no zoxide database named, as on an account without
+    /// zoxide.
+    fn unvisited(test: &str) -> Running {
+        Running::started(test, &[], None, false)
+    }
+
+    fn started(test: &str, launcher: &[&str], git: Option<&str>, visited: bool) -> Running {
         let folder = std::env::temp_dir().join(format!("programs-{test}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let sources = fixture(&folder);
@@ -276,7 +285,13 @@ impl Running {
             .env("PROGRAMS_PREVIEW", folder.join("file-preview"))
             .env("PROGRAMS_NIRI", folder.join("niri"))
             .env("PROGRAMS_KITTEN", folder.join("kitten"))
+            .env("PROGRAMS_ZOXIDE", folder.join("zoxide"))
             .stderr(Stdio::null());
+        if visited {
+            command.env("PROGRAMS_VISITED", folder.join("visits/db.zo"));
+        } else {
+            command.env_remove("PROGRAMS_VISITED");
+        }
         if let Some(before) = git {
             let path = folder.join("git");
             let script = format!("#!{}\n{before}\nexec git \"$@\"\n", shell().display());
