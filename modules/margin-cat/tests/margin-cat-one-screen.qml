@@ -265,10 +265,9 @@ QtObject {
                 887]);
         // Its report says how far the slide still has its ground, so the
         // nested niri's check can take the way back from a place it's said.
-        expect("halfway up its ride, it says its ground is carried short of the way",
-            [Math.round((halfway.y - halfway.carried) * 100), halfway.carried < 0,
-                halfway.carried > -880],
-            [88700, true, true]);
+        expect("halfway up its ride, it says its ground is as far off as niri's slide has it",
+            Math.round(halfway.carried * 100),
+            Math.round(-Stacked.apart(held) * (1 - MarginCat.slid(slides / 2, at.spring)) * 100));
         // Ridden off the bottom over an empty workspace, it peeks in at
         // the bottom edge, springs onto the floor and lands.
         const floor = Stacked.risesOnto(Stacked.risesFrom({ x: 100, y: 887 }, at), at);
