@@ -1701,9 +1701,11 @@ fn alone_on(
     } else {
         there::Rank::Plain
     };
-    let (dir, whole) = there::admitted(first, others, room, room, rank);
-    let store = standing(dir).or_else(|| there::waited(dir, waiting))?;
-    warmed(dir, waiting);
+    // Its first wait is what's left once root held it, so it waits on root
+    // once; a builder lost later is waited for its whole time again.
+    let (dir, whole, left) = there::admitted(first, others, room, room, rank, waiting);
+    let store = standing(dir).or_else(|| there::waited(dir, left))?;
+    warmed(dir, left);
     if whole.is_some() {
         eprintln!(
             "nix-offload: this run holds the VM builder in {} alone while it goes, for up \
