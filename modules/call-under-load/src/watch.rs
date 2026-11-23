@@ -9,15 +9,20 @@
 //! Tuple, Zoom), from `/proc`'s schedstat. When the call ends it adds the
 //! call's line to the history, marked real, which the next hour's figures
 //! carry for cadence. It reads thread timings only, never what a call
-//! says or shows.
+//! says or shows. Each time it asks, it says when it last could tell,
+//! so a watch that stopped or can't tell files a fault rather than
+//! reading as a day with no calls.
+//!
+//! Long because about half of it is the tests beside it, which build
+//! stand-in `/proc` and cgroup folders to judge whose apps are Joel's.
 
 use crate::figures::percentile;
 use crate::gate::{self, Call};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
+use std::collections::{BTreeSet, HashMap};
+use std::fs::{self, File};
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -46,10 +51,17 @@ const APPS: [&str; 4] = ["chrome", "slack", "tuple", "zoom"];
 /// (modules/lag-watch/src/apps.rs): the test call's, a terminal's, which
 /// a pi may run in, and mycelium's and its hosts'.
 const NOT_HIS: [&str; 4] = ["call-under-load", "kitty-", "mycelium-pi-", "pi-host-"];
-/// Units in his app.slice whose children aren't his, as lag-watch judges
-/// a Chrome's parent: those `NOT_HIS` names but his terminal, which may
-/// carry his call, and those `systemd-run` makes as they're run.
-const NOT_HIS_PARENT: [&str; 4] = ["call-under-load", "mycelium-pi-", "pi-host-", "run-"];
+
+/// Where the watch reads Joel's apps: `/proc`, his user manager's path in
+/// the cgroup tree, its app.slice's folder, and the folder `systemd-run`
+/// makes its units in, whose units in app.slice are an agent's or a
+/// test's, not his.
+pub struct Seat {
+    pub proc: PathBuf,
+    pub account: String,
+    pub slice: PathBuf,
+    pub transient: PathBuf,
+}
 
 /// The threads whose waits hold up what Joel sends, as Chromium names
 /// them, cut to 15 bytes: the software encoder and the thread that hands
@@ -70,15 +82,19 @@ fn clean(text: &str) -> String {
 /// What a Chromium process is, from its command line: its utility
 /// sub-type or `--type`, or `main` for the browser itself.
 /// Only a whole argument counts, so a URL the browser was opened with
-/// can't name it a capture process.
+/// can't name it a capture process. A process that retitled itself, as
+/// Chromium's zygote children do, has joined its arguments with spaces
+/// into one, and only then are spaces read as their breaks.
 pub fn role(cmdline: &str) -> String {
+    let whole = cmdline.trim_end_matches('\0');
+    let args: Vec<&str> = if whole.contains('\0') {
+        whole.split('\0').collect()
+    } else {
+        whole.split(' ').collect()
+    };
     let kind = ["--utility-sub-type=", "--type="]
         .iter()
-        .find_map(|key| {
-            cmdline
-                .split(['\0', ' '])
-                .find_map(|arg| arg.strip_prefix(key))
-        })
+        .find_map(|key| args.iter().find_map(|arg| arg.strip_prefix(key)))
         .map_or("main", |kind| kind.split('.').next().unwrap_or(kind));
     clean(kind)
 }
@@ -104,37 +120,51 @@ fn named_pid(unit: &str) -> Option<u32> {
         .ok()
 }
 
-/// Whether a process whose parent is in `cgroup`, its `/proc` line, was
-/// started by Joel: by his user manager, his session or one of his apps.
-/// An agent's Chrome moves itself into a scope in his app.slice as his
-/// does, but its parent stays in the agents' or jobs' slice.
-pub fn his_parent(cgroup: &str) -> bool {
-    let Some(path) = cgroup.lines().find_map(|line| line.strip_prefix("0::")) else {
-        return false;
-    };
-    let in_apps = path
-        .split_once("/app.slice/")
-        .is_some_and(|(_, unit)| !NOT_HIS_PARENT.iter().any(|not| unit.starts_with(not)));
-    in_apps
-        || path.ends_with("/init.scope")
-        || path.contains("/session-")
-        || path.contains("/session.slice/")
+/// Whether a process whose parent is in `parents`, its `/proc` cgroup
+/// file, was started by Joel, as lag-watch judges a Chrome's parent: his
+/// user manager, at `account` in the cgroup tree, a service of his
+/// session, or a unit in his app.slice but those `NOT_HIS` names and those
+/// `systemd-run` made, whose files are in `transient`. A launcher's
+/// `app-*.scope` is made as it's run too, and is his. An agent's Chrome
+/// moves itself into a scope in his app.slice as his does, but its parent
+/// stays in the agents' or jobs' slice; one his terminal started is his
+/// terminal's, which an agent's there reads the same as, and isn't watched.
+pub fn his_parent(parents: &str, account: &str, transient: &Path) -> bool {
+    parents
+        .lines()
+        .filter_map(|line| line.strip_prefix("0::"))
+        .filter_map(|path| path.strip_prefix(account))
+        .any(|rest| {
+            rest == "/init.scope"
+                || rest.starts_with("/session.slice/")
+                || rest.strip_prefix("/app.slice/").is_some_and(|path| {
+                    // A run's own cgroups under it, a delegated one's,
+                    // are the run's.
+                    let unit = path.split('/').next().unwrap_or(path);
+                    let launched = unit.starts_with("app-")
+                        && Path::new(unit)
+                            .extension()
+                            .is_some_and(|ext| ext == "scope");
+                    !NOT_HIS.iter().any(|not| unit.starts_with(not))
+                        && (launched || !transient.join(unit).exists())
+                })
+        })
 }
 
-/// Whether a unit in his app.slice is his, read from `proc`: one not named
-/// for a process is his by its name, as is one whose process or parent is
-/// gone before it's read, as lag-watch leaves them.
-fn his(proc: &Path, unit: &str) -> bool {
+/// Whether a unit in his app.slice is his: one not named for a process is
+/// his by its name, as is one whose process or parent is gone before it's
+/// read, as lag-watch leaves them.
+fn his(seat: &Seat, unit: &str) -> bool {
     let Some(pid) = named_pid(unit) else {
         return true;
     };
-    let stat = fs::read_to_string(proc.join(format!("{pid}/stat"))).unwrap_or_default();
+    let stat = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).unwrap_or_default();
     let parent = stat
         .rsplit_once(')')
         .and_then(|(_, rest)| rest.split_whitespace().nth(1)?.parse::<u32>().ok());
     parent
-        .and_then(|ppid| fs::read_to_string(proc.join(format!("{ppid}/cgroup"))).ok())
-        .is_none_or(|cgroup| his_parent(&cgroup))
+        .and_then(|ppid| fs::read_to_string(seat.proc.join(format!("{ppid}/cgroup"))).ok())
+        .is_none_or(|cgroup| his_parent(&cgroup, &seat.account, &seat.transient))
 }
 
 /// The call apps' units in `slice`, the apps' slice, with the app each
@@ -204,20 +234,25 @@ pub fn worst(
 /// from its command line once, when it's first seen, since that read takes
 /// the process's memory lock and could stall behind a page faulting under
 /// the very pressure it records; the sending threads; and their last reads.
+/// The call apps found over the call, which tell a call whose apps' threads
+/// couldn't be read from a microphone in use with no call app open.
 #[derive(Default)]
 struct Watching {
     roles: HashMap<u32, String>,
     threads: Vec<Thread>,
     before: HashMap<(u32, u32), Read>,
+    apps: BTreeSet<String>,
 }
 
 impl Watching {
     /// Looks again for his call apps' sending threads. Threads found anew
     /// are read now, so their first span starts here.
-    fn look(&mut self, proc: &Path, slice: &Path) {
+    fn look(&mut self, seat: &Seat) {
+        let (proc, slice) = (seat.proc.as_path(), seat.slice.as_path());
         let mut threads = Vec::new();
         let mut roles = HashMap::new();
-        for (unit, app) in units(slice).into_iter().filter(|(unit, _)| his(proc, unit)) {
+        for (unit, app) in units(slice).into_iter().filter(|(unit, _)| his(seat, unit)) {
+            self.apps.insert(app.clone());
             let procs = fs::read_to_string(slice.join(&unit).join("cgroup.procs"));
             for pid in procs
                 .unwrap_or_default()
@@ -318,6 +353,10 @@ pub struct Real {
     /// Cut short by the watch stopping, and written when it started again.
     #[serde(default)]
     pub cut: bool,
+    /// His call apps found during the call; none when the microphone was
+    /// in use with no call app open.
+    #[serde(default)]
+    pub apps: Vec<String>,
 }
 
 /// What a call's ticks add up to.
@@ -346,6 +385,37 @@ pub fn summed(began: u64, ended: u64, ticks: &[Tick]) -> Real {
         load15_max: ticks.iter().map(|t| t.load15).fold(0.0, f64::max),
         unsure: false,
         cut: false,
+        apps: Vec::new(),
+    }
+}
+
+/// Whether `history` already holds the real call that began at `began`,
+/// so a call kept beside it isn't written twice when a stop came between
+/// its line and the kept file's removal.
+pub fn written(history: &str, began: u64) -> bool {
+    history
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|row| serde_json::from_value::<Real>(row.get("real")?.clone()).ok())
+        .any(|real| real.began == began)
+}
+
+/// When the watch last could tell whether a call was on, as it said in
+/// `alive` beside the history; None before it first ran.
+pub fn clear_at(alive: &Path) -> Option<u64> {
+    let text = fs::read_to_string(alive).ok()?;
+    serde_json::from_str::<Value>(&text)
+        .ok()?
+        .get("clear")?
+        .as_u64()
+}
+
+/// Says, whole or not at all, when the watch last could tell.
+fn alive(path: &Path, clear: u64) {
+    let tmp = path.with_extension("tmp");
+    let said = json!({"at": seconds_now(), "clear": clear}).to_string();
+    if let Err(error) = fs::write(&tmp, said).and_then(|()| fs::rename(&tmp, path)) {
+        eprintln!("when it last could tell couldn't be said: {error}");
     }
 }
 
@@ -402,59 +472,91 @@ fn kept(part: &Path, real: &Real) -> std::io::Result<()> {
 /// over, or can't tell for three minutes running. A single answer it
 /// can't give leaves the call watched, since a call under the heaviest
 /// load is the one most worth reading.
-fn one_call(proc: &Path, slice: &Path, part: &Path) -> Real {
+fn one_call(seat: &Seat, part: &Path, said: &Path, clear: &mut u64) -> Real {
     let began = seconds_now();
+    let so_far = |watching: &Watching, ticks: &[Tick]| {
+        let mut real = summed(began, seconds_now(), ticks);
+        real.apps = watching.apps.iter().cloned().collect();
+        real
+    };
     let mut watching = Watching::default();
-    watching.look(proc, slice);
+    watching.look(seat);
     let mut asked = Instant::now();
     let mut unsure = 0;
     let mut ticks = Vec::new();
     loop {
         thread::sleep(TICK);
-        let (worst_ms, who) = watching.tick(proc).unzip();
+        let (worst_ms, who) = watching.tick(&seat.proc).unzip();
         ticks.push(Tick {
             worst_ms,
             who,
-            load15: load15(proc),
+            load15: load15(&seat.proc),
         });
         if asked.elapsed() < ASK {
             continue;
         }
         asked = Instant::now();
-        match gate::a_call() {
-            Call::Off => return summed(began, seconds_now(), &ticks),
+        let answer = gate::a_call();
+        if !matches!(answer, Call::Unknown(_)) {
+            *clear = seconds_now();
+        }
+        alive(said, *clear);
+        match answer {
+            Call::Off => return so_far(&watching, &ticks),
             Call::On => unsure = 0,
             Call::Unknown(why) => {
                 unsure += 1;
                 if unsure >= UNSURE {
                     eprintln!("closing the call as unsure: {why}");
-                    let mut real = summed(began, seconds_now(), &ticks);
+                    let mut real = so_far(&watching, &ticks);
                     real.unsure = true;
                     return real;
                 }
             }
         }
-        watching.look(proc, slice);
-        if let Err(error) = kept(part, &summed(began, seconds_now(), &ticks)) {
+        watching.look(seat);
+        if let Err(error) = kept(part, &so_far(&watching, &ticks)) {
             eprintln!("the call so far couldn't be kept: {error}");
         }
     }
 }
 
+/// The watch's hold on `lock`, so only one watch writes the history: one
+/// run by hand beside the service's would write each call twice, and take
+/// the other's call in progress for one a stop cut short. None when
+/// another watch holds it.
+pub fn alone(lock: &Path) -> std::io::Result<Option<File>> {
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock)?;
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(fs::TryLockError::WouldBlock) => Ok(None),
+        Err(fs::TryLockError::Error(error)) => Err(error),
+    }
+}
+
 /// Watches for Joel's calls until it's stopped, adding each call's line
-/// to `history` as it ends; `slice` is the apps' slice in the cgroup tree.
-/// A call a stop cut short is written first, marked cut.
-pub fn watch(proc: &Path, slice: &Path, history: &Path) -> std::io::Result<()> {
+/// to `history` as it ends, and saying in `said` when it last could tell;
+/// the caller holds `alone`'s lock. A call a stop cut short is written
+/// first, marked cut, unless its line was written before the stop.
+pub fn watch(seat: &Seat, history: &Path, said: &Path) -> std::io::Result<()> {
     let part = history.with_file_name("watching.json");
     if let Some(mut real) = fs::read(&part)
         .ok()
         .and_then(|bytes| serde_json::from_slice::<Real>(&bytes).ok())
     {
-        real.cut = true;
-        crate::hour::append(history, &line(&real))?;
+        let lines = fs::read_to_string(history).unwrap_or_default();
+        if !written(&lines, real.began) {
+            real.cut = true;
+            crate::hour::append(history, &line(&real))?;
+        }
     }
     let _ = fs::remove_file(&part);
     let mut told = None;
+    let mut clear = clear_at(said).unwrap_or(0);
     loop {
         let mut asked = gate::a_call();
         for _ in 1..ASKS {
@@ -464,6 +566,10 @@ pub fn watch(proc: &Path, slice: &Path, history: &Path) -> std::io::Result<()> {
             thread::sleep(TICK);
             asked = gate::a_call();
         }
+        if !matches!(asked, Call::Unknown(_)) {
+            clear = seconds_now();
+        }
+        alive(said, clear);
         // Said once each time it changes, so the journal shows a watch
         // that can't tell apart from one that hears no calls.
         let now = match &asked {
@@ -476,7 +582,7 @@ pub fn watch(proc: &Path, slice: &Path, history: &Path) -> std::io::Result<()> {
             told = Some(now);
         }
         if asked == Call::On {
-            let real = one_call(proc, slice, &part);
+            let real = one_call(seat, &part, said, &mut clear);
             crate::hour::append(history, &line(&real))?;
             let _ = fs::remove_file(&part);
             eprintln!(
@@ -521,6 +627,11 @@ mod tests {
             "main",
             "a URL named the browser"
         );
+        assert_eq!(
+            role("chrome\0--user-data-dir=/a --type=video_capture\0--type=renderer\0"),
+            "renderer",
+            "a space inside an argument broke it into a type"
+        );
     }
 
     #[test]
@@ -545,36 +656,46 @@ mod tests {
 
     #[test]
     fn a_scope_is_his_when_his_manager_session_or_apps_started_it() {
-        let user = "0::/user.slice/user-1000.slice";
-        assert!(
-            his_parent(&format!("{user}/user@1000.service/init.scope\n")),
-            "his manager started it"
-        );
-        assert!(
-            his_parent(&format!("{user}/session-2.scope\n")),
-            "his session started it"
-        );
+        let root = std::env::temp_dir().join(format!("watch-parent-{}", std::process::id()));
+        let transient = root.join("transient");
+        fs::create_dir_all(&transient).unwrap();
+        fs::write(transient.join("agent-run.service"), "").unwrap();
+        let account = "/user.slice/user-1000.slice/user@1000.service";
+        let parent = |path: &str| his_parent(&format!("0::{path}\n"), account, &transient);
+        let (mut his_ok, mut not_ok) = (Vec::new(), Vec::new());
         for his in [
-            "app.slice/app-niri-x-9.scope",
-            "app.slice/kitty-70-0.scope",
-            "session.slice/xdg-desktop-portal.service",
+            "/init.scope",
+            "/app.slice/app-niri-x-9.scope",
+            "/app.slice/app-org.gnome.Nautilus-4.scope",
+            "/app.slice/tuple.service",
+            "/session.slice/xdg-desktop-portal.service",
         ] {
-            assert!(
-                his_parent(&format!("{user}/user@1000.service/{his}\n")),
-                "{his} wasn't Joel's"
-            );
+            his_ok.push((his, parent(&format!("{account}{his}"))));
         }
         for not in [
-            "user@1000.service/agents.slice/pi-host-work.service",
-            "user@1000.service/jobs.slice/jobs-work.slice/x.scope",
-            "user@1000.service/app.slice/run-u12.service",
-            "user@1000.service/app.slice/call-under-load.service",
+            "/agents.slice/pi-host-work.service",
+            "/jobs.slice/jobs-work.slice/x.scope",
+            "/app.slice/agent-run.service",
+            "/app.slice/call-under-load.service",
+            "/app.slice/kitty-70-0.scope",
+            "/background.slice/x.service/init.scope",
         ] {
-            assert!(
-                !his_parent(&format!("{user}/{not}\n")),
-                "{not} was taken as Joel's"
-            );
+            not_ok.push((not, !parent(&format!("{account}{not}"))));
         }
+        let other = !parent("/user.slice/user-1001.slice/user@1001.service/init.scope");
+        let session = !parent("/user.slice/user-1000.slice/session-2.scope");
+        fs::remove_dir_all(&root).unwrap();
+        for (his, ok) in his_ok {
+            assert!(ok, "{his} wasn't Joel's");
+        }
+        for (not, ok) in not_ok {
+            assert!(ok, "{not} was taken as Joel's");
+        }
+        assert!(other, "another account's manager was taken as Joel's");
+        assert!(
+            session,
+            "a login session's scope, as lag-watch leaves out, was taken as his"
+        );
         assert_eq!(
             named_pid("app-com.google.Chrome-2349662.scope"),
             Some(2_349_662)
@@ -619,9 +740,15 @@ mod tests {
             3,
             &format!("{manager}/agents.slice/pi-host-work.service"),
         );
+        let seat = Seat {
+            proc,
+            account: manager.to_string(),
+            slice: slice.clone(),
+            transient: root.join("transient"),
+        };
         let found: Vec<String> = units(&slice)
             .into_iter()
-            .filter(|(unit, _)| his(&proc, unit))
+            .filter(|(unit, _)| his(&seat, unit))
             .map(|(unit, app)| format!("{unit} {app}"))
             .collect();
         fs::remove_dir_all(&root).unwrap();
@@ -768,5 +895,49 @@ mod tests {
             back, real,
             "the call so far didn't read back as it was kept"
         );
+    }
+
+    #[test]
+    fn a_kept_call_already_written_isn_t_written_again() {
+        let history = [
+            line(&summed(10, 20, &[])).to_string(),
+            r#"{"at": 30, "run": {"started": 25}, "measures": {}}"#.to_string(),
+        ]
+        .join("\n");
+        assert!(written(&history, 10), "the call written was missed");
+        assert!(
+            !written(&history, 25),
+            "a test run was taken for a real call"
+        );
+    }
+
+    #[test]
+    fn only_one_watch_writes_the_history() {
+        let root = std::env::temp_dir().join(format!("watch-alone-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let lock = root.join("watch.lock");
+        let first = alone(&lock).unwrap();
+        let second = alone(&lock).unwrap();
+        drop(first);
+        let after = alone(&lock).unwrap();
+        fs::remove_dir_all(&root).unwrap();
+        assert!(
+            second.is_none(),
+            "a second watch was let write beside the first"
+        );
+        assert!(after.is_some(), "the lock outlived the watch that held it");
+    }
+
+    #[test]
+    fn the_watch_says_when_it_last_could_tell() {
+        let root = std::env::temp_dir().join(format!("watch-alive-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let said = root.join("watch.json");
+        let before = clear_at(&said);
+        alive(&said, 1_234);
+        let after = clear_at(&said);
+        fs::remove_dir_all(&root).unwrap();
+        assert_eq!(before, None, "a watch that never ran said a time");
+        assert_eq!(after, Some(1_234), "the time it last could tell was lost");
     }
 }
