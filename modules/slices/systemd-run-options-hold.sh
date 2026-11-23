@@ -10,7 +10,11 @@ set -euo pipefail
 table=$1
 systemd_run=$2
 
-"${systemd_run}" --introspect-cli >introspected
+if ! "${systemd_run}" --introspect-cli >introspected; then
+  echo "this systemd-run can't list its options with --introspect-cli, so"
+  echo "systemd-run-options.txt can't be held to it"
+  exit 1
+fi
 # The table has a row for each option, a letter and a long name, so it can't
 # say an option with no long name or a second of either, which the wrapper
 # wouldn't know and would read as bare, nor one whose value may be left

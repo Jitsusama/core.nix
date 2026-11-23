@@ -4,12 +4,15 @@
 # front of a stand-in. It reads a call's arguments by
 # systemd-run-options.txt, each short letter's long name and every long
 # name, given it here, and is built only once that table holds to the
-# options the given systemd takes, where the building machine can run it.
-# A machine built elsewhere, for a platform its builder can't run, has its
-# wrapper read by the table as core's own check holds it, to nixpkgs'
-# systemd, since its systemd-run can't be asked there.
+# options the given systemd takes. A machine built elsewhere, for a
+# platform its builder can't run, has the table held to the builder's own
+# systemd of the same release instead, since run.c lists the same options
+# on every platform, and is warned as it's evaluated when there's none.
+# Any difference fails the machine's build, a harmless one too, rather
+# than guessing which a wrapper would misread; the way on is a change to
+# the table in core, as the hold's refusal says.
 {
-  bash,
+  buildPackages,
   jq,
   lib,
   runCommandLocal,
@@ -36,18 +39,31 @@ let
     "@shorts@" = shorts;
     "@longs@" = longs;
   };
+  asked =
+    if stdenv.buildPlatform.canExecute stdenv.hostPlatform then
+      systemd
+    else if buildPackages.systemd.version == systemd.version then
+      buildPackages.systemd
+    else
+      null;
   holds = runCommandLocal "systemd-run-options-hold" { nativeBuildInputs = [ jq ]; } ''
-    ${bash}/bin/bash ${./systemd-run-options-hold.sh} ${./systemd-run-options.txt} \
-      ${systemd}/bin/systemd-run
+    ${buildPackages.bash}/bin/bash ${./systemd-run-options-hold.sh} ${./systemd-run-options.txt} \
+      ${asked}/bin/systemd-run
     touch $out
   '';
 in
 lib.hiPrio (writeShellApplication {
   name = "systemd-run";
-  # Asked for so the wrapper can't be built while its table doesn't hold.
-  derivationArgs = lib.optionalAttrs (stdenv.buildPlatform.canExecute stdenv.hostPlatform) {
-    inherit holds;
-  };
+  # Asked for so the wrapper can't be built while its table doesn't hold. The
+  # hold runs where the machine is built, so its bash is the builder's.
+  derivationArgs =
+    if asked == null then
+      lib.warn (
+        "systemd-run's wrapper isn't held to systemd ${systemd.version}: the builder can't run "
+        + "it and has no systemd of that release, so a call it misreads goes unseen"
+      ) { }
+    else
+      { inherit holds; };
   text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
     builtins.readFile ./systemd-run.sh
   );

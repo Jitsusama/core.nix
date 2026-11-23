@@ -18,20 +18,27 @@ systemd_run=$4
 rows=$(grep -v '^#' "${table}")
 manager=0::/user.slice/user-1000.slice/user@1000.service
 
-# held <what it would refuse> <table>, and refused <what it would pass>
-# <table> <systemd-run>
+# held <what it would refuse> <table> [systemd-run], and refused <what it
+# would pass> <table> <systemd-run> <what its refusal says>, so each is
+# refused by the step it names, not by another or by a stand-in that broke.
 held() {
-  if ! bash "${hold}" "$2" "${systemd_run}" >/dev/null; then
+  if ! bash "${hold}" "$2" "${3:-${systemd_run}}" >/dev/null; then
     echo "the hold refused $1"
     exit 1
   fi
 }
 refused() {
-  if bash "${hold}" "$2" "$3" >/dev/null; then
+  local said
+  if said=$(bash "${hold}" "$2" "$3"); then
     echo "the hold passed $1"
     exit 1
   fi
+  if [[ "${said}" != *"$4"* ]]; then
+    echo "the hold refused $1, but not as it should: ${said}"
+    exit 1
+  fi
 }
+differs="isn't the options"
 # The hold passes the table, in any order, so its refusals below are of
 # what they're given. It refuses one short of its last option, or of the
 # hidden --tty, and one reading a valued option as bare.
@@ -39,29 +46,44 @@ held "the table" "${table}"
 tac "${table}" >reversed
 held "the table in another order" reversed
 sed '$d' "${table}" >short
-refused "a table short of an option" short "${systemd_run}"
+refused "a table short of an option" short "${systemd_run}" "${differs}"
 grep -v '^- tty$' "${table}" >untold
-refused "a table short of the hidden --tty" untold "${systemd_run}"
+refused "a table short of the hidden --tty" untold "${systemd_run}" "${differs}"
 sed 's/^u unit=$/u unit/' "${table}" >flipped
-refused "a table reading a valued option as bare" flipped "${systemd_run}"
+refused "a table reading a valued option as bare" flipped "${systemd_run}" "${differs}"
 # It refuses a systemd whose options the table can't say: a second long
-# name or letter for one, a value that may be left out, or another way of
-# taking one, from stand-ins saying what this one does, so changed.
+# name or letter for one, none, a name of neither kind, a value that may
+# be left out, or another way of taking one, from stand-ins saying what
+# this one does, so changed, once one saying it unchanged is held. The
+# argument's are on --unit, which takes a value, so the table's row for it
+# still matches and only the refusal under test can refuse it.
 "${systemd_run}" --introspect-cli >introspected.json
 saying() {
   jq "$2" introspected.json >"$1.json"
   printf '#!%s\ncat %s\n' "${BASH}" "${PWD}/$1.json" >"$1"
   chmod +x "$1"
 }
+odd="can't say"
 first='.commands[0].options[0]'
+unit='(.commands[0].options[] | select(.names | index("--unit")))'
+saying same .
+held "a stand-in saying what this systemd-run says" "${table}" ./same
 saying aliased "${first}.names += [\"--other-name\"]"
-refused "a second long name" "${table}" ./aliased
+refused "a second long name" "${table}" ./aliased "${odd}"
 saying lettered "${first}.names += [\"-Y\"]"
-refused "a second letter" "${table}" ./lettered
-saying optional "${first}.argument = \"optional_argument\""
-refused "a value that may be left out" "${table}" ./optional
-saying another "${first}.argument = \"some_argument\""
-refused "another way of taking a value" "${table}" ./another
+refused "a second letter" "${table}" ./lettered "${odd}"
+saying unnamed "${first}.names |= map(select(startswith(\"--\") | not))"
+refused "an option with no long name" "${table}" ./unnamed "${odd}"
+saying misnamed "${unit}.names += [\"-ab\"]"
+refused "a name of neither kind" "${table}" ./misnamed "${odd}"
+saying optional "${unit}.argument = \"optional_argument\""
+refused "a value that may be left out" "${table}" ./optional "${odd}"
+saying another "${unit}.argument = \"some_argument\""
+refused "another way of taking a value" "${table}" ./another "${odd}"
+# A systemd-run that can't list its options is refused, saying so.
+printf '#!%s\nexit 1\n' "${BASH}" >mute
+chmod +x mute
+refused "a systemd-run that can't list its options" "${table}" ./mute "can't list"
 
 # says <cgroup> <what the real one should be given> <the call...>
 says() {
@@ -122,27 +144,30 @@ says "${host}" "--slice=jobs-work.slice --user -- -Hx" --user -- -Hx
 says "${host}" "-u --user true" -u --user true
 says "${host}" "--user -C c true" --user -C c true
 # Each option in the table is read as taking a value or not, as systemd-run
-# does: a word after a valued one is its value, whatever it looks like, and
-# one after a bare one is read for itself. Those naming a slice or another
-# manager pass the call through: that list is names_its_place's again, so
-# it proves each reads as one, not that a new option systemd adds needs no
-# place in it, which the hold asks to be judged when it refuses the table.
+# does: a word after a valued one is its value, whatever it looks like, one
+# joined to a long name is its value alone, and one after a bare one is
+# read for itself. Those naming a slice or another manager pass the call
+# through: that list is names_its_place's again, so it proves each reads as
+# one, not that a new option systemd adds needs no place in it, which the
+# hold asks to be judged when it refuses the table.
 while read -r letter name; do
   passes=false
   case "${name%=}" in
-    slice | slice-inherit | host | machine | capsule | help) passes=true ;;
+    slice | slice-inherit | host | machine | capsule) passes=true ;;
     *) ;;
   esac
   for option in "--${name%=}" "-${letter}"; do
     [[ "${option}" == -- ]] && continue
     if [[ "${passes}" == true ]]; then
-      if [[ "${name}" != help ]]; then
-        says "${host}" "--user ${option} v true" --user "${option}" v true
-      fi
+      says "${host}" "--user ${option} v true" --user "${option}" v true
     elif [[ "${name}" == *= ]]; then
       says "${host}" "${option} --user true" "${option}" --user true
       says "${host}" "--slice=jobs-work.slice ${option} v --user true" \
         "${option}" v --user true
+      if [[ "${option}" == --* ]]; then
+        says "${host}" "--slice=jobs-work.slice ${option}=v --user true" \
+          "${option}=v" --user true
+      fi
     elif [[ "${name}" != system ]]; then
       says "${host}" "--slice=jobs-work.slice ${option} --user true" \
         "${option}" --user true
