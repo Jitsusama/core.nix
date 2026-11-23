@@ -6,8 +6,9 @@
 # name, given it here, and is built only once that table holds to the
 # options the given systemd takes. A machine built elsewhere, for a
 # platform its builder can't run, has the table held to the builder's own
-# systemd of the same release instead, since run.c lists the same options
-# on every platform, and is warned as it's evaluated when there's none.
+# systemd instead where that's built from the same source and patches,
+# since run.c lists the same options on every platform, and is warned as
+# it's evaluated where it isn't, or the builder can't have systemd at all.
 # Any difference fails the machine's build, a harmless one too, rather
 # than guessing which a wrapper would misread; the way on is a change to
 # the table in core, as the hold's refusal says.
@@ -42,7 +43,11 @@ let
   asked =
     if stdenv.buildPlatform.canExecute stdenv.hostPlatform then
       systemd
-    else if buildPackages.systemd.version == systemd.version then
+    else if
+      lib.meta.availableOn stdenv.buildPlatform buildPackages.systemd
+      && (buildPackages.systemd.src or null) == (systemd.src or null)
+      && (buildPackages.systemd.patches or [ ]) == (systemd.patches or [ ])
+    then
       buildPackages.systemd
     else
       null;
@@ -60,7 +65,7 @@ lib.hiPrio (writeShellApplication {
     if asked == null then
       lib.warn (
         "systemd-run's wrapper isn't held to systemd ${systemd.version}: the builder can't run "
-        + "it and has no systemd of that release, so a call it misreads goes unseen"
+        + "it and has no systemd built as it is, so a call it misreads goes unseen"
       ) { }
     else
       { inherit holds; };
