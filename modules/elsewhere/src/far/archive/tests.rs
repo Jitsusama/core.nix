@@ -190,9 +190,13 @@ fn a_file_itself_past_the_most_is_refused_as_it_is_opened_not_once_read() {
     let parts = root.join("parts");
     std::fs::create_dir_all(&parts).unwrap();
     let refused = write(&root, ["big"], &parts, 2048, u64::MAX);
-    // The opened file's own path names it, where an entry found too big
-    // once read would be named by its path in the tree.
-    let opened = format!("{} is past the 2048 bytes", root.join("big").display());
+    // The opened file is named by its own path and the size it was opened
+    // at, where one found too big once read would say it grew, and an
+    // entry too big would be named by its path in the tree.
+    let opened = format!(
+        "{} is 3000 bytes, past the 2048 bytes",
+        root.join("big").display()
+    );
     assert!(
         refused
             .as_ref()
@@ -219,10 +223,19 @@ fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
         2,
         "two archives within the total weren't written"
     );
-    for all in [2 * one, 3 * one - 1] {
+    // Closed archives alone before the third, and then all three files in
+    // one archive, the third's room a byte short with the two before it
+    // still open.
+    let whole = 3 * taken("a", 600) + CLOSED;
+    assert_eq!(
+        write(&root, names, &parts, 1 << 20, whole).unwrap().len(),
+        1,
+        "three files in one archive just within the total weren't written"
+    );
+    for (most, all) in [(3000, 2 * one), (3000, 3 * one - 1), (1 << 20, whole - 1)] {
         let _ = std::fs::remove_dir_all(&parts);
         std::fs::create_dir_all(&parts).unwrap();
-        let refused = write(&root, names, &parts, 3000, all);
+        let refused = write(&root, names, &parts, most, all);
         assert!(
             refused.as_ref().is_err_and(|error| error
                 .to_string()

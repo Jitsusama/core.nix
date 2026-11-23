@@ -69,8 +69,9 @@ pub struct Part {
 /// size it was read at even when it changed after it was gathered. A
 /// file whose own entry is past `most` is refused, as no share carries it,
 /// and so is one that would take the archives past `all` bytes in all,
-/// before it is written: a tree that grew after it was gathered fills no
-/// more of the handover than a share carries.
+/// before it is written: a tree that grew after it was gathered leaves
+/// this job's archives no larger than `all` all the same. A refusal
+/// leaves the archives written so far unlisted, for the caller to clear.
 pub fn write<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
@@ -136,17 +137,17 @@ fn read(path: &Path, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
         )
     })?;
     let meta = file.metadata()?;
-    let past = || {
+    let past = |how: &str| {
         io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "{} is past the {most} bytes one shared file may be",
+                "{} {how} past the {most} bytes one shared file may be",
                 path.display()
             ),
         )
     };
     if meta.len() > most {
-        return Err(past());
+        return Err(past(&format!("is {} bytes,", meta.len())));
     }
     let mut data = Vec::new();
     io::Read::read_to_end(
@@ -154,7 +155,7 @@ fn read(path: &Path, most: u64) -> io::Result<(Vec<u8>, fs::Metadata)> {
         &mut data,
     )?;
     if data.len() as u64 > most {
-        return Err(past());
+        return Err(past("grew as it was read,"));
     }
     Ok((data, meta))
 }
