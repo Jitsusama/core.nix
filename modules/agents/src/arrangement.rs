@@ -421,6 +421,16 @@ impl Arrangement {
             let Some(place) = place.as_object_mut() else {
                 return !unwindowed.closed.contains(id);
             };
+            // A mark stamped ahead of now, as after the wall clock stepped
+            // back, counts from now, so its place goes a boot's end from
+            // here, never held for as long as the clock stepped.
+            if place
+                .get("closed")
+                .and_then(Value::as_u64)
+                .is_some_and(|closed| closed > at)
+            {
+                place.insert("closed".to_owned(), json!(at));
+            }
             // One in a window again keeps its place as it was kept, unmarked.
             // One heard parked, ended or elsewhere keeps a closed mark and
             // lets its place go once that's due, since the host parks an

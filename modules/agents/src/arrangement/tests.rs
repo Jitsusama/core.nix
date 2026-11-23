@@ -546,6 +546,30 @@ fn a_let_go_already_past_is_looked_at_no_sooner_than_still() {
 }
 
 #[test]
+fn a_closed_mark_stamped_ahead_of_now_counts_from_now() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let ahead = at + 10 * grace;
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-shut": {"column": 4, "closed": ahead}}}}));
+    let shut = Windowless {
+        closed: HashSet::from(["s-shut".to_owned()]),
+        ..Windowless::default()
+    };
+    let stepped = kept.kept("this", "", Map::new(), Vec::new(), &shut, at);
+    assert_eq!(
+        stepped.boots["this"],
+        json!({"s-shut": {"column": 4, "closed": at}}),
+        "a mark ahead of now, as after the clock stepped back, is stamped now"
+    );
+    assert_eq!(
+        stepped.let_go_at("this"),
+        Some(at + grace),
+        "so its place goes a boot's end from now, not from the step's far side"
+    );
+}
+
+#[test]
 fn a_window_closed_while_the_boot_runs_on_lets_its_place_go() {
     let kept = Arrangement::of(&json!({"v": 1,
             "boots": {"this": {"s-shut": {"column": 4}, "s-ended": {"column": 5}}}}));
