@@ -175,12 +175,19 @@ function waits(row, its, headed) {
 }
 
 // A row as it's shown, no longer marked as waiting unseen: a copy holding
-// all else it holds, so the row that was given keeps its mark.
+// all else it holds, so the row that was given keeps its mark. Built by
+// hand, as Qt's engine has no Object.fromEntries.
 function asSeen(row) {
     if (row.unseen !== true) {
         return row;
     }
-    return Object.fromEntries(Object.entries(row).filter(([name]) => name !== "unseen"));
+    const shown = {};
+    for (const [name, value] of Object.entries(row)) {
+        if (name !== "unseen") {
+            shown[name] = value;
+        }
+    }
+    return shown;
 }
 
 // The heading the end of `rows` reads as under: the last one, unless a row
