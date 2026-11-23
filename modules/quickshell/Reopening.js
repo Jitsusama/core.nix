@@ -223,17 +223,23 @@ function queuedOnce(queue, more, begun) {
 // the harness's sessions keep it busy, or for a walk the harness began.
 // Only the tally's own sessions count, so the order against the list's own
 // join (queuedOnce) is no matter. Each of `ids` counts once, however many
-// lists ask for it, and `tell` hears each reading, the last list's kept.
+// lists ask for it, and `tell` hears each reading, the last list's kept. A
+// list joining a tally already told of one gone tells it again with those
+// it adds, or the reading Joel is told would stay short of them.
 function tallyOf(walk, ids, tell) {
     const own = walk?.tally ?? null;
     const asked = entry => own.asked[entry.one.afreshFor ?? entry.one.id] === true;
     const counting = own !== null
         && (walk.queue.some(asked) || (walk.looking !== null && asked(walk.looking)));
     const tally = counting ? own : { asked: {}, gone: {}, tell };
-    for (const id of ids) {
+    const added = ids.filter(id => tally.asked[id] !== true);
+    for (const id of added) {
         tally.asked[id] = true;
     }
     tally.tell = tell;
+    if (counting && added.length > 0 && Object.keys(tally.gone).length > 0) {
+        tell(reading(tally));
+    }
     return tally;
 }
 

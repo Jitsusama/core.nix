@@ -706,14 +706,18 @@ QtObject {
         Reopening.foundGone(walked, { id: "a" });
         expect("a list with no walk counts its own", heard, ["1 gone, 2 reopened"]);
         // A second given while the walk still holds sessions joins it, the
-        // same sessions counting once and one more among them.
+        // same sessions counting once and one more among them, told at once
+        // since one was told gone already.
         const walking = walkOf(walked, [asked("b")], null);
         expect("given mid-walk, it counts in the walk's tally",
             Reopening.tallyOf(walking, ["a", "b", "c", "d"], hear) === walked, true);
         Reopening.foundGone(walked, { id: "d" });
         Reopening.foundGone(walked, { id: "b" });
         expect("and the walk's count grows by what it adds", heard.slice(1),
-            ["2 gone, 2 reopened", "3 gone, 1 reopened"]);
+            ["1 gone, 3 reopened", "2 gone, 2 reopened", "3 gone, 1 reopened"]);
+        expect("given while it holds one started afresh for its own, it joins",
+            Reopening.tallyOf(walkOf(walked, [{ one: { id: "fresh", afreshFor: "c" } }], null),
+                [], hear) === walked, true);
         expect("given while the walk looks for its last folder, it joins too",
             Reopening.tallyOf(walkOf(walked, [], asked("c")), ["a"], hear) === walked, true);
         // Once every session it asked for is begun, nothing more of its can
@@ -732,7 +736,7 @@ QtObject {
         const harness = walkOf(null, [asked("h"), asked("a")], null);
         const during = Reopening.tallyOf(harness, ["a", "b"], hear);
         Reopening.foundGone(during, { id: "a" });
-        expect("given during the harness's walk, a session both hold counts",
+        expect("given during the harness's walk, a session it asked for counts once found gone",
             heard[heard.length - 1], "1 gone, 1 reopened");
         // One started afresh counts as the one it stands in for, and one
         // no list asked for counts nowhere, telling nothing.

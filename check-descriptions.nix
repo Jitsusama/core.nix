@@ -3554,7 +3554,8 @@
     holding nothing back; and a Reopen Them All list counts what it finds gone in the walk's tally
     while the walk may still find one of that tally's folders gone, else in one of its own, as
     once only a window given up on or the harness's sessions keep the walk, each session once by
-    the id it was asked by, whichever list queued it
+    the id it was asked by, whichever list queued it, and told again as a list joins a tally
+    already told of one gone
   '';
   repos-is-told-every-realms-owners = ''
     the refresh's unit gives repos every realm's declared owners as one word that systemd passes
