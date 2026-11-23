@@ -574,14 +574,16 @@ Provider {
             : Here.within(here.accuracy, hereSaid, hereTold);
         // How the clock is kept, in Time's word for it (Clocks.qml), and
         // how far off it was at the clock's last update, signed, as Time
-        // says it (Clocks.qml's clockParts).
+        // says it (Clocks.qml's clockParts). A clock never yet updated
+        // has no offset of its own, chrony giving 0 in its place, so it's
+        // said only once the clock has a last update.
         // Chrony is asked only while home shows, so until the reader
         // answers it's left out, but for a reading kept from the minute
         // before (Timekeeping.qml); that nothing keeps the time is said
         // only once the reader refused, as on a machine without chrony.
         const time = source("time");
         const kept = time?.kept ?? null;
-        const offset = kept?.clock
+        const offset = kept?.clock?.lastSync
             ? Keeping.seconds(kept.clock.lastOffset, true, time.clockSaid?.point ?? ".") : "";
         const step = kept ? said(kept.synchronised ? "synchronised" : "unsynchronised")
             : Timekeeping.refused ? said("unkept") : "";

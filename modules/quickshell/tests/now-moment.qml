@@ -117,9 +117,9 @@ ShellRoot {
 
         readonly property var settings: ({ name: "time" })
         readonly property var kept: Timekeeping.reading
-        function millis(ms, signed) {
-            return `${ms} ms`;
-        }
+        // How Time says the clock's figures, as Clocks.qml builds it.
+        readonly property var clockSaid: Object.assign({ point: "." },
+            Words.of("time:clock").said ?? {})
     }
 
     // Quests, as Now's What Moved reads it: each workstream that moved, as
@@ -1347,6 +1347,13 @@ ShellRoot {
         const keptSays = JSON.stringify(["synchronised"]);
         expect("answered, the plate's clock says how it's kept",
             JSON.stringify(clockSays()) === keptSays, JSON.stringify(clockSays()));
+        const clockQualifiers = () => Array.from(now.placePlate().groups)
+            .reduce((all, group) => all.concat(Array.from(group)), [])
+            .filter(fact => fact.label === Words.name("on:plate:clock"))
+            .map(fact => fact.qualifier);
+        expect("answered, it says how far off the reading's clock was at its last update",
+            JSON.stringify(clockQualifiers()) === JSON.stringify(["\u2212388 \u00b5s"]),
+            JSON.stringify(clockQualifiers()));
         Timekeeping.watching -= 1;
         expect("unwatched, the reading is kept", kept(), JSON.stringify(Timekeeping.reading));
         expect("unwatched, the plate still says the kept reading",
@@ -1385,9 +1392,10 @@ ShellRoot {
         // decimal mark, as Time says it. The time source goes first, so Now finds it before
         // any the harness holds.
         const sourcesBeforeTime = theLauncher.sources;
-        const offsetSaid = (lastOffset, point) => {
+        const offsetSaid = (lastOffset, point, lastSync = 1793829480000) => {
             theLauncher.sources = [{ settings: { name: "time" }, clockSaid: { point: point },
-                kept: { synchronised: true, clock: { lastOffset: lastOffset }, servers: [] } }]
+                kept: { synchronised: lastSync !== null,
+                    clock: { lastOffset: lastOffset, lastSync: lastSync }, servers: [] } }]
                 .concat(sourcesBeforeTime);
             const said = Array.from(now.placePlate().groups)
                 .reduce((all, group) => all.concat(Array.from(group)), [])
@@ -1404,6 +1412,10 @@ ShellRoot {
         expect("and ahead, it says so in Time's decimal mark",
             JSON.stringify(commaSaid) === JSON.stringify(["+41,2 \u00b5s"]),
             JSON.stringify(commaSaid));
+        // A clock never yet updated has chrony's 0 for its offset, which isn't one.
+        const neverSaid = offsetSaid(0, ".", null);
+        expect("never updated, it says no offset",
+            JSON.stringify(neverSaid) === JSON.stringify([""]), JSON.stringify(neverSaid));
 
         // The location says its town, and that the place keeps another zone
         // than the clock, in the colour of what wants a look, and why the
