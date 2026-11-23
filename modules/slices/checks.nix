@@ -12,6 +12,27 @@
   ...
 }:
 {
+  # A machine turns a disk's writeback throttle off, or sets its goal, as the
+  # disk appears, and one that names none leaves every disk the kernel's.
+  a-disks-writeback-throttle-is-the-machines =
+    let
+      rules =
+        throttle:
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          { jitsusama.slices.writebackThrottle = throttle; }
+        ]).config.services.udev.extraRules;
+      off = rules { nvme0n1 = 0; };
+    in
+    holds "a-disks-writeback-throttle-is-the-machines"
+      "A disk's writeback throttle isn't set as the machine names it, or is set unasked."
+      (
+        lib.hasInfix ''KERNEL=="nvme0n1", ATTR{queue/wbt_lat_usec}="0"'' off
+        && lib.hasInfix ''ACTION=="add|change", SUBSYSTEM=="block"'' off
+        && !(lib.hasInfix "wbt_lat_usec" (rules { }))
+      );
+
   # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
   # every slice above them is protected, so a floor one of them lacks is a
   # floor nobody has, and nothing says so. session.slice's and app.slice's

@@ -435,7 +435,37 @@ in
     );
   };
 
+  options.jitsusama.slices.writebackThrottle = lib.mkOption {
+    description = ''
+      The kernel's writeback throttle's latency goal on each disk named, by
+      its name under /sys/class/block, in microseconds; 0 turns the
+      throttle off. A disk not named keeps the kernel's own, 2 ms on a solid
+      one. It's set as the disk appears, so it holds across a boot.
+    '';
+    default = { };
+    example = {
+      nvme0n1 = 0;
+    };
+    type = lib.types.attrsOf lib.types.ints.unsigned;
+  };
+
   config = {
+    # The throttle holds writeback back once a disk's reads take longer than
+    # its goal, whoever writes, and a thread it holds sleeps in rq_qos_wait:
+    # under the 08:35 test call on 23 November, that was where the call's
+    # threads were most often found when they slept unwakeable. Whether the
+    # disk serves Joel's work better without it, under user.slice's latency
+    # target alone, is measured on a machine by turning it off, so a machine
+    # sets it rather than core.
+    services.udev.extraRules = lib.concatStrings (
+      lib.mapAttrsToList (
+        disk: goal:
+        ''ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="${disk}", ''
+        + ''ATTR{queue/wbt_lat_usec}="${toString goal}"''
+        + "\n"
+      ) config.jitsusama.slices.writebackThrottle
+    );
+
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.

@@ -385,6 +385,11 @@
     every NixOS account's activation switches its units with an sd-switch that reads each job's
     end as it comes, so a switch of more than 64 jobs doesn't hang waiting for a reply
   '';
+  a-disks-writeback-throttle-is-the-machines = ''
+    a disk a machine names in jitsusama.slices.writebackThrottle has its writeback throttle's
+    goal set as it appears, 0 turning it off, and a machine naming none leaves every disk the
+    kernel's
+  '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
     the call comes from jobs.service, a pi-spawner scope or a pi host's or conversation's unit,
