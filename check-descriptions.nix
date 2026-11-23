@@ -844,6 +844,10 @@
     the collector runs in background.slice, restarts when it fails, and has a runtime folder for
     its socket
   '';
+  comments-name-what-exists = ''
+    every comment naming a path from a top folder names what's there, as code-health's stale-paths
+    measure reads them, but those still waiting on their owners
+  '';
   commands-agree = ''
     every command core's crates build keeps docs/commands.md's convention: built on the terminal
     kit, ending and inking only through it, and answering --help --format json as help/1 and

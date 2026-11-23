@@ -5,6 +5,9 @@
 //! and it's there when it's found from the top or from any folder above
 //! the file naming it, since a module's comments name its own `tests/`.
 //!
+//! core's comments-name-what-exists holds the same rule at each change,
+//! through `code-health stale` (tree.rs).
+//!
 //! It reads generously, so a path it names is gone but a gone path may
 //! pass. Only comments are read: a path in a string is often a test's
 //! fixture, meant not to be there, and markdown is the docs check's to
