@@ -53,7 +53,7 @@ def probed(tab: Page, body: str, settle_ms: int = 0) -> list[str]:
     if settle_ms:
         tab.wait_for_timeout(settle_ms)
     found = tab.evaluate(PROBE)
-    assert isinstance(found, list)
+    assert isinstance(found, list), f"the probe answered {found!r}, not a list of lines"
     return [str(line) for line in found]
 
 
@@ -80,7 +80,7 @@ def test_text_under_the_floor_is_named(tab: Page) -> None:
     """A count at 11.76 px, forage's --step-small on a phone, is under the 12 px floor."""
     found = probed(tab, '<main><p style="font-size: 11.76px">12 cells</p></main>')
     assert len(found) == 1
-    assert found[0].startswith('text at 11.8 px ("12 cells"), under 12 px')
+    assert found[0].startswith('text at 11.8 px ("12 cells"), under 12 px'), found
 
 
 def test_text_at_the_floor_passes(tab: Page) -> None:
@@ -105,7 +105,7 @@ def test_a_drawings_unmarked_small_label_is_held_to_the_floor(tab: Page) -> None
     """A cell's 10 px label, unmarked, is under 12 px like any other text."""
     found = probed(tab, drawing('<text x="4" y="30" font-size="10">1GB1PI</text>'))
     assert len(found) == 1
-    assert found[0].startswith('text at 10.0 px ("1GB1PI"), under 12 px')
+    assert found[0].startswith('text at 10.0 px ("1GB1PI"), under 12 px'), found
 
 
 def test_a_drawings_label_that_enlarges_may_be_small(tab: Page) -> None:
@@ -119,7 +119,7 @@ def test_nothing_is_under_nine_px_even_where_it_enlarges(tab: Page) -> None:
     label = '<text data-enlarges x="4" y="30" font-size="8">reef</text>'
     found = probed(tab, drawing(label))
     assert len(found) == 1
-    assert found[0].startswith('a drawing\'s label at 8.0 px ("reef"), under 9 px')
+    assert found[0].startswith('a drawing\'s label at 8.0 px ("reef"), under 9 px'), found
 
 
 def test_a_drawings_scale_sets_its_labels_size(tab: Page) -> None:
@@ -130,7 +130,7 @@ def test_a_drawings_scale_sets_its_labels_size(tab: Page) -> None:
     )
     found = probed(tab, body)
     assert len(found) == 1
-    assert found[0].startswith('text at 10.0 px ("reef")')
+    assert found[0].startswith('text at 10.0 px ("reef")'), found
 
 
 SHIFTING = """
@@ -146,7 +146,7 @@ def test_a_part_arriving_above_the_words_is_a_shift(tab: Page) -> None:
     """A 600 px part filled in above the words after they're drawn shifts the page past 0.1."""
     found = probed(tab, SHIFTING.format(height="600px"), 400)
     assert len(found) == 1
-    assert found[0].startswith("the page shifts ")
+    assert found[0].startswith("the page shifts "), found
     assert "over 0.1" in found[0]
 
 
