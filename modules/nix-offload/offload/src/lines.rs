@@ -2007,8 +2007,8 @@ mod tests {
     }
 
     // The project is every builder's, so what spoils one spoils every
-    // builder root trusts, whenever its own next look would fall, and each
-    // is kept for a restart.
+    // builder root trusts, whenever its own next look would fall, and the
+    // one that looked as well, trusted or not, each kept for a restart.
     #[test]
     fn a_project_setting_spoils_every_trusted_builder() {
         let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
@@ -2028,8 +2028,8 @@ mod tests {
         );
         let kept = fs::read_to_string(dir.path().join(SPOILED)).unwrap_or_default();
         assert_eq!(
-            kept, "offload-9z8y us-east1-b\n",
-            "only the trusted builder should be kept as spoiled"
+            kept, "offload-1a2b us-east1-b\noffload-9z8y us-east1-b\n",
+            "the builder that looked and the trusted one should both be kept as spoiled"
         );
     }
 
