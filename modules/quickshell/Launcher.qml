@@ -7094,7 +7094,8 @@ Scope {
             // unseen, counted, as a held step's rows do.
             const standing = words.length === 0 && (!steadying || ordering)
                 ? Steady.seen(offered) : { rows: offered.slice(), waiting: 0 };
-            root.found = words.length === 0 ? standing.rows : inCategory(letters);
+            root.found = words.length === 0 ? standing.rows
+                : Steady.searched(inCategory(letters));
             const foundAt = Date.now();
             compose(!steadying);
             if (!steadying || ordering)
@@ -7147,13 +7148,13 @@ Scope {
                 found = steadying && !ordering ? offered.slice() : standing.rows;
                 unseen = standing.waiting;
             } else if (held[held.length - 1].row.finds)
-                found = held[held.length - 1].row.finds(letters);
+                found = Steady.searched(held[held.length - 1].row.finds(letters));
             else
-                found = (held[held.length - 1].row.typed?.(letters) ?? [])
+                found = Steady.searched((held[held.length - 1].row.typed?.(letters) ?? [])
                     .concat(within(offered.reduce((all, row) => all.concat([row],
                         row.offers && row.verbs ? row.verbs() : []), []), letters,
                         picks.weights(Rank.stepped(held[held.length - 1].row.key ?? "",
-                            letters))));
+                            letters)))));
             found = found.concat(stillActed(found));
             answer = null;
             lined = holdsWords ? held[held.length - 1].row.line?.() ?? null : null;
