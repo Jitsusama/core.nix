@@ -29,6 +29,7 @@ mod cpu;
 mod day;
 mod first;
 mod held;
+mod hops;
 mod house;
 mod icmp;
 mod lanes;
@@ -36,6 +37,7 @@ mod links;
 mod live;
 mod networks;
 mod oneway;
+mod pin;
 mod probe;
 mod proof;
 mod qdisc;
@@ -62,6 +64,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
+use std::net::SocketAddrV4;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -747,6 +750,206 @@ fn install(
     true
 }
 
+/// Gives each link the round trips its probes heard since the last step.
+fn hear_echoes(echoes: &Receiver<Echo>, shaped: &mut BTreeMap<String, Shaped>) {
+    while let Ok(echo) = echoes.try_recv() {
+        if let Some(s) = shaped.get_mut(&echo.link) {
+            s.trips.heard(&echo.host, echo.rtt_ms);
+        }
+    }
+}
+
+/// The VPN's source-port pin as the shaper keeps it (src/pin.rs): its
+/// rounds run on a thread of their own, since one takes seconds, and what
+/// each read comes back here, kept for the journal.
+struct Pinner {
+    pinning: pin::Pinning,
+    send: std::sync::mpsc::Sender<(pin::End, BTreeMap<u16, f64>)>,
+    read: Receiver<(pin::End, BTreeMap<u16, f64>)>,
+    last: BTreeMap<u16, f64>,
+    looked: Option<Instant>,
+    /// Whether the journal said the count of flows back can't be read,
+    /// so it says so once rather than every look.
+    unread: bool,
+    /// Where the pin is kept across a restart (`pin::Restart`), so a switch
+    /// doesn't lose it and a round after leaves out every pair the VPN's
+    /// live flows were given; what was last written there; this boot,
+    /// which what's kept there has to be from; and when the last round
+    /// was asked, as an instant and in seconds since the epoch.
+    kept_at: PathBuf,
+    written: Option<String>,
+    boot: String,
+    asked_at: Option<(Instant, u64)>,
+}
+
+impl Pinner {
+    fn new(state: &Path) -> Pinner {
+        let (send, read) = channel();
+        let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id").unwrap_or_default();
+        let kept_at = state.join("pin");
+        let written = fs::read_to_string(&kept_at).ok();
+        let mut pinning = pin::Pinning::default();
+        let mut asked_at = None;
+        if let Some(kept) = written
+            .as_deref()
+            .and_then(|t| pin::restored(t, boot.trim()))
+        {
+            if let Some(pin) = kept.pin {
+                eprintln!(
+                    "the VPN's pin to ports {} and {} is kept through the restart",
+                    pin.first,
+                    pin.first + 1
+                );
+            }
+            asked_at = kept.asked.and_then(|at| Some((instant_of(at)?, at)));
+            pinning.resume(kept, asked_at.map(|(at, _)| at));
+        }
+        Pinner {
+            pinning,
+            send,
+            read,
+            last: BTreeMap::new(),
+            looked: None,
+            unread: false,
+            kept_at,
+            written,
+            boot: boot.trim().to_owned(),
+            asked_at,
+        }
+    }
+
+    /// Takes whether the pin's rule went in: one nftables refused lets go,
+    /// so the journal never says the VPN leaves from a pair it doesn't.
+    fn went(&mut self, applied: bool) {
+        if !applied && let Some(first) = self.pinning.refused() {
+            eprintln!("{}", pin::let_go(first, pin::REFUSED));
+        }
+    }
+
+    /// Keeps what a restart needs of the pin, written whole or not at all,
+    /// each time it changes. A write that fails is said once and tried
+    /// again only at the next change, so it can't fill the journal.
+    fn keep(&mut self) {
+        let asked = self.pinning.asked();
+        if self.asked_at.map(|(at, _)| at) != asked {
+            self.asked_at = asked.and_then(|at| Some((at, epoch_of(at)?)));
+        }
+        let text = pin::saved(
+            &self.pinning.kept(self.asked_at.map(|(_, at)| at)),
+            &self.boot,
+        );
+        if self.written.as_ref() == Some(&text) {
+            return;
+        }
+        let fresh = self.kept_at.with_extension("new");
+        let wrote = fs::write(&fresh, &text).and_then(|()| fs::rename(&fresh, &self.kept_at));
+        self.written = Some(text);
+        // What was kept before is stale now, so it goes rather than come
+        // back at a restart as a pin that may have let go.
+        if let Err(e) = wrote {
+            match fs::remove_file(&self.kept_at) {
+                Err(stuck) if stuck.kind() != std::io::ErrorKind::NotFound => eprintln!(
+                    "the VPN's pin can't be kept across a restart ({e}), nor what was kept \
+                     before taken away ({stuck}), so a restart may take back a stale pin"
+                ),
+                _ => eprintln!(
+                    "the VPN's pin can't be kept across a restart, so a restart forgets it: {e}"
+                ),
+            }
+        }
+    }
+
+    /// Takes what a round read, puts its pin in force once the round's
+    /// probes have let their ports go and says so when the pin moves, and
+    /// every few seconds lets a pin go that the VPN's new flows can't get
+    /// through, and looks for a new socket of the VPN's to probe for, out
+    /// of the primary uplink, on its network. Gives the pin chain's
+    /// transaction.
+    fn step(&mut self, primary: Option<&Shaped>, calling: bool, now: Instant) -> String {
+        let uplink = primary.map(|s| (s.uplink.name.as_str(), s.network.as_str()));
+        if let Some((link, network)) = uplink
+            && let Some(first) = self.pinning.network(link, network)
+        {
+            eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
+        }
+        while let Ok((end, read)) = self.read.try_recv() {
+            let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
+            let from = now + pin::settle(&timeout.unwrap_or_default());
+            if read.len() < pin::HEARD {
+                eprintln!(
+                    "a round toward the VPN's server heard {} of {} ports, too few to choose a pair",
+                    read.len(),
+                    pin::PORTS
+                );
+            }
+            if let Some(first) = self.pinning.found(end, &read, from) {
+                eprintln!("{}", pin::let_go(first, pin::UNJUDGED));
+            }
+            self.last = read;
+        }
+        if let Some(moved) = self.pinning.take_hold(now) {
+            let first = self.pinning.pinned.map(|p| p.first);
+            eprintln!("{}", pin::said(moved.was, first, &self.last));
+        }
+        if let Some((link, _)) = uplink
+            && self
+                .looked
+                .is_none_or(|at| now - at >= Duration::from_secs(5))
+        {
+            self.looked = Some(now);
+            let counted = sh(&words(&format!(
+                "nft -j list counter inet {TABLE} pinretried"
+            )));
+            match counted.ok().as_deref().and_then(pin::retried) {
+                Some(retried) => {
+                    self.unread = false;
+                    if let Some((pin::Moved { was: Some(first) }, times)) =
+                        self.pinning.heed(retried)
+                    {
+                        eprintln!("{}", pin::dropped(first, times));
+                    }
+                }
+                None if self.pinning.pinned.is_some() && !self.unread => {
+                    self.unread = true;
+                    eprintln!(
+                        "the count of the VPN's flows that came back to its pin can't be read, \
+                         so a pin they can't get through isn't let go"
+                    );
+                }
+                None => {}
+            }
+            // A listing that failed says nothing of the VPN's flows, so the
+            // pairs they hold are kept and no round goes until one answers.
+            let listed = sh(&words(&format!("nft -j list set inet {TABLE} vpn_ends")));
+            if let Some(ends) = listed.ok().as_deref().and_then(pin::ends) {
+                self.pinning.flows(&ends, now);
+                if let Some(end) = self.pinning.ask(&ends, calling, now) {
+                    let (link, held) = (link.to_string(), self.pinning.held());
+                    let (send, to) = (self.send.clone(), SocketAddrV4::new(end.to, end.port));
+                    thread::spawn(move || send.send((end, hops::round(&link, to, &held))));
+                }
+            }
+        }
+        self.keep();
+        pin::chain(TABLE, self.pinning.pinned.as_ref())
+    }
+}
+
+/// The seconds since the epoch at `at`, or nothing where the clock can't
+/// say.
+fn epoch_of(at: Instant) -> Option<u64> {
+    let ago = Instant::now().checked_duration_since(at)?;
+    let then = SystemTime::now().checked_sub(ago)?;
+    Some(then.duration_since(SystemTime::UNIX_EPOCH).ok()?.as_secs())
+}
+
+/// The instant at `at` seconds since the epoch, or nothing where it's to
+/// come or before this machine's clock began.
+fn instant_of(at: u64) -> Option<Instant> {
+    let then = SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(at))?;
+    Instant::now().checked_sub(SystemTime::now().duration_since(then).ok()?)
+}
+
 /// Runs each command, saying what failed, and gives whether all went.
 fn run_all(commands: Vec<Vec<String>>) -> bool {
     let mut fine = true;
@@ -877,24 +1080,44 @@ fn sorted(
     sets
 }
 
-fn refill(text: &str) {
+/// Runs each of `texts` through nft as a transaction of its own, so one
+/// that fails, as a pin's rule the kernel refuses, leaves the others.
+/// Loads each transaction, giving whether the last, the pin's, went.
+fn refill(texts: &[String]) -> bool {
+    let mut went = true;
+    for text in texts {
+        went = transact(text);
+    }
+    went
+}
+
+/// Loads one transaction, saying what nftables refused, and gives
+/// whether it went.
+fn transact(text: &str) -> bool {
     let child = Command::new("nft")
         .args(["-f", "-"])
         .stdin(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn();
     let Ok(mut child) = child else {
-        return eprintln!("couldn't run nft");
+        eprintln!("couldn't run nft");
+        return false;
     };
     let _ = child
         .stdin
         .take()
         .expect("piped")
         .write_all(text.as_bytes());
-    if let Ok(out) = child.wait_with_output()
-        && !out.status.success()
-    {
-        eprintln!("nft: {}", String::from_utf8_lossy(&out.stderr).trim());
+    match child.wait_with_output() {
+        Ok(out) if out.status.success() => true,
+        Ok(out) => {
+            eprintln!("nft: {}", String::from_utf8_lossy(&out.stderr).trim());
+            false
+        }
+        Err(e) => {
+            eprintln!("nft: {e}");
+            false
+        }
     }
 }
 
@@ -932,7 +1155,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let began = Instant::now();
     let mut last_look: Option<Instant> = None;
     let mut last_fill: Option<Instant> = None;
-    let mut filled = String::new();
+    let mut filled = [String::new(), String::new()];
     let mut first = first::Heed::default();
     let mut reach = classes::Local::default();
     let mut vpns = Vpns::default();
@@ -954,6 +1177,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     // recorder's lines can't say, kept for a replay (src/trace.rs).
     let mut traces = trace::Writer::new(&options.state.join("heard"));
     let mut swept = false;
+    let mut pinner = Pinner::new(&options.state);
     heed_stopping();
     loop {
         if STOPPING.load(Ordering::Relaxed) {
@@ -1010,17 +1234,16 @@ fn run(options: &Options) -> Result<(), Failure> {
         let sets = sorted(options, &sessions, &mut call, &mut first, now);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
-        let text = classes::transaction(TABLE, &sets, &reach);
+        let text = [
+            classes::transaction(TABLE, &sets, &reach),
+            pinner.step(primary.as_ref().and_then(|p| shaped.get(p)), call.on, now),
+        ];
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
-            refill(&text);
+            pinner.went(refill(&text));
             filled = text;
         }
-        while let Ok(echo) = echoes.try_recv() {
-            if let Some(s) = shaped.get_mut(&echo.link) {
-                s.trips.heard(&echo.host, echo.rtt_ms);
-            }
-        }
+        hear_echoes(&echoes, &mut shaped);
         let (house, steady) = most.house(Instant::now());
         step_links(&mut shaped, &mut live, (&most.written, &house, steady));
         hold_followers(&mut shaped);
@@ -2044,8 +2267,15 @@ fn unshape_joel(shaped: &BTreeMap<String, Shaped>) {
     }
 }
 
-/// Takes every queue the shaper made away, for when it stops.
+/// Takes away, for when the shaper stops, every queue it made, and the
+/// VPN's pin, which would
+/// otherwise stay in force with nothing to let it go until the table is
+/// loaded again.
+/// Lets the pin go first, since a stop cut short by its timeout would
+/// otherwise leave the VPN pinned with no shaper to let it go, then takes
+/// every queue away. The pin kept for a restart stays where it's kept.
 fn stop() {
+    transact(&pin::chain(TABLE, None));
     sweep(&BTreeSet::new());
 }
 
@@ -2557,6 +2787,59 @@ mod tests {
             Ok(0),
             "none routed"
         );
+    }
+
+    // The spacing between rounds crosses a restart in seconds since the
+    // epoch, so an instant read back from its seconds is the same instant
+    // to within the second the seconds drop (pin round 5's F5 and F13).
+    #[test]
+    fn a_rounds_time_crosses_a_restart_in_the_epochs_seconds() {
+        let then = Instant::now()
+            .checked_sub(Duration::from_secs(300))
+            .expect("the clock began five minutes ago");
+        let at = epoch_of(then).expect("an instant past has its seconds");
+        let back = instant_of(at).expect("seconds past give an instant");
+        let off = back.max(then).duration_since(back.min(then));
+        assert!(
+            off <= Duration::from_secs(2),
+            "the round's time came back {off:?} off"
+        );
+        let to_come = Instant::now()
+            .checked_add(Duration::from_secs(60))
+            .expect("a minute on");
+        assert_eq!(epoch_of(to_come), None, "a time to come was given seconds");
+        // A restart after the clock stepped back reads seconds to come.
+        assert_eq!(
+            instant_of(at + 600),
+            None,
+            "seconds to come were given an instant"
+        );
+    }
+
+    // What a restart needs is kept whole, and a write that fails takes away
+    // what was kept before, rather than leave it to come back as a pin that
+    // may have let go (pin round 6's F2 and F4).
+    #[test]
+    fn the_pin_is_kept_whole_and_a_failed_write_takes_the_stale_one_away() {
+        let state = std::env::temp_dir().join(format!("shaper-pin-{}", std::process::id()));
+        fs::create_dir_all(&state).expect("the stand-in state folder couldn't be made");
+        let mut pinner = Pinner::new(&state);
+        pinner.pinning.network("eth1", "aa:bb");
+        pinner.keep();
+        let kept = fs::read_to_string(state.join("pin")).expect("nothing was kept");
+        let back = pin::restored(&kept, &pinner.boot).expect("what was kept didn't read back");
+        assert_eq!(
+            back.on,
+            Some(("eth1".to_owned(), "aa:bb".to_owned())),
+            "what was kept isn't the network the pin is on"
+        );
+        // A folder where the new file goes makes the write fail.
+        fs::create_dir_all(state.join("pin.new")).expect("the folder in the way couldn't be made");
+        pinner.pinning.network("eth1", "cc:dd");
+        pinner.keep();
+        let left = state.join("pin").exists();
+        fs::remove_dir_all(&state).expect("the stand-in state folder couldn't be removed");
+        assert!(!left, "a write that failed left what was kept before");
     }
 
     // A restart's sweep waits for the routes, every VPN there and every
