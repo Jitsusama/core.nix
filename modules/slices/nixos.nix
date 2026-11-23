@@ -156,6 +156,12 @@ let
     ];
     text = builtins.readFile ./disk-order.sh;
   };
+  writebackThrottle = config.jitsusama.slices.writebackThrottle;
+  writebackGoal = pkgs.writeShellApplication {
+    name = "writeback-goal";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ./writeback-goal.sh;
+  };
 
   # The programs Joel works in, and agents' sessions beside them, keep their
   # memory while a build fills the rest. With a build taking all but 2 GiB
@@ -335,7 +341,8 @@ let
     "user@"
   ]
   ++ lib.attrNames systemFloors
-  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks);
+  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks)
+  ++ map (disk: "disk-writeback-${disk}") (lib.attrNames writebackThrottle);
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -438,9 +445,14 @@ in
   options.jitsusama.slices.writebackThrottle = lib.mkOption {
     description = ''
       The kernel's writeback throttle's latency goal on each disk named, by
-      its name under /sys/class/block, in microseconds; 0 turns the
-      throttle off. A disk not named keeps the kernel's own, 2 ms on a solid
-      one. It's set as the disk appears, so it holds across a boot.
+      its name under /sys/block, in microseconds; 0 turns the throttle off.
+      It's set as a switch brings it in and as the disk appears, and taken
+      off, by a switch without it, back to the kernel's own, 2 ms on a solid
+      disk, which a disk not named keeps. The name is the kernel's, which
+      follows the order disks are found in: on a machine with two of a
+      kind, the goal can land on the other one. A disk io.cost shares, in
+      jitsusama.slices.disks, may only be given 0, since the kernel turns
+      the throttle off for io.cost and a goal would throttle it beside it.
     '';
     default = { };
     example = {
@@ -450,22 +462,6 @@ in
   };
 
   config = {
-    # The throttle holds writeback back once a disk's reads take longer than
-    # its goal, whoever writes, and a thread it holds sleeps in rq_qos_wait:
-    # under the 08:35 test call on 23 November, that was where the call's
-    # threads were most often found when they slept unwakeable. Whether the
-    # disk serves Joel's work better without it, under user.slice's latency
-    # target alone, is measured on a machine by turning it off, so a machine
-    # sets it rather than core.
-    services.udev.extraRules = lib.concatStrings (
-      lib.mapAttrsToList (
-        disk: goal:
-        ''ACTION=="add|change", SUBSYSTEM=="block", KERNEL=="${disk}", ''
-        + ''ATTR{queue/wbt_lat_usec}="${toString goal}"''
-        + "\n"
-      ) config.jitsusama.slices.writebackThrottle
-    );
-
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
     # name an agent chooses.
@@ -478,6 +474,14 @@ in
           "jitsusama.slices.agentsMayRepeat names ${unit}, "
           + "which isn't one system unit's whole name, or is one run0 makes.";
       }) config.jitsusama.slices.agentsMayRepeat
+      # The name goes into units' names and a path under /sys/block, so it's
+      # a whole disk's plain name, never a pattern or a path.
+      ++ lib.mapAttrsToList (disk: goal: {
+        assertion = builtins.match "[a-z0-9]+" disk != null && (goal == 0 || !(disks ? ${disk}));
+        message =
+          "jitsusama.slices.writebackThrottle names ${disk}, which isn't a whole disk's "
+          + "plain name, or gives a goal to a disk io.cost shares, which may only be given 0.";
+      }) writebackThrottle
       # The floor below makes the service whatever it's named, so a name no
       # service runs would make an empty unit and protect nothing.
       ++ map (name: {
@@ -798,6 +802,44 @@ in
         };
       }
     ) disks
+    # The throttle holds writeback back once a disk's reads take longer than
+    # its goal, whoever writes. Under the 08:35 test call on 23 November the
+    # call's threads were most often found asleep unwakeable in rq_qos_wait,
+    # which the throttle and io.latency's targets both sleep in, and
+    # blk-wbt's frames were among the samples; turning the throttle off on
+    # one machine tells the two apart, so a machine sets it rather than core.
+    # A unit, rather than a udev rule, since a switch replays no disk's
+    # event: starting it sets the goal, and stopping it, as a switch without
+    # it does, gives the kernel's back.
+    // lib.mapAttrs' (
+      disk: goal:
+      lib.nameValuePair "disk-writeback-${disk}" {
+        description = "Holds ${disk}'s writeback to the machine's goal";
+        wantedBy = [
+          "multi-user.target"
+          "dev-${disk}.device"
+        ];
+        after = [ "dev-${disk}.device" ];
+        unitConfig = {
+          ConditionPathExists = "/sys/block/${disk}/queue/wbt_lat_usec";
+          StopPropagatedFrom = "dev-${disk}.device";
+        };
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = lib.escapeShellArgs [
+            (lib.getExe writebackGoal)
+            disk
+            (toString goal)
+          ];
+          ExecStop = lib.escapeShellArgs [
+            (lib.getExe writebackGoal)
+            disk
+            "kernel"
+          ];
+        };
+      }
+    ) writebackThrottle
     # A VPN is never one of the services above, which the assertions refuse,
     # since its settings would replace theirs here rather than join them.
     // lib.genAttrs vpnServices (_: {

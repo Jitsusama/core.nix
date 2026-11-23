@@ -386,9 +386,11 @@
     end as it comes, so a switch of more than 64 jobs doesn't hang waiting for a reply
   '';
   a-disks-writeback-throttle-is-the-machines = ''
-    a disk a machine names in jitsusama.slices.writebackThrottle has its writeback throttle's
-    goal set as it appears, 0 turning it off, and a machine naming none leaves every disk the
-    kernel's
+    each disk a machine names in jitsusama.slices.writebackThrottle has a unit, started at boot,
+    by a switch and as the disk appears, that sets its writeback throttle's goal, each its own,
+    and gives the kernel's back as it stops; a machine naming none has no such unit, and a name
+    that isn't a whole disk's plain one is refused. Whether the goal reaches the disk is the
+    switch's to show
   '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when

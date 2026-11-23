@@ -12,25 +12,49 @@
   ...
 }:
 {
-  # A machine turns a disk's writeback throttle off, or sets its goal, as the
-  # disk appears, and one that names none leaves every disk the kernel's.
+  # A machine turns a disk's writeback throttle off, or sets its goal, by a
+  # unit per disk that a switch starts and the disk's arrival wants, and
+  # stopping it gives the kernel's goal back; one that names none has no
+  # such unit, and a name that isn't a whole disk's is refused.
   a-disks-writeback-throttle-is-the-machines =
     let
-      rules =
+      machine =
         throttle:
         (bareNixos [
           self.nixosModules.nix-daemon
           self.nixosModules.slices
           { jitsusama.slices.writebackThrottle = throttle; }
-        ]).config.services.udev.extraRules;
-      off = rules { nvme0n1 = 0; };
+        ]).config;
+      two =
+        (machine {
+          nvme0n1 = 0;
+          vda = 75000;
+        }).systemd.services;
+      held =
+        disk: goal:
+        let
+          unit = two."disk-writeback-${disk}" or { };
+          service = unit.serviceConfig or { };
+        in
+        lib.hasSuffix "/writeback-goal ${disk} ${goal}" (service.ExecStart or "")
+        && lib.hasSuffix "/writeback-goal ${disk} kernel" (service.ExecStop or "")
+        && service.RemainAfterExit or false
+        && lib.elem "dev-${disk}.device" (unit.wantedBy or [ ])
+        && lib.elem "multi-user.target" (unit.wantedBy or [ ]);
+      refuses = throttle: lib.any (a: !a.assertion) (machine throttle).assertions;
+      unnamed =
+        lib.filterAttrs (name: _: lib.hasPrefix "disk-writeback-" name)
+          (machine { }).systemd.services;
     in
     holds "a-disks-writeback-throttle-is-the-machines"
       "A disk's writeback throttle isn't set as the machine names it, or is set unasked."
       (
-        lib.hasInfix ''KERNEL=="nvme0n1", ATTR{queue/wbt_lat_usec}="0"'' off
-        && lib.hasInfix ''ACTION=="add|change", SUBSYSTEM=="block"'' off
-        && !(lib.hasInfix "wbt_lat_usec" (rules { }))
+        held "nvme0n1" "0"
+        && held "vda" "75000"
+        && unnamed == { }
+        && !(refuses { nvme0n1 = 0; })
+        && refuses { "nvme*" = 0; }
+        && refuses { "nvme0n1\", RUN+=\"x" = 0; }
       );
 
   # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
