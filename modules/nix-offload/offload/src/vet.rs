@@ -594,7 +594,7 @@ mod tests {
             );
         }
         assert!(
-            project_holds(&project(&["startup-script"]), &open()).is_err(),
+            project_holds(&project(&["startup-script"]), &json!({"metadata": {}})).is_err(),
             "a project's startup script ran on a builder setting none"
         );
     }
