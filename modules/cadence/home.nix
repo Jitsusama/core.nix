@@ -183,8 +183,9 @@ in
         the session whose mesh address is a dash-separated part of the
         unit's name, as `garbage-bound-mon-2af2dh.service`; any other
         goes to the watcher. A broken unit the tick finds goes the same
-        way, as `unit:google.service`, and a machine gone down as
-        `down:<machine>`. The owner of `switch.` is also
+        way, as `unit:google.service`. A machine gone down goes to the
+        orchestrator and the owner of `down:<machine>`, never the watcher.
+        The owner of `switch.` is also
         asked the tick's alarms only a switch answers (a merge not on the
         machine, updates failing, the follower held), in place of the
         watcher, and only its replies settle them.
