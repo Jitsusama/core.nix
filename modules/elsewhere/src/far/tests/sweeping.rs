@@ -447,6 +447,28 @@ fn a_link_a_job_leaves_at_what_it_brings_back_is_never_written_through() {
 }
 
 #[test]
+fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
+    let root = scratch("far-swept-bytes");
+    let runs = root.join("s");
+    copy(&runs, "2", "");
+    let mut run = format!("{} {}", gone(), here()).into_bytes();
+    run.extend_from_slice(b"\0\n\xff\xfe\0\n");
+    std::fs::write(runs.join(format!("2{RUN}")), run).unwrap();
+    // A locale that reads text as UTF-8, as a Mac's own does, where its
+    // tr refuses what isn't.
+    let said = sweep_after(&runs.join("9"), "export LC_ALL=en_US.UTF-8 2>/dev/null");
+    assert!(
+        said.is_empty(),
+        "the sweep said something of the bytes: {said}"
+    );
+    assert!(
+        left_in(&runs).is_empty(),
+        "a gone run's copy was kept for what followed its line"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
 fn a_linux_far_line_that_cant_read_its_process_space_clears_nothing() {
     let root = scratch("far-swept-unknown");
     let runs = root.join("s");
