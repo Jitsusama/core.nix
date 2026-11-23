@@ -192,8 +192,7 @@ let
         };
       }
     );
-  # A machine fenced every way its system allows (a Mac never strict),
-  # and one whose agents' runs are turned off.
+  # A machine fenced every way, and one whose agents' runs are turned off.
   launching = bare: kinds: launchingWith bare kinds { };
   launchingWith =
     bare: kinds: settings:
@@ -203,13 +202,14 @@ let
     "fence"
     "strict"
   ];
-  macKinds = lib.remove "strict" everyKind;
   # Whether every assertion a machine's account makes holds.
   evaluates = home: lib.all (check: check.assertion) home.assertions;
   # pi's own fence, strict, which an agent's run starts through, each
   # system's with its own build of pi-fence, whichever system checks it.
-  # A Mac declares only fenced, since its sandbox-exec profile reads the
-  # home folder but a denylist, yet runs its tightest profile.
+  # A Mac's strict, its sandbox-exec profile, reads the home folder but what
+  # it hides, where Linux's reads only what it lists, so a secret it doesn't
+  # name lies open. What it hides was probed by hand on a Mac; nothing here
+  # runs it, since core's checks lay no fence on darwin.
   launcherOn = bare: [
     (lib.getExe ((bare [ ]).pkgs.callPackage ../pi/fence-run/package.nix { }))
     "--kind"
@@ -218,12 +218,6 @@ let
   ];
   launcher = launcherOn bareNixos;
   macLauncher = launcherOn bareDarwin;
-  # A machine of either system declaring a strict fence, which a Mac refuses.
-  strictOn =
-    bare:
-    lib.any (
-      check: !check.assertion && lib.hasInfix "jitsusama.mycelium.declares.fence.strict" check.message
-    ) (fencedIn bare [ "strict" ] { }).assertions;
   hosting = declaredAs {
     hosts = [
       {
@@ -847,14 +841,14 @@ in
   # A machine that declares what its node can't measure has it written where
   # mycelium reads it, in mycelium's words; Linux's held sessions outlive
   # their window, the node and a suspend, and a Mac claims none yet. A fenced
-  # or strict fence on Linux starts an agent's run through the fence's
-  # launcher, and so does a Mac's fenced one, the only fence it declares,
-  # whose launcher runs pi's strict profile; an unfenced one says none, so
-  # mycelium refuses it.
+  # or strict fence names its system's launcher for an agent's run, which
+  # runs pi's strict profile; whether every start goes through it is
+  # mycelium's to keep, not this check's. An unfenced one says none, so mycelium
+  # refuses it.
   # One that declares nothing has no file, which mycelium reads as unknown.
   mycelium-declares-what-a-machine-says =
     holds "mycelium-declares-what-a-machine-says"
-      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a Mac may declare strict or can't declare fence, or a machine declaring nothing gets a file anyway."
+      "What a machine declares, its probes of either kind included, isn't written in mycelium's shape, its node doesn't say whether a call is on there with a-call-is-on asked about that machine alone, a held session's outlives isn't each system's, a fence it doesn't say is written, an agent's run in a fenced or strict fence isn't said to start through its system's launcher, an unfenced one's is, one is when runs are refused, a machine of either system can't declare every fence, or a machine declaring nothing gets a file anyway."
       (
         declared linux == {
           reach = [ "internet" ];
@@ -896,11 +890,11 @@ in
         && (launching linux everyKind).fence.fence.runs or null == launcher
         && (launching linux everyKind).fence.strict.runs or null == launcher
         && !((launching linux everyKind).fence.none ? runs)
-        && (launching mac macKinds).fence.fence.runs or null == macLauncher
-        && !((launching mac macKinds).fence.none ? runs)
-        && evaluates (fencedIn mac macKinds { })
-        && strictOn mac
-        && !(strictOn linux)
+        && (launching mac everyKind).fence.fence.runs or null == macLauncher
+        && (launching mac everyKind).fence.strict.runs or null == macLauncher
+        && !((launching mac everyKind).fence.none ? runs)
+        && evaluates (fencedIn mac everyKind { })
+        && evaluates (fencedIn linux everyKind { })
         && lib.all (kind: !((launchingWith linux everyKind { fenceRuns = null; }).fence.${kind} ? runs)) [
           "fence"
           "strict"

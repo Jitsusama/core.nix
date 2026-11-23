@@ -597,8 +597,8 @@ in
     };
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
-    # never looser; a Mac declares only fenced, but runs its strict, which
-    # writes only the run's folder.
+    # never looser; a Mac runs its strict for either, which writes the
+    # run's folder and the account's temporary folder, its runtime folder.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
       default = [
@@ -613,8 +613,8 @@ in
         The words an agent's `mycelium run` is put after to run in its
         fence here, the first a program in the Nix store, as each fenced
         and strict fence the machine declares says them: pi's own fence,
-        strict, on Linux and on a Mac, which declares only its fenced
-        fence, since its strict still reads the home folder but a denylist.
+        strict, on Linux and on a Mac, whose strict reads the home folder
+        but what it hides, where Linux's reads only what it lists.
         Null says none, so every agent's run is refused.
       '';
     };
@@ -646,13 +646,6 @@ in
             one: one.from != one.to && (lib.elem one.from realms || lib.elem one.to realms)
           ) cfg.flows;
           message = "jitsusama.mycelium.flows has a flow from a realm into itself, or between two realms this machine joins neither of.";
-        }
-        {
-          # A Mac's sandbox-exec profile reads the home folder but a
-          # denylist, where Linux's strict reads only what it lists, so a
-          # strict run sent to a Mac would land on the weaker fence.
-          assertion = isDarwin -> cfg.declares == null || cfg.declares.fence.strict == null;
-          message = "jitsusama.mycelium.declares.fence.strict is set on a Mac, whose fence reads the home folder but what it hides, so it isn't strict: declare fence instead.";
         }
         {
           assertion = cfg.lend != null -> cfg.realm != null;
