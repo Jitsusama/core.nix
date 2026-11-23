@@ -64,12 +64,29 @@ in
       RunAtLoad = true;
       KeepAlive = true;
       # What dns-sd says is the only word on whether the advertisement took:
-      # registered, renamed or refused, and why it ended. A few lines each
-      # time it starts, which is at a switch, a boot or mDNSResponder's
-      # restart. It runs as root, as the job above does, so launchd can open
-      # this log in /var/log and nothing can refuse it the registration.
+      # registered, renamed or refused, and why it ended. It runs as root, as
+      # the job above does, so launchd can open this log in /var/log.
       StandardOutPath = "/var/log/local-name-answers.log";
       StandardErrorPath = "/var/log/local-name-answers.log";
     };
+  };
+
+  # A few lines each time dns-sd starts is the usual, but a daemon that
+  # keeps refusing the advertisement has launchd start it every ten seconds,
+  # a few lines each time. So macOS's newsyslog moves each log aside past
+  # 512 KB, keeping three before it. It sends no signal, since neither job
+  # takes one: launchd opens a job's log anew each time it starts it, so
+  # keep.sh's runs and a restarting dns-sd write to the fresh file. This
+  # doesn't bound a dns-sd that stays up: a machine on the network answering
+  # to the same name has mDNSResponder rename the advertisement again and
+  # again, at its probe pace, and that dns-sd writes on into the file it
+  # opened, moved aside as .0, until it next starts. When the log is empty,
+  # read local-name-answers.log.0.
+  config.environment.etc."newsyslog.d/local-name.conf" = lib.mkIf (name != null) {
+    text = ''
+      # logfilename                    mode count size(KB) when flags
+      /var/log/local-name.log          644  3     512      *    N
+      /var/log/local-name-answers.log  644  3     512      *    N
+    '';
   };
 }

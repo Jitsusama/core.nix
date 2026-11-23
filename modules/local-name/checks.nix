@@ -10,18 +10,30 @@
   ...
 }:
 let
-  macNamed =
+  macWith =
     settings:
     (bareDarwin [
       self.darwinModules.local-name
       settings
-    ]).config.launchd.daemons;
+    ]).config;
+  macNamed = settings: (macWith settings).launchd.daemons;
   # A local name of its own, apart from the host name nix-darwin would
   # derive it from, so a job reading the host name instead is caught.
-  named = macNamed {
+  itsOwnName = {
     networking.hostName = "a-mac";
     networking.localHostName = "its-own-name";
   };
+  named = macNamed itsOwnName;
+  # newsyslog's lines for the two logs, each split into its fields.
+  rotation =
+    let
+      lines = lib.splitString "\n" (
+        (macWith itsOwnName).environment.etc."newsyslog.d/local-name.conf".text or ""
+      );
+    in
+    map (line: lib.filter (field: field != "") (lib.splitString " " line)) (
+      lib.filter (line: line != "" && !(lib.hasPrefix "#" line)) lines
+    );
   job = named.local-name.serviceConfig or { };
   answers = named.local-name-answers.serviceConfig or { };
 in
@@ -86,6 +98,41 @@ in
             networking.localHostName = null;
           }
           ? local-name-answers
+        )
+      );
+
+  # A Mac with a local name has newsyslog move aside, past 512 KB, the two
+  # logs its jobs write, keeping three of each, sending no signal; a Mac
+  # with no local name adds nothing to newsyslog. The paths are the jobs'
+  # own, so a log moved in one place and not the other is caught.
+  local-name-logs-are-rotated =
+    holds "local-name-logs-are-rotated"
+      "The logs a Mac's local-name jobs write aren't moved aside by newsyslog past 512 KB, keeping three of each and sending no signal, or a Mac with no local name has newsyslog lines for them."
+      (
+        rotation == [
+          [
+            (job.StandardErrorPath or "")
+            "644"
+            "3"
+            "512"
+            "*"
+            "N"
+          ]
+          [
+            (answers.StandardOutPath or "")
+            "644"
+            "3"
+            "512"
+            "*"
+            "N"
+          ]
+        ]
+        && !(
+          (macWith {
+            networking.hostName = "a-mac";
+            networking.localHostName = null;
+          }).environment.etc
+            ? "newsyslog.d/local-name.conf"
         )
       );
 }
