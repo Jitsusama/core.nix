@@ -273,16 +273,22 @@ pub(super) fn copying() -> String {
 /// cross in new. A link the job left at its handover folder, or at either
 /// folder above it in the quest's scratch, goes first, so neither the
 /// copies, their list nor the tree's removal is carried through it. Where
-/// one can't be cleared, or the folder can't be made new, nothing is
-/// written or cleared in the handover: only the copy goes, and the near
-/// side, given no list, says nothing came back.
+/// one can't be cleared, nothing is written or cleared in the handover:
+/// only the copy goes. Where the folder can't be made new, as on a full
+/// disk, the tree goes too, to free its room, and the list is only its
+/// cut, so the near side says at once that nothing came back, whatever
+/// list the job left there.
 pub(super) fn handing() -> String {
     format!(
         r#"# Made fresh, so no copy is written through whatever sat at its number.
 if ! unlinked || ! {{ rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"; }}; then
-  printf "elsewhere: the job left its handover so nothing can be brought back\n" >&2
+  printf "elsewhere: its handover couldn't be readied, so nothing is brought back\n" >&2
   cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
     rm -f "$work{RUN}"
+  ! unlinked || {{
+    rm -rf "$job/{TREE}" "$job/{BACK}"
+    rm -f "$job/{BROUGHT}" && (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}")
+  }}
   exit "$code"
 fi
 "#
