@@ -116,6 +116,14 @@ novel mode and lost its pithy title. this is not what i meant" (2026-11-06).
   full stop.**
 - **One name for each thing everywhere**, the same word in the list, the
   drawer, the palette and the docs. No synonyms.
+- **A count says what it counts**, in words beside it: "149 standing now",
+  "170 seen today". On 22 Nov three pages counted cells 170, 149 and 102
+  plus 22, each right by its own rule and wrong side by side. Cells alone
+  means the cells standing now, as the mycelium node counts them; a page
+  counting another set names it.
+- **A thing is named by what it is to Joel, never by its id**: a cell by
+  what it works on, its address only in its link; a tree by its branch,
+  never a snapshot's sha.
 - **An error says what happened and what to do**, in words people will paste
   into a search or a chat.
 - **Nothing nags.** No prompt that waits on a person to visit, no "don't
