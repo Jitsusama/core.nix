@@ -7,10 +7,15 @@ let
   # Only the fences a machine says run here, in mycelium's shape. An
   # agent's `mycelium run` in a fenced or strict one starts through the
   # fence's launcher, Landlock's on Linux and sandbox-exec's on a Mac; one
-  # unfenced takes none, as no agent asks as unfenced.
-  fenced = lib.mapAttrs (kind: doors: doors // runsIn kind) (
-    lib.filterAttrs (_: doors: doors != null) cfg.declares.fence
-  );
+  # unfenced takes none, as no agent asks as unfenced. Doors accepted for
+  # other machines are said only once some machine is named, as an empty
+  # allowance means what none does.
+  fenced = lib.mapAttrs (
+    kind: doors:
+    removeAttrs doors [ "accepts" ]
+    // lib.optionalAttrs (doors.accepts != { }) { inherit (doors) accepts; }
+    // runsIn kind
+  ) (lib.filterAttrs (_: doors: doors != null) cfg.declares.fence);
   runsIn =
     kind:
     lib.optionalAttrs (cfg.fenceRuns != null && kind != "none") {
