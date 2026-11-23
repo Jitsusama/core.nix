@@ -50,18 +50,19 @@ tick() {{
 /// whole group, so the far line takes its copy, the files written beside
 /// it, the job's archives and whatever it had begun to bring back away,
 /// since no one waits for them, then ends as the signal would have ended
-/// it. A second signal waits for the first
-/// one's clearing.
+/// it. A closed pipe is a let go too, as when the asker's end goes before
+/// its signal comes. A second signal waits for the first one's clearing.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
-  trap '' HUP INT TERM
+  trap '' HUP INT PIPE TERM
   cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* \
     "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
   exit "$1"
 }}
 trap 'stopped 129' HUP
 trap 'stopped 130' INT
+trap 'stopped 141' PIPE
 trap 'stopped 143' TERM"#
     )
 }
@@ -83,6 +84,10 @@ trap 'stopped 143' TERM"#
 /// around the far line writes only the quest's scratch. A file under two
 /// names is found as one that isn't a folder yet has more than one link,
 /// not by its type, so this find reads apart from the bring-back step's.
+/// Each folder is made the far line's own to read, write and enter as it
+/// is unpacked, since an archive's folder modes are kept and one closed
+/// to its owner would leave its contents unchecked and its copy behind;
+/// a file's mode stays as the near side sent it.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
@@ -104,6 +109,7 @@ pub(super) fn copying() -> String {
       esac
     done < "$work.names"
     tar -xf "$job/{TREE}/$part" -C "$work" || return 2
+    find "$work" -type d ! -perm -700 -exec chmod u+rwx {{}} \; || return 2
     odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c \
       -o ! -type d -links +1) || return 2
     [ -z "$odd" ] || {{

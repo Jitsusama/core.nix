@@ -841,6 +841,52 @@ fn an_archive_holding_a_link_a_pipe_or_a_shared_file_is_refused_before_the_job_r
 }
 
 #[test]
+fn a_folder_closed_to_its_owner_is_opened_so_its_files_are_checked_and_taken_away() {
+    let made = scratch("closed");
+    std::fs::create_dir_all(made.join("d")).unwrap();
+    std::fs::write(made.join("d/f"), "inside").unwrap();
+    let archive = std::process::Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
+        .args(["--format", "ustar", "-cf", "-", "-C"])
+        .arg(&made)
+        .arg("d")
+        .output()
+        .unwrap();
+    assert!(archive.status.success(), "tar made no archive");
+    let _ = std::fs::remove_dir_all(&made);
+    let mut bytes = archive.stdout;
+    // The folder's header comes first; its mode becomes 000 and its sum
+    // is made again over the header with the sum's own field as spaces.
+    assert_eq!(
+        &bytes[156..157],
+        b"5",
+        "the archive doesn't open with the folder"
+    );
+    bytes[100..108].copy_from_slice(b"0000000\0");
+    bytes[148..156].copy_from_slice(b"        ");
+    let sum: u32 = bytes[..512].iter().map(|&byte| u32::from(byte)).sum();
+    bytes[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
+    let text = String::from_utf8(bytes).unwrap();
+    let list = format!("{}\t0.tar\nend\n", text.len());
+    let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "cat d/f > ../ran");
+    assert_eq!(
+        code,
+        Some(0),
+        "the job didn't run over a closed folder: {err}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(work(&home).join("ran")).unwrap(),
+        "inside",
+        "the job didn't read the closed folder's file"
+    );
+    assert!(
+        !work(&home).join("1").exists(),
+        "a closed folder's copy was left behind"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_link_one_archive_makes_is_refused_before_the_next_writes_through_it() {
     let outside = scratch("through-outside");
     let made = scratch("through");
@@ -912,7 +958,7 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
     // Mycelium stops a run whose asker let go with the terminate signal
     // to its whole group; here the job sends a signal to the far line
     // alone, then ends, as a job the signal reached would.
-    for (signal, ends) in [("TERM", 143), ("HUP", 129), ("INT", 130)] {
+    for (signal, ends) in [("TERM", 143), ("HUP", 129), ("INT", 130), ("PIPE", 141)] {
         let (code, err, home) = far_run(
             Left::Whole,
             &[("a", "1")],
