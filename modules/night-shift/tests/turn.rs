@@ -217,6 +217,10 @@ fn a_second_heavy_job_waits_its_turn_and_says_whose_it_is() {
         said.contains("waiting for the turn, which stamp (process"),
         "{said}"
     );
+    assert!(
+        !said.contains("can't be told"),
+        "a sibling's wait couldn't tell whether its holder was its parent: {said}"
+    );
 }
 
 #[test]
@@ -273,16 +277,18 @@ fn a_turn_asked_for_within_a_turn_runs_in_it() {
     );
 }
 
-// An inner turn whose holder's note names another job, or nothing, as
-// when the holder's note couldn't be written, still runs in the turn its
-// parent holds, since only the kernel's word on the lock decides, rather
-// than waiting on its own parent's lock for ever.
+// An inner turn whose holder's note names another live process, here the
+// holder's own shell, which holds no lock, or nothing, as when the
+// holder's note couldn't be written, still runs in the turn its parent
+// holds, since only the kernel's word on the lock decides, rather than
+// waiting on its own parent's lock for ever, and names the holder by its
+// process, not by the note.
 #[test]
 fn a_turn_whose_holders_note_is_wrong_runs_in_its_holders_turn() {
     let account = Account::new();
     let job = format!(
         "note=\"$XDG_RUNTIME_DIR/night-shift/holder\"; \
-         printf 'x\\tnope\\n' > \"$note\"; \
+         printf 'x\\t%s\\t0\\n' $$ > \"$note\"; \
          '{0}' turn cargo --wait-at-most 5 -- touch inner 2> inner-said && \
          rm \"$note\" && \
          '{0}' turn cargo --wait-at-most 5 -- touch again 2>> inner-said",
@@ -369,6 +375,10 @@ fn a_turn_below_a_holder_of_another_lock_waits_while_another_holds_the_turn() {
         !said.contains("runs in the turn"),
         "it took a parent holding another lock for the turn's holder: {said}"
     );
+    assert!(
+        !said.contains("can't be told"),
+        "its wait couldn't tell whether its holder was its parent: {said}"
+    );
 }
 
 // A note left naming a live parent that let the lock go, as a paused night
@@ -399,6 +409,10 @@ fn a_turn_below_a_holder_that_let_go_waits_while_another_holds_the_lock() {
     assert!(
         !account.path("ran").exists(),
         "it ran beside the job holding the lock"
+    );
+    assert!(
+        said.contains("waiting for the turn, which process "),
+        "its wait named a note whose process holds nothing: {said}"
     );
 }
 

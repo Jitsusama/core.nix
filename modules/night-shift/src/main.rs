@@ -399,7 +399,7 @@ fn may_start(job: &Job, places: &Folders) -> Result<Option<(File, f64)>, Failure
                     let why = format!("the turn is left to {}", next.why());
                     (why.clone(), format!("waiting, as {why}"))
                 } else {
-                    let who = holding::holder(&places.runtime);
+                    let who = holding::holder_of(&places.runtime, &lock);
                     (
                         format!("another heavy job is running, {who}, and only one runs at a time"),
                         format!("waiting for the turn, which {who} has"),

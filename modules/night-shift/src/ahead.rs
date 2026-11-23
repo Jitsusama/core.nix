@@ -6,6 +6,7 @@
 //! free turn to the one that goes next; they are apart from it because
 //! who goes next changes for other reasons than how the turn is held.
 
+use crate::holding::shown;
 use std::collections::HashSet;
 use std::fs;
 use std::io;
@@ -77,7 +78,8 @@ pub fn next_but(runtime: &Path, passed_over: &HashSet<String>) -> Option<Waiter>
             continue;
         }
         let noted = fs::read_to_string(file.path()).unwrap_or_default();
-        let mut fields = noted.trim().split('\t');
+        // Only its line break is trimmed, so an empty name shifts no field.
+        let mut fields = noted.trim_end_matches('\n').split('\t');
         let (Some(name), Some(since)) = (fields.next(), fields.next()) else {
             continue;
         };
@@ -121,9 +123,9 @@ impl Ahead {
         let since = started(&pid).ok_or_else(|| io::Error::other("can't read its own start"))?;
         fs::create_dir_all(aheads(runtime))?;
         // Written whole beside it, then named, so a reader never finds
-        // half of it.
+        // half of it, the name as a note writes it so it shifts no field.
         let writing = aheads(runtime).join(format!(".{pid}"));
-        fs::write(&writing, format!("{name}\t{since}{after}\n"))?;
+        fs::write(&writing, format!("{}\t{since}{after}\n", shown(name)))?;
         let file = aheads(runtime).join(&pid);
         fs::rename(&writing, &file).inspect_err(|_| {
             let _ = fs::remove_file(&writing);
@@ -181,6 +183,40 @@ mod tests {
             let _ = child.wait();
         }
         let _ = fs::remove_dir_all(&runtime);
+    }
+
+    // A name holding a tab, or none at all, still marks a job that goes
+    // ahead: a job Joel waits on is never passed over for its name.
+    #[test]
+    fn a_job_joel_waits_on_goes_ahead_whatever_its_name_holds() {
+        for (number, name, read) in [(0, "switch\tx", "switch x"), (1, "", "")] {
+            let runtime = std::env::temp_dir().join(format!(
+                "night-shift-named-ahead-{}-{number}",
+                std::process::id()
+            ));
+            let marked = Ahead::wait(&runtime, name).unwrap();
+            // The mark is this process's, which next passes over, so it's
+            // read as another process's would be, under a number it isn't.
+            let mut child = std::process::Command::new("sleep")
+                .arg("30")
+                .spawn()
+                .unwrap();
+            let pid = child.id().to_string();
+            let text = fs::read_to_string(&marked.0).unwrap();
+            let since = started(&pid).unwrap();
+            let (written, _) = text.rsplit_once('\t').unwrap();
+            fs::write(aheads(&runtime).join(&pid), format!("{written}\t{since}\n")).unwrap();
+            let next = next(&runtime);
+            let _ = child.kill();
+            let _ = child.wait();
+            drop(marked);
+            let _ = fs::remove_dir_all(&runtime);
+            assert_eq!(
+                next.map(|waiter| waiter.name),
+                Some(read.to_owned()),
+                "a job named {name:?} was passed over"
+            );
+        }
     }
 
     #[test]

@@ -58,7 +58,7 @@
 //! src/holding.rs says who holds the turn, by the kernel's word.
 
 use crate::ahead::{self, Ahead, Waiter};
-use crate::holding::{Held, held_above, holder, note};
+use crate::holding::{Held, held_above, holder_of, note};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::{self, File, TryLockError};
@@ -451,7 +451,8 @@ fn run_within(turn: &Turn, holder: &str) -> Result<(), Failure> {
 /// changes, or names the holder above this process once it's seen there:
 /// a parent that ended as the first walk read it leaves this process to
 /// the holder, which reaps what its command leaves, so a later look finds
-/// it.
+/// it. That race is too narrow to stage, so no test reaches the later
+/// look's finding; the first look's is tested.
 fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, Failure> {
     let ahead = if turn.ahead {
         Some(
@@ -474,15 +475,13 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
             Ok(Look::Had) => break,
             Ok(Look::Taken) => match held_above(runtime, lock) {
                 Held::Above(holder) => return Ok(Some(holder)),
-                Held::Elsewhere => {
-                    format!("waiting for the turn, which {} has", holder(runtime))
-                }
+                Held::Elsewhere(holder) => format!("waiting for the turn, which {holder} has"),
                 // Said, since a turn inside its holder's command then
                 // waits on its own parent, and only this line shows it.
                 Held::Unread(why) => format!(
                     "waiting for the turn, which {} has, though whether it's this job's own \
                      parent can't be told, as {why}",
-                    holder(runtime)
+                    holder_of(runtime, lock)
                 ),
             },
             Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
