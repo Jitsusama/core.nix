@@ -28,7 +28,7 @@ const RANK: { readonly [health in Health]: number } = { unread: 0, bad: 1, watch
 const OUT_OF_REACH = "out of reach";
 
 /** The most machines out of reach the one look for them names, the rest counted. */
-const AWAY_NAMED = 3;
+const AWAY_LISTED = 3;
 
 /** The item a side ends with when it had more than it lists, as the daemon says it. */
 const MORE = /^and \d+ more worth a look$/u;
@@ -114,9 +114,9 @@ function ownLooks(part: Part): readonly Look[] {
  * Each machine's side, a look a word, leading to its section or the map;
  * one drawn whole is told by its place among those in reach, `drawn` of
  * them drawn. Those out of reach are one look between them, in the place
- * the first of them would have, so many gone at once read as one thing to
- * know and leave room for the few that need Joel; anything else their sides
- * say stays a look of its own.
+ * after those in reach, so many gone at once read as one thing to know and
+ * leave room for the few that need Joel; anything else their sides say
+ * stays a look of its own.
  */
 function thingLooks(part: Part, drawn: number): readonly Look[] {
   const reached = part.things.filter((thing) => thing.ties.reached);
@@ -130,8 +130,8 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
       ? `#machine-${at + 1}`
       : `../mycelium/#machine=${encodeURIComponent(thing.name)}`;
   };
-  return part.things.flatMap((thing) => {
-    const own = keyed(thing.side)
+  const own = (thing: Thing): readonly Look[] =>
+    keyed(thing.side)
       .filter(({ words }) => thing.ties.reached || words !== OUT_OF_REACH)
       .map(({ words, key }) => ({
         health: thing.health,
@@ -141,8 +141,12 @@ function thingLooks(part: Part, drawn: number): readonly Look[] {
         href: hrefOf(thing),
         row: `look:machine:${encodeURIComponent(thing.name)}:${key}`,
       }));
-    return thing === away[0] ? [awayLook(away), ...own] : own;
-  });
+  // Those in reach first, so within a health the few that need Joel lead.
+  return [
+    ...reached.flatMap(own),
+    ...(away.length === 0 ? [] : [awayLook(away)]),
+    ...away.flatMap(own),
+  ];
 }
 
 /** The one look for every machine out of reach: how many, and the first few by name. */
@@ -158,7 +162,7 @@ function awayLook(away: readonly Thing[]): Look {
       row: "look:away",
     };
   }
-  const names = away.slice(0, AWAY_NAMED).map((thing) => thing.name);
+  const names = away.slice(0, AWAY_LISTED).map((thing) => thing.name);
   const past = away.length - names.length;
   const listed =
     past > 0

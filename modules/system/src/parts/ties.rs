@@ -369,6 +369,14 @@ mod tests {
         );
         assert_eq!(away["reached"], json!(false));
         assert_eq!(away["heard_at"], json!("2026-11-23T19:02:00Z"));
+        let never = super::ties(
+            &json!({"name": "spare", "state": "unreachable"}),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(never["reached"], json!(false));
+        assert_eq!(never["heard_at"], Value::Null, "one never heard has no time to say");
     }
 
     #[test]

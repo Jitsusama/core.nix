@@ -74,7 +74,7 @@ const when = (at: string): string => `at ${at.slice(11, 16)}`;
 it("the headline counts those out of reach apart from the one in trouble", () => {
   assert.deepEqual(machineHeadline(system(FOURTEEN)), {
     machines: "14 machines",
-    stand: "six out of reach and one in trouble",
+    stand: "one in trouble and six out of reach",
     health: "bad",
   });
   assert.deepEqual(machineHeadline(system(GONE.map((name) => away(name)))), {
@@ -123,6 +123,21 @@ it("one never heard says so, and many past what the list names are counted", () 
   const drawn = partsOf(system(fleet), when);
   assert.equal([...drawn.matchAll(/<li><a class="row" data-row="machine:/gu)].length, 24);
   assert.ok(drawn.includes("And 6 more, on the map"), drawn);
+  assert.ok(!drawn.includes('data-row="machines:more"'), "none counted among those in reach");
+  const nine = [...Array.from({ length: 9 }, (_, at) => reached(`m-${at}`, "good")), away("z")];
+  assert.ok(partsOf(system(nine), when).includes("And 1 more machine, on the map"));
+});
+
+it("cells the mycelium still holds on a machine out of reach are said on its line", () => {
+  const left = tiesOf({
+    reached: false,
+    heard_at: "2026-11-23T19:02:00Z",
+    cells: { busy: 2, idle: 1, ended: 4 },
+  });
+  const drawn = partsOf(system([{ ...away("cloud-1"), ties: left }]), when);
+  assert.ok(drawn.includes("Last heard at 19:02, 3 cells still on it"), drawn);
+  const row = drawn.slice(drawn.indexOf('data-row="machine:cloud-1"'));
+  assert.ok(!row.slice(0, row.indexOf("</li>")).includes("(bad)"), "said once, above");
 });
 
 it("the bridge stands a pier only for a machine in reach, and says the rest", () => {
@@ -140,10 +155,13 @@ it("those out of reach are one look, so the few that need Joel lead", () => {
   assert.deepEqual(
     list.looks.map((look) => [look.whose, look.words, look.href]),
     [
-      ["Six machines", "Out of reach: cloud-1, cloud-2, cloud-3 and 3 more", "#away"],
       ["equilibrius", "Nearly full disk, 87 GB free", "#machine-1"],
+      ["Six machines", "Out of reach: cloud-1, cloud-2, cloud-3 and 3 more", "#away"],
     ],
   );
+  // However the names sort, one in reach leads those out of reach in the same health.
+  const renamed = [...GONE.map((name) => away(`z-${name}`)), reached("aardvark", "bad", ["hot"])];
+  assert.equal(looksOf(system(renamed), MACHINES_DRAWN).looks[0]?.whose, "aardvark");
   assert.equal(list.more, 0);
   const one = looksOf(system([reached("optimus", "good"), away("cloud-1")]), MACHINES_DRAWN);
   assert.deepEqual(

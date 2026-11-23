@@ -448,8 +448,22 @@ span.mark {
 
 @media (max-width: 40rem) {
   .machine .name,
+  .away .name,
   .across .name {
     font-size: var(--step-title);
+  }
+
+  /* A long name and when it was heard would squeeze each other at this
+     width, so each line stacks them, the name first. */
+  .gone {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--groups);
+  }
+
+  /* Where a line is a subgrid it stacks on the one column by itself. */
+  .gone li {
+    flex-direction: column;
+    gap: 0;
   }
 }
 

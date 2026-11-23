@@ -92,18 +92,19 @@ function machineHeadline(system: System): MachineHeadline {
   if (all === 0) {
     return { machines, stand: "none known", health: "unread" };
   }
-  // Those out of reach are counted apart, first, in the worst health among
-  // them, so "seven in trouble" never hides that six are only gone quiet.
+  // Those out of reach are counted apart, last, in the worst health among
+  // them, so "seven in trouble" never hides that six are only gone quiet,
+  // and the few in reach that need Joel are said first.
   const away = things.filter((thing) => !thing.ties.reached);
   const reached = things.filter((thing) => thing.ties.reached);
   const outOfReach = { health: worstOf(away), count: away.length, words: "out of reach" };
   const stands = [
-    outOfReach,
     ...STANDS.map(([health, words]) => {
       const untold = health === "unread" ? part.untold : 0;
       const count = reached.filter((thing) => thing.health === health).length + untold;
       return { health, count, words };
     }),
+    outOfReach,
   ].filter((each) => each.count > 0);
   // The headline's colour is the worst it says, in the order STANDS ranks them.
   const [worst] = [...stands].sort(

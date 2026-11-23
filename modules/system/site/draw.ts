@@ -286,14 +286,25 @@ function moreOf(system: System): string {
 
 /**
  * One machine out of reach, a line: its name, leading to the map, where its
- * last word is, and when the node last heard from it.
+ * last word is, when the node last heard from it, and the cells the
+ * mycelium still holds on it, since work left on a machine gone quiet is
+ * worth knowing. Its health is said once for them all, in the line above,
+ * rather than on every row.
  */
 function awayRow(thing: Thing, when: (at: string) => string): string {
   const heard =
     thing.ties.heardAt === undefined
       ? "Not heard here yet"
       : `Last heard ${when(thing.ties.heardAt)}`;
-  return `<li><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(onTheMap(thing))}"><span translate="no">${escaped(thing.name)}</span>${spoken(thing.health)}</a><span class="heard">${escaped(heard)}</span></li>`;
+  const cells = thing.ties.cells;
+  const left = cells === undefined ? 0 : cells.busy + cells.idle;
+  const stranded = left === 0 ? "" : `, ${counted(left, "cell")} still on it`;
+  return `<li><a class="row" data-row="${escaped(machineRow(thing.name))}" data-health="${thing.health}" href="${escaped(onTheMap(thing))}"><span translate="no">${escaped(thing.name)}</span></a><span class="heard">${escaped(`${heard}${stranded}`)}</span></li>`;
+}
+
+/** `count` of `thing`, in figures, the word made plural past one. */
+function counted(count: number, thing: string): string {
+  return `${count.toLocaleString("en-CA")} ${count === 1 ? thing : `${thing}s`}`;
 }
 
 /**

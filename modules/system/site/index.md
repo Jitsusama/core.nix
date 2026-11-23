@@ -57,11 +57,12 @@ Every health is good, watch, bad or not read, each with its own mark.
   copy button.
 - **Out of reach:** the machines the mycelium can't reach, under one
   mark and one line saying how many, then a line each: its name, linked
-  to it on the map, and when it was last heard. It names 24 at most,
-  then how many more, linked to the map. The headline counts them apart
-  from those in trouble, and what is worth a look gives them one row
-  between them, so many gone at once leave room for the few that need
-  you.
+  to it on the map, when it was last heard, and any cells the mycelium
+  still holds on it. It names 24 at most, then how many more, linked to
+  the map. The headline counts them apart, after those in trouble, and
+  what is worth a look gives them one row between them, after those in
+  reach of the same health, so many gone at once leave room for the few
+  that need you.
 - **Across them:** the mycelium, the network and the code, each with its
   mark, its name, what it says, what in it is worth a look, a link to
   its whole page and the command that says more.
