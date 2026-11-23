@@ -1293,7 +1293,7 @@ mod tests {
     }
 
     #[test]
-    fn every_window_gone_at_once_marks_their_places_orphaned() {
+    fn no_window_listed_keeps_the_places_as_they_were() {
         let mut inputs = inputs();
         inputs.boot = "this-one".into();
         inputs.sessions.took(&json!({"records": [
@@ -1319,12 +1319,22 @@ mod tests {
             "its window is kept: {}",
             inputs.arrangement.boots["this-one"]
         );
+        let slack = json!([{"app": "Slack", "title": "Slack"}]);
+        inputs
+            .arrangement
+            .others
+            .insert("this-one".into(), slack.clone());
         inputs.windows.took(&json!({"records": []}));
         inputs.keep_places(&path);
+        assert!(
+            inputs.arrangement.boots["this-one"]["s-o"]
+                .get("orphaned")
+                .is_none(),
+            "the last window closed by hand isn't taken as orphaned, so its place still goes"
+        );
         assert_eq!(
-            inputs.arrangement.boots["this-one"]["s-o"]["orphaned"],
-            json!(true),
-            "niri gone with every window, its place is marked orphaned, never closed by hand"
+            inputs.arrangement.others["this-one"], slack,
+            "the other windows' places aren't wiped by a desktop said empty"
         );
         // Only this case's own folder, which the next run makes afresh.
         let _ = std::fs::remove_dir_all(&folder);
