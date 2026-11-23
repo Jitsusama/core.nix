@@ -283,9 +283,11 @@ fn stand_ins(second: &Path, vm: &[PathBuf], at: u64) -> (Vec<String>, Vec<String
     } else {
         Vec::new()
     };
+    // A lane kept for the runs naming it stands in for nothing else, or
+    // any build would reach it while the lent one fails.
     let vm = vm
         .iter()
-        .filter(|dir| proof::passes_in(dir, at) && there::warm(dir))
+        .filter(|dir| proof::passes_in(dir, at) && there::warm(dir) && !there::named_only(dir))
         .flat_map(|dir| lines(dir))
         .collect();
     (second, vm)
@@ -2173,6 +2175,39 @@ mod tests {
         proof::write(dir, Some(&health), None, seconds());
         fs::write(dir.join("machines-for-anything"), format!("{line}\n")).expect("write");
         fs::write(dir.join("store"), "ssh-ng://far\n").expect("write");
+    }
+
+    #[test]
+    fn a_lane_kept_for_runs_naming_it_stands_in_for_nothing() {
+        let dir = tempfile::tempdir().expect("a folder");
+        let folder = |name: &str| dir.path().join(name);
+        let anything = folder("machines-for-anything");
+        let mut machines = Machines::new(
+            folder("machines"),
+            folder("machines-with-standing"),
+            folder("store"),
+            folder("lending"),
+            vec![],
+        )
+        .for_anything(anything.clone())
+        .stand_ins_from(folder("more"), vec![folder("vm"), folder("vm-3")]);
+        passing(
+            &folder("vm"),
+            "ssh-ng://vm x86_64-linux /k 4 1 big-parallel - K",
+        );
+        passing(
+            &folder("vm-3"),
+            "ssh-ng://vm-3 x86_64-linux /k 4 1 big-parallel - K",
+        );
+        fs::write(folder("vm-3").join(there::NAMED_ONLY), "").expect("write");
+        let line = "ssh-ng://lent x86_64-linux /k 8 1 big-parallel - K";
+        machines.proven(Some(line), State::Failing);
+        machines.show(Some(Lending { line, store: None }));
+        assert_eq!(
+            fs::read_to_string(&anything).expect("read"),
+            format!("{line}\nssh-ng://vm x86_64-linux /k 4 1 big-parallel - K\n"),
+            "only the lane that isn't named-only stands in"
+        );
     }
 
     #[test]

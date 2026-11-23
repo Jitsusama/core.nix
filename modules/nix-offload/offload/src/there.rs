@@ -5172,6 +5172,18 @@ pub fn lends(dir: &Path) -> bool {
     lender_stands(dir)
 }
 
+/// The file whose being in a VM lender's folder keeps its lane for the
+/// runs that name the folder, so none other spills onto it: the machine
+/// declares it, as for a bare metal lane whose builder costs about 21
+/// times an n2 lane's for the same four builds.
+pub const NAMED_ONLY: &str = "named-only";
+
+/// Whether `dir`'s lane takes only the runs that name it, as its
+/// [`NAMED_ONLY`] file says.
+pub fn named_only(dir: &Path) -> bool {
+    dir.join(NAMED_ONLY).exists()
+}
+
 /// The file a VM lender keeps in its folder while the builder it has just
 /// stood builds what warms it, holding the lender's pid and the builder's
 /// name, so one a lender left as it stopped says nothing.
