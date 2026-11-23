@@ -38,8 +38,8 @@
 //! A red is main's own when every check it broke fails at the base the
 //! candidate was cut on too, each subtest it failed among those failing
 //! there: the candidate lands, and its line in `train/landed.jsonl` names
-//! those checks (`excused.rs`). Any other candidate that fails splits: the train takes the first half of its
-//! riders to board, and halves again while they fail, so the riders that
+//! those checks (`excused.rs`). Any other candidate that fails splits:
+//! the train takes the first half of its riders to board, and halves again while they fail, so the riders that
 //! broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
 //! than its riders gives up, and every rider runs again alone. A candidate
@@ -74,7 +74,7 @@ mod landed;
 mod landing;
 mod pulls;
 mod splitting;
-use gated::{Gated, gated, words_of};
+use gated::{Gated, gate};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
@@ -528,18 +528,11 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
             Gated::Passed => splitting.taken(),
             Gated::Red => {
                 splitting.taken();
-                let Some(checks) = mains_own(&root, &slug, &base, &log) else {
+                let Some(checks) = excused::mains_own(&root, &slug, &base, &candidate, &log) else {
                     way(&root, &Ended::Otherwise);
                     red(&root, &candidate, &log, &done.merged, &mut splitting);
                     continue;
                 };
-                println!(
-                    "merge-net: the candidate {} failed changed-checks only on {}, which fail at \
-                     main's {} too, so the train lands it",
-                    short(&candidate),
-                    checks.join(", "),
-                    short(&base)
-                );
                 excused = checks;
             }
             Gated::Unsent => {
@@ -569,17 +562,6 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         };
         after_landing(&root, landing, &run, &mut splitting);
     }
-}
-
-/// The checks that fail at `base` of the repository `slug` as they failed
-/// in the red gate whose words are in `log`, when they excuse it: see
-/// `excused.rs`.
-fn mains_own(root: &Path, slug: &str, base: &str, log: &Path) -> Option<Vec<String>> {
-    let state = crate::state::State::at(root.to_path_buf());
-    let train = folder(root);
-    excused::excused(&words_of(log), |check| {
-        excused::at_base(&train, &state, slug, base, check)
-    })
 }
 
 /// A candidate's run: the riders it merged, when it began, and the checks
@@ -768,24 +750,6 @@ fn red(root: &Path, candidate: &str, log: &Path, merged: &[String], splitting: &
         );
         let _ = fall(root, head, &said);
     }
-}
-
-/// Run the gate in `checkout`, its words going to `log`: how it ended.
-fn gate(checkout: &Path, log: &Path) -> Gated {
-    let Ok(words) = fs::File::create(log) else {
-        return Gated::Red;
-    };
-    let Ok(errors) = words.try_clone() else {
-        return Gated::Red;
-    };
-    let ran = Command::new("nix-offload")
-        .args(["there", "--lent-only", "--changed"])
-        .current_dir(checkout)
-        .env_remove("SSH_AUTH_SOCK")
-        .stdout(words)
-        .stderr(errors)
-        .status();
-    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
 }
 
 /// `owner/name` of the repository at `url`.
