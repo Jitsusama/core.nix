@@ -695,6 +695,15 @@ QtObject {
         expect("handed over again while queued or begun, it isn't asked twice",
             Reopening.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
                 ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
+        // Each joins with the `gone` of the list that asked for it first, so
+        // a folder found gone is told to that press's count, which Reopen
+        // Them All's tally leans on (launcher/ReopenTally.js).
+        const askedBy = (id, gone) => ({ one: { id }, gone });
+        expect("handed over again mid-walk, each keeps the gone it was asked with",
+            Reopening.queuedOnce([askedBy("q1", "first"), askedBy("q2", "first")],
+                [askedBy("q2", "second"), askedBy("q3", "second")], [])
+                .map(entry => `${entry.one.id} ${entry.gone}`),
+            ["q1 first", "q2 first", "q3 second"]);
         // Those whose kept place says they led others are begun first, so
         // the sessions they lead have them back to answer to; the rest,
         // those kept nowhere among them, keep their order.
