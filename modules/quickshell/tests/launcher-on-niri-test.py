@@ -4313,20 +4313,45 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
         ("j", study),
     ]
     for key, at in landings:
-        # The cursor's number, absolute, is drawn only beside a row the view draws.
+        # The cursor's number, absolute, is drawn only beside a row the view draws; a landing
+        # on Study's index is held to Study itself, so a list that moved under it fails.
         def landed(shown: Json, at: int = at) -> bool:
             return bool(
                 shown["current"] == at
                 and shown["gutter"]["cursor"] == str(at + 1)
+                and (at != study or selecting("Study", shown))
                 and rested(shown)
             )
 
+        sent = time.monotonic() * 1000
         shell.send_chars(key)
         shell.launcher_until(landed)
         shown = shell.showing()
         assert landed(shown), (key, *parts(shown))
         none_drawn_cut(shell, key)
+    # The last step back onto Study lays nothing, so fillAt alone places the selection; the
+    # key's first frame must have it on Study's drawn row, which a fillAt laid from the list's
+    # top rather than Study's gap misses by the gap.
+    stepped = key_presented_since(shell, sent)
+    assert stepped["onRow"], f"stepping back onto Study, the selection was off its row: {stepped}"
     shell.close_launcher()
+
+
+def key_presented_since(shell: Shell, sent: float) -> Json:
+    """Wait for the launcher to present a key it heard since `sent`, monotonic ms, and give it.
+
+    A key is told by when the shell heard it rather than by the last presented, since the key
+    before's frame may still be on its way to niri's screen.
+    """
+    deadline = time.monotonic() + launcher_on_niri.WAITING.total_seconds()
+    while time.monotonic() < deadline:
+        presented = json.loads(shell.as_account(shell.ipc("keysPresented")))
+        since = [one for one in presented if one["heard"] >= sent - CLOCKS_APART_MS]
+        if since:
+            return cast("Json", since[0])
+        time.sleep(launcher_on_niri.POLL)
+    msg = f"no key heard since {sent:.0f} was presented"
+    raise AssertionError(msg)
 
 
 def none_drawn_cut(shell: Shell, where: str, *, selection_in_view: bool = True) -> None:
