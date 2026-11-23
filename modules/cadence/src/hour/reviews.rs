@@ -21,7 +21,7 @@ const SHAPE_JUDGED_BY: usize = 5;
 /// The trouble's word for what a record read in the window lacks of what
 /// every record of its kind holds, or none when it lacks nothing. One
 /// lacking it is said unread rather than left out: a round naming no
-/// change or holding no runs, or a fixes record holding no fixes, would
+/// change or keeping no list of runs, or a fixes record holding no fixes, would
 /// otherwise lose what it holds unsaid.
 type Lacks = fn(&Value) -> Option<&'static str>;
 
@@ -29,7 +29,7 @@ fn rounds_lack(record: &Value) -> Option<&'static str> {
     if !names_its_change(record) {
         Some("it names no change")
     } else if !record["runs"].is_array() {
-        Some("it holds no runs")
+        Some("it keeps no list of runs")
     } else {
         None
     }
@@ -123,9 +123,11 @@ fn listed(
 /// a plain file, was written before `since`, or was removed once listed,
 /// as the harness prunes; else why it can't be read. One that isn't JSON
 /// or `lacks` what its kind holds can't be read either, as its rounds
-/// would be left out unsaid, nor can a link that can't be followed, or
-/// one left pointing at nothing since `since`, which is no record pruned;
-/// one left pointing at nothing before it is as old as a record unread.
+/// would be left out unsaid, nor can a link that may hold a record but
+/// can't be followed, as one denied, or a link to nothing (a missing name,
+/// a path through a file, or a loop) left since `since`, which is no
+/// record pruned; one left to nothing before it is as old as a record
+/// unread.
 fn record(
     path: &Path,
     since: SystemTime,
@@ -144,9 +146,13 @@ fn record(
             let link = fs::symlink_metadata(path)
                 .ok()
                 .filter(|link| link.file_type().is_symlink());
+            let nothing = matches!(
+                error.kind(),
+                ErrorKind::NotFound | ErrorKind::NotADirectory | ErrorKind::FilesystemLoop
+            );
             return match link {
                 None => gone(error),
-                Some(_) if error.kind() != ErrorKind::NotFound => Err(io::Error::new(
+                Some(_) if !nothing => Err(io::Error::new(
                     error.kind(),
                     format!("a link that can't be followed: {error}"),
                 )),
@@ -267,6 +273,7 @@ pub fn mirrored(root: &Path, since: SystemTime) -> Records {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use std::time::{Duration, UNIX_EPOCH};
 
     fn put(path: &Path, text: &str) {
@@ -313,7 +320,10 @@ mod tests {
         // A record cut off as it was copied, which can't be read, and one
         // naming no change, which can't either.
         put(&root.join("torn/seven.json"), "{\"change\": ");
-        put(&root.join("nameless/nine.json"), "{\"runs\": []}");
+        put(
+            &root.join("runless/nine.json"),
+            &round("nine").replace("\"runs\"", "\"rounds\""),
+        );
         // A harness that renamed its outcomes, every other field kept, and
         // one that renamed its rounds' kind.
         put(
@@ -340,7 +350,7 @@ mod tests {
             read.trouble.len() == 6
                 && said(0, "from dangling", "can't be read")
                 && said(1, "from high", "too high")
-                && said(2, "nameless/nine.json", "it names no change")
+                && said(2, "runless/nine.json", "it keeps no list of runs")
                 && said(3, "from rekinded", "of the shape")
                 && said(4, "from renamed", "of the shape")
                 && said(5, "torn/seven.json", "can't be read"),
@@ -441,6 +451,20 @@ mod tests {
                 .is_some_and(|t| t.contains("can't be listed")),
             "a records folder that can't be listed went unsaid: {unlisted:?}"
         );
+        put(&scratch.path().join("fixes/one.json"), "{\"fixes\": []}");
+        put(&scratch.path().join("fixes/two.json"), "{\"change\": {}}");
+        let fixed = fixes(&scratch.path().join("fixes"), UNIX_EPOCH);
+        assert!(
+            fixed.runs.len() == 1
+                && fixed.trouble.len() == 1
+                && fixed.trouble[0].contains("two.json can't be read (it holds no fixes"),
+            "a fixes record wasn't read, or one holding no fixes went unsaid: {fixed:?}"
+        );
+    }
+
+    #[test]
+    fn records_unread_are_said_and_links_to_nothing_until_they_are_old() {
+        let scratch = tempfile::tempdir().expect("the test's folder made");
         let torn = scratch.path().join("torn");
         put(&torn.join("one.json"), &round("one"));
         put(&torn.join("two.json"), "{\"change\": ");
@@ -451,41 +475,53 @@ mod tests {
             &torn.join("five.json"),
             &round("five").replace("\"runs\"", "\"rounds\""),
         );
-        // A link to itself, which no age makes a record pruned.
-        std::os::unix::fs::symlink(torn.join("six.json"), torn.join("six.json"))
-            .expect("the test's link made");
+        // A link to itself and one through a file, which hold nothing as
+        // surely as a link to a missing name.
+        let link = |to: &str, at: &str| {
+            std::os::unix::fs::symlink(torn.join(to), torn.join(at))
+                .expect("the test's link made");
+        };
+        link("six.json", "six.json");
+        link("one.json/inside.json", "seven.json");
         let read = rounds(&torn, UNIX_EPOCH);
         let unread = |name: &str| read.trouble.iter().any(|t| t.contains(name));
         assert!(
             read.runs == [round("one")]
-                && read.trouble.len() == 5
+                && read.trouble.len() == 6
                 && unread("two.json can't be read")
                 && unread("three.json can't be read (a link to nothing")
                 && unread("four.json can't be read (it names no change")
-                && unread("five.json can't be read (it holds no runs")
-                && unread("six.json can't be read (a link that can't be followed"),
-            "a record that can't be read, a link to none or to itself, or one naming no \
-             change or holding no runs was left out unsaid: {read:?}"
+                && unread("five.json can't be read (it keeps no list of runs")
+                && unread("six.json can't be read (a link to nothing")
+                && unread("seven.json can't be read (a link to nothing"),
+            "a record that can't be read, a link to nothing, or one naming no change or \
+             keeping no runs was left out unsaid: {read:?}"
         );
         // A link left pointing at nothing before the window is as old as
-        // any record unread there, so it stops nothing filing; one that
-        // can't be followed still can't be read.
+        // any record unread there, so it stops nothing filing.
         let later = rounds(&torn, SystemTime::now() + Duration::from_secs(3600));
         assert!(
-            later.runs.is_empty()
-                && later.trouble.len() == 1
-                && later.trouble[0].contains("six.json can't be read"),
-            "a link left pointing at nothing before the window was said unread, or one \
-             that can't be followed wasn't: {later:?}"
+            later.runs.is_empty() && later.trouble.is_empty(),
+            "a link left pointing at nothing before the window was said unread: {later:?}"
         );
-        put(&scratch.path().join("fixes/one.json"), "{\"fixes\": []}");
-        put(&scratch.path().join("fixes/two.json"), "{\"change\": {}}");
-        let fixed = fixes(&scratch.path().join("fixes"), UNIX_EPOCH);
+        // A link into a folder it may not read may hold a record, so it's
+        // unread at any age; a runner reading every folder can't test it.
+        let locked = scratch.path().join("locked");
+        put(&locked.join("one.json"), &round("one"));
+        let denied = scratch.path().join("denied");
+        fs::create_dir_all(&denied).expect("the test's folder made");
+        std::os::unix::fs::symlink(locked.join("one.json"), denied.join("one.json"))
+            .expect("the test's link made");
+        let mode = |bits| fs::set_permissions(&locked, fs::Permissions::from_mode(bits));
+        mode(0o000).expect("the test's folder locked");
+        let shut = fs::metadata(denied.join("one.json"))
+            .is_err_and(|error| error.kind() == ErrorKind::PermissionDenied);
+        let read = rounds(&denied, SystemTime::now() + Duration::from_secs(3600));
+        mode(0o755).expect("the test's folder unlocked");
+        let why = "a link that can't be followed";
         assert!(
-            fixed.runs.len() == 1
-                && fixed.trouble.len() == 1
-                && fixed.trouble[0].contains("two.json can't be read (it holds no fixes"),
-            "a fixes record wasn't read, or one holding no fixes went unsaid: {fixed:?}"
+            !shut || read.trouble.iter().any(|t| t.contains(why)),
+            "an old link into a folder denied was taken as pruned: {read:?}"
         );
     }
 }
