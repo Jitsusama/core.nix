@@ -955,11 +955,13 @@ ShellRoot {
     }
 
     // Long enough for each walk to be done before the next begins, and
-    // short of the check's own 120 s timeout, so a stage that never ends
-    // says which it is rather than the check ending with no word.
+    // short of the check's own 180 s timeout, so a stage that never ends
+    // says which it is rather than the check ending with no word. The
+    // named stages run after the led ones' walks, so it's longer than one
+    // set of walks needs.
     Timer {
         running: true
-        interval: 110000
+        interval: 170000
         onTriggered: Expect.fail(`still at ${root.stage}, the walk holding `
             + JSON.stringify((Sessions.reopening?.queue ?? []).map(next => next.one?.id))
             + ` and waiting on ${Sessions.reopening?.waiting?.id ?? "none"}, held starts `
