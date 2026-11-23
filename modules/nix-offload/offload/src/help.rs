@@ -156,8 +156,9 @@ fn there() -> Help {
     .option("--longest SECONDS", "with --run, gives it SECONDS at most")
     .option(
         "--alone",
-        "with --run, waits for a VM builder with nothing sent to it and holds it, \
-         VM tests and other --alone runs kept off it while it goes",
+        "with --run, after it, waits for a VM builder with nothing sent to it and holds it \
+         for an hour at most, VM tests kept off it, one --alone run at a time; it runs \
+         nothing where it can't hold one, as from a fence",
     )
     .option("--takes", "names a word each for what this there takes")
     .exit(Exit::Failed, "nix failed, as an evaluation does")

@@ -13,10 +13,12 @@
 //! It goes only to the two lent builders, or with `--alone` to a VM
 //! builder held whole, never a nearby machine or an evaluator, so work
 //! code stays on the account's own cloud: the VM builders are lent from
-//! the same project by the same helper. Its ssh names the builder for as long as it runs, which is what
-//! the lender counts a builder in use by, so it isn't given back idle
-//! mid-run. Its paths go as held outputs do, signed or content-addressed,
-//! since the builder trusts no account. Once it has run for `--longest`,
+//! the project each lane's helper and environment choose, which the
+//! machine keeps on the account's for every lane, the extra ones too. Its
+//! ssh names the builder for as long as it runs, which is what the lender
+//! counts a builder in use by, so it isn't given back idle mid-run. Its
+//! paths go as held outputs do, signed or content-addressed, since the
+//! builder trusts no account. Once it has run for `--longest`,
 //! everything it started there ends with it.
 //!
 //! Long because its tests, over half of it, stay beside the private link
@@ -87,23 +89,29 @@ pub struct Asked {
     pub words: Vec<String>,
 }
 
-/// Whether `--run`'s arguments ask for a builder to the run alone, with
+/// Whether `--run`'s arguments ask for a builder held whole, with
 /// `--alone` anywhere before the command's `--`, and the arguments without
-/// it, for [`asked`]. What follows `--` is the command's, `--alone` too.
-pub fn alone(arguments: &[String]) -> (bool, Vec<String>) {
-    let end = arguments
-        .iter()
-        .position(|word| word == "--")
-        .unwrap_or(arguments.len());
-    let (before, command) = arguments.split_at(end);
-    let alone = before.iter().any(|word| word == "--alone");
-    let kept = before
-        .iter()
-        .filter(|word| *word != "--alone")
-        .chain(command)
-        .cloned()
-        .collect();
-    (alone, kept)
+/// it, for [`asked`]. What follows `--` is the command's, `--alone` too,
+/// and so is the word after `--copy` or `--longest`, which is its value.
+pub fn whole(arguments: &[String]) -> (bool, Vec<String>) {
+    let mut whole = false;
+    let mut kept = Vec::with_capacity(arguments.len());
+    let mut each = arguments.iter();
+    while let Some(word) = each.next() {
+        match word.as_str() {
+            "--alone" => whole = true,
+            "--copy" | "--longest" => {
+                kept.push(word.clone());
+                kept.extend(each.next().cloned());
+            }
+            "--" => {
+                kept.push(word.clone());
+                kept.extend(each.by_ref().cloned());
+            }
+            _ => kept.push(word.clone()),
+        }
+    }
+    (whole, kept)
 }
 
 /// Reads `--run`'s arguments: `--copy PATH` as often as wanted, each a
@@ -508,23 +516,52 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[test]
-    fn a_run_asks_for_a_builder_alone_before_its_command() {
+    fn a_run_asks_for_a_builder_whole_before_its_command() {
         assert_eq!(
-            alone(&words("--alone --longest 60 -- make test")),
+            whole(&words("--alone --longest 60 -- make test")),
             (true, words("--longest 60 -- make test"))
         );
         assert_eq!(
-            alone(&words("--copy /nix/store/a-bin --alone -- make")),
+            whole(&words("--copy /nix/store/a-bin --alone -- make")),
             (true, words("--copy /nix/store/a-bin -- make"))
         );
         assert_eq!(
-            alone(&words("-- sh -c --alone")),
+            whole(&words("--alone --alone -- make")),
+            (true, words("-- make")),
+            "a doubled --alone was left for asked to refuse"
+        );
+        assert_eq!(
+            whole(&words("-- sh -c --alone")),
             (false, words("-- sh -c --alone")),
             "an --alone after -- was taken from the command"
         );
         assert_eq!(
-            alone(&words("--longest 60 -- make")),
+            whole(&words("--longest 60 -- make")),
             (false, words("--longest 60 -- make"))
+        );
+    }
+
+    // `--alone` given as another flag's value is that value, so asked
+    // names the flag mistyped rather than a missing number.
+    #[test]
+    fn an_alone_given_as_a_flags_value_is_left_to_it() {
+        assert_eq!(
+            whole(&words("--longest --alone -- make")),
+            (false, words("--longest --alone -- make"))
+        );
+        assert_eq!(
+            whole(&words("--copy --alone -- make")),
+            (false, words("--copy --alone -- make"))
+        );
+        assert_eq!(
+            asked(&whole(&words("--longest --alone -- make")).1),
+            Err("--longest takes a number of seconds".to_owned()),
+            "a mistyped --longest wasn't named"
+        );
+        assert_eq!(
+            whole(&words("--alone make")),
+            (true, words("make")),
+            "with no --, the words were changed past --alone"
         );
     }
 
