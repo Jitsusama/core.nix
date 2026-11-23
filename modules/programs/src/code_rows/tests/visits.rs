@@ -16,8 +16,9 @@ fn named(name: &str, path: &str, tree: &str, written: u64) -> Repository {
     repository
 }
 
-/// The rows of `record` ordered by `visited`, each folder counted where
-/// its place resolves, as the daemon counts them.
+/// The rows of `record` ordered by `visited`, each folder counted as it's
+/// written against the places resolved, as the daemon counts them once
+/// `visited::resolved` has resolved the folders themselves.
 fn visited_rows(record: &Record, visited: &[(String, u64)]) -> Vec<Value> {
     let last = last_visits(&places(record), visited);
     crate::code_rows::rows(record, None, &words(), &BTreeMap::new(), &last)

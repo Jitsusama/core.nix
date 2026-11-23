@@ -31,6 +31,12 @@ const VERSION: u64 = 3;
 /// meets it, however many databases kitty's page and Code read.
 static TOLD: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
 
+/// The same of each database a caller let go of past its deadline, kept
+/// apart from `TOLD`, since the read it let go of may still end, late,
+/// and reads the database through `visits_in`, which would say it read
+/// fine.
+static LATE: Mutex<BTreeMap<PathBuf, String>> = Mutex::new(BTreeMap::new());
+
 /// The record a key names, or none for a key of another kind or a path
 /// that isn't whole.
 #[must_use]
@@ -83,16 +89,24 @@ pub fn visits_in(database: &Path) -> Vec<(String, u64)> {
     }
 }
 
-/// Says in the log that the database at `database` didn't answer within
-/// `deadline`, once until it's read again, so a caller that let its read
-/// go says why nothing is ordered; true when it said it.
+/// Says in the log that the database at `database` gave nothing back
+/// within `deadline`, whether its read was stuck or ended without an
+/// answer, once until `answered` says a read came back in time, so a
+/// caller that let its read go says why nothing is ordered; true when it
+/// said it.
 pub fn late(database: &Path, deadline: Duration) -> bool {
     let why = format!(
-        "zoxide's database at {} didn't answer within {} seconds",
+        "zoxide's database at {} gave nothing back within {} seconds",
         database.display(),
         deadline.as_secs()
     );
-    tell(&TOLD, database, Some(why))
+    tell(&LATE, database, Some(why))
+}
+
+/// Says a read of the database at `database` came back within its
+/// deadline, so its being late is told again should it be late again.
+pub fn answered(database: &Path) {
+    tell(&LATE, database, None);
 }
 
 /// Says `trouble` in the log once it differs from the last `told` of
@@ -399,17 +413,26 @@ mod tests {
     }
 
     #[test]
-    fn a_late_database_is_told_once_until_its_read_again() {
+    fn a_late_database_is_told_once_until_a_read_answers_in_time() {
         let database = Path::new("/nowhere/late/db.zo");
         let deadline = Duration::from_secs(2);
         let told = [late(database, deadline), late(database, deadline)];
-        // Read again, finding it gone, which a database is told nothing of.
+        // Read as a read let go of past its deadline ends, finding it gone,
+        // which says nothing of the read its caller let go.
         let read = visits_in(database);
         assert!(read.is_empty(), "a database that isn't there named folders");
+        let after_a_late_read = late(database, deadline);
+        answered(database);
         assert_eq!(
-            [told[0], told[1], late(database, deadline)],
-            [true, false, true],
-            "a database that didn't answer was told on every pass, or not again once read"
+            [
+                told[0],
+                told[1],
+                after_a_late_read,
+                late(database, deadline)
+            ],
+            [true, false, false, true],
+            "a database that didn't answer was told on every pass, again once a read \
+             let go of ended, or not again once a read answered in time"
         );
     }
 

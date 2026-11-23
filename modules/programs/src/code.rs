@@ -243,6 +243,7 @@ impl Code {
             visited::late(&database, RESOLVING);
             return BTreeMap::new();
         };
+        visited::answered(&database);
         // None read leaves nothing to resolve.
         if written.is_empty() {
             return BTreeMap::new();
