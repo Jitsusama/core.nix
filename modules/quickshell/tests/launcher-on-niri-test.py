@@ -4294,9 +4294,13 @@ def test_the_home_network_never_rests_with_a_row_cut(shell: Shell) -> None:
     assert count > 2 * opened["drawnRows"], parts(opened)
     # Study, an eero, has a gap above it, so the selection's ground laid on it shows one put
     # on the gap rather than its band, which none of the other landings has. The opening's
-    # rows name the list's first twenty, drawn or not, Study among them.
+    # rows name the list's first twenty, drawn or not, Study among them; that it stands a gap
+    # below the row above is test_each_eero_heads_the_devices_on_it's. Its landing starts from
+    # the top itself, so it holds wherever it stands in the list.
+    assert "Study" in opened["rows"], (opened["rows"], *parts(opened))
     study = opened["rows"].index("Study")
-    landings = [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0), (f"{study}j", study)]
+    assert study > 0, (opened["rows"], *parts(opened))
+    landings = [("7j", 7), ("5j", 12), ("G", count - 1), ("gg", 0), (f"gg{study}j", study)]
     for key, at in landings:
         # The cursor's number, absolute, is drawn only beside a row the view draws.
         def landed(shown: Json, at: int = at) -> bool:
