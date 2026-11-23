@@ -382,7 +382,7 @@ in
         && !(lib.hasInfix "--eases-sleep" linuxNode)
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
-        && lib.hasInfix "--eases --eases-carry" carryingNode
+        && lib.hasInfix "--eases --eases-carry --eases-sleep" carryingNode
         && lib.hasInfix "--eases --eases-sleep /home/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease" sleepingNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --waiting" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [

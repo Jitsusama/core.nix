@@ -26,10 +26,13 @@ in
         Whether the home realm's node makes the carries it chooses while
         this machine is over its room and another has some, under its own
         name, rather than only saying so. Mycelium, not this option, bounds
-        what it carries: one sleeping session at a time, off the screen and part
-        way through nothing, and at most six a day. The session's harness
-        must take a carry from the node, or the carry is kept and told but
-        never made. Off, the node only writes what it would do.
+        what it carries: one parked session at a time, off the screen and
+        part way through nothing, onto ground no looser than here's, and at
+        most six a day. Only a parked session is carried, so with
+        `easesSleep` off it carries only those the harness parked by its own
+        rule. The session's harness must take a carry from the node, or the
+        carry is kept and told but never made. Off, the node only writes
+        what it would do.
       '';
     };
   };
