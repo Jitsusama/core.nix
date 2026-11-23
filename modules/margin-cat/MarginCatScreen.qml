@@ -677,14 +677,19 @@ PanelWindow {
             Niri.wantTiles(wantsAs, false);
     }
 
-    // Each frame of a walk or a hop, as niri showed it or didn't, asking after the next until
-    // it sits. Asked only here, once niri says the last was shown, the ask lands after the next
-    // frame has begun where frames come close together, so only every other frame was heard
-    // of: on a GPU at 60 Hz, and on Joel's screen at 120. Each step asks too (walker, and a
-    // hop's lift), before its frame is drawn. Asked only there, a GPU at 120 Hz drew every
-    // other frame, so both stay.
-    // Once it's done, the answers still to come are only heard, never
-    // asked after: each frame on its way was asked of as it began.
+    // Every frame of a walk, a move or a play is asked of as it begins,
+    // while it isn't held under the launcher, but for what Joel's hand
+    // set off. Asked after each answer and at each step, a frame begun
+    // before either reached the render thread went unasked: on Joel's
+    // screen 30 of 44 walks, moves and plays from 22:00 to 01:30 on
+    // 2026-11-22 told 1 to 7 frames fewer than they drew, each waiting
+    // out its answers. Following draws no frame of its own, so a held
+    // cat stays still.
+    FramePresentation.following: window.FramePresentation.available
+        && (going !== null || moving !== null) && (!Launched.up || byHand)
+    // Each frame of it as niri showed it or didn't. Once it's done, the
+    // answers still to come are only heard: each frame on its way was
+    // asked of as it began.
     FramePresentation.onPresented: (frame, at) => {
         if (going === null && moving === null && telling === "")
             return;
@@ -706,15 +711,10 @@ PanelWindow {
         answered(heard);
     }
     // After a frame's answer, `heard` (Shown.heard): the walk told once
-    // every frame of it is in, or the next frame asked of while it goes.
-    // Nothing is asked while it's held under the launcher, since each ask
-    // draws a frame of its own (stilled, below), but for what Joel's hand
-    // set off, which runs on there and is heard frame by frame as ever.
+    // every frame of it is in.
     function answered(heard: var): void {
         if (heard.ends)
             sayWalked();
-        else if (telling === "" && (!Launched.up || byHand))
-            window.FramePresentation.ask();
     }
     // The longest a walk done waits to hear of its last frames.
     Timer {
@@ -746,10 +746,6 @@ PanelWindow {
         stepped = now;
         steps += 1;
         place = { x: now.x, y: now.y };
-        // Asked as the step is taken, before its frame is drawn, so the
-        // frame it moves is the one niri is asked about.
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // A scene's walk done, handing the scene its next beat.
@@ -1035,8 +1031,8 @@ PanelWindow {
     // Under the launcher's card it holds where it got to and draws
     // nothing: a walk or a move is paused, never skipped ahead, and goes
     // on from there as the card goes, since a paused clock keeps its
-    // elapsedTime, and nothing asks niri of its frames meanwhile, since
-    // each ask draws one. A play off its seat ends as a key ends it, and
+    // elapsedTime, and niri isn't asked of its frames meanwhile
+    // (following, above). A play off its seat ends as a key ends it, and
     // its walk back is held the same way (MarginCat.qml goes still).
     // Joel's keys are in the launcher then, and each of the cat's frames
     // is one the shell draws beside theirs: on his laptop it drew 10 to
@@ -1064,14 +1060,12 @@ PanelWindow {
         heldBegun += window.FramePresentation.framesBegun - heldAt;
         heldAt = -1;
         resumedAt = resumedAt.concat([shown.length]);
-        if (window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // Sets `clock`, the walker, the mover or the yarn's fading, going
-    // from its start, and for a walk or a move asks niri of its frames;
-    // held at once while the launcher's card is up, asking nothing, but
-    // for what Joel's hand set off. It reads the card itself rather than
+    // from its start; held at once while the launcher's card is up, its
+    // frames unasked (following, above), but for what Joel's hand set
+    // off. It reads the card itself rather than
     // `stilled`, which another handler of the same change may run before.
     function goes(clock: var): void {
         clock.restart();
@@ -1080,8 +1074,6 @@ PanelWindow {
             if (clock !== yarnFades && heldAt < 0)
                 heldAt = window.FramePresentation.framesBegun;
         }
-        else if (clock !== yarnFades && window.FramePresentation.available)
-            window.FramePresentation.ask();
     }
 
     // Until the keys rest on the column, so a tap along them never
