@@ -142,3 +142,6 @@ pub(super) fn words_of(log: &Path) -> String {
     }
     words[from..].to_owned()
 }
+
+#[cfg(test)]
+mod tests;

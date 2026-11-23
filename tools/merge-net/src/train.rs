@@ -526,19 +526,7 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
                     candidate: &candidate,
                     log: &log,
                 };
-                if !whole {
-                    // Said, so a red that holds where main's own failure
-                    // would be excused reads why (round 4's F5).
-                    println!(
-                        "merge-net: the train excuses nothing in {}'s red, since nix-offload \
-                         didn't say every part of its gate ran to its end",
-                        short(&candidate)
-                    );
-                }
-                let excuse = whole
-                    .then(|| excused::excuse(&asked, &crate::world::bounded))
-                    .flatten();
-                let Some(checks) = excuse else {
+                let Some(checks) = excused::excuse_of(&asked, whole) else {
                     way(&root, &Ended::Otherwise);
                     red(&root, &candidate, &log, &done.merged, &mut splitting);
                     continue;
