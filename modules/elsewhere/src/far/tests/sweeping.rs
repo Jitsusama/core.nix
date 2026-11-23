@@ -230,7 +230,7 @@ fn a_stop_cut_short_leaves_its_run_s_file_for_the_next_sweep() {
     // An rm that can't clear a stopped copy, as one killed in mycelium's
     // grace doesn't, passing all else to the machine's own.
     let rm = "PATH=${PATH#*:}
-case \" $* \" in *\"/s/1.names \"*\"/s/1 \"*) exit 1 ;; esac
+case \" $* \" in *\"/.s/1.names \"*\"/.s/1 \"*) exit 1 ;; esac
 exec rm \"$@\"";
     let (code, err, home) = far_line(
         Left::Whole,
