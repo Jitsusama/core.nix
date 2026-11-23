@@ -27,7 +27,7 @@ What the theme module gives a website, on every machine:
   that doesn't link to its home; `looks.js`, run on a live page before
   a deploy and after it, names each look the deploy lost; and `pixels.js`
   names a page wider than its window, a shift as it arrives, text under
-  its floor and a control named apart from what it shows.
+  its floor, a control named apart from what it shows and faint text.
 - `homes-test.py` holds `homes.js` to its cases in headless Chromium, as the
   `homes-probe-reads-as-the-reader` check runs it, and `looks-test.py`
   holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does,

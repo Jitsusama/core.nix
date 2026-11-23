@@ -13,6 +13,8 @@
 // - A control's name starts with the words it shows (WCAG 2.5.3), a keycap
 //   drawn on it coming after them, and a control showing only a mark such as
 //   "/" shows a word too. One drawn only as a picture is named by its label.
+// - Every word reaches 4.5:1 on the ground painted under it, or 3:1 at 24 px
+//   and up, or 18.66 px bold (WCAG 1.4.3), opacity included.
 //
 // It ends without a semicolon, since an eval asked for one expression
 // answers nothing for a statement.
@@ -152,6 +154,89 @@
         : `text at ${smallest.size.toFixed(1)} px ("${words}"), under ${floor} px: set it in ` +
             "--step-small or larger, or, in a drawing, mark it data-enlarges and show it " +
             `at ${floor} px or more on zoom, hover or focus`,
+    );
+  }
+
+  // Contrast, measured rather than left to a person (WCAG 1.4.3): each
+  // word's colour, faded by every opacity it sits in, against the grounds
+  // painted under it, from the page's own up through each box holding it.
+  // A box painted with a picture can't be measured, so its words are left
+  // to the person's pass, and a drawing's words are svgtext.js's, at 7:1.
+  const pen = page.createElement("canvas").getContext("2d", { willReadFrequently: true });
+  const rgba = (colour) => {
+    pen.clearRect(0, 0, 1, 1);
+    pen.fillStyle = "rgba(0, 0, 0, 0)";
+    pen.fillStyle = colour;
+    pen.fillRect(0, 0, 1, 1);
+    const [red, green, blue, alpha] = pen.getImageData(0, 0, 1, 1).data;
+    return [red, green, blue, alpha / 255];
+  };
+  const over = (top, under) =>
+    [0, 1, 2].map((at) => top[at] * top[3] + under[at] * (1 - top[3])).concat(1);
+  const luminance = ([red, green, blue]) => {
+    const linear = (value) => {
+      const part = value / 255;
+      return part <= 0.04045 ? part / 12.92 : ((part + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+  };
+  const ratio = (one, other) => {
+    const [light, dark] = [luminance(one), luminance(other)].sort((a, b) => b - a);
+    return (light + 0.05) / (dark + 0.05);
+  };
+  // The boxes from the page down to the element, each with how faded it is
+  // by its own opacity and every one it sits in; null when a box is painted
+  // with a picture.
+  const grounds = (element) => {
+    const chain = [];
+    for (let at = element; at !== null; at = at.parentElement) {
+      chain.unshift(at);
+    }
+    let faded = 1;
+    let ground = [255, 255, 255, 1];
+    for (const box of chain) {
+      const style = getComputedStyle(box);
+      if (style.backgroundImage !== "none") {
+        return null;
+      }
+      faded *= Number.parseFloat(style.opacity || "1");
+      const paint = rgba(style.backgroundColor);
+      paint[3] *= faded;
+      ground = over(paint, ground);
+    }
+    return { ground, faded };
+  };
+  const large = (element, size) => {
+    const weight = Number.parseInt(getComputedStyle(element).fontWeight, 10);
+    return size >= 24 || (size >= 18.66 && weight >= 700);
+  };
+  let faintest = null;
+  let faint = 0;
+  for (const element of holders) {
+    if (element instanceof SVGElement || !shown(element) || forEarsOnly(element)) {
+      continue;
+    }
+    const behind = grounds(element);
+    const ink = rgba(getComputedStyle(element).color);
+    if (behind === null || ink[3] === 0) {
+      continue;
+    }
+    ink[3] *= behind.faded;
+    const got = ratio(over(ink, behind.ground), behind.ground);
+    const bar = large(element, onScreen(element)) ? 3 : 4.5;
+    if (got < bar - 0.005) {
+      faint += 1;
+      if (faintest === null || got / bar < faintest.got / faintest.bar) {
+        faintest = { element, got, bar };
+      }
+    }
+  }
+  if (faintest !== null) {
+    const more = faint > 1 ? ` (and ${faint - 1} more)` : "";
+    missing.push(
+      `text "${quoted(faintest.element.textContent)}" at ${faintest.got.toFixed(2)}:1 on its ` +
+        `ground, under ${faintest.bar}:1${more}: draw it in the theme's text roles on its ` +
+        "grounds, never faded by opacity",
     );
   }
 

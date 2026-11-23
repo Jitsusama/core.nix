@@ -201,3 +201,43 @@ def test_a_picture_named_by_its_label_passes(tab: Page) -> None:
         '<circle cx="12" cy="12" r="6"/></svg></button></main>'
     )
     assert probed(tab, body) == []
+
+
+def test_faint_text_is_named_with_its_ratio(tab: Page) -> None:
+    """Grey #999 on white is 2.85:1, under 4.5:1 for body text."""
+    found = probed(tab, '<main><p style="color: #999">12 cells</p></main>')
+    assert len(found) == 1
+    assert found[0].startswith('text "12 cells" at 2.85:1 on its ground, under 4.5:1: ')
+
+
+def test_text_at_four_and_a_half_passes(tab: Page) -> None:
+    """Grey #767676 on white is 4.54:1, just over the bar."""
+    assert probed(tab, '<main><p style="color: #767676">12 cells</p></main>') == []
+
+
+def test_large_text_needs_only_three(tab: Page) -> None:
+    """Grey #949494 is 3.03:1: enough at 24 px, not at 16 px."""
+    large = '<main><h1 style="color: #949494; font-size: 24px">Forage</h1></main>'
+    assert probed(tab, large) == []
+    small = '<main><p style="color: #949494">Forage</p></main>'
+    assert len(probed(tab, small)) == 1
+
+
+def test_text_faded_by_opacity_is_measured_faded(tab: Page) -> None:
+    """Black text in a box at half opacity reads as mid grey, under 4.5:1."""
+    found = probed(tab, '<main><p style="opacity: 0.5">Quiet</p></main>')
+    assert len(found) == 1
+    assert found[0].startswith('text "Quiet" at 3.9')
+
+
+def test_a_box_ground_is_what_the_words_sit_on(tab: Page) -> None:
+    """White on the page is named first, #777 on a #222 box is counted, #eee on it passes."""
+    body = (
+        '<main><p style="color: #fff">Light</p>'
+        '<div style="background: #222"><p style="color: #777">Muted</p>'
+        '<p style="color: #eee">Read</p></div></main>'
+    )
+    found = probed(tab, body)
+    assert len(found) == 1
+    assert found[0].startswith('text "Light" at 1.00:1')
+    assert "(and 1 more)" in found[0]

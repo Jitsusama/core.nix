@@ -3250,7 +3250,9 @@
     kept, text under 12 px, a drawing's label under 12 px unless marked data-enlarges and under
     9 px even then, as the drawing's scale sets it, while passing words for the ear alone, and a
     control whose name doesn't start with the words it shows or that shows a mark alone, while
-    passing a keycap named for its key and a picture named by its label
+    passing a keycap named for its key and a picture named by its label, and words under 4.5:1
+    on the ground under them, or 3:1 at 24 px, with the opacity they sit in and a box's own
+    ground counted, giving the faintest and how many more
   '';
   platform-profiles-reach-the-legacy-file = ''
     every profile Dell's driver offers, the XPS 14's SoC slider takes too
