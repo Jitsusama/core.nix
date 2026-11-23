@@ -29,6 +29,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::mesh::Mesh;
 
+mod telling;
+
+pub use telling::tell;
+use telling::notify;
+
 /// How long a machine may read down before it's told: a link that drops
 /// for a moment, as on a network change, is back within a tick or two.
 const DOWN_FOR: i64 = 10 * 60;
@@ -158,6 +163,10 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
 pub struct Told {
     #[serde(default)]
     pub machines: BTreeMap<String, Spell>,
+    /// Whether this machine was last unsure of its own reach, so the
+    /// journal says so once when it starts and once when it ends.
+    #[serde(default)]
+    pub unsure: bool,
 }
 
 /// One machine's readings.
@@ -174,11 +183,19 @@ pub struct Spell {
     /// When a realm last said whether a session on it was busy.
     #[serde(default)]
     pub said_at: Option<i64>,
-    /// Whether a lid shut sleeps it, as `Seen::battery` says with power no
-    /// realm could read counted as a battery, when it last read ready, or
-    /// as its node last heard while it reads down.
+    /// Whether a lid shut sleeps it: its `power`, with none heard counted
+    /// as a battery, so what can't be read leans silent.
     #[serde(default)]
     pub battery: bool,
+    /// Its power as heard, kept across its spells by [`power`], so a
+    /// battery once heard stands and a tick whose power is unread keeps
+    /// what was heard before; none until a realm reads it.
+    #[serde(default)]
+    pub power: Option<bool>,
+    /// Whether the journal has said, this spell, that it's down while busy
+    /// and untold since its `battery` holds it back.
+    #[serde(default)]
+    pub held: bool,
     /// When it was last read ready or down.
     #[serde(default)]
     pub read_at: Option<i64>,
@@ -224,6 +241,82 @@ pub enum Tell {
     },
 }
 
+/// Two readings of a machine's power as one, across realms or ticks: a
+/// battery either heard stands, as a machine doesn't lose its battery and
+/// one realm's node may not read what another's did, and no battery heard
+/// speaks over power that couldn't be read.
+fn power(was: Option<bool>, heard: Option<bool>) -> Option<bool> {
+    match (was, heard) {
+        (Some(true), _) | (_, Some(true)) => Some(true),
+        (Some(false), _) | (_, Some(false)) => Some(false),
+        _ => None,
+    }
+}
+
+/// Two realms' words on whether this machine reaches every network its
+/// node probes, as one: a network one realm's record says it misses
+/// outranks another's saying it reaches them all, and a realm with no
+/// word leaves the other's standing.
+fn reaches(was: Option<bool>, realm: Option<bool>) -> Option<bool> {
+    match (was, realm) {
+        (Some(false), _) | (_, Some(false)) => Some(false),
+        (_, Some(true)) => Some(true),
+        (was, None) => was,
+    }
+}
+
+/// The journal's word when this machine's being sure of its own reach
+/// changes, from `was_unsure` to what `here` says, so it's said once as it
+/// starts and once as it ends rather than each tick.
+fn unsure_said(this: &str, here: Option<bool>, was_unsure: bool) -> Option<String> {
+    let then = "so with none ready no machine is told down until it does";
+    match (here, was_unsure) {
+        (Some(true), true) => Some(format!(
+            "{this} reads every network its node probes as reached again, so a machine down \
+             can be told"
+        )),
+        (Some(false), false) => Some(format!(
+            "{this} doesn't read every network its node probes as reached, {then}"
+        )),
+        (None, false) => Some(format!(
+            "{this}'s record says nothing of the networks it reaches, {then}"
+        )),
+        _ => None,
+    }
+}
+
+/// The journal's word for each machine newly held back, down while busy
+/// but untold since a shut lid may have slept it, given which were held
+/// `before` the tick, so a desktop whose power reads wrong is seen kept
+/// quiet rather than found only in `down.json`.
+fn held_back(before: &BTreeSet<String>, told: &Told, now: i64) -> Vec<String> {
+    told.machines
+        .iter()
+        .filter(|(machine, spell)| spell.held && !before.contains(*machine))
+        .map(|(machine, spell)| {
+            let minutes = spell.down_since.map_or(0, |since| (now - since) / 60);
+            let why = if spell.power == Some(true) {
+                "its node heard a battery"
+            } else {
+                "its power is unread, which may be a battery"
+            };
+            format!(
+                "{machine} has read down {minutes} min with a session busy but isn't told, as \
+                 {why}, so a shut lid may have slept it"
+            )
+        })
+        .collect()
+}
+
+/// The machines whose being held back the journal has said this spell.
+fn held_now(told: &Told) -> BTreeSet<String> {
+    told.machines
+        .iter()
+        .filter(|(_, spell)| spell.held)
+        .map(|(machine, _)| machine.clone())
+        .collect()
+}
+
 /// Each machine's readings merged across realms: ready when any reaches
 /// it, down when one reads it down and none ready.
 fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
@@ -241,14 +334,7 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
         // Read down by two realms, it was last heard when either last
         // heard it.
         let both_down = kept.reading == Reading::Down && one.reading == Reading::Down;
-        // Any realm's battery stands, ready or down, as one realm's node may
-        // not have read the power another's did; a realm that read none
-        // speaks over one that couldn't read it.
-        let battery = match (kept.battery, one.battery) {
-            (Some(true), _) | (_, Some(true)) => Some(true),
-            (Some(false), _) | (_, Some(false)) => Some(false),
-            _ => None,
-        };
+        let battery = power(kept.battery, one.battery);
         let heard = kept.heard.max(one.heard);
         // A realm that didn't say keeps the word unsaid, unless another
         // saw a session busy: its sessions may be the ones it didn't say.
@@ -390,8 +476,9 @@ pub fn due(
                         spell.said_at
                     },
                     // Power no realm could read may be a battery, so it
-                    // leans silent.
-                    battery: one.battery.unwrap_or(true),
+                    // leans silent, unless an earlier tick heard it.
+                    power: power(spell.power, one.battery),
+                    battery: power(spell.power, one.battery).unwrap_or(true),
                     read_at: Some(now),
                     realms: std::mem::take(&mut spell.realms),
                     listed_at: now,
@@ -405,15 +492,19 @@ pub fn due(
                     spell.down_since = Some(now);
                 }
                 spell.read_at = Some(now);
-                // A battery heard in any read of the spell stands, as one
-                // realm's node may hear it when another's doesn't.
-                spell.battery |= one.battery == Some(true);
+                // A down reading's power is its node's last word of it,
+                // which may be the first heard, so power unread at the
+                // last ready tick needn't hold it silent.
+                spell.power = power(spell.power, one.battery);
+                spell.battery = spell.power.unwrap_or(true);
                 let since = spell.down_since.unwrap_or(now);
                 let lately = spell
                     .ready_at
                     .is_some_and(|ready| since - ready <= READY_WITHIN);
-                let holds = spell.working && !spell.battery;
-                if !spell.told && all_answered && holds && lately && now - since >= DOWN_FOR {
+                let ripe = !spell.told && all_answered && lately && now - since >= DOWN_FOR;
+                if ripe && spell.working && spell.battery {
+                    spell.held = true;
+                } else if ripe && spell.working {
                     tells.push(Tell::Down {
                         machine: machine.to_owned(),
                         realm: one.realm.clone(),
@@ -499,113 +590,6 @@ impl Tell {
             }
         }
     }
-}
-
-/// Tells each of `tells`: a going down by `notify` to Joel once a spell and
-/// by `send` as a finding to the orchestrator and the owner `owner_of`
-/// names for `down:<machine>`, each who hasn't had it; a coming back to
-/// each who had its going down, replacing Joel's notice. A going down not
-/// told to all is left untold in `told`, so the next tick tells the rest.
-///
-/// # Errors
-///
-/// The last error sending one, once each is tried.
-pub fn tell<E>(
-    tells: &[Tell],
-    told: &mut Told,
-    orchestrator: &str,
-    owner_of: impl Fn(&str) -> Option<String>,
-    notify: impl Fn(&Tell) -> Option<u32>,
-    send: impl Fn(&str, String) -> Result<(), E>,
-) -> Result<(), E> {
-    let mut failed = None;
-    for one in tells {
-        match one {
-            Tell::Down { machine, .. } => {
-                let mut to = vec![orchestrator.to_owned()];
-                to.extend(
-                    owner_of(&format!("down:{machine}"))
-                        .filter(|owner| !owner.eq_ignore_ascii_case(orchestrator)),
-                );
-                let spell = told.machines.entry(machine.clone()).or_default();
-                if spell.notice.is_none() {
-                    spell.notice = notify(one);
-                }
-                for address in &to {
-                    if spell.sent.contains(address) {
-                        continue;
-                    }
-                    match send(address, one.finding(spell.notice.is_some())) {
-                        Ok(()) => {
-                            spell.sent.insert(address.clone());
-                        }
-                        Err(err) => failed = Some(err),
-                    }
-                }
-                spell.told = spell.notice.is_some() && to.iter().all(|a| spell.sent.contains(a));
-            }
-            Tell::Back { to, notice, .. } => {
-                if notice.is_some() {
-                    notify(one);
-                }
-                // A coming back not sent is let go, as the machine is back.
-                for address in to {
-                    if let Err(err) = send(address, one.finding(notice.is_some())) {
-                        failed = Some(err);
-                    }
-                }
-            }
-        }
-    }
-    failed.map_or(Ok(()), Err)
-}
-
-/// The notice's body as markup reads it, so nothing in it is taken for a
-/// tag or a link.
-fn escaped(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-/// What `notify-send` is given to show `one`: printing the id it's shown
-/// by, and a coming back replacing its going down. An id kept for hours
-/// stays its notice's across a restart of the shell, since the notices
-/// daemon keeps its next id with its store and replaces only a notice
-/// still open, giving a new id otherwise; only a store it can't read,
-/// which it sets aside, numbers from 1 again.
-fn notice_args(one: &Tell) -> Vec<String> {
-    let mut args: Vec<String> = ["-p", "-a", "Machines", "-u", one.urgency()]
-        .map(str::to_owned)
-        .into();
-    if let Tell::Back {
-        notice: Some(id), ..
-    } = one
-    {
-        args.extend(["-r".to_owned(), id.to_string()]);
-    }
-    args.extend([
-        "--".to_owned(),
-        one.machine().to_owned(),
-        escaped(&one.notice()),
-    ]);
-    args
-}
-
-/// Shows Joel `one`'s notice, with its id when it was shown.
-fn notify(one: &Tell) -> Option<u32> {
-    let out = Command::new("notify-send")
-        .args(notice_args(one))
-        .stdin(Stdio::null())
-        .output()
-        .ok()
-        .filter(|out| out.status.success())?;
-    Some(
-        String::from_utf8_lossy(&out.stdout)
-            .trim()
-            .parse()
-            .unwrap_or(0),
-    )
 }
 
 /// What `program` prints given `args`, or an error when it fails or is
@@ -702,24 +686,22 @@ pub fn run(
         answered.push(realm.clone());
         // A realm whose record says this machine misses a network outranks
         // one saying it reaches all.
-        here = match (here, reach(machines, &this)) {
-            (Some(false), _) | (_, Some(false)) => Some(false),
-            (_, Some(true)) => Some(true),
-            (was, None) => was,
-        };
+        here = reaches(here, reach(machines, &this));
         read.extend(seen(realm, machines, &sessions, &this));
     }
     let sure = here == Some(true);
-    if !sure {
-        println!(
-            "{this} doesn't read every network its node probes as reached, so with none \
-             ready no machine is told down"
-        );
+    if let Some(line) = unsure_said(&this, here, told.unsure) {
+        println!("{line}");
     }
+    told.unsure = !sure;
     for realm in realms.iter().filter(|realm| !answered.contains(realm)) {
         println!("The {realm} realm's node didn't answer, so no machine is told down");
     }
+    let held = held_now(&told);
     let tells = due(&read, realms, &answered, &mut told, now, sure);
+    for line in held_back(&held, &told, now) {
+        println!("{line}");
+    }
     promise_then_tell(
         &path,
         &tells,

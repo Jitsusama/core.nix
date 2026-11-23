@@ -245,3 +245,87 @@ fn a_machine_down_apart_from_the_others_is_told() {
         "a working machine's crash after another slept was taken for a cut-off"
     );
 }
+
+#[test]
+fn a_peer_whose_clock_runs_ahead_is_heard_as_now() {
+    let ahead = Seen {
+        heard: Some(NOW + 36_000),
+        ..lost("near", 0)
+    };
+    let by = BTreeMap::from([
+        ("yonder", (lost("yonder", 200), BTreeSet::new())),
+        ("near", (ahead, BTreeSet::new())),
+    ]);
+    assert!(
+        cut_off(&by, NOW + 300, true, &BTreeSet::new()),
+        "a peer lost beside another, its clock ten hours ahead, was heard apart from it"
+    );
+}
+
+#[test]
+fn a_network_one_realm_reads_missed_outranks_another_reading_all_reached() {
+    for (was, realm, folded) in [
+        (Some(true), Some(false), Some(false)),
+        (Some(false), Some(true), Some(false)),
+        (None, Some(true), Some(true)),
+        (Some(true), None, Some(true)),
+        (None, None, None),
+    ] {
+        assert_eq!(
+            reaches(was, realm),
+            folded,
+            "{was:?} then {realm:?} folded wrongly"
+        );
+    }
+}
+
+#[test]
+fn being_unsure_of_its_own_reach_is_said_once_as_it_starts_and_ends() {
+    let said = |here, was| unsure_said("here", here, was);
+    for (here, was, words) in [
+        (Some(false), false, "doesn't read every network"),
+        (None, false, "says nothing of the networks"),
+        (Some(true), true, "as reached again"),
+    ] {
+        assert!(
+            said(here, was).is_some_and(|line| line.contains(words)),
+            "{here:?} after unsure {was} didn't say {words:?}"
+        );
+    }
+    for (here, was) in [(Some(false), true), (None, true), (Some(true), false)] {
+        assert_eq!(
+            said(here, was),
+            None,
+            "{here:?} after unsure {was} was said again"
+        );
+    }
+}
+
+#[test]
+fn a_machine_with_no_time_heard_hides_a_drop_only_within_the_hour_it_read_ready() {
+    let silent = Seen {
+        heard: None,
+        ..one("old", Reading::Down, true)
+    };
+    for (ready_ago, expected) in [(30, 0), (90, 1)] {
+        let mut told = Told::default();
+        let up = [
+            one("old", Reading::Ready, true),
+            one("yonder", Reading::Ready, true),
+        ];
+        step(&mut told, NOW - ready_ago * 60, &up);
+        step(
+            &mut told,
+            NOW,
+            &[silent.clone(), one("yonder", Reading::Ready, true)],
+        );
+        let crash = [silent.clone(), lost("yonder", 200)];
+        step(&mut told, NOW + 5 * 60, &crash);
+        assert_eq!(
+            step(&mut told, NOW + 15 * 60, &crash).len(),
+            expected,
+            "a crash beside a machine with no time heard, ready {ready_ago} min before, was \
+             judged wrongly"
+        );
+    }
+}
