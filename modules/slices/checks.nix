@@ -594,16 +594,35 @@
   # One from agents' places, jobs.service and the spawners' scopes in
   # jobs.slice and pi's host and conversation units in agents.slice, is
   # given jobs-work.slice instead. Only systemd-run's own options are read,
-  # never the command's.
+  # never the command's, bundled and shortened as its parser takes them, by
+  # a table the wrapper is built only once it holds to the options of the
+  # systemd it wraps, nixpkgs' here, and isn't built without: given another
+  # systemd, as a machine's own patched one, it holds the table to that one.
   an-agents-run-stays-in-its-slice =
     let
       run = pkgs.callPackage ./systemd-run.nix {
         real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
         cgroup = "cgroup";
       };
+      patched = pkgs.runCommandLocal "a-patched-systemd" {
+        inherit (pkgs.systemd) version;
+      } "mkdir $out";
+      # A regex may not name a store path, so the stand-in's is matched as text.
+      patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
+      heldToPatched = lib.hasInfix patchedRun (
+        (pkgs.callPackage ./systemd-run.nix {
+          systemd = patched;
+          real = "/x";
+          cgroup = "cgroup";
+        }).drvAttrs.holds.drvAttrs.buildCommand or ""
+      );
     in
-    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { } ''
-      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run}
+    assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
+    assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
+    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
+        ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
+        ${pkgs.systemd}/bin/systemd-run
       touch $out
     '';
 

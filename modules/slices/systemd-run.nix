@@ -1,16 +1,75 @@
 # systemd-run as agents meet it, keeping their units in their own slice,
-# as systemd-run.sh says why. The real one and the cgroup file are given,
-# so the check can build it in front of a stand-in.
+# as systemd-run.sh says why. The systemd it wraps and the cgroup file are
+# given, and the real systemd-run may be, so the check can build it in
+# front of a stand-in. It reads a call's arguments by
+# systemd-run-options.txt, each short letter's long name and every long
+# name, given it here, and is built only once that table holds to the
+# options the given systemd takes. A machine built elsewhere, for a
+# platform its builder can't run, has the table held to the builder's own
+# systemd instead where that's built from the same source and patches,
+# since run.c lists the same options on every platform, and is warned as
+# it's evaluated where it isn't, or the builder can't have systemd at all.
+# Any difference fails the machine's build, a harmless one too, rather
+# than guessing which a wrapper would misread; the way on is a change to
+# the table in core, as the hold's refusal says.
 {
+  buildPackages,
+  jq,
   lib,
+  runCommandLocal,
+  stdenv,
   systemd,
   writeShellApplication,
   real ? "${systemd}/bin/systemd-run",
   cgroup ? "/proc/self/cgroup",
 }:
+let
+  lines = lib.splitString "\n" (builtins.readFile ./systemd-run-options.txt);
+  options = map (lib.splitString " ") (
+    lib.filter (line: line != "" && !lib.hasPrefix "#" line) lines
+  );
+  letter = option: builtins.elemAt option 0;
+  long = option: builtins.elemAt option 1;
+  shorts = lib.concatMapStringsSep " " (option: ''"${letter option}:${long option}"'') (
+    lib.filter (option: letter option != "-") options
+  );
+  longs = lib.concatMapStringsSep " " (option: ''"${long option}"'') options;
+  filled = {
+    "@real@" = real;
+    "@cgroup@" = cgroup;
+    "@shorts@" = shorts;
+    "@longs@" = longs;
+  };
+  asked =
+    if stdenv.buildPlatform.canExecute stdenv.hostPlatform then
+      systemd
+    else if
+      lib.meta.availableOn stdenv.buildPlatform buildPackages.systemd
+      && (buildPackages.systemd.src or null) == (systemd.src or null)
+      && (buildPackages.systemd.patches or [ ]) == (systemd.patches or [ ])
+    then
+      buildPackages.systemd
+    else
+      null;
+  holds = runCommandLocal "systemd-run-options-hold" { nativeBuildInputs = [ jq ]; } ''
+    ${buildPackages.bash}/bin/bash ${./systemd-run-options-hold.sh} ${./systemd-run-options.txt} \
+      ${asked}/bin/systemd-run
+    touch $out
+  '';
+in
 lib.hiPrio (writeShellApplication {
   name = "systemd-run";
-  text = builtins.replaceStrings [ "@real@" "@cgroup@" ] [ real cgroup ] (
+  # Asked for so the wrapper can't be built while its table doesn't hold. The
+  # hold runs where the machine is built, so its bash is the builder's.
+  derivationArgs =
+    if asked == null then
+      lib.warn (
+        "systemd-run's wrapper isn't held to systemd ${systemd.version}: the builder can't run "
+        + "it and has no systemd built as it is, so a call it misreads goes unseen"
+      ) { }
+    else
+      { inherit holds; };
+  text = builtins.replaceStrings (lib.attrNames filled) (lib.attrValues filled) (
     builtins.readFile ./systemd-run.sh
   );
 })

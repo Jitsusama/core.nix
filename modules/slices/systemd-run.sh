@@ -57,7 +57,23 @@
 # command's own `--user`, as in `pip install --user`, is no user manager's
 # call. Read as options, the first passed such a call through unsliced,
 # to land among Joel's apps, and the second gave a system call a --slice
-# from jobs-work.slice.
+# from jobs-work.slice. Short options come bundled, as `-qu NAME`, and a
+# long one may be cut short while only one name begins so, as `--desc`;
+# read as whole words alone, `-qu job --user` lost its --user, and
+# `-qu j --slice=x` lost its slice and was given --slice-inherit, which
+# systemd joins with it into a slice of its own. Which options there are,
+# and which take a value, is the wrapped systemd's word: its parser lists
+# every one in --introspect-cli, hidden ones too, as the deprecated --tty,
+# and the wrapper is built only once systemd-run-options.txt holds to that
+# list (systemd-run-options-hold.sh), so a machine whose systemd takes
+# another fails its build rather than misreading calls. A name no option
+# has, or two begin, and a letter no option has, are read as an option
+# taking no value, and the reading goes on. systemd-run refuses such a
+# call whatever is added to it. That keeps the slice for a bare option a
+# table lacked, where passed through unchanged, the --tty that --help
+# leaves out would put an agent's unit among Joel's apps; but a valued one
+# before --user would have its value read as the command, so only the hold
+# keeps a table from lacking one.
 #
 # Its help takes the shape every command of ours does (docs/commands.md), by
 # hand. It answers --help alone; -h, or --help with anything beside it,
@@ -85,35 +101,100 @@ EXIT
 EOF
   exit 0
 fi
-# The options systemd 262's systemd-run takes a value for, which may come
-# as the next word. --slice, --host, --machine and --capsule pass the call
-# through before their value is reached.
-valued='^(-[HMCupE]|--(host|machine|capsule|unit|property|description|slice|'
-valued+='expand-environment|service-type|uid|gid|nice|working-directory|'
-valued+='root-directory|setenv|output|json|job-mode|background|path-property|'
-valued+='socket-property|timer-property|on-active|on-boot|on-startup|'
-valued+='on-unit-active|on-unit-inactive|on-calendar))$'
+# Each short letter with its long name, and every long name, a valued one
+# ending in =, from systemd-run-options.txt, the wrapped systemd's own.
+shorts=(@shorts@)
+longs=(@longs@)
+
+# The long name short letter $1 stands for, = and all. None, for a letter
+# no option has.
+short() {
+  local pair
+  for pair in "${shorts[@]}"; do
+    if [[ "${pair%%:*}" == "$1" ]]; then
+      echo "${pair#*:}"
+      return
+    fi
+  done
+}
+
+# The long name `--$1` stands for, = and all, as systemd's own parser
+# reads it (src/shared/options.c): the name itself, else the only one it
+# begins. None, for one it can't be, or one two could be.
+long() {
+  local option found=""
+  for option in "${longs[@]}"; do
+    if [[ "${option%=}" == "$1" ]]; then
+      echo "${option}"
+      return
+    fi
+  done
+  for option in "${longs[@]}"; do
+    if [[ "${option}" == "$1"* ]]; then
+      if [[ -n "${found}" ]]; then
+        return
+      fi
+      found=${option}
+    fi
+  done
+  echo "${found}"
+}
+
+# Whether the call names a slice of its own or another manager, read from
+# the option and the value it was given.
+names_its_place() {
+  case "$1" in
+    slice | slice-inherit | host | machine | capsule) return 0 ;;
+    property) [[ "$2" == Slice=* ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 user=false
-before=""
+# The option whose value the next word is, when one is owed.
+owed=""
 for arg in "$@"; do
-  if [[ "${before}" == -p || "${before}" == --property ]] && [[ "${arg}" == Slice=* ]]; then
-    exec "${real}" "$@"
-  fi
-  if [[ "${before}" =~ ${valued} ]]; then
-    before=""
+  if [[ -n "${owed}" ]]; then
+    names_its_place "${owed}" "${arg}" && exec "${real}" "$@"
+    owed=""
     continue
   fi
   case "${arg}" in
-    --slice | --slice=* | --slice-inherit | -pSlice=* | --property=Slice=* | -M* | --machine* | \
-      -H* | --host* | -C* | --capsule*)
-      exec "${real}" "$@"
-      ;;
-    --user) user=true ;;
     --) break ;;
-    -*) ;;
+    --*)
+      word=${arg#--}
+      name=$(long "${word%%=*}")
+      if [[ "${word}" == *=* ]]; then
+        names_its_place "${name%=}" "${word#*=}" && exec "${real}" "$@"
+      elif names_its_place "${name%=}" ""; then
+        exec "${real}" "$@"
+      elif [[ "${name}" == *= ]]; then
+        owed=${name%=}
+      fi
+      case "${name}" in
+        user) user=true ;;
+        system) user=false ;;
+        *) ;;
+      esac
+      ;;
+    -?*)
+      letters=${arg#-}
+      while [[ -n "${letters}" ]]; do
+        name=$(short "${letters:0:1}")
+        letters=${letters:1}
+        # A valued letter takes the rest of the word as its value, if any.
+        if [[ "${name}" == *= && -n "${letters}" ]]; then
+          names_its_place "${name%=}" "${letters}" && exec "${real}" "$@"
+          break
+        fi
+        names_its_place "${name%=}" "" && exec "${real}" "$@"
+        if [[ "${name}" == *= ]]; then
+          owed=${name%=}
+        fi
+      done
+      ;;
     *) break ;;
   esac
-  before=${arg}
 done
 cgroup=""
 read -r cgroup <"@cgroup@" || true

@@ -388,9 +388,15 @@
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
     the call comes from jobs.service, a pi-spawner scope or a pi host's or conversation's unit,
-    or below one, reading only its own options, and leaves Joel's own calls, his services in
-    jobs.slice, the windows' kitty and the node in agents.slice, a path naming those places only
-    inside another's scope, a call naming a slice and a call to the system manager as they were
+    or below one, reading only its own options, bundled and shortened as its parser reads them
+    by a table held to every option the wrapped systemd takes, hidden ones too, keeping the
+    slice for a name or letter no option has, and leaves Joel's own calls, his services in
+    jobs.slice, the windows' kitty and the node in agents.slice, a path naming those places
+    only inside another's scope, a call naming a slice and a call to the system manager as they
+    were; and that the hold refuses, each by the step that says so, a table short of an option
+    or reading one as valued that isn't, an option the table can't say, and a systemd-run that
+    can't list its options, while it holds a stand-in saying them unchanged, and the wrapper
+    isn't built without it
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
