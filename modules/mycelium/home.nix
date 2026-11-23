@@ -315,8 +315,10 @@ let
   # would make to ease it, and makes none, so a day of those lines can be read
   # before it may act; a further realm's sessions aren't its to move. Where
   # the machine says so, it asks the harness to park the idle sessions it
-  # would put to sleep, in the folder each session's harness reads. It
-  # alone lends, since the machines it lends to are the ones it made.
+  # would put to sleep, in the folder each session's harness reads, and
+  # makes the carries it chooses, under its own name, which each session's
+  # harness takes only from its own machine's node. It alone lends, since
+  # the machines it lends to are the ones it made.
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
     ++ [ "--eases" ]
@@ -324,6 +326,7 @@ let
       "--eases-sleep"
       "${config.xdg.stateHome}/pi/agentic-harness.pi/park-workflow/ease"
     ]
+    ++ lib.optional cfg.easesCarry "--eases-carry"
     ++ lendArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
@@ -607,6 +610,19 @@ in
         and another has some, rather than only saying so. The harness parks
         one only once its own rule holds, and it wakes on its next message.
         Off, the node only writes what it would do.
+      '';
+    };
+    easesCarry = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = ''
+        Whether the home realm's node makes the carries it would make while
+        this machine is held over its room and another has some, rather
+        than only saying so: an idle session at a time, off the screen and
+        nobody's but the agents', never one orchestrating others, at most
+        one each half hour and six a day. The session's harness carries it
+        only once nothing of its own would be lost, and says why it
+        refused otherwise. Off, the node only writes what it would do.
       '';
     };
     agents = lib.mkOption {
