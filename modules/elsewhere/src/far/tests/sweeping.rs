@@ -1,7 +1,7 @@
 //! The far line clearing the copies of runs here that are gone: which it
 //! clears, which it leaves, and that it never reaches through a link.
 
-use super::{Left, far_line, kind, scratch, work};
+use super::{Left, far_line, far_line_in, kind, scratch, work};
 use crate::far::steps::{RUN, sweeping};
 use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
@@ -118,11 +118,13 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     closed(&runs.join(job));
     let beyond = closed(&root.join("beyond"));
     std::os::unix::fs::symlink(root.join("beyond"), runs.join(job).join("inner")).unwrap();
-    // Gone, its job having made a folder where its brought-back list
-    // goes, and closed one in it.
+    // Gone, its job having made folders where its names, its
+    // brought-back list and a list's leftovers go, and closed one in each.
     let made = "4243-1763912345678901235";
     copy(&runs, made, &format!("{gone} {here}"));
-    closed(&runs.join(format!("{made}.back")));
+    for beside in [".names", ".back", ".back.lost"] {
+        closed(&runs.join(format!("{made}{beside}")));
+    }
     // Gone, but its copy is a link, which goes alone.
     std::fs::write(runs.join(format!("11{RUN}")), format!("{gone} {here}\n")).unwrap();
     let past = closed(&root.join("past"));
@@ -219,6 +221,83 @@ exec rm \"$@\""
         "a copy that wouldn't go lost its run's file, so no sweep could retry it"
     );
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// An rm that can't clear the job's copy where an end frees it with the
+/// tree it was made from, passing all else to the machine's own.
+const STUCK_COPY: &str = "PATH=${PATH#*:}
+case \" $* \" in *\"/1/tree \"*\"/.s/1 \"*) exit 1 ;; esac
+exec rm \"$@\"";
+
+#[test]
+fn each_end_of_a_far_line_takes_its_run_s_file_only_with_its_copy() {
+    // A job that ends, one refused for a folder that never crossed, and
+    // one untaken for a tree that couldn't be made.
+    let ends: [(&str, &str, &[(&str, &str)]); 3] = [
+        ("ended", "", &[]),
+        ("refused", "drafts", &[]),
+        ("untaken", "", &[("tar", "exit 1")]),
+    ];
+    for (end, folder, programs) in ends {
+        for stuck in [false, true] {
+            let mut programs = programs.to_vec();
+            if stuck {
+                programs.push(("rm", STUCK_COPY));
+            }
+            let (code, err, home) = far_line_in(
+                Path::new(folder),
+                Left::Whole,
+                &[("a", "1")],
+                "touch ../ran",
+                &kind(""),
+                None,
+                &programs,
+            );
+            let runs = work(&home);
+            let (copy, run) = (
+                runs.join("1").exists(),
+                runs.join(format!("1{RUN}")).exists(),
+            );
+            assert!(
+                (copy, run) == (stuck, stuck),
+                "a job {end} with a copy that {} left its copy {copy} and run's file {run} \
+                 ({code:?}): {err}",
+                if stuck { "won't go" } else { "goes" }
+            );
+            let _ = std::fs::remove_dir_all(&home);
+        }
+    }
+}
+
+#[test]
+fn a_link_at_a_run_s_file_s_name_is_never_written_through() {
+    // A uname that, the first time it's asked, leaves a link where the
+    // job's run's file goes, to a file beyond the copies.
+    let uname = "PATH=${PATH#*:}
+runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+if mkdir \"$HOME/planted\" 2>/dev/null; then
+  mkdir -p \"$runs\" && echo kept > \"$HOME/beyond\" &&
+    ln -s \"$HOME/beyond\" \"$runs/1.run\"
+fi
+exec uname \"$@\"";
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "1")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[("uname", uname)],
+    );
+    assert!(
+        code == Some(0) && work(&home).join("ran").exists() && home.join("planted").exists(),
+        "the job never ran, or no link was planted ({code:?}): {err}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(home.join("beyond")).unwrap(),
+        "kept\n",
+        "the run's file was written through the link at its name"
+    );
+    let _ = std::fs::remove_dir_all(&home);
 }
 
 #[test]
