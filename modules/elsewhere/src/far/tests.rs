@@ -183,10 +183,11 @@ pub(super) const WAITS: u64 = 5;
 /// second, so a test can outlast its ceiling in seconds.
 pub(super) const SLOWEST: u64 = 100;
 
-/// The most of that wait one pass may spend in these tests, in seconds,
-/// inside `WAITS`, so a clock stepping on while nothing crosses is seen
-/// to spend no more.
-pub(super) const A_PASS_AT_MOST: u64 = 2;
+/// The most of that wait one pass may spend in these tests, in seconds:
+/// no less than the slowest pass they make, three seconds over a slow
+/// `wc`, and inside `WAITS`, so a clock stepping on while nothing crosses
+/// is seen to spend no more.
+pub(super) const A_PASS_AT_MOST: u64 = 3;
 
 /// How many files, and bytes, a share carries in these tests' far lines,
 /// so a test can pass them without making ten thousand files.

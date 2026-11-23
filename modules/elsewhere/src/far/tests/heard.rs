@@ -66,9 +66,9 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
 
 #[test]
 fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
-    // A wc that takes two seconds, as a pass over a large tree takes
-    // long, so a wait that counted its passes would last five times as
-    // long as its limit says.
+    // A wc that takes a second, as a pass over a large tree takes long,
+    // so a pass takes three and a wait that counted its passes would last
+    // three times as long as its limit says.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
         Left::Listed("3\tx\nend\n"),
@@ -76,7 +76,7 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
         "touch ../ran",
         &kind(""),
         None,
-        &[("wc", "PATH=${PATH#*:}\nsleep 2\nexec wc \"$@\"")],
+        &[("wc", "PATH=${PATH#*:}\nsleep 1\nexec wc \"$@\"")],
     );
     let took = started.elapsed();
     assert!(
@@ -85,9 +85,9 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
     );
     // Its limit, a last pass begun just inside it of two wc calls, one
     // for the file and one for what has grown, and the second slept after
-    // them, and two for a busy machine. Counted passes, five seconds each,
-    // would take twenty-five.
-    let most = std::time::Duration::from_secs(super::WAITS + 2 + 2 + 1 + 2);
+    // them, and two for a busy machine. Counted passes, three seconds
+    // each, would take fifteen.
+    let most = std::time::Duration::from_secs(super::WAITS + 1 + 1 + 1 + 2);
     assert!(
         took >= std::time::Duration::from_secs(super::WAITS) && took < most,
         "a {}s wait lasted {took:?}, so it gave up early or counts passes",
@@ -364,9 +364,9 @@ fn a_ceiling_is_never_counted_from_more_than_a_share_carries() {
 #[test]
 fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
     // An hour on from the first pass, while nothing crosses, and the
-    // listed file landing a pass and a half on: a wait that took the hour
-    // as quiet gives up at once, as one spending more than
-    // `A_PASS_AT_MOST` would before the file lands. The near side sends
+    // listed file landing half a pass on: a wait that took the hour as
+    // quiet gives up at once, as one spending more than `A_PASS_AT_MOST`
+    // would before the file lands. The near side sends
     // enough that only the quiet could end it.
     let date = "n=$(cat \"$HOME/clock\" 2>/dev/null || echo 0)\n\
                 echo $((n + 1)) > \"$HOME/clock\"\n\
@@ -378,7 +378,7 @@ fn a_far_clock_that_steps_on_while_nothing_crosses_spends_only_a_pass_of_it() {
         "touch ../ran",
         &kind(""),
         Some(&|tree| {
-            std::thread::sleep(std::time::Duration::from_millis(1500));
+            std::thread::sleep(std::time::Duration::from_millis(500));
             std::fs::create_dir_all(tree).unwrap();
             std::fs::write(tree.join("x"), "x").unwrap();
         }),
