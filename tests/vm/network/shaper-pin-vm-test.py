@@ -165,7 +165,10 @@ def test_a_pin_is_kept_through_a_restart_and_a_stop(moved: Moved) -> None:
         f"journalctl -u shaper -o cat --no-pager | grep -c '{kept}' | grep -qx 1",
         timeout=COMING_UP,
     )
-    rig.client.succeed(pinned)
+    # A restart leaves the old shaper's rule in place, so it's taken away here: only the new
+    # shaper, filling the chain from what it took back, can put it there again.
+    rig.client.succeed("nft flush chain inet shaper pin")
+    rig.client.wait_until_succeeds(pinned, timeout=COMING_UP)
     rig.client.succeed("systemctl stop shaper")
     assert "masquerade" not in rig.client.succeed("nft list chain inet shaper pin"), (
         "a stopped shaper left the VPN pinned"

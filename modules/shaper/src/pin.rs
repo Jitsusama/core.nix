@@ -313,14 +313,15 @@ pub const REFUSED: &str = "nftables didn't take its rule";
 /// loses the pin nor has the next round probe a port a live flow holds:
 /// the pin in force, the link and network it was measured on, whether a
 /// round already kept it unjudged, when the last round was asked, in
-/// seconds since the epoch, and the pair each live flow was given.
+/// seconds since the epoch, and each live flow with the pair it was given,
+/// if any, so one from before any pin isn't given one after.
 #[derive(Debug, Default, PartialEq)]
 pub struct Restart {
     pub pin: Option<Pin>,
     pub on: Option<(String, String)>,
     pub kept: bool,
     pub asked: Option<u64>,
-    pub flows: Vec<(End, u16)>,
+    pub flows: Vec<(End, Option<u16>)>,
 }
 
 /// What `saved` writes, line by line, after the boot it was written in,
@@ -354,6 +355,7 @@ pub fn saved(kept: &Restart, boot: &str) -> String {
         first,
     ) in &kept.flows
     {
+        let first = first.map_or_else(|| "-".to_owned(), |f| f.to_string());
         let _ = writeln!(out, "flow {to} {port} {from_port} {first}");
     }
     out
@@ -375,9 +377,15 @@ pub fn restored(text: &str, boot: &str) -> Option<Restart> {
     };
     let mut kept = Restart::default();
     for line in lines {
+        // A network a link names by itself, before its router answers, is
+        // "link <name>", so the network is the rest of its line.
+        if let Some(on) = line.strip_prefix("on ") {
+            let (link, network) = on.split_once(' ')?;
+            kept.on = Some((link.to_owned(), network.to_owned()));
+            continue;
+        }
         let words: Vec<&str> = line.split(' ').collect();
         match words.as_slice() {
-            ["on", link, network] => kept.on = Some(((*link).to_owned(), (*network).to_owned())),
             ["pin", first, to, port, ms] => {
                 kept.pin = Some(Pin {
                     first: pair(first)?,
@@ -394,7 +402,11 @@ pub fn restored(text: &str, boot: &str) -> Option<Restart> {
                     port: port.parse().ok()?,
                     from_port: from_port.parse().ok()?,
                 },
-                pair(first)?,
+                if *first == "-" {
+                    None
+                } else {
+                    Some(pair(first)?)
+                },
             )),
             _ => return None,
         }
@@ -467,10 +479,21 @@ impl Pinning {
     /// may go at once, since the VPN opens a new socket on a new network.
     /// Gives the first of the pair let go.
     pub fn network(&mut self, link: &str, network: &str) -> Option<u16> {
-        let now = (link.to_owned(), network.to_owned());
-        let (was_link, was) = self.on.replace(now)?;
         let unnamed = |n: &str| n.starts_with("link ");
-        if was == network || (was_link == link && (unnamed(&was) || unnamed(network))) {
+        let now = (link.to_owned(), network.to_owned());
+        let Some((was_link, was)) = self.on.clone() else {
+            self.on = Some(now);
+            return None;
+        };
+        // On the same link, a router that stops answering leaves the
+        // network the pin was measured on as it was, so a roam through an
+        // unnamed moment to another router still lets go; one answering
+        // at last names the network the link was on all along.
+        if was == network || (was_link == link && unnamed(network)) {
+            return None;
+        }
+        self.on = Some(now);
+        if was_link == link && unnamed(&was) {
             return None;
         }
         self.stale = self.probing;
@@ -490,11 +513,7 @@ impl Pinning {
         self.on = kept.on;
         self.kept = kept.kept;
         self.asked = asked;
-        self.flows = kept
-            .flows
-            .into_iter()
-            .map(|(end, first)| (end, Some(first)))
-            .collect();
+        self.flows = kept.flows;
     }
 
     /// What to keep across a restart, the last round asked at `asked`, in
@@ -505,11 +524,7 @@ impl Pinning {
             on: self.on.clone(),
             kept: self.kept,
             asked,
-            flows: self
-                .flows
-                .iter()
-                .filter_map(|&(end, first)| Some((end, first?)))
-                .collect(),
+            flows: self.flows.clone(),
         }
     }
 
@@ -1052,6 +1067,17 @@ mod tests {
             Some(30_010),
             "a pin measured on another network stayed"
         );
+        pinning.pinned = Some(pin_at(30_020));
+        assert_eq!(
+            pinning.network("wlan0", "link wlan0"),
+            None,
+            "a pin let go when its router stopped answering"
+        );
+        assert_eq!(
+            pinning.network("wlan0", "gg:hh"),
+            Some(30_020),
+            "a pin carried through a moment with no router onto another network"
+        );
     }
 
     #[test]
@@ -1064,13 +1090,26 @@ mod tests {
             on: Some(("eth1".to_owned(), "00:00:5e:00:53:01".to_owned())),
             kept: true,
             asked: Some(1_794_000_000),
-            flows: vec![(end(41_000), 30_010), (end(41_001), 30_006)],
+            flows: vec![
+                (end(41_000), Some(30_010)),
+                (end(41_001), Some(30_006)),
+                (end(41_002), None),
+            ],
         };
         let text = saved(&kept, "b0");
         assert_eq!(
             restored(&text, "b0"),
             Some(kept),
             "what was kept read back as something else"
+        );
+        let unnamed = Restart {
+            on: Some(("eth1".to_owned(), "link eth1".to_owned())),
+            ..Restart::default()
+        };
+        assert_eq!(
+            restored(&saved(&unnamed, "b0"), "b0"),
+            Some(unnamed),
+            "a network a link names by itself didn't read back"
         );
         assert_eq!(
             restored(&text, "b1"),
@@ -1109,12 +1148,30 @@ mod tests {
         before.flows(&[end(41_000), end(41_001)]);
         before.pinned = Some(pin_at(30_010));
         before.kept = true;
-        let mut after = Pinning::default();
-        after.resume(
-            restored(&saved(&before.kept(Some(7)), "b0"), "b0").expect("kept"),
-            Some(start),
+        let text = saved(&before.kept(Some(7)), "b0");
+        let resumed = || {
+            let mut after = Pinning::default();
+            after.resume(restored(&text, "b0").expect("kept"), Some(start));
+            after
+        };
+        let mut moved = resumed();
+        assert_eq!(
+            moved.network("eth1", "aa:bb"),
+            None,
+            "a kept pin let go on its own network"
         );
+        assert_eq!(
+            moved.network("eth1", "cc:dd"),
+            Some(30_010),
+            "a kept pin stayed on another network"
+        );
+        let mut after = resumed();
         after.flows(&[end(41_000), end(41_001), end(41_002)]);
+        assert_eq!(
+            after.kept(None).flows[0],
+            (end(41_000), None),
+            "a flow from before any pin was given the pin's pair after the restart"
+        );
         assert_eq!(
             after.held(),
             vec![30_006, 30_007, 30_010, 30_011, 41_000, 41_001, 41_002],
@@ -1135,11 +1192,6 @@ mod tests {
             after.found(end(41_000), &unjudged, start),
             Some(30_010),
             "a pin kept once unjudged before the restart was kept again after it"
-        );
-        assert_eq!(
-            after.network("eth1", "cc:dd"),
-            None,
-            "nothing was left to let go"
         );
     }
 

@@ -844,8 +844,18 @@ impl Pinner {
         let fresh = self.kept_at.with_extension("new");
         let wrote = fs::write(&fresh, &text).and_then(|()| fs::rename(&fresh, &self.kept_at));
         self.written = Some(text);
+        // What was kept before is stale now, so it goes rather than come
+        // back at a restart as a pin that may have let go.
         if let Err(e) = wrote {
-            eprintln!("the VPN's pin can't be kept across a restart, so a restart forgets it: {e}");
+            match fs::remove_file(&self.kept_at) {
+                Err(stuck) if stuck.kind() != std::io::ErrorKind::NotFound => eprintln!(
+                    "the VPN's pin can't be kept across a restart ({e}), nor what was kept \
+                     before taken away ({stuck}), so a restart may take back a stale pin"
+                ),
+                _ => eprintln!(
+                    "the VPN's pin can't be kept across a restart, so a restart forgets it: {e}"
+                ),
+            }
         }
     }
 
@@ -2777,6 +2787,27 @@ mod tests {
             Ok(0),
             "none routed"
         );
+    }
+
+    // The spacing between rounds crosses a restart in seconds since the
+    // epoch, so an instant read back from its seconds is the same instant
+    // to within the second the seconds drop (pin round 5's F5 and F13).
+    #[test]
+    fn a_rounds_time_crosses_a_restart_in_the_epochs_seconds() {
+        let then = Instant::now()
+            .checked_sub(Duration::from_secs(300))
+            .expect("the clock began five minutes ago");
+        let at = epoch_of(then).expect("an instant past has its seconds");
+        let back = instant_of(at).expect("seconds past give an instant");
+        let off = back.max(then).duration_since(back.min(then));
+        assert!(
+            off <= Duration::from_secs(2),
+            "the round's time came back {off:?} off"
+        );
+        let to_come = Instant::now()
+            .checked_add(Duration::from_secs(60))
+            .expect("a minute on");
+        assert_eq!(epoch_of(to_come), None, "a time to come was given seconds");
     }
 
     // A restart's sweep waits for the routes, every VPN there and every

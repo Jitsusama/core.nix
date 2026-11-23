@@ -52,8 +52,18 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     # The near way is eth2; the far way, eth3, holds each packet 40 ms.
     systemd.services.ways = {
       wantedBy = [ "multi-user.target" ];
-      after = [ "network-online.target" ];
+      # Its routes name gateways on eth2 and eth3, which the network is
+      # online without: their addresses may come a moment after.
+      after = [
+        "network-online.target"
+        "network-addresses-eth2.service"
+        "network-addresses-eth3.service"
+      ];
       wants = [ "network-online.target" ];
+      requires = [
+        "network-addresses-eth2.service"
+        "network-addresses-eth3.service"
+      ];
       path = [ pkgs.iproute2 ];
       serviceConfig.Type = "oneshot";
       serviceConfig.RemainAfterExit = true;
