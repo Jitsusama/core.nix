@@ -591,7 +591,7 @@ in
   # machine doesn't carry or runs no node.
   mycelium-carries-only-with-its-guards =
     holds "mycelium-carries-only-with-its-guards"
-      "A machine's node is told to carry from a mycelium whose code lacks either guard that keeps the person's and the leading sessions, names one only in a line comment, or has no file to hold it, or the switch doesn't warn of it once in the system's warnings on Linux or a Mac, naming that mycelium and only the files lacking one and how, or a node built from a mycelium keeping both in forms the patterns accept doesn't carry, or a machine that doesn't carry, or runs no node, is warned."
+      "A machine's node is told to carry from a mycelium whose code lacks either guard that keeps the person's and the leading sessions, names one only in a line comment, or has no file to hold it, or the switch doesn't warn of it once in the system's warnings on Linux or a Mac, naming that mycelium and only the files lacking one and how, or a node built from a mycelium keeping both in forms the patterns accept doesn't carry, or a machine that doesn't carry, or runs no node, is warned, or the stand-ins' table doesn't name exactly the files carry-guards.nix's guards read."
       (
         keepsTheLed (standIn "reshaped")
         && carriesIn staleAccounts.reshaped
@@ -613,12 +613,16 @@ in
           && !(carriesIn staleAccounts.${name})
           && lib.length (warnedOf staleAccounts.${name}) == 1
           && lib.hasInfix "(stand-in-${name})" warning
-          && lib.all ({ name, value }: saysOf name value) (lib.attrsToList refusedSays.${name})
+          && lib.all (file: saysOf file refusedSays.${name}.${file}) (lib.attrNames guards)
           && lib.attrNames refusedSays.${name} == lib.attrNames guards
         ) refused
         && warnsOfWithout staleMachines.without == 1
         && warnsOfWithout staleMac == 1
         && lib.length (warnedOf staleMacAccount) == 1
+        && lib.all (lib.flip lib.elem staleMacArguments) [
+          "--eases"
+          "--eases-sleep"
+        ]
         && !(lib.elem "--eases-carry" staleMacArguments)
         && warnedOf (withoutAs (easing // { easesCarry = false; })) == [ ]
         && warnedOf (withoutAs { easesCarry = true; }) == [ ]
