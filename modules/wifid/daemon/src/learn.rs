@@ -53,16 +53,19 @@ pub const FILE: &str = "carried-weighing-video";
 const BEFORE: &str = "carried";
 
 /// Lets go of the hours kept before in wifid's state folder, and of any
-/// write of them cut short, which holds the same.
+/// write of them cut short, which holds the same; each is tried whatever
+/// the other does, and the first error said.
 pub fn let_go_of_before(state: &Path) -> io::Result<()> {
     let before = state.join(BEFORE);
-    for file in [before.with_extension("partial"), before] {
-        match fs::remove_file(&file) {
-            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
-            _ => {}
-        }
-    }
-    Ok(())
+    let removed = [before.with_extension("partial"), before].map(fs::remove_file);
+    removed
+        .into_iter()
+        .find(|removed| {
+            removed
+                .as_ref()
+                .is_err_and(|error| error.kind() != io::ErrorKind::NotFound)
+        })
+        .unwrap_or(Ok(()))
 }
 
 /// How many minutes an access point must have been measured at an hour,

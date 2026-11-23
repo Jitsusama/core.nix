@@ -259,7 +259,8 @@ def test_and_measures_how_well_lanterns_access_point_carries(machine: BaseMachin
     assert len(point) == len("02:00:00:00:00:00"), point
     # wifid says each access point's figures once a minute, so this waits for the next. Its
     # video echoes answered, enough to time, say the video socket opens with no capability
-    # and is heard back, and the gateway's count says its echoes reach the air marked CS5.
+    # and is heard back, and the gateway's counts say its echoes reach the air marked CS5 and
+    # are answered so.
     machine.wait_until_succeeds(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
         f" | grep -qE '^wlan2 on {point}: gateway [0-9.]+ ms at p50, [0-9.]+ ms at p95, "
@@ -267,8 +268,9 @@ def test_and_measures_how_well_lanterns_access_point_carries(machine: BaseMachin
         "[0-9.]+% of [0-9]+ echoes answered past 1 s, [0-9]+ unanswered; '",
         timeout=timedelta(seconds=90),
     )
-    marked = machine.succeed("ip netns exec air nft list chain ip marked input")
-    assert re.search(r"counter packets [1-9]", marked), f"no echo reached it marked: {marked}"
+    for chain, what in [("input", "echo"), ("output", "answer")]:
+        marked = machine.succeed(f"ip netns exec air nft list chain ip marked {chain}")
+        assert re.search(r"counter packets [1-9]", marked), f"no {what} went marked: {marked}"
 
 
 def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(

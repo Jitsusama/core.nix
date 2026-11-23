@@ -570,8 +570,8 @@ pub fn ms(time: Option<Duration>) -> String {
 }
 
 /// An access point's figures, as logged: its gateway's in best effort,
-/// then in video where any video echo was sent, then the rest of what was
-/// measured, and whether a call was on.
+/// then in video, or that video went unmeasured where no video echo went,
+/// then the rest of what was measured, and whether a call was on.
 fn said(
     on: &Joined,
     (best, measured): (&Measured, &Measured),

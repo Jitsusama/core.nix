@@ -7,9 +7,13 @@
 //! so a VPN's routes or a cable can't carry the echo another way, and to
 //! an identifier drawn at random, which the kernel sets in each echo with
 //! its checksum; it hands back only the answers to this socket's, so an
-//! answer is told by its sequence alone. One answer counted needs both a
-//! gateway's address and the identifier, so a station on the same network
-//! forging answers has 65,536 to guess before its answers count.
+//! answer is told by its sequence alone. One answer counted needs the
+//! gateway's address, the identifier and a sequence waited on, the first
+//! of them drawn at random too, so a station on the same network that
+//! can't read the card's frames has the identifier's 65,535 to guess
+//! before a forged answer counts. One that can read them, holding the
+//! network's password, can deauthenticate the card as easily where
+//! management frames go unprotected.
 //!
 //! Each card's gateway is echoed in two classes, best effort and video,
 //! since an access point can hold one of a station's queues while the
@@ -185,7 +189,8 @@ impl Echoer {
         // another socket holds fails the bind, and the next second draws
         // another.
         let [low, high, first, second, ..] = RandomState::new().hash_one(card).to_le_bytes();
-        identify(&owned, u16::from_le_bytes([first, second]))?;
+        // Not 0, which would ask the kernel to choose, in order.
+        identify(&owned, u16::from_le_bytes([first, second]).max(1))?;
         Ok(Echoer {
             socket: AsyncFd::with_interest(owned, Interest::READABLE)?,
             sequence: u16::from_le_bytes([low, high]),
@@ -351,6 +356,35 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_socket_is_bound_to_its_identifier_and_refused_one_taken() {
+        // A datagram socket's port is where a ping socket's identifier
+        // is kept, bound alike.
+        let udp = || {
+            // SAFETY: it takes only numbers.
+            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+            assert!(fd >= 0, "a socket: {}", io::Error::last_os_error());
+            // SAFETY: the descriptor was just made, and nothing else holds it.
+            unsafe { OwnedFd::from_raw_fd(fd) }
+        };
+        // The build's own network namespace leaves every port free.
+        let identifier = 0x1234;
+        let first = udp();
+        identify(&first, identifier).expect("a free identifier is bound");
+        // SAFETY: all zeros is an address, which the kernel fills.
+        let mut bound: libc::sockaddr_in = unsafe { mem::zeroed() };
+        let mut length = libc::socklen_t::try_from(mem::size_of_val(&bound)).unwrap();
+        // SAFETY: the address and its length outlive the call.
+        let named = unsafe {
+            libc::getsockname(first.as_raw_fd(), (&raw mut bound).cast(), &raw mut length)
+        };
+        assert_eq!(named, 0, "its name: {}", io::Error::last_os_error());
+        assert_eq!(u16::from_be(bound.sin_port), identifier, "in network order");
+
+        let taken = identify(&udp(), identifier).expect_err("one taken is refused");
+        assert_eq!(taken.kind(), io::ErrorKind::AddrInUse, "as taken: {taken}");
+    }
+
+    #[test]
     fn an_echo_request_carries_its_sequence_and_what_ping_would() {
         let request = request(0x0102);
 
@@ -361,7 +395,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_answer_to_this_echo_is_its_answer() {
+    fn an_echo_reply_is_told_by_its_sequence_and_nothing_else_is_one() {
         let mut answer = request(7);
         answer[0] = 0;
 
