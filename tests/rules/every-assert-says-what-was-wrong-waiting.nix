@@ -173,7 +173,6 @@
   "modules/nix-daemon/vm-first/src/main.rs" = 14;
   "modules/nix-offload/offload/src/decide.rs" = 13;
   "modules/nix-offload/offload/src/held.rs" = 3;
-  "modules/nix-offload/offload/src/machines.rs" = 5;
   "modules/nix-offload/offload/src/main.rs" = 14;
   "modules/nix-offload/offload/src/passed.rs" = 2;
   "modules/nix-offload/offload/src/progress.rs" = 2;
