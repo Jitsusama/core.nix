@@ -80,8 +80,11 @@ Scope {
     // reports on or not, so a failed ask is read from the record rather than
     // guessed (Polkit.js, begun, heard and finished). askSerial counts asks,
     // so an end said later belongs to its own ask and never to the next.
+    // askFlow is the ask's own flow, read as it ends in case the agent moved
+    // on before the flow's end signals reached the Connections below.
     property var ask: null
     property int askSerial: 0
+    property var askFlow: null
 
     function askHeard(what) {
         if (ask)
@@ -91,8 +94,13 @@ Scope {
     function askEnds(serial) {
         if (!ask || serial !== askSerial)
             return;
+        if (askFlow?.isSuccessful)
+            askHeard("answered");
+        else if (askFlow?.isCancelled)
+            askHeard("withdrawn");
         console.info(Said.finished(ask, Date.now()));
         ask = null;
+        askFlow = null;
     }
 
     onFlowChanged: {
@@ -100,6 +108,7 @@ Scope {
         if (!flow)
             return;
         askSerial += 1;
+        askFlow = flow;
         ask = Said.begun(flow.actionId, Date.now(), keysHeld.keys);
         console.info(Said.began(ask.action));
     }
@@ -150,14 +159,12 @@ Scope {
         }
 
         // Whether niri gives the prompt the keys, for the journal's line on
-        // the ask: held as an ask comes, or given while it waits.
+        // the ask: held as an ask comes, given while it waits, or taken by
+        // another surface, such as the lock, before it ends.
         Item {
             id: keysHeld
             readonly property bool keys: Window.active
-            onKeysChanged: {
-                if (keys)
-                    root.askHeard("keys");
-            }
+            onKeysChanged: root.askHeard(keys ? "keys" : "keys-gone")
         }
 
         Rectangle {
@@ -175,7 +182,10 @@ Scope {
             reason: root.failed ? root.flow.supplementaryMessage : root.why
             failed: root.failed
             secret: !(root.flow && root.flow.responseVisible)
-            onSubmitted: text => root.flow.submit(text)
+            onSubmitted: text => {
+                root.askHeard("tried");
+                root.flow.submit(text);
+            }
             onRefused: {
                 root.askHeard("refused");
                 root.flow.cancelAuthenticationRequest();

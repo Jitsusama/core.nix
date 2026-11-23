@@ -240,8 +240,8 @@ def test_polkits_prompt_lets_the_account_start_a_system_service(desktop: Desktop
     machine.send_chars(f"{desktop.values['secret']}\n")
     machine.wait_for_file("/run/polkit-allowed", timeout=timedelta(seconds=30))
     # The journal says how each ask ended, and whether niri gave the prompt the keys, so an ask
-    # that fails on Joel's machine, where reports are off, is read rather than guessed. No ask
-    # here ends without saying how, as one would if a late end were taken for the next ask's.
+    # that fails on Joel's machine, where reports are off, is read rather than guessed. The
+    # ask's end is heard through the real flow, so none here ends without saying how.
     ended = "polkit: org.freedesktop.systemd1.manage-units answered after .*; it had the keys"
     unsaid = "ended without saying how"
     journal = "journalctl --user -u quickshell -o cat"

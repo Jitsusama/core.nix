@@ -355,23 +355,63 @@ function began(action) {
 // whether the prompt already holds them, as one asked straight after another
 // can while its window stays focused.
 function begun(action, at, keys) {
-    return { action, at, how: "", wrong: 0, keysAt: keys ? at : null };
+    return {
+        action,
+        at,
+        how: "",
+        tried: 0,
+        wrong: 0,
+        keysAt: keys ? at : null,
+        goneAt: null
+    };
 }
 
-// The ask once `what` is heard of it at `at`: a wrong password, the keys, or
-// one of the endings. The first ending heard stands, as Joel's Escape cancels
-// the flow too, and that cancel mustn't be taken for polkit's withdrawal. The
-// keys count from when the prompt first had them.
+// The ask once `what` is heard of it at `at`: a password sent (tried), one
+// refused (wrong), the keys given or gone, or one of the endings. The first
+// ending heard stands, as Joel's Escape cancels the flow too, and that cancel
+// mustn't be taken for polkit's withdrawal. The keys count from when the
+// prompt first had them, and a loss stands until they come back.
 function heard(ask, what, at) {
     const next = Object.assign({}, ask);
-    if (what === "wrong") {
-        next.wrong += 1;
+    if (what === "tried" || what === "wrong") {
+        next[what] += 1;
     } else if (what === "keys") {
         next.keysAt = next.keysAt ?? at;
+        next.goneAt = null;
+    } else if (what === "keys-gone" && next.keysAt !== null) {
+        next.goneAt = at;
     } else if (endings.has(what) && next.how === "") {
         next.how = what;
     }
     return next;
+}
+
+// What the journal says of the passwords an ask was given: how many were
+// wrong, and, for one that ended unanswered, whether one was still being
+// checked or none was sent, so "nobody typed" is said only when it's so.
+function triedSaid(ask) {
+    const wrong = ask.wrong > 0
+        ? `, after ${ask.wrong} wrong ${ask.wrong === 1 ? "password" : "passwords"}`
+        : "";
+    if (ask.how === "answered" || ask.how === "refused") {
+        return wrong;
+    }
+    if (ask.tried > ask.wrong) {
+        return `${wrong}, while a password was checked`;
+    }
+    return ask.tried === 0 && ask.how === "withdrawn" ? ", unanswered" : wrong;
+}
+
+// What the journal says of the keys: never had, had, or had and then lost
+// to another surface, such as the lock, before the ask ended.
+function keysSaid(ask) {
+    if (ask.keysAt === null) {
+        return "it never had the keys";
+    }
+    const had = `it had the keys ${Math.round(ask.keysAt - ask.at)} ms in`;
+    return ask.goneAt === null
+        ? had
+        : `${had} and lost them ${Math.round(ask.goneAt - ask.at)} ms in`;
 }
 
 // What the journal says once an ask ends at `at`: how, after how long,
@@ -382,14 +422,5 @@ function heard(ask, what, at) {
 function finished(ask, at) {
     const how = endings.get(ask.how) ?? "ended without saying how";
     const up = `${((at - ask.at) / 1000).toFixed(1)} s`;
-    let tried = "";
-    if (ask.wrong > 0) {
-        tried = `, after ${ask.wrong} wrong ${ask.wrong === 1 ? "password" : "passwords"}`;
-    } else if (ask.how === "withdrawn") {
-        tried = ", unanswered";
-    }
-    const keys = ask.keysAt === null
-        ? "it never had the keys"
-        : `it had the keys ${Math.round(ask.keysAt - ask.at)} ms in`;
-    return `polkit: ${ask.action} ${how} after ${up}${tried}; ${keys}`;
+    return `polkit: ${ask.action} ${how} after ${up}${triedSaid(ask)}; ${keysSaid(ask)}`;
 }
