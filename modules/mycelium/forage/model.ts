@@ -349,7 +349,7 @@ interface Headline {
 /** The whole in a sentence's two parts: how many cells, and how many have no purpose written. */
 function headline(forages: readonly Forage[]): Headline {
   const cells = forages.length;
-  const without = forages.filter((each) => each.purpose === "").length;
+  const without = forages.filter(unwritten).length;
   if (cells === 0) {
     return { cells, without, lead: "No cells", turn: "at work on a quest." };
   }
@@ -431,7 +431,7 @@ function lede(forages: readonly Forage[]): string {
 
 /** The lede's account of purposes and plans. */
 function purposes(forages: readonly Forage[]): string {
-  const hollow = forages.filter((each) => each.purpose === "").map((each) => each.cell);
+  const hollow = forages.filter(unwritten).map((each) => each.cell);
   const first =
     hollow.length === 0
       ? "Every cell has its purpose written."
@@ -461,12 +461,21 @@ function holds(forage: Forage, query: string): boolean {
 }
 
 /**
+ * Whether `forage` has no purpose written yet: what the headline counts,
+ * the lede names, the floor draws hollow and the view of cells without
+ * purpose takes in, so none of them can disagree with another.
+ */
+function unwritten(forage: Forage): boolean {
+  return forage.purpose === "";
+}
+
+/**
  * Whether the list's view takes `forage` in before a find narrows it: every
  * cell does, but while `hollowOnly` asks for the cells with no purpose
  * written, only those.
  */
 function inView(forage: Forage, hollowOnly: boolean): boolean {
-  return !hollowOnly || forage.purpose === "";
+  return !hollowOnly || unwritten(forage);
 }
 
 /** The cells of `forages` the list shows for the find `sought` in its view, in its order. */
@@ -479,19 +488,21 @@ function shownBy(
 }
 
 /**
- * The cell the cursor rests on once the list shows `rows` of `forages`:
- * `cursor` while they show it, else their first. A find that matches
- * nothing keeps it while its cell lasts and the view still takes it in, so
- * ending the find finds it again; a cell that ends, or that the view no
- * longer takes in, takes the cursor with it. With no rows, only a find can
- * then be what hides it.
+ * The cell the cursor rests on once the list shows what the find `sought`
+ * holds of `forages` in its view: `cursor` while the list shows it, else
+ * its first row. A find that matches nothing keeps it while its cell lasts
+ * and the view still takes it in, so ending the find finds it again; a cell
+ * that ends, or that the view no longer takes in, takes the cursor with it.
+ * It works the rows out itself, as the list does, so the two can't be given
+ * different views.
  */
 function cursorAfter(
   forages: readonly Forage[],
-  rows: readonly Forage[],
-  cursor: string | null,
+  sought: string,
   hollowOnly: boolean,
+  cursor: string | null,
 ): string | null {
+  const rows = shownBy(forages, sought, hollowOnly);
   if (rows.some((each) => each.cell === cursor)) {
     return cursor;
   }
@@ -518,4 +529,5 @@ export {
   shownBy,
   startedFrom,
   steps,
+  unwritten,
 };

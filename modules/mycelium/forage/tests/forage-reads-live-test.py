@@ -424,6 +424,7 @@ def test_a_purpose_written_and_cells_gone_are_followed(
     )
     expect(forage_page.locator("#floor svg.crest"), "the crest didn't come back").to_have_count(1)
     expect(forage_page.locator("#floor rect[data-cell]"), "gone cells were drawn").to_have_count(0)
+    expect(forage_page.locator("#panel-body"), "a gone cell's panel stayed").to_be_empty()
 
 
 def test_a_cell_leaving_the_view_without_purpose_takes_the_cursor(

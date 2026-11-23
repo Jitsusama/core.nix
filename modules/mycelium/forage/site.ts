@@ -248,13 +248,13 @@ function openCell(cell: string): void {
     finder.hidden = true;
     sought = "";
   }
-  hollowOnly = hollowOnly && inView(forage, hollowOnly);
+  hollowOnly &&= inView(forage, hollowOnly);
   draw();
 }
 
 function draw(): void {
   const rows = shown();
-  cursor = cursorAfter(forages, rows, cursor, hollowOnly);
+  cursor = cursorAfter(forages, sought, hollowOnly, cursor);
   list.innerHTML =
     rows.length === 0 && forages.length > 0
       ? `<p class="none">No cell here holds what you're finding.</p>`

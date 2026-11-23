@@ -3,7 +3,16 @@
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
-import { cursorAfter, type Forage, foragesOf, inView, shownBy } from "../model.ts";
+import {
+  cursorAfter,
+  type Forage,
+  foragesOf,
+  headline,
+  inView,
+  lede,
+  shownBy,
+  unwritten,
+} from "../model.ts";
 import { forage, told } from "./records.ts";
 
 // Three cells, OSPREY with no purpose written, as the page's own records hold them.
@@ -21,7 +30,7 @@ const restsOn = (
   cursor: string | null,
   sought: string,
   hollowOnly: boolean,
-): string | null => cursorAfter(forages, shownBy(forages, sought, hollowOnly), cursor, hollowOnly);
+): string | null => cursorAfter(forages, sought, hollowOnly, cursor);
 
 it("the list shows what the find holds in its view, every cell or those without purpose", () => {
   assert.deepEqual(cellsOf(VIEWED, "", false), ["KESTRL", "OSPREY", "SKIFFS"]);
@@ -30,7 +39,18 @@ it("the list shows what the find holds in its view, every cell or those without 
   assert.deepEqual(cellsOf(VIEWED, "skiffs", true), []);
   const [kestrel, osprey] = VIEWED;
   assert.ok(kestrel && osprey);
-  assert.ok(inView(kestrel, false) && inView(osprey, true) && !inView(kestrel, true));
+  assert.equal(inView(kestrel, false), true);
+  assert.equal(inView(osprey, false), true);
+  assert.equal(inView(kestrel, true), false);
+  assert.equal(inView(osprey, true), true);
+});
+
+it("the view of cells without purpose takes in the cells the headline and lede count", () => {
+  const unwrittenCells = VIEWED.filter(unwritten).map((each) => each.cell);
+  assert.deepEqual(unwrittenCells, ["OSPREY"]);
+  assert.deepEqual(cellsOf(VIEWED, "", true), unwrittenCells);
+  assert.equal(headline(VIEWED).without, unwrittenCells.length);
+  assert.ok(lede(VIEWED).startsWith("OSPREY has no purpose written yet."), lede(VIEWED));
 });
 
 it("the cursor stays while the list shows it, else goes to its first row", () => {
@@ -53,6 +73,7 @@ it("a find matching nothing keeps the cursor while its cell lasts and the view t
   assert.equal(restsOn(ended, "KESTRL", "zzq", false), null);
   // So does every cell ending, find or not.
   assert.equal(restsOn([], "KESTRL", "", false), null);
+  assert.equal(restsOn([], "KESTRL", "zzq", false), null);
   // With no cursor, an empty list keeps none.
   assert.equal(restsOn(VIEWED, null, "zzq", false), null);
 });

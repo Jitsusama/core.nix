@@ -29,6 +29,7 @@ import {
   grewFrom,
   keeps,
   steps,
+  unwritten,
   type Wait,
 } from "./model.ts";
 
@@ -107,7 +108,7 @@ function goesOf(forage: Forage): string {
 
 /** The purpose as the page says it, or that none is written. */
 function purposeOf(forage: Forage): string {
-  return forage.purpose === "" ? "No purpose written yet." : forage.purpose;
+  return unwritten(forage) ? "No purpose written yet." : forage.purpose;
 }
 
 /**
@@ -122,7 +123,7 @@ function saidBy(quest: string): string {
 
 /** Where `forage`'s purpose is its quest's own words, the mark saying so. */
 function purposeSaid(forage: Forage): string {
-  return forage.purpose === "" ? "" : saidBy(forage.quest);
+  return unwritten(forage) ? "" : saidBy(forage.quest);
 }
 
 /** How far `ticked` of `all` steps have come, said, or nothing with no steps. */
@@ -140,14 +141,14 @@ function lit(ticked: number, all: number): number {
 
 /** A compartment's mark for the gutter: whole or hollow, as on the floor. */
 function compartment(forage: Forage): string {
-  const kind = forage.purpose === "" ? "hollow" : "whole";
+  const kind = unwritten(forage) ? "hollow" : "whole";
   return `<svg class="cm" viewBox="0 0 20 10" aria-hidden="true"><rect class="${kind}" x="1" y="1" width="18" height="8" rx="4"/></svg>`;
 }
 
 /** `forage`'s row in the list of cells, set in by how deep it was started. */
 function forageRow(forage: Forage): string {
   const { ticked, all } = steps(forage);
-  const quiet = forage.purpose === "" ? " quiet" : "";
+  const quiet = unwritten(forage) ? " quiet" : "";
   const count = all === 0 ? "" : `${ticked}/${all}`;
   return `<div role="option" id="cell-${escaped(forage.cell)}" data-cell="${escaped(forage.cell)}" aria-selected="false" style="--depth:${forage.depth}">
   <span class="mk">${compartment(forage)}</span>
@@ -461,7 +462,7 @@ function floorOf(floor: Floor, cursor: string | null, substrate: string): string
     .join("");
   const compartments = cells
     .map(({ forage, x, y }) => {
-      const kind = forage.purpose === "" ? "hollow" : "whole";
+      const kind = unwritten(forage) ? "hollow" : "whole";
       const on = forage.cell === cursor ? " on" : "";
       return `<rect class="${kind}${on}" data-cell="${escaped(forage.cell)}" x="${x - 11}" y="${y - 6}" width="22" height="12" rx="6"/>`;
     })
@@ -594,7 +595,7 @@ function panelOf(
   now: number = Date.now(),
 ): string {
   const said = escaped(command(forage));
-  const quiet = forage.purpose === "" ? " quiet" : "";
+  const quiet = unwritten(forage) ? " quiet" : "";
   return `
 <p class="eyebrow">the cell open</p>
 <h3><code>${escaped(forage.cell)}</code></h3>
