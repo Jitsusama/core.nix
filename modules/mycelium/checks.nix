@@ -102,6 +102,11 @@ let
           easesCarry = true;
         }
       )).systemd.user.services.mycelium.Service.ExecStart;
+  # The home realm's node of a machine that makes its carries but leaves
+  # parking to the harness's own rule.
+  carryingAloneNode =
+    toString
+      (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -383,6 +388,8 @@ in
         && !(lib.hasInfix "--eases-carry" linuxNode)
         && !(lib.hasInfix "--eases-carry" sleepingNode)
         && lib.hasInfix "--eases --eases-carry --eases-sleep" carryingNode
+        && lib.hasInfix "--eases --eases-carry" carryingAloneNode
+        && !(lib.hasInfix "--eases-sleep" carryingAloneNode)
         && lib.hasInfix "--eases --eases-sleep /home/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease" sleepingNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --waiting" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [

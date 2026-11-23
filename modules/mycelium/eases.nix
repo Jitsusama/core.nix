@@ -27,12 +27,13 @@ in
         this machine is over its room and another has some, under its own
         name, rather than only saying so. Mycelium, not this option, bounds
         what it carries: one parked session at a time, off the screen and
-        part way through nothing, onto ground no looser than here's, and at
-        most six a day. Only a parked session is carried, so with
-        `easesSleep` off it carries only those the harness parked by its own
-        rule. The session's harness must take a carry from the node, or the
-        carry is kept and told but never made. Off, the node only writes
-        what it would do.
+        part way through nothing, into a fence no weaker and behind no door
+        wider than here's, as each machine declares them, and at most six a
+        day. Only a parked session is carried, so with `easesSleep` off it
+        carries only those the harness parked once its own rule held. The
+        session's harness must take a carry from the node, or the carry is
+        kept and told but never made. Off, the node only writes what it
+        would do.
       '';
     };
   };
