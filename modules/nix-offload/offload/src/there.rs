@@ -1042,14 +1042,17 @@ impl Cuts {
     }
 }
 
-/// Makes `command`, a copy holding an uplink turn, end with the run that
-/// starts it, so one killed alone leaves no copy sending outside the
-/// uplink's turns. Linux sends the copy SIGTERM, which `nix copy` ends on,
-/// once the thread that started it ends, so a copy is waited on in the
-/// thread that started it, as every one is. A run that died as the copy
-/// started, before the signal was asked for, is seen as the copy's parent
-/// changing, and the copy doesn't start. A Mac has no such signal, and
-/// there a copy can outlive its run.
+/// Makes `command`, a copy holding an uplink turn or an ssh holding a
+/// changed-checks turn, end with the run that starts it, so one killed
+/// alone leaves no copy sending outside the uplink's turns, nor a run's
+/// ssh to its builder outside the builder's. Linux sends it SIGTERM, which
+/// `nix copy` and ssh end on, once the thread that started it ends, so
+/// each is waited on in the thread that started it, as every one is. A
+/// run that died as it started, before the signal was asked for, is seen
+/// as its parent changing, and it doesn't start; that branch is proven
+/// only by reading, since no test can kill a run between its fork and its
+/// child's `prctl`. A Mac has no such signal, and there either can outlive
+/// its run.
 fn dies_with_run(command: &mut Command) -> &mut Command {
     #[cfg(target_os = "linux")]
     {
@@ -1480,6 +1483,8 @@ fn waited_giving_back(
     };
     // Opened once the lease is up, and kept open while they're looked at.
     let mut given: Option<Result<Vec<fs::File>, String>> = None;
+    // Why given turns couldn't be locked, said once each as it's found.
+    let mut unlocked = Vec::new();
     let mut kept = false;
     loop {
         if let Some(status) = copy.try_wait()? {
@@ -1502,8 +1507,8 @@ fn waited_giving_back(
                 Ok(files)
             });
             let taken = match files {
-                Ok(files) => match free_turn(files) {
-                    Ok(Some(free)) => {
+                Ok(files) => match free_turn(files, &mut unlocked) {
+                    Some(free) => {
                         let had = began.elapsed();
                         holding(&free, about);
                         drop(turn);
@@ -1516,17 +1521,29 @@ fn waited_giving_back(
                         drop(free);
                         return status;
                     }
-                    Ok(None) => (!kept).then(|| {
+                    None if !unlocked.is_empty() => {
+                        let why = unlocked.join("; ");
+                        unlocked.clear();
+                        Some(if files.is_empty() {
+                            format!(
+                                "no given turn in {} can be locked ({why}), so it keeps it to \
+                                 the end",
+                                turn.folder.display()
+                            )
+                        } else {
+                            format!(
+                                "a given turn in {} can't be locked ({why}), so it gives its \
+                                 own back only for one of the other {}",
+                                turn.folder.display(),
+                                files.len()
+                            )
+                        })
+                    }
+                    None => (!kept).then(|| {
                         format!(
-                            "{UPLOADS} copies already go on past theirs ({}), so it keeps it \
-                             until one ends",
+                            "{} already go on past theirs ({}), so it keeps it until one ends",
+                            copies(files.len()),
                             holders(&turn.folder, "uplink-given")
-                        )
-                    }),
-                    Err(why) => (!kept).then(|| {
-                        format!(
-                            "the given turns in {} can't be locked ({why}), so it keeps it",
-                            turn.folder.display()
                         )
                     }),
                 },
@@ -1544,7 +1561,9 @@ fn waited_giving_back(
                 ));
                 kept = true;
             }
-            if matches!(given, Some(Err(_))) {
+            if matches!(&given, Some(Err(_)))
+                || matches!(&given, Some(Ok(files)) if files.is_empty())
+            {
                 let status = copy.wait();
                 drop(turn);
                 return status;
@@ -1557,26 +1576,72 @@ fn waited_giving_back(
 }
 
 /// The first of `files`, turns, that's free, taken out of them and held;
-/// none when every one is held elsewhere, and why when one can't be
-/// locked at all, so no copy is told they're all taken when they're not.
-fn free_turn(files: &mut Vec<fs::File>) -> Result<Option<fs::File>, String> {
-    for at in 0..files.len() {
+/// none when every one is held elsewhere. One that can't be locked at all
+/// is taken out of them, why added to `unlocked`, and the rest looked at,
+/// as [`turn_in`] does, so one bad file doesn't keep a copy from a turn
+/// free beside it.
+fn free_turn(files: &mut Vec<fs::File>, unlocked: &mut Vec<String>) -> Option<fs::File> {
+    let mut at = 0;
+    while at < files.len() {
         match files[at].try_lock() {
-            Ok(()) => return Ok(Some(files.swap_remove(at))),
-            Err(fs::TryLockError::WouldBlock) => {}
-            Err(fs::TryLockError::Error(error)) => return Err(error.to_string()),
+            Ok(()) => return Some(files.swap_remove(at)),
+            Err(fs::TryLockError::WouldBlock) => at += 1,
+            Err(fs::TryLockError::Error(error)) => {
+                unlocked.push(error.to_string());
+                drop(files.swap_remove(at));
+            }
         }
     }
-    Ok(None)
+    None
+}
+
+/// How many copies `count` is, in words.
+fn copies(count: usize) -> String {
+    match count {
+        1 => "1 copy".to_owned(),
+        count => format!("{count} copies"),
+    }
 }
 
 /// Writes into `turn`, held, who holds it: this run's pid and `about`, its
 /// copy, so `cat` of the folder names the runs holding every turn. Where
-/// it can't be written it's held all the same, its holder unnamed.
+/// it can't be written it's held all the same, its holder unnamed. The
+/// words go at the file's start, since emptying it leaves the file's
+/// offset where a write before left it, and a second write there came
+/// after a run of NULs that no reader took for a holder.
 fn holding(turn: &fs::File, about: &str) {
+    use std::os::unix::fs::FileExt;
+    let words = format!("pid {}, copying up {about}\n", std::process::id());
     let _ = turn
         .set_len(0)
-        .and_then(|()| writeln!(&*turn, "pid {}, copying up {about}", std::process::id()));
+        .and_then(|()| turn.write_all_at(words.as_bytes(), 0));
+}
+
+/// The turn's file at `at`, made where `make` says and it isn't there,
+/// for writing then or reading otherwise; why not when it can't be opened
+/// or isn't a plain file of this account's own, with no other name. A
+/// link isn't followed, so no lock is pointed at a file elsewhere; it's
+/// opened without waiting, so a FIFO planted at its name is refused
+/// rather than hanging the open for good; and one with a second name is
+/// refused, since emptying it would empty a file elsewhere.
+pub fn open_turn(at: &Path, make: bool) -> Result<fs::File, String> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let said = |why: &dyn std::fmt::Display| format!("{}: {why}", at.display());
+    let file = fs::OpenOptions::new()
+        .read(!make)
+        .write(make)
+        .create(make)
+        .truncate(false)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(at)
+        .map_err(|error| said(&error))?;
+    let found = file.metadata().map_err(|error| said(&error))?;
+    // SAFETY: geteuid has no preconditions and can't fail.
+    let uid = unsafe { libc::geteuid() };
+    if !found.is_file() || found.nlink() != 1 || found.uid() != uid {
+        return Err(said(&"not a plain file of this account's alone"));
+    }
+    Ok(file)
 }
 
 /// Who holds the turns in `folder` named `kind`, as each holder wrote it
@@ -1590,14 +1655,9 @@ fn holding(turn: &fs::File, about: &str) {
 /// that's a link is read.
 fn holders(folder: &Path, kind: &str) -> String {
     use std::io::Read;
-    use std::os::unix::fs::OpenOptionsExt;
     let named: Vec<String> = (1..=UPLOADS)
         .filter_map(|turn| {
-            let mut file = fs::OpenOptions::new()
-                .read(true)
-                .custom_flags(libc::O_NOFOLLOW)
-                .open(folder.join(format!("{kind}-{turn}")))
-                .ok()?;
+            let mut file = open_turn(&folder.join(format!("{kind}-{turn}")), false).ok()?;
             if !matches!(file.try_lock_shared(), Err(fs::TryLockError::WouldBlock)) {
                 return None;
             }
@@ -1615,7 +1675,8 @@ fn holders(folder: &Path, kind: &str) -> String {
 }
 
 /// Whether the run a turn's `holder` words name ([`holding`]) still runs,
-/// or the words name none, so they can't be judged.
+/// or the words name none, so they can't be judged. A pid of 0 or below
+/// names no run, since asking after it asks after a whole group.
 fn still_running(holder: &str) -> bool {
     let Some(pid) = holder
         .strip_prefix("pid ")
@@ -1624,6 +1685,9 @@ fn still_running(holder: &str) -> bool {
     else {
         return !holder.is_empty();
     };
+    if pid <= 0 {
+        return false;
+    }
     // SAFETY: a kill of signal 0 only asks whether the process is there.
     let asked = unsafe { libc::kill(pid, 0) };
     asked == 0 || std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
@@ -1674,9 +1738,10 @@ fn turn_within_of(
 const UPLOADS: u32 = 3;
 
 /// A turn at sending up from this machine, had while its file is held,
-/// so one that dies frees it, and the folder its turns are kept in.
+/// so one that dies frees it, and the folder its turns are kept in. The
+/// file is never read, only kept open, since its lock is the turn.
 struct Turn {
-    held: fs::File,
+    _held: fs::File,
     folder: PathBuf,
 }
 
@@ -1727,7 +1792,10 @@ fn uplink_turn(rank: Rank, about: &str) -> Option<Turn> {
     let held = turn_in(&folder, about, TURN_SAID_EVERY, &mut |line| {
         eprintln!("{line}");
     })?;
-    Some(Turn { held, folder })
+    Some(Turn {
+        _held: held,
+        folder,
+    })
 }
 
 /// The folder the uplink's turns are kept in: the account's runtime
@@ -1736,6 +1804,10 @@ fn uplink_turn(rank: Rank, about: &str) -> Option<Turn> {
 /// folder there of another's, or a link, is refused, saying so, rather
 /// than letting another hold every turn or point one at a file of ours.
 /// changed-checks' runs keep their turns there too (`changed/turns.rs`).
+/// With neither usable, as where another account made the temp folder's
+/// name first and no runtime folder is set, the turns' limits are lifted
+/// rather than every copy wedged, which each copy says: a guard on load,
+/// it fails open.
 pub fn turns_folder() -> Option<PathBuf> {
     // SAFETY: geteuid has no preconditions and can't fail.
     let uid = unsafe { libc::geteuid() };
@@ -1746,23 +1818,35 @@ pub fn turns_folder() -> Option<PathBuf> {
 }
 
 /// [`turns_folder`], under the runtime folder `runtime` if there is one
-/// and in `temp` otherwise, for the account `uid`; why not when it isn't
+/// and in `temp` otherwise, or in `temp` where the runtime folder's can't
+/// be used, as one inherited through `sudo -E` or left after its account
+/// logged out, for the account `uid`; why not, of each, when neither is
 /// that account's own folder.
 fn turns_folder_in(runtime: Option<PathBuf>, temp: &Path, uid: u32) -> Result<PathBuf, String> {
+    let in_temp = || turn_folder_at(&temp.join(format!("nix-offload-there-{uid}")), uid);
+    match runtime {
+        None => in_temp(),
+        Some(runtime) => turn_folder_at(&runtime.join("nix-offload-there"), uid)
+            .or_else(|first| in_temp().map_err(|then| format!("{first}, and {then}"))),
+    }
+}
+
+/// The folder `folder`, made only the account `uid` may enter where it
+/// isn't there; why not when it can't be made or isn't that account's own.
+fn turn_folder_at(folder: &Path, uid: u32) -> Result<PathBuf, String> {
     use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
-    let folder = runtime.map_or_else(
-        || temp.join(format!("nix-offload-there-{uid}")),
-        |runtime| runtime.join("nix-offload-there"),
-    );
-    let _ = fs::DirBuilder::new().mode(0o700).create(&folder);
+    let folder = folder.to_owned();
+    let created = fs::DirBuilder::new().mode(0o700).create(&folder);
     let ours = fs::symlink_metadata(&folder)
         .ok()
         .filter(|made| made.is_dir() && made.uid() == uid);
     let Some(made) = ours else {
-        return Err(format!(
-            "{} isn't a folder of this account's",
-            folder.display()
-        ));
+        return Err(match created {
+            Err(error) if error.kind() != std::io::ErrorKind::AlreadyExists => {
+                format!("{} can't be made ({error})", folder.display())
+            }
+            _ => format!("{} isn't a folder of this account's", folder.display()),
+        });
     };
     // One made before turns were kept apart may be open to others.
     if made.mode() & 0o077 != 0 {
@@ -1833,8 +1917,9 @@ fn turn_in(
         if said.is_none_or(|at| at.elapsed() >= every) {
             if said.is_none() {
                 say(format!(
-                    "nix-offload: {UPLOADS} copies already go up from this machine ({}), so \
-                     this waits its turn to send",
+                    "nix-offload: {} already go up from this machine ({}), so this waits its \
+                     turn to send",
+                    copies(turns.len()),
                     holders(folder, "uplink")
                 ));
             } else {
@@ -1856,22 +1941,13 @@ fn turn_in(
 const TURN_SAID_EVERY: std::time::Duration = std::time::Duration::from_mins(5);
 
 /// The files of the [`UPLOADS`] turns in `folder` named `kind` that open,
-/// opened once, and why each of the rest can't be. None is followed if
-/// it's a link.
+/// opened once, and why each of the rest can't be ([`open_turn`]).
 fn turn_files(folder: &Path, kind: &str) -> (Vec<fs::File>, Vec<String>) {
-    use std::os::unix::fs::OpenOptionsExt;
     let (mut opened, mut unopened) = (Vec::new(), Vec::new());
     for turn in 1..=UPLOADS {
-        let at = folder.join(format!("{kind}-{turn}"));
-        match fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .custom_flags(libc::O_NOFOLLOW)
-            .open(&at)
-        {
+        match open_turn(&folder.join(format!("{kind}-{turn}")), true) {
             Ok(file) => opened.push(file),
-            Err(error) => unopened.push(format!("{}: {error}", at.display())),
+            Err(why) => unopened.push(why),
         }
     }
     (opened, unopened)
@@ -2015,24 +2091,13 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
     let mut sending = held::instead(&planned, &derivations, &wanted, &holds);
     // What went up stays held, so what it's built from isn't sent again.
     let mut up = BTreeSet::new();
-    // Its holder's words say the builder fetches first until the send
-    // itself starts, which writes them anew ([`sent_held`]).
-    let turn = if sending.is_empty() {
-        None
-    } else {
-        let about = format!(
-            "for held outputs to {}, the builder fetching first",
-            lent.host
-        );
-        uplink_turn(rank(asked), &about)
-    };
     while !sending.is_empty()
         && !sent_held(
             &sending,
             (&planned, &fixed, &holds),
             lent,
             scratch,
-            turn.as_ref(),
+            rank(asked),
             [ssh, nix],
         )
     {
@@ -2074,8 +2139,11 @@ fn held_up(asked: &Asked, paths: &[&str], lent: &Builder, scratch: &Path, [ssh, 
 /// Sends `sending` up, of those `holds` says this machine holds, after
 /// the builder has fetched what downloads it can among them and what they
 /// reference, and says whether nothing is left to send: false when the
-/// send failed or fell behind [`send_within`]. Its uplink `turn`, when it
-/// holds one, names the send as it starts.
+/// send failed or fell behind [`send_within`]. It takes an uplink turn at
+/// its `rank` only once the builder's fetch is done and something is left
+/// to send, and holds it for the send alone: taken before the fetch, which
+/// has no bound, a turn sat idle for as long as the builder downloaded,
+/// while other copies waited behind it.
 fn sent_held(
     sending: &[String],
     (planned, fixed, holds): (
@@ -2085,7 +2153,7 @@ fn sent_held(
     ),
     lent: &Builder,
     scratch: &Path,
-    turn: Option<&Turn>,
+    rank: Rank,
     [ssh, nix]: [&str; 2],
 ) -> bool {
     // `nix copy` sends what they reference too, wherever no cache gives
@@ -2128,12 +2196,8 @@ fn sent_held(
     );
     // ssh's control socket goes in TMPDIR, as when what's built comes back.
     let within = send_within(size);
-    if let Some(turn) = turn {
-        holding(
-            &turn.held,
-            &format!("of {} of held outputs to {}", sized(size), lent.host),
-        );
-    }
+    let about = format!("of {} of held outputs to {}", sized(size), lent.host);
+    let _turn = uplink_turn(rank, &about);
     let mut copying = upload(nix, COPY_ALIVE);
     let ended = dies_with_run(&mut copying)
         .args(["copy", "--to", &lent.store, "--substitute-on-destination"])
@@ -3575,6 +3639,12 @@ fn captured_on(
         .arg(&lent.host)
         .arg(far(&sending.command))
         .stdout(Stdio::piped());
+    // A changed-checks turn (`changed/turns.rs`) is held for as long as
+    // its run lives, and a run killed alone frees it at once: ended with
+    // the run, this ssh leaves the builder's shell without a caller, so
+    // `far`'s watcher ends it within its grace, where an ssh left running
+    // would keep it, uncounted, for as long as the ssh lived.
+    dies_with_run(&mut command);
     if let Some(bundle) = &sending.bundle {
         let bundle = fs::File::open(bundle).map_err(|error| format!("the bundle: {error}"))?;
         command.stdin(bundle);
@@ -6043,7 +6113,7 @@ mod tests {
         let turn = fs::File::create(&at).expect("a turn");
         turn.try_lock().expect("the turn, free");
         let turn = Turn {
-            held: turn,
+            _held: turn,
             folder: folder.to_owned(),
         };
         (turn, fs::File::open(&at).expect("the turn, again"))
@@ -6195,12 +6265,15 @@ mod tests {
             ended.expect("how it ended").success(),
             "a copy that succeeded read as one that failed"
         );
-        // How long it held its turn, not its lease.
+        // How long it held its turn, not its lease: whole seconds, so what
+        // the bound on `held` above allows reads as 2 or 3.
         assert!(
             said.len() == 2
                 && said[0].contains("so it keeps it until one ends")
                 && said[0].contains("has held its turn for 1 second,")
-                && said[1].contains("has held its turn for 2 seconds,"),
+                && ["2 seconds,", "3 seconds,"]
+                    .iter()
+                    .any(|held| said[1].contains(&format!("has held its turn for {held}"))),
             "keeping and then giving back weren't said once each: {said:?}"
         );
         drop(given);
@@ -6237,6 +6310,108 @@ mod tests {
             named,
             format!("pid {pid}, copying up to b1; pid {pid}, copying up to b3"),
             "the turns' holders weren't named as held"
+        );
+    }
+
+    // Words written again over longer ones leave one line alone, not the
+    // first's tail or a run of NULs before the second.
+    #[test]
+    fn a_holder_written_again_reads_as_one_line() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let held = all_held(folder.path(), "uplink");
+        holding(&held[0], "to a-builder-with-a-long-name");
+        holding(&held[0], "to b2");
+        holding(&held[0], "to b3");
+        assert_eq!(
+            fs::read_to_string(folder.path().join("uplink-1")).expect("its words"),
+            format!("pid {}, copying up to b3\n", std::process::id()),
+            "a turn's holder written thrice didn't read as the last alone"
+        );
+    }
+
+    // A turn only looked at, with a shared lock as a waiter looks, isn't
+    // held, so its last holder's words aren't named, nor are a link's to a
+    // turn held elsewhere.
+    #[test]
+    fn a_turn_looked_at_or_linked_names_no_holder() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let held = all_held(folder.path(), "uplink");
+        for turn in &held {
+            holding(turn, "to b1");
+        }
+        drop(held);
+        let looking = fs::File::open(folder.path().join("uplink-1")).expect("a turn");
+        looking.try_lock_shared().expect("a look at a free turn");
+        let elsewhere = tempfile::tempdir().expect("a folder elsewhere");
+        let other = fs::File::create(elsewhere.path().join("held")).expect("a file");
+        other.try_lock().expect("the file, held");
+        holding(&other, "to elsewhere");
+        fs::remove_file(folder.path().join("uplink-2")).expect("a turn gone");
+        std::os::unix::fs::symlink(
+            elsewhere.path().join("held"),
+            folder.path().join("uplink-2"),
+        )
+        .expect("a link");
+        assert_eq!(
+            holders(folder.path(), "uplink"),
+            "none of them named",
+            "a turn only looked at, or a link to one held elsewhere, was named"
+        );
+        drop((looking, other));
+    }
+
+    #[test]
+    fn only_words_naming_a_run_that_still_runs_name_a_holder() {
+        let mut ended = Command::new("true").spawn().expect("a run");
+        ended.wait().expect("the run, ended");
+        let pid = std::process::id();
+        for (holder, running) in [
+            (format!("pid {pid}, copying up to b1"), true),
+            (format!("pid {}, copying up to b1", ended.id()), false),
+            ("pid 0, copying up to b1".to_owned(), false),
+            ("pid -1, copying up to b1".to_owned(), false),
+            (String::new(), false),
+            ("a run of another kind".to_owned(), true),
+        ] {
+            assert_eq!(
+                still_running(&holder),
+                running,
+                "{holder:?} read as a run that still runs: {}",
+                !running
+            );
+        }
+    }
+
+    // A FIFO among the turns is refused at once rather than hanging its
+    // open, as is a turn's file with a second name elsewhere.
+    #[test]
+    fn a_turns_file_that_is_a_fifo_or_another_name_is_refused() {
+        use std::os::unix::ffi::OsStrExt;
+        let folder = tempfile::tempdir().expect("a folder");
+        let fifo = folder.path().join("uplink-given-1");
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).expect("its name");
+        // SAFETY: the name is a valid C string that outlives the call.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0, "a FIFO");
+        let elsewhere = folder.path().join("elsewhere");
+        fs::write(&elsewhere, "kept").expect("a file elsewhere");
+        fs::hard_link(&elsewhere, folder.path().join("uplink-given-3")).expect("a second name");
+        let (opened, unopened) = turn_files(folder.path(), "uplink-given");
+        assert!(
+            opened.len() == 1
+                && unopened.len() == 2
+                && unopened[0].contains("uplink-given-1")
+                && unopened[1].contains("uplink-given-3"),
+            "a FIFO or a second name was opened as a turn: {unopened:?}"
+        );
+        assert_eq!(
+            fs::read_to_string(&elsewhere).expect("the file elsewhere"),
+            "kept",
+            "a file with a turn's second name was changed"
+        );
+        assert_eq!(
+            holders(folder.path(), "uplink-given"),
+            "none of them named",
+            "a FIFO or a second name was read for a holder"
         );
     }
 
@@ -6315,6 +6490,19 @@ mod tests {
             turns_folder_in(None, base.path(), uid + 1).is_err(),
             "another account's turns folder was taken"
         );
+        let fallen = tempfile::tempdir().expect("a folder");
+        let gone = fallen.path().join("gone");
+        assert_eq!(
+            turns_folder_in(Some(gone), fallen.path(), uid),
+            Ok(fallen.path().join(format!("nix-offload-there-{uid}"))),
+            "a runtime folder that can't be used didn't fall back to the temp folder"
+        );
+        let neither = turns_folder_in(Some(base.path().join("gone")), base.path(), uid)
+            .expect_err("a linked temp folder, with no runtime folder to use");
+        assert!(
+            neither.contains("can't be made") && neither.contains("isn't a folder"),
+            "neither folder's cause was said: {neither}"
+        );
     }
 
     // A waiter whose turns can't all be opened says so once and waits on
@@ -6350,6 +6538,7 @@ mod tests {
             had && said.len() == 2
                 && said[0].contains("uplink-2")
                 && said[0].contains("waits on the other 2")
+                && said[1].contains("2 copies already go up")
                 && said[1].contains("this waits its turn to send"),
             "the unusable turn wasn't said once before the wait: {said:?}"
         );
@@ -6370,8 +6559,10 @@ mod tests {
         assert!(!elsewhere.exists(), "a turn's link was followed");
     }
 
-    // A waiter says again, every while it's given, how long it has
-    // waited, naming who holds the turns each time.
+    // A waiter says again, every while it's given and no oftener, how
+    // long it has waited, naming who holds the turns each time. A turn is
+    // freed only once it has said its third line, so the test waits on
+    // what it says rather than on the clock.
     #[test]
     fn a_waiter_says_again_how_long_it_has_waited() {
         let folder = tempfile::tempdir().expect("a folder");
@@ -6380,25 +6571,41 @@ mod tests {
             holding(turn, "to b1");
         }
         let at = folder.path().to_owned();
+        let (thrice, said_thrice) = std::sync::mpsc::channel();
+        let every = Duration::from_millis(200);
         let waiting = std::thread::spawn(move || {
             let mut said = Vec::new();
-            let every = Duration::from_millis(200);
-            let had = turn_in(&at, "to b", every, &mut |line| said.push(line));
+            let had = turn_in(&at, "to b", every, &mut |line| {
+                said.push((std::time::Instant::now(), line));
+                if said.len() == 3 {
+                    let _ = thrice.send(());
+                }
+            });
             (had.is_some(), said)
         });
-        std::thread::sleep(Duration::from_millis(750));
+        said_thrice
+            .recv_timeout(Duration::from_secs(20))
+            .expect("three lines said while it waited");
         drop(held.remove(0));
         let (had, said) = waiting.join().expect("the waiter");
         let pid = std::process::id();
         let named = format!("pid {pid}, copying up to b1");
+        let lines: Vec<&String> = said.iter().map(|(_, line)| line).collect();
         assert!(
-            had && said.len() >= 3
-                && said[0].contains("this waits its turn to send")
-                && said[1..]
+            had && lines.len() >= 3
+                && lines[0].contains("this waits its turn to send")
+                && lines[1..]
                     .iter()
                     .all(|line| line.contains("this has waited"))
-                && said.iter().all(|line| line.contains(&named)),
-            "the wait wasn't said again, naming its holders: {said:?}"
+                && lines.iter().all(|line| line.contains(&named)),
+            "the wait wasn't said again, naming its holders: {lines:?}"
+        );
+        // A look comes every tenth of a second, so lines said on every
+        // look, rather than every while, come closer than this.
+        let apart: Vec<Duration> = said.windows(2).map(|two| two[1].0 - two[0].0).collect();
+        assert!(
+            apart.iter().all(|gap| *gap >= Duration::from_millis(150)),
+            "the wait was said oftener than every {every:?}: {apart:?}"
         );
     }
 
@@ -6471,7 +6678,8 @@ mod tests {
         let held = held_for(&other, began);
         let (_, said) = waiting.join().expect("the waiter");
         assert!(
-            held < Duration::from_millis(2500)
+            held >= Duration::from_millis(900)
+                && held < Duration::from_millis(2500)
                 && said.len() == 2
                 && said[0].contains("uplink-given-2")
                 && said[1].contains("the turn is free for another copy"),
