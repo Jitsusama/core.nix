@@ -54,12 +54,17 @@ type Said = (bool, u32, u32, Vec<(Vec<u8>, i16)>);
 pub enum Heed {
     /// Nothing but say it: the request doesn't warn.
     Stay,
+    /// Nothing but say it, as wifid doesn't hold the card to its point:
+    /// wpa_supplicant follows the request itself.
+    Unheld,
     /// Moves the card to this point, the one it would rather of those the
     /// card hears.
     Move(String),
     /// Lets the card join any point of its network, as it hears none the
-    /// request names, so wpa_supplicant may follow it or rejoin once
-    /// dropped.
+    /// request names that wifid can move it to, so wpa_supplicant rejoins
+    /// wherever it can once dropped. It has most likely answered the
+    /// request by then, as it does so as soon as it's said, so it can't
+    /// follow it.
     LetGo,
 }
 
@@ -154,10 +159,15 @@ impl Request {
     /// Where a card on `from`, hearing these points of its network as
     /// their address and signal, goes for this request: to the candidate
     /// the point asking would rather, of those heard and not ruled out,
-    /// the more strongly heard of two it would as soon.
-    pub fn heed(&self, from: Option<&str>, heard: &[(String, i16)]) -> Heed {
+    /// the more strongly heard of two it would as soon. Only a card wifid
+    /// holds, `held`, is moved, and only to a point `heard` names, which
+    /// leaves out one a move would take another card to.
+    pub fn heed(&self, from: Option<&str>, heard: &[(String, i16)], held: bool) -> Heed {
         if !self.warns {
             return Heed::Stay;
+        }
+        if !held {
+            return Heed::Unheld;
         }
         let elsewhere = |bssid: &str| from.is_none_or(|from| !from.eq_ignore_ascii_case(bssid));
         let chosen = self
@@ -299,9 +309,18 @@ mod tests {
             ..warning(vec![named(NEAR, Some(255))])
         };
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -40)])),
+            request.heed(Some(ON), &heard(&[(NEAR, -40)]), true),
             Heed::Stay,
             "wifid chooses by how a point carries, so a plain ask is only said",
+        );
+    }
+
+    #[test]
+    fn a_warned_card_wifid_doesnt_hold_is_left_to_wpa_supplicant() {
+        assert_eq!(
+            warning(vec![named(NEAR, Some(255))]).heed(Some(ON), &heard(&[(NEAR, -40)]), false),
+            Heed::Unheld,
+            "wpa_supplicant follows the ask itself for a card free to join any point",
         );
     }
 
@@ -313,12 +332,16 @@ mod tests {
             named("02:00:00:00:07:00", None),
         ]);
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -70), ("02:00:00:00:07:00", -30)])),
+            request.heed(
+                Some(ON),
+                &heard(&[(NEAR, -70), ("02:00:00:00:07:00", -30)]),
+                true
+            ),
             Heed::Move(NEAR.to_owned()),
             "the unheard favourite is passed over, and any preference beats none",
         );
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(FAR, -80), (NEAR, -30)])),
+            request.heed(Some(ON), &heard(&[(FAR, -80), (NEAR, -30)]), true),
             Heed::Move(FAR.to_owned()),
             "a preference outranks a stronger signal",
         );
@@ -328,7 +351,7 @@ mod tests {
     fn a_warned_card_takes_the_stronger_of_two_the_point_would_as_soon() {
         let request = warning(vec![named(NEAR, Some(100)), named(FAR, Some(100))]);
         assert_eq!(
-            request.heed(Some(ON), &heard(&[(NEAR, -70), (FAR, -50)])),
+            request.heed(Some(ON), &heard(&[(NEAR, -70), (FAR, -50)]), true),
             Heed::Move(FAR.to_owned()),
         );
     }
@@ -337,7 +360,11 @@ mod tests {
     fn a_warned_card_never_moves_to_its_own_point_or_one_ruled_out() {
         let request = warning(vec![named(ON, Some(255)), named(NEAR, Some(0))]);
         assert_eq!(
-            request.heed(Some(&ON.to_uppercase()), &heard(&[(ON, -30), (NEAR, -40)])),
+            request.heed(
+                Some(&ON.to_uppercase()),
+                &heard(&[(ON, -30), (NEAR, -40)]),
+                true
+            ),
             Heed::LetGo,
             "its own point however written, and a point at 0, are no way out",
         );
@@ -346,11 +373,11 @@ mod tests {
     #[test]
     fn a_warned_card_hearing_no_candidate_is_let_go() {
         assert_eq!(
-            warning(vec![named(FAR, Some(255))]).heed(Some(ON), &heard(&[(NEAR, -40)])),
+            warning(vec![named(FAR, Some(255))]).heed(Some(ON), &heard(&[(NEAR, -40)]), true),
             Heed::LetGo,
         );
         assert_eq!(
-            warning(Vec::new()).heed(Some(ON), &heard(&[(NEAR, -40)])),
+            warning(Vec::new()).heed(Some(ON), &heard(&[(NEAR, -40)]), true),
             Heed::LetGo,
             "one naming nothing leaves wpa_supplicant to rejoin where it can",
         );

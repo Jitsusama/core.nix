@@ -877,11 +877,14 @@ impl<'a> Air<'a> {
             }
             // Said by core.nix's patch alone (say-transition-requests.patch),
             // and taken, like every signal here, from wpa_supplicant alone.
-            "BSSTransitionRequested" => {
-                if let Ok(args) = body.deserialize::<HashMap<String, OwnedValue>>() {
-                    self.asked_to_move(bus, path, &args).await;
-                }
-            }
+            // One of another signature is a patch wifid wasn't built for.
+            "BSSTransitionRequested" => match body.deserialize::<HashMap<String, OwnedValue>>() {
+                Ok(args) => self.asked_to_move(bus, path, &args).await,
+                Err(error) => println!(
+                    "<4>{path} was asked to move as {}, not the a{{sv}} wifid reads: {error}",
+                    body.signature()
+                ),
+            },
             "PskMismatch" => self.troubled(bus, path, Trouble::WrongPassword).await,
             // What a card heard is said before it says it's done looking.
             "ScanDone" => {
@@ -1614,6 +1617,18 @@ async fn reload_networkd(bus: &Connection) -> zbus::Result<()> {
     )
     .await
     .map(|_| ())
+}
+
+/// Where a move that misses its point leaves the card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Missed {
+    /// Back on the point it left, held there, its other networks kept off
+    /// meanwhile, as `go_back` says.
+    GoesBack,
+    /// Free to join whatever it hears, its other networks on: for a move
+    /// away from a point that warned it drops the card, where going back
+    /// would only have it dropped there.
+    LetJoin,
 }
 
 /// What wifid works with once it has started.
@@ -2472,7 +2487,7 @@ impl Wifid<'_> {
                 return;
             }
             Ask::Roam { bssid, done } => {
-                let _ = done.send(self.roam(&bssid, joining).await);
+                let _ = done.send(self.roam(&bssid, joining, Missed::GoesBack).await);
                 return;
             }
             Ask::Leave { name, done } => {
@@ -2656,7 +2671,13 @@ impl Wifid<'_> {
     /// new point, and a card reaching the one it went back to would be
     /// counted elsewhere and let go. A card in the join the shell asked
     /// for, `joining`, has its networks turned on by the join as it ends.
-    async fn roam(&self, bssid: &str, joining: Option<&str>) -> Result<(), Refused> {
+    /// One that misses its point goes where `missed` says.
+    async fn roam(
+        &self,
+        bssid: &str,
+        joining: Option<&str>,
+        missed: Missed,
+    ) -> Result<(), Refused> {
         let card = self.state.borrow().roamer(bssid)?;
         if self.arrivals.borrow().going_back(&card) {
             return Err(Refused::Failed {
@@ -2687,8 +2708,11 @@ impl Wifid<'_> {
                 Ok(())
             } else {
                 // A card with no gateway yet is still on its point.
-                let from = self.state.borrow().point_of(&card);
-                if from.is_none() {
+                let from = match missed {
+                    Missed::GoesBack => self.state.borrow().point_of(&card),
+                    Missed::LetJoin => None,
+                };
+                if from.is_none() && missed == Missed::GoesBack {
                     println!("<4>{card} moves to {bssid} with no point known to go back to");
                 }
                 // With nowhere to go back to, a failed move is let join
@@ -3292,39 +3316,43 @@ impl Wifid<'_> {
     /// ask for one that isn't itself, and keeps a held one where it is,
     /// since only that point matches. Held, it goes to the point the ask
     /// would rather of those it hears, or is let go when it hears none,
-    /// so wpa_supplicant can follow the ask or join again once dropped.
-    /// A card in the join the shell asked for, `joining`, has its
-    /// networks turned on by the join as it ends.
+    /// so it can rejoin wherever it's heard once dropped. A point that
+    /// another card on the network hears too is one only a move of that
+    /// card reaches (`State::roamer`), so it's left out.
+    ///
+    /// A move that misses its point lets the card join what it hears
+    /// rather than sending it back to the point that drops it. One `roam`
+    /// refuses is left as `roam` leaves it: a way back under way, or a
+    /// move before it put back, keeps its hold and its timer. A card in
+    /// the join the shell asked for, `joining`, has its networks turned on
+    /// by the join as it ends.
     async fn asked(&self, card: &str, request: &Request, joining: Option<&str>) {
         let (from, heard) = {
             let state = self.state.borrow();
             let heard: Vec<(String, i16)> = state
                 .around(card)
                 .into_iter()
+                .filter(|heard| state.roamer(&heard.bssid).is_ok_and(|by| by == card))
                 .map(|heard| (heard.bssid, heard.signal))
                 .collect();
             (state.point_of(card), heard)
         };
         println!("<6>{}", request.said(card, from.as_deref()));
-        if !request.warns {
-            return;
-        }
-        if !self.held.borrow().contains_key(card) {
-            return println!("<6>{card} isn't held to its point, so wpa_supplicant follows it");
-        }
-        let free = joining != Some(card);
-        match request.heed(from.as_deref(), &heard) {
+        let held = self.held.borrow().contains_key(card);
+        match request.heed(from.as_deref(), &heard, held) {
             Heed::Stay => {}
-            Heed::Move(bssid) => match self.roam(&bssid, joining).await {
+            Heed::Unheld => {
+                println!("<6>{card} isn't held to its point, so wpa_supplicant follows it");
+            }
+            Heed::Move(bssid) => match self.roam(&bssid, joining, Missed::LetJoin).await {
                 Ok(()) => println!("<6>{card} moves to {bssid} before it's dropped"),
                 Err(refused) => {
                     println!("<4>{card} couldn't move to {bssid} before it's dropped: {refused:?}");
-                    self.let_go(card, free).await;
                 }
             },
             Heed::LetGo => {
                 println!("<6>{card} hears none of the points asked, so may join any again");
-                self.let_go(card, free).await;
+                self.let_go(card, joining != Some(card)).await;
             }
         }
     }

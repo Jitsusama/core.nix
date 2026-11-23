@@ -19,7 +19,9 @@ since a signal's table holds three arguments at most: Disassociating
 ESS; DisassociationMs (u), in how long; ValidMs (u), how long its
 candidate list holds; and Candidates (a(ayn)), each as its BSSID and its
 preference, or -1 where the access point gave none, in the order given.
-How upstream answers the request is left as it was.
+How upstream answers the request is left as it was. Both times are
+worked out from beacon intervals in 64 bits: the access point sets the
+interval and the counts, and their product can pass a signed int.
 diff -ru a/wpa_supplicant/dbus/dbus_new.c b/wpa_supplicant/dbus/dbus_new.c
 --- a/wpa_supplicant/dbus/dbus_new.c
 +++ b/wpa_supplicant/dbus/dbus_new.c
@@ -240,8 +242,8 @@ diff -ru a/wpa_supplicant/wnm_sta.c b/wpa_supplicant/wnm_sta.c
 +		wpa_s,
 +		disassoc_imminent ||
 +		(wpa_s->wnm_mode & WNM_BSS_TM_REQ_ESS_DISASSOC_IMMINENT),
-+		wpa_s->wnm_disassoc_timer * beacon_int * 128 / 125,
-+		valid_int * beacon_int * 128 / 125,
++		(u64) wpa_s->wnm_disassoc_timer * beacon_int * 128 / 125,
++		(u64) valid_int * beacon_int * 128 / 125,
 +		wpa_s->wnm_neighbor_report_elements,
 +		wpa_s->wnm_num_neighbor_report);
 +

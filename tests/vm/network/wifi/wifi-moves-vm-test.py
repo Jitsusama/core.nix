@@ -239,12 +239,7 @@ def test_a_card_moves_to_another_access_point_of_its_network_when_asked(
     assert status == 0, said
     wifid.joined("Lantern")
 
-    def hears_the_second(_: bool) -> bool:
-        """Have the cards look, and say whether they heard Lantern's second."""
-        wifid.ask("Scan")
-        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
-
-    retry(hears_the_second, timeout=timedelta(seconds=60))
+    retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
     machine.succeed("wpa_cli -i wlan2 status | grep -qx bssid=02:00:00:00:00:00")
     wifid.holds_address("10.42.0.")
     knows_a_neighbour(machine)
@@ -289,46 +284,57 @@ def test_a_held_card_says_its_points_asks_and_moves_when_one_warns_it_drops_it(
 ) -> None:
     """A held card says its point's asks to move, and moves when one warns it drops the card."""
     machine.succeed("systemctl start lantern-two")
-    retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
-    answer = wifid.acting({"act": "roam", "bssid": SECOND})
-    assert answer.get("done") is True, answer
-    machine.wait_until_succeeds(
-        f's=$(wpa_cli -i wlan2 status) && echo "$s" | grep -qx wpa_state=COMPLETED'
-        f' && echo "$s" | grep -qx bssid={SECOND}',
-        timeout=timedelta(seconds=30),
-    )
-    station = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^address=//p'").strip()
-    ask = (
-        f"hostapd_cli -p /run/hostapd-lantern-two -i wlan5 bss_tm_req {station}"
-        f" pref=1 valid_int=200 neighbor={FIRST},0x0000,81,6,7,0301ff"
-    )
-    since = wifid.journal_now()
-    machine.succeed(f"{ask} | grep -qx OK")
-    asked = f"wlan2 was asked by {SECOND} to move to {FIRST} at 255, for 20480 ms"
-    plain = f"{asked}, warning nothing"
-    machine.wait_until_succeeds(
-        f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF '{plain}'",
-        timeout=timedelta(seconds=10),
-    )
-    # Held, wpa_supplicant keeps the card where it is, and wifid moves it for no plain ask.
-    time.sleep(2)
-    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
-    since = wifid.journal_now()
-    machine.succeed(f"{ask} disassoc_imminent=1 disassoc_timer=50 | grep -qx OK")
-    warned = f"{asked}, warning it drops the card in {DROPS_IN_MS} ms"
-    machine.wait_until_succeeds(
-        f"journalctl -o cat -u wifid --after-cursor='{since}'"
-        f" | grep -qxF '{warned}'"
-        f" && journalctl -o cat -u wifid --after-cursor='{since}'"
-        f" | grep -qE '^wlan2 reached {FIRST} [0-9]+ ms after it was asked'",
-        timeout=timedelta(seconds=10),
-    )
-    # Past the time it warned of, the point never dropped the card.
-    time.sleep(DROPS_IN_MS / 1000 + 1)
-    machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
-    kernel = machine.succeed(f"journalctl -k -o cat --after-cursor='{since}'")
-    assert f"disassociated from {SECOND}" not in kernel, f"the point dropped the card:\n{kernel}"
-    machine.succeed("systemctl stop lantern-two")
+    # Stopped whatever fails, so the subtests after this one aren't left a second point, and
+    # the card held to it.
+    try:
+        retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
+        answer = wifid.acting({"act": "roam", "bssid": SECOND})
+        assert answer.get("done") is True, answer
+        machine.wait_until_succeeds(
+            f's=$(wpa_cli -i wlan2 status) && echo "$s" | grep -qx wpa_state=COMPLETED'
+            f' && echo "$s" | grep -qx bssid={SECOND}',
+            timeout=timedelta(seconds=30),
+        )
+        station = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^address=//p'").strip()
+        ask = (
+            f"hostapd_cli -p /run/hostapd-lantern-two -i wlan5 bss_tm_req {station}"
+            f" pref=1 valid_int=200 neighbor={FIRST},0x0000,81,6,7,0301ff"
+        )
+        since = wifid.journal_now()
+        machine.succeed(f"{ask} | grep -qx OK")
+        asked = f"wlan2 was asked by {SECOND} to move to {FIRST} at 255, for 20480 ms"
+        plain = f"{asked}, warning nothing"
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}' | grep -qxF '{plain}'",
+            timeout=timedelta(seconds=10),
+        )
+        # Asked to move, wifid says so as it asks, before any join, so 2 s leave a move for a
+        # plain ask time to be said however slowly the card would go.
+        time.sleep(2)
+        said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
+        assert f"moved to {FIRST}" not in said, f"wifid moved the card for a plain ask:\n{said}"
+        machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={SECOND}")
+        since = wifid.journal_now()
+        machine.succeed(f"{ask} disassoc_imminent=1 disassoc_timer=50 | grep -qx OK")
+        warned = f"{asked}, warning it drops the card in {DROPS_IN_MS} ms"
+        machine.wait_until_succeeds(
+            f"journalctl -o cat -u wifid --after-cursor='{since}'"
+            f" | grep -qxF '{warned}'"
+            f" && journalctl -o cat -u wifid --after-cursor='{since}'"
+            f" | grep -qE '^wlan2 reached {FIRST} [0-9]+ ms after it was asked'",
+            timeout=timedelta(seconds=10),
+        )
+        # Gone before the time it was warned of, the card was never the point's to drop.
+        said = machine.succeed(f"journalctl -o cat -u wifid --after-cursor='{since}'")
+        reached = re.search(
+            rf"^wlan2 reached {FIRST} ([0-9]+) ms after it was asked", said, re.MULTILINE
+        )
+        assert reached, f"no line says the card reached {FIRST}:\n{said}"
+        took = int(reached.group(1))
+        assert took < DROPS_IN_MS, f"the card took {took} ms, past the {DROPS_IN_MS} ms warned of"
+        machine.succeed(f"wpa_cli -i wlan2 status | grep -qx bssid={FIRST}")
+    finally:
+        machine.succeed("systemctl stop lantern-two")
 
 
 # On 16 Nov 2026 a move found its access point gone, and the card scanned
@@ -342,12 +348,7 @@ def test_a_move_to_an_access_point_gone_since_it_was_heard_goes_back_to_the_one_
     rejoined_unpicked(machine)
     machine.succeed("systemctl start lantern-two")
 
-    def hears_the_second(_: bool) -> bool:
-        """Have the cards look, and say whether they heard Lantern's second."""
-        wifid.ask("Scan")
-        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
-
-    retry(hears_the_second, timeout=timedelta(seconds=60))
+    retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
     assert inn_is_on(machine), "the Inn is on before the move"
     # wpa_supplicant keeps an access point through two looks that don't hear it, so the move
     # still finds the second after its own look over the channel, and is asked into nothing.
@@ -481,12 +482,7 @@ def test_a_card_that_cant_get_back_either_may_join_any_network(
     rejoined_unpicked(machine)
     machine.succeed("systemctl start lantern-two")
 
-    def hears_the_second(_: bool) -> bool:
-        """Have the cards look, and say whether they heard Lantern's second."""
-        wifid.ask("Scan")
-        return "02:00:00:00:05:00" in machine.succeed("wpa_cli -i wlan2 scan_results")
-
-    retry(hears_the_second, timeout=timedelta(seconds=60))
+    retry(lambda _: hears(machine, wifid, SECOND), timeout=timedelta(seconds=60))
     # Stopped, hostapd answers no join, while the kernel still beacons for it and keeps the
     # card joined, so the card leaves the first point for a gone second and can't get back.
     since = wifid.journal_now()
