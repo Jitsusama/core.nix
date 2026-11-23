@@ -75,7 +75,7 @@ pub struct Heard {
     /// controller heard.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub up_tins_kbit: Option<crate::qdisc::Tins>,
-    /// Why the upload holds where it does, in one sentence (src/why.rs).
+    /// Why the upload holds where it does, in a sentence or two (src/why.rs).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
 }
@@ -437,7 +437,9 @@ impl Live {
     /// stepped on, once it has stepped on one.
     pub fn traced(&self) -> Option<crate::trace::Line> {
         let (link, heard) = self.follow.heard()?;
-        Some(crate::trace::Line::of(self.follow.last_at?, link, &heard))
+        let second = crate::trace::Line::of(self.follow.last_at?, link, &heard);
+        // The shares are main's to say, as it put them on the link's queues.
+        Some(second.because(self.follow.controller.why_kind()))
     }
 
     /// Probes through the VPN riding the link, or none, and takes what it
@@ -557,6 +559,35 @@ mod tests {
             follow.take(&parse(line).expect("a sample"));
         }
         follow
+    }
+
+    #[test]
+    fn a_traced_second_says_the_controllers_reason_and_leaves_the_shares_to_main() {
+        let folder = std::env::temp_dir().join(format!("shaper-traced-{}", std::process::id()));
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started);
+        assert!(
+            live.traced().is_none(),
+            "a second was traced before the controller stepped on one"
+        );
+        live.follow = followed(&queued());
+        let second = live.traced().expect("a second once the controller stepped");
+        assert_eq!(
+            second.link, "wlan0",
+            "the second traced isn't the recorder's link's"
+        );
+        // The reason marks a line whose link_wait_ms leaves agents' lane
+        // out (src/trace.rs), so every line this build writes carries one.
+        assert_eq!(
+            second.why.as_deref(),
+            Some(live.follow.controller.why_kind()),
+            "the traced reason isn't the controller's"
+        );
+        assert_eq!(
+            (second.vpn_share, second.agents_share),
+            (None, None),
+            "the shares were said before main put them on the link's queues"
+        );
     }
 
     #[test]

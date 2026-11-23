@@ -386,9 +386,10 @@
   '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
-    the call comes from jobs.service or a pi-spawner scope, or below one, and leaves Joel's own
-    calls, his services in jobs.slice, a path naming jobs.slice only inside another's scope, a
-    call naming a slice and a call to the system manager as they were
+    the call comes from jobs.service, a pi-spawner scope or a pi host's or conversation's unit,
+    or below one, reading only its own options, and leaves Joel's own calls, his services in
+    jobs.slice, the windows' kitty and the node in agents.slice, a path naming those places only
+    inside another's scope, a call naming a slice and a call to the system manager as they were
   '';
   an-arrival-is-said-once-each-time = ''
     what comes true by itself is said once, and nothing of what stood as the shell started; a
@@ -3253,6 +3254,20 @@
     pi's text, strings and deepest thinking are the account's text, string and alert colours, and
     every colour it names is hex
   '';
+  pixels-probe-holds-every-pixel = ''
+    the web-design skill's pixels probe, and its words and names probes beside it, in headless
+    Chromium at a phone's width, names a page wider than its window and what reaches past it while passing a part in its own scroller, a
+    part arriving over the words that shifts the page past 0.1 while passing one whose box was
+    kept, text under 12 px, scaled or transformed, a drawing's label under 12 px unless marked
+    data-enlarges and under 9 px even then, as the drawing's scale sets it, while passing words
+    for the ear alone or a style hides, and a control whose name doesn't start with the words
+    it shows or that shows a mark alone, labelled or not, while passing a keycap named for its
+    key and a picture named by its label, and words under 4.5:1 on the ground under them, or
+    3:1 at 24 px or bold at 18.66, faded as the browser composites each opacity, on a dark
+    page's canvas, with a gradient at its worst colour between its stops and a placeholder or
+    a style's words in their own fill, giving the faintest and how many more, and words on a
+    picture, through a filter or a blend, or over too many grounds named
+  '';
   platform-profiles-reach-the-legacy-file = ''
     every profile Dell's driver offers, the XPS 14's SoC slider takes too
   '';
@@ -5506,7 +5521,8 @@
   '';
   the-web-kit-carries-the-theme = ''
     the web kit's CSS holds every role of the machine's theme as its dark look and of core's light
-    theme as its light one, and a first view's three faces come in under 350 KB
+    theme as its light one, a first view's three faces come in under 350 KB, and every type step,
+    and code set in small text, starts at 12 px or more
   '';
   the-window-buffers-stay-under-load = ''
     the XPS 14's udev sets xe's `shrinker_non_purgeable_seeks` to 64, so reclaim under a build

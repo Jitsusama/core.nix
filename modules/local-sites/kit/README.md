@@ -11,6 +11,7 @@ a site's compiled imports land.
 | `feed.ts`     | a watch of a daemon's feed: connecting, live, stale or broken |
 | `fold.ts`     | a long list folded to seven rows, how many more, what's unlisted |
 | `home.ts`     | the home's cursor over the sites, its keys and its switch     |
+| `keyed.ts`    | a list drawn by record key, so an update touches only its rows |
 | `keys.ts`     | the keys a page answers, and its list of them on `?` and F1   |
 | `records.ts`  | a daemon's records, held as its watch tells them              |
 | `status.ts`   | the line saying how live a page is and since when             |

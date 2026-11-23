@@ -490,6 +490,16 @@ fn need(carried: f64) -> f64 {
     carried * HEADROOM + JOEL_LEAST
 }
 
+/// Agents' lane's class, under which their CAKE stands.
+pub const AGENTS_CLASS: &str = "1:5";
+
+/// What agents' class is assured at `split`, in kbit/s: HTB sends it
+/// this much while it has anything, before any class borrows, whatever
+/// its priority.
+pub fn agents_assured(split: &Split) -> u64 {
+    whole(split.agents).max(LEAST_KBIT)
+}
+
 fn cmd(words: &str) -> Vec<String> {
     words.split_whitespace().map(str::to_string).collect()
 }
@@ -504,14 +514,14 @@ fn classes(verb: &str, dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> 
         ))
     };
     let kbit = |share: f64| whole(share).max(LEAST_KBIT);
-    let agents = kbit(split.agents);
+    let agents = agents_assured(split);
     vec![
         class("1:", "1:2", (rate, rate), 0),
         class("1:2", "1:3", (kbit(split.joel), rate), 0),
         class("1:2", "1:4", (kbit(split.vpn), rate), 0),
         class(
             "1:2",
-            "1:5",
+            AGENTS_CLASS,
             (agents, split.agents_most.map_or(rate, kbit)),
             1,
         ),
@@ -534,11 +544,12 @@ pub fn tree(dev: &str, rate: u64, split: &Split) -> Vec<Vec<String>> {
             "tc qdisc replace dev {dev} parent 1:4 handle 4: fq_codel"
         )),
         cmd(&format!(
-            "tc qdisc replace dev {dev} parent 1:5 handle 5: cake besteffort nat ack-filter"
+            "tc qdisc replace dev {dev} parent {AGENTS_CLASS} handle 5: cake besteffort nat \
+             ack-filter"
         )),
         cmd(&format!(
             "tc filter replace dev {dev} parent 1: protocol all prio 1 handle 1 \
-             basic match meta(priority eq 0x20001) classid 1:5"
+             basic match meta(priority eq 0x20001) classid {AGENTS_CLASS}"
         )),
     ]);
     all
@@ -637,7 +648,7 @@ pub fn laned(json: &str) -> bool {
     all.iter().any(|q| q["kind"] == "htb" && q["root"] == true)
         && has("cake", "1:3")
         && has("fq_codel", "1:4")
-        && has("cake", "1:5")
+        && has("cake", AGENTS_CLASS)
 }
 
 /// Takes every filter off the queues `json` lists on `dev` but its ingress,

@@ -37,7 +37,8 @@ refuse /user.slice/user-1000.slice/user@1000.service/background.slice/pi-jobs-ab
 # A shell Joel opens in a tab of a session window, in its kitty's scope.
 refuse /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/kitty-4336-3.scope /user.slice/user-1000.slice/user@1000.service/agents.slice/sessions-kitty.service
 # A unit an agent's command starts with systemd-run, in jobs-work.slice
-# from jobs.service or a spawner's scope, or given its caller's slice, named
+# from jobs.service, a spawner's scope or a pi host's or conversation's
+# unit, or given its caller's slice, named
 # or not; one started from agents' work placed in the awaited or background
 # slice, refused with Joel's own there, which looks the same; and a scope
 # from Joel's awaited work, as nix-offload's uploads take, judged by its

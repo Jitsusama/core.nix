@@ -72,8 +72,9 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # they work across, and two say what works unread where the daemon's reading stopped. One
 # element is each drawer's way to its row in the launcher, where its acts are. Three of the files
 # and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
-# the foot's reasons.
-BUDGET = Budget(files=37, kilobytes=535, elements=276)
+# the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
+# every page reads.
+BUDGET = Budget(files=37, kilobytes=536, elements=276)
 CELLS_SITE = "cells/"
 
 

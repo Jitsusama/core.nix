@@ -33,6 +33,7 @@ function kbdNaming(key: string) {
   return {
     textContent: key,
     tabIndex: -1,
+    dataset: {} as Record<string, string>,
     heard,
     setAttribute: () => undefined,
     addEventListener: (kind: string, listener: (event: unknown) => void) => {
@@ -65,6 +66,33 @@ it("Return on a pressable key does its act alone, never reaching the page's own 
   assert.equal(prevented, true, "and nothing the browser does by default");
   assert.equal(stopped, true, "and goes no further, where the page would open its cursor");
   assert.equal(kbd.tabIndex, 0, "the key is reached by Tab");
+});
+
+it("a pressable key is marked a tap for the touch rule, but one that only lists the keys isn't", () => {
+  const keys = [kbdNaming("j"), kbdNaming("?"), kbdNaming("F1")];
+  Object.assign(globalThis, { document: { querySelectorAll: () => keys } });
+  const nothing = (): void => undefined;
+  pressable(".keys kbd", { j: nothing, "?": nothing, F1: nothing });
+  assert.deepEqual(
+    keys.map((kbd) => "tap" in kbd.dataset),
+    [true, false, false],
+    "j is a tap, and ? and F1 aren't",
+  );
+});
+
+it("a key the markup marks a tap that does nothing when tapped loses the mark", () => {
+  const keys = [kbdNaming("j"), kbdNaming("k"), kbdNaming("?")];
+  for (const kbd of keys) {
+    kbd.dataset["tap"] = "";
+  }
+  Object.assign(globalThis, { document: { querySelectorAll: () => keys } });
+  const nothing = (): void => undefined;
+  pressable(".keys kbd", { j: nothing, "?": nothing });
+  assert.deepEqual(
+    keys.map((kbd) => "tap" in kbd.dataset),
+    [true, false, false],
+    "j keeps its mark, and k, handed nothing, and ?, which only lists the keys, lose it",
+  );
 });
 
 it("a key pressed twice in a row acts once, and a third press starts over", () => {
