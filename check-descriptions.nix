@@ -1904,9 +1904,9 @@
     once it is
   '';
   local-name-answers-by-a-job = ''
-    a Mac with a local name advertises itself as a workstation by that name, on port 9, with
-    macOS's own dns-sd, as nobody, from its start and again whenever it ends, so its name keeps
-    answering after mDNSResponder restarts, and a Mac with none advertises nothing
+    a Mac with a local name runs a root job advertising it as a workstation by that name, on
+    port 9, with macOS's own dns-sd, from its start and again whenever it ends, saying what
+    dns-sd says in its log, and a Mac with none advertises nothing
   '';
   local-name-comes-back = ''
     a Mac macOS renamed gets its declared local name back, said once with what it was, at most

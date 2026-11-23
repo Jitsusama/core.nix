@@ -59,12 +59,12 @@ in
       );
 
   # A Mac with a local name advertises itself as a workstation by that name,
-  # with macOS's own dns-sd, as nobody, from its start and again whenever it
-  # ends, so its name keeps answering; a Mac with no local name advertises
-  # nothing.
+  # with macOS's own dns-sd, as root, from its start and again whenever it
+  # ends, saying what dns-sd says in its log; a Mac with no local name
+  # advertises nothing.
   local-name-answers-by-a-job =
     holds "local-name-answers-by-a-job"
-      "A Mac's local name isn't kept answering by a job advertising it as a workstation by that name with macOS's dns-sd, as nobody, from its start and again whenever it ends, or a Mac with no local name advertises one."
+      "A Mac's local name isn't advertised by a root job running macOS's dns-sd as a workstation by that name from its start and again whenever it ends, saying what dns-sd says in its log, or a Mac with no local name advertises one."
       (
         answers.ProgramArguments or [ ] == [
           "/usr/bin/dns-sd"
@@ -74,9 +74,11 @@ in
           "local"
           "9"
         ]
-        && answers.UserName or null == "nobody"
+        && answers.UserName or null == null
         && answers.RunAtLoad or null == true
         && answers.KeepAlive or null == true
+        && answers.StandardOutPath or null == "/var/log/local-name-answers.log"
+        && answers.StandardErrorPath or null == "/var/log/local-name-answers.log"
         && answers.Disabled or null != true
         && !(
           macNamed {
