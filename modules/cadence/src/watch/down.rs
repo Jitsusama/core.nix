@@ -71,11 +71,11 @@ pub struct Seen {
     /// Whether a session on it is busy, so its node keeps it awake; none
     /// when the node didn't say which sessions are.
     pub working: Option<bool>,
-    /// Whether a lid shut may sleep it however busy: one with a battery,
-    /// which a lid shut on mains and then unplugged sleeps unheard, or one
-    /// ready whose power its node couldn't read; for one down, as its node
-    /// last heard.
-    pub battery: bool,
+    /// Whether it has a battery, which a lid shut on mains and then
+    /// unplugged sleeps unheard however busy; for one down, as its node last
+    /// heard. None where its node couldn't read its power, so another
+    /// realm's reading of it speaks first.
+    pub battery: Option<bool>,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
 }
@@ -136,14 +136,13 @@ pub fn seen(realm: &str, machines: &str, sessions: &str, this: &str) -> Vec<Seen
                 reading,
                 working: working.as_ref().map(|busy| busy.contains(name)),
                 // A node gives a charge only for a machine's own battery, a
-                // Mac's included, never a peripheral's. Power it couldn't
-                // read may be a battery, though only a ready reading says so,
-                // as a down one may carry none of what was last heard.
+                // Mac's included, never a peripheral's, and a desktop's
+                // power with none; it leaves out only power it couldn't read.
                 battery: match &machine["power"] {
-                    serde_json::Value::Null => reading == Reading::Ready,
-                    power => {
-                        power["on_battery"].as_bool() == Some(true) || power["charge"].is_u64()
-                    }
+                    serde_json::Value::Null => None,
+                    power => Some(
+                        power["on_battery"].as_bool() == Some(true) || power["charge"].is_u64(),
+                    ),
                 },
                 heard: machine["measured_at"]
                     .as_str()
@@ -175,8 +174,9 @@ pub struct Spell {
     /// When a realm last said whether a session on it was busy.
     #[serde(default)]
     pub said_at: Option<i64>,
-    /// Whether a lid shut sleeps it, as `Seen::battery` says, when it last
-    /// read ready, or as its node last heard while it reads down.
+    /// Whether a lid shut sleeps it, as `Seen::battery` says with power no
+    /// realm could read counted as a battery, when it last read ready, or
+    /// as its node last heard while it reads down.
     #[serde(default)]
     pub battery: bool,
     /// When it was last read ready or down.
@@ -241,7 +241,15 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
         // Read down by two realms, it was last heard when either last
         // heard it.
         let both_down = kept.reading == Reading::Down && one.reading == Reading::Down;
-        let (heard, battery) = (kept.heard.max(one.heard), kept.battery || one.battery);
+        // Any realm's battery stands, ready or down, as one realm's node may
+        // not have read the power another's did; a realm that read none
+        // speaks over one that couldn't read it.
+        let battery = match (kept.battery, one.battery) {
+            (Some(true), _) | (_, Some(true)) => Some(true),
+            (Some(false), _) | (_, Some(false)) => Some(false),
+            _ => None,
+        };
+        let heard = kept.heard.max(one.heard);
         // A realm that didn't say keeps the word unsaid, unless another
         // saw a session busy: its sessions may be the ones it didn't say.
         let working = match (kept.working, one.working) {
@@ -253,8 +261,6 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
             *kept = one.clone();
         }
         kept.working = working;
-        // Any realm's battery stands, ready or down, as one realm's node may
-        // not have read the power another's did.
         kept.battery = battery;
         if both_down {
             kept.heard = heard;
@@ -383,7 +389,9 @@ pub fn due(
                     } else {
                         spell.said_at
                     },
-                    battery: one.battery,
+                    // Power no realm could read may be a battery, so it
+                    // leans silent.
+                    battery: one.battery.unwrap_or(true),
                     read_at: Some(now),
                     realms: std::mem::take(&mut spell.realms),
                     listed_at: now,
@@ -399,7 +407,7 @@ pub fn due(
                 spell.read_at = Some(now);
                 // A battery heard in any read of the spell stands, as one
                 // realm's node may hear it when another's doesn't.
-                spell.battery |= one.battery;
+                spell.battery |= one.battery == Some(true);
                 let since = spell.down_since.unwrap_or(now);
                 let lately = spell
                     .ready_at

@@ -12,7 +12,7 @@ fn one(machine: &str, reading: Reading, working: bool) -> Seen {
         realm: "work".into(),
         reading,
         working: Some(working),
-        battery: false,
+        battery: Some(false),
         heard: Some(NOW),
     }
 }
@@ -68,11 +68,12 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
         seen("work", machines, sessions, "here"),
         [
             Seen {
+                battery: None,
                 heard: Some(1_795_249_969),
                 ..one("yonder", Reading::Down, true)
             },
             Seen {
-                battery: true,
+                battery: Some(true),
                 heard: None,
                 ..one("far", Reading::Ready, false)
             },
@@ -85,7 +86,7 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
             // before its node hears, beside a desktop with no battery and
             // one whose power its node couldn't read, which may have one.
             Seen {
-                battery: true,
+                battery: Some(true),
                 heard: None,
                 ..one("lap", Reading::Ready, false)
             },
@@ -94,17 +95,18 @@ fn the_nodes_answers_are_read_for_each_other_machine() {
                 ..one("desk", Reading::Ready, false)
             },
             Seen {
-                battery: true,
+                battery: None,
                 heard: None,
                 ..one("unmeasured", Reading::Ready, false)
             },
             Seen {
+                battery: None,
                 heard: None,
                 ..one("odd", Reading::Unread, false)
             },
         ],
-        "the machines weren't read as the node says, a down one's unread power as no \
-         battery, or this one wasn't left out"
+        "the machines weren't read as the node says, unread power as unknown, or this \
+         one wasn't left out"
     );
     assert!(
         seen("work", machines, r#"{"Err":"timed out"}"#, "here")
@@ -226,7 +228,7 @@ fn a_machine_idle_never_ready_slept_away_from_or_back_in_moments_is_never_told()
 fn a_laptop_on_battery_shut_while_busy_is_never_told() {
     let mut told = Told::default();
     let on_battery = Seen {
-        battery: true,
+        battery: Some(true),
         ..one("yonder", Reading::Ready, true)
     };
     step(&mut told, NOW, &[on_battery]);
@@ -282,7 +284,7 @@ fn a_laptop_unplugged_just_before_its_lid_shut_is_never_told() {
     let mut told = Told::default();
     step(&mut told, NOW, &[one("yonder", Reading::Ready, true)]);
     let unplugged = Seen {
-        battery: true,
+        battery: Some(true),
         ..lost("yonder", 120)
     };
     for minutes in (5..=30).step_by(5) {
@@ -340,7 +342,7 @@ fn a_battery_one_realm_reads_of_a_machine_both_read_ready_stands() {
     let mut told = Told::default();
     let personal = Seen {
         realm: "personal".into(),
-        battery: true,
+        battery: Some(true),
         ..one("yonder", Reading::Ready, true)
     };
     let both = ["work".to_owned(), "personal".to_owned()];
@@ -355,6 +357,31 @@ fn a_battery_one_realm_reads_of_a_machine_both_read_ready_stands() {
         told.machines["yonder"].battery,
         "the first realm's reading without a battery hid the battery the other read"
     );
+}
+
+#[test]
+fn power_one_realm_couldnt_read_leaves_the_other_realms_reading_to_speak() {
+    let both = ["work".to_owned(), "personal".to_owned()];
+    let unread = |realm: &str| Seen {
+        realm: realm.into(),
+        battery: None,
+        ..one("yonder", Reading::Ready, true)
+    };
+    for (seen, battery, read) in [
+        (
+            [one("yonder", Reading::Ready, true), unread("personal")],
+            false,
+            "no battery",
+        ),
+        ([unread("work"), unread("personal")], true, "nothing"),
+    ] {
+        let mut told = Told::default();
+        due(&seen, &both, &both, &mut told, NOW);
+        assert_eq!(
+            told.machines["yonder"].battery, battery,
+            "a desktop one realm read as {read} and the other couldn't read was judged wrongly"
+        );
+    }
 }
 
 /// The machine as the personal realm reads it, ready, not saying who's busy.
