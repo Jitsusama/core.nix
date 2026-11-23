@@ -2304,6 +2304,10 @@ ShellRoot {
         const closing = due.find(row => row.key === "on:heading:kinds");
         expect("one to-do now due makes only its row again, and the heading closing the cells",
             now.tally.rows - forYouBefore === 2 && dueRow !== undefined && closing !== undefined
+                && due.indexOf(closing) + 1
+                    === due.findIndex(row => row.key === "on:waitingOnYou:kind:look")
+                && due.findIndex(row => row.key === "on:heading:cell:yours")
+                    < due.findIndex(row => row.key === "on:waiting:want:WANTB")
                 && heldFirst.indexOf(dueRow) === -1
                 && due.filter(row => row !== dueRow && row !== closing)
                     .every(row => heldFirst.includes(row)),
@@ -2703,6 +2707,13 @@ ShellRoot {
                 ["on:waiting:want:LEFTC", ""], ["on:look:c", ""],
                 ["on:heading:kinds", "yours alone"], ["on:waitingOnYou:kind:look", ""]]),
             JSON.stringify(closed));
+        // It holds no row, so what comes after it while the list holds
+        // still waits behind the foot's count, as under no heading
+        // (Steady.js's headingsUnder).
+        const closer = forYou().find(row => row.key === "on:heading:kinds");
+        expect("the heading closing the cells holds no row",
+            Array.isArray(closer?.holding) && closer.holding.length === 0,
+            JSON.stringify(closer?.holding ?? null));
         WaitingOnYou.now = [toDo("Sign In")];
         now.lookTexts = { "c.json": lookAt("c", "Read C", "s-c") };
         // Two asking stand together in Agents Asking, first, above every
