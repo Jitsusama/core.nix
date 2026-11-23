@@ -3068,7 +3068,8 @@
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
     clears, rather than on a host's thread; left running through a switch for up to two hours,
-    skipped where the harness isn't installed, and never on a Mac
+    made to give memory back past 1.5 GiB but never killed for it, skipped where the harness
+    isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which
