@@ -3,18 +3,9 @@
 # that shared the Brio before keeps it hidden from the seat until it's
 # replugged, so a switch bringing this in, and every boot after, gives back
 # any camera node still held for a relay (give-back.sh), and nobody has to
-# unplug it.
+# unplug it. A machine importing ../mx-brio drops this, choosing the relay.
 { config, ... }:
 {
-  # Both at once would hide the Brio at each switch and give it back at the
-  # next, so a machine importing both is told.
-  assertions = [
-    {
-      assertion = !(config.systemd.services ? mx-brio);
-      message = "mx-brio-seat gives the MX Brio to the seat, and mx-brio relays it; import one.";
-    }
-  ];
-
   systemd.services.mx-brio-seat = {
     description = "Give the seat back an MX Brio a relay held";
     wantedBy = [ "multi-user.target" ];

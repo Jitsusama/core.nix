@@ -13,14 +13,8 @@
 }:
 let
   # A graphical machine that shares the Brio, since no role does while its
-  # relay gives no picture (nixos.nix says why); it gives the seat nothing
-  # back, as ../mx-brio-seat would.
-  shared = graphical.extendModules {
-    modules = [
-      self.nixosModules.mx-brio
-      { disabledModules = [ self.nixosModules.mx-brio-seat ]; }
-    ];
-  };
+  # relay gives no picture (nixos.nix says why).
+  shared = graphical.extendModules { modules = [ self.nixosModules.mx-brio ]; };
 in
 onLinux {
   # The MX Brio is shared through its loopback on a graphical machine that

@@ -87,6 +87,9 @@ in
     ../usb-camera-holders/nixos.nix
     ../v4l2loopback/nixos.nix
   ];
+  # A machine that imports the sharing chooses it over the graphical role's
+  # seat, which would give the Brio back to the seat at every switch.
+  disabledModules = [ ../mx-brio-seat/nixos.nix ];
 
   # The relay is packaged for x86 machines alone, so elsewhere the Brio
   # stays as it was, the seat's to open directly, one program at a time.
