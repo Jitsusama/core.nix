@@ -95,9 +95,16 @@ mod tests {
 
     #[test]
     fn mirrors_are_read_as_merge_net_reads_them() {
-        let root = std::env::temp_dir().join(format!("cadence-mirrors-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&root);
+        let scratch = tempfile::tempdir().expect("the test's folder made");
+        let root = scratch.path().join("runs-from");
         put(&root.join("mac/one.json"), "one");
+        // A node linked to its folder, as a sync tool may keep it, and a
+        // link left pointing at nothing, which can't be read.
+        put(&scratch.path().join("elsewhere/five.json"), "five");
+        std::os::unix::fs::symlink(scratch.path().join("elsewhere"), root.join("linked"))
+            .expect("the test's link made");
+        std::os::unix::fs::symlink(scratch.path().join("gone"), root.join("dangling"))
+            .expect("the test's link made");
         put(&root.join("mac/one.json.tmp"), "half");
         put(&root.join(".sync-tool/two.json"), "hidden");
         put(&root.join("stray.json"), "stray");
@@ -106,12 +113,17 @@ mod tests {
         let read = mirrored(&root, UNIX_EPOCH);
         assert_eq!(
             read.runs,
-            ["one", "four"],
+            ["five", "one", "four"],
             "a half-written, hidden or stray file was read, or a node's records weren't"
         );
-        assert_eq!(read.trouble.len(), 1, "{:?}", read.trouble);
+        assert_eq!(read.trouble.len(), 2, "{:?}", read.trouble);
         assert!(
-            read.trouble[0].contains("from high") && read.trouble[0].contains("too high"),
+            read.trouble[0].contains("from dangling") && read.trouble[0].contains("can't be read"),
+            "a node that can't be read went unsaid: {:?}",
+            read.trouble
+        );
+        assert!(
+            read.trouble[1].contains("from high") && read.trouble[1].contains("too high"),
             "a node mirrored a folder too high went unsaid: {:?}",
             read.trouble
         );
@@ -130,6 +142,5 @@ mod tests {
             unlisted.trouble[0].contains("can't be listed"),
             "a mirrors folder that can't be listed went unsaid: {unlisted:?}"
         );
-        fs::remove_dir_all(&root).expect("the test's folder removed");
     }
 }

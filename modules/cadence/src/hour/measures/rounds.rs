@@ -246,12 +246,15 @@ impl Reviewed {
 /// cancelled as read, but no one reviewed in it, so it isn't a round here.
 /// A reviewer stopped at its wall having filed nothing is silent too: a
 /// stop's record can't tell nothing found from nothing read, and the one
-/// such round on record, on 17 November, left its answers empty.
+/// such round on record, on 17 November, left its answers empty. A stop
+/// is an object naming its limit, or `true` as merge-net's own records
+/// once wrote it, so a mirror's older harness reads the same.
 fn answered(run: &Value) -> bool {
     let flag = |name: &str| run[name].as_bool().unwrap_or(false);
+    let stopped = |s: &Value| s.is_object() || s.as_bool() == Some(true);
     let answer = |o: &Value| {
         o.get("failure").is_none()
-            && (!o.get("stopped").is_some_and(Value::is_object)
+            && (!o.get("stopped").is_some_and(stopped)
                 || o["findingIds"]
                     .as_array()
                     .is_some_and(|ids| !ids.is_empty()))
@@ -429,8 +432,10 @@ impl Late {
             many => format!(", {many} queued fixes unread"),
         } + &match away {
             0 => String::new(),
-            1 => ", 1 round run on another machine".to_owned(),
-            many => format!(", {many} rounds run on another machine"),
+            1 => ", 1 round past five run on another machine, what it caught unread".to_owned(),
+            many => format!(
+                ", {many} rounds past five run on another machine, what they caught unread"
+            ),
         };
         // What a round elsewhere caught is kept there, so nothing caught is
         // known only of the rounds run here.
@@ -464,7 +469,10 @@ impl Late {
 /// when it started in the `BEFORE` up to it, and once by its id however
 /// many records hold it. A change with a record but no council counts
 /// nought; one with no record at all may be one the matching can't see,
-/// so it is counted apart rather than read as nought.
+/// so it is counted apart rather than read as nought. With no round of
+/// this machine's own read, the median says so whatever the mirrors hold,
+/// and a mirror none of whose records is of the shape read here is said
+/// unread, as merge-net says one; with either, nothing is filed.
 #[must_use]
 pub fn rounds(
     mains: &[Main],
@@ -536,8 +544,10 @@ pub fn rounds(
             .then_with(|| a.change.cmp(&b.change))
     });
     each.retain(|late| late.rounds > PAST);
-    let mirrors_read = mirrored.trouble.is_empty();
-    let read = read_said(!reviewed.is_empty(), unrecorded, fixes_read, mirrors_read);
+    let mirrors_read =
+        mirrored.trouble.is_empty() && (mirrored.runs.is_empty() || !there.is_empty());
+    let local_read = !here.is_empty();
+    let read = read_said(local_read, unrecorded, fixes_read, mirrors_read);
     let median = Measure {
         key: KEY.to_owned(),
         class: Class::Ship,
@@ -550,28 +560,41 @@ pub fn rounds(
         owner: owner.to_owned(),
         behind: each.iter().map(|late| late.line(fixes_read)).collect(),
     };
-    each.retain(|late| {
-        fixes_read && mirrors_read && late.caught.is_empty() && late.unread == 0 && late.away == 0
-    });
+    let whole = local_read && fixes_read && mirrors_read;
+    each.retain(|late| whole && late.caught.is_empty() && late.unread == 0 && late.away == 0);
+    std::iter::once(median)
+        .chain(fruitless(each, landed, owner))
+        .collect()
+}
+
+/// A drag for each merge in `each`, whose rounds past five caught nothing,
+/// owned by whoever `landed` it, else `owner`; `landed` is asked only when
+/// there is one.
+fn fruitless(
+    each: Vec<Late>,
+    landed: impl FnOnce() -> BTreeMap<String, String>,
+    owner: &str,
+) -> Vec<Measure> {
     let landed = if each.is_empty() {
         BTreeMap::new()
     } else {
         landed()
     };
-    let fruitless = each.into_iter().map(
-        |Late {
-             rounds: n, change, ..
-         }| Measure {
-            key: format!("{FRUITLESS}{change}"),
-            class: Class::Ship,
-            says: format!("council rounds on {change}, whose rounds past five caught nothing"),
-            now: count(n),
-            target: Some(count(PAST)),
-            owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
-            behind: Vec::new(),
-        },
-    );
-    std::iter::once(median).chain(fruitless).collect()
+    each.into_iter()
+        .map(
+            |Late {
+                 rounds: n, change, ..
+             }| Measure {
+                key: format!("{FRUITLESS}{change}"),
+                class: Class::Ship,
+                says: format!("council rounds on {change}, whose rounds past five caught nothing"),
+                now: count(n),
+                target: Some(count(PAST)),
+                owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
+                behind: Vec::new(),
+            },
+        )
+        .collect()
 }
 
 #[cfg(test)]
@@ -987,6 +1010,12 @@ mod tests {
                 true,
                 "a null stop read as a stop",
             ),
+            (
+                vec![one(r#", "stopped": true"#)],
+                "",
+                false,
+                "a stop written as true, filing nothing, answered",
+            ),
         ];
         for (outcomes, rest, counts, why) in cases {
             let text = format!(r#"{{"outcomes": [{}]{rest}}}"#, outcomes.join(", "));
@@ -1046,11 +1075,11 @@ mod tests {
             [
                 concat!(
                     "core.nix#32: 9 rounds, past five caught in the ninth, ",
-                    "2 rounds run on another machine"
+                    "2 rounds past five run on another machine, what they caught unread"
                 ),
                 concat!(
                     "core.nix#33: 6 rounds, those past five caught nothing here, ",
-                    "1 round run on another machine"
+                    "1 round past five run on another machine, what it caught unread"
                 ),
                 "core.nix#34: 6 rounds, those past five caught nothing",
             ],
@@ -1065,6 +1094,16 @@ mod tests {
             [("rounds-past-five-fixed-nothing:core.nix#34", "LANDER")],
             "a merge was filed though its late rounds ran elsewhere or caught something"
         );
+        let unshaped = Mirrored {
+            runs: vec![r#"{"change": {}, "runs": []}"#.to_owned()],
+            trouble: Vec::new(),
+        };
+        let all = rounds(&mains, &ours, &unshaped, &fixed, landed, NOW, "ORCH");
+        assert!(
+            all.len() == 1 && !read_whole(&all[0]) && all[0].says.ends_with(NO_MIRROR),
+            "a mirror of another record shape read as whole: {}",
+            all[0].says
+        );
         let unread = Mirrored {
             trouble: vec!["the mirror from mac can't be listed".to_owned()],
             ..theirs
@@ -1073,6 +1112,16 @@ mod tests {
         assert!(
             all.len() == 1 && !read_whole(&all[0]) && all[0].says.ends_with(NO_MIRROR),
             "a merge was filed, or its drag closed, while a mirror went unread: {}",
+            all[0].says
+        );
+        let theirs = Mirrored {
+            runs: unread.runs,
+            trouble: Vec::new(),
+        };
+        let all = rounds(&mains, &[], &theirs, &fixed, landed, NOW, "ORCH");
+        assert!(
+            all.len() == 1 && !read_whole(&all[0]) && all[0].says.contains(NO_RUNS),
+            "a mirror's rounds hid that this machine's own went unread: {}",
             all[0].says
         );
     }
