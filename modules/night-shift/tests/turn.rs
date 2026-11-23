@@ -237,11 +237,13 @@ fn a_job_waiting_past_its_most_gives_up_with_try_again_later() {
 // for one inside an agent's, has it already, where it once waited for its
 // own parent's lock for ever. One beside a turn, not within it, still
 // waits, as a_job_waiting_past_its_most_gives_up_with_try_again_later shows.
+// The line goes on past the inner turn, so the shell forks it rather than
+// running it in its own place, and the walk climbs past the shell.
 #[test]
 fn a_turn_asked_for_within_a_turn_runs_in_it() {
     let account = Account::new();
     let inner = format!(
-        "'{}' turn cargo --wait-at-most 5 -- touch inner",
+        "'{}' turn cargo --wait-at-most 5 -- touch inner; :",
         env!("CARGO_BIN_EXE_night-shift")
     );
     let output = account.turn("test", &[], &inner).output().unwrap();
@@ -260,8 +262,17 @@ fn a_turn_asked_for_within_a_turn_runs_in_it() {
     );
 }
 
-// A holder's note outlives it, and its pid can come again as one of a
-// later turn's parents, here this test's own, which holds no lock.
+/// When this test's process started, in the kernel's ticks, as a turn
+/// notes its own.
+fn started() -> String {
+    let stat = fs::read_to_string("/proc/self/stat").unwrap();
+    let (_, after) = stat.rsplit_once(") ").unwrap();
+    after.split(' ').nth(19).unwrap().to_owned()
+}
+
+// A holder that is a later turn's parent, here this test, but holds no
+// lock, as a night job paused for a job Joel waits on doesn't, leaves
+// the turn to be taken.
 #[test]
 fn a_turn_below_a_pid_a_gone_holder_noted_takes_the_lock_itself() {
     let account = Account::new();
@@ -269,7 +280,7 @@ fn a_turn_below_a_pid_a_gone_holder_noted_takes_the_lock_itself() {
     fs::create_dir_all(&runtime).unwrap();
     fs::write(
         runtime.join("holder"),
-        format!("gone\t{}\t0\n", std::process::id()),
+        format!("gone\t{}\t0\t{}\n", std::process::id(), started()),
     )
     .unwrap();
     let output = account.turn("eval", &[], "touch ran").output().unwrap();
@@ -283,6 +294,82 @@ fn a_turn_below_a_pid_a_gone_holder_noted_takes_the_lock_itself() {
     assert!(
         fs::read_to_string(runtime.join("holder")).is_ok_and(|noted| noted.starts_with("eval\t")),
         "it didn't note itself as the turn's holder"
+    );
+}
+
+// A note's pid given again to one of a later turn's parents, while
+// another job holds the lock and hasn't noted itself yet, is told apart
+// by when it started: the turn waits for that job rather than running
+// beside it.
+#[test]
+fn a_turn_below_a_pid_given_again_waits_while_another_holds_the_lock() {
+    let account = Account::new();
+    let mut first = account.holding("stamp", "until [ -e go ]; do sleep 0.05; done");
+    let runtime = account.path("runtime/night-shift");
+    fs::write(
+        runtime.join("holder"),
+        format!("gone\t{}\t0\t1\n", std::process::id()),
+    )
+    .unwrap();
+    let output = account
+        .turn("eval", &["--wait-at-most", "0.5"], "touch ran")
+        .output()
+        .unwrap();
+    File::create(account.path("go")).unwrap();
+    first.wait().unwrap();
+    let said = warned(&output);
+    assert_eq!(
+        output.status.code(),
+        Some(75),
+        "it didn't wait for the job holding the lock: {said}"
+    );
+    assert!(
+        !account.path("ran").exists(),
+        "it ran beside the job holding the lock"
+    );
+    assert!(
+        !said.contains("runs in the turn"),
+        "it took a pid given again for the turn's holder: {said}"
+    );
+}
+
+// The note is written whole, its holder's start beside its pid, and only
+// the note is left in the turn's folder.
+#[test]
+fn a_turn_notes_when_its_holder_started() {
+    let account = Account::new();
+    let output = account
+        .turn(
+            "eval",
+            &[],
+            "cat \"$XDG_RUNTIME_DIR/night-shift/holder\" > noted",
+        )
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "the turn failed: {}",
+        warned(&output)
+    );
+    let noted = fs::read_to_string(account.path("noted")).unwrap();
+    let fields: Vec<&str> = noted.trim().split('\t').collect();
+    assert_eq!(
+        fields.len(),
+        4,
+        "the note isn't name, pid, since and start: {noted}"
+    );
+    assert!(
+        fields[3].parse::<u64>().is_ok_and(|ticks| ticks > 0),
+        "the note's start isn't ticks: {noted}"
+    );
+    let left: Vec<_> = fs::read_dir(account.path("runtime/night-shift"))
+        .unwrap()
+        .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+        .filter(|name| name.starts_with('.'))
+        .collect();
+    assert!(
+        left.is_empty(),
+        "a note being written was left behind: {left:?}"
     );
 }
 
