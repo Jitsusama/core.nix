@@ -246,9 +246,11 @@ let
           '';
         };
       inherit (pkgs) mesa;
-      # A setting of the account's shell unit, by its name, as systemd takes it: the last of
-      # its assignments. One the unit no longer sets fails the evaluation rather than going
-      # unsaid. Only the settings named below are carried; the unit's others aren't.
+      # A setting of the account's shell unit, by its name: the last of its Environment
+      # entries, each one assignment as home.nix writes them, as systemd takes the last. One
+      # the unit no longer sets, or unsets, which systemd does last, fails the evaluation
+      # rather than going unsaid. Only the settings named below are carried; the unit's
+      # others aren't.
       unitSets =
         setting:
         let
@@ -259,6 +261,8 @@ let
         in
         if said == null then
           throw "The shell's unit no longer sets ${setting}."
+        else if lib.elem setting (lib.toList (unit.UnsetEnvironment or [ ])) then
+          throw "The shell's unit unsets ${setting}, so the checks can't run with it set."
         else
           lib.removePrefix asked said;
     in
