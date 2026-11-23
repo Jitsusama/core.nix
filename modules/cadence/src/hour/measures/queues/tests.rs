@@ -241,41 +241,44 @@ fn each_queue_says_its_wait_or_that_nothing_passed_or_that_it_went_unread() {
 }
 
 #[test]
-fn seventeen_waits_stand_apart_from_their_worst_two_and_waits_unsaid_keep_the_ask() {
+fn from_seventeen_waits_the_p90_stands_apart_and_waits_unsaid_keep_the_ask() {
     let records = Records {
         outcomes: None,
         sends: None,
         landed: None,
         aboard: None,
     };
-    // Seventeen builds, fifteen quick and two of ten minutes, whose p90 is
-    // the third worst; sixteen's would be the second.
-    let builds = (0..17)
-        .map(|n| {
-            let asked = format!("2026-11-21T11:{n:02}:00Z");
-            let waited = if n >= 15 { 600 } else { 1 };
-            outcome(
-                "build",
-                &asked,
-                Some(&asked),
-                "2026-11-21T11:30:00Z",
-                waited,
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let enough = queues(
-        &Records {
-            outcomes: Some(&builds),
-            ..records
-        },
-        NOW,
-    );
-    let builds = found(&enough, "builds");
-    assert!(
-        (builds.now - 1.0).abs() < f64::EPSILON && !builds.says.contains("few waits"),
-        "seventeen waits' p90 wasn't the third worst, or they were said to be few: {builds:?}"
-    );
+    // Builds with two of ten minutes and the rest quick: seventeen's p90 is
+    // the third worst, and said to be of enough waits, where sixteen's is
+    // the second worst, and said to be of few.
+    for (n, p90, few) in [(17, 1.0, false), (16, 600.0, true)] {
+        let builds = (0..n)
+            .map(|i| {
+                let asked = format!("2026-11-21T11:{i:02}:00Z");
+                let waited = if i >= n - 2 { 600 } else { 1 };
+                outcome(
+                    "build",
+                    &asked,
+                    Some(&asked),
+                    "2026-11-21T11:30:00Z",
+                    waited,
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        let read = queues(
+            &Records {
+                outcomes: Some(&builds),
+                ..records
+            },
+            NOW,
+        );
+        let builds = found(&read, "builds");
+        assert!(
+            (builds.now - p90).abs() < f64::EPSILON && builds.says.contains("few waits") == few,
+            "{n} waits' p90 or their being few was misread: {builds:?}"
+        );
+    }
     // VM runs that ended without saying how long they waited went through.
     let unsaid = format!(r#"{{"at":{},"on":"vm-12","seconds":30}}"#, NOW - 60);
     let sent = queues(
@@ -295,7 +298,7 @@ fn seventeen_waits_stand_apart_from_their_worst_two_and_waits_unsaid_keep_the_as
 }
 
 #[test]
-fn a_queues_ask_is_answered_back_in_and_held_while_quiet_or_unread_but_the_trains_is_not() {
+fn a_queues_ask_is_answered_back_in_and_held_while_quiet_or_unread_the_trains_too() {
     let queue = |says: &str, now: f64, target: Option<f64>| Measure {
         key: "queue:sends".to_owned(),
         class: Class::Queues,
@@ -325,8 +328,8 @@ fn a_queues_ask_is_answered_back_in_and_held_while_quiet_or_unread_but_the_train
         ..queue(&format!("x{QUIET}"), 0.0, None)
     };
     assert!(
-        answered("queue:trains", std::slice::from_ref(&idle)),
-        "a train with no rider through or aboard kept its ask, though aboard counts as it waits"
+        !answered("queue:trains", std::slice::from_ref(&idle)),
+        "a quiet train answered its ask, though one that can't start reads quiet too"
     );
 }
 

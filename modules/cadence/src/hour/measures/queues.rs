@@ -20,8 +20,8 @@
 //! ask: a turn or a send is written only once it ends, so a queue wedged
 //! all day reads as one that held no work. One that let work through
 //! without saying how long it waited is unjudged and keeps its ask too.
-//! The train is the one exception: its riders aboard count as they wait,
-//! so a day with none through or aboard is truly idle, and closes it.
+//! The train's quiet keeps it too: one that can't start turns each change
+//! away to merge alone and keeps no record of it, so it reads as idle.
 //! Each is judged by its p90 however few its waits: with fewer than
 //! seventeen that is the worst or the second worst, so the card says they
 //! were few, but a stuck wait on a quiet day was still waited.
@@ -34,8 +34,8 @@ pub const QUEUE: &str = "queue:";
 
 /// Said after a queue that let nothing through in the day: it says
 /// nothing of its wait, and its ask stays open, since a record written as
-/// each wait ends can't tell a queue that held no work from a wedged one.
-/// The train's closes, since its riders aboard count as they wait.
+/// each wait ends can't tell a queue that held no work from a wedged one,
+/// nor the train's record an idle train from one that can't start.
 pub const QUIET: &str = ": none through in a day";
 
 /// Said after a queue whose record couldn't be read: it says nothing, and
@@ -290,16 +290,15 @@ pub fn worst(measures: &[Measure]) -> Option<&Measure> {
 }
 
 /// Whether the ask filed for the queue keyed `key` is answered: its p90
-/// back in, the queue gone from the hour, as its ask invites, or the
-/// train quiet, since its record counts riders aboard as they wait. Any
-/// other quiet, unread or unjudged keeps it open, since none says the wait
-/// came back.
+/// back in, or the queue gone from the hour, as its ask invites. One
+/// quiet, unread or unjudged keeps it open, since none says the wait came
+/// back.
 #[must_use]
 pub fn answered(key: &str, measures: &[Measure]) -> bool {
-    let train = key == format!("{QUEUE}{}", TRAINS.key);
-    measures.iter().find(|m| m.key == key).is_none_or(|m| {
-        (m.target.is_some() && m.past().is_none()) || (train && m.says.ends_with(QUIET))
-    })
+    measures
+        .iter()
+        .find(|m| m.key == key)
+        .is_none_or(|m| m.target.is_some() && m.past().is_none())
 }
 
 #[cfg(test)]

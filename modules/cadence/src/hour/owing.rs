@@ -229,8 +229,8 @@ fn queue_asked(m: &Measure, says: String) -> Filed {
              with what it protects, whether the work could go without it, and the change that \
              keeps the protection without the wait, weighed against at least two designs \
              beside the obvious one, with its date. It closes by itself once its p90 is back \
-             in, or for the merge train a day with no rider, and goes late to the \
-             orchestrator only after a week, as its change takes its time."
+             in, and goes late to the orchestrator only after a week, as its change takes its \
+             time."
         ),
         says,
     }

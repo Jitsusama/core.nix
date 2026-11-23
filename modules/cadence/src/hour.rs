@@ -728,6 +728,7 @@ mod tests {
         let cases = [
             ("busy", "now", false, &held, true, "running here"),
             ("busy", "then", false, &held, false, "from another boot"),
+            ("busy", "now", true, &held, true, "running on its host"),
             ("busy", "now", true, &dropped, false, "its host dropped it"),
             ("parked", "now", false, &held, true, "parked this boot"),
             ("parked", "then", false, &held, false, "before a reboot"),
