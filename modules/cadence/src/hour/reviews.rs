@@ -48,9 +48,9 @@ pub fn mirrored(root: &Path, since: SystemTime) -> Mirrored {
         Err(error) if error.kind() == ErrorKind::NotFound => return mirrored,
         Err(error) => {
             let root = root.display();
-            mirrored
-                .trouble
-                .push(format!("the rounds mirrored under {root} can't be listed ({error})"));
+            mirrored.trouble.push(format!(
+                "the rounds mirrored under {root} can't be listed ({error})"
+            ));
             return mirrored;
         }
     };

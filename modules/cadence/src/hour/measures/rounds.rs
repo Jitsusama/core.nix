@@ -59,7 +59,27 @@ const NO_MIRROR: &str = "another machine's rounds unread";
 /// merges' rounds past five caught nothing.
 #[must_use]
 pub fn read_whole(median: &Measure) -> bool {
-    median.key == KEY && ![NO_RUNS, NO_FIXES, NO_MIRROR].iter().any(|no| median.says.contains(no))
+    median.key == KEY
+        && ![NO_RUNS, NO_FIXES, NO_MIRROR]
+            .iter()
+            .any(|no| median.says.contains(no))
+}
+
+/// What the median says it read: no record of rounds at all, or how many
+/// merges had one, then which other records it couldn't read.
+fn read_said(any: bool, unrecorded: usize, fixes_read: bool, mirrors_read: bool) -> String {
+    let read = if !any {
+        format!(", {NO_RUNS}")
+    } else if !fixes_read {
+        format!(" with a review record, {unrecorded} with none, {NO_FIXES}")
+    } else {
+        format!(" with a review record, {unrecorded} with none")
+    };
+    if mirrors_read {
+        read
+    } else {
+        format!("{read}, {NO_MIRROR}")
+    }
 }
 
 /// The rounds other machines' mirrors hold here, each the text of one
@@ -456,7 +476,11 @@ pub fn rounds(
     owner: &str,
 ) -> Vec<Measure> {
     let here: Vec<Reviewed> = records.iter().filter_map(|r| Reviewed::read(r)).collect();
-    let there: Vec<Reviewed> = mirrored.runs.iter().filter_map(|r| Reviewed::read(r)).collect();
+    let there: Vec<Reviewed> = mirrored
+        .runs
+        .iter()
+        .filter_map(|r| Reviewed::read(r))
+        .collect();
     let away = away(&here, &there);
     let reviewed: Vec<&Reviewed> = here.iter().chain(&there).collect();
     let bases: BTreeMap<&str, &str> = reviewed
@@ -512,13 +536,8 @@ pub fn rounds(
             .then_with(|| a.change.cmp(&b.change))
     });
     each.retain(|late| late.rounds > PAST);
-    let read = if reviewed.is_empty() {
-        format!(", {NO_RUNS}")
-    } else if !fixes_read {
-        format!(" with a review record, {unrecorded} with none, {NO_FIXES}")
-    } else {
-        format!(" with a review record, {unrecorded} with none")
-    };
+    let mirrors_read = mirrored.trouble.is_empty();
+    let read = read_said(!reviewed.is_empty(), unrecorded, fixes_read, mirrors_read);
     let median = Measure {
         key: KEY.to_owned(),
         class: Class::Ship,
@@ -531,8 +550,6 @@ pub fn rounds(
         owner: owner.to_owned(),
         behind: each.iter().map(|late| late.line(fixes_read)).collect(),
     };
-    let mirrors_read = mirrored.trouble.is_empty();
-    let read = if mirrors_read { read } else { format!("{read}, {NO_MIRROR}") };
     each.retain(|late| {
         fixes_read && mirrors_read && late.caught.is_empty() && late.unread == 0 && late.away == 0
     });
@@ -921,12 +938,37 @@ mod tests {
         let cancelled = one(r#", "stopped": {"limit": "cancelled", "detail": "asked to stop"}"#);
         let finished = one("");
         let cases = [
-            (vec![finished.clone()], "", true, "a reviewer that finished didn't answer"),
-            (vec![finished.clone()], r#", "open": true"#, false, "an open round counted"),
-            (vec![finished], r#", "closed": true"#, false, "a closed round counted"),
-            (vec![one(r#", "failure": "the wall""#)], "", false, "a failure answered"),
+            (
+                vec![finished.clone()],
+                "",
+                true,
+                "a reviewer that finished didn't answer",
+            ),
+            (
+                vec![finished.clone()],
+                r#", "open": true"#,
+                false,
+                "an open round counted",
+            ),
+            (
+                vec![finished],
+                r#", "closed": true"#,
+                false,
+                "a closed round counted",
+            ),
+            (
+                vec![one(r#", "failure": "the wall""#)],
+                "",
+                false,
+                "a failure answered",
+            ),
             (vec![], "", false, "a round with no outcome counted"),
-            (vec![cancelled.clone()], "", false, "a cancel filing nothing answered"),
+            (
+                vec![cancelled.clone()],
+                "",
+                false,
+                "a cancel filing nothing answered",
+            ),
             (
                 vec![one(r#", "stopped": {"limit": "soft-deadline"}"#)],
                 "",
@@ -995,7 +1037,10 @@ mod tests {
         }];
         let landed = || BTreeMap::from([("core.nix#34".to_owned(), "LANDER".to_owned())]);
         let all = rounds(&mains, &ours, &theirs, &fixed, landed, NOW, "ORCH");
-        assert_eq!(all[0].now, 6.0, "the median of #32's 9, #33's 6 and #34's 6");
+        assert_eq!(
+            all[0].now, 6.0,
+            "the median of #32's 9, #33's 6 and #34's 6"
+        );
         assert_eq!(
             all[0].behind,
             [
@@ -1011,12 +1056,12 @@ mod tests {
             ],
             "a round held here too was read as away, or one with its fix here, or a cancel counted"
         );
-        let filed: Vec<(&str, &str)> = all[1..]
+        let owed: Vec<(&str, &str)> = all[1..]
             .iter()
             .map(|m| (m.key.as_str(), m.owner.as_str()))
             .collect();
         assert_eq!(
-            filed,
+            owed,
             [("rounds-past-five-fixed-nothing:core.nix#34", "LANDER")],
             "a merge was filed though its late rounds ran elsewhere or caught something"
         );
