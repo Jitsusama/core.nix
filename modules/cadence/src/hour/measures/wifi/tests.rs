@@ -26,13 +26,13 @@ fn clause(p95: &str, late: &str) -> String {
 }
 
 /// The clause of a minute whose every video echo went unanswered.
-const NONE: &str = "none at p95, 0.0% of 120 echoes answered past 1 s, 120 unanswered, not \
-                    weighed";
+const NONE: &str = "none at p95, 0.0% of 120 echoes answered past 1 s, 120 unanswered, too few \
+                    to time";
 
 /// The clause of a minute with fewer than half its video echoes answered,
-/// slow as those few were.
-const FEW: &str = "2400.0 ms at p95, 37.5% of 120 echoes answered past 1 s, 70 unanswered, not \
-                   weighed";
+/// many of those few late.
+const FEW: &str = "2400.0 ms at p95, 37.5% of 120 echoes answered past 1 s, 70 unanswered, too \
+                   few to time";
 
 /// The clause as wifid's first version wrote it, its loss unsplit.
 const LOST: &str = "881.0 ms at p95, 38.3% of 120 echoes lost";
@@ -59,21 +59,24 @@ fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
             at: AT,
             bssid: NEAR.to_owned(),
             best: 15.0,
-            p95: 2400.0,
+            p95: Some(2400.0),
             late: 37.5,
             call: true,
         }),
         "a minute's video clause wasn't read as wifid writes it"
     );
+    let few = read(&said_by_wifid(NEAR, Some(FEW), false));
+    assert!(
+        few.as_ref()
+            .is_some_and(|m| m.p95.is_none() && m.late > 37.0 && m.held()),
+        "a minute too few to time wasn't held by its late answers, its p95 set aside: {few:?}"
+    );
+    let none = read(&said_by_wifid(NEAR, Some(NONE), false));
+    assert!(
+        none.as_ref().is_some_and(|m| m.p95.is_none() && !m.held()),
+        "a gateway dropping every marked echo read as a hold: {none:?}"
+    );
     for (message, why) in [
-        (
-            said_by_wifid(NEAR, Some(NONE), false),
-            "a gateway dropping every marked echo read as a hold",
-        ),
-        (
-            said_by_wifid(NEAR, Some(FEW), false),
-            "a minute wifid doesn't weigh, most of its echoes unanswered, read as one",
-        ),
         (
             said_by_wifid(NEAR, None, false),
             "a minute with no video echo sent read as one",
@@ -104,9 +107,11 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
         // Held by its late answers alone, while a call was on.
         on(FAR, 3, &clause("20.0", "2.5"), true),
         on(FAR, 4, &clause("10.0", "0.0"), false),
-        // Neither read nor held, as wifid doesn't weigh it either.
-        on(FAR, 5, NONE, false),
-        entry(AT + 310, "wlp0s20f3 is authenticating"),
+        // Held by its late answers, though too few were answered to time.
+        on(FAR, 5, FEW, false),
+        // Read, but not held, as no echo answered late.
+        on(FAR, 6, NONE, false),
+        entry(AT + 370, "wlp0s20f3 is authenticating"),
     ]);
     let m = video(Some(&text), &TimeZone::UTC);
     assert_eq!(
@@ -117,11 +122,11 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
     assert_eq!(
         m.says,
         "minutes the Wi-Fi held a call's video past 100 ms at p95 or over 1% of it past 1 s, \
-         this hour, of 5 read"
+         this hour, of 7 read"
     );
     assert!(
-        (m.now - 3.0).abs() < f64::EPSILON && m.target == Some(TARGET) && m.past().is_some(),
-        "three held minutes in the hour didn't read as past its target: {m:?}"
+        (m.now - 4.0).abs() < f64::EPSILON && m.target == Some(TARGET) && m.past().is_some(),
+        "four held minutes in the hour didn't read as past its target: {m:?}"
     );
     assert_eq!(
         m.behind,
@@ -131,8 +136,8 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
                  at 11:25, best effort then 15.0 ms"
             ),
             format!(
-                "on {FAR}, 1 of 2 minutes held, the worst 20.0 ms at p95 and 2.5% past 1 s at \
-                 11:28, during a call, best effort then 15.0 ms"
+                "on {FAR}, 2 of 4 minutes held, the worst 37.5% past 1 s at 11:30, best effort \
+                 then 15.0 ms"
             ),
         ]
     );
@@ -156,7 +161,7 @@ fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why(
         (None, ": wifid's journal unread"),
         (Some(""), ": no Wi-Fi minute"),
         (Some("wlp0s20f3 is done looking"), ": no Wi-Fi minute"),
-        (Some(before.as_str()), ": no video echo answered"),
+        (Some(before.as_str()), ": no video echo sent"),
     ] {
         let m = video(text, &TimeZone::UTC);
         assert!(

@@ -25,8 +25,9 @@ const OWNER: &str = "PN2VZC";
 /// answers included, or with over `LATE_PERCENT` of its echoes answered
 /// past a second: PN2VZC's bars of 23 November, well between a clean
 /// point's 14 to 48 ms with none late and a holding one's 2.4 to 3.9 s
-/// with 16 to 38% late. A held queue answers late, in order, so an echo
-/// never answered says nothing of the air and isn't weighed.
+/// with 16 to 38% late. Only a held queue answers late, in order, so late
+/// answers count on every line, while an echo never answered says nothing
+/// of the air and a p95 of too few answers isn't weighed.
 const HELD_MS: f64 = 100.0;
 const LATE_PERCENT: f64 = 1.0;
 
@@ -58,27 +59,35 @@ pub fn journal(now: i64) -> [String; 7] {
 /// ending `, during a call` while one is on. Best effort's p95 is
 /// kept beside it, since wifid times its own echoes, so a minute with the
 /// machine starved of CPU reads slow in both, where one held in the air
-/// leaves best effort quick.
+/// leaves best effort quick. The video p95 is none on a clause ending
+/// `, too few to time`, fewer than half its echoes answered.
 #[derive(Debug, PartialEq)]
 struct Minute {
     at: i64,
     bssid: String,
     best: f64,
-    p95: f64,
+    p95: Option<f64>,
     late: f64,
     call: bool,
 }
 
 impl Minute {
     fn held(&self) -> bool {
-        self.p95 > HELD_MS || self.late > LATE_PERCENT
+        self.late > LATE_PERCENT || self.p95.is_some_and(|p95| p95 > HELD_MS)
+    }
+
+    /// How far it held, for choosing an access point's worst minute: its
+    /// late share first, as every line has one, then its timed p95.
+    fn worse(&self, other: &Self) -> std::cmp::Ordering {
+        let p95 = |m: &Self| m.p95.unwrap_or(0.0);
+        self.late
+            .total_cmp(&other.late)
+            .then(p95(self).total_cmp(&p95(other)))
     }
 }
 
-/// A minute read from one journal entry: none for any other line, for a
-/// minute with no video echo sent, and for one whose clause ends `, not
-/// weighed`, fewer than half its video echoes answered, which is a gateway
-/// dropping marked echoes rather than a hold, as wifid itself reads it.
+/// A minute read from one journal entry: none for any other line, and for
+/// a minute with no video echo sent, whose line leaves the clause out.
 fn minute(entry: &Value) -> Option<Minute> {
     let message = entry["MESSAGE"].as_str()?;
     let micros: i64 = entry["__REALTIME_TIMESTAMP"].as_str()?.parse().ok()?;
@@ -88,17 +97,23 @@ fn minute(entry: &Value) -> Option<Minute> {
     let (best, _) = best.split_once(" ms at p95, ")?;
     let (_, video) = rest.split_once("; video ")?;
     let video = video.split(';').next()?;
-    if video.ends_with(", not weighed") {
-        return None;
-    }
-    let (p95, video) = video.split_once(" ms at p95, ")?;
+    let (video, timed) = match video.strip_suffix(", too few to time") {
+        Some(few) => (few, false),
+        None => (video, true),
+    };
+    let (p95, video) = video.split_once(" at p95, ")?;
     let (late, video) = video.split_once("% of ")?;
     video.split_once(" echoes answered past 1 s")?;
+    let p95 = if timed {
+        Some(p95.strip_suffix(" ms")?.parse().ok()?)
+    } else {
+        None
+    };
     Some(Minute {
         at: micros / 1_000_000,
         bssid: bssid.to_owned(),
         best: best.parse().ok()?,
-        p95: p95.parse().ok()?,
+        p95,
         late: late.parse().ok()?,
         call: message.ends_with(", during a call"),
     })
@@ -109,7 +124,7 @@ fn minute(entry: &Value) -> Option<Minute> {
 /// its minutes held on, most first, with its worst minute, so the owner
 /// reads which radio jammed and when. An hour with no minute read is
 /// unjudged, saying why: the journal unread, no Wi-Fi minute, wired or
-/// asleep, or no video echo answered.
+/// asleep, or no video echo sent.
 #[must_use]
 pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
     let minutes: Vec<Minute> = journal
@@ -118,7 +133,7 @@ pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
     let unread = match journal {
         None => Some(": wifid's journal unread"),
         Some(text) if !text.contains(": gateway ") => Some(": no Wi-Fi minute"),
-        Some(_) if minutes.is_empty() => Some(": no video echo answered"),
+        Some(_) if minutes.is_empty() => Some(": no video echo sent"),
         Some(_) => None,
     };
     if let Some(why) = unread {
@@ -140,7 +155,7 @@ pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
         .into_iter()
         .filter_map(|(bssid, read)| {
             let held: Vec<&&Minute> = read.iter().filter(|m| m.held()).collect();
-            let worst = held.iter().max_by(|a, b| a.p95.total_cmp(&b.p95))?;
+            let worst = held.iter().max_by(|a, b| a.worse(b))?;
             Some((held.len(), said(bssid, held.len(), read.len(), worst, zone)))
         })
         .collect();
@@ -163,10 +178,14 @@ fn said(bssid: &str, held: usize, read: usize, worst: &Minute, zone: &TimeZone) 
         .map(|at| at.to_zoned(zone.clone()).strftime(" at %H:%M").to_string())
         .unwrap_or_default();
     let call = if worst.call { ", during a call" } else { "" };
-    let (p95, late, best) = (worst.p95, worst.late, worst.best);
+    let timed = worst
+        .p95
+        .map(|p95| format!("{p95:.1} ms at p95 and "))
+        .unwrap_or_default();
+    let (late, best) = (worst.late, worst.best);
     format!(
-        "on {bssid}, {held} of {read} minutes held, the worst {p95:.1} ms at p95 and \
-         {late:.1}% past 1 s{when}{call}, best effort then {best:.1} ms"
+        "on {bssid}, {held} of {read} minutes held, the worst {timed}{late:.1}% past 1 s\
+         {when}{call}, best effort then {best:.1} ms"
     )
 }
 
