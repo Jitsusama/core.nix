@@ -247,24 +247,39 @@ let
         };
       inherit (pkgs) mesa;
       # A setting of the account's shell unit, by its name: the last assignment of it in
-      # its Environment, as systemd takes the last, an entry holding several split at its
-      # spaces as systemd splits them (home.nix quotes none). One the unit no longer sets,
-      # or unsets by its name or an assignment, which systemd does last, fails the
-      # evaluation rather than going unsaid. Only the settings named below are carried;
-      # the unit's others aren't.
+      # its Environment, as systemd takes the last, each entry's words split at its spaces.
+      # systemd also reads quotes, escapes, tabs and newlines, and resets the list at an
+      # empty entry, so an entry holding any of them fails the evaluation rather than being
+      # misread. So does a setting the unit no longer sets, or unsets, which systemd does
+      # last, by its bare name or by the very assignment taken, the two ways systemd.exec(5)
+      # says remove it. Only the settings named below are carried; the unit's others aren't.
       unitSets =
         setting:
         let
           asked = "${setting}=";
           unit = home.systemd.user.services.quickshell.Service;
-          words = entries: lib.concatMap (lib.splitString " ") (lib.toList entries);
-          named = word: lib.head (lib.splitString "=" word);
-          environment = words (unit.Environment or [ ]);
-          said = lib.findFirst (lib.hasPrefix asked) null (lib.reverseList environment);
+          given = lib.toList (unit.Environment or [ ]);
+          unsetting = lib.toList (unit.UnsetEnvironment or [ ]);
+          misread =
+            entry:
+            entry == ""
+            || lib.any (mark: lib.hasInfix mark entry) [
+              "\""
+              "'"
+              "\\"
+              "\t"
+              "\n"
+            ];
+          unread = lib.findFirst misread null (given ++ unsetting);
+          words = lib.concatMap (lib.splitString " ");
+          said = lib.findFirst (lib.hasPrefix asked) null (lib.reverseList (words given));
+          unsets = words unsetting;
         in
-        if said == null then
+        if unread != null then
+          throw "The shell's unit has an entry unitSets can't read: ${builtins.toJSON unread}."
+        else if said == null then
           throw "The shell's unit no longer sets ${setting}."
-        else if lib.elem setting (map named (words (unit.UnsetEnvironment or [ ]))) then
+        else if lib.elem setting unsets || lib.elem said unsets then
           throw "The shell's unit unsets ${setting}, so the checks can't run with it set."
         else
           lib.removePrefix asked said;
