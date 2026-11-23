@@ -210,10 +210,10 @@ passed, from nix-offload's record of what passed at each commit. It refuses
 one no review round read too, from the rounds the harness keeps, and only
 when none of those read it, from those mirrored from other machines into
 `review/runs-from` beside them, where a range counts only when its base
-was given as a commit. A head whose only change is flake.lock pinning
-newer commits of the repos whose own changes merge through our rounds
-(mycelium and the harness), every other node as it was, needs none, and
-`ready` says so. It passes, too, when the head
+was given as a commit. A head whose only change is flake.lock moving
+mycelium, whose own changes merge through our rounds, to a newer commit
+on its trunk, as GitHub's compare says, with every other field and node
+as it was, needs none, and `ready` says so. It passes, too, when the head
 is a clean rebase of a commit one read, by the same patch id taken with
 its context lines and whitespace, so a block moved within its file is
 another change. A round over a range of commits stands for its head only
