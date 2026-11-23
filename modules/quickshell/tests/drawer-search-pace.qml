@@ -16,7 +16,7 @@
 // slower whether joined or not is refused too. Each is the fastest of
 // five batches of ten, batches of each timed in turn so all see the same
 // machine, since a slower one is the builder's other work or the
-// collector. Every search must find every line, so one quick from
+// collector. Every search must find every place, so one quick from
 // finding nothing passes none. The ratios are said every run, to set the
 // bounds below from. Timing the finder alone, by code took 2.8 times as
 // long as with no joiners on a builder, and a letter at a time 12
@@ -35,10 +35,26 @@ QtObject {
     readonly property real joined: 6
     readonly property real plain: 14
 
+    // A case that throws would leave qml waiting on nothing, and the check
+    // with it, so a throw fails it as a wrong answer does.
     Component.onCompleted: {
-        const linesWith = joiner => Array.from({ length: 400 }, (_, at) => {
-            const text = `Face-${joiner}with-${joiner}tears-${joiner}of-${joiner}joy ${at}`
-                + ` \u00b7 t-${joiner}shirt \u00b7 wi-${joiner}fi \u00b7 pirate-${joiner}flag`;
+        try {
+            judged();
+        } catch (error) {
+            console.warn(`the test threw: ${error.message}`);
+            Qt.exit(1);
+        }
+    }
+
+    function judged() {
+        // Each line holds its names eight times, so the search's own
+        // reading outweighs DrawerPage's walk over a line, which is the
+        // same with joiners or none and would hide how much slower one is.
+        const phrase = (joiner, at) => `Face-${joiner}with-${joiner}tears-${joiner}of-`
+            + `${joiner}joy ${at} \u00b7 t-${joiner}shirt \u00b7 wi-${joiner}fi \u00b7 pirate-`
+            + `${joiner}flag`;
+        const linesWith = joiner => Array.from({ length: 100 }, (_, at) => {
+            const text = Array.from({ length: 8 }, () => phrase(joiner, at)).join(" \u00b7 ");
             return { text, length: text.length,
                 parts: [{ words: {}, length: text.length, on: null }] };
         });
@@ -56,8 +72,16 @@ QtObject {
         };
         const rounds = [10, 10, 200];
         const paged = lines => () => Page.matchesIn(lines, "shirt").length;
-        const plainest = () => withNone.filter(line => line.text.toLowerCase()
-            .includes("shirt")).length;
+        const plainest = () => withNone.reduce((count, line) => {
+            const lowered = line.text.toLowerCase();
+            let found = count;
+            let at = lowered.indexOf("shirt");
+            while (at >= 0) {
+                found += 1;
+                at = lowered.indexOf("shirt", at + 5);
+            }
+            return found;
+        }, 0);
         const fastest = [Infinity, Infinity, Infinity];
         for (let pass = 0; pass < 5; pass += 1) {
             [paged(withJoiners), paged(withNone), plainest].forEach((search, at) => {
@@ -69,8 +93,8 @@ QtObject {
         const [byCode, bare, floor] = fastest.map((ms, at) => Math.max(ms, 1 / rounds[at]));
         const failures = [];
         const slow = [];
-        if (counts.size !== 1 || !counts.has(400)) {
-            failures.push(`a search found ${[...counts].join(", ")} lines, not 400`);
+        if (counts.size !== 1 || !counts.has(800)) {
+            failures.push(`a search found ${[...counts].join(", ")} places, not 800`);
         }
         const overBare = byCode / bare;
         const overFloor = bare / floor;
