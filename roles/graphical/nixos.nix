@@ -51,6 +51,7 @@
     nixosModules.litra
     nixosModules.memory-modules
     nixosModules.mpv
+    nixosModules.mx-brio-seat
     nixosModules.niri
     nixosModules.niri-off-cpu
     nixosModules.onepassword

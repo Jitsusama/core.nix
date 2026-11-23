@@ -12,28 +12,17 @@
   ...
 }:
 let
-  # A graphical machine that imports the sharing, since no role does while
-  # its relay gives no picture (nixos.nix says why).
-  shared = graphical.extendModules { modules = [ self.nixosModules.mx-brio ]; };
+  # A graphical machine that shares the Brio, since no role does while its
+  # relay gives no picture (nixos.nix says why); it gives the seat nothing
+  # back, as ../mx-brio-seat would.
+  shared = graphical.extendModules {
+    modules = [
+      self.nixosModules.mx-brio
+      { disabledModules = [ self.nixosModules.mx-brio-seat ]; }
+    ];
+  };
 in
 onLinux {
-  # Until the relay gives a picture, a graphical machine hands the MX Brio
-  # to the seat as any camera: no rule among its udev rules takes the seat's
-  # tag off the Brio, and no relay holds it, so Chrome lists the Brio itself.
-  the-mx-brio-is-the-seats =
-    let
-      inherit (graphical.config) environment systemd;
-    in
-    assert lib.assertMsg (!(systemd.services ? mx-brio)) "a relay holds the MX Brio";
-    pkgs.runCommandLocal "the-mx-brio-is-the-seats" { } ''
-      if grep -rlE 'ID_MODEL_ID\}=="091d".*TAG-="uaccess"' \
-        ${environment.etc."udev/rules.d".source}/; then
-        echo "a udev rule above keeps the MX Brio from the seat"
-        exit 1
-      fi
-      touch $out
-    '';
-
   # The MX Brio is shared through its loopback on a graphical machine that
   # imports it:
   # among the machine's own udev rules, udev reads the Brio's without a

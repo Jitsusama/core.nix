@@ -626,6 +626,7 @@ gather {
     ./modules/model-relay/checks.nix
     ./modules/mpv/checks.nix
     ./modules/mx-brio/checks.nix
+    ./modules/mx-brio-seat/checks.nix
     ./modules/mycelium/checks.nix
     ./modules/name-service/checks.nix
     ./modules/neovim/checks.nix

@@ -5071,8 +5071,9 @@
     folder, never beside it
   '';
   the-mx-brio-is-the-seats = ''
-    a graphical machine runs no relay on the MX Brio and has no udev rule taking the seat's tag
-    off it, so the seat opens the Brio itself while its relay gives no picture
+    a graphical machine runs no relay on the MX Brio, has no udev rule taking the seat's tag off
+    it, and gives the seat back a Brio a relay held, so the seat opens the Brio itself while its
+    relay gives no picture
   '';
   a-reply-to-the-void-says-where-it-went = ''
     Joel's line to the void is found in the talk it began and read once replied whole, where the
