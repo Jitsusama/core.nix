@@ -33,10 +33,33 @@ fn far_sh() -> String {
 /// Runs the sweep alone for a run whose copy is `work`, answering what it
 /// said, once it ended well.
 fn sweep(work: &Path) -> String {
+    sweep_with(work, &[])
+}
+
+/// Runs the sweep as `sweep` does, with each of `programs`, a name and
+/// its script, found before the machine's own.
+fn sweep_with(work: &Path, programs: &[(&str, &str)]) -> String {
+    let bin = work.parent().unwrap().with_extension("bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    for (name, text) in programs {
+        std::fs::write(bin.join(name), format!("#!/bin/sh\n{text}\n")).unwrap();
+        std::fs::set_permissions(
+            bin.join(name),
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
+    }
+    let path = format!(
+        "{}:{}",
+        bin.display(),
+        std::env::var("PATH").unwrap_or_default()
+    );
     let swept = std::process::Command::new(far_sh())
         .args(["-c", &format!("work='{}'\n{}", work.display(), sweeping())])
+        .env("PATH", path)
         .output()
         .unwrap();
+    let _ = std::fs::remove_dir_all(&bin);
     let said = String::from_utf8_lossy(&swept.stderr).into_owned();
     assert!(swept.status.success(), "the sweep failed: {said}");
     said
@@ -65,11 +88,17 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     let root = scratch("far-swept");
     let runs = root.join("s");
     let (here, gone) = (here(), gone());
-    // Gone, with all a run leaves beside its copy.
-    copy(&runs, "2", &format!("{gone} {here}"));
-    std::fs::write(runs.join("2.names"), "n").unwrap();
-    std::fs::create_dir_all(runs.join("2.back")).unwrap();
-    std::fs::write(runs.join("2.back.lost"), "l").unwrap();
+    // Gone, named as a job is, with all a run leaves beside its copy and
+    // a folder its job closed to its owner.
+    let job = "4242-1763912345678901234";
+    copy(&runs, job, &format!("{gone} {here}"));
+    std::fs::write(runs.join(format!("{job}.names")), "n").unwrap();
+    std::fs::create_dir_all(runs.join(format!("{job}.back"))).unwrap();
+    std::fs::write(runs.join(format!("{job}.back.lost")), "l").unwrap();
+    let closed = runs.join(job).join("closed");
+    std::fs::create_dir_all(&closed).unwrap();
+    std::fs::write(closed.join("f"), "f").unwrap();
+    std::fs::set_permissions(&closed, std::os::unix::fs::PermissionsExt::from_mode(0o500)).unwrap();
     // Live: this test's own process.
     copy(&runs, "3", &format!("{} {here}", std::process::id()));
     // Another machine's, whose numbers say nothing here.
@@ -80,7 +109,9 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     // A run's file that names no number, and one that is empty.
     copy(&runs, "5", &format!("x {here}"));
     copy(&runs, "8", "");
-    // A run this sweep may not signal, which may well be alive.
+    // A run this sweep may not signal, which may well be alive: launchd,
+    // on a Mac. In a Linux build's sandbox, the first process is the
+    // build's own, alive either way.
     copy(&runs, "10", &format!("1 {here}"));
     // A name no job has, which would name what lies beside copy 3.
     copy(&runs, "3.back", &format!("{gone} {here}"));
@@ -122,6 +153,25 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
         left_in(&runs),
         kept,
         "the sweep took a copy whose run isn't known gone, or left one whose is"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_linux_far_line_that_cant_read_its_process_space_clears_nothing() {
+    let root = scratch("far-swept-unknown");
+    let runs = root.join("s");
+    let machine = here().split(' ').next().unwrap().to_owned();
+    // Named as a run here that can't read its space writes it down.
+    copy(&runs, "2", &format!("{} {machine}", gone()));
+    let uname = "[ \"$1\" = -s ] && { echo Linux; exit 0; }
+PATH=${PATH#*:}
+exec uname \"$@\"";
+    sweep_with(&runs.join("9"), &[("uname", uname), ("readlink", "exit 1")]);
+    assert_eq!(
+        left_in(&runs),
+        ["2", "2.run"],
+        "a sweep that couldn't tell process spaces apart judged a number"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -105,8 +105,9 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
     );
     // One call for what has grown before the passes, then each pass looks
     // at the file and at what has grown, and the last ends once it has
-    // seen what has grown. A wait by the clock ends within two passes of
-    // three seconds; one counting its passes makes five.
+    // seen what has grown. A wait by the clock ends in two passes of
+    // three seconds, and a slower machine's in no more; one counting its
+    // passes makes five, where this fails.
     let calls = std::fs::read_to_string(home.join("wc"))
         .unwrap()
         .lines()

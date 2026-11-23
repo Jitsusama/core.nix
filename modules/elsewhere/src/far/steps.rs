@@ -152,8 +152,10 @@ trap 'stopped TERM 143' TERM"#
 /// as a job is, by digits and dashes, is taken, so no run's file can
 /// name what lies beside another's copy. It never removes through a
 /// link: it reads only a folder of copies that is no link, and only run
-/// files that are plain files, and rm takes a link at a copy's name away
-/// alone. A run's file goes only once its copy did.
+/// files that are plain files, and find and rm take a link at a copy's
+/// name as itself alone. A folder a job closed to its owner is opened
+/// first, as the copy step opens one, so no such copy stays for good. A
+/// run's file goes only once its copy did.
 pub(super) fn sweeping() -> String {
     format!(
         r#"runs=${{work%/*}}
@@ -177,6 +179,8 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *'No such process'*) ;;
       *) continue ;;
     esac
+    find "$copy" "$copy.back" -type d ! -perm -700 \
+      -exec chmod u+rwx {{}} \; 2>/dev/null
     {{ rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
       rm -f "$run"; }} ||
       printf "elsewhere: couldn't clear %s\n" "$copy" >&2
@@ -186,8 +190,7 @@ fi"#
 }
 
 /// What follows a copy's name in its run's file, which says what machine
-/// and process space the run was in and its number there. A process that
-/// can't be signalled is gone, or another user's, which no far line is.
+/// and process space the run was in and its number there.
 pub(super) const RUN: &str = ".run";
 
 /// The far line's step making the job's tree of its files, `copied`: 0
