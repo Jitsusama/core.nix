@@ -922,7 +922,7 @@ impl Pinner {
             // pairs they hold are kept and no round goes until one answers.
             let listed = sh(&words(&format!("nft -j list set inet {TABLE} vpn_ends")));
             if let Some(ends) = listed.ok().as_deref().and_then(pin::ends) {
-                self.pinning.flows(&ends);
+                self.pinning.flows(&ends, now);
                 if let Some(end) = self.pinning.ask(&ends, calling, now) {
                     let (link, held) = (link.to_string(), self.pinning.held());
                     let (send, to) = (self.send.clone(), SocketAddrV4::new(end.to, end.port));

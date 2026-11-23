@@ -82,6 +82,14 @@ pub const RETRIED: u64 = 2;
 /// for one dropped.
 pub const REMEMBERED: Duration = Duration::from_secs(20);
 
+/// How long a VPN flow missing from the set of its flows is still held, as
+/// the set's own timeout for one idle (shaper.nft): a switch that changes
+/// any table reloads the shaper's, which empties the set until each flow
+/// sends again, and a flow forgotten then would be learned again as the
+/// current pin's, its own pair probed under it (pin round 8's F2, F3 and
+/// F5). One gone for good holds a pair out of rounds that much longer.
+pub const FORGOTTEN: Duration = Duration::from_secs(300);
+
 /// One probe's answer: the hop that said its time ran out there, and how
 /// long after the probe left it said so.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -270,6 +278,7 @@ pub struct Pinning {
     kept: bool,
     on: Option<(String, String)>,
     flows: Vec<(End, Option<u16>)>,
+    missing: Vec<(End, Instant)>,
 }
 
 /// How many of the VPN's flows came back to the pin's rule, in packets,
@@ -439,11 +448,25 @@ impl Pinning {
         Some(to)
     }
 
-    /// Takes the VPN's flows now: each new one is remembered with the pair
-    /// pinned toward its server when it was first seen, since NAT gave it
-    /// one of that pair, and a flow gone is forgotten.
-    pub fn flows(&mut self, ends: &[End]) {
-        self.flows.retain(|(flow, _)| ends.contains(flow));
+    /// Takes the VPN's flows at `now`: each new one is remembered with the
+    /// pair pinned toward its server when it was first seen, since NAT
+    /// gave it one of that pair, and one missing since `FORGOTTEN` ago is
+    /// forgotten.
+    pub fn flows(&mut self, ends: &[End], now: Instant) {
+        self.missing.retain(|(flow, _)| !ends.contains(flow));
+        for &(flow, _) in &self.flows {
+            if !ends.contains(&flow) && self.missing.iter().all(|&(gone, _)| gone != flow) {
+                self.missing.push((flow, now));
+            }
+        }
+        let gone: Vec<End> = self
+            .missing
+            .iter()
+            .filter(|&&(_, since)| now.saturating_duration_since(since) >= FORGOTTEN)
+            .map(|&(flow, _)| flow)
+            .collect();
+        self.missing.retain(|(flow, _)| !gone.contains(flow));
+        self.flows.retain(|(flow, _)| !gone.contains(flow));
         for &end in ends {
             if self.flows.iter().all(|&(flow, _)| flow != end) {
                 let pinned = self.pinned.filter(|p| (p.to, p.port) == (end.to, end.port));
@@ -475,11 +498,13 @@ impl Pinning {
     /// measured on another lets go, since the line it split isn't this
     /// one's, a round out reads the old one, and the VPN's flows are
     /// probed for afresh. The first named only names where the pin already
-    /// is. A link the router hasn't answered on is named by itself, so on
-    /// the same link that name and its router's are the same network, not
-    /// another, either way; on another link it's another network. A round
-    /// may go at once, since the VPN opens a new socket on a new network.
-    /// Gives the first of the pair let go.
+    /// is. A link the router hasn't answered on is named by itself, which
+    /// names no network yet, on that link or another: a link plugged in
+    /// beside or roamed back to is unnamed for its first moments, so the
+    /// pin waits for the router's name to judge it, keeping a good pin
+    /// through docking onto the same network. A round may go at once,
+    /// since the VPN opens a new socket on a new network. Gives the first
+    /// of the pair let go.
     pub fn network(&mut self, link: &str, network: &str) -> Option<u16> {
         let unnamed = |n: &str| n.starts_with("link ");
         let now = (link.to_owned(), network.to_owned());
@@ -487,11 +512,11 @@ impl Pinning {
             self.on = Some(now);
             return None;
         };
-        // On the same link, a router that stops answering leaves the
-        // network the pin was measured on as it was, so a roam through an
-        // unnamed moment to another router still lets go; one answering
-        // at last names the network the link was on all along.
-        if was_link == link && unnamed(network) {
+        // A router that hasn't answered, or stopped, leaves the network
+        // the pin was measured on as it was, so a move through an unnamed
+        // moment to another router still lets go, and one to the same
+        // router keeps it (pin round 8's F1 and F4, round 7's F1).
+        if unnamed(network) {
             return None;
         }
         // The same network by another link is where the pin is, and the
@@ -997,23 +1022,43 @@ mod tests {
     #[test]
     fn a_round_leaves_out_every_port_the_vpns_flows_hold() {
         let mut pinning = Pinning::default();
-        pinning.flows(&[end(30_020)]);
+        let now = Instant::now();
+        pinning.flows(&[end(30_020)], now);
         pinning.pinned = Some(pin_at(30_006));
-        pinning.flows(&[end(30_020), end(41_000)]);
+        pinning.flows(&[end(30_020), end(41_000)], now);
         pinning.pinned = Some(pin_at(30_010));
         assert_eq!(
             pinning.held(),
             vec![30_006, 30_007, 30_010, 30_011, 30_020, 41_000],
             "a port a live flow holds, by its pin then or its own, was probed"
         );
-        pinning.flows(&[end(41_000)]);
+        let later = now + FORGOTTEN;
+        pinning.flows(&[end(41_000)], now);
+        pinning.flows(&[end(41_000)], later);
         pinning.pinned = None;
         assert_eq!(
             pinning.held(),
             vec![30_006, 30_007, 41_000],
             "a pair pinned before a let-go, still held by its flow, was probed"
         );
-        pinning.flows(&[]);
+        // A reloaded table lists no flow until each sends again, which
+        // takes back the pair it was given then, not the pin's now.
+        pinning.pinned = Some(pin_at(30_014));
+        pinning.flows(&[], later);
+        pinning.flows(&[end(41_000)], later + Duration::from_secs(1));
+        assert_eq!(
+            pinning.held(),
+            vec![30_006, 30_007, 30_014, 30_015, 41_000],
+            "a flow missing from one listing lost the pair it was given"
+        );
+        pinning.pinned = None;
+        pinning.flows(&[], later + FORGOTTEN);
+        assert_eq!(
+            pinning.held(),
+            vec![30_006, 30_007, 41_000],
+            "a flow missing for less than the set's timeout was forgotten"
+        );
+        pinning.flows(&[], later + FORGOTTEN * 2);
         assert_eq!(
             pinning.held(),
             Vec::<u16>::new(),
@@ -1022,7 +1067,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pin_lets_go_on_another_network_but_not_on_the_first_named_or_a_links_own() {
+    fn a_pin_lets_go_on_another_network_but_not_on_the_first_named_or_an_unnamed_one() {
         let mut pinning = Pinning::default();
         let earlier = Instant::now();
         assert_eq!(
@@ -1048,8 +1093,13 @@ mod tests {
         }
         assert_eq!(
             pinning.network("wlan0", "link wlan0"),
+            None,
+            "a pin let go on another link before its router answered, naming no network"
+        );
+        assert_eq!(
+            pinning.network("wlan0", "cc:dd"),
             Some(30_006),
-            "a pin measured on one link stayed on another whose router hasn't answered"
+            "a pin measured on one network stayed on another, by another link"
         );
         assert_eq!(pinning.pinned, None, "the pin was said let go but kept");
         let later = Instant::now();
@@ -1064,11 +1114,26 @@ mod tests {
             Some(end(36_284)),
             "the VPN's flow, probed for minutes ago, wasn't probed for afresh on the new network"
         );
+        // Docking onto the same network, a new link is unnamed until its
+        // router answers, and undocking goes back through the old link's
+        // own unnamed moment (pin round 8's F1 and F4, round 7's F1).
         pinning.pinned = Some(pin_at(30_010));
+        for (link, network, why) in [
+            ("eth0", "link eth0", "docking, before the router answered"),
+            ("eth0", "cc:dd", "docking onto the same network"),
+            (
+                "wlan0",
+                "link wlan0",
+                "undocking, before the router answered",
+            ),
+            ("wlan0", "cc:dd", "undocking onto the same network"),
+        ] {
+            assert_eq!(pinning.network(link, network), None, "the pin let go {why}");
+        }
         assert_eq!(
-            pinning.network("wlan0", "cc:dd"),
-            None,
-            "a pin measured before the router answered let go when it did"
+            pinning.pinned,
+            Some(pin_at(30_010)),
+            "the docked pin wasn't kept"
         );
         assert_eq!(
             pinning.network("wlan0", "ee:ff"),
@@ -1165,9 +1230,9 @@ mod tests {
         let mut before = Pinning::default();
         let start = Instant::now();
         before.network("eth1", "aa:bb");
-        before.flows(&[end(41_000)]);
+        before.flows(&[end(41_000)], start);
         before.pinned = Some(pin_at(30_006));
-        before.flows(&[end(41_000), end(41_001)]);
+        before.flows(&[end(41_000), end(41_001)], start);
         before.pinned = Some(pin_at(30_010));
         before.kept = true;
         let text = saved(&before.kept(Some(7)), "b0");
@@ -1188,7 +1253,7 @@ mod tests {
             "a kept pin stayed on another network"
         );
         let mut after = resumed();
-        after.flows(&[end(41_000), end(41_001), end(41_002)]);
+        after.flows(&[end(41_000), end(41_001), end(41_002)], start);
         assert_eq!(
             after.kept(None).flows[0],
             (end(41_000), None),
