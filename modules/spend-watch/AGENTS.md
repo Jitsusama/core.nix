@@ -252,8 +252,12 @@ feed speaks.
   logs is the other cost: on 2026-11-22 the reviewers' pattern read 36,295
   folders for 1,283 logs, 42 seconds a walk on a busy disk and about 4 MB
   a second all day, almost all of it councils finished weeks before. So a
-  settled folder is left (see Agents), and the watch takes its folders
-  from what the last pass found rather than walking again. It runs at
+  settled folder is left (see Agents), and each pass hands the watch the
+  folders it found rather than the watch walking again. Where inotify
+  can't be had the daemon polls, saying so once in its journal, and each
+  poll is a whole walk, the old cost. A count that looks late is mended by
+  `systemctl --user restart spend-watch`, which forgets what's settled at
+  the price of one whole walk. It runs at
   most every 30 seconds while the logs grow and every five minutes while
   they don't; the heartbeat alone is written every 30 seconds, so the shell
   can tell a stopped daemon from a quiet one. Every pi session asks

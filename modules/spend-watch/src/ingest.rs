@@ -18,7 +18,7 @@ use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime};
 
 /// The most read from one log in one pass.
 const SLICE: u64 = 32 << 20;
@@ -47,7 +47,9 @@ const SWEEP: Duration = Duration::from_hours(6);
 pub struct Walks {
     settled: HashMap<(String, PathBuf), Walked>,
     walked: HashMap<(String, PathBuf), Walked>,
-    swept: Option<Instant>,
+    /// On the wall's clock, as `QUIET` is, so a machine asleep still
+    /// sweeps on waking.
+    swept: Option<SystemTime>,
 }
 
 /// What one walk under a folder at a pattern's first `*` found: the logs,
@@ -66,7 +68,12 @@ impl Walks {
     /// each settled folder one of whose folders has changed since.
     fn begin(&mut self) {
         self.walked.clear();
-        if self.swept.is_none_or(|at| at.elapsed() >= SWEEP) {
+        let now = SystemTime::now();
+        // A clock set back sweeps too, rather than waiting for it.
+        if !self
+            .swept
+            .is_some_and(|at| now.duration_since(at).is_ok_and(|since| since < SWEEP))
+        {
             if !self.settled.is_empty() {
                 eprintln!(
                     "walking again the {} folders settled, as each six hours",
@@ -74,7 +81,7 @@ impl Walks {
                 );
             }
             self.settled.clear();
-            self.swept = Some(Instant::now());
+            self.swept = Some(now);
         }
         self.settled
             .retain(|_, walked| walked.read.iter().all(|(dir, at)| written(dir) == *at));
@@ -94,7 +101,7 @@ impl Walks {
             let still = walked
                 .read
                 .iter()
-                .all(|(_, at)| at.is_none_or(|at| at + QUIET <= now));
+                .all(|(_, at)| at.is_none_or(|at| aged(at, now)));
             if still
                 && walked
                     .logs
@@ -116,7 +123,14 @@ fn written(path: &Path) -> Option<SystemTime> {
 
 /// Whether nothing has written `path` for a day before `now`.
 fn quiet(path: &Path, now: SystemTime) -> bool {
-    written(path).is_some_and(|modified| modified + QUIET <= now)
+    written(path).is_some_and(|modified| aged(modified, now))
+}
+
+/// Whether `at` is a day or more before `now`. A time so far ahead that a
+/// day past it can't be held is not, rather than a panic any agent could
+/// set off with `touch` on its own folder.
+fn aged(at: SystemTime, now: SystemTime) -> bool {
+    at.checked_add(QUIET).is_some_and(|then| then <= now)
 }
 
 /// Whether a log is quiet and read to its end, its copies known, so a
@@ -1277,7 +1291,7 @@ mod tests {
         written_in(&late);
         read(&history, &config, &mut walks);
         assert_eq!(turns(&history), 1, "a settled run was walked again");
-        walks.swept = Instant::now().checked_sub(SWEEP);
+        walks.swept = SystemTime::now().checked_sub(SWEEP);
         read(&history, &config, &mut walks);
         assert_eq!(turns(&history), 2, "the sweep didn't walk the run again");
     }
@@ -1292,6 +1306,7 @@ mod tests {
         let mut walks = Walks::default();
         let log = reviewer(dir.path(), "r1", "a", true);
         read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 1, "the run didn't settle");
         let later = TURN.replace("10:01:00Z", "10:02:00Z");
         std::fs::OpenOptions::new()
             .append(true)
@@ -1315,9 +1330,84 @@ mod tests {
         let mut walks = Walks::default();
         reviewer(dir.path(), "r1", "a", true);
         read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 1, "the run didn't settle");
         reviewer(dir.path(), "r1", "b", false);
         read(&history, &config, &mut walks);
         assert_eq!(turns(&history), 2, "the new reviewer wasn't found");
+        assert!(walks.settled.is_empty(), "the changed run stayed settled");
+    }
+
+    // A reviewer's folder made today in an old run, its log not yet
+    // written, keeps the run walked: the folder its log lands in is one no
+    // watch follows and no pass looks at.
+    #[test]
+    fn a_run_with_a_folder_made_today_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", true);
+        let late = empty(dir.path(), "r1", "reviewers", "c", false);
+        read(&history, &config, &mut walks);
+        assert!(walks.settled.is_empty(), "a run written today settled");
+        written_in(&late);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 2);
+    }
+
+    // A log read only to a line still being written keeps its run walked.
+    #[test]
+    fn a_run_with_a_log_read_partway_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        let log = reviewer(dir.path(), "r1", "a", true);
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .and_then(|mut file| file.write_all(br#"{"type":"mess"#))
+            .unwrap();
+        age(&log);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 1);
+        assert!(
+            walks.settled.is_empty(),
+            "a run with a log read partway settled"
+        );
+    }
+
+    // A write heard in one run leaves every other settled, even one whose
+    // name the first's starts with, and so does one in pi's own sessions.
+    #[test]
+    fn a_write_heard_elsewhere_leaves_a_run_settled() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", true);
+        let other = reviewer(dir.path(), "r10", "a", true);
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 2);
+        walks.touched(other.parent().unwrap());
+        walks.touched(&config.sessions);
+        let left: Vec<&Path> = walks.settled.keys().map(|(_, top)| top.as_path()).collect();
+        assert_eq!(left, [dir.path().join("runs").join("r1")]);
+    }
+
+    // A time too far ahead to add a day to is never quiet, and asking
+    // doesn't panic.
+    #[test]
+    fn a_time_past_the_clock_s_reach_is_never_quiet() {
+        let far = SystemTime::UNIX_EPOCH + Duration::from_secs(i64::MAX.unsigned_abs());
+        assert!(
+            !aged(far, SystemTime::now()),
+            "a time past reach counted as quiet"
+        );
+        assert!(
+            aged(SystemTime::now() - QUIET, SystemTime::now()),
+            "a day ago wasn't quiet"
+        );
     }
 
     // A write the watch hears in a settled run walks it again, as does an
