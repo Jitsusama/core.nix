@@ -288,14 +288,29 @@ fn is_commit_id(witness: &str) -> bool {
 }
 
 /// Whether `round` is a council or stack round that was collected, whose
-/// reviewers read the commit it names, and one of whom answered. One
-/// stopped at its wall still said what it had.
+/// reviewers read the commit it names, and one of whom answered: didn't
+/// fail, and either finished, leaving its answer's file, or filed a
+/// finding before it was stopped. One stopped at its wall said what it
+/// had only in what it filed, and one cancelled (`"stopped": {"limit":
+/// "cancelled"}`, with no failure) said nothing, so a round whose
+/// reviewers were all cancelled reads no head, as cadence counts rounds
+/// too. An answer is a sign it left, never the lack of a sign it didn't:
+/// of the 38,136 outcomes on this machine on 23 November, each since 15
+/// November with neither a failure nor a stop named its `answerPath` or
+/// filed a finding, so an outcome naming neither, or written in a shape
+/// this doesn't know, reads nothing.
 fn speaks(round: &Value) -> bool {
     let flag = |name: &str| round[name].as_bool().unwrap_or(false);
+    let filed = |outcome: &Value| {
+        outcome["findingIds"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty())
+    };
     let answered = round["outcomes"].as_array().is_some_and(|outcomes| {
-        outcomes
-            .iter()
-            .any(|outcome| outcome.get("failure").is_none())
+        outcomes.iter().any(|outcome| {
+            let finished = outcome.get("stopped").is_none() && outcome["answerPath"].is_string();
+            outcome.get("failure").is_none() && (finished || filed(outcome))
+        })
     });
     matches!(round["round"].as_str(), Some("council" | "stack"))
         && !flag("open")
@@ -409,6 +424,53 @@ mod tests {
             assert!(
                 read(&[round(&json!({"witness": witness}))]).is_empty(),
                 "{witness}"
+            );
+        }
+    }
+
+    // A round whose every reviewer was stopped before it filed anything
+    // speaks for no head. One of four reviewers all cancelled, with no
+    // failure written, once passed as read.
+    #[test]
+    fn a_round_whose_reviewers_were_all_stopped_unheard_reads_nothing() {
+        let cancelled = json!({"limit": "cancelled", "detail": "sent SIGTERM."});
+        let outcomes: Vec<Value> = ["correctness", "test-skeptic", "operational-safety"]
+            .into_iter()
+            .map(|who| json!({"participantId": who, "findingIds": [], "stopped": cancelled}))
+            .chain([json!({"participantId": "security-attacker", "stopped": cancelled})])
+            .collect();
+        assert!(
+            read(&[round(&json!({"outcomes": outcomes}))]).is_empty(),
+            "a round whose reviewers were all cancelled was counted as reading its head"
+        );
+        let walled = json!({"participantId": "a", "findingIds": [],
+            "stopped": {"limit": "wall-clock"}});
+        assert!(
+            read(&[round(&json!({"outcomes": [walled]}))]).is_empty(),
+            "a reviewer stopped at its wall with nothing filed was counted as answering"
+        );
+        let filed = json!({"participantId": "a", "findingIds": [3],
+            "stopped": {"limit": "soft-deadline"}});
+        assert_eq!(
+            read(&[round(&json!({"outcomes": [walled, filed]}))]),
+            [id('a')],
+            "a reviewer stopped after filing a finding wasn't counted as answering"
+        );
+        let clean = json!({"participantId": "a", "findingIds": [], "answerPath": "/x"});
+        assert_eq!(
+            read(&[round(&json!({"outcomes": [clean]}))]),
+            [id('a')],
+            "a reviewer that finished finding nothing wasn't counted as answering"
+        );
+        for silent in [
+            json!({"participantId": "a"}),
+            json!({"participantId": "a", "findingIds": []}),
+            json!({"participantId": "a", "findingIds": [], "answerPath": null}),
+            json!({"participantId": "a", "findingIds": [], "skipped": true}),
+        ] {
+            assert!(
+                read(&[round(&json!({"outcomes": [silent]}))]).is_empty(),
+                "an outcome leaving no answer, {silent}, was counted as answering"
             );
         }
     }

@@ -262,9 +262,23 @@ fn candidates(
     files: &[String],
     records: &[String],
 ) -> Result<Vec<String>, String> {
-    let subjects = lines(&git(&["log", "--format=%s", &format!("{main}..{commit}")])?);
-    let said = logged(records, &["--format=%H%x01%s"]);
-    let touched = |records: &[String]| logged(records, &["--format=%x01%H", "--name-only"]);
+    candidates_at(Path::new("."), commit, main, files, records)
+}
+
+/// [`candidates`], asking git in the repo at `repo`.
+fn candidates_at(
+    repo: &Path,
+    commit: &str,
+    main: &str,
+    files: &[String],
+    records: &[String],
+) -> Result<Vec<String>, String> {
+    let subjects = lines(&git_at(
+        repo,
+        &["log", "--format=%s", &format!("{main}..{commit}")],
+    )?);
+    let said = logged(repo, records, &["--format=%H%x01%s"]);
+    let touched = |records: &[String]| logged(repo, records, &["--format=%x01%H", "--name-only"]);
     Ok(candidates::could_be(
         records,
         said.as_deref(),
@@ -648,10 +662,12 @@ fn patch_of(repo: &Path, base: &str, head: &str, options: &[&str], kind: &str) -
 }
 
 /// What `git log` says of each of `commits`, in `format`, from one git for
-/// them all: its subject, or what it changed in its own commit, for
-/// `candidates::could_be`. A commit this clone lacks is left out.
-fn logged(commits: &[String], format: &[&str]) -> Option<String> {
+/// them all, in the repo at `repo`: its subject, or what it changed in its
+/// own commit, for `candidates::could_be`. A commit this clone lacks is
+/// left out.
+fn logged(repo: &Path, commits: &[String], format: &[&str]) -> Option<String> {
     let mut log = Command::new("git")
+        .current_dir(repo)
         .args(["log", "--no-walk=unsorted", "--ignore-missing", "--stdin"])
         .args(format)
         .stdin(Stdio::piped())
