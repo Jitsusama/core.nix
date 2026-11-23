@@ -187,18 +187,19 @@ impl Holding {
         pis: &[String],
     ) -> Self {
         let mut holding = Self::taken_up(scopes, |scope| floor(scope) == Some(FLOOR));
-        holding.hard = holding
-            .held
-            .iter()
-            .filter(|scope| hard_for(scope, pis) > 0 && min(scope).is_none_or(|min| min > 0))
-            .cloned()
-            .collect();
-        holding.unread = holding
-            .hard
-            .iter()
-            .filter(|scope| min(scope).is_none())
-            .cloned()
-            .collect();
+        // Each memory.min is read once, so a scope can't be both kept hard and read keeping none.
+        for scope in holding.held.iter().filter(|scope| hard_for(scope, pis) > 0) {
+            match min(scope) {
+                Some(0) => {}
+                Some(_) => {
+                    holding.hard.insert(scope.clone());
+                }
+                None => {
+                    holding.hard.insert(scope.clone());
+                    holding.unread.insert(scope.clone());
+                }
+            }
+        }
         holding
     }
 
@@ -593,7 +594,7 @@ mod tests {
         let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
         let unread = pi(4);
         let min = |scope: &Path| (scope != unread).then_some(HARD);
-        let holding = Holding::left([pi(1), pi(2), pi(3), pi(4)], |_| Some(FLOOR), min, &pis);
+        let mut holding = Holding::left([pi(1), pi(2), pi(3), pi(4)], |_| Some(FLOOR), min, &pis);
         assert_eq!(
             holding.hard_floor(&pi(4), &pis),
             0,
@@ -605,14 +606,39 @@ mod tests {
             HARD,
             "a pi read keeping its floor keeps it beside one that can't be read"
         );
-        let mut fewer = Holding::left([pi(1), pi(4)], |_| Some(FLOOR), min, &pis);
+        let fewer = Holding::left([pi(1), pi(4)], |_| Some(FLOOR), min, &pis);
         assert_eq!(
             fewer.hard_floor(&pi(4), &pis),
             HARD,
             "with fewer than three others it gets its floor"
         );
-        fewer.done(&pi(4), Some(HARD));
-        assert_eq!(fewer.hard(), 2, "and once held, it counts as keeping it");
+        holding.done(&pi(4), Some(HARD));
+        assert_eq!(
+            holding.hard_floor(&pi(4), &pis),
+            HARD,
+            "and once held with one, it keeps it beside three others"
+        );
+    }
+
+    #[test]
+    fn a_pis_memory_min_is_read_once_so_it_cant_count_both_ways() {
+        let pis = ["mycelium-pi-".to_owned()];
+        let pi = |n: u8| PathBuf::from(format!("/cg/agents.slice/mycelium-pi-{n}.scope"));
+        // pi(4)'s memory.min can't be read the first time, and reads none after.
+        let reads = std::cell::Cell::new(0);
+        let min = |scope: &Path| {
+            if scope != pi(4) {
+                return Some(HARD);
+            }
+            reads.set(reads.get() + 1);
+            (reads.get() > 1).then_some(0)
+        };
+        let holding = Holding::left([pi(1), pi(2), pi(3), pi(4)], |_| Some(FLOOR), min, &pis);
+        assert_eq!(
+            (reads.get(), holding.hard_floor(&pi(4), &pis)),
+            (1, 0),
+            "read once, as unread, it counts against the others and keeps none of its own"
+        );
     }
 
     #[test]
