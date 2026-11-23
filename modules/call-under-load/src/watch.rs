@@ -160,10 +160,10 @@ fn his(seat: &Seat, unit: &str) -> Option<bool> {
         return Some(true);
     };
     let stat = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).ok()?;
-    let ppid = stat
+    let parent = stat
         .rsplit_once(')')
         .and_then(|(_, rest)| rest.split_whitespace().nth(1)?.parse::<u32>().ok())?;
-    let parents = fs::read_to_string(seat.proc.join(format!("{ppid}/cgroup"))).ok()?;
+    let parents = fs::read_to_string(seat.proc.join(format!("{parent}/cgroup"))).ok()?;
     Some(his_parent(&parents, &seat.account, &seat.transient))
 }
 

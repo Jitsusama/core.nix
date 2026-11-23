@@ -364,16 +364,7 @@ fn run(context: &Context) -> Result<(), Failure> {
         &took,
         read.unread.as_deref(),
     );
-    // Joel's own calls since the last hour written, so calls in hours a
-    // meeting or a call skipped still reach cadence.
-    let since = ran.iter().map(|&(_, ended)| ended).max().unwrap_or(0);
-    let clear = watch::clear_at(&folder().join("watch.json"));
-    measures.extend(hour::real(
-        &watch::heard(&lines, since, at),
-        since,
-        clear,
-        at,
-    ));
+    measures.extend(real_calls(&lines, &ran, at));
     // The call's span runs from the run's start, Chromium's own included,
     // to now: the whole of the load the test put beside Joel's programs.
     let launcher = launcher::written(&read, started, at);
@@ -386,6 +377,15 @@ fn run(context: &Context) -> Result<(), Failure> {
     context
         .say(&said(&json!({"measures": measures, "run": run}), 0))
         .map_err(|error| unwritten(&error))
+}
+
+/// Joel's own calls' figures: those since the last hour written, so calls
+/// in hours a meeting or a call skipped still reach cadence, and when the
+/// watch last could tell.
+fn real_calls(lines: &str, ran: &[(u64, u64)], at: u64) -> Vec<hour::Measure> {
+    let since = ran.iter().map(|&(_, ended)| ended).max().unwrap_or(0);
+    let clear = watch::clear_at(&folder().join("watch.json"));
+    hour::real(&watch::heard(lines, since, at), since, clear, at)
 }
 
 /// Joel's own calls, watched until the service stops.
