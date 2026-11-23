@@ -272,8 +272,11 @@ fn counted(word: &str) -> String {
 /// F2).
 fn says_a_subtest_failed(line: &str) -> bool {
     let names_a_test = |word: &str| {
-        word.split_once("::")
-            .is_some_and(|(path, name)| path.ends_with(".py") && !name.is_empty())
+        word.split_once("::").is_some_and(|(path, name)| {
+            // pytest names its files `.py` as they are, so `.PY` is
+            // no test of its.
+            Path::new(path).extension().is_some_and(|ext| ext == "py") && !name.is_empty()
+        })
     };
     let mut words = line.split_whitespace();
     let first = words.next().unwrap_or_default();
@@ -625,6 +628,22 @@ pub(super) struct Red<'a> {
     pub candidate: &'a str,
     /// The candidate's gate's log.
     pub log: &'a Path,
+}
+
+/// The checks a red candidate's riders didn't break, when its gate ran
+/// whole and each fails alike at main or passes alone; nothing when its
+/// gate didn't run whole, which it says, so a red that holds where
+/// main's own failure would be excused reads why (round 4's F5).
+pub(super) fn excuse_of(red: &Red, whole: bool) -> Option<Vec<String>> {
+    if !whole {
+        println!(
+            "merge-net: the train excuses nothing in {}'s red, since nix-offload \
+             didn't say every part of its gate ran to its end",
+            short(red.candidate)
+        );
+        return None;
+    }
+    excuse(red, &crate::world::bounded)
 }
 
 /// The checks that excuse `red`, each failing at its base alike or passing

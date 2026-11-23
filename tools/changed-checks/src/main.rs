@@ -102,7 +102,7 @@ use std::thread;
 
 use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
-use evaluating::{derivations, evaluated, names, pure};
+use evaluating::{busiest_system, derivations, evaluated, names, pure};
 use quarantine::Held;
 use runs::Run;
 use terminal_kit::layout::{self, Align, Room};
@@ -381,36 +381,6 @@ fn keep_head(url: &str, clone: &Path, head: &str) -> Result<bool, String> {
         Some(_) => return Err("the far side's run failed".to_owned()),
         None => false,
     })
-}
-
-/// The system whose checks are the most, `checks::busiest` says why. Only
-/// the names are counted, which took 1.1 s and 158 MB for core's 580 checks
-/// on 30 October, against 4.8 GB for evaluating them. They're counted
-/// through the flake's own `checks`, as the rest is evaluated, since
-/// `builtins.getFlake` on a flake not yet locked needs `--impure`.
-fn busiest_system(flake: &str) -> Result<String, String> {
-    let here = this_system();
-    let checks = format!("{flake}#checks");
-    let counting = "builtins.mapAttrs (_: checks: builtins.length (builtins.attrNames checks))";
-    let counted = run(
-        "nix",
-        &pure(&["eval", "--json", &checks, "--apply", counting]),
-    )?;
-    let counts = serde_json::from_str(&counted)
-        .map_err(|error| format!("reading how many checks each system has: {error}"))?;
-    Ok(checks::busiest(&counts, &here))
-}
-
-/// The Nix system this program was built for, which is this machine's:
-/// read without asking Nix, whose evaluation of `builtins.currentSystem`
-/// waited 30 minutes at the jobs door on 10 November before a run it began
-/// could be sent anywhere.
-fn this_system() -> String {
-    let os = match std::env::consts::OS {
-        "macos" => "darwin",
-        os => os,
-    };
-    format!("{}-{os}", std::env::consts::ARCH)
 }
 
 /// The run sent to another machine by `nix-offload there --changed`, its
