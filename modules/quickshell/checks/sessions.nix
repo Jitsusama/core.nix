@@ -153,6 +153,8 @@ in
         property var acted: null
         property var spawned: []
         property var spawns: []
+        // Said by a case as a viewer's window comes, as niri says it.
+        signal windowOpenedOrChanged(var window)
         function act(request) { acted = request; }
         // Asked anything, as Sessions asks for the outputs, it never
         // answers, as niri doesn't a request it refused.

@@ -365,7 +365,9 @@ ShellRoot {
             "--session", "s-row-waiting"];
         // Reopen Them All kept a place for its viewer, Joel being on its
         // workspace then, as reopenViewer keeps one.
-        Sessions.keepPlaces({ "s-row-waiting": { workspace: 41, column: 1, at: Date.now(),
+        // Workspace 5, which Joel isn't on, so viewKept would open its viewer
+        // there by itself for as long as the place stays kept.
+        Sessions.keepPlaces({ "s-row-waiting": { workspace: 5, column: 1, at: Date.now(),
             asked: true, there: true, waiting: view, named: "pi-hosted.s-row-waiting",
             title: "Reef" } });
         Sessions.reopen({ id: "s-row-waiting", cwd: "/tmp", title: "Reef", hosted: true, view });
