@@ -186,7 +186,8 @@ fn executable(path: &Path, script: &str) {
 /// `path-info --json` the `held` file and `path-info --recursive` the
 /// `closure` file, when there is one. Sending held outputs up takes as
 /// many seconds as the `copy-takes` file says, when there is one, and a
-/// send of the path the `slow-to-send` file names takes 30. A copy up
+/// send of the path the `slow-to-send` file names takes 30; a copy of the
+/// derivations a builder lacks takes what `drv-copy-takes` says. A copy up
 /// adds what `NIX_SSHOPTS` said to `nix-sshopts`, and while the
 /// `loses-copy` file is there, the first loses its builder, saying what
 /// the file holds or, where it's empty, what ssh says as its keepalives
@@ -223,6 +224,8 @@ case "$*" in
     [ -e "$here/copy-takes" ] && exec sleep "$(cat "$here/copy-takes")"
     slow=$(cat "$here/slow-to-send" 2>/dev/null)
     case "$*" in *" $slow"*) [ -n "$slow" ] && exec sleep 30 ;; esac ;;
+  "copy --no-recursive "*)
+    [ -e "$here/drv-copy-takes" ] && exec sleep "$(cat "$here/drv-copy-takes")" ;;
 esac
 case "$*" in
   "build --no-link"*)
@@ -601,6 +604,65 @@ fn a_copy_up_waits_its_turn_while_three_go_up() {
     assert!(
         took >= Duration::from_secs(3),
         "sent before a turn was free: {took:?}"
+    );
+}
+
+// A copy up slower than its lease gives its turn back, saying so with its
+// size, and the derivations it sends are those the builder lacks of their
+// own closure, each once, asked their size by name.
+#[test]
+fn a_slow_copy_up_gives_its_turn_back_and_sends_only_its_closure() {
+    let folder = tempfile::tempdir().unwrap();
+    let offload = folder.path().join("offload");
+    fs::create_dir(&offload).unwrap();
+    fs::write(offload.join("store"), STORE).unwrap();
+    stand_ins(folder.path(), 0);
+    // The builder names a path outside the closure, and one twice.
+    fs::write(
+        folder.path().join("says"),
+        "/nix/store/aaaa-x.drv\n/nix/store/zzzz-outside\n/nix/store/aaaa-x.drv\n",
+    )
+    .unwrap();
+    fs::write(folder.path().join("closure"), "/nix/store/aaaa-x.drv\n").unwrap();
+    fs::write(
+        folder.path().join("held"),
+        r#"{"/nix/store/aaaa-x.drv": {"narSize": 5000000, "signatures": []}}"#,
+    )
+    .unwrap();
+    fs::write(folder.path().join("drv-copy-takes"), "3").unwrap();
+    let began = std::time::Instant::now();
+    let ran = there_command(folder.path(), &offload, folder.path())
+        .args(["-L", "/nix/store/aaaa-x.drv"])
+        .env("NIX_OFFLOAD_TURN_WITHIN", "1")
+        .output()
+        .unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    assert!(
+        began.elapsed() >= Duration::from_secs(3),
+        "the copy didn't go on past its turn to its end"
+    );
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        said.contains(
+            "the copy up of 5 MB to nix-offload has held its turn for 1 second, as long as \
+             NIX_OFFLOAD_TURN_WITHIN gives one, so it goes on without it"
+        ),
+        "{said}"
+    );
+    let calls = fs::read_to_string(folder.path().join("nix-calls")).unwrap();
+    assert!(
+        calls
+            .lines()
+            .any(|call| call == "path-info --json /nix/store/aaaa-x.drv"),
+        "its size wasn't asked of what it sends alone: {calls}"
+    );
+    let copy = format!(
+        "copy --no-recursive --substitute-on-destination --to {} /nix/store/aaaa-x.drv",
+        STORE.trim()
+    );
+    assert!(
+        calls.lines().any(|call| call == copy),
+        "it sent other than its closure's lacking, once each: {calls}"
     );
 }
 

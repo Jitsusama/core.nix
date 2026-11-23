@@ -1326,13 +1326,17 @@ fn derivations_up(
     alive: &str,
 ) -> Result<(), Uncopied> {
     let mut copying = upload(nix, alive);
-    // Only what the closure holds goes, so a builder's answer can't name
-    // other paths of this store to send, nor stretch the copy's turn.
+    // Only what the closure holds goes, each once, so a builder's answer
+    // can't name other paths of this store to send, nor stretch the
+    // copy's turn by naming one twice.
     let size = match closure(paths, nix).and_then(|closure| {
+        let within: std::collections::HashSet<&String> = closure.iter().collect();
         lacking(lent, &closure, scratch, ssh).map(|lacking| {
             lacking
                 .into_iter()
-                .filter(|path| closure.contains(path))
+                .filter(|path| within.contains(path))
+                .collect::<BTreeSet<_>>()
+                .into_iter()
                 .collect::<Vec<_>>()
         })
     }) {
@@ -1355,7 +1359,7 @@ fn derivations_up(
                 .args(["copy", "--no-recursive", "--substitute-on-destination"])
                 .args(["--to", &lent.store])
                 .args(lacking);
-            size
+            Some(size)
         }
         None => {
             eprintln!(
@@ -1367,11 +1371,9 @@ fn derivations_up(
                 .args(["copy", "--derivation", "--substitute-on-destination"])
                 .args(["--to", &lent.store])
                 .args(paths);
-            stored_size(
-                Command::new(nix)
-                    .args(["path-info", "--json", "--recursive", "--derivation"])
-                    .args(paths),
-            )
+            // Its size would take a second walk of a closure the first
+            // couldn't read, so its turn is leased for the least instead.
+            None
         }
     };
     let turn = uplink_turn(rank);
@@ -1379,8 +1381,9 @@ fn derivations_up(
     let mut copied = Copying::start(copying.env("TMPDIR", "/tmp"))
         .map_err(|error| Uncopied::failed(format!("couldn't run {nix}: {error}")))?;
     let about = match size {
-        0 => format!("to {}, of a size this machine couldn't read,", lent.host),
-        size => format!("of {} MB to {}", size.div_ceil(1_000_000), lent.host),
+        None => format!("to {}, of a size unknown here,", lent.host),
+        Some(0) => format!("to {}, of a size this machine couldn't read,", lent.host),
+        Some(size) => format!("of {} MB to {}", size.div_ceil(1_000_000), lent.host),
     };
     match waited_giving_back(&mut copied.child, turn, turn_within(size), &about) {
         Ok(status) if status.success() => Ok(()),
@@ -1400,39 +1403,57 @@ fn stored_size(listing: &mut Command) -> u64 {
         .sum()
 }
 
-/// How `copy` ended, its uplink `turn` given back once the copy has run
-/// past `within`, what its bytes take at its share of this machine's
-/// uplink ([`turn_within`]), while it goes on. A copy of many small paths
-/// through a tunnel goes at the tunnel's round trips, not the link's
-/// speed: on 22 November one went at 25 to 140 KB/s for two hours, held
-/// one of the three turns all along, and runs that would have filled the
-/// link waited behind it. `about` says which copy, for the line that says
-/// so. Once the turn is given back, or with none, it waits on the copy
-/// alone.
+/// How `copy` ended, its uplink `turn` given back once the copy has held
+/// it past `within` ([`turn_within`], with why that's its lease), while it
+/// goes on. A copy of many small paths through a tunnel goes at the
+/// tunnel's round trips, not the link's speed: on 22 November one went at
+/// 25 to 140 KB/s for two hours, held one of the three turns all along,
+/// and runs that would have filled the link waited behind it. A turn is
+/// given back only for one of [`UPLOADS`] given turns, so no more than
+/// twice as many copies ever go up at once; with none free it keeps its
+/// own, saying so once. `about` says which copy, for the lines that say
+/// so. With no lease, or no turn, it waits on the copy alone.
 fn waited_giving_back(
     copy: &mut std::process::Child,
-    turn: Option<fs::File>,
-    within: std::time::Duration,
+    turn: Option<Turn>,
+    within: Option<(std::time::Duration, &str)>,
     about: &str,
 ) -> std::io::Result<std::process::ExitStatus> {
     let began = std::time::Instant::now();
     let Some(turn) = turn else {
         return copy.wait();
     };
+    // With no lease the turn is held to the copy's end, not let go here.
+    let Some((within, why)) = within else {
+        let status = copy.wait();
+        drop(turn);
+        return status;
+    };
+    let mut kept = false;
     loop {
         if let Some(status) = copy.try_wait()? {
-            drop(turn);
             return Ok(status);
         }
         if began.elapsed() >= within {
-            drop(turn);
-            eprintln!(
-                "nix-offload: the copy up {about} has taken longer than {}, more than its share \
-                 of this machine's uplink would, so it goes on without its turn and another \
-                 copy takes it",
-                lasting(within)
-            );
-            return copy.wait();
+            if let Some(given) = turn_of(&turn.folder, "uplink-given") {
+                drop(turn);
+                eprintln!(
+                    "nix-offload: the copy up {about} has held its turn for {}, {why}, so it \
+                     goes on without it, and the turn is free for another copy",
+                    lasting(within)
+                );
+                let status = copy.wait();
+                drop(given);
+                return status;
+            }
+            if !kept {
+                eprintln!(
+                    "nix-offload: the copy up {about} has held its turn for {}, {why}, but \
+                     {UPLOADS} copies already go on past theirs, so it keeps it",
+                    lasting(within)
+                );
+                kept = true;
+            }
         }
         // Looked at 10 times a second, so a copy ending frees its turn
         // for the next within a tenth of a second.
@@ -1440,24 +1461,40 @@ fn waited_giving_back(
     }
 }
 
-/// How long a copy up of `size` bytes holds its uplink turn before it
-/// gives it back: what the bytes take at a third of [`SENDS_AT`], since
-/// [`UPLOADS`] copies share the link, and never less than [`SEND_LEAST`],
-/// unless `NIX_OFFLOAD_TURN_WITHIN` says otherwise in seconds, with
-/// [`SEND_LEAST`] still the least. A copy sharing the link fairly so ends
-/// within its turn, and only one going slower than its share gives it up.
-/// It's apart from [`send_within`], which stops a held send, so neither
-/// moves the other.
-fn turn_within(size: u64) -> std::time::Duration {
-    let share = SENDS_AT / u64::from(UPLOADS);
-    std::env::var("NIX_OFFLOAD_TURN_WITHIN")
+/// How long a copy up of `bytes` holds its uplink turn before it gives it
+/// back, and why that long, for the line that says so; none when it holds
+/// it to its end. A copy whose bytes were read holds it for what they take
+/// at a third of [`SENDS_AT`], since [`UPLOADS`] copies share the link,
+/// and never less than [`SEND_LEAST`], so a copy sharing the link fairly
+/// ends within its turn and only one going slower gives it up. A copy
+/// whose bytes read as none, which only a size it couldn't read does,
+/// holds it to its end, since a lease could be too short for any size;
+/// one whose size wasn't asked, as when what the builder lacks is unknown,
+/// holds it for [`SEND_LEAST`]. `NIX_OFFLOAD_TURN_WITHIN` gives any copy
+/// its lease in seconds, exactly. It's apart from [`send_within`], which
+/// stops a held send, so neither moves the other.
+fn turn_within(bytes: Option<u64>) -> Option<(std::time::Duration, &'static str)> {
+    if let Some(seconds) = std::env::var("NIX_OFFLOAD_TURN_WITHIN")
         .ok()
         .and_then(|seconds| seconds.parse().ok())
-        .map_or_else(
-            || SEND_STARTS + std::time::Duration::from_secs(size / share),
-            std::time::Duration::from_secs,
-        )
-        .max(SEND_LEAST)
+    {
+        return Some((
+            std::time::Duration::from_secs(seconds),
+            "as long as NIX_OFFLOAD_TURN_WITHIN gives one",
+        ));
+    }
+    let share = SENDS_AT / u64::from(UPLOADS);
+    match bytes {
+        None => Some((
+            SEND_LEAST,
+            "as long as a copy of a size unknown here holds one",
+        )),
+        Some(0) => None,
+        Some(bytes) => Some((
+            (SEND_STARTS + std::time::Duration::from_secs(bytes / share)).max(SEND_LEAST),
+            "more than its share of this machine's uplink would take",
+        )),
+    }
 }
 
 /// How many copies go up from this machine at once. On 10 November 30
@@ -1466,39 +1503,85 @@ fn turn_within(size: u64) -> std::time::Duration {
 /// their turn and then go at its whole speed, rather than all crawling.
 const UPLOADS: u32 = 3;
 
-/// A turn at sending up from this machine, had while what this gives is
-/// held, so one that dies frees it. A run sent first takes none, as the
-/// net's go ahead of sessions'. When none can be had, the copy goes on
-/// without one.
-fn uplink_turn(rank: Rank) -> Option<fs::File> {
+/// A turn at sending up from this machine, had while its file is held,
+/// so one that dies frees it, and the folder its turns are kept in.
+struct Turn {
+    _held: fs::File,
+    folder: PathBuf,
+}
+
+/// A turn at sending up from this machine. A run sent first takes none,
+/// as the net's go ahead of sessions'. When none can be had, the copy
+/// goes on without one.
+fn uplink_turn(rank: Rank) -> Option<Turn> {
     if rank == Rank::First {
         return None;
     }
-    let turns = std::env::var_os("XDG_RUNTIME_DIR")
+    let folder = std::env::var_os("XDG_RUNTIME_DIR")
         .map_or_else(std::env::temp_dir, PathBuf::from)
         .join("nix-offload-there");
-    fs::create_dir_all(&turns).ok()?;
-    let open = |turn: u32| {
-        fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .write(true)
-            .open(turns.join(format!("uplink-{turn}")))
-            .ok()
-    };
-    for turn in 1..=UPLOADS {
-        let held = open(turn)?;
-        if held.try_lock().is_ok() {
-            return Some(held);
+    fs::create_dir_all(&folder).ok()?;
+    let held = turn_in(&folder)?;
+    Some(Turn {
+        _held: held,
+        folder,
+    })
+}
+
+/// One of the [`UPLOADS`] turns in `folder`, the first free, waited for
+/// while all are taken, saying so once. Each is looked at in turn 10
+/// times a second, so a waiter takes whichever frees first, rather than
+/// waiting on one while another stands free: on 22 November a system
+/// build waited on its one while another copy's had ended. None when no
+/// turn's file can be opened or locked at all, so a copy then goes on
+/// without one rather than waiting for ever.
+fn turn_in(folder: &Path) -> Option<fs::File> {
+    let mut turns = turn_files(folder, "uplink")?;
+    let mut said = false;
+    loop {
+        let mut locks = false;
+        for at in 0..turns.len() {
+            match turns[at].try_lock() {
+                Ok(()) => return Some(turns.swap_remove(at)),
+                Err(fs::TryLockError::WouldBlock) => locks = true,
+                Err(fs::TryLockError::Error(_)) => {}
+            }
         }
+        if !locks {
+            return None;
+        }
+        if !said {
+            eprintln!(
+                "nix-offload: {UPLOADS} copies already go up from this machine, so this waits \
+                 its turn to send"
+            );
+            said = true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    eprintln!(
-        "nix-offload: {UPLOADS} copies already go up from this machine, so this waits its turn \
-         to send"
-    );
-    let held = open(std::process::id() % UPLOADS + 1)?;
-    held.lock().ok()?;
-    Some(held)
+}
+
+/// The first free of the [`UPLOADS`] turns in `folder` named `kind`, or
+/// none when all are taken, waiting for none.
+fn turn_of(folder: &Path, kind: &str) -> Option<fs::File> {
+    turn_files(folder, kind)?
+        .into_iter()
+        .find(|turn| turn.try_lock().is_ok())
+}
+
+/// The files of the [`UPLOADS`] turns in `folder` named `kind`, opened
+/// once, or none when one can't be.
+fn turn_files(folder: &Path, kind: &str) -> Option<Vec<fs::File>> {
+    (1..=UPLOADS)
+        .map(|turn| {
+            fs::OpenOptions::new()
+                .create(true)
+                .truncate(false)
+                .write(true)
+                .open(folder.join(format!("{kind}-{turn}")))
+                .ok()
+        })
+        .collect()
 }
 
 /// Every path the derivations at `paths` are built from, themselves
@@ -5649,11 +5732,31 @@ mod tests {
 
     /// A turn locked in `folder`, and a second handle on its file to ask
     /// whether it's still held.
-    fn a_turn(folder: &Path) -> (fs::File, fs::File) {
+    fn a_turn(folder: &Path) -> (Turn, fs::File) {
         let at = folder.join("uplink-1");
         let turn = fs::File::create(&at).expect("a turn");
         turn.try_lock().expect("the turn, free");
+        let turn = Turn {
+            _held: turn,
+            folder: folder.to_owned(),
+        };
         (turn, fs::File::open(&at).expect("the turn, again"))
+    }
+
+    /// A lease of `seconds` for a copy's turn, as [`turn_within`] gives.
+    fn lease(seconds: u64) -> (Duration, &'static str) {
+        (Duration::from_secs(seconds), "as a test gives")
+    }
+
+    /// Every turn of `kind` in `folder`, held.
+    fn all_held(folder: &Path, kind: &str) -> Vec<fs::File> {
+        (1..=UPLOADS)
+            .map(|turn| {
+                let file = fs::File::create(folder.join(format!("{kind}-{turn}"))).expect("a turn");
+                file.try_lock().expect("the turn, free");
+                file
+            })
+            .collect()
     }
 
     /// How long `other`'s turn stays held, looked at every 50 ms, as the
@@ -5672,14 +5775,12 @@ mod tests {
         let folder = tempfile::tempdir().expect("a folder");
         let (turn, other) = a_turn(folder.path());
         let began = std::time::Instant::now();
-        let mut copy = Command::new("sleep").arg("3").spawn().expect("a copy");
+        let mut copy = Command::new("sh")
+            .args(["-c", "sleep 3; exit 1"])
+            .spawn()
+            .expect("a copy");
         let waiting = std::thread::spawn(move || {
-            waited_giving_back(
-                &mut copy,
-                Some(turn),
-                Duration::from_secs(1),
-                "of 1 MB to b",
-            )
+            waited_giving_back(&mut copy, Some(turn), Some(lease(1)), "of 1 MB to b")
         });
         let held = held_for(&other, began);
         assert!(
@@ -5690,34 +5791,64 @@ mod tests {
             .join()
             .expect("the waiter")
             .expect("how the copy ended");
+        // It fails past its turn, which must still read as a failure.
         assert!(
-            began.elapsed() >= Duration::from_secs(3) && ended.success(),
+            began.elapsed() >= Duration::from_secs(3) && !ended.success(),
             "a copy that went on past its turn didn't end as it would have"
         );
     }
 
     #[test]
-    fn a_copy_within_its_share_holds_its_turn_to_the_end() {
+    fn a_copy_keeps_its_turn_while_every_given_turn_is_taken() {
         let folder = tempfile::tempdir().expect("a folder");
         let (turn, other) = a_turn(folder.path());
+        let given = all_held(folder.path(), "uplink-given");
         let began = std::time::Instant::now();
-        let mut copy = Command::new("sleep").arg("1").spawn().expect("a copy");
+        let mut copy = Command::new("sleep").arg("2").spawn().expect("a copy");
         let waiting = std::thread::spawn(move || {
-            waited_giving_back(&mut copy, Some(turn), Duration::from_secs(60), "to b")
+            waited_giving_back(&mut copy, Some(turn), Some(lease(1)), "to b")
         });
         let held = held_for(&other, began);
         assert!(
-            held >= Duration::from_millis(900),
-            "a copy within its share gave its turn back after {held:?}"
+            held >= Duration::from_millis(1900),
+            "a copy gave its turn back with every given turn taken, after {held:?}"
         );
         let ended = waiting.join().expect("the waiter").expect("how it ended");
         assert!(
             ended.success(),
             "a copy that succeeded read as one that failed"
         );
+        drop(given);
+    }
+
+    #[test]
+    fn a_copy_within_its_share_holds_its_turn_to_the_end() {
+        let folder = tempfile::tempdir().expect("a folder");
+        for within in [Some(lease(60)), None] {
+            let (turn, other) = a_turn(folder.path());
+            let began = std::time::Instant::now();
+            let mut copy = Command::new("sleep").arg("2").spawn().expect("a copy");
+            let waiting = std::thread::spawn(move || {
+                waited_giving_back(&mut copy, Some(turn), within, "to b")
+            });
+            let held = held_for(&other, began);
+            assert!(
+                held >= Duration::from_millis(1900) && held < Duration::from_millis(2600),
+                "a copy of 2 s leased {within:?} held its turn for {held:?}"
+            );
+            let ended = waiting.join().expect("the waiter").expect("how it ended");
+            assert!(
+                ended.success(),
+                "a copy that succeeded read as one that failed"
+            );
+        }
+    }
+
+    #[test]
+    fn a_copy_with_no_turn_ends_as_it_ended() {
         let mut failed = Command::new("false").spawn().expect("a copy");
-        let ended = waited_giving_back(&mut failed, None, Duration::from_secs(60), "to b")
-            .expect("how the copy ended");
+        let ended =
+            waited_giving_back(&mut failed, None, Some(lease(60)), "to b").expect("how it ended");
         assert!(
             !ended.success(),
             "a copy that failed read as one that succeeded"
@@ -5725,12 +5856,46 @@ mod tests {
     }
 
     #[test]
+    fn a_waiter_takes_whichever_turn_frees_first() {
+        let folder = tempfile::tempdir().expect("a folder");
+        let mut held = all_held(folder.path(), "uplink");
+        let at = folder.path().to_owned();
+        let waiting = std::thread::spawn(move || turn_in(&at).is_some());
+        // Long enough for the waiter to find every turn taken and wait.
+        std::thread::sleep(Duration::from_millis(300));
+        // Not the one the old code waited on, pid % UPLOADS + 1.
+        let other = usize::try_from((std::process::id() + 1) % UPLOADS).expect("a turn");
+        drop(held.remove(other));
+        let began = std::time::Instant::now();
+        while !waiting.is_finished() && began.elapsed() < Duration::from_secs(5) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert!(
+            waiting.is_finished(),
+            "a waiter didn't take turn {} once it was free",
+            other + 1
+        );
+        assert!(waiting.join().expect("the waiter"), "it took no turn");
+    }
+
+    #[test]
     fn a_copy_holds_its_turn_for_its_bytes_at_a_share_of_the_uplink() {
-        assert_eq!(turn_within(0), Duration::from_mins(15));
+        // A size that couldn't be read is held to the end.
+        assert_eq!(turn_within(Some(0)), None);
+        assert_eq!(
+            turn_within(Some(1)).map(|(within, _)| within),
+            Some(Duration::from_mins(15))
+        );
         // The 1.1 GB of 10 November, at a third of 1 MB/s.
         assert_eq!(
-            turn_within(1_100_000_000),
-            Duration::from_secs(120 + 1_100_000_000 / 333_333)
+            turn_within(Some(1_100_000_000)).map(|(within, _)| within),
+            // Two minutes to start, and 3,300 s for its bytes.
+            Some(Duration::from_mins(2 + 55))
+        );
+        // One whose size wasn't asked is leased for the least.
+        assert_eq!(
+            turn_within(None).map(|(within, _)| within),
+            Some(Duration::from_mins(15))
         );
     }
 
