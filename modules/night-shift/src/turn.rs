@@ -98,6 +98,11 @@ pub fn parse(args: &[String]) -> Result<Turn, String> {
     let Some(name) = args.get(1) else {
         return Err("night-shift turn takes the job's name".into());
     };
+    // The name heads the turn's tab-separated note, where a tab or a line
+    // of its own would name another holder than this job.
+    if name.contains(['\t', '\n']) {
+        return Err("a job's name holds no tab or newline".into());
+    }
     let split = args
         .iter()
         .position(|arg| arg == "--")
@@ -136,16 +141,17 @@ pub fn parse(args: &[String]) -> Result<Turn, String> {
 /// with when it started, in the kernel's ticks, so a later process given
 /// its number is told apart from it. It's written whole beside the note
 /// and then named, so a reader never finds half of it; a note that can't
-/// be written is said, since a turn asked for in this job's command then
-/// waits for the lock this job holds.
+/// be written, or whose start can't be read, is said, since a turn asked
+/// for in this job's command then waits for the lock this job holds.
 pub fn note(runtime: &Path, name: &str) {
     let since = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |since| since.as_secs());
     let pid = std::process::id().to_string();
-    let started = ahead::started(&pid).map_or_else(String::new, |ticks| ticks.to_string());
     let writing = runtime.join(format!(".holder-{pid}"));
-    let written = fs::write(&writing, format!("{name}\t{pid}\t{since}\t{started}\n"))
+    let written = ahead::started(&pid)
+        .ok_or_else(|| io::Error::other("its own start can't be read"))
+        .and_then(|started| fs::write(&writing, format!("{name}\t{pid}\t{since}\t{started}\n")))
         .and_then(|()| fs::rename(&writing, runtime.join("holder")));
     if let Err(error) = written {
         let _ = fs::remove_file(&writing);
@@ -183,12 +189,14 @@ pub fn holder(runtime: &Path) -> String {
 /// would wait for ever, as a cargo test an agent ran in its turn did once
 /// nix-offload asked for a turn of its own. A pid noted by a job long
 /// gone and given again to one of this process's parents, or one counted
-/// in another pid namespace, is told apart by when it started, and a
-/// holder that let the lock go by the lock. "Below" is this process's
-/// parents alone: a turn asked for by work a turn's command handed
-/// elsewhere, to a unit or a terminal server started before it, waits
-/// like any other.
-fn held_above(runtime: &Path) -> Option<String> {
+/// in another pid namespace, is told apart by when it started. A holder
+/// that let the lock go while it lives, as a night job paused for a job
+/// Joel waits on does, is told apart by the kernel's own word on who holds
+/// `lock`, so a note left standing while the next job takes the lock
+/// names nobody. "Below" is this process's parents alone: a turn asked
+/// for by work a turn's command handed elsewhere, to a unit or a terminal
+/// server started before it, waits like any other.
+fn held_above(runtime: &Path, lock: &File) -> Option<String> {
     let noted = fs::read_to_string(runtime.join("holder")).ok()?;
     let mut fields = noted.trim().split('\t').skip(1);
     let holder = fields.next()?.parse::<i32>().ok().filter(|pid| *pid > 1)?;
@@ -198,8 +206,8 @@ fn held_above(runtime: &Path) -> Option<String> {
     // real one is a loop read mid-change.
     for _ in 0..4096 {
         if at == holder {
-            return (ahead::started(&at.to_string()) == Some(started))
-                .then(|| self::holder(runtime));
+            let same = ahead::started(&at.to_string()) == Some(started);
+            return (same && locked_by(lock, holder)).then(|| self::holder(runtime));
         }
         if at <= 1 {
             return None;
@@ -207,6 +215,32 @@ fn held_above(runtime: &Path) -> Option<String> {
         at = ahead::stat(&at.to_string())?.get(1)?.parse().ok()?;
     }
     None
+}
+
+/// Whether process `pid` holds the flock on `lock`, as the kernel's
+/// `/proc/locks` says: a line `ID: FLOCK ADVISORY WRITE PID MAJ:MIN:INODE`
+/// for the lock's file, a waiter's lines being marked `->`. Unread, it
+/// says no, and the turn waits as any other would.
+fn locked_by(lock: &File, pid: i32) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(held) = lock.metadata() else {
+        return false;
+    };
+    let dev = held.dev();
+    // glibc's gnu_dev_major and gnu_dev_minor, which undo the encoding
+    // stat gives a device in.
+    let major = ((dev >> 8) & 0xfff) | ((dev >> 32) & !0xfff);
+    let minor = (dev & 0xff) | ((dev >> 12) & !0xff);
+    let file = format!("{major:02x}:{minor:02x}:{}", held.ino());
+    let pid = pid.to_string();
+    fs::read_to_string("/proc/locks").is_ok_and(|locks| {
+        locks.lines().any(|line| {
+            let words: Vec<&str> = line.split_whitespace().collect();
+            words.get(1) == Some(&"FLOCK")
+                && words.get(4) == Some(&pid.as_str())
+                && words.get(5) == Some(&file.as_str())
+        })
+    })
 }
 
 /// What one look at the turn found.
@@ -503,19 +537,8 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
     // and held until this process ends, however it ends.
     let lock = File::create(runtime.join("lock"))
         .map_err(|error| failed(&turn.name, "can't open the lock", &error))?;
-    if let Some(holder) = held_above(runtime) {
-        // The holder noted is above this process, but a night job paused
-        // for a job Joel waits on lets the lock go while it lives: only a
-        // lock still held makes it the turn's.
-        match lock.try_lock() {
-            Err(TryLockError::WouldBlock) => return run_within(turn, &holder),
-            Ok(()) => lock
-                .unlock()
-                .map_err(|error| failed(&turn.name, "can't let the lock go", &error))?,
-            Err(TryLockError::Error(error)) => {
-                return Err(failed(&turn.name, "can't take the lock", &error));
-            }
-        }
+    if let Some(holder) = held_above(runtime, &lock) {
+        return run_within(turn, &holder);
     }
     if let Some(holder) = wait_for(turn, runtime, &lock)? {
         return run_within(turn, &holder);
@@ -559,7 +582,7 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, 
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
             Ok(Look::Taken) => {
-                if let Some(holder) = held_above(runtime) {
+                if let Some(holder) = held_above(runtime, lock) {
                     return Ok(Some(holder));
                 }
                 format!("waiting for the turn, which {} has", holder(runtime))
