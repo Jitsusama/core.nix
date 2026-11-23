@@ -341,6 +341,14 @@ fn changed(options: &Options, out: &Pen) -> Result<(), Failure> {
             Exit::Failed,
             "a check the change touched failed",
         )),
+        // Never 1, which says every build ran and one failed: nix-offload
+        // reads this as a part cut short, so the train excuses no red of
+        // it.
+        Compared::Cut => Err(Failure::new(
+            Exit::Unavailable,
+            "a build of the checks the change touched was cut short, so not every check was \
+             built",
+        )),
     }
 }
 
@@ -352,6 +360,9 @@ enum Compared {
     Broken,
     /// A check it built failed.
     Failed,
+    /// A build was cut short, by a signal or a lost builder, so not every
+    /// check it named was built.
+    Cut,
 }
 
 /// Keep `head`'s checks where runs are sent, from the keeper's own clone,
@@ -623,6 +634,8 @@ fn compare(
         Compared::Broken
     } else if build.as_ref().is_none_or(|build| build.sent.passed) {
         Compared::Passed
+    } else if build.as_ref().is_some_and(|build| !build.sent.whole) {
+        Compared::Cut
     } else {
         Compared::Failed
     })

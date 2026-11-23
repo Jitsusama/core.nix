@@ -204,8 +204,26 @@ fn nix_name(name: &str) -> &str {
 
 /// `line` with each store path's hash masked, and each run of digits read
 /// as one, but a lone 0, so two runs failing alike read alike and a run
-/// that counted nothing doesn't read as one that counted some.
+/// that counted nothing doesn't read as one that counted some. A word
+/// naming a test as pytest does, `path::name[params]`, keeps its digits,
+/// so a test that failed at 390px doesn't read as one at 1440px (round
+/// 4's F1).
 fn masked(line: &str) -> String {
+    unhashed(line)
+        .split(' ')
+        .map(|word| {
+            if word.contains("::") {
+                word.to_owned()
+            } else {
+                counted(word)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `line`, trimmed at its end, with each store path's hash masked.
+fn unhashed(line: &str) -> String {
     const STORE: &str = "/nix/store/";
     const HASH: usize = 32;
     let mut unhashed = String::with_capacity(line.len());
@@ -225,8 +243,13 @@ fn masked(line: &str) -> String {
         }
     }
     unhashed.push_str(rest);
-    let mut out = String::with_capacity(unhashed.len());
-    let mut characters = unhashed.chars().peekable();
+    unhashed
+}
+
+/// `word` with each run of digits read as one, but a lone 0.
+fn counted(word: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    let mut characters = word.chars().peekable();
     while let Some(character) = characters.next() {
         if character.is_ascii_digit() {
             let mut zero = character == '0';
@@ -242,13 +265,22 @@ fn masked(line: &str) -> String {
 }
 
 /// Whether `line`, one a check printed, is pytest's word on a subtest that
-/// failed, or a line of why it failed.
+/// failed, or a line of why it failed: `FAILED path.py::name`, `ERROR
+/// path.py::name` or `path.py::name FAILED`, and its `E` lines. A log
+/// line such as `ERROR niri::backend::winit: ...` is none, so it can't
+/// stand for the check's failure in place of what differed (round 4's
+/// F2).
 fn says_a_subtest_failed(line: &str) -> bool {
-    let named = line.contains("::")
-        && (line.starts_with("FAILED ")
-            || line.starts_with("ERROR ")
-            || line.contains(" FAILED")
-            || line.contains(" ERROR"));
+    let names_a_test = |word: &str| {
+        word.split_once("::")
+            .is_some_and(|(path, name)| path.ends_with(".py") && !name.is_empty())
+    };
+    let mut words = line.split_whitespace();
+    let first = words.next().unwrap_or_default();
+    let second = words.next().unwrap_or_default();
+    let verdict = |word: &str| matches!(word, "FAILED" | "ERROR");
+    let named =
+        (verdict(first) && names_a_test(second)) || (names_a_test(first) && verdict(second));
     named || line == "E" || line.starts_with("E ")
 }
 

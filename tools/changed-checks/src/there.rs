@@ -22,6 +22,9 @@ use crate::quarantine;
 /// How a build there ended, and what it sent the builder.
 pub struct Sent {
     pub passed: bool,
+    /// Whether every build ran to its end, passing or failing: not cut
+    /// short by a signal, a lost builder or anything else ([`ran_whole`]).
+    pub whole: bool,
     /// Whether it ran on the builder, rather than here when none answered.
     pub there: bool,
     /// What ssh sent, as nix-offload journalled it.
@@ -90,11 +93,31 @@ pub fn build(flake: &str, system: &str, checks: &[&str], journal: &Path) -> Resu
         .and_then(|journal| last_of(&journal, flake));
     Ok(Sent {
         passed: status.success(),
+        whole: ran_whole(status),
         there: noted.as_ref().is_some_and(|line| line["on"].is_string()),
         bytes: noted.and_then(|line| line["sent"].as_u64()),
         failed,
     })
 }
+
+/// Whether a build that ended `status` ran to its end: it passed, or
+/// failed as nix fails a build it ran, 1 or 100 to 104. Any other status,
+/// a signal's, a lost builder's 255 or nix-offload's 69 for one it
+/// couldn't build among them, says a build was cut short, so not every
+/// check it named was built: round 4 of the train's excuses found such a
+/// run read as a failure whose log named all it broke.
+pub fn ran_whole(status: std::process::ExitStatus) -> bool {
+    matches!(
+        status.code(),
+        Some(0 | 1 | NIX_FAILED_FIRST..=NIX_FAILED_LAST)
+    )
+}
+
+/// The statuses `nix build` ends a failed build with, `--keep-going`'s
+/// among them: 100, and 101 to 104 for a timeout, a hash or a check that
+/// differed, alone or together.
+const NIX_FAILED_FIRST: i32 = 100;
+const NIX_FAILED_LAST: i32 = 104;
 
 /// The status nix-offload refuses its arguments with.
 const USAGE: i32 = 64;
@@ -114,6 +137,27 @@ fn last_of(journal: &str, flake: &str) -> Option<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_build_ran_whole_only_when_it_ended_as_nix_ends_one() {
+        use std::os::unix::process::ExitStatusExt;
+        for code in [0, 1, 100, 104] {
+            assert!(
+                ran_whole(std::process::ExitStatus::from_raw(code << 8)),
+                "a build that ended {code} read as cut short"
+            );
+        }
+        for code in [69, 75, 255, 105, 2] {
+            assert!(
+                !ran_whole(std::process::ExitStatus::from_raw(code << 8)),
+                "a build that ended {code} read as whole"
+            );
+        }
+        assert!(
+            !ran_whole(std::process::ExitStatus::from_raw(9)),
+            "a build a signal ended read as whole"
+        );
+    }
 
     #[test]
     fn a_builder_is_lent_while_the_store_names_an_ssh_store() {

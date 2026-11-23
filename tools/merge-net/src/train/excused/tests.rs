@@ -258,6 +258,46 @@ fn a_pytest_failure_is_read_by_its_failed_subtests() {
         .is_err(),
         "a subtest main passes was excused"
     );
+    // A test's parameters name another test, numbers and all.
+    let wide = failure_of(
+        &printed("WARN broken pipe", "test_a_walk[1440px]"),
+        "cat-on-niri",
+    )
+    .unwrap();
+    let known = move |_: &str| Some(AtBase::Fails(vec![wide.clone()]));
+    assert!(
+        excused(
+            &printed("WARN no cursor", "test_a_walk[390px]"),
+            &asks(&known, &FAILED_AGAIN, &nothing)
+        )
+        .is_err(),
+        "a test main fails at 1440px excused the same test failing at 390px"
+    );
+}
+
+/// A log line that names a module as Rust does isn't pytest's word on a
+/// subtest, so it can't stand for the whole failure.
+#[test]
+fn a_rust_log_line_is_no_failed_subtest() {
+    let printed = |count: &str| {
+        red(
+            &[(
+                "cat-on-niri",
+                &["ERROR niri::backend::winit: lost the output", count],
+            )],
+            &[],
+        )
+    };
+    let base = failure_of(&printed("counted 0 frames"), "cat-on-niri").unwrap();
+    let known = move |_: &str| Some(AtBase::Fails(vec![base.clone()]));
+    assert!(
+        excused(
+            &printed("counted 3 frames"),
+            &asks(&known, &FAILED_AGAIN, &nothing)
+        )
+        .is_err(),
+        "a tracing ERROR line hid how the failure differed from main's"
+    );
 }
 
 /// A check split in parts fails as a part, which nix names before its
