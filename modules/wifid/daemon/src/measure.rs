@@ -14,6 +14,13 @@
 //! learned by the hour too (learn.rs), for those the card hasn't been on
 //! in the span.
 //!
+//! Each second's echo goes twice, once unmarked and once in Wi-Fi's video
+//! queue (echo.rs), and an access point carries as well as the worse of
+//! the two: what the chooser and the hours are handed is that one's, so a
+//! point holding a call's queue is passed over however fast its best
+//! effort. A video class never answered in the span isn't weighed, since
+//! a gateway that drops marked echoes says nothing of the air.
+//!
 //! Long because its cases, near half of it, stay beside the private
 //! figures they prove one by one, as every module in wifid keeps them.
 
@@ -25,7 +32,7 @@ use tokio::time::{Duration, Instant, MissedTickBehavior, interval};
 use crate::air::Heard;
 use crate::calling::Calling;
 use crate::choose::{self, Chooser};
-use crate::echo::Echoer;
+use crate::echo::{Class, Echoer};
 use crate::learn::{self, Here, Learned};
 use crate::moves;
 use crate::nl80211::{Nl80211, Station};
@@ -78,6 +85,15 @@ pub struct Measured {
     pub room: Option<u32>,
 }
 
+/// What an access point's video echoes carried over the span, as logged.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Video {
+    pub echoes: usize,
+    pub p95: Option<Duration>,
+    /// The share of echoes lost, in percent.
+    pub lost: f64,
+}
+
 /// What's been measured of each access point, by its address.
 #[derive(Default)]
 pub struct Measures {
@@ -87,15 +103,42 @@ pub struct Measures {
 #[derive(Default)]
 struct Point {
     echoes: VecDeque<(Instant, Echo)>,
+    video: VecDeque<(Instant, Echo)>,
     counts: VecDeque<(Instant, Counts)>,
 }
 
 impl Measures {
-    /// Takes in an echo of the gateway, sent through the access point.
+    /// Takes in a best-effort echo of the gateway, sent through the access
+    /// point: the cases' shorthand, as most echo in best effort alone.
+    #[cfg(test)]
     pub fn echoed(&mut self, point: &str, at: Instant, echo: Echo) {
+        self.echoed_as(Class::BestEffort, point, at, echo);
+    }
+
+    /// Takes in an echo of the gateway sent in the class given.
+    pub fn echoed_as(&mut self, class: Class, point: &str, at: Instant, echo: Echo) {
         let kept = self.points.entry(point.to_owned()).or_default();
-        kept.echoes.push_back((at, echo));
-        forget_before(&mut kept.echoes, at);
+        let echoes = match class {
+            Class::BestEffort => &mut kept.echoes,
+            Class::Video => &mut kept.video,
+        };
+        echoes.push_back((at, echo));
+        forget_before(echoes, at);
+    }
+
+    /// What the access point's video echoes carried over the span up to
+    /// now, if any were sent in it.
+    pub fn video_of(&self, point: &str, now: Instant) -> Option<Video> {
+        let echoes: Vec<Echo> = within(&self.points.get(point)?.video, now).collect();
+        if echoes.is_empty() {
+            return None;
+        }
+        let (times, lost) = timed(&echoes);
+        Some(Video {
+            echoes: echoes.len(),
+            p95: percentile(&times, 95),
+            lost: per_hundred(lost, echoes.len()),
+        })
     }
 
     /// Takes in the station's counts, read on the access point.
@@ -114,21 +157,22 @@ impl Measures {
         if echoes.is_empty() && counts.is_empty() {
             return None;
         }
-        let mut times: Vec<Duration> = echoes
-            .iter()
-            .filter_map(|echo| match echo {
-                Echo::Answered(time) => Some(*time),
-                Echo::Lost => None,
-            })
-            .collect();
-        times.sort_unstable();
-        let lost = echoes.len() - times.len();
+        let (times, lost) = timed(&echoes);
+        let (mut p50, mut p95) = (percentile(&times, 50), percentile(&times, 95));
+        let mut lost = per_hundred(lost, echoes.len());
+        let video: Vec<Echo> = within(&kept.video, now).collect();
+        let (video_times, video_lost) = timed(&video);
+        if !video_times.is_empty() {
+            p50 = p50.max(percentile(&video_times, 50));
+            p95 = p95.max(percentile(&video_times, 95));
+            lost = lost.max(per_hundred(video_lost, video.len()));
+        }
         let (sent, retries, failed) = sent_since(&counts);
         Some(Measured {
             echoes: echoes.len(),
-            p50: percentile(&times, 50),
-            p95: percentile(&times, 95),
-            lost: per_hundred(lost, echoes.len()),
+            p50,
+            p95,
+            lost,
             retried: per_hundred(retries, sent),
             failed: per_hundred(failed, sent),
             signal: counts.last().and_then(|counts| counts.signal),
@@ -162,7 +206,7 @@ pub async fn follow(
     asks: mpsc::Sender<Ask>,
     mut learned: Learned,
 ) {
-    let mut echoers: HashMap<String, Echoer> = HashMap::new();
+    let mut echoers: HashMap<String, Echoers> = HashMap::new();
     let mut choosers: HashMap<String, Chooser> = HashMap::new();
     let mut kernel: Option<Nl80211> = None;
     let mut measures = Measures::default();
@@ -191,7 +235,8 @@ pub async fn follow(
                     let Some(carried) = measures.of(&on.point, now) else {
                         continue;
                     };
-                    println!("<6>{}", said(&on, &carried, call));
+                    let video = measures.video_of(&on.point, now);
+                    println!("<6>{}", said(&on, &carried, video, call));
                     let around = state.borrow().around(&on.card);
                     learn_from(&mut learned, &on, &carried, &around, hour);
                     let chooser = choosers.entry(on.card.clone()).or_default();
@@ -233,31 +278,55 @@ pub async fn follow(
     }
 }
 
-/// Echoes a card's gateway once and reads its station's counts. A card
-/// whose socket can't be opened, or errs, is passed over until the next
-/// second, with its socket opened again then.
+/// A card's echo sockets, one for each class.
+struct Echoers {
+    best: Echoer,
+    video: Echoer,
+}
+
+impl Echoers {
+    fn open(card: &str) -> std::io::Result<Echoers> {
+        Ok(Echoers {
+            best: Echoer::open(card, Class::BestEffort)?,
+            video: Echoer::open(card, Class::Video)?,
+        })
+    }
+}
+
+/// Echoes a card's gateway once in each class, at once so a held class
+/// can't delay the other's, and reads its station's counts. A card whose
+/// sockets can't be opened, or err, is passed over until the next second,
+/// with its sockets opened again then.
 async fn measure(
     on: &Joined,
-    echoers: &mut HashMap<String, Echoer>,
+    echoers: &mut HashMap<String, Echoers>,
     kernel: &mut Option<Nl80211>,
     measures: &mut Measures,
 ) {
     if !echoers.contains_key(&on.card) {
-        match Echoer::open(&on.card) {
-            Ok(echoer) => echoers.insert(on.card.clone(), echoer),
+        match Echoers::open(&on.card) {
+            Ok(opened) => echoers.insert(on.card.clone(), opened),
             Err(error) => {
                 eprintln!("<7>can't echo {}'s gateway: {error}", on.card);
                 return;
             }
         };
     }
-    if let Some(echoer) = echoers.get_mut(&on.card) {
-        match echoer.echo(on.gateway).await {
-            Ok(echo) => measures.echoed(&on.point, Instant::now(), echo),
-            Err(error) => {
-                eprintln!("<7>can't echo {}'s gateway: {error}", on.card);
-                echoers.remove(&on.card);
+    if let Some(Echoers { best, video }) = echoers.get_mut(&on.card) {
+        let at = Instant::now();
+        let (best, video) = tokio::join!(best.echo(on.gateway), video.echo(on.gateway));
+        let mut erred = false;
+        for (class, echo) in [(Class::BestEffort, best), (Class::Video, video)] {
+            match echo {
+                Ok(echo) => measures.echoed_as(class, &on.point, at, echo),
+                Err(error) => {
+                    eprintln!("<7>can't echo {}'s gateway: {error}", on.card);
+                    erred = true;
+                }
             }
+        }
+        if erred {
+            echoers.remove(&on.card);
         }
     }
     if let Some(counts) = station(kernel, &on.card).await.as_ref().and_then(counted) {
@@ -333,7 +402,15 @@ pub fn ms(time: Option<Duration>) -> String {
 }
 
 /// An access point's figures, as logged, and whether a call was on.
-fn said(on: &Joined, measured: &Measured, call: bool) -> String {
+fn said(on: &Joined, measured: &Measured, video: Option<Video>, call: bool) -> String {
+    let video = video.map_or(String::new(), |video| {
+        format!(
+            "; video {} at p95, {:.1}% of {} echoes lost",
+            ms(video.p95),
+            video.lost,
+            video.echoes
+        )
+    });
     let signal = measured
         .signal
         .map_or("unread".into(), |signal| format!("{signal} dBm"));
@@ -348,7 +425,7 @@ fn said(on: &Joined, measured: &Measured, call: bool) -> String {
         ""
     };
     format!(
-        "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost; \
+        "{} on {}: gateway {} at p50, {} at p95, {:.1}% of {} echoes lost{video}; \
          {:.2} in 100 frames sent again, {:.2} lost; signal {signal}{moving}{own}{}",
         on.card,
         on.point,
@@ -416,6 +493,20 @@ fn moving(kept: &VecDeque<(Instant, Counts)>, now: Instant) -> Option<u32> {
     let micros = counted.as_micros();
     let megabits = (u128::from(bytes) * 8 + micros / 2) / micros;
     Some(u32::try_from(megabits).unwrap_or(u32::MAX))
+}
+
+/// The answered echoes' times, quickest first, and how many were lost.
+fn timed(echoes: &[Echo]) -> (Vec<Duration>, usize) {
+    let mut times: Vec<Duration> = echoes
+        .iter()
+        .filter_map(|echo| match echo {
+            Echo::Answered(time) => Some(*time),
+            Echo::Lost => None,
+        })
+        .collect();
+    times.sort_unstable();
+    let lost = echoes.len() - times.len();
+    (times, lost)
 }
 
 /// The time by which `percent` of the answered echoes had answered, by
@@ -617,7 +708,7 @@ pub(crate) mod tests {
             moving: Some(12),
             room: Some(286),
         };
-        let line = said(&joined(DESK), &measured, true);
+        let line = said(&joined(DESK), &measured, None, true);
         assert!(
             line.ends_with("unread; moving 12 of 286 Mbit/s, during a call"),
             "what it moved, and of what, is why it keeps to a band: {line}"
@@ -626,7 +717,7 @@ pub(crate) mod tests {
             room: None,
             ..measured
         };
-        let line = said(&joined(DESK), &unsaid, false);
+        let line = said(&joined(DESK), &unsaid, None, false);
         let alone = "unread; moving 12 Mbit/s";
         assert!(line.ends_with(alone), "no room: {line}");
     }
@@ -644,7 +735,7 @@ pub(crate) mod tests {
             moving: Some(52),
             room: Some(1200),
         };
-        let line = said(&joined(DESK), &downloading, false);
+        let line = said(&joined(DESK), &downloading, None, false);
         assert!(
             line.ends_with("moving 52 of 1200 Mbit/s, slowed by what it moves"),
             "why it stays is said: {line}"
@@ -653,7 +744,7 @@ pub(crate) mod tests {
             moving: Some(9),
             ..downloading
         };
-        let line = said(&joined(DESK), &idle, false);
+        let line = said(&joined(DESK), &idle, None, false);
         assert!(line.ends_with("moving 9 of 1200 Mbit/s"), "idle: {line}");
     }
 
@@ -741,15 +832,117 @@ pub(crate) mod tests {
         };
 
         assert_eq!(
-            said(&on, &measured, false),
+            said(&on, &measured, None, false),
             "wlan2 on 6c:ae:f6:c1:84:26: gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 \
              echoes lost; 1.25 in 100 frames sent again, 0.00 lost; signal -47 dBm",
             "one line says all of it"
         );
         assert!(
-            said(&on, &measured, true).ends_with("signal -47 dBm, during a call"),
+            said(&on, &measured, None, true).ends_with("signal -47 dBm, during a call"),
             "a call on is said, since the card stays put for it"
         );
+        let video = Video {
+            echoes: 120,
+            p95: Some(ms(881)),
+            lost: 38.3,
+        };
+        assert!(
+            said(&on, &measured, Some(video), false).contains(
+                "0.0% of 120 echoes lost; video 881.0 ms at p95, 38.3% of 120 echoes lost; \
+                 1.25 in 100"
+            ),
+            "the video class is said after best effort, for a call's path"
+        );
+    }
+
+    /// One video echo a second for the times given, in milliseconds,
+    /// starting at `start`.
+    fn echoed_in_video(kept: &mut Measures, point: &str, start: Instant, times: &[Option<u64>]) {
+        for (second, time) in (0..).zip(times) {
+            let echo = time.map_or(Echo::Lost, |time| Echo::Answered(ms(time)));
+            kept.echoed_as(
+                Class::Video,
+                point,
+                start + Duration::from_secs(second),
+                echo,
+            );
+        }
+    }
+
+    #[test]
+    fn an_access_point_holding_video_carries_as_its_video_does() {
+        // As a mesh node's 5 GHz point carried a card on 23 Nov 2026: best
+        // effort in 6 ms, video held near a second and past it.
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(6); 4]);
+        echoed_in_video(&mut kept, DESK, start, &[Some(900), None, Some(800), None]);
+        let measured = kept.of(DESK, start + Duration::from_secs(4));
+        let measured = measured.expect("an access point echoed through is measured");
+        assert_eq!(measured.p95, Some(ms(900)), "the held class's slow end");
+        assert_eq!(measured.p50, Some(ms(800)), "and its middle");
+        assert!(
+            (measured.lost - 50.0).abs() < 1e-9,
+            "the held class's losses: {}",
+            measured.lost
+        );
+        assert_eq!(measured.echoes, 4, "echoes count each second once");
+    }
+
+    #[test]
+    fn an_access_point_slower_in_best_effort_carries_as_its_best_effort_does() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(120), None]);
+        echoed_in_video(&mut kept, DESK, start, &[Some(7), Some(7)]);
+        let measured = kept.of(DESK, start + Duration::from_secs(2));
+        let measured = measured.expect("an access point echoed through is measured");
+        assert_eq!(
+            measured.p95,
+            Some(ms(120)),
+            "the worse class is best effort"
+        );
+        assert!(
+            (measured.lost - 50.0).abs() < 1e-9,
+            "its losses: {}",
+            measured.lost
+        );
+    }
+
+    #[test]
+    fn a_video_class_never_answered_isn_t_weighed_but_is_said() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5), Some(5)]);
+        echoed_in_video(&mut kept, DESK, start, &[None, None]);
+        let now = start + Duration::from_secs(2);
+        let measured = kept
+            .of(DESK, now)
+            .expect("an access point echoed through is measured");
+        assert_eq!(
+            measured.p95,
+            Some(ms(5)),
+            "a gateway dropping marked echoes"
+        );
+        assert!(
+            measured.lost.abs() < f64::EPSILON,
+            "loses nothing in the air"
+        );
+        let video = kept.video_of(DESK, now).expect("video echoes were sent");
+        assert_eq!(video.p95, None, "none answered");
+        assert!(
+            (video.lost - 100.0).abs() < 1e-9,
+            "all lost: {}",
+            video.lost
+        );
+    }
+
+    #[test]
+    fn no_video_echo_sent_says_no_video_figures() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5)]);
+        assert_eq!(kept.video_of(DESK, start + Duration::from_secs(1)), None);
     }
 
     #[test]
