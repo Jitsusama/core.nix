@@ -14,6 +14,7 @@ import {
   texts,
 } from "../../local-sites/kit/records.ts";
 import { joined } from "./joins.ts";
+import { unreadOf } from "./unread.ts";
 import { type Use, USING, usingOf } from "./using.ts";
 import { type Weight, weightOf } from "./weight.ts";
 
@@ -175,19 +176,30 @@ function cellsOf(map: unknown): readonly Cell[] {
   });
 }
 
-/** Whether `cwd` is the folder `path` or inside it. */
-function within(cwd: string, path: string): boolean {
-  return cwd === path || cwd.startsWith(`${path}/`);
+/**
+ * The deepest of `known` that is `cwd` or holds it, found by walking up from `cwd` rather than
+ * down every folder, since a grove holds thousands of trees and a path only a few levels.
+ */
+function deepestHolding(cwd: string, known: ReadonlySet<string>): string | undefined {
+  for (let path = cwd; path !== ""; path = path.slice(0, Math.max(0, path.lastIndexOf("/")))) {
+    if (known.has(path)) {
+      return path;
+    }
+  }
+  return undefined;
 }
 
 /** Each cell given to the deepest of `folders` it works in, by folder. */
 function placed(cells: readonly Cell[], folders: readonly string[]): Map<string, Cell[]> {
-  const deepestFirst = [...folders].sort((one, other) => other.length - one.length);
+  const known = new Set(folders);
   const at = new Map<string, Cell[]>();
   for (const cell of cells) {
-    const folder = deepestFirst.find((path) => within(cell.cwd, path));
-    if (folder !== undefined) {
-      at.set(folder, [...(at.get(folder) ?? []), cell]);
+    const folder = deepestHolding(cell.cwd, known);
+    const held = folder === undefined ? undefined : at.get(folder);
+    if (held !== undefined) {
+      held.push(cell);
+    } else if (folder !== undefined) {
+      at.set(folder, [cell]);
     }
   }
   return at;
@@ -311,23 +323,39 @@ function inPlace(one: Tree, other: Tree): number {
   );
 }
 
+/** The checkout and tree records, each kept under the repository it names. */
+interface Own {
+  readonly checkouts: ReadonlyMap<string, readonly Fields[]>;
+  readonly trees: ReadonlyMap<string, readonly Fields[]>;
+}
+
+/**
+ * `records` under the repository each names, in the order they were told, so each repository
+ * finds its own at once rather than every repository reading every tree on each draw.
+ */
+function byRepository(records: readonly Fields[]): ReadonlyMap<string, readonly Fields[]> {
+  const by = new Map<string, Fields[]>();
+  for (const each of records) {
+    const key = text(each, "repository");
+    const held = key === undefined ? undefined : by.get(key);
+    if (held !== undefined) {
+      held.push(each);
+    } else if (key !== undefined) {
+      by.set(key, [each]);
+    }
+  }
+  return by;
+}
+
 /** A repository from its record, with its own of the checkouts, trees and changes. */
 function repositoryOf(
   record: Fields & { readonly key: string },
-  feed: Feed,
+  own: Own,
   parts: Parts,
 ): Repository {
   const key = record.key.replace(REPOSITORY_KEY, "");
-  const mine = (each: Fields): boolean => text(each, "repository") === key;
-  const checkouts = feed.checkout
-    .all()
-    .filter(mine)
-    .map((each) => checkoutOf(each, parts));
-  const trees = feed.tree
-    .all()
-    .filter(mine)
-    .map((each) => treeOf(each, parts))
-    .sort(inPlace);
+  const checkouts = (own.checkouts.get(key) ?? []).map((each) => checkoutOf(each, parts));
+  const trees = (own.trees.get(key) ?? []).map((each) => treeOf(each, parts)).sort(inPlace);
   const seasons = { today: 0, week: 0, resting: 0, gone: 0 };
   for (const tree of trees) {
     seasons[tree.season] += 1;
@@ -376,7 +404,11 @@ function groveOf(feed: Feed, cells: readonly Cell[], now: number): Grove | undef
   const used = new Map<string, Use>(using.flatMap((each) => [...each.folders]));
   const wholes = new Map<string, Use>(using.map((each) => [each.repository, each.whole]));
   const parts = { at, changes, used, wholes, now };
-  const repositories = feed.repository.all().map((record) => repositoryOf(record, feed, parts));
+  const own = {
+    checkouts: byRepository(feed.checkout.all()),
+    trees: byRepository(feed.tree.all()),
+  };
+  const repositories = feed.repository.all().map((record) => repositoryOf(record, own, parts));
   const joinedUp = joined(repositories);
   const grove = joinedUp.sort((one, other) => one.name.localeCompare(other.name, "en-CA"));
   return {
@@ -386,19 +418,6 @@ function groveOf(feed: Feed, cells: readonly Cell[], now: number): Grove | undef
     repositories: grove,
     worth: worthOf(grove),
   };
-}
-
-/** What the reading's sources couldn't read, each a sentence's part. */
-function unreadOf(reading: Fields): readonly string[] {
-  const told = reading["sources"];
-  const sources = Array.isArray(told) ? told : [];
-  return sources.flatMap((source: unknown) => {
-    const unread = isObject(source) ? (texts(source, "unread") ?? []) : [];
-    if (!isObject(source) || unread.length === 0) {
-      return [];
-    }
-    return [`${text(source, "name") ?? "a source"}: ${unread.join("; ")}`];
-  });
 }
 
 /** What's worth a look, worst first, at most five: never a total. */

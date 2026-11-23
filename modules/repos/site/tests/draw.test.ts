@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import { test as it } from "node:test";
 import { Held } from "../../../local-sites/kit/records.ts";
 import { drawer, groveOfTrees, rows } from "../draw.ts";
-import { cellsOf, type Feed, type Grove, groveOf } from "../model.ts";
+import { cellsOf, type Feed, type Grove, groveOf, type Season } from "../model.ts";
 
 process.env.TZ = "UTC";
 const NOW = Date.parse("2026-11-16T15:00:00Z");
@@ -295,4 +295,110 @@ it("says what works unread where the daemon's reading stopped, never as nothing 
   assert.ok(!drawn.includes("Its processes take"), `the drawer said a use it hasn't: ${drawn}`);
   const row = rows(grove([...records, unread]).repositories, NOW, "");
   assert.ok(row.includes("processes unread"), `the row didn't say it's unread: ${row}`);
+});
+
+const TREE_ROW = /<li class="tree /gu;
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+
+/** A tree of the hostile repository named `name`, written `ago` before now. */
+function treeNamed(name: string, ago: number, snapshot = false, named: string | null = null) {
+  const path = `/home/ada/trees/${name}`;
+  return {
+    key: `tree:${path}`,
+    kind: "tree",
+    repository,
+    checkout,
+    path,
+    snapshot,
+    present: true,
+    head: { branch: name, commit: "b2" },
+    written_at: at(ago),
+    change: named,
+  };
+}
+
+// Fourteen trees written today, the oldest naming a change, and three snapshots among them.
+const crowded = [
+  ...records.filter((each) => each.kind !== "tree"),
+  ...Array.from({ length: 13 }, (_, index) => treeNamed(`t${index}`, (index + 1) * MINUTE)),
+  treeNamed("named", 50 * MINUTE, false, change),
+  ...["s0", "s1", "s2"].map((name) => treeNamed(name, MINUTE / 2, true)),
+];
+
+/** How the crowded drawer is asked for: its seasons open, the cursor's trees, and the cells. */
+interface Crowding {
+  readonly open?: ReadonlySet<Season>;
+  readonly keep?: readonly string[];
+  readonly whole?: boolean;
+  readonly workingIn?: readonly string[];
+  /** How many trees, past a week unwritten, rest besides those written today. */
+  readonly resting?: number;
+}
+
+/** The crowded repository's drawer, asked for as `crowding` says. */
+function crowdedDrawer(crowding: Crowding = {}): string {
+  const working = (crowding.workingIn ?? []).map((name) => ({
+    name: `wren-${name}`,
+    title: name,
+    standing: "moving",
+    cwd: `/home/ada/trees/${name}`,
+  }));
+  const resting = Array.from({ length: crowding.resting ?? 0 }, (_, index) =>
+    treeNamed(`r${index}`, 8 * DAY + index * MINUTE),
+  );
+  const drawn = groveOf(told([...crowded, ...resting]), cellsOf({ cells: working }), NOW);
+  const opened = drawn?.repositories[0];
+  assert.ok(drawn !== undefined && opened !== undefined, "the records drew no repository");
+  const keep = new Set((crowding.keep ?? []).map((name) => `/home/ada/trees/${name}`));
+  const whole = crowding.whole === true;
+  const context = { now: NOW, home: "/home/ada", homes: () => undefined, keep, whole };
+  return drawer(opened, drawn, context, crowding.open ?? new Set());
+}
+
+/** Whether `markup` lists the tree named `name`. */
+const lists = (markup: string, name: string): boolean =>
+  markup.includes(`data-path="/home/ada/trees/${name}"`);
+
+it("lists twelve of a season's trees, those a change names first, and counts the rest", () => {
+  const markup = crowdedDrawer();
+  assert.equal(markup.match(TREE_ROW)?.length, 12, `the season didn't list twelve: ${markup}`);
+  assert.ok(lists(markup, "named"), "the named tree wasn't listed");
+  assert.ok(lists(markup, "t0") && !lists(markup, "t12"), "the newest weren't listed first");
+  assert.ok(!lists(markup, "s0"), "a snapshot was listed");
+  assert.ok(
+    markup.includes(
+      'And 5 more, 3\u00a0snapshots among them. <button type="button" class="unfold">',
+    ),
+    `the season didn't count what it left out: ${markup}`,
+  );
+});
+
+it("lists a tree a cell works in, a snapshot among them, ahead of the newest", () => {
+  const markup = crowdedDrawer({ workingIn: ["t12", "s2"] });
+  assert.equal(markup.match(TREE_ROW)?.length, 12, `the season didn't list twelve: ${markup}`);
+  assert.ok(lists(markup, "t12"), "the oldest tree, a cell working in it, wasn't listed");
+  assert.ok(lists(markup, "s2"), "a snapshot a cell works in wasn't listed");
+});
+
+it("lists the trees the cursor stood on, even those the season leaves out", () => {
+  const snapshot = crowdedDrawer({ keep: ["s1"] });
+  assert.equal(snapshot.match(TREE_ROW)?.length, 13, `the cursor's tree wasn't added: ${snapshot}`);
+  assert.ok(lists(snapshot, "s1"), "the snapshot the cursor is on wasn't listed");
+  assert.ok(snapshot.includes("And 4 more"), `the count still held the cursor's: ${snapshot}`);
+  const both = crowdedDrawer({ keep: ["s1", "t12"] });
+  assert.equal(both.match(TREE_ROW)?.length, 14, `a tree the cursor left went: ${both}`);
+  assert.ok(lists(both, "t12"), "the oldest tree the cursor stood on wasn't listed");
+});
+
+it("lists every tree once asked to, and counts none", () => {
+  const markup = crowdedDrawer({ whole: true });
+  assert.equal(markup.match(TREE_ROW)?.length, 17, `an opened season left trees out: ${markup}`);
+  assert.ok(!markup.includes('class="unfold"'), `an opened season offered to list more: ${markup}`);
+});
+
+it("keeps the twelve in every season when an address opens only its tree's season", () => {
+  const markup = crowdedDrawer({ open: new Set(["resting", "gone"]), resting: 14 });
+  assert.equal(markup.match(TREE_ROW)?.length, 24, `opening a season lifted the cap: ${markup}`);
+  assert.ok(lists(markup, "r0") && !lists(markup, "r13"), "resting didn't list its newest");
 });

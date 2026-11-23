@@ -63,10 +63,10 @@ function footOf(
   now: Standing | undefined,
   heard: Iterable<string>,
 ): string {
-  const where = grove === undefined ? "" : `Read on ${grove.machine}. `;
+  const where = grove === undefined ? "" : `Read on ${grove.machine}.`;
   const problems = [...(grove?.unread ?? []), ...heard];
-  const trouble = problems.length > 0 ? ` Couldn't read: ${problems.join("; ")}.` : "";
-  return `${where}${now === undefined ? "" : said(now)}${trouble}`;
+  const trouble = problems.length > 0 ? `Couldn't read ${problems.join("; ")}.` : "";
+  return [where, now === undefined ? "" : said(now), trouble].filter(Boolean).join(" ");
 }
 
 export { footOf, headOf, worst };
