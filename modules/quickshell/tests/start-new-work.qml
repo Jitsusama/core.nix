@@ -18,6 +18,9 @@ QtObject {
         unread: "its node's answer couldn't be read",
         empty: "say what the work is",
         unplaced: "that folder isn't a whole path",
+        actRepository: "start it In a repository",
+        actRoom: "once a machine has room, Return starts it",
+        actNode: "once the node runs, Return starts it",
         offered: "a page offered this work; read it to its end, then Return starts it",
         offeredFrom: "a page offered this work, saying it's from {cell}; read it to its end, then Return starts it"
     })
@@ -203,6 +206,43 @@ QtObject {
         Expect.same("refused says why",
             Sprouting.told({ started: false, why: "no machine can take it" }, said),
             "no machine can take it");
+
+        // A refusal one of the launcher's acts gets past ends with that act, the
+        // command line's own cut, in the node's or the daemon's words as each says it.
+        const refusal = why => Sprouting.told({ started: false, why }, said);
+        Expect.same("one needing a repository says the launcher's act, not the command line's",
+            refusal("it needs a repository to work in, and /home/j isn't one: say which, as "
+                + "`mycelium sprout --in <folder> ...`"),
+            "it needs a repository to work in, and /home/j isn't one; start it In a repository");
+        Expect.same("one begun at home names the act, not the folder to name",
+            refusal("a session begun in a home folder has none of its repository's skills: "
+                + "name the repository's folder"),
+            "a session begun in a home folder has none of its repository's skills; "
+                + "start it In a repository");
+        Expect.same("a folder not here is started In another",
+            refusal("/home/j/src/gone isn't a folder here"),
+            "/home/j/src/gone isn't a folder here; start it In a repository");
+        Expect.same("one with no room says when Return starts it",
+            refusal("nowhere: kestrel is full"),
+            "nowhere: kestrel is full; once a machine has room, Return starts it");
+        Expect.same("one whose node wasn't reached says when Return starts it",
+            refusal("the node couldn't be reached: no such file"),
+            "the node couldn't be reached: no such file; once the node runs, Return starts it");
+        Expect.same("one unanswered keeps its own words, which say what to do",
+            Sprouting.told({ started: false, unanswered: true,
+                why: "the node couldn't be reached in time" }, said),
+            "the node couldn't be reached in time");
+        Expect.same("with the act's words missing, it's told as it was said",
+            Sprouting.told({ started: false, why: "nowhere: kestrel is full" }, {}),
+            "nowhere: kestrel is full");
+        Expect.same("words that only hold a known refusal's aren't it",
+            refusal("it said nowhere: and stopped"), "it said nowhere: and stopped");
+        const roomless = { started: false, why: "nowhere: kestrel is full" };
+        Expect.same("the act is told Joel, and the journal keeps the node's words",
+            Sprouting.reach(roomless, said), {
+                journal: "new work wasn't started: nowhere: kestrel is full",
+                told: "nowhere: kestrel is full; once a machine has room, Return starts it"
+            });
 
         // Where each end is said beyond its own row, which Joel may have left.
         const refusedEnd = { started: false, why: "/home/j isn't a repository's folder" };

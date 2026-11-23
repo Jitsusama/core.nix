@@ -337,11 +337,44 @@ function settled(openings, found, now, patience) {
     return { late, up, waiting };
 }
 
-// What the act that ran says of how it ended, in `said`'s words: one the node
-// started with no holder's id can't be found to open, so it promises none.
+// The refusals Joel can meet that one act of the launcher's gets past, by
+// the node's or the agents daemon's words (mycelium's sprout.rs and
+// placement, modules/agents/src/sprout.rs), each with the key of that act's
+// words in `said` and, for one naming the command line's act, what to cut
+// from its end so only the launcher's is said: one needing a repository
+// or a folder here is started In one of his repositories, or from the
+// work's whole link, which names its own; one with no room or no node to
+// reach is asked again once there is. A refusal none of these knows is
+// told in its own words alone.
+const ACTS = [
+    { says: /needs a repository to work in/u, cut: /: say which, as `.*$/u, act: "actRepository" },
+    { says: /begun in a home folder/u, cut: /: name the repository's folder$/u,
+        act: "actRepository" },
+    { says: /isn't a folder here$/u, cut: null, act: "actRepository" },
+    { says: /^nowhere: /u, cut: null, act: "actRoom" },
+    { says: /^the node couldn't be reached/u, cut: null, act: "actNode" }
+];
+
+// The refusal `why` as Joel is told it, in `said`'s words: ending with the
+// act that gets past it (ACTS), or as it is when none is known or its
+// words are missing. The journal keeps `why` as it was said.
+function acted(why, said) {
+    const words = String(why ?? "");
+    const known = ACTS.find(one => one.says.test(words));
+    const act = String(said?.[known?.act] ?? "");
+    if (known === undefined || act === "") {
+        return words;
+    }
+    const cut = known.cut === null ? words : words.replace(known.cut, "");
+    return `${cut}; ${act}`;
+}
+
+// What the act that ran says of how it ended, in `said`'s words: one
+// refused ends with what gets past it (acted), and one the node started
+// with no holder's id can't be found to open, so it promises none.
 function told(how, said) {
     if (!how.started) {
-        return how.why;
+        return how.unanswered === true ? how.why : acted(how.why, said);
     }
     const words = how.held === "" ? said.unheld : said.started;
     return String(words ?? "").replace("{machine}", how.machine);
