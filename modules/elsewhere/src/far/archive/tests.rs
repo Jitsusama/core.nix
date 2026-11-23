@@ -206,6 +206,32 @@ fn a_file_itself_past_the_most_is_refused_as_it_is_opened_not_once_read() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+// Linux's own files say they are empty as they are opened and hold bytes
+// as they are read, as a file growing between the two does.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_file_that_grows_past_the_most_as_it_is_read_is_refused() {
+    let parts = crate::far::tests::scratch("archive-grows");
+    let root = Path::new("/proc/self");
+    assert_eq!(
+        std::fs::metadata(root.join("status")).unwrap().len(),
+        0,
+        "the process's status no longer says it is empty"
+    );
+    let refused = write(root, ["status"], &parts, 16, u64::MAX);
+    let grew = format!(
+        "{} grew as it was read, past the 16 bytes",
+        root.join("status").display()
+    );
+    assert!(
+        refused
+            .as_ref()
+            .is_err_and(|error| error.to_string().starts_with(&grew)),
+        "a file past the most once read wasn't refused as it grew: {refused:?}"
+    );
+    let _ = std::fs::remove_dir_all(&parts);
+}
+
 #[test]
 fn a_file_that_would_take_the_archives_past_their_total_is_refused_unwritten() {
     let root = crate::far::tests::scratch("archive-total");
