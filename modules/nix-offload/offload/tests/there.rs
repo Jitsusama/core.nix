@@ -46,9 +46,12 @@ fn wants_of(dir: &Path) -> PathBuf {
 const SSH: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 # Asked whether ssh reaches a machine nearby whose address doesn't
-# answer: only when the test says ssh's own entry does.
+# answer: only when the test says ssh's own entry does, and whom it was
+# asked of is kept.
 eval "last=\${$#}"
 if [ "$last" = true ]; then
+  eval "host=\${$(($# - 1))}"
+  echo "$host" >> "$here/reach-was-asked"
   [ -e "$here/ssh-reaches" ]
   exit
 fi
@@ -2730,6 +2733,29 @@ fn a_nearby_machine_that_doesnt_answer_is_named_as_its_part_goes_the_other_way()
         "mac\n",
         "ssh was asked whether it reaches it, once"
     );
+
+    // A run within the minute reads what ssh said, saying again why the
+    // Mac is taken as away, rather than asking it again.
+    let again = there_command(&bin, &offload, folder.path())
+        .args([
+            &format!("path:{}", zone.display()),
+            "checks.aarch64-darwin.a",
+        ])
+        .env("XDG_CONFIG_HOME", folder.path().join("config"))
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&again.stderr);
+    assert!(
+        said.contains("mac nearby doesn't answer, so what it takes goes the other way")
+            && said.contains("ssh doesn't reach mac either")
+            && said.contains("as ssh said"),
+        "the second run didn't say why the Mac is away: {said}"
+    );
+    assert_eq!(
+        fs::read_to_string(bin.join("reach-was-asked")).unwrap(),
+        "mac\n",
+        "a second run within the minute asked ssh again"
+    );
 }
 
 #[test]
@@ -4476,6 +4502,49 @@ fn a_mac_that_stops_answering_as_it_compares_is_kept_as_skipped() {
     assert_eq!(
         skipped["because"], "mac stopped answering as it compared",
         "{skipped}"
+    );
+}
+
+#[test]
+fn a_mac_ssh_alone_reaches_is_asked_again_once_it_stops_answering_as_it_compares() {
+    // From 07:01 on 22 November a Mac was reached only through ssh's own
+    // entry. One going mid-comparison is asked about afresh, rather than
+    // believed for the minute what ssh said is kept, so its failure is
+    // kept as skipped rather than said of the change.
+    let changed = Changed::new();
+    let away = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap();
+    changed.mac_at(away);
+    fs::write(changed.bin.join("ssh-reaches"), "").unwrap();
+    let head = changed.touching("modules/zsh/home.nix");
+    fs::write(changed.bin.join("says"), "changed  a\n").unwrap();
+    fs::write(changed.bin.join("holds-mac"), "3").unwrap();
+    fs::write(changed.bin.join("fails-on-mac"), "").unwrap();
+
+    let ran = std::thread::scope(|scope| {
+        let running = scope.spawn(|| changed.run(&GATE).0);
+        while !changed
+            .sent_to("mac")
+            .iter()
+            .any(|line| line.contains("nix build"))
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        fs::remove_file(changed.bin.join("ssh-reaches")).unwrap();
+        running.join().unwrap()
+    });
+    assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+    let skipped = skipped_at(&changed, &head);
+    assert_eq!(
+        skipped["because"], "mac stopped answering as it compared",
+        "{skipped}"
+    );
+    assert_eq!(
+        fs::read_to_string(changed.bin.join("reach-was-asked")).unwrap_or_default(),
+        "mac\nmac\n",
+        "ssh wasn't asked once before the comparison and once after it: {ran:?}"
     );
 }
 

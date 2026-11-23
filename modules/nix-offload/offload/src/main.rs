@@ -733,10 +733,16 @@ fn built_nearby(
     let mut status = 0;
     for (machine, part) in near {
         let began = now();
-        let ran = (!held_nearby(machine, scratch) && there::fetches(machine, part, scratch, "ssh"))
+        let held = held_nearby(machine, scratch);
+        let ran = (!held && there::fetches(machine, part, scratch, "ssh"))
             .then(|| there::nearby_run(machine, part, scratch, ["ssh", "tar", "nix"]))
             .flatten();
         let Some(ran) = ran else {
+            // ssh failing there may be the machine going, which what it
+            // said within the last minute can't know, so it's asked afresh.
+            if !held {
+                machines::forget_reached(&machine.host);
+            }
             let (goes, stays) = there::lent_builds(part, dir);
             if !stays.is_empty() {
                 eprintln!(
@@ -2027,9 +2033,10 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     );
     let longest = mac::longest();
     let compared = compared_within(&mac::for_a_mac(arguments), waiting, longest);
-    // A comparison that didn't pass may be the Mac going, which what ssh
-    // said of it within the last minute can't know, so it's asked afresh.
-    if compared.is_some_and(|status| status != 0) {
+    // A comparison that didn't pass, or never ended, may be the Mac going,
+    // which what ssh said of it within the last minute can't know, so it's
+    // asked afresh.
+    if compared != Some(0) {
         machines::forget_reached(&mac.host);
     }
     match compared {

@@ -439,9 +439,36 @@ pub fn nearby_answers(address: &str, host: &str) -> bool {
 /// days still sees one come and go.
 const REACHED_FOR: Duration = Duration::from_secs(60);
 
-/// What ssh last said of each machine nearby, and when, where there's no
-/// runtime folder to keep it in for the runs this one starts.
-static REACHED: Mutex<Vec<(String, Instant, bool)>> = Mutex::new(Vec::new());
+/// What ssh last said of each machine nearby, and when, in this run: read
+/// before the runtime folder's, and the one kept where that folder can't
+/// be written or there's none.
+static REACHED: Memo = Mutex::new(Vec::new());
+
+/// What ssh said of each machine nearby within a run, and when.
+type Memo = Mutex<Vec<(String, Instant, Said)>>;
+
+/// What ssh said of a machine nearby: whether it reaches it, and, where it
+/// doesn't, the line said then, said again while it's believed, so a
+/// refused host key isn't heard of only by the run that asked.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Said {
+    reaches: bool,
+    why: String,
+}
+
+impl Said {
+    /// Whether it reaches, as said `age` ago, saying again why not.
+    fn recalled(&self, age: Duration) -> bool {
+        if !self.reaches {
+            eprintln!(
+                "nix-offload: {} (as ssh said {} s ago)",
+                self.why,
+                age.as_secs()
+            );
+        }
+        self.reaches
+    }
+}
 
 /// The folder what ssh said of machines nearby is kept in, a file each,
 /// for every run of this program: the account's runtime folder's, which
@@ -455,72 +482,128 @@ fn reached_folder() -> Option<PathBuf> {
 /// Whether ssh reaches `host`, as it said within [`REACHED_FOR`] or as it
 /// says now, saying each time it's asked, since asking can take seconds.
 fn ssh_reaches_lately(host: &str) -> bool {
-    reached_lately(reached_folder().as_deref(), host, || {
+    reached_lately(&REACHED, reached_folder().as_deref(), host, || {
         eprintln!(
             "nix-offload: nothing listens at {host}'s address, so asking ssh whether it reaches it"
         );
-        match ssh_reaches("ssh", host, REACHING) {
-            Reached::Ran => true,
+        let why = match ssh_reaches("ssh", host, REACHING) {
+            Reached::Ran => {
+                return Said {
+                    reaches: true,
+                    why: String::new(),
+                };
+            }
             Reached::Refused(said) => {
-                eprintln!(
-                    "nix-offload: warning: ssh refused {host}'s host key, so it's taken as away: \
-                     {said}"
-                );
-                false
+                format!("warning: ssh refused {host}'s host key, so it's taken as away: {said}")
             }
-            Reached::Away(said) => {
-                eprintln!("nix-offload: ssh doesn't reach {host} either: {said}");
-                false
-            }
+            Reached::Away(said) => format!("ssh doesn't reach {host} either: {said}"),
+        };
+        eprintln!("nix-offload: {why}");
+        Said {
+            reaches: false,
+            why,
         }
     })
 }
 
-/// What `ask` says of `host`, or what it said within [`REACHED_FOR`], kept
-/// in `folder`, a file for each machine, or in this run with none.
-fn reached_lately(folder: Option<&Path>, host: &str, ask: impl FnOnce() -> bool) -> bool {
-    let Some(folder) = folder else {
-        let mut said = REACHED
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        said.retain(|(_, at, _)| at.elapsed() < REACHED_FOR);
-        if let Some((_, _, reaches)) = said.iter().find(|(name, _, _)| name == host) {
-            return *reaches;
-        }
-        let reaches = ask();
-        said.push((host.to_owned(), Instant::now(), reaches));
+/// What `ask` says of `host`, or what it said within [`REACHED_FOR`]: as
+/// this run's `memo` holds it, or else as `folder` does, a file for each
+/// machine, for the runs this one starts. An answer asked for goes into
+/// both, so a folder that can't be written still leaves this run asking
+/// once.
+fn reached_lately(
+    memo: &Memo,
+    folder: Option<&Path>,
+    host: &str,
+    ask: impl FnOnce() -> Said,
+) -> bool {
+    // Held while ssh is asked, so this run's threads ask of a machine once.
+    let mut memo = memo
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    memo.retain(|(_, at, _)| at.elapsed() < REACHED_FOR);
+    if let Some((_, at, said)) = memo.iter().find(|(name, _, _)| name == host) {
+        return said.recalled(at.elapsed());
+    }
+    if let Some((said, age)) = folder.and_then(|folder| kept(folder, host)) {
+        let at = Instant::now().checked_sub(age).unwrap_or_else(Instant::now);
+        let reaches = said.recalled(age);
+        memo.push((host.to_owned(), at, said));
         return reaches;
-    };
+    }
+    let said = ask();
+    if let Some(folder) = folder {
+        keep(folder, host, &said);
+    }
+    let reaches = said.reaches;
+    memo.push((host.to_owned(), Instant::now(), said));
+    reaches
+}
+
+/// What `folder` says ssh said of `host` within [`REACHED_FOR`], and how
+/// long ago: a first line `reaches` or `away`, and for `away` the line
+/// said then. Anything else reads as nothing kept, so it's asked again.
+fn kept(folder: &Path, host: &str) -> Option<(Said, Duration)> {
     let file = folder.join(reached_name(host));
-    let kept = fs::metadata(&file)
-        .and_then(|kept| kept.modified())
-        .ok()
-        .and_then(|at| at.elapsed().ok())
-        .filter(|age| *age < REACHED_FOR)
-        .and_then(|_| fs::read_to_string(&file).ok());
-    match kept.as_deref().map(str::trim) {
-        Some("reaches") => true,
-        Some("away") => false,
-        _ => {
-            let reaches = ask();
-            let _ = fs::create_dir_all(folder).and_then(|()| {
-                let writing = file.with_extension("writing");
-                fs::write(&writing, if reaches { "reaches\n" } else { "away\n" })?;
-                fs::rename(&writing, &file)
-            });
-            reaches
-        }
+    let age = fs::metadata(&file).ok()?.modified().ok()?.elapsed().ok()?;
+    if age >= REACHED_FOR {
+        return None;
+    }
+    let text = fs::read_to_string(&file).ok()?;
+    let mut lines = text.lines();
+    let said = match lines.next()? {
+        "reaches" => Said {
+            reaches: true,
+            why: String::new(),
+        },
+        "away" => Said {
+            reaches: false,
+            why: lines
+                .next()
+                .unwrap_or("ssh didn't reach it")
+                .chars()
+                .map(|c| if c.is_control() { ' ' } else { c })
+                .collect(),
+        },
+        _ => return None,
+    };
+    Some((said, age))
+}
+
+/// Keeps what ssh said of `host` in `folder`, written beside it under a
+/// name of this run's own and then named, so no reader finds half of it
+/// and no two runs, or two machines, write through one draft. The draft
+/// starts with a `.`, which no machine's own file does. Failing leaves
+/// this run's memo alone to keep it.
+fn keep(folder: &Path, host: &str, said: &Said) {
+    let name = reached_name(host);
+    let writing = folder.join(format!(".{name}.{}", std::process::id()));
+    let text = if said.reaches {
+        "reaches\n".to_owned()
+    } else {
+        format!("away\n{}\n", said.why.replace('\n', " "))
+    };
+    let kept = fs::create_dir_all(folder)
+        .and_then(|()| fs::write(&writing, text))
+        .and_then(|()| fs::rename(&writing, folder.join(&name)));
+    if kept.is_err() {
+        let _ = fs::remove_file(&writing);
     }
 }
 
 /// Forgets what ssh said of `host`, so the next ask is answered fresh, as
-/// after a comparison there failed, which may be the Mac going.
+/// after a comparison or a build there failed, which may be the machine
+/// going.
 pub fn forget_reached(host: &str) {
-    REACHED
-        .lock()
+    forget_reached_in(&REACHED, reached_folder().as_deref(), host);
+}
+
+/// Forgets what `memo` and `folder` hold of `host`.
+fn forget_reached_in(memo: &Memo, folder: Option<&Path>, host: &str) {
+    memo.lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
         .retain(|(name, _, _)| name != host);
-    if let Some(folder) = reached_folder() {
+    if let Some(folder) = folder {
         let _ = fs::remove_file(folder.join(reached_name(host)));
     }
 }
@@ -589,11 +672,43 @@ const KEY_REFUSED: [&str; 2] = [
     "REMOTE HOST IDENTIFICATION HAS CHANGED",
 ];
 
+/// What ssh said on its standard error: its last line saying anything,
+/// and whether any line said it refused a host key. Only those are kept,
+/// so an ssh saying a great deal holds no more than a line.
+#[derive(Default)]
+struct Heard {
+    last: Option<String>,
+    refused: bool,
+}
+
+impl Heard {
+    fn take(&mut self, line: &str) {
+        let line = line.trim();
+        if KEY_REFUSED.iter().any(|refused| line.contains(refused)) {
+            self.refused = true;
+        }
+        if !line.is_empty() {
+            self.last = Some(line.to_owned());
+        }
+    }
+}
+
+/// How long ssh's standard error may be quiet, once ssh has ended, before
+/// what it said is taken as all of it: a proxy it started in a session of
+/// its own may hold the pipe open long after.
+const QUIET: Duration = Duration::from_millis(250);
+
+/// The most of one line of ssh's that's read, so a line with no end
+/// can't fill memory.
+const LINE_MOST: u64 = 4096;
+
 /// What `ssh` says of reaching `host` and running `true` there, within
 /// `within` ([`REACHING`]). It runs in a process group of its own, which
-/// is ended however ssh does, so a proxy it starts never outlives it nor
-/// keeps its standard error open; that's read on a thread of its own, so
-/// nothing holding it open can hold this past `within`.
+/// is ended however ssh does, and while ssh is still unreaped, so the
+/// group is never another's and a proxy it starts never outlives it.
+/// Its standard error is read a line at a time on a thread of its own,
+/// so nothing holding it open can hold this past `within`, or past
+/// [`QUIET`] once ssh has ended.
 fn ssh_reaches(ssh: &str, host: &str, within: Duration) -> Reached {
     let spawned = Command::new(ssh)
         .args(reaching_args(host))
@@ -606,55 +721,102 @@ fn ssh_reaches(ssh: &str, host: &str, within: Duration) -> Reached {
         Ok(reaching) => reaching,
         Err(error) => return Reached::Away(format!("couldn't run {ssh}: {error}")),
     };
-    let (told, heard) = std::sync::mpsc::channel();
-    if let Some(mut stderr) = reaching.stderr.take() {
-        thread::spawn(move || {
-            let mut said = String::new();
-            let _ = stderr.read_to_string(&mut said);
-            let _ = told.send(said);
-        });
-    }
-    let began = Instant::now();
+    let lines = reaching.stderr.take().map(lines_of);
+    let deadline = Instant::now() + within;
+    let mut heard = Heard::default();
     let ended = loop {
-        match reaching.try_wait() {
-            Ok(Some(status)) => break Some(status),
-            Ok(None) if began.elapsed() < within => thread::sleep(Duration::from_millis(100)),
-            _ => break None,
+        for line in lines.iter().flat_map(std::sync::mpsc::Receiver::try_iter) {
+            heard.take(&line);
+        }
+        match has_ended(reaching.id()) {
+            Ok(true) => break Ok(()),
+            Ok(false) if Instant::now() < deadline => thread::sleep(Duration::from_millis(50)),
+            Ok(false) => break Err(format!("ssh didn't answer within {} s", within.as_secs())),
+            Err(error) => break Err(format!("couldn't wait on ssh: {error}")),
         }
     };
     if let Ok(group) = libc::pid_t::try_from(reaching.id()) {
-        // SAFETY: kill only signals the group ssh leads.
+        // SAFETY: kill only signals the group ssh leads, which is still
+        // its own, since ssh isn't reaped until after.
         unsafe {
             libc::kill(-group, libc::SIGKILL);
         }
     }
-    let Some(ended) = ended else {
-        let _ = reaching.kill();
-        let _ = reaching.wait();
-        return Reached::Away(format!("ssh didn't answer within {} s", within.as_secs()));
-    };
-    if ended.success() {
-        return Reached::Ran;
+    let status = reaching.wait();
+    if let Err(why) = ended {
+        return Reached::Away(why);
     }
-    let said = heard
-        .recv_timeout(
-            within
-                .saturating_sub(began.elapsed())
-                .max(Duration::from_secs(1)),
-        )
-        .unwrap_or_default();
-    let last = said
-        .lines()
-        .map(str::trim)
-        .rfind(|line| !line.is_empty())
-        .map_or_else(
-            || format!("ssh ended {ended} and said nothing"),
-            str::to_owned,
-        );
-    if KEY_REFUSED.iter().any(|refused| said.contains(refused)) {
+    let status = match status {
+        Ok(status) if status.success() => return Reached::Ran,
+        Ok(status) => status,
+        Err(error) => return Reached::Away(format!("couldn't wait on ssh: {error}")),
+    };
+    if let Some(lines) = &lines {
+        let until = deadline.max(Instant::now() + QUIET);
+        while let Some(left) = until.checked_duration_since(Instant::now()) {
+            match lines.recv_timeout(left.min(QUIET)) {
+                Ok(line) => heard.take(&line),
+                Err(_) => break,
+            }
+        }
+    }
+    let last = heard
+        .last
+        .unwrap_or_else(|| format!("ssh ended {status} and said nothing"));
+    if heard.refused {
         Reached::Refused(last)
     } else {
         Reached::Away(last)
+    }
+}
+
+/// The lines `stderr` says, as they're said, read on a thread of its own
+/// until it closes, each at most [`LINE_MOST`] bytes and read as UTF-8
+/// whatever it holds.
+fn lines_of(stderr: std::process::ChildStderr) -> std::sync::mpsc::Receiver<String> {
+    let (told, heard) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        let mut line = Vec::new();
+        while (&mut reader)
+            .take(LINE_MOST)
+            .read_until(b'\n', &mut line)
+            .is_ok_and(|read| read > 0)
+        {
+            if told
+                .send(String::from_utf8_lossy(&line).into_owned())
+                .is_err()
+            {
+                return;
+            }
+            line.clear();
+        }
+    });
+    heard
+}
+
+/// Whether child `pid` has ended, left unreaped so its process group
+/// can still be ended as its own.
+fn has_ended(pid: u32) -> std::io::Result<bool> {
+    loop {
+        // SAFETY: a zeroed siginfo_t is valid, and waitid only writes it.
+        let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+        // SAFETY: waitid with WNOWAIT reads the child's state, reaping nothing.
+        let got = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid,
+                &raw mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if got == 0 {
+            return Ok(info.si_signo != 0);
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
     }
 }
 
@@ -1175,6 +1337,7 @@ mod tests {
             "ServerAliveInterval=5",
             "ServerAliveCountMax=2",
             "UpdateHostKeys=no",
+            "CheckHostIP=no",
         ] {
             assert!(options.contains(&option), "{option} in {args:?}");
         }
@@ -1216,6 +1379,16 @@ mod tests {
         );
         executable(
             &ssh,
+            "#!/bin/sh\necho '@@@ WARNING: REMOTE HOST IDENTIFICATION HAS CHANGED! @@@' >&2\n\
+             echo 'Offending key in known_hosts:3' >&2\nexit 255\n",
+        );
+        assert_eq!(
+            run(&ssh),
+            Reached::Refused("Offending key in known_hosts:3".to_owned()),
+            "a changed key's banner alone is a refused key, said with ssh's last line"
+        );
+        executable(
+            &ssh,
             "#!/bin/sh\necho 'ssh: connect to host mac port 22: Connection refused' >&2\n\
              exit 255\n",
         );
@@ -1246,14 +1419,11 @@ mod tests {
                 pid.display()
             ),
         );
+        // Two seconds, so even a loaded machine's sh writes the pid first.
         let began = Instant::now();
-        let reached = ssh_reaches(
-            &ssh.display().to_string(),
-            "mac",
-            Duration::from_millis(500),
-        );
+        let reached = ssh_reaches(&ssh.display().to_string(), "mac", Duration::from_secs(2));
         assert!(
-            began.elapsed() < Duration::from_secs(5),
+            began.elapsed() < Duration::from_secs(6),
             "the ask outlasted its deadline: {:?}",
             began.elapsed()
         );
@@ -1295,17 +1465,61 @@ mod tests {
         );
     }
 
+    // One that refuses a key and ends, leaving a proxy in a session of
+    // its own holding its standard error, which the group's end can't
+    // reach, is said as soon as that error goes quiet.
+    #[test]
+    fn ssh_refusing_a_key_is_heard_though_a_proxy_holds_its_error_open() {
+        let folder = tempfile::tempdir().unwrap();
+        let ssh = folder.path().join("ssh");
+        let pid = folder.path().join("pid");
+        executable(
+            &ssh,
+            &format!(
+                "#!/bin/sh\nsetsid sleep 30 &\necho $! > '{}'\n\
+                 echo 'Host key verification failed.' >&2\nexit 255\n",
+                pid.display()
+            ),
+        );
+        let began = Instant::now();
+        let reached = ssh_reaches(&ssh.display().to_string(), "mac", REACHING);
+        let took = began.elapsed();
+        if let Ok(started) = fs::read_to_string(&pid)
+            && let Ok(started) = started.trim().parse::<libc::pid_t>()
+        {
+            // SAFETY: kill only signals the sleep this test started.
+            unsafe {
+                libc::kill(started, libc::SIGKILL);
+            }
+        }
+        assert!(
+            took < Duration::from_secs(5),
+            "a proxy holding ssh's error held the ask {took:?}"
+        );
+        assert_eq!(
+            reached,
+            Reached::Refused("Host key verification failed.".to_owned()),
+            "a refused key behind a proxy is lost"
+        );
+    }
+
     /// Whether process `pid` has ended, or is left only to be reaped,
-    /// within two seconds.
+    /// within two seconds: gone, as signalling it says, or a zombie.
     fn ended(pid: &str) -> bool {
+        let Ok(pid) = pid.parse::<libc::pid_t>() else {
+            return false;
+        };
         let began = Instant::now();
         while began.elapsed() < Duration::from_secs(2) {
-            let state = fs::read_to_string(format!("/proc/{pid}/stat")).ok();
-            let running = state
+            // SAFETY: signal 0 only asks whether the process is there.
+            let gone = unsafe { libc::kill(pid, 0) } != 0
+                && std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH);
+            let zombie = fs::read_to_string(format!("/proc/{pid}/stat"))
+                .ok()
                 .as_deref()
                 .and_then(|stat| stat.rsplit_once(") "))
-                .is_some_and(|(_, after)| !after.starts_with('Z'));
-            if !running {
+                .is_some_and(|(_, after)| after.starts_with('Z'));
+            if gone || zombie {
                 return true;
             }
             thread::sleep(Duration::from_millis(20));
@@ -1313,41 +1527,162 @@ mod tests {
         false
     }
 
+    /// What ssh says of a machine, `reaches` or not, with why not.
+    fn said(reaches: bool) -> Said {
+        Said {
+            reaches,
+            why: if reaches {
+                String::new()
+            } else {
+                "ssh doesn't reach mac either: gone".to_owned()
+            },
+        }
+    }
+
+    /// A run's own memo, empty, as each run starts with.
+    fn a_run() -> Memo {
+        Mutex::new(Vec::new())
+    }
+
+    /// Ages `file` past what's believed.
+    fn aged(file: &Path) {
+        fs::File::options()
+            .write(true)
+            .open(file)
+            .unwrap()
+            .set_modified(SystemTime::now() - REACHED_FOR - Duration::from_secs(1))
+            .unwrap();
+    }
+
     // What ssh said is kept a minute, in a file a machine in the runtime
-    // folder, so the runs a run starts ask once; past that it's asked
-    // again, and a name can't reach outside the folder.
+    // folder, so the runs a run starts ask once, a machine away carrying
+    // why; past that it's asked again, and a name can't reach outside the
+    // folder.
     #[test]
     fn what_ssh_said_of_a_machine_is_kept_a_minute() {
         let folder = tempfile::tempdir().unwrap();
+        let kept = Some(folder.path());
         let asked = std::cell::Cell::new(0);
-        let ask = |answer: bool| {
+        let ask = |reaches: bool| {
             asked.set(asked.get() + 1);
-            answer
+            said(reaches)
         };
         assert!(
-            reached_lately(Some(folder.path()), "mac", || ask(true)),
+            reached_lately(&a_run(), kept, "mac", || ask(true)),
             "a machine ssh reached wasn't said to be reached"
         );
         assert!(
-            reached_lately(Some(folder.path()), "mac", || ask(false)),
-            "what ssh said a moment ago wasn't kept"
+            reached_lately(&a_run(), kept, "mac", || ask(false)),
+            "what another run's ssh said a moment ago wasn't read"
         );
         assert_eq!(asked.get(), 1, "ssh was asked again within the minute");
         let file = folder.path().join("mac");
         assert_eq!(fs::read_to_string(&file).unwrap(), "reaches\n");
-        fs::File::options()
-            .write(true)
-            .open(&file)
-            .unwrap()
-            .set_modified(SystemTime::now() - REACHED_FOR - Duration::from_secs(1))
-            .unwrap();
+
+        aged(&file);
         assert!(
-            !reached_lately(Some(folder.path()), "mac", || ask(false)),
+            !reached_lately(&a_run(), kept, "mac", || ask(false)),
             "what ssh said over a minute ago was believed"
         );
         assert_eq!(asked.get(), 2, "ssh wasn't asked again past the minute");
-        assert_eq!(fs::read_to_string(&file).unwrap(), "away\n");
+        assert_eq!(
+            fs::read_to_string(&file).unwrap(),
+            "away\nssh doesn't reach mac either: gone\n"
+        );
+        let later = a_run();
+        assert!(
+            !reached_lately(&later, kept, "mac", || ask(true)),
+            "a machine away a moment ago was read as reached"
+        );
+        assert_eq!(asked.get(), 2, "ssh was asked again within the minute");
+        assert_eq!(
+            later.lock().unwrap()[0].2,
+            said(false),
+            "why it's away wasn't read back"
+        );
+
+        assert!(
+            reached_lately(&a_run(), kept, "mac.local", || ask(true)),
+            "mac.local was read as mac"
+        );
+        assert_eq!(asked.get(), 3, "mac.local beside mac wasn't asked of");
+        fs::write(&file, "maybe\n").unwrap();
+        assert!(
+            reached_lately(&a_run(), kept, "mac", || ask(true)),
+            "a garbled file was believed"
+        );
+        assert_eq!(asked.get(), 4, "a garbled file wasn't asked past");
+        let mut names: Vec<String> = fs::read_dir(folder.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        assert_eq!(names, ["mac", "mac.local"], "a draft was left behind");
         assert_eq!(reached_name("../mac.local"), "_._mac.local");
+    }
+
+    // A folder that can't be written, or none, leaves each run asking
+    // once, from its own memo, rather than at every look.
+    #[test]
+    fn with_nowhere_to_keep_it_each_run_asks_once() {
+        let folder = tempfile::tempdir().unwrap();
+        let not_a_folder = folder.path().join("a-file");
+        fs::write(&not_a_folder, "").unwrap();
+        for kept in [Some(not_a_folder.as_path()), None] {
+            let asked = std::cell::Cell::new(0);
+            let ask = || {
+                asked.set(asked.get() + 1);
+                said(false)
+            };
+            let run = a_run();
+            for _ in 0..3 {
+                assert!(
+                    !reached_lately(&run, kept, "mac", ask),
+                    "away read as reached"
+                );
+            }
+            assert_eq!(
+                asked.get(),
+                1,
+                "a run asked again within the minute: {kept:?}"
+            );
+            reached_lately(&a_run(), kept, "mac", ask);
+            assert_eq!(
+                asked.get(),
+                2,
+                "another run read what can't be kept: {kept:?}"
+            );
+        }
+    }
+
+    // A machine forgotten, as after a comparison there failed, is asked of
+    // afresh by this run and the next.
+    #[test]
+    fn a_machine_forgotten_is_asked_of_again() {
+        let folder = tempfile::tempdir().unwrap();
+        let kept = Some(folder.path());
+        let asked = std::cell::Cell::new(0);
+        let ask = |reaches: bool| {
+            asked.set(asked.get() + 1);
+            said(reaches)
+        };
+        let run = a_run();
+        assert!(reached_lately(&run, kept, "mac", || ask(true)));
+        assert!(reached_lately(&run, kept, "mac.local", || ask(true)));
+        forget_reached_in(&run, kept, "mac");
+        assert!(
+            !folder.path().join("mac").exists(),
+            "what ssh said was left in the folder"
+        );
+        assert!(
+            folder.path().join("mac.local").exists(),
+            "another machine was forgotten"
+        );
+        assert!(
+            !reached_lately(&run, kept, "mac", || ask(false)),
+            "a forgotten machine was read as reached"
+        );
+        assert_eq!(asked.get(), 3, "a forgotten machine wasn't asked of again");
     }
 
     #[test]
