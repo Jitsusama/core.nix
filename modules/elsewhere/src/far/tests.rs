@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 mod crossing;
 mod heard;
+mod leaving;
 mod unpacking;
 
 pub(super) fn kind(setup: &str) -> Kind {
@@ -188,6 +189,10 @@ pub(super) const SLOWEST: u64 = 100;
 /// `wc`, and inside `WAITS`, so a clock stepping on while nothing crosses
 /// is seen to spend no more.
 pub(super) const A_PASS_AT_MOST: u64 = 3;
+const _: () = assert!(
+    A_PASS_AT_MOST < WAITS,
+    "a pass must spend less than the wait"
+);
 
 /// How many files, and bytes, a share carries in these tests' far lines,
 /// so a test can pass them without making ten thousand files.
@@ -258,7 +263,8 @@ pub(super) fn far_line(
 /// `meanwhile` to the job's tree a second after it starts, as a share
 /// still crossing would, with each of `programs`, a name and its script,
 /// ahead of the rest on its path, in the tree's `folder`. What it said
-/// for the near side to hear, on stdout, is left in the home's `said`.
+/// for the near side to hear, on stdout, is left in the home's `said`,
+/// and the signal it died by, if one ended it, in its `signal`.
 pub(super) fn far_line_in(
     folder: &Path,
     list: Left,
@@ -327,6 +333,12 @@ pub(super) fn far_line_in(
     }
     let output = far.wait_with_output().unwrap();
     std::fs::write(home.join("said"), &output.stdout).unwrap();
+    let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
+    std::fs::write(
+        home.join("signal"),
+        signal.map(|signal| signal.to_string()).unwrap_or_default(),
+    )
+    .unwrap();
     // Its own words, then what it said for the near side to hear.
     let said = [output.stderr, output.stdout].concat();
     (
@@ -429,26 +441,6 @@ fn quickened(line: &str) -> String {
         line = line.replace(&real, &quick);
     }
     line
-}
-
-#[test]
-fn what_is_left_is_its_archives_each_listed_at_its_size() {
-    let root = scratch("left");
-    std::fs::write(root.join("x"), "xyz").unwrap();
-    let job = root.join("job");
-    let bytes = super::left(&root, ["x"], &job).unwrap();
-    let size = std::fs::metadata(job.join(super::TREE).join("0.tar"))
-        .unwrap()
-        .len();
-    // A header, the data's block and the two that close it.
-    assert_eq!(size, 4 * 512, "one small file's archive came to {size}");
-    assert_eq!(bytes, size, "what was left was said to come to {bytes}");
-    assert_eq!(
-        std::fs::read_to_string(job.join(super::LEFT)).unwrap(),
-        format!("{size}\t0.tar\nend\n"),
-        "an archive wasn't listed at the size it was written at"
-    );
-    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

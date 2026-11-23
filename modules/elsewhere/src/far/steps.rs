@@ -105,21 +105,28 @@ done"#
 /// call it. Mycelium stops a run whose asker let go with a signal to its
 /// whole group, so the far line takes its copy, the files written beside
 /// it, the job's archives and whatever it had begun to bring back away,
-/// since no one waits for them, then ends as the signal would have ended
-/// it. A closed pipe is a let go too, as when the asker's end goes before
-/// its signal comes. A second signal waits for the first one's clearing.
+/// since no one waits for them, then dies by the same signal, so whatever
+/// waits on it sees it stopped rather than ended. The exit with the code a
+/// shell gives such a death, after it, is only a fallback: dash and bash 5
+/// die at the signal it sent itself, and bash 3.2, the Mac's sh, reaches
+/// the exit but still dies by that signal. A closed pipe is a let go
+/// too, as when the asker's end goes before its signal comes. A signal
+/// that comes while it clears is dropped, so the clearing runs once, and
+/// one ignored when the far line began is never trapped at all.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
   trap '' HUP INT PIPE TERM
   cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* \
     "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
-  exit "$1"
+  trap - "$1"
+  kill -s "$1" "$$"
+  exit "$2"
 }}
-trap 'stopped 129' HUP
-trap 'stopped 130' INT
-trap 'stopped 141' PIPE
-trap 'stopped 143' TERM"#
+trap 'stopped HUP 129' HUP
+trap 'stopped INT 130' INT
+trap 'stopped PIPE 141' PIPE
+trap 'stopped TERM 143' TERM"#
     )
 }
 

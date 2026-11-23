@@ -21,6 +21,7 @@ for the router, access point or server a VM lacks.
 | `shaper-rate.nix`, `-vm-test.py`       | a ping kept near its delay under a full upload                |
 | `shaper-owned.nix`, `-vm-test.py`      | a queue a router hides, taken back by the shaper              |
 | `shaper-call.nix`, `-vm-test.py`       | a call kept whole on a full connection, even sent to 443      |
+| `shaper-pin.nix`, `-vm-test.py`        | the VPN sent the quick way, or its own way if that's held     |
 
 - `wifi/`: the Wi-Fi test's areas, joining, joining when asked and holding
   on, and the session they share.
