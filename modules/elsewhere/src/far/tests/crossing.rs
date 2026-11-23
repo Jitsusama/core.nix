@@ -142,7 +142,7 @@ fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
 
 /// A stand-in for `step` that, run with arguments `when` matches, does
 /// `refusal` instead, and otherwise passes on to the real one.
-fn refusing<'a>(step: &'a str, when: &str, refusal: &str) -> (&'a str, String) {
+pub(super) fn refusing<'a>(step: &'a str, when: &str, refusal: &str) -> (&'a str, String) {
     (
         step,
         format!(

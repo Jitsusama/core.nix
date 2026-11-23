@@ -274,20 +274,32 @@ pub(super) fn copying() -> String {
 /// folder above it in the quest's scratch, goes first, so neither the
 /// copies, their list nor the tree's removal is carried through it. Where
 /// one can't be cleared, nothing is written or cleared in the handover:
-/// only the copy goes. Where the folder can't be made new, as on a full
-/// disk, the tree goes too, to free its room, and the list is only its
-/// cut, so the near side says at once that nothing came back, whatever
-/// list the job left there.
+/// only the copy goes. Otherwise the handover, and the folders under its
+/// copies' folder, are opened, so a job that closed them changes nothing.
+/// Where the folder still can't be made new, as on a disk gone wrong, the
+/// tree goes too, to free its room, and the list is only its cut, so the
+/// near side says at once that nothing came back, whatever list the job
+/// left there. Each refusal says which of the two it was.
 pub(super) fn handing() -> String {
     format!(
-        r#"# Made fresh, so no copy is written through whatever sat at its number.
-if ! unlinked || ! {{ rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"; }}; then
-  printf "elsewhere: its handover couldn't be readied, so nothing is brought back\n" >&2
+        r#"# Made fresh, so no copy is written through whatever sat at its number,
+# and opened first, as a job may close what it hands over: only once no
+# link stands, so nothing past the handover is opened.
+stuck="a link it left at its handover couldn't be cleared"
+if unlinked; then
+  chmod u+rwx "$job" 2>/dev/null
+  find "$job/{BACK}" -type d ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
+  stuck="its folder for copies couldn't be made new"
+  rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}" && stuck=
+fi
+if [ -n "$stuck" ]; then
+  printf 'elsewhere: %s, so nothing is brought back\n' "$stuck" >&2
   cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
     rm -f "$work{RUN}"
   ! unlinked || {{
-    rm -rf "$job/{TREE}" "$job/{BACK}"
-    rm -f "$job/{BROUGHT}" && (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}")
+    rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
+    (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}") ||
+      printf "elsewhere: nor could it cut its list, so the near side waits it out\n" >&2
   }}
   exit "$code"
 fi
