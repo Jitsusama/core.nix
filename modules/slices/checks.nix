@@ -605,7 +605,9 @@
         cgroup = "cgroup";
       };
       patched = pkgs.runCommandLocal "a-patched-systemd" { } "mkdir $out";
-      heldToPatched = lib.hasInfix "${patched}/bin/systemd-run" (
+      # A regex may not name a store path, so the stand-in's is matched as text.
+      patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
+      heldToPatched = lib.hasInfix patchedRun (
         (pkgs.callPackage ./systemd-run.nix {
           systemd = patched;
           real = "/x";
