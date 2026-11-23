@@ -194,6 +194,7 @@ let
   '';
   providersExample = lib.literalExpression ''[ "''${cistern-cell}/bin/cistern-cell" ]'';
   lend = import ./lend.nix { inherit lib; };
+  easing = import ./easing.nix { inherit lib; };
   further = lib.types.submodule (
     { name, ... }:
     {
@@ -311,23 +312,12 @@ let
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
   builders = import ./builders.nix;
-  # The home realm's node writes, as it judges the machine, the carry it
-  # would make to ease it, and unless its machine says it may, makes none, so
-  # a day of those lines can be read before it acts; a further realm's
-  # sessions aren't its to move. Where
-  # the machine says so, it asks the harness to park the idle sessions it
-  # would put to sleep, in the folder each session's harness reads, and
-  # makes the carries it chooses, under its own name, which each session's
-  # harness takes only from its own machine's node. It alone lends, since
-  # the machines it lends to are the ones it made.
+  # The home realm's node eases the machine as far as the machine lets it
+  # (easing.nix); a further realm's sessions aren't its to move. It alone
+  # lends, since the machines it lends to are the ones it made.
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
-    ++ [ "--eases" ]
-    ++ lib.optionals cfg.easesSleep [
-      "--eases-sleep"
-      "${config.xdg.stateHome}/pi/agentic-harness.pi/park-workflow/ease"
-    ]
-    ++ lib.optional cfg.easesCarry "--eases-carry"
+    ++ easing.args cfg config.xdg.stateHome
     ++ lendArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
@@ -602,33 +592,7 @@ in
         socket nobody answers reads as health unknown.
       '';
     };
-    easesSleep = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = ''
-        Whether the home realm's node asks the harness to park the idle
-        sessions it would put to sleep while this machine is over its room
-        and another has some, rather than only saying so. The harness parks
-        one only once its own rule holds, and it wakes on its next message.
-        Off, the node only writes what it would do.
-      '';
-    };
-    easesCarry = lib.mkOption {
-      type = lib.types.bool;
-      default = false;
-      description = ''
-        Whether the home realm's node makes the carries it would make while
-        this machine is held over its room and another has some, rather
-        than only saying so: an idle session at a time, off the screen and
-        nobody's but the agents', never one orchestrating others, at most
-        one each half hour and six a day, as the mycelium this flake locks
-        keeps them; one older than its #381 may take the person's or an
-        orchestrator's, so a machine overriding that input to an older one
-        leaves this off. The session's harness carries it
-        only once nothing of its own would be lost, and says why it
-        refused otherwise. Off, the node only writes what it would do.
-      '';
-    };
+    inherit (easing.options) easesSleep easesCarry;
     agents = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
       default = { };
