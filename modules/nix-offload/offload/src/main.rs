@@ -1056,6 +1056,20 @@ fn progress(host: &str) -> Result<(), Failure> {
     Ok(())
 }
 
+/// The VM lanes `dirs`, those with the fewest VM tests sent or waiting by
+/// `busy` first, in their order where they tie. A lane's gate turns a run
+/// away only when its evaluations are full, so on 22 November a merge
+/// train's whole run went to vm-1, first in the order and running its
+/// four VM tests, for over four hours while lanes past it stood idle.
+fn least_busy_first<'a>(
+    dirs: impl Iterator<Item = &'a PathBuf>,
+    busy: impl Fn(&Path) -> usize,
+) -> Vec<&'a PathBuf> {
+    let mut dirs: Vec<(usize, &PathBuf)> = dirs.map(|dir| (busy(dir), dir)).collect();
+    dirs.sort_by_key(|(sent, _)| *sent);
+    dirs.into_iter().map(|(_, dir)| dir).collect()
+}
+
 /// The folders of every VM lender, the first's `vm_dir` first, then the
 /// second's and those past it, each once. Where they all name one lane,
 /// the others follow it, unless [`LANE_ONLY`] keeps the run there: on 22
@@ -2460,9 +2474,11 @@ impl Sent<'_> {
             .kept_first(arguments, lent)
             .into_iter()
             .chain(
-                vm.iter()
-                    .filter(|builder| there::warm(builder))
-                    .map(|builder| standing(builder)),
+                least_busy_first(vm.iter().filter(|builder| there::warm(builder)), |dir| {
+                    there::claimed(dir) + there::waiting(dir)
+                })
+                .into_iter()
+                .map(|builder| standing(builder)),
             )
             .collect();
         let moving = Self {
@@ -4325,6 +4341,25 @@ mod tests {
             lanes(pinned(), every(), true),
             paths(&["/lane-11"]),
             "a run kept on its lane was let onto others"
+        );
+    }
+
+    #[test]
+    fn a_whole_run_tries_the_lanes_with_fewest_vm_tests_first_in_order_where_they_tie() {
+        let lanes = paths(&["/lane", "/lane-more", "/lane-3", "/lane-4"]);
+        let sent = |dir: &Path| match dir.to_str() {
+            Some("/lane") => 4,
+            Some("/lane-more") => 2,
+            _ => 0,
+        };
+        let tried: Vec<PathBuf> = least_busy_first(lanes.iter(), sent)
+            .into_iter()
+            .cloned()
+            .collect();
+        assert_eq!(
+            tried,
+            paths(&["/lane-3", "/lane-4", "/lane-more", "/lane"]),
+            "a full lane was tried before idle ones, or tied lanes lost their order"
         );
     }
 
