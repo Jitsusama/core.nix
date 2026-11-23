@@ -11,8 +11,8 @@
 //! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, `owing` files its drag with each owner, and `records`
-//! reads the queues' records.
+//! says and keeps, `owing` files its drag with each owner, `records`
+//! reads the queues' records, and `reviews` the harness's review records.
 
 mod card;
 mod lines;
@@ -20,6 +20,7 @@ mod measures;
 mod moved;
 mod owing;
 mod records;
+mod reviews;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -323,8 +324,9 @@ fn gather(
 }
 
 /// The council rounds each change merged to core's and the harness's
-/// mains in the last day took, from the harness's review runs and the
-/// fixes their findings led to, reading only the records written since
+/// mains in the last day took, from the harness's review runs, those it
+/// mirrors from other machines under `runs-from`, and the fixes their
+/// findings led to, reading only the records written since
 /// the oldest round that could count, with who landed each change from
 /// the mesh's landing notes of the last day, read only when a merge is to
 /// be filed. A merge's rounds are owed to the session that merged it while
@@ -354,20 +356,18 @@ fn rounds_per_merge(
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
     let review = state_home.join("pi/agentic-harness.pi/review");
-    let written = |folder: &str| -> Vec<String> {
-        fs::read_dir(review.join(folder))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .is_ok_and(|at| at >= since)
-            })
-            .filter_map(|entry| fs::read_to_string(entry.path()).ok())
-            .collect()
-    };
+    let here = reviews::rounds(&review.join("runs"), since);
+    // One folder for each machine whose rounds the harness mirrors here.
+    let mirrored = reviews::mirrored(&review.join("runs-from"), since);
+    let fixes = reviews::fixes(&review.join("fixes"), since);
+    // A trouble names files a mirror chose, so a name holding a newline
+    // could otherwise write a journal line that reads as cadence's own.
+    for trouble in [&here, &mirrored, &fixes].iter().flat_map(|r| &r.trouble) {
+        eprintln!(
+            "cadence: rounds: {}",
+            trouble.replace(char::is_control, "?")
+        );
+    }
     let landed = || {
         let mesh = Mesh {
             root: state_home.join("pi/agentic-harness.pi"),
@@ -409,8 +409,9 @@ fn rounds_per_merge(
     ];
     rounds(
         &mains,
-        &written("runs"),
-        &written("fixes"),
+        &here,
+        &mirrored,
+        &fixes,
         landed,
         now,
         measures::ASKS,

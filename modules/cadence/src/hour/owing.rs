@@ -872,7 +872,9 @@ mod tests {
         file(&mut alone, &both, "2026-11-19", 4600);
         assert!(alone[0].open, "closed while the merge was still counted");
         let mut unread = median.clone();
-        unread.says = "median council rounds, of 0, no review record read".to_owned();
+        unread.says = "median council rounds, of 0 with a review record, 0 with none, this \
+                       machine's review records unread"
+            .to_owned();
         file(&mut alone, &[unread], "2026-11-20", 90_000);
         assert!(alone[0].open, "closed though the review record went unread");
         file(&mut alone, &[median], "2026-11-20", 90_000);
