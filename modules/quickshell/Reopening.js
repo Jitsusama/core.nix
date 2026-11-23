@@ -241,16 +241,20 @@ function queuedOnce(queue, more, begun) {
 // where Sessions joins the list to `walk` or begins one (reopenHere), since
 // a press waits on niri's answer for the screens first (lookAtScreens), and
 // one decided at the press could count in a walk the list never joins
-// (core.nix#6126's round 3). The walk's own while it may still find a
-// folder gone, a session still queued or a folder still looked for; else
-// one of its own, as once every session is begun, though a window given up
-// on keeps the walk (`late`), or for a walk the harness began. Each of
-// `ids` counts once, however many lists ask for it, and `tell` hears each
-// reading, the last list's kept.
+// (core.nix#6126's round 3). The walk's own while it may still find one of
+// that tally's folders gone, one of its sessions still queued or its folder
+// still looked for (`looking`); else one of its own, as once every session
+// it asked for is begun, though a window given up on keeps the walk, or
+// the harness's sessions keep it busy, or for a walk the harness began.
+// Only the tally's own sessions count, so the order against the list's own
+// join (queuedOnce) is no matter. Each of `ids` counts once, however many
+// lists ask for it, and `tell` hears each reading, the last list's kept.
 function tallyOf(walk, ids, tell) {
-    const counting = walk !== null && walk.tally !== null && walk.tally !== undefined
-        && (walk.queue.length > 0 || walk.looking);
-    const tally = counting ? walk.tally : { asked: {}, gone: {}, tell };
+    const own = walk?.tally ?? null;
+    const asked = entry => own.asked[entry.one.afreshFor ?? entry.one.id] === true;
+    const counting = own !== null
+        && (walk.queue.some(asked) || (walk.looking !== null && asked(walk.looking)));
+    const tally = counting ? own : { asked: {}, gone: {}, tell };
     for (const id of ids) {
         tally.asked[id] = true;
     }
