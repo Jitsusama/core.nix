@@ -149,6 +149,17 @@ pub fn writeback(own: bool, signs: &Signs, floor: u64) -> bool {
     own && (signs.viewed == 0 || signs.current.is_none_or(|current| current > floor))
 }
 
+/// How many hard floors for windows a unit keeps beside its own `hard`,
+/// as its memory.min, `min`, says: each [`holds::HARD`] or part of one,
+/// and [`focus::MOST`] when it can't be read, so a unit not known to keep
+/// none counts as keeping as many as it could.
+pub fn kept_hard(min: Option<u64>, hard: u64) -> usize {
+    min.map_or(focus::MOST, |min| {
+        let kept = min.saturating_sub(hard).div_ceil(holds::HARD);
+        usize::try_from(kept).map_or(focus::MOST, |kept| kept.min(focus::MOST))
+    })
+}
+
 /// The orchestrators a unit's `roots` run, as `orchestrating` counts them
 /// by pid, and whether `marked` says the harness marks any of them. Every
 /// root counts, since a command a conversation left behind is a root
@@ -344,31 +355,49 @@ impl Hosts {
     }
 
     /// Notes a unit's rank call as failed, so the hard floors it was
-    /// last set with count as kept until one lands.
-    pub fn fail(&mut self, unit: &str) {
+    /// last set with count as kept until one lands. One this sorter never
+    /// set, as it restarted or the unit was briefly empty and forgotten,
+    /// may keep what a call before left it, so it counts `kept`'s, what
+    /// the kernel says it keeps ([`kept_hard`]).
+    pub fn fail(&mut self, unit: &str, kept: impl FnOnce() -> usize) {
         self.failing.insert(unit.to_owned());
+        if !self.held.contains_key(unit) {
+            self.held.insert(unit.to_owned(), kept());
+        }
     }
 
-    /// The hard floors units outside `except` keep for windows only as
-    /// their last rank call failed: a give-back that fails leaves them
-    /// with the kernel, as a pi's does (`holds::Holding::hard_floor`).
-    /// A unit among `except`, a viewed one, is given its shares again,
-    /// so its own are counted there.
-    pub fn hard_left(&self, except: &[String]) -> usize {
-        self.failing
-            .iter()
-            .filter(|unit| !except.contains(unit))
-            .filter_map(|unit| self.held.get(unit))
-            .sum()
+    /// The hard floors `unit` keeps only as its last rank call failed,
+    /// if it failed: a give-back that fails leaves them with the kernel,
+    /// as a pi's does (`holds::Holding::hard_floor`).
+    pub fn kept(&self, unit: &str) -> Option<usize> {
+        if self.failing.contains(unit) {
+            Some(self.held.get(unit).copied().unwrap_or(0))
+        } else {
+            None
+        }
     }
 
-    /// Forgets the units no longer among `units`, whose hosts stopped.
+    /// The hard floors `unit` keeps as far as this sorter knows: those
+    /// its last rank that landed keeps, those the kernel said it kept when
+    /// its first call failed ([`Hosts::fail`]), or none.
+    pub fn last_held(&self, unit: &str) -> usize {
+        self.held.get(unit).copied().unwrap_or(0)
+    }
+
+    /// The hard floors every unit keeps only as its last rank call
+    /// failed ([`Hosts::kept`]), viewed or not: a viewed one's shares are
+    /// given again, but until one lands the kernel keeps what it had.
+    pub fn hard_left(&self) -> usize {
+        self.failing.iter().filter_map(|unit| self.kept(unit)).sum()
+    }
+
     /// Whether a unit ranked before isn't among `units` now, so it has
     /// stopped and its settings can be taken back.
     pub fn leaving(&self, units: &[String]) -> bool {
         self.set.keys().any(|unit| !units.contains(unit))
     }
 
+    /// Forgets the units no longer among `units`, whose hosts stopped.
     pub fn keep_only(&mut self, units: &[String]) {
         // A template's settings serve every instance of it, so they stay while one runs.
         let templates: HashSet<String> = units.iter().filter_map(|unit| template(unit)).collect();
@@ -847,33 +876,58 @@ mod tests {
         hosts.done("a", rank(2), 2);
         hosts.done("b", rank(1), 1);
         assert_eq!(
-            hosts.hard_left(&[]),
+            hosts.hard_left(),
             0,
             "hosts ranked as asked leave no hard floor behind"
         );
-        hosts.fail("a");
+        hosts.fail("a", || panic!("a unit set before isn't read"));
         assert_eq!(
-            hosts.hard_left(&[]),
+            hosts.hard_left(),
             2,
             "a host whose give-back failed still keeps the two it was set with"
         );
         assert_eq!(
-            hosts.hard_left(&["a".to_owned()]),
-            0,
-            "a viewed host's are counted as its shares are given again, so not here"
+            (hosts.kept("a"), hosts.kept("b")),
+            (Some(2), None),
+            "viewed or not, as only the kernel knows whether its next call lands"
         );
-        hosts.done("a", rank(0), 0);
+        hosts.done("a", rank(2), 2);
         assert_eq!(
-            hosts.hard_left(&[]),
+            hosts.hard_left(),
             0,
-            "once a rank lands, a host keeps what it was set with"
+            "once a rank keeping floors lands, they're counted in its shares, not left"
         );
-        hosts.fail("b");
-        hosts.keep_only(&[]);
+        hosts.fail("b", || panic!("a unit set before isn't read"));
+        assert_eq!(hosts.hard_left(), 1, "b's one is left as its call fails");
+        hosts.keep_only(&["a".to_owned()]);
+        assert!(
+            !hosts.failing.contains("b") && !hosts.held.contains_key("b"),
+            "a stopped host's floors went with its unit, its failure with them"
+        );
+        assert_eq!(hosts.hard_left(), 0, "so none is left");
+    }
+
+    #[test]
+    fn a_host_whose_first_call_fails_counts_what_its_memory_min_keeps() {
+        let mut hosts = Hosts::default();
+        let own = 256 << 20;
+        hosts.fail("a", || kept_hard(Some(own + 2 * holds::HARD), own));
         assert_eq!(
-            hosts.hard_left(&[]),
-            0,
-            "a stopped host's floors went with its unit"
+            hosts.hard_left(),
+            2,
+            "a host a sorter before this one set, whose first call fails, keeps its two"
+        );
+        hosts.fail("a", || panic!("what it keeps is read once"));
+        hosts.fail("b", || kept_hard(None, 0));
+        assert_eq!(
+            hosts.hard_left(),
+            2 + focus::MOST,
+            "one whose memory.min can't be read counts as keeping all it could"
+        );
+        assert_eq!(
+            [Some(own), Some(own + 1), Some(u64::MAX)].map(|min| kept_hard(min, own)),
+            [0, 1, focus::MOST],
+            "none past its own floor is none, a part of one counts, and at most three do"
         );
     }
 
