@@ -566,6 +566,8 @@ in
         && lib.elem ''"PI_HOST_CHILD_KEY=one-${kind}"'' environment
         && lib.elem ''"PI_HOST_CHILD_SOCKET=%t/pi-host/one-${kind}.d/%i.sock"'' environment
         && lib.elem ''"PI_HOST_STOP_USEC=60000000"'' environment
+        # It hands freed heap back as it goes.
+        && lib.elem ''"GLIBC_TUNABLES=glibc.malloc.trim_threshold=131072"'' environment
         && lib.elem ''"MYCELIUM_REALM=one"'' environment
         && lib.elem ''"PI_PACKAGE_DIR=${pi}"'' environment
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
@@ -718,6 +720,8 @@ in
         && lib.elem ''"PI_HOST_PROOF=${proof}"'' environment
         # The host parks within the stop limit the unit names.
         && lib.elem ''"PI_HOST_STOP_USEC=150000000"'' environment
+        # Only a conversation's own process tunes its allocator.
+        && !(lib.any (lib.hasPrefix ''"GLIBC_TUNABLES='') environment)
         # Every conversation it holds shares its codemode workers, and
         # libuv's pool, which its reads wait on.
         && lib.elem ''"PI_CODEMODE_MAX_WORKERS=16"'' environment
