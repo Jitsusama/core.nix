@@ -155,7 +155,8 @@ pub fn asked(arguments: &[String]) -> Result<Asked, String> {
 
 /// What the builder's shell runs: `checkout`, which goes into the commit's
 /// folder there, then the command, started apart as the run `run` names
-/// and followed (`follow`). A clock beside it ends the run's whole group
+/// and followed (`follow`); where a run of that name was already started
+/// there, it's followed from its start instead. A clock beside it ends the run's whole group
 /// once it has run `longest` seconds, saying so, and is ended with it
 /// otherwise. A watch beside it ends the group once nothing has followed
 /// it for `NIX_OFFLOAD_UNWATCHED` seconds, and takes its files away then
@@ -210,14 +211,21 @@ pub fn command(checkout: &str, asked: &Asked, run: &str) -> String {
          [ -z \"$leaves\" ] || rm -rf \"$leaves\"",
         words.join(" ")
     );
+    // A run sent again under its name after a link that never said it had
+    // started may have started all the same, ssh lost between its start
+    // and that line: then it's followed from its start, never started
+    // beside itself.
     format!(
-        "leaves=; {checkout}set +e; {RUN_DIR} \
+        "{RUN_DIR} if [ -s \"$run/pid\" ]; then \
+         echo \"{STARTED}{run}, so a lost link reattaches to it\" >&2; {}; fi; \
+         leaves=; {checkout}set +e; \
          mkdir -p \"$run\" && : > \"$run/out\" && : > \"$run/err\" && : > \"$run/beat\" \
          || {{ echo \"nix-offload: the builder can't keep the run's files\" >&2; exit 254; }}; \
          setsid sh -c {} nix-offload-run \"$run\" \"$leaves\" \
          </dev/null >\"$run/out\" 2>\"$run/err\" & \
          echo $! > \"$run/pid\"; trap - EXIT; \
          echo \"{STARTED}{run}, so a lost link reattaches to it\" >&2; {}",
+        follow(run, 0, 0),
         there::quoted(&apart),
         follow(run, 0, 0),
     )
@@ -267,9 +275,11 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
 /// Why a run sent to a builder gave no status there.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Unrun {
-    /// Nothing was started there: its store couldn't be read, its paths
-    /// couldn't go, or ssh never reached it, so sending it again shares
-    /// the builder with nothing of its own.
+    /// It never said it started there: its store couldn't be read, its
+    /// paths couldn't go, or ssh never reached it or was lost before the
+    /// line came back. Sent again under its name, a run that did start
+    /// unseen is followed there rather than started beside itself
+    /// ([`command`]).
     Unsent,
     /// It started there and its link was lost, so it may still run there
     /// in its own session.
@@ -1074,6 +1084,48 @@ mod tests {
         assert!(
             !folder.path().join("nix-offload-runs/lost").exists(),
             "its files stayed"
+        );
+    }
+
+    /// A link lost before its started line came back leaves a run that
+    /// never said it started, so it's sent again under its name: the run
+    /// already there is followed from its start, never started beside
+    /// itself, and ends as it did.
+    #[test]
+    fn a_run_sent_again_once_it_started_is_followed_not_run_twice() {
+        let folder = tempfile::tempdir().unwrap();
+        let counted = folder.path().join("counted");
+        let asked = Asked {
+            copies: Vec::new(),
+            longest: 60,
+            words: vec![
+                "sh".to_owned(),
+                "-c".to_owned(),
+                format!(
+                    "echo ran >> {}; sleep 2; echo one; exit 4",
+                    counted.display()
+                ),
+            ],
+        };
+        started_then_lost(&asked, "again", folder.path(), "120");
+        let again = far_side(&command("", &asked, "again"), folder.path())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&again.stderr);
+        assert_eq!(
+            again.status.code(),
+            Some(4),
+            "its status was lost: {stderr}"
+        );
+        assert_eq!(String::from_utf8_lossy(&again.stdout), "one\n", "{stderr}");
+        assert!(
+            stderr.contains(STARTED),
+            "it didn't say it had started: {stderr}"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&counted).unwrap(),
+            "ran\n",
+            "the run started again beside itself"
         );
     }
 

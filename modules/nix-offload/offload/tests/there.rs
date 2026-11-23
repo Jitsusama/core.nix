@@ -6066,6 +6066,56 @@ fn a_vm_run_waiting_on_the_first_builder_goes_to_the_second_once_it_has_room() {
     assert!(said.contains("another VM builder has room now"), "{said}");
 }
 
+// VM tests split to a builder that doesn't come fall back to the first,
+// which takes them without a claim there, so not while an --alone run
+// holds the first whole: they'd share the builder it says it holds.
+#[test]
+fn vm_tests_never_fall_back_to_a_builder_an_alone_run_holds() {
+    let rig = TwoVm::new();
+    rig.lend_second();
+    fs::remove_file(rig.more.join("store")).unwrap();
+    fs::write(rig.more.join("lending"), "vm-more-1\n").unwrap();
+    fs::create_dir_all(rig.vm.join("sending")).unwrap();
+    let held = rig.vm.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&held, "1000\n").unwrap();
+    // The first still warming, so the split doesn't keep to warm ones.
+    fs::write(
+        rig.vm.join("warming"),
+        format!("{} vm-1\n", std::process::id()),
+    )
+    .unwrap();
+    let ran = there_command(&rig.bin, &rig.offload, rig.folder.path())
+        .args([
+            "--never-ask",
+            "-L",
+            "github:o/r/abc",
+            "checks.x.a",
+            "checks.x.vm-0",
+        ])
+        .env("NIX_OFFLOAD_VM_DIR", &rig.vm)
+        .env("NIX_OFFLOAD_VM_MORE_DIR", &rig.more)
+        .env("NIX_OFFLOAD_VM_EXTRA_DIRS", &rig.third)
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&ran.stderr);
+    let sent = fs::read_to_string(rig.bin.join("ssh-sent")).unwrap_or_default();
+    assert!(
+        !sent
+            .lines()
+            .any(|line| line.starts_with("nix-offload-vm ") && line.contains("vm-0")),
+        "a VM test went to the builder an --alone run holds: {sent} {said}"
+    );
+    assert!(
+        said.contains("an --alone run holds the one in"),
+        "it didn't say why the first wasn't used: {said}"
+    );
+    assert_ne!(
+        ran.status.code(),
+        Some(0),
+        "an unsent VM test passed: {said}"
+    );
+}
+
 // On 22 November a run sent to one VM lender spilled to another whose
 // builder root no longer vouched for, since room was all the spill
 // asked about, and outputs built on builders root didn't name came
@@ -6923,23 +6973,24 @@ fn a_run_alone_that_cant_hold_its_builder_runs_nothing() {
     );
 }
 
-// A claim made where the folder's lock couldn't be had is taken without
-// room, so one found beside it once it's made whole runs nothing.
+// Where the folder's lock can't be had, a run admitted beside it couldn't
+// be kept out, so a run held whole claims nothing and runs nothing, even
+// with no other claim there, and says to try again.
 #[test]
-fn a_run_alone_beside_another_runs_claim_runs_nothing() {
+fn a_run_alone_where_the_lock_cant_be_had_runs_nothing() {
     let run = RunTree::new();
     let vm = run.vm_lane("offload-vm", "nix-offload-vm");
     fs::create_dir(vm.join("sending.lock")).unwrap();
-    fs::write(
-        vm.join("sending").join(format!("{}.0", std::process::id())),
-        "1\n",
-    )
-    .unwrap();
     let ran = run.there(
         &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
         &[],
     );
-    run.refused(&ran, "another run's VM tests went to the VM builder");
+    run.refused(&ran, "couldn't be claimed under its lock");
+    let claims = fs::read_dir(vm.join("sending")).unwrap().count();
+    assert_eq!(
+        claims, 0,
+        "a claim was left in a folder whose lock couldn't be had"
+    );
 }
 
 /// How many times `host` was given an ssh run, as the stand-in kept them.
@@ -7016,9 +7067,115 @@ fn a_run_alone_never_started_is_sent_again_on_what_is_left() {
     );
     assert_eq!(ran.status.code(), Some(75), "{ran:?}");
     assert!(
-        String::from_utf8_lossy(&ran.stderr).contains("seconds left, too few to show anything"),
-        "a run with too little time left was sent again: {ran:?}"
+        String::from_utf8_lossy(&ran.stderr).contains("its builder stood again with ")
+            && String::from_utf8_lossy(&ran.stderr)
+                .contains("seconds left, too few to show anything"),
+        "a run with too little time left once its builder stood was sent again: {ran:?}"
     );
+    // With too little left as soon as a send fails, it isn't waited for.
+    let sent_before = reached(&run, "nix-offload-vm");
+    let ran = run.there(
+        &[
+            "--never-ask",
+            "--run",
+            "--alone",
+            "--longest",
+            "59",
+            "--",
+            "pnpm",
+            "test",
+        ],
+        &[],
+    );
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    let stderr = String::from_utf8_lossy(&ran.stderr);
+    assert!(
+        stderr.contains("its run wasn't taken with ")
+            && stderr.contains("of its 59 seconds left, too few to show anything")
+            && reached(&run, "nix-offload-vm") == sent_before + 1,
+        "a run with too little time left at once was waited for: {ran:?}"
+    );
+}
+
+// A builder stood in place of one a run never reached is a fresh one,
+// which its lender warms, so a run held whole waits out that warm too,
+// and under --never-ask, which waits for nothing, runs nothing beside it.
+#[test]
+fn a_run_alone_sent_again_to_a_fresh_builder_waits_out_its_warm() {
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    fs::write(run.bin.join("unreached-nix-offload-vm"), "").unwrap();
+    let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
+    let said = run.folder.path().join("said");
+    let going = run.starting(&never, &[], &said);
+    assert!(
+        within(AT_MOST, || reached(&run, "nix-offload-vm") >= 1),
+        "it was never sent: {}",
+        fs::read_to_string(&said).unwrap_or_default()
+    );
+    // Warming before it stands, as a lender says it.
+    fs::write(vm.join("warming"), format!("{} b\n", std::process::id())).unwrap();
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm-b"),
+    )
+    .unwrap();
+    let ran = going.wait_with_output().unwrap();
+    let said = fs::read_to_string(&said).unwrap();
+    assert_eq!(ran.status.code(), Some(75), "{said}");
+    assert!(
+        said.contains("is warming, and --never-ask waits for nothing")
+            && reached(&run, "nix-offload-vm-b") == 0,
+        "it was sent to a fresh builder as it warmed: {said}"
+    );
+}
+
+// Where alone.lock can't be locked, as where something else sits at its
+// path, the run can't know it's the only one held, so it runs nothing and
+// says to try again.
+#[test]
+fn a_run_alone_whose_lock_cant_be_locked_runs_nothing() {
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    fs::create_dir(vm.join("alone.lock")).unwrap();
+    run.refused(
+        &run.there(
+            &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
+            &[],
+        ),
+        "alone.lock can't be locked",
+    );
+}
+
+// A VM run waits behind a builder an --alone run holds, saying so as one
+// run rather than as a count of a thousand VM tests, and goes once it ends.
+#[test]
+fn a_vm_run_waits_behind_a_builder_an_alone_run_holds() {
+    let rig = TwoVm::new();
+    fs::create_dir_all(rig.vm.join("sending")).unwrap();
+    let held = rig.vm.join(format!("sending/{}.0", std::process::id()));
+    fs::write(&held, "1000\n").unwrap();
+    let running = rig.start(1);
+    let began = std::time::Instant::now();
+    while !rig
+        .said()
+        .contains("an --alone run holds the VM builder in")
+    {
+        assert!(
+            began.elapsed() < std::time::Duration::from_secs(30),
+            "it never said what it waits behind: {}",
+            rig.said()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(
+        !rig.said().contains("1000 VM tests"),
+        "the hold was said as a count: {}",
+        rig.said()
+    );
+    fs::remove_file(held).unwrap();
+    let (built, said) = rig.finish(running);
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 1, "{built:?} {said}");
 }
 
 // One --alone run holds a VM builder at once, leaving the rest to VM
