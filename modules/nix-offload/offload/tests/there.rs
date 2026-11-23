@@ -6072,10 +6072,10 @@ fn vm_tests_past_two_vm_builders_room_go_to_a_third_at_once() {
     );
 }
 
-// A lane kept for the runs that name it, as the bare metal one is for
-// Aquifer v2's own KVM guests at about 21 times an n2 lane's price, takes
-// none of what other runs spill past the first's room, and takes it again
-// once its `named-only` file goes.
+// A lane kept for the runs that name it, as a bare metal one costing about
+// 21 times another lane for the same builds is, takes none of what other
+// runs spill past the first's room, and takes it again once its
+// `named-only` file goes.
 #[test]
 fn a_lane_kept_for_runs_naming_it_takes_none_of_the_spill() {
     let rig = TwoVm::new();
