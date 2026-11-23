@@ -4,7 +4,7 @@
 
 use super::{Left, far_line, far_line_in, handover, kind, scratch, work};
 use crate::far::steps::{RUN, sweeping};
-use crate::far::{BROUGHT, HANDOVER};
+use crate::far::{BACK, BROUGHT, HANDOVER, TREE};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
@@ -42,18 +42,18 @@ fn sweep(work: &Path) -> String {
 /// Runs the sweep as `sweep` does, with each of `programs`, a name and
 /// its script, found before the machine's own.
 fn sweep_with(work: &Path, programs: &[(&str, &str)]) -> String {
-    sweep_in(work, programs, "")
+    sweep_in(&far_sh(), work, programs, "")
 }
 
 /// Runs the sweep as `sweep` does, after the shell has run `before`.
 fn sweep_after(work: &Path, before: &str) -> String {
-    sweep_in(work, &[], before)
+    sweep_in(&far_sh(), work, &[], before)
 }
 
-/// Runs the sweep for a run whose copy is `work`, after `before`, with
-/// each of `programs` found before the machine's own, answering what it
-/// said, once it ended well.
-fn sweep_in(work: &Path, programs: &[(&str, &str)], before: &str) -> String {
+/// Runs the sweep in `sh` for a run whose copy is `work`, after `before`,
+/// with each of `programs` found before the machine's own, answering what
+/// it said, once it ended well.
+fn sweep_in(sh: &str, work: &Path, programs: &[(&str, &str)], before: &str) -> String {
     let bin = work.parent().unwrap().with_extension("bin");
     std::fs::create_dir_all(&bin).unwrap();
     for (name, text) in programs {
@@ -69,7 +69,7 @@ fn sweep_in(work: &Path, programs: &[(&str, &str)], before: &str) -> String {
         bin.display(),
         std::env::var("PATH").unwrap_or_default()
     );
-    let swept = std::process::Command::new(far_sh())
+    let swept = std::process::Command::new(sh)
         .args([
             "-c",
             &format!("{before}\nwork='{}'\n{}", work.display(), sweeping()),
@@ -447,24 +447,70 @@ fn a_link_a_job_leaves_at_what_it_brings_back_is_never_written_through() {
 }
 
 #[test]
+fn a_link_a_job_leaves_at_its_handover_folder_is_cleared_rather_than_written_through() {
+    let mut kind = kind("");
+    kind.brings_back = vec!["out".into()];
+    // From its copy, a job reaches its handover folder and the folders
+    // above it in the quest's scratch, and moves one aside for a link to
+    // a folder holding what the far line would write or clear.
+    for at in [
+        format!("{HANDOVER}/1"),
+        HANDOVER.to_owned(),
+        "handover".to_owned(),
+    ] {
+        let job = format!(
+            "mkdir out && printf a > out/a &&
+             mkdir -p \"$HOME/beyond/{TREE}\" \"$HOME/beyond/{BACK}\" &&
+             echo kept > \"$HOME/beyond/{TREE}/kept\" && echo kept > \"$HOME/beyond/{BACK}/0\" &&
+             mv ../../{at} \"$HOME/moved\" && ln -s \"$HOME/beyond\" ../../{at}"
+        );
+        let (code, err, home) = far_line(Left::Whole, &[("x", "x")], &job, &kind, None, &[]);
+        let beyond = home.join("beyond");
+        assert!(
+            left_in(&beyond) == [BACK, TREE]
+                && std::fs::read_to_string(beyond.join(TREE).join("kept")).is_ok()
+                && std::fs::read_to_string(beyond.join(BACK).join("0")).unwrap() == "kept\n",
+            "the far line wrote or cleared through a link at {at} ({code:?}): {err}"
+        );
+        let list = handover(&home).join(BROUGHT);
+        let listed = std::fs::read_to_string(&list).unwrap_or_default();
+        assert!(
+            code == Some(0) && listed == "1\tout/a\nend\n",
+            "what the job made wasn't listed whole in a handover of its own past a link at {at} \
+             ({code:?}): {listed:?} {err}"
+        );
+        let _ = std::fs::remove_dir_all(&home);
+    }
+}
+
+#[test]
 fn a_run_s_file_holding_a_nul_and_bytes_no_text_holds_is_read_without_a_word() {
     let root = scratch("far-swept-bytes");
     let runs = root.join("s");
-    copy(&runs, "2", "");
-    let mut run = format!("{} {}", gone(), here()).into_bytes();
-    run.extend_from_slice(b"\0\n\xff\xfe\0\n");
-    std::fs::write(runs.join(format!("2{RUN}")), run).unwrap();
-    // A locale that reads text as UTF-8, as a Mac's own does, where its
-    // tr refuses what isn't.
-    let said = sweep_after(&runs.join("9"), "export LC_ALL=en_US.UTF-8 2>/dev/null");
-    assert!(
-        said.is_empty(),
-        "the sweep said something of the bytes: {said}"
-    );
-    assert!(
-        left_in(&runs).is_empty(),
-        "a gone run's copy was kept for what followed its line"
-    );
+    // Bash too, a far machine's sh on NixOS, the one sh that warns of a
+    // NUL it reads.
+    for sh in [far_sh(), "bash".to_owned()] {
+        copy(&runs, "2", "");
+        let mut run = format!("{} {}", gone(), here()).into_bytes();
+        run.extend_from_slice(b"\0\n\xff\xfe\0\n");
+        std::fs::write(runs.join(format!("2{RUN}")), run).unwrap();
+        // A locale that reads text as UTF-8, as a Mac's own does, where
+        // its tr refuses what isn't.
+        let said = sweep_in(
+            &sh,
+            &runs.join("9"),
+            &[],
+            "export LC_ALL=en_US.UTF-8 2>/dev/null",
+        );
+        assert!(
+            said.is_empty(),
+            "the sweep in {sh} said something of the bytes: {said}"
+        );
+        assert!(
+            left_in(&runs).is_empty(),
+            "a gone run's copy was kept in {sh} for what followed its line"
+        );
+    }
     let _ = std::fs::remove_dir_all(&root);
 }
 

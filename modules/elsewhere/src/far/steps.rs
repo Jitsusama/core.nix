@@ -259,6 +259,21 @@ pub(super) fn copying() -> String {
     )
 }
 
+/// The far line's step once the job ends, making the folder its copies
+/// cross in new. A link the job left at its handover folder, or at either
+/// folder above it in the quest's scratch, goes first, so neither the
+/// copies, their list nor the tree's removal is carried through it.
+pub(super) fn handing() -> String {
+    format!(
+        r#"for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
+  [ ! -L "$at" ] || rm -f "$at"
+done
+# Made fresh, so no copy is written through whatever sat at its number.
+rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
+"#
+    )
+}
+
 /// The far line's step leaving what `kind` brings back in the handover.
 /// What comes back crosses under its number, since a kind may bring back
 /// what lies under a folder a share keeps home. A hidden file is left, as
@@ -305,7 +320,9 @@ lose() {{
     printf '%s\t%s\n' - "$path" || return 1
   done
 }}
-if true > "$names" && true > "$names.lost"; then
+# The sorted list's name is tried with the others, then left free for
+# sort's own write.
+if true > "$names" && true > "$names.lost" && true > "$names.in" && rm -f "$names.in"; then
 for path in {paths}; do
   [ -e "$path" ] || continue
   find "$path" -type l ! -path '*/.*' ! -name '.*' \
@@ -316,7 +333,8 @@ done
 # A file two of the paths hold crosses once, and counts once. One that
 # can't be sorted loses every path, each named once.
 LC_ALL=C sort -u "$names" > "$names.in" ||
-  {{ true >| "$names.in" && lose >| "$names.lost" || exit 1; }}
+  {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
+    exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
@@ -362,15 +380,15 @@ fi
 # Freed before the list ends, the job's copy and its tree with them, as
 # on a disk that filled, these are the room its end needs.
 rm -f "$names" "$names".*
-{freed}# Cut on a line of its own, so a line the full disk cut in half can't
-# hide it.
-if [ $wrote -ne 0 ]; then
+{freed}if [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 elif ! echo {END} >> "$job/{BROUGHT}"; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+  wrote=1
 fi
+# Cut on a line of its own, so a line the full disk cut in half can't
+# hide it, and never through a link that couldn't be cleared at its name.
+[ $wrote -eq 0 ] || [ -L "$job/{BROUGHT}" ] || printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 "#,
         freed = freed(),
     )
