@@ -452,8 +452,10 @@ QtObject {
                 LookForm.actOf(second({ act: "Clear\u3164It" }), ["Clear It"]),
                 LookForm.actOf(second({ act: "Cle\u034far It" }), ["Clear It"]),
                 LookForm.actOf(second({ act: "Clear\u2800It" }), ["Clear It"]),
-                LookForm.actOf(second({ act: "\u200b" }))],
-            ["", "", "", "", "", "", "", "", ""]);
+                LookForm.actOf(second({ act: "\u200b" })),
+                LookForm.actOf(second({ act: "\u202etI raelC" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "\u2067ti weiveR\u2069" }))],
+            ["", "", "", "", "", "", "", "", "", "", ""]);
         // A choice can't pass for one of the launcher's own acts either, since
         // pressing it to clear a look would answer it.
         expect("a choice named as one of the launcher's own acts poses, however written",
@@ -469,10 +471,14 @@ QtObject {
                 LookForm.poses("Talk\ud82f\udca0", ["Talk"]),
                 LookForm.poses("Clear\u2065 It\ufff0", ["Clear It"]),
                 LookForm.poses("Clear It\udb40\uddf0", ["Clear It"]),
+                LookForm.poses("\u202etI raelC", ["Clear It"]),
+                LookForm.poses("\u2067klaT\u2069", ["Talk"]),
+                LookForm.poses("Keep It\u200f", ["Clear It"]),
                 LookForm.poses("Keep It", ["Clear It", "Talk"]),
-                LookForm.poses("Clear It Away", ["Clear It"])],
-            [true, true, true, true, true, true, true, true, true, true, true, true, false,
-                false]);
+                LookForm.poses("Clear It Away", ["Clear It"]),
+                LookForm.poses("\u202etI raelC", [])],
+            [true, true, true, true, true, true, true, true, true, true, true, true, true,
+                true, true, false, false, false]);
         expect("it asks back wanting a choice or his words, or offering choices, in the second"
             + " form only",
             [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },

@@ -19,6 +19,10 @@ const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\ufff0-\ufff8]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
+// What turns the letters after it around, a mark, an embedding, an override
+// or an isolate: left out of a name it's read as nothing, yet "\u202etI
+// raelC" still draws as Clear It, so a name holding one is never trusted.
+const TURNS = /[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 // And the rest of what Unicode says may draw as nothing, some of it past
 // U+FFFF: selectors of a letter's variant (Mongolian's and Unicode's),
 // Khmer's inherent vowels, shorthand's and music's format controls, and
@@ -76,20 +80,24 @@ function readAs(name) {
 // "Review It", else "": never past the harness's four words, a choice's
 // label, or a name another of its acts goes by (`taken`), however it's
 // spaced, stopped or hides what draws as nothing, so it can't pass itself
-// off as Clear It or an answer. A letter from another script that draws
-// alike still could; the drawer's eyebrow says whose words they are.
+// off as Clear It or an answer, or turn its letters around. A letter from
+// another script that draws alike still could; the drawer's eyebrow says
+// whose words they are.
 function actOf(one, taken = []) {
     const act = secondForm(one) ? written(one.act).trim() : "";
     const read = readAs(act);
-    return read === "" || read.split(" ").length > ACT_WORDS || poses(act, taken)
+    return read === "" || read.split(" ").length > ACT_WORDS || TURNS.test(act)
+        || poses(act, taken)
         || (one.offers ?? []).some(choice => readAs(choice.label) === read) ? "" : act;
 }
 
 // Whether a name reads as one of `taken`, however it's spaced, stopped or
-// hides what draws as nothing, so a choice can't pass for Clear It.
+// hides what draws as nothing, so a choice can't pass for Clear It; one
+// that turns its letters around poses as any, since it can draw as either.
 function poses(name, taken) {
     const read = readAs(name);
-    return taken.some(each => readAs(each) === read);
+    return taken.length > 0
+        && (TURNS.test(String(name)) || taken.some(each => readAs(each) === read));
 }
 
 // Whether a look in its second form asks Joel back: it wants a choice or
