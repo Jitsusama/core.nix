@@ -783,8 +783,9 @@ impl Pinner {
 
     /// Takes what a round read, puts its pin in force once the round's
     /// probes have let their ports go and says so when the pin moves, and
-    /// every few seconds looks for a new socket of the VPN's to probe for,
-    /// out of `link`, the primary uplink. Gives the pin chain's transaction.
+    /// every few seconds lets a pin go that the VPN's new flows can't get
+    /// through, and looks for a new socket of the VPN's to probe for, out
+    /// of `link`, the primary uplink. Gives the pin chain's transaction.
     fn step(&mut self, link: Option<&str>, calling: bool, now: Instant) -> String {
         while let Ok(read) = self.read.try_recv() {
             let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
@@ -801,6 +802,14 @@ impl Pinner {
                 .is_none_or(|at| now - at >= Duration::from_secs(5))
         {
             self.looked = Some(now);
+            let counted = sh(&words(&format!(
+                "nft -j list counter inet {TABLE} pinretried"
+            )));
+            if let Some(retried) = counted.ok().as_deref().and_then(pin::retried)
+                && let Some((pin::Moved { was: Some(first) }, times)) = self.pinning.heed(retried)
+            {
+                eprintln!("{}", pin::dropped(first, times));
+            }
             let listed = sh(&words(&format!("nft -j list set inet {TABLE} vpn_ends")));
             let ends = pin::ends(&listed.unwrap_or_default());
             if let Some(end) = self.pinning.ask(&ends, calling, now) {
@@ -943,7 +952,15 @@ fn sorted(
     sets
 }
 
-fn refill(text: &str) {
+/// Runs each of `texts` through nft as a transaction of its own, so one
+/// that fails, as a pin's rule the kernel refuses, leaves the others.
+fn refill(texts: &[String]) {
+    for text in texts {
+        transact(text);
+    }
+}
+
+fn transact(text: &str) {
     let child = Command::new("nft")
         .args(["-f", "-"])
         .stdin(Stdio::piped())
@@ -998,7 +1015,7 @@ fn run(options: &Options) -> Result<(), Failure> {
     let began = Instant::now();
     let mut last_look: Option<Instant> = None;
     let mut last_fill: Option<Instant> = None;
-    let mut filled = String::new();
+    let mut filled = [String::new(), String::new()];
     let mut first = first::Heed::default();
     let mut reach = classes::Local::default();
     let mut vpns = Vpns::default();
@@ -1077,8 +1094,10 @@ fn run(options: &Options) -> Result<(), Failure> {
         let sets = sorted(options, &sessions, &mut call, &mut first, now);
         let rides = primary.as_ref().and_then(|p| shaped.get_mut(p));
         read_vpns(&vpns.0, (&mut heard, &mut up_tins), rides, t);
-        let text = classes::transaction(TABLE, &sets, &reach)
-            + &pinner.step(primary.as_deref(), call.on, now);
+        let text = [
+            classes::transaction(TABLE, &sets, &reach),
+            pinner.step(primary.as_deref(), call.on, now),
+        ];
         if text != filled || last_fill.is_none_or(|at| now - at >= Duration::from_secs(5)) {
             last_fill = Some(now);
             refill(&text);

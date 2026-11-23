@@ -52,6 +52,14 @@ set vpn_ends {
   type ipv4_addr . inet_service . inet_service;
   flags dynamic, timeout;
 }
+# The VPN's flows the pin's rule gave a port lately, and how many came back
+# to it: NAT meets a flow it let through only once, so one that comes back
+# was dropped, and the pin lets go (src/pin.rs).
+set pintries {
+  type ipv4_addr . inet_service . inet_service;
+  flags dynamic, timeout;
+}
+counter pinretried { }
 
 chain local {
   ct mark set ct mark and 0xf0ffffff or 0x0a000000

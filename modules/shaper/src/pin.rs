@@ -57,6 +57,22 @@ pub const MARGIN_MS: f64 = 10.0;
 /// router, and hops past the provider's edge stop answering.
 pub const MOST_HOPS: u8 = 8;
 
+/// How many times the VPN's flows may come back to the pin's rule, one
+/// look after another, before the pin lets go. With other flows holding
+/// both pinned ports toward the server, as a third socket in a burst of
+/// reconnects might, NAT finds no port free and the kernel drops the new
+/// flow, so the VPN stays down until conntrack frees one, two minutes for
+/// a flow that was answered. NAT meets a flow it let through only at its
+/// first packet, so a flow that comes back was dropped: the VPN sends again
+/// within seconds, and letting go costs only the quick way.
+pub const RETRIED: u64 = 2;
+
+/// How long the pin's rule remembers a flow it gave a port, to know it
+/// when it comes back: under conntrack's 30 s for unanswered UDP, so a flow
+/// that went through and then idled until its entry went is never taken
+/// for one dropped.
+pub const REMEMBERED: Duration = Duration::from_secs(20);
+
 /// One probe's answer: the hop that said its time ran out there, and how
 /// long after the probe left it said so.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -143,22 +159,30 @@ pub fn ends(json: &str) -> Vec<End> {
     seen
 }
 
-/// The rule that gives new flows of the VPN's mark leaving by an uplink
-/// the two ports from `first`; flows already open keep theirs.
-pub fn rule(first: u16) -> String {
-    format!(
-        "oifname @uplinks meta mark @vpns meta l4proto udp masquerade to :{first}-{}",
-        first.saturating_add(1)
-    )
+/// The rules that give new flows of the VPN's mark leaving by an uplink
+/// the two ports from `first`, flows already open keeping theirs: one
+/// counts a flow that comes back, the other remembers each and gives it
+/// the pair.
+pub fn rules(first: u16) -> [String; 2] {
+    let vpn = "oifname @uplinks meta mark @vpns meta nfproto ipv4 meta l4proto udp";
+    let flow = "ip daddr . udp dport . udp sport";
+    [
+        format!("{vpn} {flow} @pintries counter name \"pinretried\""),
+        format!(
+            "{vpn} add @pintries {{ {flow} timeout {}s }} masquerade to :{first}-{}",
+            REMEMBERED.as_secs(),
+            first.saturating_add(1)
+        ),
+    ]
 }
 
 /// The pin chain as `table`'s transaction writes it: emptied, then the
-/// pin's rule where there is one. Written with the sets every few
+/// pin's rules where there is one. Written with the sets every few
 /// seconds, since a switch loads the table afresh, the chain empty.
 pub fn chain(table: &str, pinned: Option<u16>) -> String {
     let mut out = format!("flush chain inet {table} pin\n");
-    if let Some(first) = pinned {
-        let _ = writeln!(out, "add rule inet {table} pin {}", rule(first));
+    for rule in pinned.map(rules).into_iter().flatten() {
+        let _ = writeln!(out, "add rule inet {table} pin {rule}");
     }
     out
 }
@@ -204,7 +228,8 @@ pub fn settle(timeout: &str) -> Duration {
 
 /// What the pin knows between rounds: the VPN's flows it has probed for,
 /// whether a round is out, when the last was asked, the pin a round found
-/// and when it may take hold, and the pin in force.
+/// and when it may take hold, the pin in force, the count last read of its
+/// flows that came back, and how many came back look after look since.
 #[derive(Debug, Default)]
 pub struct Pinning {
     seen: Vec<End>,
@@ -212,6 +237,29 @@ pub struct Pinning {
     asked: Option<Instant>,
     coming: Option<(Option<u16>, Instant)>,
     pub pinned: Option<u16>,
+    retried: Option<u64>,
+    failing: u64,
+}
+
+/// How many of the VPN's flows came back to the pin's rule, in packets,
+/// from `nft -j list counter`, or none unread.
+pub fn retried(json: &str) -> Option<u64> {
+    let all: Value = serde_json::from_str(json).ok()?;
+    all["nftables"].as_array()?.iter().find_map(|item| {
+        let counter = &item["counter"];
+        (counter["name"] == "pinretried").then(|| counter["packets"].as_u64())?
+    })
+}
+
+/// What the journal says when a pin lets go because the VPN's flows under
+/// it were dropped.
+pub fn dropped(first: u16, times: u64) -> String {
+    format!(
+        "The VPN's next connection leaves from any port again, no longer {first} or {}: its \
+         new connections came back unsent {times} times, as when other flows hold both ports \
+         toward its server",
+        first.saturating_add(1)
+    )
 }
 
 impl Pinning {
@@ -262,6 +310,30 @@ impl Pinning {
         self.coming = None;
         let was = std::mem::replace(&mut self.pinned, pin);
         (was != pin).then_some(Moved { was })
+    }
+
+    /// Takes how many flows have come back to the pin's rule, read now,
+    /// and lets the pin go once `RETRIED` have, one look after another: a
+    /// look with none back starts the count over, as does a count that
+    /// fell, as a switch's does. Gives the pin let go and how many came
+    /// back.
+    pub fn heed(&mut self, retried: u64) -> Option<(Moved, u64)> {
+        let was = self.retried.replace(retried);
+        let first = self.pinned?;
+        let back = retried.saturating_sub(was?);
+        if back == 0 {
+            self.failing = 0;
+            return None;
+        }
+        self.failing += back;
+        if self.failing < RETRIED {
+            return None;
+        }
+        self.pinned = None;
+        Some((
+            Moved { was: Some(first) },
+            std::mem::take(&mut self.failing),
+        ))
     }
 }
 
@@ -404,9 +476,14 @@ mod tests {
     fn the_chain_gives_new_flows_of_the_vpns_mark_the_two_pinned_ports() {
         assert_eq!(
             chain("shaper", Some(30_003)),
-            "flush chain inet shaper pin\nadd rule inet shaper pin oifname @uplinks \
-             meta mark @vpns meta l4proto udp masquerade to :30003-30004\n",
-            "the chain isn't emptied and given the two ports from the pin"
+            "flush chain inet shaper pin\n\
+             add rule inet shaper pin oifname @uplinks meta mark @vpns meta nfproto ipv4 \
+             meta l4proto udp ip daddr . udp dport . udp sport @pintries \
+             counter name \"pinretried\"\n\
+             add rule inet shaper pin oifname @uplinks meta mark @vpns meta nfproto ipv4 \
+             meta l4proto udp add @pintries { ip daddr . udp dport . udp sport timeout 20s } \
+             masquerade to :30003-30004\n",
+            "the chain isn't emptied, counting flows that come back, and given the pin's ports"
         );
         assert_eq!(
             chain("shaper", None),
@@ -529,6 +606,75 @@ mod tests {
             settle(""),
             Duration::from_secs(35),
             "an unread timeout isn't the default"
+        );
+    }
+
+    /// A pin in force at 30 006, the count of flows back already read once.
+    fn pinned_at(retried: u64) -> Pinning {
+        let mut pinning = Pinning {
+            pinned: Some(30_006),
+            ..Pinning::default()
+        };
+        assert_eq!(pinning.heed(retried), None, "a first read let go");
+        pinning
+    }
+
+    const LET_GO: Option<(Moved, u64)> = Some((Moved { was: Some(30_006) }, 2));
+
+    #[test]
+    fn a_pin_lets_go_once_the_vpns_flows_keep_coming_back() {
+        let mut pinning = pinned_at(0);
+        assert_eq!(pinning.heed(1), None, "one flow back let go at once");
+        assert_eq!(
+            pinning.heed(2),
+            LET_GO,
+            "a second look with one back kept the pin"
+        );
+        assert_eq!(pinning.pinned, None, "the pin was said let go but kept");
+        assert_eq!(pinning.heed(9), None, "no pin let go again");
+
+        let mut burst = pinned_at(0);
+        assert_eq!(burst.heed(2), LET_GO, "two back in a look kept the pin");
+
+        // A flow that went through never comes back, so looks between
+        // single returns, as a VPN's few reconnects give, start over.
+        let mut spaced = pinned_at(0);
+        for (look, retried) in [1, 1, 2, 2, 3, 3].into_iter().enumerate() {
+            assert_eq!(
+                spaced.heed(retried),
+                None,
+                "look {look}, one back after none, let go"
+            );
+        }
+
+        // A switch loads the table afresh, its count from nought.
+        let mut switched = pinned_at(40);
+        assert_eq!(switched.heed(0), None, "a count that fell let go");
+        assert_eq!(switched.heed(1), None, "one back after a switch let go");
+
+        let mut unpinned = Pinning::default();
+        for retried in [0, 5, 10] {
+            assert_eq!(unpinned.heed(retried), None, "no pin let go");
+        }
+    }
+
+    #[test]
+    fn the_count_is_read_by_name_and_the_journal_says_why_a_pin_let_go() {
+        let json = r#"{"nftables":[{"metainfo":{}},
+            {"counter":{"family":"inet","name":"pinretried","table":"shaper",
+             "packets":4,"bytes":512}}]}"#;
+        assert_eq!(retried(json), Some(4), "the count wasn't read");
+        assert_eq!(retried(""), None, "an unread counter read nought");
+        assert_eq!(
+            dropped(30_006, 3),
+            "The VPN's next connection leaves from any port again, no longer 30006 or 30007: \
+             its new connections came back unsent 3 times, as when other flows hold both \
+             ports toward its server",
+            "the journal doesn't say why the pin let go"
+        );
+        assert!(
+            REMEMBERED + Duration::from_secs(5) < settle(""),
+            "a flow is remembered past conntrack's timeout for unanswered UDP"
         );
     }
 }

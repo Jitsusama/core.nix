@@ -33,6 +33,11 @@ COMING_UP = dt.timedelta(seconds=30)
 PINNING = dt.timedelta(seconds=150)
 # How long the far end may take to hear the VPN from its new port: the next keepalive.
 MOVING = dt.timedelta(seconds=15)
+# How long a pin no flow gets through may take to let go: the shaper's look every five
+# seconds, twice, and then the next keepalive.
+LETTING_GO = dt.timedelta(seconds=40)
+# A port the VPN listens on that no pin names.
+ITS_OWN = 41002
 
 
 @dataclass
@@ -51,13 +56,13 @@ class Rig:
                 return int(endpoint.rpartition(":")[2])
         return 0
 
-    def reopen(self, listen: int) -> int:
+    def reopen(self, listen: int, timeout: dt.timedelta = MOVING) -> int:
         """Have the VPN open a new socket, from `listen`, and give the port it lands on."""
         was = self.port()
         self.client.succeed(f"wg set wg0 listen-port {listen}")
         self.server.wait_until_succeeds(
             f"ip netns exec end wg show wg0 endpoints | grep -v ':{was}$' | grep -q '{CLIENT}:'",
-            timeout=MOVING,
+            timeout=timeout,
         )
         return self.port()
 
@@ -139,4 +144,37 @@ def test_a_held_port_yields_the_other(moved: Moved) -> None:
     after = moved.rig.reopen(41001)
     assert {moved.after, after} == set(NEAR), (
         f"the VPN went from {moved.after} to {after}, not across the pair"
+    )
+
+
+def test_a_pin_no_flow_gets_through_lets_go(moved: Moved) -> None:
+    """With both pinned ports held toward the VPN's end, the pin lets go of its next socket.
+
+    The VPN's own flow holds the port it's on, and a flow from the other port to the same
+    end, refreshed each second, holds that one, so NAT finds neither free.
+    """
+    rig = moved.rig
+    for port in sorted(set(NEAR) - {rig.port()}):
+        # A datagram a second, inside conntrack's 30 s for unanswered UDP, keeps its entry.
+        rig.client.succeed(
+            f"systemd-run --unit=holds-{port} /run/current-system/sw/bin/sh -c 'while true;"
+            f" do echo held | /run/current-system/sw/bin/socat -u -"
+            f" UDP4-SENDTO:{END}:51820,sourceport={port};"
+            " /run/current-system/sw/bin/sleep 1; done'"
+        )
+    try:
+        after = rig.reopen(ITS_OWN, timeout=LETTING_GO)
+    finally:
+        rig.client.succeed("systemctl stop 'holds-*' || true")
+    journal = rig.client.succeed("journalctl -u shaper -o cat --no-pager")
+    assert after == ITS_OWN, (
+        f"the VPN's next socket landed on {after}, not its own {ITS_OWN}:\n"
+        + rig.client.succeed(
+            "nft list chain inet shaper pin; nft list counter inet shaper pinretried"
+        )
+    )
+    assert "came back unsent" in journal, "the shaper didn't say why its pin let go"
+    # A round may pin again, but only ten minutes after the last, so the rule is gone now.
+    assert rig.client.succeed("nft list chain inet shaper pin").count("masquerade") == 0, (
+        "the pin let go but its rule stayed"
     )

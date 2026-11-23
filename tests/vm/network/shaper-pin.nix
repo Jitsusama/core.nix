@@ -5,8 +5,9 @@
 # server is a hop past the split that answers, as on the real line. Once
 # the shaper has probed the ports toward the VPN's end, the VPN's next
 # socket leaves from one of the two near ports, and the one after it from
-# the other, while the first's flow still holds its port. The tests are
-# shaper-pin-vm-test.py, run through pytest.
+# the other, while the first's flow still holds its port. With both ports
+# held, the pin lets go, and the VPN's next socket leaves from its own. The
+# tests are shaper-pin-vm-test.py, run through pytest.
 { self, pkgs }:
 import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
   name = "shaper-pin";
@@ -27,8 +28,9 @@ import ../../lib/pytest-vm-test.nix { inherit pkgs; } {
     systemd.services.shaper-record.environment.SHAPER_REFLECTORS = "192.168.2.3";
     jitsusama.shaper.vpns = [ "wg0" ];
     # The client's VPN runs in userspace on a tun device, as a VPN's daemon
-    # does.
+    # does. socat sends from a chosen port, to hold one toward the VPN's end.
     environment.systemPackages = [
+      pkgs.socat
       pkgs.wireguard-go
       pkgs.wireguard-tools
     ];
