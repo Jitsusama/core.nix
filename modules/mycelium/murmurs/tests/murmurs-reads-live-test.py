@@ -451,9 +451,16 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             quiet_node.tell("murmur", changed=[roosted])
             the_page_counts(page, "Two murmured, one still in the air.", "the roost went unheard")
             page.locator('#headline a[data-show="air"]').click()
+            options = listed.locator('[role="option"]')
+            title = page.locator("#murmurs-title")
+            expect(title, "the air filter didn't take").to_have_text("The murmurs still in the air")
+            expect(options, "the air filter showed a settled murmur").to_have_count(1)
             key = f"murmur:HERONS:{at}"
             quiet_node.tell("murmur", changed=[{"key": key, "settled": "cleared by noon"}])
-            expect(listed.locator('[role="option"]'), "the settled murmurs hid").to_have_count(2)
+            roosts = "Two murmured, every one come to roost."
+            the_page_counts(page, roosts, "the settling went unheard")
+            expect(title, "the air filter outlived the air").to_have_text("The murmurs")
+            expect(options, "the settled murmurs hid").to_have_count(2)
             expect(page.locator("#quiet"), "settled murmurs were called quiet").to_be_hidden()
             quiet_node.tell("murmur", gone=[key, str(roosted["key"])])
             said_quiet(page, "the last murmur going left no quiet line")
