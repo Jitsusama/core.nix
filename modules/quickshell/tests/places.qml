@@ -140,6 +140,14 @@ QtObject {
             [firstBack.output, Places.whereKept(twins[1], twins, bothBack,
                 { given: [{ at: twins[0], output: firstBack.output }], inUse: "Virtual-3" })
                 .output], ["Virtual-3", "Virtual-4"]);
+        // And go where their sessions went, whatever order each comes back in.
+        const twinsLast = [twins[1], twins[0]];
+        const sessionsGiven = Reopening.givenBy(twinsLast,
+            Places.placed(twinsLast, bothBack, "Virtual-3", [twins, twins]));
+        expect("a twin window back renumbered goes where its sessions went",
+            [Places.whereKept(twins[0], twins, bothBack,
+                { given: sessionsGiven, inUse: "Virtual-3" }).output,
+                sessionsGiven.map(one => one.output)], ["Virtual-4", ["Virtual-3", "Virtual-4"]]);
         expect("one twin back renumbered is the first's, and the other's is gone",
             Places.placed(twins, { "Virtual-3": twin }, "Virtual-3", [twins, twins])
                 .map(at => [at.output, at.away?.others ?? null]),

@@ -1555,12 +1555,15 @@ Singleton {
         const inUse = Niri.workspace()?.output ?? null;
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
-        // Its windows go back by the screen in use as its own sessions are
-        // placed, not as a hand-over meanwhile places others.
-        if (puttingBack !== null && walk && !("inUse" in puttingBack))
-            puttingBack.inUse = inUse;
         const places = Places.placed(placeable, root.screensThere(), inUse,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
+        // Its windows go back by the screen in use as its own sessions are
+        // placed, and to the twin connectors they're given, not as a
+        // hand-over meanwhile places others.
+        if (puttingBack !== null && walk && !("inUse" in puttingBack)) {
+            puttingBack.inUse = inUse;
+            puttingBack.given = Reopening.givenBy(placeable, places);
+        }
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
             kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
             back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true,
@@ -2325,7 +2328,7 @@ Singleton {
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
         const inUse = Reopening.inUseFor(going.inUse, Niri.workspace()?.output ?? null, there);
-        // Each window put back gives its twins' connectors as placed gives
+        // Each window put back gives its twins' connectors, after its
         // sessions', so twin monitors on new connectors take one each.
         const kept = Places.whereKept(at, going.kept, there, { given: going.given, inUse });
         going.given.push({ at, output: kept.output });
