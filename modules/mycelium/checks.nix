@@ -427,6 +427,8 @@ in
           ]
         && (mac links).launchd.agents.mycelium.enable
         && (mac links).launchd.agents.mycelium.config.EnvironmentVariables.SIGN_AS == "agent"
+        && (mac links).launchd.agents.mycelium.config.SoftResourceLimits.NumberOfFiles == 10240
+        && (linux links).systemd.user.services.mycelium.Service.LimitNOFILE == 65536
         &&
           (mac links).launchd.agents.mycelium.config.EnvironmentVariables.PATH
           == "/usr/bin:/bin:${(mac links).home.profileDirectory}/bin"

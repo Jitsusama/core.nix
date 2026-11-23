@@ -389,6 +389,10 @@ let
       # realm's node down for seven minutes.
       Restart = "always";
       RestartSec = "5s";
+      # Each client, link and session it holds is a file, and at systemd's
+      # 1024 a failed accept once ended the node (mycelium #372); the
+      # sessions it starts inherit the room.
+      LimitNOFILE = 65536;
       # The node wakes with every session it carries, so it runs among
       # them rather than among Joel's programs, whose tasks each wakeup
       # would preempt. Moving it restarts it once, which the sessions,
@@ -420,6 +424,11 @@ let
       # Started again whenever it stops, but not more than every 30 s.
       KeepAlive = true;
       ThrottleInterval = 30;
+      # Each client, link and session it holds is a file, and launchd
+      # gives an agent 256. 10240 is macOS's OPEN_MAX, which every Mac
+      # takes; the hard limit stays launchd's, so the sessions it starts
+      # may raise theirs.
+      SoftResourceLimits.NumberOfFiles = 10240;
       StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/${log}.log";
     };
   };
