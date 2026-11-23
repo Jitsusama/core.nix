@@ -28,6 +28,7 @@ mod cost;
 mod cpu;
 mod day;
 mod first;
+mod held;
 mod house;
 mod icmp;
 mod lanes;
@@ -337,11 +338,12 @@ struct Shaped {
     real_time: realtime::RealTime,
     /// What the upload's CAKE held when last read, and of the reads since
     /// the controller was last told, how many found a queue in it.
-    holding: Option<qdisc::Holding>,
+    holding: Option<held::Holding>,
     queued_reads: (u32, u32),
-    /// What the upload's queues before the VPN's packets held, in bytes,
-    /// over those reads together (`qdisc::Holding::before_the_vpn`).
-    held_bytes: u64,
+    /// How long what the upload's queues held before the VPN's packets
+    /// takes to leave, in microseconds, over those reads together
+    /// (`held::ahead_us`).
+    ahead_us: u64,
     /// Of the reads of the VPNs riding the link since, how many found a
     /// queue in one: a VPN held under the link holds the queue in its own
     /// CAKE, and one the link's CAKE doesn't see is no router's.
@@ -446,14 +448,15 @@ impl Shaped {
     fn read_upload(&mut self) {
         let read = |dev: &str| sh(&words(&format!("tc -s -j qdisc show dev {dev}"))).ok();
         let up = read(&self.uplink.name);
-        if let Some(now) = up.as_deref().and_then(qdisc::holding) {
+        if let Some(now) = up.as_deref().and_then(held::holding) {
             let (queued, reads) = &mut self.queued_reads;
-            *queued += u32::from(qdisc::queued(self.holding, now));
+            *queued += u32::from(held::queued(self.holding, now));
             *reads += 1;
-            self.held_bytes += now.before_the_vpn;
+            self.ahead_us +=
+                held::ahead_us(now, self.applied.0, lanes::agents_assured(&self.split));
             self.holding = Some(now);
         }
-        if let Some(now) = up.as_deref().and_then(qdisc::drops) {
+        if let Some(now) = up.as_deref().and_then(held::drops) {
             self.dropped += since(self.drops.replace(now), now);
         }
         if let Some(sent) = up.and_then(|json| qdisc::shaped_bytes(&json)) {
@@ -467,8 +470,7 @@ impl Shaped {
     /// kbit/s.
     fn ours(&mut self, waiting: bool, resent: u64, now: Instant) -> Option<oneway::Ours> {
         let link = std::mem::take(&mut self.queued_reads);
-        let held = std::mem::take(&mut self.held_bytes);
-        let wait = qdisc::wait_ms(held, link.1, self.applied.0);
+        let wait = held::wait_ms(std::mem::take(&mut self.ahead_us), link.1);
         let vpn = std::mem::take(&mut self.vpn_reads);
         let dropped = std::mem::take(&mut self.dropped);
         let seconds = self.told_at.replace(now).map(|at| (now - at).as_secs_f64());
@@ -676,7 +678,7 @@ fn start(
         real_time: realtime::RealTime::default(),
         holding: None,
         queued_reads: (0, 0),
-        held_bytes: 0,
+        ahead_us: 0,
         vpn_reads: (0, 0),
         vpn_share: 1.0,
         agents_share: 1.0,
@@ -1137,7 +1139,7 @@ struct Vpn {
 /// when last read.
 #[derive(Default)]
 struct Heard {
-    held: Option<qdisc::Holding>,
+    held: Option<held::Holding>,
     drops: Option<u64>,
 }
 
@@ -1174,11 +1176,11 @@ fn read_vpns(
                 .for_each(|(all, one)| *all += one);
         }
         let h = heard.entry(name.clone()).or_default();
-        if let Some(now) = qdisc::holding(&json) {
-            let queued = qdisc::queued(h.held.replace(now), now);
+        if let Some(now) = held::holding(&json) {
+            let queued = held::queued(h.held.replace(now), now);
             read = (read.0.max(u32::from(queued)), 1);
         }
-        if let Some(now) = qdisc::drops(&json) {
+        if let Some(now) = held::drops(&json) {
             dropped += since(h.drops.replace(now), now);
         }
     }
@@ -2108,13 +2110,15 @@ mod tests {
             agents_most,
             unsent: false,
         };
+        // Agents' cap is the floor's, not their share of their lane, so
+        // the share the trace records can't be taken for the cap.
         assert_eq!(
-            applied_held((0.6, 0.4), &split(Some(1_200.0))),
+            applied_held((0.6, 0.4), &split(Some(900.0))),
             trace::Held {
                 vpn: 0.6,
                 agents: 0.4
             },
-            "each share where it's taken, by name"
+            "each share where it's taken, by name, and not the cap"
         );
         assert_eq!(
             applied_held((0.6, 0.4), &split(None)),

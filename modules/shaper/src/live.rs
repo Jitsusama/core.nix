@@ -562,6 +562,35 @@ mod tests {
     }
 
     #[test]
+    fn a_traced_second_says_the_controllers_reason_and_leaves_the_shares_to_main() {
+        let folder = std::env::temp_dir().join(format!("shaper-traced-{}", std::process::id()));
+        let started = SystemTime::UNIX_EPOCH + Duration::from_millis(NOV3);
+        let mut live = Live::new(&folder, started);
+        assert!(
+            live.traced().is_none(),
+            "a second was traced before the controller stepped on one"
+        );
+        live.follow = followed(&queued());
+        let second = live.traced().expect("a second once the controller stepped");
+        assert_eq!(
+            second.link, "wlan0",
+            "the second traced isn't the recorder's link's"
+        );
+        // The reason marks a line whose link_wait_ms leaves agents' lane
+        // out (src/trace.rs), so every line this build writes carries one.
+        assert_eq!(
+            second.why.as_deref(),
+            Some(live.follow.controller.why_kind()),
+            "the traced reason isn't the controller's"
+        );
+        assert_eq!(
+            (second.vpn_share, second.agents_share),
+            (None, None),
+            "the shares were said before main put them on the link's queues"
+        );
+    }
+
+    #[test]
     fn a_queue_standing_on_the_recorders_link_is_cut_live() {
         let follow = followed(&queued());
         let (link, rates) = follow.now(NOV3 + 6_000).expect("a link");
