@@ -91,7 +91,7 @@ function laidAgain(shown, now, id, withholding) {
     const lit = rows => rows.map((row, at) => row.repeated && !row.went
         && !standsUnder(rows, at, owner, id) ? dimmed(row) : row);
     if (shown.length === 0) {
-        return { rows: fresh, late: 0, lit: rows => rows };
+        return { rows: fresh.map(asSeen), late: 0, lit: rows => rows };
     }
     const headingsNow = fresh.filter(row => row.heading === true);
     const waiting = {};
