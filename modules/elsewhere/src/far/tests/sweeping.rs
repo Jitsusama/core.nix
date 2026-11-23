@@ -118,6 +118,11 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     closed(&runs.join(job));
     let beyond = closed(&root.join("beyond"));
     std::os::unix::fs::symlink(root.join("beyond"), runs.join(job).join("inner")).unwrap();
+    // Gone, its job having made a folder where its brought-back list
+    // goes, and closed one in it.
+    let made = "4243-1763912345678901235";
+    copy(&runs, made, &format!("{gone} {here}"));
+    closed(&runs.join(format!("{made}.back")));
     // Gone, but its copy is a link, which goes alone.
     std::fs::write(runs.join(format!("11{RUN}")), format!("{gone} {here}\n")).unwrap();
     let past = closed(&root.join("past"));
@@ -196,9 +201,13 @@ fn a_copy_that_wont_go_keeps_its_run_s_file_and_is_named_once() {
     let runs = root.join("s");
     let job = "4242-1763912345678901234";
     copy(&runs, job, &format!("{} {}", gone(), here()));
-    let rm = "echo \"rm: cannot remove '$2/f': Permission denied\" >&2
-exit 1";
-    let said = sweep_with(&runs.join("9"), &[("rm", rm)]);
+    // Only the copy won't go; its run's file would, were it asked to.
+    let rm = format!(
+        "case \"$*\" in *'/{job}') echo \"rm: cannot remove '$2/f': Permission denied\" >&2; exit 1 ;; esac
+PATH=${{PATH#*:}}
+exec rm \"$@\""
+    );
+    let said = sweep_with(&runs.join("9"), &[("rm", &rm)]);
     assert_eq!(
         said,
         format!("elsewhere: couldn't clear {}\n", runs.join(job).display()),
