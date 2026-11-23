@@ -4,7 +4,7 @@
 use super::{Left, far_line, far_line_in, kind, scratch, work};
 use crate::far::steps::{RUN, sweeping};
 use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// This machine and its process space, as a far line writes them down.
 fn here() -> String {
@@ -40,6 +40,18 @@ fn sweep(work: &Path) -> String {
 /// Runs the sweep as `sweep` does, with each of `programs`, a name and
 /// its script, found before the machine's own.
 fn sweep_with(work: &Path, programs: &[(&str, &str)]) -> String {
+    sweep_in(work, programs, "")
+}
+
+/// Runs the sweep as `sweep` does, after the shell has run `before`.
+fn sweep_after(work: &Path, before: &str) -> String {
+    sweep_in(work, &[], before)
+}
+
+/// Runs the sweep for a run whose copy is `work`, after `before`, with
+/// each of `programs` found before the machine's own, answering what it
+/// said, once it ended well.
+fn sweep_in(work: &Path, programs: &[(&str, &str)], before: &str) -> String {
     let bin = work.parent().unwrap().with_extension("bin");
     std::fs::create_dir_all(&bin).unwrap();
     for (name, text) in programs {
@@ -56,7 +68,10 @@ fn sweep_with(work: &Path, programs: &[(&str, &str)]) -> String {
         std::env::var("PATH").unwrap_or_default()
     );
     let swept = std::process::Command::new(far_sh())
-        .args(["-c", &format!("work='{}'\n{}", work.display(), sweeping())])
+        .args([
+            "-c",
+            &format!("{before}\nwork='{}'\n{}", work.display(), sweeping()),
+        ])
         .env("PATH", path)
         .output()
         .unwrap();
@@ -233,64 +248,75 @@ exec rm \"$@\"";
 fn each_end_of_a_far_line_takes_its_run_s_file_only_with_its_copy() {
     // A job that ends, one refused for a folder that never crossed, and
     // one untaken for a tree that couldn't be made.
-    let ends: [(&str, &str, &[(&str, &str)]); 3] = [
-        ("ended", "", &[]),
-        ("refused", "drafts", &[]),
-        ("untaken", "", &[("tar", "exit 1")]),
-    ];
-    for (end, folder, programs) in ends {
-        for stuck in [false, true] {
-            let mut programs = programs.to_vec();
-            if stuck {
-                programs.push(("rm", STUCK_COPY));
-            }
-            let (code, err, home) = far_line_in(
-                Path::new(folder),
-                Left::Whole,
-                &[("a", "1")],
-                "touch ../ran",
-                &kind(""),
-                None,
-                &programs,
-            );
-            let runs = work(&home);
-            let (copy, run) = (
-                runs.join("1").exists(),
-                runs.join(format!("1{RUN}")).exists(),
-            );
-            assert!(
-                (copy, run) == (stuck, stuck),
-                "a job {end} with a copy that {} left its copy {copy} and run's file {run} \
-                 ({code:?}): {err}",
-                if stuck { "won't go" } else { "goes" }
-            );
-            let _ = std::fs::remove_dir_all(&home);
-        }
+    for stuck in [false, true] {
+        ends_with_its_run_s_file(("ended", 0), "", None, stuck);
+        ends_with_its_run_s_file(("refused", 77), "drafts", None, stuck);
+        ends_with_its_run_s_file(("untaken", 75), "", Some(("tar", "exit 1")), stuck);
     }
 }
 
-#[test]
-fn a_link_at_a_run_s_file_s_name_is_never_written_through() {
-    // A uname that, the first time it's asked, leaves a link where the
-    // job's run's file goes, to a file beyond the copies.
-    let uname = "PATH=${PATH#*:}
-runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
-if mkdir \"$HOME/planted\" 2>/dev/null; then
-  mkdir -p \"$runs\" && echo kept > \"$HOME/beyond\" &&
-    ln -s \"$HOME/beyond\" \"$runs/1.run\"
-fi
-exec uname \"$@\"";
-    let (code, err, home) = far_line(
+/// Runs a job that `end`s, with the code that end gives, in the tree's
+/// `folder` and with `program` ahead of the machine's own, with a copy
+/// that won't go when `stuck`, and checks it ended so, and that its copy
+/// and its run's file both stay when stuck, and both go when not.
+fn ends_with_its_run_s_file(
+    (end, given): (&str, i32),
+    folder: &str,
+    program: Option<(&str, &str)>,
+    stuck: bool,
+) {
+    let mut programs: Vec<_> = program.into_iter().collect();
+    if stuck {
+        programs.push(("rm", STUCK_COPY));
+    }
+    let (code, err, home) = far_line_in(
+        Path::new(folder),
         Left::Whole,
         &[("a", "1")],
         "touch ../ran",
         &kind(""),
         None,
-        &[("uname", uname)],
+        &programs,
     );
+    let runs = work(&home);
+    let (copy, run) = (
+        runs.join("1").exists(),
+        runs.join(format!("1{RUN}")).exists(),
+    );
+    assert_eq!(code, Some(given), "a job meant to have {end} didn't: {err}");
     assert!(
-        code == Some(0) && work(&home).join("ran").exists() && home.join("planted").exists(),
-        "the job never ran, or no link was planted ({code:?}): {err}"
+        (copy, run) == (stuck, stuck),
+        "a job {end} with a copy that {} left its copy {copy} and run's file {run} \
+         ({code:?}): {err}",
+        if stuck { "won't go" } else { "goes" }
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_run_the_sweep_may_not_signal_is_kept_as_though_alive() {
+    let root = scratch("far-swept-unsignalled");
+    let runs = root.join("s");
+    copy(&runs, "2", &format!("{} {}", gone(), here()));
+    // A kill refused as one of another account's or from inside a
+    // fence is, which a Linux build's sandbox, all one account, can't
+    // give for real. A function stands before the shell's own kill.
+    let refused = "kill() { echo \"kill: ($2) - Operation not permitted\" >&2; return 1; }";
+    sweep_after(&runs.join("9"), refused);
+    assert_eq!(
+        left_in(&runs),
+        ["2", "2.run"],
+        "a run the sweep wasn't let signal was taken as gone"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_link_at_a_run_s_file_s_name_is_never_written_through() {
+    let (code, err, home) = with_a_link_at_the_run_s_file(&[]);
+    assert!(
+        code == Some(0) && work(&home).join("ran").exists(),
+        "the job never ran past the link at its run's file ({code:?}): {err}"
     );
     assert_eq!(
         std::fs::read_to_string(home.join("beyond")).unwrap(),
@@ -298,6 +324,51 @@ exec uname \"$@\"";
         "the run's file was written through the link at its name"
     );
     let _ = std::fs::remove_dir_all(&home);
+    // Nor when the link stays, as one put there after it went would:
+    // the job isn't taken, rather than written through it.
+    let rm = "case \"$*\" in *'/.s/1.run') exit 0 ;; esac
+PATH=${PATH#*:}
+exec rm \"$@\"";
+    let (code, err, home) = with_a_link_at_the_run_s_file(&[("rm", rm)]);
+    assert_eq!(
+        std::fs::read_to_string(home.join("beyond")).unwrap(),
+        "kept\n",
+        "the run's file was written through a link that stayed ({code:?}): {err}"
+    );
+    assert!(
+        code == Some(75) && !work(&home).join("ran").exists(),
+        "a job whose run's file couldn't be written ran or wasn't untaken ({code:?}): {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// Runs a job with a uname that, the first time it's asked, leaves a link
+/// where the job's run's file goes, to a file `beyond` the copies, and
+/// with `programs` ahead of the machine's own, checking the link was put.
+fn with_a_link_at_the_run_s_file(programs: &[(&str, &str)]) -> (Option<i32>, String, PathBuf) {
+    let uname = "PATH=${PATH#*:}
+runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
+if mkdir \"$HOME/planting\" 2>/dev/null; then
+  mkdir -p \"$runs\" && echo kept > \"$HOME/beyond\" &&
+    ln -s \"$HOME/beyond\" \"$runs/1.run\" && touch \"$HOME/planted\"
+fi
+exec uname \"$@\"";
+    let programs: Vec<_> = std::iter::once(("uname", uname))
+        .chain(programs.iter().copied())
+        .collect();
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "1")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &programs,
+    );
+    assert!(
+        home.join("planted").exists(),
+        "no link was put at the run's file ({code:?}): {err}"
+    );
+    (code, err, home)
 }
 
 #[test]
@@ -339,7 +410,7 @@ fn a_far_line_clears_a_gone_run_s_copy_and_leaves_nothing_of_its_own() {
     // A uname that, the first time it's asked, leaves the copy of a run
     // here that has gone, as the far line begins.
     let uname = "PATH=${PATH#*:}
-runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s\"
+runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s\"
 if mkdir \"$HOME/left\" 2>/dev/null; then
   sh -c : & gone=$!
   wait \"$gone\"
