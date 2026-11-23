@@ -219,7 +219,7 @@ fn header(prefix: &str, name: &str, mode: u32, size: u64, mtime: u64, kind: u8) 
 
 /// `value` in octal, zero-filled to the field's width less its closing
 /// NUL; a value past the field's width keeps its lowest digits, which
-/// only a time past the year 10000 or a file past 8 GiB would meet.
+/// only a time past the year 2242 or a file past 8 GiB would meet.
 fn octal(field: &mut [u8], value: u64) {
     let width = field.len() - 1;
     let digits = format!("{value:0width$o}");

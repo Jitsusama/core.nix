@@ -202,7 +202,7 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
     let bytes = archive::archived(bytes, LARGEST_FILE);
     if bytes > MOST_BYTES {
         return Err(format!(
-            "its {} files and {bytes} bytes are past what a shared folder carries",
+            "its {} files would take up to {bytes} bytes as archives, past the {MOST_BYTES} a shared folder carries",
             files.len()
         ));
     }
@@ -263,6 +263,7 @@ pub fn script(
         .map(|word| quoted(word))
         .collect::<Vec<_>>()
         .join(" ");
+    let crossing = crossing();
     let copying = copying();
     let stopping = stopping();
     let bringing = bringing(kind);
@@ -271,30 +272,7 @@ pub fn script(
         r#"job={job}
 work={work}
 tab=$(printf '\t')
-arrived() {{
-  waiting='its list of them'
-  [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
-  while IFS="$tab" read -r size path; do
-    [ "$size" = {END} ] && return 0
-    case "/$path/" in //*|*/../*|*/./*) continue ;; esac
-    waiting=$path
-    [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
-  done < "$job/{LEFT}"
-  return 1
-}}
-# How much has crossed, list or not, as its names and kilobytes.
-grown() {{
-  kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
-  kb=${{kb%%[!0-9]*}}
-  got=$((${{kb:-0}} + ${{names:-0}}))
-}}
-# The time in seconds, or where a date can't say it, one more each pass;
-# what was counted before it first could, with this pass, carries over.
-tick() {{
-  t=$(date +%s 2>/dev/null)
-  case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
-    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
-}}
+{crossing}
 {copying}
 # Each word for the near side on a line of its own, whatever came before.
 say() {{ printf '\n%s\n' "$1"; }}
@@ -772,7 +750,7 @@ mod landing;
 pub mod spent;
 mod steps;
 
-use steps::{bringing, copying, stopping};
+use steps::{bringing, copying, crossing, stopping};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

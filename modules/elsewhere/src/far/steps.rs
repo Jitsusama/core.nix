@@ -1,9 +1,10 @@
-//! The far line's two steps around the job: making its tree of the
-//! archives that crossed, and leaving what its kind brings back to cross
-//! home.
+//! The far line's steps around the job: watching its archives cross,
+//! making its tree of them, answering a stop, and leaving what its kind
+//! brings back to cross home.
 //!
-//! Each step writes what it finds to a file of its own beside the job's
-//! copy, and checks it, rather than piping one command into the next: a
+//! The two steps that find files write what each finds to a file of its
+//! own beside the job's copy, and check it, rather than piping one
+//! command into the next: a
 //! pipe's status is only its last command's in an sh with no pipefail, so
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
@@ -11,17 +12,52 @@
 use super::{BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES, MOST_FILES, TREE, quoted};
 use crate::settings::Kind;
 
+/// The far line's watch on the job's archives as they cross: `arrived`,
+/// once the list is whole and each archive on it is its listed size, with
+/// `waiting` naming what it still waits on; `grown`, how much has crossed
+/// so far, as `got`; and `tick`, the time in seconds as `now`.
+pub(super) fn crossing() -> String {
+    format!(
+        r#"arrived() {{
+  waiting='its list of them'
+  [ "$(tail -n 1 "$job/{LEFT}" 2>/dev/null)" = {END} ] || return 1
+  while IFS="$tab" read -r size path; do
+    [ "$size" = {END} ] && return 0
+    case "/$path/" in //*|*/../*|*/./*) continue ;; esac
+    waiting=$path
+    [ -f "$job/{TREE}/$path" ] && [ "$(($(wc -c < "$job/{TREE}/$path")))" -eq "$size" ] || return 1
+  done < "$job/{LEFT}"
+  return 1
+}}
+# How much has crossed, list or not, as its names and kilobytes.
+grown() {{
+  kb=$(du -sk "$job" 2>/dev/null) names=$(find "$job" 2>/dev/null | wc -l)
+  kb=${{kb%%[!0-9]*}}
+  got=$((${{kb:-0}} + ${{names:-0}}))
+}}
+# The time in seconds, or where a date can't say it, one more each pass;
+# what was counted before it first could, with this pass, carries over.
+tick() {{
+  t=$(date +%s 2>/dev/null)
+  case $t in ''|*[!0-9]*|0?*) now=$((now + 1)) ;; *)
+    [ -n "$counting" ] && began=$((t - now - 1 + began)) counting=; now=$t ;; esac
+}}"#
+    )
+}
+
 /// The far line's answer to being stopped, `stopped`, and the traps that
 /// call it. Mycelium stops a run whose asker let go with a signal to its
 /// whole group, so the far line takes its copy, the files written beside
-/// it and the job's archives away, as a job that ends does, then ends as
-/// the signal would have ended it. A second signal waits for the first
+/// it, the job's archives and whatever it had begun to bring back away,
+/// since no one waits for them, then ends as the signal would have ended
+/// it. A second signal waits for the first
 /// one's clearing.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
   trap '' HUP INT TERM
-  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* "$job/{TREE}"
+  cd "$HOME" && rm -rf "$work" "$work.names" "$work.back" "$work.back".* \
+    "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
   exit "$1"
 }}
 trap 'stopped 129' HUP

@@ -264,7 +264,9 @@ pub(super) fn far_line_in(
             for part in std::fs::read_dir(&tree).unwrap() {
                 let part = part.unwrap().path();
                 let whole = std::fs::read(&part).unwrap();
-                std::fs::write(&part, &whole[..whole.len() / 2]).unwrap();
+                // Short of a block's end, so tar can't unpack what's
+                // there as a whole archive whose close is still to come.
+                std::fs::write(&part, &whole[..whole.len() / 2 - 1]).unwrap();
                 still_crossing.push((part, whole));
             }
         }
@@ -836,6 +838,48 @@ fn an_archive_holding_a_link_a_pipe_or_a_shared_file_is_refused_before_the_job_r
         );
         let _ = std::fs::remove_dir_all(&home);
     }
+}
+
+#[test]
+fn a_link_one_archive_makes_is_refused_before_the_next_writes_through_it() {
+    let outside = scratch("through-outside");
+    let made = scratch("through");
+    std::fs::create_dir_all(made.join("first")).unwrap();
+    std::os::unix::fs::symlink(&outside, made.join("first/l")).unwrap();
+    let first = std::process::Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
+        .args(["--format", "ustar", "-cf", "-", "-C"])
+        .arg(made.join("first"))
+        .arg("l")
+        .output()
+        .unwrap();
+    assert!(first.status.success(), "tar made no archive of a link");
+    let first = String::from_utf8(first.stdout).unwrap();
+    std::fs::create_dir_all(made.join("second/l")).unwrap();
+    std::fs::write(made.join("second/l/f"), "through").unwrap();
+    super::archive::write(&made.join("second"), ["l/f"], &made, 1 << 20).unwrap();
+    let second = String::from_utf8(std::fs::read(made.join("0.tar")).unwrap()).unwrap();
+    let _ = std::fs::remove_dir_all(&made);
+    let list = format!("{}\t0.tar\n{}\t1.tar\nend\n", first.len(), second.len());
+    let (code, err, home) = far_run(
+        Left::Listed(&list),
+        &[("0.tar", &first), ("1.tar", &second)],
+        "touch ../ran",
+    );
+    assert!(
+        code == Some(77) && err.contains("neither a file nor a folder"),
+        "a link the first archive made wasn't refused as the tree's fault ({code:?}): {err}"
+    );
+    assert!(
+        !outside.join("f").exists(),
+        "the second archive wrote through the first one's link"
+    );
+    assert!(
+        !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
+        "a job ran over a tree holding a link, or its copy was left"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+    let _ = std::fs::remove_dir_all(&outside);
 }
 
 #[test]
