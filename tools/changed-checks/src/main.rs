@@ -102,7 +102,7 @@ use std::thread;
 
 use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
-use evaluating::{busiest_system, derivations, evaluated, names, pure};
+use evaluating::{busiest_system, derivations, evaluated, names};
 use quarantine::Held;
 use runs::Run;
 use terminal_kit::layout::{self, Align, Room};
