@@ -1,7 +1,8 @@
-// What a page's ask row reads from a look: the second form's fields
-// wherever they're present, on a version 1 record, the first form's where
-// they aren't, only web addresses as links, only the values the session
-// offered sent, and a look waiting only as For You's Waiting holds it.
+// What a page's ask row reads from a look, as the launcher's For You reads
+// it: only a look For You reads whole, the second form's words where it
+// says what happened, what it's about from the first form, only web
+// addresses as links, only the values the session offered sent exactly as
+// written, and a look waiting only as For You's Waiting holds it.
 
 import assert from "node:assert/strict";
 import { test as it } from "node:test";
@@ -29,8 +30,10 @@ const first = {
 };
 
 /**
- * The same look with the second form's fields beside the first's, each
- * saying something its first-form twin doesn't, so a test tells which it read.
+ * The same look with the second form's fields beside the first's, as the
+ * harness writes version 1, each saying something its first-form twin
+ * doesn't, so a test tells which it read. Its `about` names another page,
+ * which For You never opens.
  */
 const second = {
   ...first,
@@ -51,55 +54,55 @@ const second = {
   },
 };
 
-/** A look written only in the second form, as the harness will once every reader reads it. */
-const only = {
-  v: 2,
-  id: "look-2",
-  at: "2026-11-23T14:30:00Z",
-  state: "waiting",
-  happened: "The map's cells that need you are marked.",
-  act: "See the Map",
-  wants: { words: true },
-  about: { kind: "page", target: "https://sites.example/mycelium/", title: "The Map" },
-};
-
 it("a look of the second form leads with what happened and why it matters, as one paragraph", () => {
   const ask = asked(second, NOW);
   assert.ok(ask !== null, "a whole look of the second form wasn't read");
   assert.deepEqual(ask.said, [`${second.happened}. ${second.matters}`]);
-  assert.equal(ask.question, first.ask);
-  assert.equal(ask.ifNothing, first.ifNothing);
+  assert.equal(ask.question, first.ask, "the question isn't the record's ask");
+  assert.equal(ask.ifNothing, first.ifNothing, "what happens if nothing isn't the record's");
   assert.equal(ask.act, "Check the Key Line");
   assert.equal(ask.words, true);
   assert.equal(ask.asks, true);
 });
 
-it("what it's about is the second form's, wherever the first form says otherwise", () => {
+it("what it's about is the first form's, which For You opens, whatever about says", () => {
   const ask = asked(second, NOW);
-  assert.equal(ask?.kind, "page");
-  assert.equal(ask?.title, "The Home's Shared Head");
-  assert.equal(ask?.opens, "https://sites.example/home/");
-  const script = { ...second, about: { ...second.about, target: "javascript:alert(1)" } };
-  assert.equal(asked(script, NOW)?.opens, null, "the second form's script target was linked");
+  assert.equal(ask?.kind, "pr");
+  assert.equal(ask?.title, first.title);
+  assert.equal(ask?.opens, first.target);
+  const script = { ...second, target: "javascript:alert(1)" };
+  assert.equal(asked(script, NOW)?.opens, null, "a script target was linked");
   assert.equal(asked(script, NOW)?.act, null, "an act was offered that the page can't take");
 });
 
-it("a look in the second form alone is read whole", () => {
-  const ask = asked(only, NOW);
-  assert.ok(ask !== null, "a look of the second form alone wasn't read");
-  assert.equal(ask.title, "The Map");
-  assert.equal(ask.opens, "https://sites.example/mycelium/");
-  assert.deepEqual(ask.said, ["The map's cells that need you are marked."]);
-  assert.equal(ask.act, "See the Map");
-  assert.deepEqual(ask.choices, []);
-  assert.equal(ask.asks, true);
-});
-
-it("the second form is read whatever version the record says", () => {
-  const ask = asked({ ...second, v: 2 }, NOW);
-  assert.equal(ask?.act, "Check the Key Line");
-  assert.deepEqual(ask?.said, [`${second.happened}. ${second.matters}`]);
-  assert.equal(ask?.choices[0]?.follows, "The key line waits for a real key on touch.");
+it("a look For You doesn't read whole isn't shown", () => {
+  const unread = [
+    { ...second, v: 2 },
+    { ...second, kind: "slack" },
+    { ...second, kind: undefined },
+    { ...second, title: "" },
+    { ...second, target: undefined },
+    { ...second, id: "" },
+    { ...second, state: " waiting" },
+    { ...second, state: "waitng" },
+    { ...second, state: undefined },
+    {
+      v: 2,
+      id: "look-2",
+      state: "waiting",
+      happened: "The map's cells are marked.",
+      ...second.about,
+    },
+    "look-1",
+    null,
+  ];
+  for (const look of unread) {
+    assert.equal(
+      asked(look, NOW),
+      null,
+      `a look For You doesn't read was shown: ${JSON.stringify(look)}`,
+    );
+  }
 });
 
 it("each choice sends the value the session offered, with what follows from its label", () => {
@@ -137,22 +140,16 @@ it("a look of the first form reads from its why, with its question and an act fo
   const ask = asked(first, NOW);
   assert.deepEqual(ask?.said, [first.why]);
   assert.equal(ask?.question, first.ask);
+  assert.equal(ask?.ifNothing, first.ifNothing);
   assert.equal(ask?.act, ACTS.pr);
-  assert.equal(ask?.title, first.title);
   assert.equal(ask?.words, false);
 });
 
-it("a look missing its id, what it's about or a known kind isn't shown", () => {
-  assert.equal(asked({ ...first, id: "" }, NOW), null);
-  assert.equal(asked({ ...first, target: undefined }, NOW), null);
-  assert.equal(asked({ ...first, kind: "slack" }, NOW), null);
-  assert.equal(asked("look-1", NOW), null);
-  assert.equal(asked(null, NOW), null);
-});
-
-it("a second-form kind it doesn't know falls back to the first form's", () => {
-  const novel = { ...second, about: { ...second.about, kind: "slack" } };
-  assert.equal(asked(novel, NOW)?.kind, "pr");
+it("the second form's words lead only where it says what happened", () => {
+  const unsaid = { ...second, happened: "  " };
+  const ask = asked(unsaid, NOW);
+  assert.deepEqual(ask?.said, [first.why], "why it matters led without what happened");
+  assert.equal(ask?.act, ACTS.pr, "the second form's act was taken without what happened");
 });
 
 it("only a web address is a link: a file, a session or a script is shown, never opened", () => {
@@ -165,7 +162,7 @@ it("only a web address is a link: a file, a session or a script is shown, never 
   assert.equal(asked({ ...first, kind: "page", target: "javascript:alert(1)" }, NOW)?.opens, null);
 });
 
-it("at most four choices show, none sending nothing and no name twice, the first kept", () => {
+it("the first four choices sending a value show, each value as written, as For You offers", () => {
   const many = Array.from({ length: 6 }, (_, at) => ({
     value: `pick-${String(at)}`,
     label: `Pick ${String(at)}`,
@@ -180,61 +177,71 @@ it("at most four choices show, none sending nothing and no name twice, the first
     choices: [
       { value: "merge", label: "OK" },
       { value: "close", label: "ok" },
+      { value: "a" },
+      { value: "b" },
+      { value: "c" },
     ],
   };
-  assert.deepEqual(asked(twice, NOW)?.choices, [{ value: "merge", label: "OK", follows: "" }]);
-});
-
-it("an answered look says how and no longer asks", () => {
-  const picked = asked({ ...second, answer: "keep" }, NOW);
-  assert.equal(picked?.answered, "Keep It");
-  assert.equal(picked?.asks, false);
-  const where = asked({ ...second, answered: { choice: "show", at: "", where: "launcher" } }, NOW);
-  assert.equal(where?.answered, "Always Show It");
-  const told = asked({ ...second, answered: { words: "Leave it for now", at: "" } }, NOW);
-  assert.equal(told?.answered, "your own words");
+  assert.deepEqual(
+    asked(twice, NOW)?.choices.map((one) => one.value),
+    ["merge", "close", "a", "b"],
+    "the row offered other choices than For You's first four",
+  );
+  const padded = { ...first, choices: [{ value: "keep ", label: "Keep It" }, { value: " " }] };
+  assert.deepEqual(
+    asked(padded, NOW)?.choices.map((one) => one.value),
+    ["keep ", " "],
+    "a value wasn't kept exactly as the session offered it",
+  );
 });
 
 it("a look waits only as For You's Waiting holds it", () => {
-  for (const state of ["opened", "resolved", "cleared", "expired", "", "waitng"]) {
+  for (const state of ["opened", "resolved", "cleared", "expired"]) {
     assert.equal(asked({ ...second, state }, NOW)?.asks, false, `a look "${state}" still asked`);
   }
-  assert.equal(asked({ ...second, state: undefined }, NOW)?.asks, false);
   const lapsed = { ...second, expiresAt: "2026-11-23T14:59:00Z" };
   assert.equal(asked(lapsed, NOW)?.asks, false, "a look past its expiresAt still asked");
   const later = { ...second, expiresAt: "2026-11-23T16:00:00Z" };
   assert.equal(asked(later, NOW)?.asks, true, "a look before its expiresAt didn't ask");
+  assert.equal(asked({ ...second, expiresAt: NOW }, NOW)?.asks, false, "it asked at its expiry");
   const came = Date.parse(first.at);
   assert.equal(asked(second, came + QUIET_AFTER)?.asks, true, "a look quieted on the hour");
   assert.equal(asked(second, came + QUIET_AFTER + 1)?.asks, false, "a quiet look still asked");
   assert.equal(asked({ ...second, asks: false }, NOW)?.asks, false, "a look to read asked");
 });
 
-it("an answer is sent only as the look offered it, while it still asks", () => {
-  const ask = asked(second, NOW);
-  assert.ok(ask !== null, "a whole look of the second form wasn't read");
-  assert.deepEqual(answering(ask, { choice: "keep" }), {
+it("a time written in milliseconds lapses and quiets a look as an ISO time does", () => {
+  const lapsed = { ...second, expiresAt: NOW - 1 };
+  assert.equal(asked(lapsed, NOW)?.asks, false, "a look past a numeric expiresAt still asked");
+  assert.equal(asked({ ...second, expiresAt: NOW + 1 }, NOW)?.asks, true);
+  const old = { ...second, at: NOW - QUIET_AFTER - 1 };
+  assert.equal(asked(old, NOW)?.asks, false, "a look quiet by a numeric at still asked");
+  assert.equal(asked({ ...second, at: NOW - QUIET_AFTER }, NOW)?.asks, true);
+});
+
+it("an answer is sent only as the look offered it, while it still asks at the press", () => {
+  assert.deepEqual(answering(second, "keep", NOW), {
     act: "answer",
     look: "look-1",
     value: "keep",
     from: "joel",
   });
-  assert.equal(answering(ask, { choice: "Keep It" }), null, "a label was sent as a value");
-  assert.equal(answering(ask, { choice: "roll back" }), null);
-  assert.deepEqual(answering(ask, { words: "  Wait a day  " }), {
-    act: "answer",
-    look: "look-1",
-    words: "Wait a day",
-    from: "joel",
-  });
-  assert.equal(answering(ask, { words: "   " }), null);
-  const choicesOnly = asked(first, NOW);
-  assert.ok(choicesOnly !== null, "a whole look of the first form wasn't read");
-  assert.equal(answering(choicesOnly, { words: "Wait a day" }), null);
-  const resolved = asked({ ...second, state: "resolved" }, NOW);
-  assert.ok(resolved !== null, "a resolved look wasn't read");
-  assert.equal(answering(resolved, { choice: "keep" }), null, "a resolved look took an answer");
-  const answered = asked({ ...second, answer: "show" }, NOW);
-  assert.ok(answered !== null, "an answered look wasn't read");
-  assert.equal(answering(answered, { choice: "keep" }), null, "a look was answered twice");
+  assert.equal(answering(second, "Keep It", NOW), null, "a label was sent as a value");
+  assert.equal(answering(second, "roll back", NOW), null);
+  const padded = { ...first, choices: [{ value: "keep ", label: "Keep It" }] };
+  assert.equal(answering(padded, "keep ", NOW)?.value, "keep ", "the offered value was changed");
+  assert.equal(answering(padded, "keep", NOW), null, "a value the look didn't offer was sent");
+  assert.equal(answering({ ...second, state: "resolved" }, "keep", NOW), null);
+  assert.equal(
+    answering({ ...second, v: 2 }, "keep", NOW),
+    null,
+    "a look For You can't see took one",
+  );
+  const expiring = { ...second, expiresAt: NOW + 60_000 };
+  assert.ok(asked(expiring, NOW)?.asks, "a look before its expiry didn't ask");
+  assert.equal(
+    answering(expiring, "keep", NOW + 60_000),
+    null,
+    "a row left open answered a look past its expiry",
+  );
 });
