@@ -433,8 +433,10 @@ struct Asked {
     /// again since, [`REREAD`] on.
     trusted_at: Option<Instant>,
     reread: bool,
-    /// Whether it was refused once root had trusted it, which is for good:
-    /// what it ran while changed may still be there once it's set back.
+    /// Whether it's trusted no more, which is for good, outliving the
+    /// service in [`SPOILED`]: refused once root had trusted it, or seen
+    /// under a project setting that acts on it, whether trusted yet or not.
+    /// What it ran while changed may still be there once it's set back.
     spoiled: bool,
     /// Whether only [`LENT`] names it, no file root's Nix reads, so it's
     /// asked of every [`ASK_LENT`].
@@ -466,6 +468,11 @@ enum Unvouched {
     /// its pinned fingerprints show anything done to it meanwhile once the
     /// cloud answers again.
     Unanswered(String),
+    /// It answered, and the instance sits under a project setting that
+    /// would run something on it or make accounts there. It's trusted no
+    /// more, whether root trusted it yet or not, since what that ran stays
+    /// on its disk once the setting goes, out of sight of its audit log.
+    Project(vet::Sits),
     /// It answered, and the instance isn't as made.
     Refused(String),
 }
@@ -474,6 +481,18 @@ impl From<String> for Unvouched {
     fn from(why: String) -> Self {
         Self::Refused(why)
     }
+}
+
+/// What's journalled of instance `name` in `zone`, trusted no more for
+/// `why`, with how long that lasts and the one way back, [`SPOILED`] being
+/// `file`.
+fn spoiled_line(name: &str, zone: &str, why: &str, file: &Path) -> String {
+    format!(
+        "{name} in {zone} {why}, so root trusts it no more until the lender replaces it; \
+         it's trusted again only once root, or the service's own account, takes its line \
+         out of {} and nix-offload-lines restarts",
+        file.display()
+    )
 }
 
 /// The most a cloud token may hold.
@@ -516,18 +535,193 @@ pub struct HostKeys {
     asked: HashMap<(String, String), Asked>,
     config: PathBuf,
     said: HashMap<String, String>,
-    /// Whether the project's metadata holds, and when that was asked.
-    project: Option<(Instant, Result<(), String>)>,
+    /// How many lines it has journalled, so a test can tell a note said
+    /// once from one said again.
+    #[cfg(test)]
+    told: usize,
+    /// The project as the cloud last described it, and when that was asked.
+    project: Option<(Instant, Value)>,
+    /// Why [`SPOILED`] couldn't be read at the start, when it couldn't:
+    /// then root trusts no builder, and the file is never written, so the
+    /// builders it names aren't forgotten.
+    unread: Option<String>,
+    /// Whether [`SPOILED`] lacks a builder spoiled since, its write having
+    /// failed, so each pass writes it again until one holds.
+    unkept: bool,
+}
+
+/// The file beside gcloud's state naming each instance root trusts no
+/// more, by name and zone, one to a line, so a restart of the service,
+/// after which first trust can't see a project setting gone since, doesn't
+/// trust it again. A builder's name is its own for good, so the file grows
+/// only by the builders spoiled, and only root, or the service's own
+/// account, which owns the folder, can take one out.
+const SPOILED: &str = "spoiled";
+
+/// The builders, by name and zone, the [`SPOILED`] file's `text` names,
+/// or the first line that names none, by its number.
+fn spoiled_in(text: &str) -> Result<Vec<(String, String)>, usize> {
+    let mut spoiled = Vec::new();
+    for (number, line) in text.lines().enumerate() {
+        let words: Vec<&str> = line.split_whitespace().collect();
+        match words[..] {
+            [] => {}
+            [name, zone] => spoiled.push((name.to_owned(), zone.to_owned())),
+            _ => return Err(number + 1),
+        }
+    }
+    Ok(spoiled)
 }
 
 impl HostKeys {
-    /// None asked yet, with gcloud keeping its state in `config`.
+    /// None asked yet but those [`SPOILED`] beside `config` names, with
+    /// gcloud keeping its state in `config`.
     pub fn new(config: PathBuf) -> Self {
-        Self {
+        let mut keys = Self {
             asked: HashMap::new(),
             config,
             said: HashMap::new(),
+            #[cfg(test)]
+            told: 0,
             project: None,
+            unread: None,
+            unkept: false,
+        };
+        let file = keys.spoiled_file();
+        // Only a file that isn't there names nothing: one unread, or a line
+        // naming no builder, might name any, so root trusts none until it
+        // reads.
+        let kept = match fs::read_to_string(&file) {
+            Ok(text) => spoiled_in(&text).map_err(|line| format!("line {line} names no builder")),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+            Err(error) => Err(error.to_string()),
+        };
+        match kept {
+            Ok(spoiled) => {
+                for key in spoiled {
+                    let spoiled = Asked {
+                        spoiled: true,
+                        ..Asked::default()
+                    };
+                    keys.asked.insert(key, spoiled);
+                }
+            }
+            Err(why) => keys.unread = Some(format!("{} can't be read: {why}", file.display())),
+        }
+        keys
+    }
+
+    /// Where [`SPOILED`] is kept.
+    fn spoiled_file(&self) -> PathBuf {
+        self.config.with_file_name(SPOILED)
+    }
+
+    /// Writes every instance root trusts no more, `also` among them, to
+    /// [`SPOILED`], whole, flushed to disk and then named, so neither a
+    /// reader nor a lost power finds half of it, saying when it can't and
+    /// trying again each pass until it can. A file that couldn't be read
+    /// at the start is never written over.
+    fn keep_spoiled(&mut self, also: Option<(&str, &str)>) {
+        if self.unread.is_some() {
+            return;
+        }
+        let mut spoiled: Vec<String> = self
+            .asked
+            .iter()
+            .filter(|(_, asked)| asked.spoiled)
+            .map(|((name, zone), _)| format!("{name} {zone}"))
+            .chain(also.map(|(name, zone)| format!("{name} {zone}")))
+            .collect();
+        spoiled.sort();
+        spoiled.dedup();
+        let file = self.spoiled_file();
+        let writing = file.with_extension("writing");
+        let mut text = spoiled.join("\n");
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        let kept = fs::File::create(&writing)
+            .and_then(|mut draft| {
+                std::io::Write::write_all(&mut draft, text.as_bytes())?;
+                draft.sync_all()
+            })
+            .and_then(|()| fs::rename(&writing, &file))
+            .and_then(|()| {
+                file.parent()
+                    .map_or(Ok(()), |folder| fs::File::open(folder)?.sync_all())
+            });
+        self.unkept = kept.is_err();
+        if kept.is_err() {
+            let _ = fs::remove_file(&writing);
+        }
+        let unkept = kept.err().map(|error| {
+            format!(
+                "couldn't keep the builders root trusts no more in {} ({error}), so a restart \
+                 now would trust them again; it's tried again each pass",
+                file.display()
+            )
+        });
+        self.say(SPOILED, unkept);
+    }
+
+    /// Trusts no more every other instance root trusts, as the project's
+    /// setting `why` reaches every builder alike, and journals each.
+    fn spoil_trusted(&mut self, why: &str) {
+        let file = self.spoiled_file();
+        let mut spoiled = Vec::new();
+        for ((name, zone), asked) in &mut self.asked {
+            if asked.started.is_some() && !asked.spoiled {
+                (asked.spoiled, asked.host_key) = (true, None);
+                spoiled.push((name.clone(), zone.clone()));
+            }
+        }
+        for (name, zone) in spoiled {
+            let line = spoiled_line(&name, &zone, why, &file);
+            self.say(&name, Some(line));
+        }
+    }
+
+    /// What instance `name` in `zone` is once the project's setting `sits`
+    /// reaches it, `before` being what was said of it last: spoiled,
+    /// whether root trusted it yet or not, and every builder root trusts
+    /// with it, since the project is every builder's.
+    fn under_project(
+        &mut self,
+        (name, zone): (&str, &str),
+        sits: &vet::Sits,
+        before: Asked,
+    ) -> Asked {
+        self.spoil_trusted(&sits.why);
+        let said = spoiled_line(name, zone, &sits.why, &self.spoiled_file());
+        self.say(name, Some(said));
+        self.keep_spoiled(Some((name, zone)));
+        Asked {
+            host_key: None,
+            at: Some(Instant::now()),
+            spoiled: true,
+            ..before
+        }
+    }
+
+    /// What instance `name` in `zone` is once the cloud says `why` it's
+    /// refused, `before` being what was said of it last: spoiled when root
+    /// trusted it already, and untrusted otherwise.
+    fn refused(&mut self, (name, zone): (&str, &str), why: &str, before: Asked) -> Asked {
+        let spoiled = before.started.is_some();
+        let said = if spoiled {
+            spoiled_line(name, zone, why, &self.spoiled_file())
+        } else {
+            format!("{name} in {zone} {why}, so root trusts it no more")
+        };
+        self.say(name, Some(said));
+        if spoiled {
+            self.keep_spoiled(Some((name, zone)));
+        }
+        Asked {
+            host_key: None,
+            at: Some(Instant::now()),
+            spoiled,
+            ..before
         }
     }
 
@@ -538,6 +732,10 @@ impl HostKeys {
         match what {
             Some(what) if self.said.get(about) != Some(&what) => {
                 eprintln!("nix-offload: {what}");
+                #[cfg(test)]
+                {
+                    self.told += 1;
+                }
                 self.said.insert(about.to_owned(), what);
             }
             Some(_) => {}
@@ -607,7 +805,24 @@ impl HostKeys {
         before: Asked,
     ) -> Asked {
         let now = Instant::now();
+        if let Some(why) = self.unread.clone() {
+            let said = format!(
+                "root trusts no builder while {why}; once it reads, restart nix-offload-lines"
+            );
+            self.say(SPOILED, Some(said));
+            return Asked {
+                host_key: None,
+                at: Some(now),
+                ..before
+            };
+        }
         if before.spoiled {
+            // Said once after a start, when only the file says why.
+            if !self.said.contains_key(name) {
+                let why = "was trusted no more before nix-offload-lines last started";
+                let said = spoiled_line(name, zone, why, &self.spoiled_file());
+                self.say(name, Some(said));
+            }
             return Asked {
                 at: Some(now),
                 ..before
@@ -627,7 +842,9 @@ impl HostKeys {
                         self.vouched(settings, name, zone, &token, &pinned, first)
                             .map(Some)
                     }
-                    Err(why) => Err(Unvouched::Refused(why)),
+                    // Root's own files unread say nothing of the instance,
+                    // so nothing stands, and nothing is spoiled for good.
+                    Err(why) => Err(Unvouched::Unanswered(format!("root can't read {why}"))),
                 };
                 verdict.map(|vouched| (token, vouched))
             });
@@ -663,18 +880,10 @@ impl HostKeys {
                     ..before
                 };
             }
-            Err(Unvouched::Refused(why)) => {
-                self.say(
-                    name,
-                    Some(format!("{name} in {zone} {why}, so root trusts it no more")),
-                );
-                return Asked {
-                    host_key: None,
-                    at: Some(now),
-                    spoiled: before.started.is_some(),
-                    ..before
-                };
+            Err(Unvouched::Project(sits)) => {
+                return self.under_project((name, zone), &sits, before);
             }
+            Err(Unvouched::Refused(why)) => return self.refused((name, zone), &why, before),
         };
         let host_key = match before.host_key {
             Some(host_key) if wanted.contains(&host_key) => Some(host_key),
@@ -698,10 +907,13 @@ impl HostKeys {
     /// When instance `name` in `zone` last started, and its fingerprints,
     /// while the cloud says it's as `pinned` holds it, in a project whose
     /// metadata holds, and that neither moved since `first`, when root
-    /// first trusted it; why not otherwise. At first trust, its boot disk's
-    /// image is asked, it must have started once, soon after its making,
-    /// and the audit log must hold its making alone, as it must still when
-    /// `first` says it's read again.
+    /// first trusted it; why not otherwise. A start or fingerprint moved is
+    /// said before the project, so the journal gives that as the reason. At
+    /// first trust, the project is asked afresh, so a read taken before the
+    /// builder booted can't vouch for it, its boot disk's image is asked,
+    /// it must have started once, soon after its making, and the audit log
+    /// must hold its making alone, as it must still when `first` says it's
+    /// read again.
     fn vouched(
         &mut self,
         settings: &Settings,
@@ -714,7 +926,6 @@ impl HostKeys {
         let described = self.describe(settings, "instances", name, zone, token)?;
         let started = vet::vetted(&described, pinned)?;
         let marks = vet::marks(&described).ok_or("says nothing of its fingerprints".to_owned())?;
-        self.project_holds(settings, token)?;
         match first {
             Some((first, _, _)) if first != started => Err(Unvouched::Refused(format!(
                 "started again at {started}, after root first trusted it at {first}"
@@ -724,6 +935,7 @@ impl HostKeys {
                  to {marks}"
             ))),
             Some((_, _, again)) => {
+                self.project_holds(settings, token, &described, false)?;
                 if again {
                     let disk = vet::boot_disk(&described).ok_or("names no boot disk".to_owned())?;
                     let history = self.history(settings, name, zone, &disk, token)?;
@@ -734,6 +946,7 @@ impl HostKeys {
             }
             None => {
                 vet::started_once(&described)?;
+                self.project_holds(settings, token, &described, true)?;
                 let disk = vet::boot_disk(&described).ok_or("names no boot disk".to_owned())?;
                 let described = self.describe(settings, "disks", &disk, zone, token)?;
                 vet::imaged(&described, pinned)?;
@@ -743,21 +956,53 @@ impl HostKeys {
         }
     }
 
-    /// Whether the project's metadata holds, as [`vet::project_holds`]
-    /// says, asked again every [`ASK_AGAIN`] while the cloud answers.
-    fn project_holds(&mut self, settings: &Settings, token: &Path) -> Result<(), Unvouched> {
-        if let Some((at, holds)) = &self.project
-            && at.elapsed() < ASK_AGAIN
-        {
-            return holds.clone().map_err(Unvouched::Refused);
-        }
-        let words = ["compute", "project-info", "describe", "--format=json"];
-        let said = self.gcloud(settings, &words, token)?;
-        let described: Value = serde_json::from_str(&said)
-            .map_err(|_| Unvouched::Unanswered("its project's answer wasn't JSON".to_owned()))?;
-        let holds = vet::project_holds(&described);
-        self.project = Some((Instant::now(), holds.clone()));
-        holds.map_err(Unvouched::Refused)
+    /// Whether the project's metadata holds for the instance `instance`,
+    /// as [`vet::project_holds`] says, the project asked again every
+    /// [`ASK_AGAIN`] while the cloud answers, or at once when `fresh`. A
+    /// key it lets through that root doesn't know is journalled once,
+    /// whatever the verdict, so it can be looked into, and the note goes
+    /// once the key does.
+    fn project_holds(
+        &mut self,
+        settings: &Settings,
+        token: &Path,
+        instance: &Value,
+        fresh: bool,
+    ) -> Result<(), Unvouched> {
+        let described = match &self.project {
+            Some((at, described)) if !fresh && at.elapsed() < ASK_AGAIN => described.clone(),
+            _ => {
+                let words = ["compute", "project-info", "describe", "--format=json"];
+                let said = self.gcloud(settings, &words, token)?;
+                let described: Value = serde_json::from_str(&said).map_err(|_| {
+                    Unvouched::Unanswered("its project's answer wasn't JSON".to_owned())
+                })?;
+                // The cloud gives every project's metadata a fingerprint,
+                // set or not, so an answer without one is no description of
+                // it, and would otherwise read as a project setting nothing.
+                let marked = described["commonInstanceMetadata"]["fingerprint"]
+                    .as_str()
+                    .is_some_and(|mark| !mark.is_empty());
+                if !marked {
+                    return Err(Unvouched::Unanswered(
+                        "its project's answer gave no metadata fingerprint".to_owned(),
+                    ));
+                }
+                self.project = Some((Instant::now(), described.clone()));
+                described
+            }
+        };
+        let unknown = vet::project_unknown(&described);
+        let noted = (!unknown.is_empty()).then(|| {
+            format!(
+                "the project sets the metadata {}, which root doesn't know what it does; it \
+                 names no boot script, ssh key, OS Login or OS Config, so it alone takes no \
+                 builder away, and it's worth a look",
+                unknown.join(", ")
+            )
+        });
+        self.say("the project", noted);
+        vet::project_holds(&described, instance).map_err(Unvouched::Project)
     }
 
     /// A copy of the token in `token`, which the lender's account writes,
@@ -1050,6 +1295,9 @@ fn put(path: &Path, text: &str) -> std::io::Result<()> {
 
 /// Copies what passes once: each of the lender's files into root's.
 pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
+    if keys.unkept {
+        keys.keep_spoiled(None);
+    }
     let texts: Vec<String> = settings
         .files
         .iter()
@@ -1363,6 +1611,7 @@ mod tests {
     fn marked_in(dir: &Path, started: &str, extra: &[(&str, &str)], mark: &str) {
         let mut items = vec![
             json!({"key": "block-project-ssh-keys", "value": "TRUE"}),
+            json!({"key": "enable-oslogin", "value": "FALSE"}),
             json!({"key": "offload-hook-key", "value": ROOT_KEY}),
             json!({"key": "startup-script", "value": "#!/bin/bash\necho the builder\n"}),
         ];
@@ -1426,7 +1675,7 @@ mod tests {
             json!({"sourceImage": image}).to_string(),
         )
         .expect("the disk");
-        let project = json!({"commonInstanceMetadata": {"items": [
+        let project = json!({"commonInstanceMetadata": {"fingerprint": "p1", "items": [
             {"key": "enable-oslogin", "value": "TRUE"},
             {"key": "ssh-keys", "value": "me:ssh-ed25519 AAAA me"},
         ]}});
@@ -1590,18 +1839,367 @@ mod tests {
         );
     }
 
+    /// Sets the project's metadata in `dir`'s cloud to `items`.
+    fn project_in(dir: &tempfile::TempDir, items: &Value) {
+        let project = json!({"commonInstanceMetadata": {"fingerprint": "p2", "items": items}});
+        fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
+    }
+
+    /// Sets the project's startup script in `dir`'s cloud.
+    fn scripted(dir: &tempfile::TempDir) {
+        project_in(
+            dir,
+            &json!([{"key": "startup-script-url", "value": "gs://mine/script"}]),
+        );
+    }
+
+    /// Clears the project's metadata in `dir`'s cloud, and root's read of it.
+    fn cleared(dir: &tempfile::TempDir, keys: &mut HostKeys) {
+        project_in(dir, &json!([]));
+        keys.project = None;
+    }
+
+    // A builder first seen under a project script ran it at its one boot,
+    // which nothing on the instance or its disk shows, so it's never lent,
+    // even once the script goes, nor once root's lines service starts again,
+    // when first trust would find nothing of it.
     #[test]
     fn an_instance_under_a_project_setting_more_lends_nothing() {
         let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
-        let project = json!({"commonInstanceMetadata": {"items": [
-            {"key": "startup-script-url", "value": "gs://mine/script"},
-        ]}});
-        fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
+        scripted(&dir);
         copy_once(&settings, &mut keys);
         assert_eq!(
             lent_to_root(&dir),
             "",
             "a project's startup script was let run"
+        );
+        cleared(&dir, &mut keys);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a builder first seen under a project script was trusted once it went"
+        );
+        let mut started = HostKeys::new(dir.path().join("config"));
+        copy_once(&settings, &mut started);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a builder seen under a project script was trusted once the service started again"
+        );
+        let restarted = started.said.get("offload-1a2b");
+        assert!(
+            restarted.is_some_and(|said| said.contains("before nix-offload-lines last started")),
+            "a builder kept out after a start wasn't said to be: {restarted:?}"
+        );
+        let said = keys.said.get("offload-1a2b");
+        assert!(
+            said.is_some_and(|said| said.contains("until the lender replaces it")
+                && said.contains(&dir.path().join(SPOILED).display().to_string())),
+            "the spoil didn't say how long it lasts or the way back: {said:?}"
+        );
+    }
+
+    // What an OS Config job ran as root stays on a builder's disk once the
+    // setting goes, logged under the project rather than the instance, so a
+    // builder seen under it, trusted yet or not, is trusted no more, and is
+    // kept for a restart.
+    #[test]
+    fn a_builder_under_os_config_stays_out_once_it_goes() {
+        for trusted in [false, true] {
+            let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+            if trusted {
+                copy_once(&settings, &mut keys);
+                assert_eq!(
+                    lent_to_root(&dir),
+                    format!("{}\n", line(URI, KEY, HOST)),
+                    "never trusted"
+                );
+            }
+            project_in(&dir, &json!([{"key": "ENABLE-OSCONFIG", "value": "TRUE"}]));
+            keys.project = None;
+            due(&mut keys);
+            copy_once(&settings, &mut keys);
+            assert_eq!(lent_to_root(&dir), "", "a builder under OS Config was lent");
+            cleared(&dir, &mut keys);
+            due(&mut keys);
+            copy_once(&settings, &mut keys);
+            assert_eq!(
+                lent_to_root(&dir),
+                "",
+                "a builder seen under OS Config, trusted before: {trusted}, was lent once it went"
+            );
+            assert_eq!(
+                fs::read_to_string(dir.path().join(SPOILED)).unwrap_or_default(),
+                "offload-1a2b us-east1-b\n",
+                "a builder seen under OS Config, trusted before: {trusted}, wasn't kept"
+            );
+        }
+    }
+
+    // Only a spoiled file that isn't there names nothing: one that can't be
+    // read, or holds a line naming no builder, might name any, so root
+    // trusts none and never writes over it, and a line spaced otherwise
+    // still names its builder.
+    #[test]
+    fn a_spoiled_file_that_cant_be_read_trusts_nothing() {
+        for (kept, said) in [
+            (None, "can't be read"),
+            (
+                Some("offload-1a2b us-east1-b x\n"),
+                "line 1 names no builder",
+            ),
+            (
+                Some("offload-1a2b\tus-east1-b \n"),
+                "before nix-offload-lines",
+            ),
+        ] {
+            let (dir, settings, _) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+            let file = dir.path().join(SPOILED);
+            match kept {
+                Some(text) => fs::write(&file, text).expect("the spoiled file"),
+                None => fs::create_dir(&file).expect("a spoiled file unread"),
+            }
+            let mut keys = HostKeys::new(dir.path().join("config"));
+            copy_once(&settings, &mut keys);
+            assert_eq!(
+                lent_to_root(&dir),
+                "",
+                "a builder was lent beside a spoiled file reading {kept:?}"
+            );
+            assert!(
+                keys.said.values().any(|line| line.contains(said)),
+                "a spoiled file reading {kept:?} wasn't said: {:?}",
+                keys.said
+            );
+            if let Some(text) = kept {
+                assert_eq!(
+                    fs::read_to_string(&file).expect("the spoiled file"),
+                    text,
+                    "the spoiled file was written over"
+                );
+            }
+        }
+    }
+
+    // A spoil the file couldn't take is written at the next pass that can,
+    // so a restart after it doesn't trust the builder again.
+    #[test]
+    fn a_spoil_that_couldnt_be_kept_is_kept_once_it_can_be() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        let blocking = dir.path().join(SPOILED).with_extension("writing");
+        fs::create_dir(&blocking).expect("a draft that can't be written");
+        scripted(&dir);
+        copy_once(&settings, &mut keys);
+        assert!(
+            keys.unkept && !dir.path().join(SPOILED).exists(),
+            "a spoil was kept though its draft couldn't be written"
+        );
+        fs::remove_dir(&blocking).expect("the draft unblocked");
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            fs::read_to_string(dir.path().join(SPOILED)).unwrap_or_default(),
+            "offload-1a2b us-east1-b\n",
+            "a spoil once unkept wasn't kept once it could be"
+        );
+        assert!(!keys.unkept, "a spoil kept was still said to be unkept");
+    }
+
+    // The project is every builder's, so what spoils one spoils every
+    // builder root trusts, whenever its own next look would fall, and the
+    // one that looked as well, trusted or not, each kept for a restart.
+    #[test]
+    fn a_project_setting_spoils_every_trusted_builder() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        let other = ("offload-9z8y".to_owned(), "us-east1-b".to_owned());
+        let trusted = Asked {
+            host_key: Some(OTHER.to_owned()),
+            started: Some(STARTED.to_owned()),
+            ..Asked::default()
+        };
+        keys.asked.insert(other.clone(), trusted);
+        project_in(&dir, &json!([{"key": "enable-osconfig", "value": "TRUE"}]));
+        copy_once(&settings, &mut keys);
+        let spoiled = &keys.asked[&other];
+        assert!(
+            spoiled.spoiled && spoiled.host_key.is_none(),
+            "a trusted builder stayed trusted under a project setting another's look found"
+        );
+        let kept = fs::read_to_string(dir.path().join(SPOILED)).unwrap_or_default();
+        assert_eq!(
+            kept, "offload-1a2b us-east1-b\noffload-9z8y us-east1-b\n",
+            "the builder that looked and the trusted one should both be kept as spoiled"
+        );
+    }
+
+    // An answer naming no metadata fingerprint is no description of the
+    // project, so it vouches for nothing.
+    #[test]
+    fn a_project_answer_without_its_fingerprint_lends_nothing() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        fs::write(dir.path().join("project.json"), "{}").expect("the project");
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an empty answer vouched for the project"
+        );
+        let said = keys.said.get("offload-1a2b");
+        assert!(
+            said.is_some_and(|said| said.contains("no metadata fingerprint")),
+            "the empty answer wasn't said: {said:?}"
+        );
+    }
+
+    // First trust asks the project afresh, so a read another builder left
+    // from before this one booted can't vouch for it.
+    #[test]
+    fn first_trust_reads_the_project_afresh() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        keys.project = Some((Instant::now(), json!({})));
+        scripted(&dir);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a project read from before the builder booted vouched for it"
+        );
+    }
+
+    #[test]
+    fn a_project_key_root_doesnt_know_leaves_a_trusted_builder_lent() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        project_in(
+            &dir,
+            &json!([
+                {"key": "ssh-keys", "value": "someone:ssh-ed25519 AAAA"},
+                {"key": "gke-a-cluster-0e6a923f-secondary-ranges", "value": "pods:default"},
+            ]),
+        );
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "a cloud product's own project key took a trusted builder away"
+        );
+        let noted = keys.said.get("the project").cloned();
+        assert!(
+            noted
+                .as_deref()
+                .is_some_and(|said| said.contains("gke-a-cluster-0e6a923f-secondary-ranges")),
+            "the key root doesn't know wasn't named: {noted:?}"
+        );
+        let told = keys.told;
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(keys.told, told, "something was journalled anew");
+        cleared(&dir, &mut keys);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            keys.said.get("the project"),
+            None,
+            "a key gone from the project was still said of it"
+        );
+    }
+
+    // A reboot from inside the guest runs a project's boot script without
+    // the cloud counting a start, so a trusted builder seen under one is
+    // trusted no more, and the unknown key that came with it is still said.
+    #[test]
+    fn a_project_boot_script_spoils_a_trusted_builder() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        project_in(
+            &dir,
+            &json!([
+                {"key": "startup-script-url", "value": "gs://mine/script"},
+                {"key": "came-with-it", "value": "x"},
+            ]),
+        );
+        // Root's read of the project runs out as it would, by its age.
+        keys.project = keys.project.take().map(|(at, described)| {
+            let aged = at.checked_sub(ASK_AGAIN).expect("a time past");
+            (aged, described)
+        });
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a project's startup script was let run"
+        );
+        assert!(
+            keys.said
+                .get("the project")
+                .is_some_and(|said| said.contains("came-with-it")),
+            "a key that came with the script wasn't said"
+        );
+        cleared(&dir, &mut keys);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a builder seen under a project script was trusted again once it went"
+        );
+    }
+
+    // A trusted builder's read of the project stands for ASK_AGAIN, so the
+    // cloud is asked it once in a while, not at every look.
+    #[test]
+    fn a_trusted_builder_reads_the_project_again_only_once_its_read_runs_out() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        let read = || {
+            fs::read_to_string(dir.path().join("asked"))
+                .expect("gcloud's log")
+                .matches("project-info describe")
+                .count()
+        };
+        let before = read();
+        scripted(&dir);
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            read(),
+            before,
+            "the project was asked again within its read's time"
+        );
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "a read still standing wasn't used"
+        );
+    }
+
+    // A builder started again while a project script is set is said to
+    // have started again, which is what spoiled it.
+    #[test]
+    fn a_builder_started_again_under_a_project_script_is_said_to_have_started_again() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        scripted(&dir);
+        instance_in(dir.path(), "2026-11-10T06:00:00.000-08:00", &[]);
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(lent_to_root(&dir), "", "a restarted builder was lent");
+        let said = keys.said.get("offload-1a2b");
+        assert!(
+            said.is_some_and(|said| said.contains("started again")),
+            "the journal gave another reason than the start: {said:?}"
         );
     }
 
@@ -1626,6 +2224,12 @@ mod tests {
             lent_to_root(&dir),
             "",
             "its first fingerprint trusted it again"
+        );
+        copy_once(&settings, &mut HostKeys::new(dir.path().join("config")));
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "an instance changed and set back was trusted once the service started again"
         );
     }
 
