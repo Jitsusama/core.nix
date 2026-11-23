@@ -551,16 +551,20 @@ fn a_closed_mark_stamped_ahead_of_now_counts_from_now() {
     let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
     let ahead = at + 10 * grace;
     let kept = Arrangement::of(&json!({"v": 1,
-            "boots": {"this": {"s-shut": {"column": 4, "closed": ahead}}}}));
+            "boots": {"this": {"s-shut": {"column": 4, "closed": ahead},
+                "s-parked": {"column": 5, "closed": ahead}}}}));
     let shut = Windowless {
         closed: HashSet::from(["s-shut".to_owned()]),
+        heard: HashSet::from(["s-parked".to_owned()]),
         ..Windowless::default()
     };
     let stepped = kept.kept("this", "", Map::new(), Vec::new(), &shut, at);
     assert_eq!(
         stepped.boots["this"],
-        json!({"s-shut": {"column": 4, "closed": at}}),
-        "a mark ahead of now, as after the clock stepped back, is stamped now"
+        json!({"s-shut": {"column": 4, "closed": at},
+            "s-parked": {"column": 5, "closed": at}}),
+        "a mark ahead of now, as after the clock stepped back, is stamped now, \
+         on one parked since as on one closed"
     );
     assert_eq!(
         stepped.let_go_at("this"),

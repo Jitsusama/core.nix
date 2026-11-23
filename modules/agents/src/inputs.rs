@@ -110,7 +110,7 @@ pub struct Inputs {
     /// Why the last write of `arrangement` failed, while it holds more
     /// than its file does, so the next keep writes it though nothing
     /// moved, and the journal hears a failure once until it changes.
-    unwritten: Option<String>,
+    pub unwritten: Option<String>,
     /// Where the windows of sessions moving onto pi's host sat, as the
     /// shell said last.
     pub kept_places: KeptPlaces,
@@ -270,15 +270,25 @@ impl Inputs {
 
     /// Keeps where each session's window sits now (arrangement.rs),
     /// writing it to `path` when it moved and saying when it can't.
-    /// Nothing's kept on a boot Linux doesn't name, nor while the windows
-    /// daemon lists no window: that would take the last window Joel
-    /// closed as orphaned, never let go, and write this boot's other
-    /// windows' places as none. It answers when, in ms since the epoch, a place closed by hand is
-    /// to be let go, so it's kept again then, or soon after a write that
-    /// failed, so the file catches up though no window moves.
+    /// Nothing's kept on a boot Linux doesn't name, nor worked out while
+    /// the windows daemon lists no window: that would take the last window
+    /// Joel closed as orphaned, never let go, and write this boot's other
+    /// windows' places as none. What a failed write left unwritten is
+    /// written all the same. It answers when, in ms since the epoch, a
+    /// place closed by hand is to be let go, so it's kept again then, or
+    /// soon after a write that failed, so the file catches up though no
+    /// window moves.
     pub fn keep_places(&mut self, path: &Path) -> Option<u64> {
-        if self.boot.is_empty() || self.windows.records().next().is_none() {
+        if self.boot.is_empty() {
             return None;
+        }
+        let at = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+        if self.windows.records().next().is_none() {
+            if self.unwritten.is_none() {
+                return None;
+            }
+            self.keep(self.arrangement.clone(), path);
+            return self.kept_again_at(at);
         }
         let sessions: Vec<Session> = self
             .sessions
@@ -294,7 +304,6 @@ impl Inputs {
         };
         let now = arrangement::now(sessions.iter().copied(), &paired, &desk);
         let unwindowed = arrangement::unwindowed(sessions.iter().copied(), &paired, &desk);
-        let at = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
         let kept = self.arrangement.kept(
             &self.boot,
             self.restoring(),
@@ -303,23 +312,35 @@ impl Inputs {
             &unwindowed,
             at,
         );
-        // Kept in memory either way, so a closed mark keeps the time it
-        // was stamped at: one stamped again at each try would never come
-        // due while the disk stays full.
         if kept != self.arrangement || self.unwritten.is_some() {
-            let why = kept.write(path).err().map(|why| why.to_string());
-            if why.is_some() && why != self.unwritten {
-                eprintln!(
-                    "agents: can't keep {}: {}",
-                    path.display(),
-                    why.as_deref().unwrap_or("")
-                );
-            } else if why.is_none() && self.unwritten.is_some() {
-                eprintln!("agents: kept {} again", path.display());
-            }
-            self.unwritten = why;
-            self.arrangement = kept;
+            self.keep(kept, path);
         }
+        self.kept_again_at(at)
+    }
+
+    /// Writes `kept` to `path`, journalling a failure once until its
+    /// error changes and once more when a write succeeds again. It's
+    /// kept in memory either way, so a closed mark keeps the time it was
+    /// stamped at: one stamped again at each try would never come due
+    /// while the disk stays full.
+    fn keep(&mut self, kept: Arrangement, path: &Path) {
+        let why = kept.write(path).err().map(|why| why.to_string());
+        if why.is_some() && why != self.unwritten {
+            eprintln!(
+                "agents: can't keep {}: {}",
+                path.display(),
+                why.as_deref().unwrap_or("")
+            );
+        } else if why.is_none() && self.unwritten.is_some() {
+            eprintln!("agents: kept {} again", path.display());
+        }
+        self.unwritten = why;
+        self.arrangement = kept;
+    }
+
+    /// When the places are to be kept again from `at`: the first let-go
+    /// due, or sooner while a write has failed.
+    fn kept_again_at(&self, at: u64) -> Option<u64> {
         let let_go = self.arrangement.let_go_at(&self.boot);
         if self.unwritten.is_some() {
             let again = at.saturating_add(WRITE_AGAIN_MS);
@@ -1306,6 +1327,8 @@ mod tests {
         ]}));
         let folder =
             std::env::temp_dir().join(format!("agents-inputs-gone-{}", std::process::id()));
+        // Only this case's own folder, left by a run that failed.
+        let _ = std::fs::remove_dir_all(&folder);
         let path = folder.join("arrangement.json");
         assert_eq!(inputs.keep_places(&path), None);
         assert!(
@@ -1332,7 +1355,7 @@ mod tests {
             inputs.arrangement.boots["this-one"]["s-o"]
                 .get("orphaned")
                 .is_none(),
-            "the last window closed by hand isn't taken as orphaned, so its place still goes"
+            "the last window closed by hand isn't taken as orphaned, never then let go"
         );
         assert_eq!(
             inputs.arrangement.others["this-one"], slack,
@@ -1351,6 +1374,8 @@ mod tests {
         ]}));
         let folder =
             std::env::temp_dir().join(format!("agents-inputs-keep-{}", std::process::id()));
+        // Only this case's own folder, left by a run that failed.
+        let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("a folder");
         let blocked = folder.join("blocked");
         std::fs::write(&blocked, "").expect("a file where its folder would be");
@@ -1363,26 +1388,50 @@ mod tests {
             (before..=before + WRITE_AGAIN_MS + 1_000).contains(&again),
             "soon, though no place is closed: {again} from {before}"
         );
-        // A place closed by hand due 3 s from now comes first: the retry
-        // never puts off its let-go.
+        // A place closed by hand due before the retry comes first: the
+        // retry never puts off its let-go.
         let grace = u64::try_from(arrangement::CLOSED_FOR.as_millis()).unwrap_or(u64::MAX);
-        let due = before + 3_000;
-        inputs.arrangement.boots.insert(
-            "this-one".into(),
-            json!({"s-x": {"column": 1, "closed": due - grace}}),
-        );
+        let closed = |due: u64| json!({"s-x": {"column": 1, "closed": due - grace}});
+        let soon = before + WRITE_AGAIN_MS - 1_000;
+        inputs
+            .arrangement
+            .boots
+            .insert("this-one".into(), closed(soon));
         assert_eq!(
             inputs.keep_places(&path),
-            Some(due),
+            Some(soon),
             "a let-go due before the retry is kept for"
+        );
+        // One due after it waits for the retry.
+        let late = before + 60_000;
+        inputs
+            .arrangement
+            .boots
+            .insert("this-one".into(), closed(late));
+        let again = inputs.keep_places(&path).expect("tried again");
+        assert!(
+            again < late,
+            "a let-go due later doesn't put off the retry: {again}"
+        );
+        inputs.windows.took(&json!({"records": []}));
+        assert!(
+            inputs.keep_places(&path).is_some_and(|again| again < late),
+            "with no window listed, what's unwritten is still tried again soon"
         );
         std::fs::remove_file(&blocked).expect("the way cleared");
         assert_eq!(
             inputs.keep_places(&path),
-            Some(due),
+            Some(late),
             "once it can, it's written though nothing moved, and only the let-go waits"
         );
-        assert!(path.exists(), "the file holds what memory does");
+        let written: Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("the file written"))
+                .expect("the file reads");
+        assert_eq!(
+            Arrangement::of(&written).boots,
+            inputs.arrangement.boots,
+            "the file holds what memory does"
+        );
         // Only this case's own folder, which the next run makes afresh.
         let _ = std::fs::remove_dir_all(&folder);
     }
