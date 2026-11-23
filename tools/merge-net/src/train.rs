@@ -47,8 +47,9 @@
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
-//! off. What landed is kept a line each in `train/landed.jsonl`, so a day's
-//! rides can be counted against the runs again they saved.
+//! off. What landed, and each rider that left unlanded with when it
+//! boarded, is kept a line each in `train/landed.jsonl`, so a day's rides
+//! can be counted against the runs again they saved.
 
 use std::fs;
 use std::io;
@@ -73,7 +74,7 @@ use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
-use landed::{boarded_at, keep_fell, keep_landed};
+use landed::{Left, boarded_at, keep_landed, keep_left};
 use landing::{Landing, land};
 use pulls::aboard;
 pub use pulls::drafted;
@@ -164,9 +165,20 @@ pub fn fell(root: &Path, head: &str) -> Option<String> {
         .map(|why| why.trim().to_owned())
 }
 
-/// Take the rider at `head` off the train.
-fn alight(root: &Path, head: &str) {
-    let _ = fs::remove_file(riders_folder(root).join(format!("{head}.json")));
+/// Take the rider at `head` off the train, saying whether it was on it.
+fn alight(root: &Path, head: &str) -> bool {
+    fs::remove_file(riders_folder(root).join(format!("{head}.json"))).is_ok()
+}
+
+/// Take the rider at `head` off the train without landing, as it left
+/// `how`, keeping when it boarded. Kept only once it is off, so a rider
+/// not aboard keeps nothing, and one whose file stays keeps no line until
+/// it truly leaves, which would count it twice.
+fn leave(root: &Path, head: &str, how: Left) {
+    let boarded = boarded_at(root, &[head.to_owned()]);
+    if alight(root, head) {
+        keep_left(root, head, &boarded, how);
+    }
 }
 
 /// Take the rider at `head` off the train for `why`, so `ready` runs it
@@ -179,8 +191,7 @@ pub fn fall(root: &Path, head: &str, why: &str) -> io::Result<()> {
     let fell = fell_folder(root);
     fs::create_dir_all(&fell)?;
     fs::write(fell.join(head), format!("{why}\n"))?;
-    keep_fell(root, head);
-    alight(root, head);
+    leave(root, head, Left::Fell);
     Ok(())
 }
 
@@ -282,7 +293,7 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         }
     }
     if !goes_or_starts(&root) {
-        alight(&root, head);
+        leave(&root, head, Left::Off);
         return None;
     }
     let others = riders(&root).len().saturating_sub(1);
@@ -306,7 +317,7 @@ pub fn riding(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     rider_at(&root, head)?;
     if !goes_or_starts(&root) {
-        alight(&root, head);
+        leave(&root, head, Left::Off);
         return None;
     }
     Some(rides_said(&root))

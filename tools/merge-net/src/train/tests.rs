@@ -326,6 +326,30 @@ fn a_partial_landing_keeps_the_landed_drops_the_refused_and_seats_the_rest() {
 }
 
 #[test]
+fn a_rider_that_steps_off_keeps_its_wait_once_and_one_not_aboard_none() {
+    let root = root("off");
+    board(&root, &rider("a1", 10)).unwrap();
+    leave(&root, "a1", Left::Off);
+    leave(&root, "a1", Left::Off);
+    leave(&root, "never", Left::Fell);
+    let kept = fs::read_to_string(folder(&root).join("landed.jsonl")).unwrap();
+    let lines: Vec<Value> = kept
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(
+        lines
+            .iter()
+            .map(|line| (&line["off"], &line["fell"], &line["boarded"]))
+            .collect::<Vec<_>>(),
+        [(&json!(["a1"]), &Value::Null, &json!([10]))],
+        "a rider that stepped off wasn't kept once with its boarding, or one not aboard was"
+    );
+    assert!(riders(&root).is_empty(), "the rider stayed aboard");
+    fs::remove_dir_all(&root).unwrap();
+}
+
+#[test]
 fn a_landing_keeps_when_each_rider_boarded_in_its_heads_order() {
     let root = root("boarded");
     for (head, at) in [("a1", 10), ("b2", 20)] {

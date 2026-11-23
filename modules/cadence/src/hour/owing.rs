@@ -550,8 +550,8 @@ mod tests {
         };
         file(&mut ledger, &[quiet], "2026-11-22", 93_600);
         assert!(
-            !ledger[0].open,
-            "a queue nothing passed through kept its ask"
+            ledger[0].open,
+            "a quiet queue closed the ask, though a wedged one reads the same"
         );
     }
 

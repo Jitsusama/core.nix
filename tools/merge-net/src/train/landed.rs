@@ -1,6 +1,6 @@
-//! The record of what the train landed, and of each rider it refused, a
-//! line each in `train/landed.jsonl`, which cadence reads for how long
-//! riders waited.
+//! The record of what the train landed, and of each rider that left it
+//! without landing, a line each in `train/landed.jsonl`, which cadence
+//! reads for how long riders waited.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -47,22 +47,29 @@ pub(super) fn keep_landed(
     keep(root, &line, &format!("landing at {landed}"));
 }
 
-/// Keep that the rider at `head` fell off, and when it boarded, read
-/// before it alights, so its wait counts though it never landed: a train
-/// that keeps refusing riders would otherwise read better than it is. One
-/// not aboard waited on no train, so nothing is kept of it.
-pub(super) fn keep_fell(root: &Path, head: &str) {
-    let heads = [head.to_owned()];
-    let boarded = boarded_at(root, &heads);
-    if boarded.iter().all(Option::is_none) {
-        return;
-    }
-    let line = json!({
+/// How a rider left the train without landing.
+#[derive(Clone, Copy)]
+pub(super) enum Left {
+    /// Refused, to run again alone, as `fall` takes one.
+    Fell,
+    /// Stepped off: its pull request a draft, moved on, closed or unread.
+    Off,
+}
+
+/// Keep that the rider at `head`, which `boarded` when it was aboard, left
+/// `how`, so its wait counts though it never landed: a train that sheds
+/// riders would otherwise read better than it is.
+pub(super) fn keep_left(root: &Path, head: &str, boarded: &[Option<u64>], how: Left) {
+    let field = match how {
+        Left::Fell => "fell",
+        Left::Off => "off",
+    };
+    let mut line = json!({
         "at": crate::state::now(),
-        "fell": heads,
         "boarded": boarded,
     });
-    keep(root, &line, &format!("rider {head} falling off"));
+    line[field] = json!([head]);
+    keep(root, &line, &format!("rider {head} leaving"));
 }
 
 /// Add `line` to the record, saying `what` wasn't kept where it can't be.

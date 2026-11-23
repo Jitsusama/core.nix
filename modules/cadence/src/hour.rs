@@ -32,7 +32,7 @@ use jiff::tz::TimeZone;
 use terminal_kit::Failure;
 
 use crate::findings;
-use crate::mesh::Mesh;
+use crate::mesh::{Mesh, Presence, Rosters, running};
 use crate::tracking::Tracking;
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
 use card::{Kept, compose};
@@ -377,18 +377,17 @@ fn rounds_per_merge(
         let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
             .map(|b| b.trim().to_owned())
             .unwrap_or_default();
-        // A pid from another boot may name some other process now.
+        let rosters = mesh.rostered(now);
         let there = |address: &str| {
-            let presence = presences
+            presences
                 .iter()
                 .filter(|p| p.addresses.iter().any(|a| a == address))
-                .max_by_key(|p| p.at.to_string());
-            let this_boot = presence
-                .and_then(|p| p.owner.as_ref()?.boot_id.as_deref())
-                .is_some_and(|b| b == boot);
-            crate::mesh::alive(presence, |pid| {
-                this_boot && Path::new(&format!("/proc/{pid}")).exists()
-            })
+                .max_by_key(|p| p.at.to_string())
+                .is_some_and(|p| {
+                    reachable(p, &boot, &rosters, |pid| {
+                        Path::new(&format!("/proc/{pid}")).exists()
+                    })
+                })
         };
         landed_by_session(
             notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
@@ -623,6 +622,25 @@ fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
     }
 }
 
+/// Whether the session `presence` describes can still be told of a merge's
+/// rounds: running in this `boot` and held by its host, as `running` says,
+/// since a pid from another boot may name some other process now; or
+/// parked where it will start again: on its host's roster, which the host
+/// resumes, or, held by no host, parked in this boot, since its holder
+/// from an earlier one is gone.
+fn reachable(
+    presence: &Presence,
+    boot: &str,
+    rosters: &Rosters,
+    process_exists: impl Fn(u32) -> bool,
+) -> bool {
+    let resumes = match &presence.hosted {
+        Some(hosted) => rosters.holds(&hosted.host, &presence.session),
+        None => presence.owner.as_ref().and_then(|o| o.boot_id.as_deref()) == Some(boot),
+    };
+    (presence.state == "parked" && resumes) || running(presence, boot, rosters, process_exists)
+}
+
 /// The changes the three mains landed in the hour, shown unjudged: an
 /// hour's count swings with the clock, so no one target holds for it.
 fn landed(core: &str, harness: &str, machine: &str, now: i64) -> Measure {
@@ -677,6 +695,43 @@ mod tests {
         assert_eq!(card_to("ORCH", Some("ORCH")), [("ORCH", "fyi")], "once");
         assert_eq!(card_to("ORCH", None), [("ORCH", "fyi")]);
         assert_eq!(card_to("ORCH", Some("")), [("ORCH", "fyi")]);
+    }
+
+    #[test]
+    fn a_merging_session_is_there_only_where_it_can_take_a_turn() {
+        let presence = |state: &str, boot: &str, hosted: bool| -> Presence {
+            let mut said = serde_json::json!({
+                "session": "s1",
+                "addresses": ["AB12"],
+                "state": state,
+                "owner": {"pid": 7, "bootId": boot},
+            });
+            if hosted {
+                said["hosted"] = serde_json::json!({"host": "h", "conversation": "c"});
+            }
+            serde_json::from_value(said).expect("a presence the test writes")
+        };
+        let holding = |held: &[&str]| {
+            Rosters(BTreeMap::from([(
+                "h".to_owned(),
+                Some(held.iter().map(|s| (*s).to_owned()).collect()),
+            )]))
+        };
+        let (held, dropped) = (holding(&["s1"]), holding(&[]));
+        let up = |pid: u32| pid == 7;
+        let cases = [
+            ("busy", "now", false, &held, true, "running here"),
+            ("busy", "then", false, &held, false, "from another boot"),
+            ("busy", "now", true, &dropped, false, "its host dropped it"),
+            ("parked", "now", false, &held, true, "parked this boot"),
+            ("parked", "then", false, &held, false, "before a reboot"),
+            ("parked", "then", true, &held, true, "on its host's roster"),
+            ("parked", "now", true, &dropped, false, "off its roster"),
+        ];
+        for (state, boot, hosted, rosters, there, why) in cases {
+            let presence = presence(state, boot, hosted);
+            assert_eq!(reachable(&presence, "now", rosters, up), there, "{why}");
+        }
     }
 
     #[test]

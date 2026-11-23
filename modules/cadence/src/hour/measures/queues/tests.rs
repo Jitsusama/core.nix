@@ -152,19 +152,25 @@ fn a_riders_wait_counts_from_boarding_and_one_still_aboard_counts_so_far() {
             NOW - 1800,
             NOW - 2700
         ),
+        // A rider that stepped off, its pull request a draft, 100 s on.
+        format!(
+            r#"{{"at":{},"off":["y"],"boarded":[{}]}}"#,
+            NOW - 1900,
+            NOW - 2000
+        ),
     ]
     .join("\n");
     let read = trains(&landed, &[NOW - 3000], NOW);
     assert_eq!(
         read.waits,
-        vec![600.0, 900.0, 2100.0, 3000.0],
-        "a run's length was read as its riders' wait, or one aboard or fallen didn't count"
+        vec![100.0, 600.0, 900.0, 2100.0, 3000.0],
+        "a run's length was read as its riders' wait, or one aboard or left didn't count"
     );
     assert_eq!(
-        read.flow, "4 landed in a day, 1 fell off, 1 aboard",
+        read.flow, "4 landed in a day, 2 left unlanded, 1 aboard",
         "riders, not trains"
     );
-    assert_eq!(read.through, 6, "every rider went through");
+    assert_eq!(read.through, 7, "every rider went through");
 }
 
 #[test]
@@ -194,17 +200,17 @@ fn each_queue_says_its_wait_or_that_nothing_passed_or_that_it_went_unread() {
     assert_eq!(measures.len(), 4, "every queue has its line: {measures:?}");
     let walks = found(&measures, "world-walks");
     assert_eq!(
-        walks.now, 1.0,
-        "three waits are judged by their median, not their one outlier"
+        walks.now, 180.0,
+        "three waits are judged by their p90, which a stuck one shows"
     );
     assert_eq!(walks.target, Some(60.0), "a minute at most");
     assert_eq!(walks.owner, "80ECO2", "the workflow's keeper");
     assert_eq!(walks.class, Class::Queues, "on the queues section");
     assert_eq!(
         walks.says,
-        "median seconds waiting for a World git turn (worst 180; 3 ended in a day, too few \
-         for a p90)",
-        "names the wait, its worst and its flow"
+        "p90 seconds waiting for a World git turn (median 1, worst 180; 3 ended in a day, \
+         few waits)",
+        "names the wait, its spread and its flow, and that its waits were few"
     );
     let builds = found(&measures, "builds");
     assert!(
@@ -264,12 +270,10 @@ fn ten_waits_are_judged_by_their_p90_and_waits_unsaid_keep_the_ask() {
         },
         NOW,
     );
+    let builds = found(&ten, "builds");
     assert!(
-        found(&ten, "builds")
-            .says
-            .starts_with("p90 seconds waiting for a build"),
-        "ten waits weren't judged by their p90: {:?}",
-        found(&ten, "builds")
+        (builds.now - 1.0).abs() < f64::EPSILON && !builds.says.contains("few waits"),
+        "ten waits' p90 wasn't the ninth, or they were said to be few: {builds:?}"
     );
     // VM runs that ended without saying how long they waited went through.
     let unsaid = format!(r#"{{"at":{},"on":"vm-12","seconds":30}}"#, NOW - 60);
@@ -305,8 +309,8 @@ fn a_queues_ask_is_answered_back_in_or_quiet_and_held_while_unread() {
     );
     assert!(answered(key, &[queue("x", 30.0, Some(120.0))]), "back in");
     assert!(
-        answered(key, &[queue(&format!("x{QUIET}"), 0.0, None)]),
-        "quiet"
+        !answered(key, &[queue(&format!("x{QUIET}"), 0.0, None)]),
+        "a quiet queue answered the ask, though a wedged one reads the same"
     );
     assert!(
         !answered(key, &[queue(&format!("x{UNREAD}"), 0.0, None)]),

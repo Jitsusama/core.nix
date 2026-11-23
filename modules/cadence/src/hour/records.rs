@@ -1,8 +1,9 @@
 //! Reading the records the queues are measured from, each capped by
 //! construction: the end of a record that grows a line a job, and when
-//! each rider aboard the merge train boarded. A record that isn't there
-//! or isn't a plain file reads as unread, never as empty, since a quiet
-//! queue closes its ask and a wrong path would close it for good.
+//! each rider aboard the merge train boarded. A record that isn't there,
+//! isn't a plain file, or whose end holds no whole line reads as unread,
+//! never as empty: empty says nothing passed, where these say the hour
+//! can't tell.
 
 use std::fs;
 use std::io::{self, Read, Seek, SeekFrom};
@@ -27,9 +28,10 @@ fn plain(path: &Path) -> io::Result<fs::File> {
 }
 
 /// The last `bytes` of the file at `path`, from its first whole line, or
-/// none where it can't be read: not there, not a plain file, or failing.
+/// none where it can't be read: not there, not a plain file, failing, or
+/// cut with no break left after the cut, which holds no whole line.
 pub fn tail(path: &Path, bytes: u64) -> Option<String> {
-    let read = || -> io::Result<String> {
+    let read = || -> io::Result<Option<String>> {
         let mut file = plain(path)?;
         let from = file.metadata()?.len().saturating_sub(bytes);
         // One byte early, so a cut falling on a line's start keeps it:
@@ -42,15 +44,12 @@ pub fn tail(path: &Path, bytes: u64) -> Option<String> {
         file.take(bytes + from - early).read_to_end(&mut raw)?;
         let text = String::from_utf8_lossy(&raw);
         // A cut line isn't one, so it starts after the first break.
-        Ok(if from == 0 {
-            text.into_owned()
-        } else {
-            text.split_once('\n')
-                .map(|(_, rest)| rest.to_owned())
-                .unwrap_or_default()
-        })
+        if from == 0 {
+            return Ok(Some(text.into_owned()));
+        }
+        Ok(text.split_once('\n').map(|(_, rest)| rest.to_owned()))
     };
-    read().ok()
+    read().ok().flatten()
 }
 
 /// When each rider aboard the train boarded, from its file in `riders`:
@@ -110,6 +109,22 @@ mod tests {
             "a missing record read as an empty one, which closes its queue's ask"
         );
         assert_eq!(tail(root.path(), 12), None, "a folder can't be read");
+        let unbroken = root.path().join("unbroken.jsonl");
+        fs::write(&unbroken, "x".repeat(40)).expect("written");
+        assert_eq!(
+            tail(&unbroken, 12),
+            None,
+            "an end holding no whole line read as an empty record"
+        );
+        // A pipe at a record's path: opened, it would wait for a writer.
+        let pipe = root.path().join("pipe.jsonl");
+        let made = std::process::Command::new("mkfifo")
+            .arg(&pipe)
+            .status()
+            .expect("mkfifo ran");
+        assert!(made.success(), "the pipe wasn't made");
+        assert!(plain(&pipe).is_err(), "a pipe was opened as a record");
+        assert_eq!(tail(&pipe, 12), None, "a pipe read as a record");
     }
 
     #[test]

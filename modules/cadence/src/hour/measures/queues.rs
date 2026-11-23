@@ -12,15 +12,17 @@
 //! so a turn or a send still waiting shows only when it ends; the card
 //! says their flow as how many ended. The train keeps each rider aboard in
 //! a file of its own from when it boarded, so a rider still aboard counts
-//! its wait so far, and a stuck train shows at once; a rider the train
-//! refused counts its wait to when it fell, so a train shedding riders
-//! doesn't read better than it is.
+//! its wait so far, and a stuck train shows at once; a rider that left
+//! without landing, refused or stepped off, counts its wait to when it
+//! left, so a train shedding riders doesn't read better than it is.
 //!
-//! A queue is quiet only when nothing went through it: one that let work
-//! through without saying how long it waited is unjudged and keeps its
-//! ask. With fewer than ten waits a p90 is the worst one, so such a day is
-//! judged by its median, which one outlier can't move but one stuck rider
-//! alone still shows.
+//! A queue is quiet when nothing went through it, and quiet keeps its
+//! ask: a turn or a send is written only once it ends, so a queue wedged
+//! all day reads as one that held no work. One that let work through
+//! without saying how long it waited is unjudged and keeps its ask too.
+//! Each is judged by its p90 however few its waits: with fewer than ten
+//! that is the worst or the second worst, so the card says they were few,
+//! but a stuck wait on a quiet day was still waited.
 
 use super::{Class, Measure, count, lines, seconds};
 use crate::stats::spread;
@@ -29,7 +31,8 @@ use crate::stats::spread;
 pub const QUEUE: &str = "queue:";
 
 /// Said after a queue that let nothing through in the day: it says
-/// nothing of its wait, and its ask closes, since it held no work.
+/// nothing of its wait, and its ask stays open, since a record written as
+/// each wait ends can't tell a queue that held no work from a wedged one.
 pub const QUIET: &str = ": none through in a day";
 
 /// Said after a queue whose record couldn't be read: it says nothing, and
@@ -42,7 +45,8 @@ const DAY: i64 = 86_400;
 /// workflow, nix-offload and merge-net's train.
 const KEEPER: &str = crate::hour::NET_RULES;
 
-/// The fewest waits a day's p90 is judged by; below it, its median.
+/// The fewest waits whose p90 stands apart from their worst two; below
+/// it, the card says the waits were few.
 const P90_FROM: usize = 10;
 
 /// A queue the card reads: its key after [`QUEUE`], what waits in it as
@@ -149,8 +153,8 @@ fn sends(text: &str, now: i64) -> Passed {
 }
 
 /// Each rider's wait on the train: each still `aboard`, by when it
-/// boarded, so far, and each that landed or fell off within the day before
-/// `now`, from when it boarded to then, where the line says so. Its flow
+/// boarded, so far, and each that landed, fell or stepped off within the
+/// day before `now`, from when it boarded to then, where the line says so. Its flow
 /// is the riders, since a landing can carry several.
 fn trains(landed: &str, aboard: &[i64], now: i64) -> Passed {
     let landings: Vec<serde_json::Value> = lines(landed)
@@ -166,7 +170,7 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Passed {
             .map(|line| line[field].as_array().map_or(0, Vec::len))
             .sum()
     };
-    let (landed, fell) = (riders("heads"), riders("fell"));
+    let (landed, left) = (riders("heads"), riders("fell") + riders("off"));
     let mut waits: Vec<f64> = landings
         .iter()
         .flat_map(|line| {
@@ -183,12 +187,12 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Passed {
         .collect();
     waits.sort_by(f64::total_cmp);
     let flow = format!(
-        "{landed} landed in a day, {fell} fell off, {} aboard",
+        "{landed} landed in a day, {left} left unlanded, {} aboard",
         aboard.len()
     );
     Passed {
         waits,
-        through: landed + fell + aboard.len(),
+        through: landed + left + aboard.len(),
         flow,
     }
 }
@@ -196,7 +200,7 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Passed {
 /// The measure of `queue` from what its record held over the day: none
 /// read says so, unjudged; nothing through says so, unjudged; work through
 /// with no wait said says so, unjudged; else its p90 against its target,
-/// or its median with fewer than [`P90_FROM`] waits.
+/// said to be of few waits below [`P90_FROM`].
 fn measure(queue: &Queue, waits: Option<Passed>) -> Measure {
     let unjudged = |says: String| Measure {
         key: format!("{QUEUE}{}", queue.key),
@@ -229,19 +233,15 @@ fn measure(queue: &Queue, waits: Option<Passed>) -> Measure {
         target: Some(queue.target),
         ..unjudged(says)
     };
-    if waits.len() < P90_FROM {
-        return judged(
-            s.median,
-            format!(
-                "median seconds waiting for {} (worst {:.0}; {flow}, too few for a p90)",
-                queue.name, s.max
-            ),
-        );
-    }
+    let few = if waits.len() < P90_FROM {
+        ", few waits"
+    } else {
+        ""
+    };
     judged(
         s.p90,
         format!(
-            "p90 seconds waiting for {} (median {:.0}, worst {:.0}; {flow})",
+            "p90 seconds waiting for {} (median {:.0}, worst {:.0}; {flow}{few})",
             queue.name, s.median, s.max
         ),
     )
@@ -286,17 +286,14 @@ pub fn worst(measures: &[Measure]) -> Option<&Measure> {
 }
 
 /// Whether the ask filed for the queue keyed `key` is answered: its p90
-/// back in, or nothing through it in a day, since a queue that held no
-/// work, or went away as its ask invites, has nothing left to change. One
-/// whose record couldn't be read keeps it open.
+/// back in, or the queue gone from the hour, as its ask invites. One quiet,
+/// unread or unjudged keeps it open, since none says the wait came back.
 #[must_use]
 pub fn answered(key: &str, measures: &[Measure]) -> bool {
-    measures.iter().find(|m| m.key == key).is_none_or(|m| {
-        if m.says.ends_with(QUIET) {
-            return true;
-        }
-        m.target.is_some() && m.past().is_none()
-    })
+    measures
+        .iter()
+        .find(|m| m.key == key)
+        .is_none_or(|m| m.target.is_some() && m.past().is_none())
 }
 
 #[cfg(test)]
