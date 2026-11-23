@@ -49,8 +49,16 @@
 //! The command's output is its own: what night-shift says goes to stderr,
 //! and its status is the command's. `--wait-at-most SECONDS` gives up
 //! waiting with status 75, so a caller can try again later.
+//!
+//! A turn asked for by a turn's own command, or anything below it, runs
+//! at once as part of that job, since the turn is already its own: as
+//! nix-offload's cargo asks for one inside an agent's. Below means the
+//! command's own processes: work it hands to a unit, or to a terminal
+//! server started before it, asks as any other job does, and waits.
+//! src/holding.rs says who holds the turn, by the kernel's word.
 
 use crate::ahead::{self, Ahead, Waiter};
+use crate::holding::{Held, Looks, NOBODY, held_above, note};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::fs::{self, File, TryLockError};
@@ -59,7 +67,7 @@ use std::os::unix::process::{CommandExt, ExitStatusExt};
 use std::path::Path;
 use std::process::{Command, ExitStatus};
 use std::thread;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, Instant};
 use terminal_kit::{Exit, Failure};
 
 /// How often a waiting job looks whether the turn is free: a heavy job
@@ -124,35 +132,6 @@ pub fn parse(args: &[String]) -> Result<Turn, String> {
         ahead,
         command,
     })
-}
-
-/// Notes in `runtime` that `name`, this process, has the turn from now.
-pub fn note(runtime: &Path, name: &str) {
-    let since = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs());
-    let _ = fs::write(
-        runtime.join("holder"),
-        format!("{name}\t{}\t{since}\n", std::process::id()),
-    );
-}
-
-/// Who has the turn, as the last to take it noted, while its process
-/// still runs.
-pub fn holder(runtime: &Path) -> String {
-    let noted = fs::read_to_string(runtime.join("holder")).unwrap_or_default();
-    let mut fields = noted.trim().split('\t');
-    let (Some(name), Some(pid), Some(since)) = (fields.next(), fields.next(), fields.next()) else {
-        return "a job that doesn't say".into();
-    };
-    if !Path::new("/proc").join(pid).exists() {
-        return "a job that doesn't say".into();
-    }
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .map_or(0, |now| now.as_secs());
-    let minutes = now.saturating_sub(since.parse().unwrap_or(now)) / 60;
-    format!("{name} (process {pid}, for {minutes} min)")
 }
 
 /// What one look at the turn found.
@@ -449,14 +428,32 @@ pub fn take(turn: &Turn, runtime: &Path) -> Result<(), Failure> {
     // and held until this process ends, however it ends.
     let lock = File::create(runtime.join("lock"))
         .map_err(|error| failed(&turn.name, "can't open the lock", &error))?;
-    wait_for(turn, runtime, &lock)?;
+    if let Held::Above(holder) = held_above(runtime, &lock) {
+        return run_within(turn, &holder);
+    }
+    if let Some(holder) = wait_for(turn, runtime, &lock)? {
+        return run_within(turn, &holder);
+    }
     note(runtime, &turn.name);
     run(turn)
 }
 
+/// Runs the job's command in the turn `holder`, above this process, has.
+fn run_within(turn: &Turn, holder: &str) -> Result<(), Failure> {
+    say(
+        &turn.name,
+        &format!("runs in the turn {holder} already has, being part of its job"),
+    );
+    run(turn)
+}
+
 /// Waits until this job has the turn, saying once why each time that
-/// changes.
-fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<(), Failure> {
+/// changes, or names the holder above this process once it's seen there:
+/// a parent that ended as the first walk read it leaves this process to
+/// the holder, which reaps what its command leaves, so a later look finds
+/// it. That race is too narrow to stage, so no test reaches the later
+/// look's finding; the first look's is tested.
+fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<Option<String>, Failure> {
     let ahead = if turn.ahead {
         Some(
             Ahead::wait(runtime, &turn.name)
@@ -473,13 +470,32 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<(), Failure> {
     let began = Instant::now();
     let mut told: Option<String> = None;
     let mut left = None;
+    let mut looks = Looks::default();
     loop {
         let said = match look(lock, runtime, turn.ahead, &mut left) {
             Ok(Look::Had) => break,
-            Ok(Look::Taken) => format!("waiting for the turn, which {} has", holder(runtime)),
+            Ok(Look::Taken) => match held_above(runtime, lock) {
+                Held::Above(holder) => return Ok(Some(holder)),
+                Held::Elsewhere(holder) => format!("waiting for the turn, which {holder} has"),
+                // A holder that let go between the look and the kernel's
+                // word leaves no line, so the turn is looked at again at
+                // once, and only a second look naming nobody is said.
+                Held::Unnamed(_) if looks.again() => continue,
+                // Said, since a turn inside its holder's command then
+                // waits on its own parent, and only this line shows it.
+                Held::Unnamed(why) => format!(
+                    "waiting for the turn, which {NOBODY} has, though whether it's this job's \
+                     own parent can't be told, as {why}"
+                ),
+                Held::Unread { why, holder } => format!(
+                    "waiting for the turn, which {holder} has, though whether it's this job's \
+                     own parent can't be told, as {why}"
+                ),
+            },
             Ok(Look::Left(next)) => format!("leaving the turn to {}", next.why()),
             Err(error) => return Err(failed(&turn.name, "can't take the lock", &error)),
         };
+        looks.named();
         if told.as_ref() != Some(&said) {
             say(&turn.name, &said);
             told = Some(said);
@@ -509,7 +525,7 @@ fn wait_for(turn: &Turn, runtime: &Path, lock: &File) -> Result<(), Failure> {
             ),
         );
     }
-    Ok(())
+    Ok(None)
 }
 
 /// Runs the job's command below this process, and ends as it ended once
