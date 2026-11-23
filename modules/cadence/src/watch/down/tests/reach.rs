@@ -56,18 +56,21 @@ fn a_network_one_realm_reads_missed_outranks_another_reading_all_reached() {
 }
 
 #[test]
-fn a_tick_no_node_answered_reads_nothing_of_this_machines_reach() {
-    for (answered, here, reads) in [
+fn a_tick_a_node_didnt_answer_reads_nothing_sure_of_this_machines_reach() {
+    for (heard_all, here, reads) in [
+        // A silent realm may hold the record saying a network is missed,
+        // or the only one saying anything at all.
         (false, Some(true), Reach::Unheard),
         (false, None, Reach::Unheard),
+        (false, Some(false), Reach::Misses),
         (true, Some(true), Reach::Sure),
         (true, Some(false), Reach::Misses),
         (true, None, Reach::Unsaid),
     ] {
         assert_eq!(
-            Reach::of(answered, here),
+            Reach::of(heard_all, here),
             reads,
-            "answered {answered}, saying {here:?}, read wrongly"
+            "every realm heard {heard_all}, saying {here:?}, read wrongly"
         );
     }
 }
@@ -86,6 +89,10 @@ fn each_change_in_how_sure_it_is_of_its_reach_is_said_once() {
         // read last stands, so being back is still said.
         (Reach::Unheard, None),
         (Reach::Sure, again),
+        // What was read before the silence is what the tick after is
+        // weighed against, so reading it again says nothing.
+        (Reach::Unheard, None),
+        (Reach::Sure, None),
         (Reach::Unheard, None),
         (Reach::Unsaid, unsaid),
         // A move between ways of being unsure is said too.
@@ -108,6 +115,9 @@ fn each_change_in_how_sure_it_is_of_its_reach_is_said_once() {
 fn a_record_kept_before_the_reach_was_its_own_keeps_its_machines() {
     let old = r#"{"machines": {"yonder": {"ready_at": 7, "listed_at": 7}}, "unsure": true}"#;
     let told: Told = serde_json::from_str(old).expect("a record an earlier tick kept");
+    // Its `unsure` was read from the record, not the reach, so it is
+    // dropped: the first tick reads the reach afresh against being sure,
+    // and says it if it isn't.
     assert_eq!(
         (told.machines.len(), told.reach),
         (1, Reach::Sure),

@@ -52,19 +52,21 @@ pub enum Reach {
     Misses,
     /// Its record says nothing of what it reaches.
     Unsaid,
-    /// No realm's node answered, so nothing was read of it.
+    /// A realm's node didn't answer, and those that did read no network
+    /// missed, so the silent one may hold the record that says.
     Unheard,
 }
 
 impl Reach {
-    /// What a tick read, given whether any realm answered and what those
-    /// that did say `here`.
+    /// What a tick read, given whether every realm answered and what those
+    /// that did say `here`: a network missed is read whoever was silent,
+    /// as no other realm's word outranks it.
     #[must_use]
-    pub fn of(answered: bool, here: Option<bool>) -> Self {
-        match (answered, here) {
+    pub fn of(heard_all: bool, here: Option<bool>) -> Self {
+        match (heard_all, here) {
+            (_, Some(false)) => Self::Misses,
             (false, _) => Self::Unheard,
             (true, Some(true)) => Self::Sure,
-            (true, Some(false)) => Self::Misses,
             (true, None) => Self::Unsaid,
         }
     }
@@ -72,8 +74,8 @@ impl Reach {
 
 /// The journal's word when this machine's reach reads otherwise than it
 /// last did, from `was` to `now`, so each change is said once rather than
-/// each tick. A tick no node answered reads nothing of it, and each realm's
-/// silence is said on its own line, so it says nothing here and leaves
+/// each tick. A tick a node didn't answer reads nothing sure of it, and each
+/// realm's silence is said on its own line, so it says nothing here and leaves
 /// what was last read standing, to be weighed against the tick after.
 pub fn heard(this: &str, was: &mut Reach, now: Reach) -> Option<String> {
     let then = "so with none ready no machine is told down until it does";

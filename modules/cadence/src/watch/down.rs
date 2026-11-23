@@ -54,7 +54,10 @@ const SAID_FOR: i64 = READ_GAP;
 const FORGET: i64 = 2 * 86_400;
 /// How long a node may take to answer: one stalled on a peer it can't reach
 /// would otherwise hold the whole tick, and every alarm with it.
-const ASK_WITHIN: Duration = Duration::from_secs(30);
+pub const ASK_WITHIN: Duration = Duration::from_secs(30);
+/// How long a program that ended is given to hand its answer over, however
+/// near its deadline it ended.
+const HAND_OVER: Duration = Duration::from_secs(1);
 /// How long a battery heard stands against readings of none, so a laptop
 /// whose charge a tick couldn't read isn't told down for a shut lid, while
 /// a desktop that one wrong reading gave a battery is held silent a day at
@@ -243,12 +246,16 @@ fn power(was: Option<bool>, heard: Option<bool>) -> Option<bool> {
 /// battery heard stands for `BATTERY_FOR` against readings of none, as a
 /// laptop's charge may go unread for a tick, and power a tick couldn't
 /// read keeps what was heard before. Power never heard may be a battery,
-/// so it leans silent.
-fn keep_power(spell: &mut Spell, heard: Option<bool>, now: i64) {
+/// so it leans silent. Only a word heard `fresh`, from a machine ready,
+/// starts the day again: a down reading repeats its node's last word, so
+/// a battery it repeats through an outage would otherwise never run out.
+fn keep_power(spell: &mut Spell, heard: Option<bool>, now: i64, fresh: bool) {
     match heard {
         Some(true) => {
             spell.power = Some(true);
-            spell.battery_at = Some(now);
+            if fresh || spell.battery_at.is_none() {
+                spell.battery_at = Some(now);
+            }
         }
         Some(false) if spell.battery_at.is_some_and(|at| now - at < BATTERY_FOR) => {}
         Some(false) => spell.power = Some(false),
@@ -485,7 +492,7 @@ pub fn due(
                     listed_at: now,
                     ..Spell::default()
                 };
-                keep_power(&mut next, one.battery, now);
+                keep_power(&mut next, one.battery, now, true);
                 *spell = next;
             }
             Reading::Down => {
@@ -498,7 +505,7 @@ pub fn due(
                 // A down reading's power is its node's last word of it,
                 // which may be the first heard, so power unread at the
                 // last ready tick needn't hold it silent.
-                keep_power(spell, one.battery, now);
+                keep_power(spell, one.battery, now, false);
                 let since = spell.down_since.unwrap_or(now);
                 let lately = spell
                     .ready_at
@@ -596,7 +603,7 @@ impl Tell {
 
 /// What `program` prints given `args`, or an error when it fails or is
 /// still running after `within`, when it's stopped.
-fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> {
+pub fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> {
     let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
@@ -627,8 +634,11 @@ fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<String> 
         }
         thread::sleep(Duration::from_millis(100));
     };
+    // A program that ended just before its deadline still gets a moment
+    // to hand its whole answer over.
+    let left = deadline.saturating_duration_since(Instant::now());
     let said = reader
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        .recv_timeout(left.max(HAND_OVER))
         .map_err(|_| {
             io::Error::new(
                 io::ErrorKind::TimedOut,
@@ -656,7 +666,11 @@ pub fn machines(realms: &[String]) -> BTreeMap<String, String> {
     realms
         .iter()
         .filter_map(|realm| {
-            let said = answer("mycelium", &["--realm", realm, "machines"], ASK_WITHIN).ok()?;
+            // Why it didn't answer is said here, as the line saying it
+            // didn't can't tell a node that failed from one held open.
+            let said = answer("mycelium", &["--realm", realm, "machines"], ASK_WITHIN)
+                .map_err(|error| println!("{error}"))
+                .ok()?;
             crate::elsewhere::machines(&said)?;
             Some((realm.clone(), said))
         })
@@ -703,7 +717,8 @@ pub fn run(
         read.extend(seen(realm, machines, &sessions, &this));
     }
     let sure = here == Some(true);
-    let reading = Reach::of(!answered.is_empty(), here);
+    let heard_all = !answered.is_empty() && answered.len() == realms.len();
+    let reading = Reach::of(heard_all, here);
     if let Some(line) = reach::heard(&this, &mut told.reach, reading) {
         println!("{line}");
     }

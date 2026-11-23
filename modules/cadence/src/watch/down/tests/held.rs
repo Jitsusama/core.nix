@@ -75,7 +75,10 @@ fn power_once_heard_stands_and_a_down_readings_word_settles_power_unread() {
             "a battery heard a day before, then none heard",
             vec![laptop, desktop.clone()],
             BATTERY_FOR,
-            lost_unread,
+            Seen {
+                heard: Some(NOW + BATTERY_FOR + 200),
+                ..lost_unread
+            },
             (1, false),
         ),
         (
@@ -133,6 +136,34 @@ fn a_busy_machine_held_back_by_its_power_is_said_once_a_spell() {
             [line.clone(), line],
             "a machine held back as {battery:?} wasn't said once each spell"
         );
+    }
+}
+
+#[test]
+fn an_idle_laptop_and_one_not_ready_lately_are_never_said_held() {
+    let laptop = |working| Seen {
+        battery: Some(true),
+        ..one("yonder", Reading::Ready, working)
+    };
+    let down = Seen {
+        battery: Some(true),
+        ..lost("yonder", 200)
+    };
+    for (case, ready, from) in [
+        ("an idle laptop", laptop(false), NOW),
+        ("one not ready lately", laptop(true), NOW + READY_WITHIN),
+    ] {
+        let mut told = Told::default();
+        watched(&[ready], &work(), &work(), &mut told, NOW, true);
+        let mut said = Vec::new();
+        for minutes in (5..=30).step_by(5) {
+            let now = from + minutes * 60;
+            let down = std::slice::from_ref(&down);
+            let (tells, lines) = watched(down, &work(), &work(), &mut told, now, true);
+            assert!(tells.is_empty(), "{case} was told: {tells:?}");
+            said.extend(lines);
+        }
+        assert!(said.is_empty(), "{case} was said held back: {said:?}");
     }
 }
 

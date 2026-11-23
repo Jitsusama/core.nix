@@ -747,12 +747,13 @@ fn a_notices_body_is_kept_from_markup_and_a_slow_node_is_stopped() {
         &["-c", "sleep 20 & echo said"],
         Duration::from_millis(500),
     );
-    assert_eq!(
-        (
-            held_open.map_err(|err| err.kind()),
-            began.elapsed() < Duration::from_secs(10),
-        ),
-        (Err(io::ErrorKind::TimedOut), true),
-        "a node whose child kept its output open held the tick"
+    // Its end was seen, so the cut came at the read, not the wait.
+    let cut = held_open.map_err(|err| err.to_string());
+    assert!(
+        cut.as_ref()
+            .is_err_and(|err| err.contains("left its output open"))
+            && began.elapsed() < Duration::from_secs(10),
+        "a node whose child kept its output open held the tick, or was cut where it \
+         waited: {cut:?}"
     );
 }
