@@ -3,6 +3,7 @@
 
 use super::{Left, far_line, kind, scratch, work};
 use crate::far::steps::{RUN, sweeping};
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
 /// This machine and its process space, as a far line writes them down.
@@ -73,6 +74,24 @@ fn copy(runs: &Path, id: &str, run: &str) {
     std::fs::write(runs.join(format!("{id}{RUN}")), format!("{run}\n")).unwrap();
 }
 
+/// A folder `closed` in `within`, holding a file, closed to its owner as
+/// a job may leave one.
+fn closed(within: &Path) -> std::path::PathBuf {
+    let closed = within.join("closed");
+    std::fs::create_dir_all(&closed).unwrap();
+    std::fs::write(closed.join("f"), "f").unwrap();
+    std::fs::set_permissions(&closed, PermissionsExt::from_mode(0o500)).unwrap();
+    closed
+}
+
+/// Whether `folder` is still closed to its owner, opening it so its test
+/// can clear it.
+fn still_closed(folder: &Path) -> bool {
+    let mode = std::fs::metadata(folder).unwrap().permissions().mode() & 0o777;
+    std::fs::set_permissions(folder, PermissionsExt::from_mode(0o700)).unwrap();
+    mode == 0o500
+}
+
 /// What lies in `runs`, by name, in order.
 fn left_in(runs: &Path) -> Vec<String> {
     let mut left: Vec<_> = std::fs::read_dir(runs)
@@ -88,19 +107,29 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     let root = scratch("far-swept");
     let runs = root.join("s");
     let (here, gone) = (here(), gone());
-    // Gone, named as a job is, with all a run leaves beside its copy and
-    // a folder its job closed to its owner.
+    // Gone, named as a job is, with all a run leaves beside its copy, a
+    // folder its job closed to its owner, and a link to a closed folder
+    // beyond it, which stays closed.
     let job = "4242-1763912345678901234";
     copy(&runs, job, &format!("{gone} {here}"));
     std::fs::write(runs.join(format!("{job}.names")), "n").unwrap();
-    std::fs::create_dir_all(runs.join(format!("{job}.back"))).unwrap();
+    std::fs::write(runs.join(format!("{job}.back")), "b").unwrap();
     std::fs::write(runs.join(format!("{job}.back.lost")), "l").unwrap();
-    let closed = runs.join(job).join("closed");
-    std::fs::create_dir_all(&closed).unwrap();
-    std::fs::write(closed.join("f"), "f").unwrap();
-    std::fs::set_permissions(&closed, std::os::unix::fs::PermissionsExt::from_mode(0o500)).unwrap();
-    // Live: this test's own process.
+    closed(&runs.join(job));
+    let beyond = closed(&root.join("beyond"));
+    std::os::unix::fs::symlink(root.join("beyond"), runs.join(job).join("inner")).unwrap();
+    // Gone, its job having made a folder where its brought-back list
+    // goes, and closed one in it.
+    let made = "4243-1763912345678901235";
+    copy(&runs, made, &format!("{gone} {here}"));
+    closed(&runs.join(format!("{made}.back")));
+    // Gone, but its copy is a link, which goes alone.
+    std::fs::write(runs.join(format!("11{RUN}")), format!("{gone} {here}\n")).unwrap();
+    let past = closed(&root.join("past"));
+    std::os::unix::fs::symlink(root.join("past"), runs.join("11")).unwrap();
+    // Live: this test's own process, with a closed folder left closed.
     copy(&runs, "3", &format!("{} {here}", std::process::id()));
+    let live = closed(&runs.join("3"));
     // Another machine's, whose numbers say nothing here.
     copy(&runs, "4", &format!("{gone} osprey"));
     // This machine's, but another process space's.
@@ -153,6 +182,41 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
         left_in(&runs),
         kept,
         "the sweep took a copy whose run isn't known gone, or left one whose is"
+    );
+    assert!(still_closed(&live), "the sweep opened a live run's folder");
+    assert!(
+        still_closed(&beyond),
+        "the sweep opened a folder through a link"
+    );
+    assert!(
+        still_closed(&past),
+        "the sweep opened a folder a copy's link led to"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_copy_that_wont_go_keeps_its_run_s_file_and_is_named_once() {
+    let root = scratch("far-swept-stuck");
+    let runs = root.join("s");
+    let job = "4242-1763912345678901234";
+    copy(&runs, job, &format!("{} {}", gone(), here()));
+    // Only the copy won't go; its run's file would, were it asked to.
+    let rm = format!(
+        "case \"$*\" in *'/{job}') echo \"rm: cannot remove '$2/f': Permission denied\" >&2; exit 1 ;; esac
+PATH=${{PATH#*:}}
+exec rm \"$@\""
+    );
+    let said = sweep_with(&runs.join("9"), &[("rm", &rm)]);
+    assert_eq!(
+        said,
+        format!("elsewhere: couldn't clear {}\n", runs.join(job).display()),
+        "the sweep didn't name the copy it couldn't clear, once and alone"
+    );
+    assert_eq!(
+        left_in(&runs),
+        [job.to_owned(), format!("{job}{RUN}")],
+        "a copy that wouldn't go lost its run's file, so no sweep could retry it"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

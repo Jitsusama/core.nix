@@ -153,9 +153,12 @@ trap 'stopped TERM 143' TERM"#
 /// name what lies beside another's copy. It never removes through a
 /// link: it reads only a folder of copies that is no link, and only run
 /// files that are plain files, and find and rm take a link at a copy's
-/// name as itself alone. A folder a job closed to its owner is opened
-/// first, as the copy step opens one, so no such copy stays for good. A
-/// run's file goes only once its copy did.
+/// name as itself alone. A folder a job closed to its owner, in its copy
+/// or beside it, is opened first, as the copy step opens one, so no such
+/// copy stays for good;
+/// one that still can't go is named once, never file by file, since
+/// each far line after it tries again. A run's file goes only once its
+/// copy did.
 pub(super) fn sweeping() -> String {
     format!(
         r#"runs=${{work%/*}}
@@ -179,10 +182,10 @@ if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
       *'No such process'*) ;;
       *) continue ;;
     esac
-    find "$copy" "$copy.back" -type d ! -perm -700 \
-      -exec chmod u+rwx {{}} \; 2>/dev/null
+    find "$copy.names" "$copy.back" "$copy.back".* "$copy" -type d \
+      ! -perm -700 -exec chmod u+rwx {{}} \; 2>/dev/null
     {{ rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
-      rm -f "$run"; }} ||
+      rm -f "$run"; }} 2>/dev/null ||
       printf "elsewhere: couldn't clear %s\n" "$copy" >&2
   done
 fi"#
