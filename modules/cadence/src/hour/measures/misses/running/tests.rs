@@ -278,7 +278,13 @@ fn a_merge_is_found_without_reading_main_below_it() {
     }
     git(
         &repo,
-        &["commit", "-q", "--allow-empty", "-m", "a later one\n\nAfter (#7)"],
+        &[
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "a later one\n\nAfter (#7)",
+        ],
     );
     let sha = |rev: &str| {
         let out = std::process::Command::new("git")
@@ -290,10 +296,7 @@ fn a_merge_is_found_without_reading_main_below_it() {
     let (merge, root) = (sha("HEAD~1"), sha("HEAD~3"));
     // The root's object gone, as a history too long to read is: a walk to
     // the root fails there, so only one left at the merge finds it.
-    let object = repo
-        .join(".git/objects")
-        .join(&root[..2])
-        .join(&root[2..]);
+    let object = repo.join(".git/objects").join(&root[..2]).join(&root[2..]);
     std::fs::remove_file(object).expect("the root's object removed");
     assert_eq!(
         merge_of(&repo.to_string_lossy(), 7),
