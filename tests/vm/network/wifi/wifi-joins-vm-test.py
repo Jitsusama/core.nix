@@ -11,6 +11,7 @@ tests reach it is wifi_session.py.
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
 from typing import TYPE_CHECKING
 
@@ -256,12 +257,20 @@ def test_and_measures_how_well_lanterns_access_point_carries(machine: BaseMachin
     """And measures how well Lantern's access point carries, by echoing its gateway."""
     point = machine.succeed("wpa_cli -i wlan2 status | sed -n 's/^bssid=//p'").strip()
     assert len(point) == len("02:00:00:00:00:00"), point
-    # wifid says each access point's figures once a minute, so this waits for the next.
+    # wifid says each access point's figures once a minute, so this waits for the next. Its
+    # video echoes answered, enough to time, say the video socket opens with no capability
+    # and is heard back, and the gateway's counts say its echoes reach the air marked CS5 and
+    # are answered so.
     machine.wait_until_succeeds(
         "journalctl -o cat _PID=$(systemctl show -P MainPID wifid)"
-        f" | grep -qE '^wlan2 on {point}: gateway [0-9.]+ ms at p50, [0-9.]+ ms at p95, '",
+        f" | grep -qE '^wlan2 on {point}: gateway [0-9.]+ ms at p50, [0-9.]+ ms at p95, "
+        "[0-9.]+% of [0-9]+ echoes lost; video [0-9.]+ ms at p95, "
+        "[0-9.]+% of [0-9]+ echoes answered past 1 s, [0-9]+ unanswered; '",
         timeout=timedelta(seconds=90),
     )
+    for chain, what in [("input", "echo"), ("output", "answer")]:
+        marked = machine.succeed(f"ip netns exec air nft list chain ip marked {chain}")
+        assert re.search(r"counter packets [1-9]", marked), f"no {what} went marked: {marked}"
 
 
 def test_and_hears_an_account_say_a_call_is_on_naming_who_said_it(
