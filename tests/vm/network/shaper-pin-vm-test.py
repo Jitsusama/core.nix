@@ -60,13 +60,18 @@ class Rig:
         return 0
 
     def reopen(self, listen: int, timeout: dt.timedelta = MOVING) -> int:
-        """Have the VPN open a new socket, from `listen`, and give the port it lands on."""
+        """Have the VPN open a new socket, from `listen`, and give the port it lands on.
+
+        The far end learns the new port from one datagram, so a ping through the tunnel then
+        shows the flow carries both ways from it, not just that one got through (pin round 1).
+        """
         was = self.port()
         self.client.succeed(f"wg set wg0 listen-port {listen}")
         self.server.wait_until_succeeds(
             f"ip netns exec end wg show wg0 endpoints | grep -v ':{was}$' | grep -q '{CLIENT}:'",
             timeout=timeout,
         )
+        self.client.wait_until_succeeds("ping -c1 -W1 10.9.0.2", timeout=timeout)
         return self.port()
 
 
@@ -108,10 +113,18 @@ def tunnel(machines: dict[str, BaseMachine]) -> Rig:
 
 @pytest.fixture(scope="module")
 def pinned(tunnel: Rig) -> Rig:
-    """Give the rig once the shaper has pinned the VPN's next socket, and says so."""
+    """Give the rig once the shaper has pinned the VPN's next socket, and says so.
+
+    The journal says the pin as it's chosen and the rule follows, so both are waited on, or a
+    socket opened between them would land unpinned (pin round 1).
+    """
     tunnel.client.wait_until_succeeds(
         "journalctl -u shaper -o cat --no-pager"
         f" | grep -q 'leaves from port {NEAR[0]} or {NEAR[1]}'",
+        timeout=PINNING,
+    )
+    tunnel.client.wait_until_succeeds(
+        f"nft list chain inet shaper pin | grep -q 'masquerade.*{NEAR[0]}-{NEAR[1]}'",
         timeout=PINNING,
     )
     return tunnel

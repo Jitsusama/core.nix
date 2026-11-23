@@ -3532,7 +3532,10 @@ mod tests {
     // A house whose other machine moves to its cable is heard from either
     // address while each is fresh, and the one saying the most holds,
     // wherever it is in the list and however fresh, so a report saying
-    // less, forged or late, never loosens the hold (house round 3).
+    // less from the other address never loosens the hold (house round 3).
+    // One from the same address replaces what it said, forged or not:
+    // unsigned, a report is only as good as the address it comes from
+    // (house round 5).
     #[test]
     fn a_house_is_held_by_the_most_any_of_its_fresh_addresses_says() {
         let wifi: std::net::IpAddr = "192.0.2.7".parse().expect("an address");
