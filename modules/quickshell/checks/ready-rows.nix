@@ -46,6 +46,7 @@
       cp ${../tests/ready-rows.qml} ready-rows.qml
       ${copied [
         "launcher/Beneath.js"
+        "launcher/EmojiDrawer.js"
         "launcher/Found.js"
         "launcher/Moved.js"
         "launcher/ReadyRows.js"

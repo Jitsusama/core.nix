@@ -1382,7 +1382,7 @@ fn worded(vocabulary: &Path) -> Result<Words, String> {
 }
 
 /// Emoji's rows, from the list `--emoji` names, or none without one,
-/// their drawers worded from the launcher's vocabulary.
+/// their groups' counts worded from the launcher's vocabulary.
 fn emoji_rows(list: Option<&Path>, words: &Words) -> Result<Vec<Value>, String> {
     list.map_or_else(
         || Ok(Vec::new()),
