@@ -20,9 +20,13 @@
 //! apart, so a point holding a call's queue is passed over however fast
 //! its best effort. A video echo answered past its second counts as slow
 //! as it took and as lost, as a queue held for seconds answers late, in
-//! order. One never answered isn't weighed, since a gateway that drops
-//! marked echoes says nothing of the air. The minute's line says best
-//! effort's own figures, and the video class's beside them.
+//! order. One never answered isn't weighed, and video isn't weighed at
+//! all unless half its echoes were answered: a gateway that polices
+//! marked echoes does so through every access point alike, and says
+//! nothing of the air. Which leaves a point dropping a call's queue in
+//! the air, rather than holding it, unseen by video, as by best effort
+//! wherever its own queue is spared. The minute's line says best effort's
+//! own figures, and the video class's beside them.
 //!
 //! Long because its cases, near half of it, stay beside the private
 //! figures they prove one by one, as every module in wifid keeps them.
@@ -103,8 +107,20 @@ pub struct Video {
     /// The answers' middle and slow end, a late one's at what it took.
     pub p50: Option<Duration>,
     pub p95: Option<Duration>,
-    /// The share of answers that came past [`LOST`], in percent.
+    /// The share of echoes sent that were answered past [`LOST`], in
+    /// percent, as best effort's loss is a share of its echoes sent.
     pub held: f64,
+}
+
+impl Video {
+    /// Whether its figures say anything of the air: at least half its
+    /// echoes were answered, in time or late. A queue held for seconds
+    /// answers them all, late; a gateway that polices marked echoes, at
+    /// every access point alike, answers few, and the few it answers say
+    /// nothing of the rest.
+    pub fn weighed(&self) -> bool {
+        self.answered > 0 && self.answered * 2 >= self.echoes
+    }
 }
 
 /// What's been measured of each access point, by its address.
@@ -191,10 +207,10 @@ impl Measures {
         let (mut p50, mut p95) = (percentile(&times, 50), percentile(&times, 95));
         let mut lost = per_hundred(lost, echoes.len());
         let video_echoes: Vec<Echo> = within(&kept.video, now).collect();
-        let answered = video(&video_echoes).filter(|video| video.answered > 0);
-        if let Some(video) = answered.filter(|_| weighing_video) {
-            p50 = p50.max(video.p50);
-            p95 = p95.max(video.p95);
+        let weighed = video(&video_echoes).filter(Video::weighed);
+        if let Some(video) = weighed.filter(|_| weighing_video) {
+            p50 = worse(p50, video.p50);
+            p95 = worse(p95, video.p95);
             lost = lost.max(video.held);
         }
         let (sent, retries, failed) = sent_since(&counts);
@@ -381,7 +397,8 @@ async fn echo_on(
 /// Echoes each card's gateway once in each class, every card at once so
 /// one whose queue is held can't thin another's echoes, then reads each
 /// card's station. A socket that can't be opened, or errs, is passed over
-/// until the next second, and opened again then.
+/// until the next second, and opened again then; a card whose best-effort
+/// socket can't be opened goes unmeasured that second, its station too.
 async fn measure(
     joined: &[Joined],
     echoers: &mut HashMap<String, Echoers>,
@@ -389,20 +406,35 @@ async fn measure(
     measures: &mut Measures,
 ) {
     let mut echoing = JoinSet::new();
+    let mut cards = HashMap::new();
+    let mut echoed_on = Vec::new();
     for on in joined {
         let mut sockets = echoers.remove(&on.card).unwrap_or_default();
         sockets.open(&on.card);
+        // A card best effort can't be echoed on isn't measured: its
+        // station's counts alone would read as never answered, and send
+        // it from one good access point to the next.
+        if sockets.best.is_some() {
+            echoed_on.push(on);
+        }
         let on = on.clone();
-        echoing.spawn(async move {
+        let card = on.card.clone();
+        let task = echoing.spawn(async move {
             let echoed = sockets.echo(on.gateway).await;
             (on, sockets, echoed)
         });
+        cards.insert(task.id(), card);
     }
     while let Some(done) = echoing.join_next().await {
         // A card whose echoing panicked loses its sockets, opened again
-        // next second.
-        let Ok((on, mut sockets, echoed)) = done else {
-            continue;
+        // next second, and its late answers on the way with them.
+        let (on, mut sockets, echoed) = match done {
+            Ok(done) => done,
+            Err(error) => {
+                let card = cards.get(&error.id()).map_or("a card", String::as_str);
+                eprintln!("<4>can't echo {card}'s gateway this second: {error}");
+                continue;
+            }
         };
         for (class, echoed) in echoed {
             match echoed {
@@ -422,7 +454,7 @@ async fn measure(
         }
         echoers.insert(on.card, sockets);
     }
-    for on in joined {
+    for on in echoed_on {
         if let Some(counts) = station(kernel, &on.card).await.as_ref().and_then(counted) {
             measures.counted(&on.point, Instant::now(), counts);
         }
@@ -506,21 +538,14 @@ fn said(
     call: bool,
 ) -> String {
     let video = video.map_or(String::new(), |video| {
-        let late = if video.answered > 0 {
-            format!(
-                "{:.1}% of {} answers past {} s, ",
-                video.held,
-                video.answered,
-                LOST.as_secs()
-            )
-        } else {
-            String::new()
-        };
         format!(
-            "; video {} at p95, {late}{} of {} echoes unanswered",
+            "; video {} at p95, {:.1}% of {} echoes answered past {} s, {} unanswered{}",
             ms(video.p95),
+            video.held,
+            video.echoes,
+            LOST.as_secs(),
             video.echoes - video.answered,
-            video.echoes
+            if video.weighed() { "" } else { ", not weighed" },
         )
     });
     let signal = measured
@@ -621,9 +646,18 @@ fn timed(echoes: &[Echo]) -> (Vec<Duration>, usize) {
     (times, lost)
 }
 
+/// The slower of best effort's figure and video's. Best effort never
+/// answered stays unanswered, as slow as can be, however quick video.
+fn worse(best: Option<Duration>, video: Option<Duration>) -> Option<Duration> {
+    match (best, video) {
+        (Some(best), Some(video)) => Some(best.max(video)),
+        (best, _) => best,
+    }
+}
+
 /// What video echoes carried, if any were sent: their answers' times, a
-/// late one's at what it took, and the share that came late. One never
-/// answered is left out.
+/// late one's at what it took, and the share of those sent that came
+/// late. One never answered is in no figure but the count of answers.
 fn video(echoes: &[Echo]) -> Option<Video> {
     if echoes.is_empty() {
         return None;
@@ -645,7 +679,7 @@ fn video(echoes: &[Echo]) -> Option<Video> {
         answered: times.len(),
         p50: percentile(&times, 50),
         p95: percentile(&times, 95),
-        held: per_hundred(held, times.len()),
+        held: per_hundred(held, echoes.len()),
     })
 }
 
@@ -987,22 +1021,36 @@ pub(crate) mod tests {
             answered: 118,
             p50: Some(ms(640)),
             p95: Some(ms(2400)),
-            held: 38.3,
+            held: 37.5,
         };
         let folded = Measured {
             p50: Some(ms(640)),
             p95: Some(ms(2400)),
-            lost: 38.3,
+            lost: 37.5,
             ..measured.clone()
         };
         let line = said(&on, (&measured, &folded), Some(video), false);
         assert!(
             line.contains(
                 "gateway 5.1 ms at p50, 15.0 ms at p95, 0.0% of 120 echoes lost; video \
-                 2400.0 ms at p95, 38.3% of 118 answers past 1 s, 2 of 120 echoes unanswered; \
+                 2400.0 ms at p95, 37.5% of 120 echoes answered past 1 s, 2 unanswered; \
                  1.25 in 100"
             ),
             "best effort's own figures, then the video class's, for a call's path: {line}"
+        );
+        let policed = Video {
+            answered: 10,
+            p95: Some(ms(1500)),
+            held: 1.7,
+            ..video
+        };
+        let line = said(&on, both, Some(policed), false);
+        assert!(
+            line.contains(
+                "; video 1500.0 ms at p95, 1.7% of 120 echoes answered past 1 s, \
+                 110 unanswered, not weighed; 1.25 in 100"
+            ),
+            "a video class answered too seldom to say anything: {line}"
         );
         let unanswered = Video {
             answered: 0,
@@ -1013,7 +1061,10 @@ pub(crate) mod tests {
         };
         let line = said(&on, both, Some(unanswered), false);
         assert!(
-            line.contains("; video none at p95, 120 of 120 echoes unanswered; 1.25 in 100"),
+            line.contains(
+                "; video none at p95, 0.0% of 120 echoes answered past 1 s, \
+                 120 unanswered, not weighed; 1.25 in 100"
+            ),
             "a video class never answered: {line}"
         );
     }
@@ -1095,7 +1146,8 @@ pub(crate) mod tests {
     #[test]
     fn a_gateway_dropping_most_marked_echoes_isn_t_weighed_by_them() {
         // One that polices marked echoes, at every access point alike,
-        // answers a few in time and the rest never.
+        // answers a few and the rest never; the one it answers here came
+        // late, held by a look over another channel, say.
         let start = Instant::now();
         let mut kept = Measures::default();
         echoed(&mut kept, DESK, start, &[Some(5); 6]);
@@ -1103,7 +1155,7 @@ pub(crate) mod tests {
             &mut kept,
             DESK,
             start,
-            &[Some(7), None, None, None, None, None],
+            &[Some(1500), None, None, None, None, None],
         );
         let now = start + Duration::from_secs(6);
         let measured = kept.of(DESK, now);
@@ -1112,17 +1164,65 @@ pub(crate) mod tests {
             measured.lost.abs() < f64::EPSILON,
             "loses nothing in the air"
         );
-        assert_eq!(
-            measured.p95,
-            Some(ms(7)),
-            "its answer is as quick as it was"
-        );
+        assert_eq!(measured.p95, Some(ms(5)), "best effort's own slow end");
         let video = kept.video_of(DESK, now).expect("video echoes were sent");
         assert_eq!(
-            (video.echoes, video.answered),
-            (6, 1),
-            "one of six answered"
+            (video.echoes, video.answered, video.weighed()),
+            (6, 1, false),
+            "one of six answered, too few to weigh"
         );
+    }
+
+    #[test]
+    fn a_held_video_class_s_loss_is_a_share_of_its_echoes_sent() {
+        // Half answered, one of them late: a quarter of what was sent,
+        // as best effort's loss is of its own.
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(5); 4]);
+        echoed_in_video(&mut kept, DESK, start, &[Some(1500), Some(7), None, None]);
+        let measured = kept.of(DESK, start + Duration::from_secs(4));
+        let measured = measured.expect("an access point echoed through is measured");
+        assert!(
+            (measured.lost - 25.0).abs() < 1e-9,
+            "one late of four sent: {}",
+            measured.lost
+        );
+        assert_eq!(measured.p95, Some(ms(1500)), "held as long as it was");
+    }
+
+    #[test]
+    fn each_figure_is_the_worse_class_s_taken_apart() {
+        // Best effort steadily 20 ms, video quicker at its middle but
+        // slower at its end: neither class is worse at both.
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[Some(20); 4]);
+        echoed_in_video(
+            &mut kept,
+            DESK,
+            start,
+            &[Some(5), Some(5), Some(5), Some(90)],
+        );
+        let measured = kept.of(DESK, start + Duration::from_secs(4));
+        let measured = measured.expect("an access point echoed through is measured");
+        assert_eq!(
+            (measured.p50, measured.p95),
+            (Some(ms(20)), Some(ms(90))),
+            "best effort's middle, video's slow end"
+        );
+    }
+
+    #[test]
+    fn best_effort_never_answered_stays_as_slow_as_can_be_however_quick_video() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed(&mut kept, DESK, start, &[None, None]);
+        echoed_in_video(&mut kept, DESK, start, &[Some(7), Some(7)]);
+        let measured = kept.of(DESK, start + Duration::from_secs(2));
+        let measured = measured.expect("an access point echoed through is measured");
+        assert_eq!((measured.p50, measured.p95), (None, None), "unanswered");
+        assert!((measured.lost - 100.0).abs() < 1e-9, "{}", measured.lost);
     }
 
     #[test]
@@ -1141,6 +1241,26 @@ pub(crate) mod tests {
         assert_eq!(desk.p95, Some(ms(3100)), "the desk held it");
         assert!((desk.held - 100.0).abs() < 1e-9, "late: {}", desk.held);
         assert_eq!(hall.p95, Some(ms(5)), "the hall's is its own");
+    }
+
+    #[test]
+    fn a_late_answer_counts_for_the_echo_sent_when_it_was() {
+        let start = Instant::now();
+        let mut kept = Measures::default();
+        echoed_in_video(&mut kept, DESK, start, &[None, None]);
+        kept.answered_late(Late {
+            sent: start + Duration::from_secs(1),
+            took: ms(2100),
+        });
+        let now = start + Duration::from_secs(2);
+        let video = kept.video_of(DESK, now).expect("video echoes were sent");
+        assert_eq!(
+            (video.answered, video.p95),
+            (1, Some(ms(2100))),
+            "one answered, late"
+        );
+        let first = kept.points[DESK].video.front().map(|(_, echo)| *echo);
+        assert_eq!(first, Some(Echo::Lost), "the first still waits");
     }
 
     #[test]

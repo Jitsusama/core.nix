@@ -36,6 +36,15 @@ use crate::choose;
 use crate::echo;
 use crate::measure::Measured;
 
+/// The file in wifid's state what's learned is kept in. It was `carried`
+/// until the video class was weighed (measure.rs): what that holds was
+/// learned of best effort alone, which holds a point stalling a call's
+/// queue as quick as its best effort, and on 23 Nov 2026 such a figure
+/// drew a card back to one 81 s after it was moved off. So the hours are
+/// learned again in a file of their own, and the old one is left for a
+/// wifid from before to go on with.
+pub const FILE: &str = "carried-weighing-video";
+
 /// How many minutes an access point must have been measured at an hour,
 /// from about one place, before what it carried is gone by.
 const ENOUGH: u32 = 5;
@@ -82,13 +91,6 @@ struct Learnt {
     /// down, where there were any.
     #[serde(default)]
     loaded: Option<Loaded>,
-    /// Whether its figures weigh the video class beside best effort
-    /// (measure.rs). Ones learned before wifid echoed video are let go on
-    /// loading: they hold a point that stalls a call's queue as quick as
-    /// its best effort, and on 23 Nov 2026 such a figure drew a card back
-    /// to one 81 s after it was moved off.
-    #[serde(default)]
-    video: bool,
     /// Whether it goes on the disk: its network was trusted when last
     /// measured.
     #[serde(skip)]
@@ -110,14 +112,12 @@ pub struct Learned {
 }
 
 impl Learned {
-    /// What was learned before, kept in this file, weighing video. One
-    /// that can't be read is begun again empty, which leaves the chooser
-    /// to signals as before.
+    /// What was learned before, kept in this file. One that can't be read
+    /// is begun again empty, which leaves the chooser to signals as before.
     pub fn kept_in(file: &Path) -> Learned {
         let kept = fs::read(file).ok();
         let learnt: Option<Vec<Learnt>> = kept.and_then(|kept| serde_json::from_slice(&kept).ok());
         let mut learnt = learnt.unwrap_or_default();
-        learnt.retain(|learnt| learnt.video);
         for learnt in &mut learnt {
             learnt.kept = true;
         }
@@ -156,7 +156,6 @@ impl Learned {
                 minutes: 0,
                 idle: 0,
                 loaded: None,
-                video: true,
                 kept: here.trusted,
             });
             self.learnt.last_mut().expect("just pushed")
@@ -509,29 +508,6 @@ mod tests {
         assert_eq!(
             loaded_p95_of(&Learned::kept_in(&file), DESK, -43),
             Some(136)
-        );
-    }
-
-    #[test]
-    fn figures_learned_before_video_was_weighed_are_let_go() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("carried");
-        let kept = r#"[{"network":"Lantern","point":"6c:ae:f6:c1:84:28","hour":20,
-            "step":-9,"p95":15.0,"lost":0.5,"minutes":10,"idle":10},
-            {"network":"Lantern","point":"6c:ae:f6:c1:84:26","hour":20,
-            "step":-9,"p95":11.0,"lost":0.0,"minutes":10,"idle":10,"video":true}]"#;
-        fs::write(&file, kept).unwrap();
-        let mut learned = Learned::kept_in(&file);
-
-        assert_eq!(p95_of(&learned, HALL, 20, -50), None, "best effort's alone");
-        assert_eq!(p95_of(&learned, DESK, 20, -50), Some(11), "weighing video");
-        learned
-            .carried(&at(DESK, 20, -50), &carried(Some(25), 0.0))
-            .unwrap();
-        assert_eq!(
-            p95_of(&Learned::kept_in(&file), DESK, 20, -50),
-            Some(12),
-            "a minute of 25 folded into the kept 11 is written as weighing it"
         );
     }
 

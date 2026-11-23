@@ -323,7 +323,7 @@ async fn serve(
         state.subscribe(),
         calling.subscribe(),
         asks.clone(),
-        Learned::kept_in(&Path::new(STATE).join("carried")),
+        Learned::kept_in(&Path::new(STATE).join(learn::FILE)),
     ));
     let watching = watch::Sender::new(0);
     let wifi = Wifi {

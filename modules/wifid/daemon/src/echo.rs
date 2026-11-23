@@ -83,13 +83,49 @@ pub struct Late {
     pub took: Duration,
 }
 
+/// Echoes not answered within [`LOST`] over the span, by sequence, and
+/// when each was sent, so an answer to one that comes later is late. One
+/// sent a span ago is let go: its echo has left what's measured, and a
+/// second echo can't have its sequence until the sequence comes round,
+/// some 18 hours on.
+#[derive(Default)]
+struct Unanswered {
+    waiting: VecDeque<(u16, Instant)>,
+}
+
+impl Unanswered {
+    /// Keeps the echo sent at `sent` with this sequence as unanswered, and
+    /// lets go of any sent more than a span before it.
+    fn wait(&mut self, sequence: u16, sent: Instant) {
+        while let Some(&(_, before)) = self.waiting.front() {
+            if sent.duration_since(before) <= SPAN {
+                break;
+            }
+            self.waiting.pop_front();
+        }
+        self.waiting.push_back((sequence, sent));
+    }
+
+    /// The late answer an answer with this sequence, read at `read`, is,
+    /// if it answers an echo still waited on. Each is answered once.
+    fn answered(&mut self, sequence: u16, read: Instant) -> Option<Late> {
+        let held = self
+            .waiting
+            .iter()
+            .position(|&(asked, sent)| asked == sequence && read.duration_since(sent) <= SPAN)?;
+        let (_, sent) = self.waiting.remove(held)?;
+        Some(Late {
+            sent,
+            took: read.duration_since(sent),
+        })
+    }
+}
+
 /// A card's own socket for echoes.
 pub struct Echoer {
     socket: AsyncFd<OwnedFd>,
     sequence: u16,
-    /// Echoes not answered within [`LOST`] over the span, by sequence, and
-    /// when each was sent, so an answer to one that comes later is late.
-    unanswered: VecDeque<(u16, Instant)>,
+    unanswered: Unanswered,
     /// Late answers read since they were last taken.
     late: Vec<Late>,
 }
@@ -149,7 +185,7 @@ impl Echoer {
         Ok(Echoer {
             socket: AsyncFd::with_interest(owned, Interest::READABLE)?,
             sequence: 0,
-            unanswered: VecDeque::new(),
+            unanswered: Unanswered::default(),
             late: Vec::new(),
         })
     }
@@ -157,12 +193,6 @@ impl Echoer {
     /// Echoes the gateway once, saying when it was sent and how long its
     /// answer took, or that none came within [`LOST`].
     pub async fn echo(&mut self, gateway: Ipv4Addr) -> io::Result<(Instant, Echo)> {
-        while let Some(&(_, sent)) = self.unanswered.front() {
-            if sent.elapsed() <= SPAN {
-                break;
-            }
-            self.unanswered.pop_front();
-        }
         self.sequence = self.sequence.wrapping_add(1);
         let sequence = self.sequence;
         let message = request(sequence);
@@ -195,7 +225,7 @@ impl Echoer {
         if let Ok(answered) = timeout(LOST, self.answer(sequence)).await {
             return answered.map(|()| (sent_at, Echo::Answered(sent_at.elapsed())));
         }
-        self.unanswered.push_back((sequence, sent_at));
+        self.unanswered.wait(sequence, sent_at);
         Ok((sent_at, Echo::Lost))
     }
 
@@ -205,7 +235,10 @@ impl Echoer {
     }
 
     /// Waits for the answer to the echo sent with this sequence, keeping
-    /// any answer to an earlier one counted lost as late.
+    /// any answer to an earlier one counted lost as late. A late answer is
+    /// timed as it's read, which is as it comes while a later echo is
+    /// waited on: one coming between echoes is timed at most a second
+    /// slower than it was, which leaves it late all the same.
     async fn answer(&mut self, sequence: u16) -> io::Result<()> {
         let Echoer {
             socket,
@@ -235,13 +268,7 @@ impl Echoer {
             match answered(&datagram[..read?]) {
                 Some(answered) if answered == sequence => return Ok(()),
                 Some(answered) => {
-                    let held = unanswered.iter().position(|&(asked, _)| asked == answered);
-                    if let Some((_, sent)) = held.and_then(|held| unanswered.remove(held)) {
-                        late.push(Late {
-                            sent,
-                            took: sent.elapsed(),
-                        });
-                    }
+                    late.extend(unanswered.answered(answered, Instant::now()));
                 }
                 None => {}
             }
@@ -314,5 +341,63 @@ mod tests {
             "a gateway unreachable isn't an answer"
         );
         assert_eq!(answered(&answer[..4]), None, "nor is a header cut short");
+    }
+
+    #[test]
+    fn an_answer_to_an_echo_counted_lost_is_late_at_what_it_took() {
+        let start = Instant::now();
+        let mut unanswered = Unanswered::default();
+        unanswered.wait(4, start);
+        unanswered.wait(5, start + Duration::from_secs(1));
+
+        let read = start + Duration::from_millis(2400);
+        assert_eq!(
+            unanswered.answered(5, read),
+            Some(Late {
+                sent: start + Duration::from_secs(1),
+                took: Duration::from_millis(1400),
+            }),
+            "the echo its sequence names, not the one before"
+        );
+        assert_eq!(
+            unanswered.answered(5, read),
+            None,
+            "an answer said twice is late once"
+        );
+        assert_eq!(
+            unanswered.answered(4, read).map(|late| late.took),
+            Some(Duration::from_millis(2400)),
+            "the one before is still waited on"
+        );
+        assert_eq!(
+            unanswered.answered(9, read),
+            None,
+            "one never sent answers nothing"
+        );
+    }
+
+    #[test]
+    fn an_echo_sent_a_span_ago_is_waited_on_no_more() {
+        let start = Instant::now();
+        let mut unanswered = Unanswered::default();
+        unanswered.wait(1, start);
+        unanswered.wait(2, start + Duration::from_secs(1));
+
+        let now = start + SPAN + Duration::from_secs(1);
+        assert_eq!(
+            unanswered.answered(1, now),
+            None,
+            "its echo has left what's measured"
+        );
+        assert!(
+            unanswered.answered(2, now).is_some(),
+            "while one a span back is answered"
+        );
+        unanswered.wait(3, now);
+        assert_eq!(
+            unanswered.waiting,
+            VecDeque::from([(3, now)]),
+            "and the one past it is let go as the next is waited on"
+        );
     }
 }
