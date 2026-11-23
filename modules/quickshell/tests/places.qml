@@ -285,6 +285,12 @@ QtObject {
             Places.placed(docked, Places.connected({}, bothListed), "DP-4")
                 .map(at => [at.output, at.workspace, at.away ?? null]),
             [["DP-4", 1, null], ["DP-4", 3, null], ["eDP-1", 2, null], ["eDP-1", 1, null]]);
+        // A window put back so is left as kept too, and noted nowhere,
+        // rather than sent to the screen in use beside sessions that stay.
+        expect("with no screen said, a window put back is found where it was kept",
+            Places.whereKept(docked[0], [], {}, { inUse: "eDP-1" }), "DP-4");
+        expect("with no screen said, a window put back isn't noted",
+            Places.awayOf(docked[0], "DP-4", [], {}), null);
         // Only the screen in use is taken for its own connector's while
         // it isn't heard: it holds a gone screen's places anyway, so no
         // place lands on a screen it wouldn't have. It may be another
@@ -305,6 +311,9 @@ QtObject {
                 .map(at => [at.output, at.away?.screen ?? null]), [["eDP-1", monitor]]);
         expect("a place kept on the screen in use not heard yet is found there",
             Places.whereKept(docked[2], [], panelSoon, { inUse: "eDP-1" }), "eDP-1");
+        // Heard as another screen, the one in use isn't the place's own.
+        expect("a place kept on the screen in use heard as another is gone",
+            Places.whereKept(docked[2], [], { "eDP-1": monitor }, { inUse: "eDP-1" }), undefined);
         // Its own screen heard on another connector is where it goes,
         // as a monitor renumbered while its old connector is now the
         // screen in use, not heard yet.
@@ -317,6 +326,12 @@ QtObject {
             Places.placed(older, { "eDP-1": "" }, "eDP-1").map(at => at.away ?? null), [null]);
         expect("a window put back by its connector on a screen not heard yet isn't noted",
             Places.awayOf(older[0], "eDP-1", [], { "eDP-1": "" }), null);
+        // Nor is it gone from a screen not heard that isn't in use, as one
+        // kept by what it is would be: its connector is all there is.
+        expect("a place kept by its connector on a screen not heard, not in use, stays",
+            Places.placed([{ output: "DP-5", workspace: 2, column: 1, tile: 1 }],
+                { "eDP-1": panel, "DP-5": "" }, "eDP-1")
+                .map(at => [at.output, at.workspace, at.away ?? null]), [["DP-5", 2, null]]);
         // A screen heard as nothing, no make, model or serial, can't be
         // told from one not heard, so it isn't another screen to a place
         // gone either: it may be its own, its description not read yet.
@@ -381,6 +396,19 @@ QtObject {
         expect("a twin gone doesn't take its twin once that's heard",
             Places.homeward(twinWaits, { "Virtual-1": twin }, onTheFirst),
             { moves: [], waiting: twinWaits });
+        // The shell keeps both twins' notes under their one screen.
+        const bothWait = { [twin]: [Object.assign({ id: 20 }, twinsSoon[0].away ?? null),
+            Object.assign({ id: 21 }, twinsSoon[1].away ?? null)] };
+        const bothOnTheFirst = [{ id: 20, output: "Virtual-1" }].concat(onTheFirst);
+        expect("twins noted together: the one in use is home, its twin gone waits",
+            Places.homeward(bothWait, { "Virtual-1": twin }, bothOnTheFirst),
+            { moves: [{ output: "Virtual-1", id: 20, there: true }],
+                waiting: { [twin]: [bothWait[twin][1]] } });
+        expect("twins noted together: the twin gone goes once it's heard",
+            Places.homeward(bothWait, { "Virtual-1": twin, "Virtual-2": twin },
+                bothOnTheFirst.concat([{ id: 22, output: "Virtual-2" }])),
+            { moves: [{ output: "Virtual-1", id: 20, there: true },
+                { output: "Virtual-2", id: 21 }], waiting: {} });
         const three = { [qemu]: [{ id: 21, workspace: 2, output: "Virtual-2",
             others: { "Virtual-1": qemu, "Virtual-3": qemu } }] };
         expect("a third alike screen isn't the one it left",

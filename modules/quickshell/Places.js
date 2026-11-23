@@ -53,11 +53,11 @@ function twinsOf(at, moment) {
 }
 
 // connectorOf (given `inUse`), but not a twin's (twinsOf) nor one `given` a twin this pass
-// (`{ at, output }` each), so with only those connected `at`'s is gone.
+// (`{ at, output }` each), so with only those connected `at`'s is gone; as kept with none said.
 function whereKept(at, moment, screens, { given, inUse } = {}) {
     const twins = twinsOf(at, moment);
     const taken = twins.concat((given ?? []).filter(was => twins.includes(was.at.output)).map(was => was.output));
-    const found = connectorOf(at, screens, inUse);
+    const found = Object.keys(screens).length > 0 ? connectorOf(at, screens, inUse) : at.output;
     if (found === undefined || found === at.output || !taken.includes(found)) {
         return found;
     }
