@@ -5,7 +5,8 @@ stand-in node (modules/local-sites/tests/stand_in_daemon.py) holding three
 murmurs under test names, said minutes ago, through the node feed exactly as
 home.nix declares it for a machine in a realm (NODE_KINDS). It must say it's
 live with every murmur drawn and counted, take a murmur said, settled or gone
-within its pace, say what it couldn't read, say broken when the node stops
+within its pace, say a quiet node in a line with no empty list and no bare
+sky, say what it couldn't read, say broken when the node stops
 while keeping what it drew and live once it's back, say stale when the server
 goes, draw a murmur's words as words and never as markup, step its cursor by
 the keys and by a tap on the keys its head shows, and pass the web-design
@@ -46,8 +47,9 @@ TWICE = 2
 REOPENED = "crashed and was opened once more"
 # What the three murmurs come to: all said, one of them settled.
 COUNTED = "Three murmured, two still in the air."
-# What a first visit to the page may cost, drawn from the three murmurs.
-BUDGET = Budget(files=20, kilobytes=422, elements=145)
+# What a first visit to the page may cost, drawn from the three murmurs. The quiet
+# day's line is two of the elements and one of the kilobytes.
+BUDGET = Budget(files=20, kilobytes=423, elements=147)
 # How long ago each murmur was said, in seconds, oldest first.
 AGES = (40 * 60, 25 * 60, 10 * 60)
 
@@ -389,6 +391,47 @@ def crash(page: Page) -> None:
     # The navigation's own error says nothing the next reading's won't.
     with contextlib.suppress(Error):
         page.goto("chrome://crash")
+
+
+@pytest.fixture
+def quiet_node(tmp_path: Path) -> Iterator[StandIn]:
+    stand_in = StandIn(tmp_path / "quiet.sock", "node", {"murmur": []}).start()
+    yield stand_in
+    stand_in.leave()
+
+
+def heard_nothing(page: Page) -> None:
+    """Read the page live with nothing murmured, its first reading."""
+    the_page_stands(page, "live")
+    the_page_counts(page, "Nothing murmured yet.", "the quiet page miscounted")
+
+
+def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
+    browser: Browser, tmp_path: Path, quiet_node: StandIn
+) -> None:
+    feed = {"socket": str(quiet_node.path), "kinds": json.loads(os.environ["NODE_KINDS"])}
+    with serving(tmp_path, {"web": os.environ["MURMURS_SITE"]}, {"node": feed}) as served:
+        root, _ = served
+        opened = Opened(browser, f"{root}web/", SIZES[0], "light")
+        try:
+            opened.first(heard_nothing)
+            page = opened.page
+            expect(page.locator("#quiet"), "the quiet day wasn't said").to_contain_text(
+                "Nothing murmured in the last day."
+            )
+            # A listbox must hold options, so a list with none is no listbox at all.
+            expect(page.locator('[role="listbox"]'), "an empty listbox was drawn").to_have_count(0)
+            expect(page.locator("#sky svg:not(.crest)"), "a bare sky was drawn").to_have_count(0)
+            expect(page.locator("#sky .crest"), "the crest didn't stand in").to_be_visible()
+            opened.passes_the_skills_checks()
+            quiet_node.tell("murmur", changed=[murmur("HERONS", int(time.time()), "Fog.")])
+            the_page_counts(page, "One murmured, all still in the air.", "the murmur went unheard")
+            expect(page.locator("#murmurs"), "the first murmur's list").to_have_attribute(
+                "role", "listbox"
+            )
+            expect(page.locator("#quiet"), "the quiet line outlived the quiet").to_be_hidden()
+        finally:
+            opened.close()
 
 
 def test_the_murmurs_page_keeps_to_its_budget(browser: Browser, murmurs_served: Served) -> None:

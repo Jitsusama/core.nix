@@ -37,6 +37,12 @@ const sky = found("#sky", HTMLDivElement);
 const asof = found("#asof", HTMLSpanElement);
 const keys = found("#keys", HTMLDialogElement);
 const listTitle = found("#murmurs-title", HTMLHeadingElement);
+const quiet = found("#quiet", HTMLParagraphElement);
+const dusk = found(".dusk", HTMLElement);
+const legend = found("#sky-says", HTMLParagraphElement);
+// The crest the page opens on, kept to stand in for a flock while nothing's murmured,
+// so a quiet day shows the page's emblem rather than a bare band of sky.
+const crest = sky.innerHTML;
 
 let murmurs: readonly Murmur[] = [];
 let unread: readonly string[] = [];
@@ -100,16 +106,43 @@ function select(bringIntoView = false): void {
   }
 }
 
+/**
+ * Shows the list while it has rows, and the quiet line once the node has said there
+ * are none. A list with no rows is no listbox, since a listbox must hold options.
+ */
+function showList(any: boolean): void {
+  list.hidden = !any;
+  quiet.hidden = any || !given;
+  if (any) {
+    list.setAttribute("role", "listbox");
+    list.tabIndex = 0;
+  } else {
+    list.removeAttribute("role");
+    list.removeAttribute("tabindex");
+  }
+}
+
 function draw(): void {
+  // With nothing left in the air the list shows every murmur, since the headline
+  // then offers no way back to them.
+  airOnly = airOnly && murmurs.some((each) => each.settled === null);
   const rows = shown();
   if (!rows.some((each) => each.key === cursor)) {
     cursor = rows[0]?.key ?? null;
   }
   const at = now();
   list.innerHTML = rows.map((each) => murmurRow(each, at)).join("");
-  // Once the node has spoken the sky is its murmurs, so when the last one
-  // goes the flock goes with it and the wire is left bare.
-  sky.innerHTML = skyOf(murmurs, cursor);
+  showList(rows.length > 0);
+  // Once the node has spoken the sky is its murmurs; when the last one goes the
+  // flock goes with it, and the crest comes back with nothing to describe.
+  const empty = murmurs.length === 0;
+  sky.innerHTML = empty ? crest : skyOf(murmurs, cursor);
+  if (empty) {
+    dusk.setAttribute("aria-hidden", "true");
+  } else {
+    dusk.removeAttribute("aria-hidden");
+  }
+  legend.hidden = empty;
   listTitle.innerHTML = airOnly ? "The murmurs <em>still in the air</em>" : "The <em>murmurs</em>";
   select();
 }
