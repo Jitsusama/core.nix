@@ -153,12 +153,21 @@ pub fn his_parent(parents: &str, account: &str, transient: &Path) -> bool {
 
 /// Whether a unit in his app.slice is his: one not named for a process is
 /// his by its name. None when its process or parent is gone before it's
-/// read, which is left his for now and judged again, as lag-watch leaves
-/// them.
+/// read, or the pid it's named for is no longer in it, used again by
+/// another, which is left his for now and judged again, as lag-watch
+/// leaves them.
 fn his(seat: &Seat, unit: &str) -> Option<bool> {
     let Some(pid) = named_pid(unit) else {
         return Some(true);
     };
+    let own = fs::read_to_string(seat.proc.join(format!("{pid}/cgroup"))).ok()?;
+    let in_it = own
+        .lines()
+        .filter_map(|line| line.strip_prefix("0::"))
+        .any(|path| path.split('/').any(|part| part == unit));
+    if !in_it {
+        return None;
+    }
     let fields = fs::read_to_string(seat.proc.join(format!("{pid}/stat"))).ok()?;
     let parent = fields
         .rsplit_once(')')
@@ -269,21 +278,34 @@ impl Watching {
         verdict
     }
 
+    /// His call apps' units now, each judged once while it lasts. The watch
+    /// judges between calls too, so an agent's Chrome is judged while its
+    /// launcher still runs, before a call it carries begins.
+    fn judge(&mut self, seat: &Seat) -> Vec<(String, String)> {
+        let found = units(&seat.slice);
+        // A unit gone takes its verdict, so a pid used again is judged anew.
+        self.verdicts
+            .retain(|unit, _| found.iter().any(|(name, _)| name == unit));
+        found
+            .into_iter()
+            .filter(|(unit, _)| self.judged(seat, unit))
+            .collect()
+    }
+
+    /// The call so far, from `began`, with the call apps found over it.
+    fn so_far(&self, began: u64, ticks: &[Tick]) -> Real {
+        let mut real = summed(began, seconds_now(), ticks);
+        real.apps = self.apps.iter().cloned().collect();
+        real
+    }
+
     /// Looks again for his call apps' sending threads. Threads found anew
     /// are read now, so their first span starts here.
     fn look(&mut self, seat: &Seat) {
         let (proc, slice) = (seat.proc.as_path(), seat.slice.as_path());
         let mut threads = Vec::new();
         let mut roles = HashMap::new();
-        let found = units(slice);
-        // A unit gone takes its verdict, so a pid used again is judged anew.
-        self.verdicts
-            .retain(|unit, _| found.iter().any(|(name, _)| name == unit));
-        let theirs: Vec<(String, String)> = found
-            .into_iter()
-            .filter(|(unit, _)| self.judged(seat, unit))
-            .collect();
-        for (unit, app) in theirs {
+        for (unit, app) in self.judge(seat) {
             self.apps.insert(app.clone());
             let procs = fs::read_to_string(slice.join(&unit).join("cgroup.procs"));
             for pid in procs
@@ -469,14 +491,31 @@ pub fn heard(history: &str, since: u64, now: u64) -> Vec<Real> {
         .filter(|real: &Real| real.ended <= now + 60)
         .collect();
     all.sort_by_key(|real| real.ended);
-    if all.iter().any(|real| real.ended > since) {
-        all.retain(|real| real.ended > since);
-    } else {
-        all.retain(|real| real.ended + DAY > now);
-        let older = all.len().saturating_sub(1);
-        all.drain(..older);
-    }
+    // The newest read call of the last day stands until a later read one
+    // replaces it, so a call since that the watch couldn't read hides no
+    // figure.
+    let read = |real: &Real| real.sending_p99.is_some();
+    let fresh = all.iter().any(|real| real.ended > since && read(real));
+    let standing = all
+        .iter()
+        .rposition(|real| !fresh && read(real) && real.ended + DAY > now);
+    let mut index = 0;
+    all.retain(|real| {
+        let keep = real.ended > since || Some(index) == standing;
+        index += 1;
+        keep
+    });
     all
+}
+
+/// When the watch last could tell, after `answer`, asked `now`: an answer
+/// it can't give leaves it where it was.
+fn cleared(answer: &Call, clear: u64, now: u64) -> u64 {
+    if matches!(answer, Call::Unknown(_)) {
+        clear
+    } else {
+        now
+    }
 }
 
 fn seconds_now() -> u64 {
@@ -512,11 +551,6 @@ fn one_call(
     clear: &mut u64,
 ) -> Real {
     let began = seconds_now();
-    let so_far = |watching: &Watching, ticks: &[Tick]| {
-        let mut real = summed(began, seconds_now(), ticks);
-        real.apps = watching.apps.iter().cloned().collect();
-        real
-    };
     watching.begin();
     watching.look(seat);
     let mut asked = Instant::now();
@@ -535,25 +569,23 @@ fn one_call(
         }
         asked = Instant::now();
         let answer = gate::a_call();
-        if !matches!(answer, Call::Unknown(_)) {
-            *clear = seconds_now();
-        }
+        *clear = cleared(&answer, *clear, seconds_now());
         alive(said, *clear);
         match answer {
-            Call::Off => return so_far(watching, &ticks),
+            Call::Off => return watching.so_far(began, &ticks),
             Call::On => unsure = 0,
             Call::Unknown(why) => {
                 unsure += 1;
                 if unsure >= UNSURE {
                     eprintln!("closing the call as unsure: {why}");
-                    let mut real = so_far(watching, &ticks);
+                    let mut real = watching.so_far(began, &ticks);
                     real.unsure = true;
                     return real;
                 }
             }
         }
         watching.look(seat);
-        if let Err(error) = kept(part, &so_far(watching, &ticks)) {
+        if let Err(error) = kept(part, &watching.so_far(began, &ticks)) {
             eprintln!("the call so far couldn't be kept: {error}");
         }
     }
@@ -614,9 +646,7 @@ pub fn watch(seat: &Seat, history: &Path, said: &Path) -> std::io::Result<()> {
             thread::sleep(TICK);
             asked = gate::a_call();
         }
-        if !matches!(asked, Call::Unknown(_)) {
-            clear = seconds_now();
-        }
+        clear = cleared(&asked, clear, seconds_now());
         alive(said, clear);
         // Said once each time it changes, so the journal shows a watch
         // that can't tell apart from one that hears no calls.
@@ -642,6 +672,8 @@ pub fn watch(seat: &Seat, history: &Path, said: &Path) -> std::io::Result<()> {
                 real.worst_who.as_deref().unwrap_or("none")
             );
             told = None;
+        } else {
+            watching.judge(seat);
         }
         thread::sleep(ASK);
     }
@@ -768,6 +800,7 @@ mod tests {
         for unit in [
             "app-com.google.Chrome-12.scope",
             "app-com.google.Chrome-34.scope",
+            "app-com.google.Chrome-90.scope",
             "app-slack-56.scope",
             "tuple.service",
             "call-under-load.service",
@@ -776,6 +809,8 @@ mod tests {
         ] {
             fs::create_dir_all(slice.join(unit)).unwrap();
         }
+        let manager = "/user.slice/user-1000.slice/user@1000.service";
+        let agents = format!("{manager}/agents.slice/pi-host-work.service");
         let started = |pid: u32, parent: u32, cgroup: &str| {
             fs::create_dir_all(proc.join(pid.to_string())).unwrap();
             fs::create_dir_all(proc.join(parent.to_string())).unwrap();
@@ -785,36 +820,50 @@ mod tests {
             )
             .unwrap();
             fs::write(
+                proc.join(format!("{pid}/cgroup")),
+                format!("0::{manager}/app.slice/app-com.google.Chrome-{pid}.scope\n"),
+            )
+            .unwrap();
+            fs::write(
                 proc.join(format!("{parent}/cgroup")),
                 format!("0::{cgroup}\n"),
             )
             .unwrap();
         };
-        let manager = "/user.slice/user-1000.slice/user@1000.service";
         started(12, 2, &format!("{manager}/init.scope"));
-        started(
-            34,
-            3,
-            &format!("{manager}/agents.slice/pi-host-work.service"),
-        );
+        started(34, 3, &agents);
+        // Its scope's pid ended and an agent's process took the number up:
+        // its parent says nothing of who opened the scope.
+        started(90, 4, &agents);
+        fs::write(proc.join("90/cgroup"), format!("0::{agents}\n")).unwrap();
         let seat = Seat {
             proc: proc.clone(),
             account: manager.to_string(),
             slice: slice.clone(),
             transient: root.join("transient"),
         };
-        let mut watching = Watching::default();
-        let mut found_now = || -> Vec<String> {
-            units(&slice)
+        let named = |units: Vec<(String, String)>| -> Vec<String> {
+            units
                 .into_iter()
-                .filter(|(unit, _)| watching.judged(&seat, unit))
                 .map(|(unit, app)| format!("{unit} {app}"))
                 .collect()
         };
-        let found = found_now();
-        // The agent's launcher ends, and his user manager takes its Chrome on.
+        let mut watching = Watching::default();
+        // Judged between calls, while the agent's launcher still runs.
+        let found = named(watching.judge(&seat));
+        // The agent's launcher ends, his user manager takes its Chrome on,
+        // and a call begins.
         started(34, 1, &format!("{manager}/init.scope"));
-        let again = found_now();
+        watching.begin();
+        watching.look(&seat);
+        let apps = watching.so_far(1, &[]).apps;
+        let again = named(watching.judge(&seat));
+        // Its scope goes, and one of its name comes back, his.
+        let scope = slice.join("app-com.google.Chrome-34.scope");
+        fs::remove_dir_all(&scope).unwrap();
+        watching.judge(&seat);
+        fs::create_dir_all(&scope).unwrap();
+        let anew = named(watching.judge(&seat));
         fs::remove_dir_all(&root).unwrap();
         assert_eq!(
             again, found,
@@ -824,10 +873,30 @@ mod tests {
             found,
             [
                 "app-com.google.Chrome-12.scope chrome",
+                "app-com.google.Chrome-90.scope chrome",
                 "app-slack-56.scope slack",
                 "tuple.service tuple",
             ],
             "the wrong units were taken for Joel's call apps"
+        );
+        assert!(
+            anew.contains(&"app-com.google.Chrome-34.scope chrome".to_string()),
+            "a gone unit's verdict was kept for a later one of its name"
+        );
+        assert_eq!(
+            apps,
+            ["chrome", "slack", "tuple"],
+            "the call apps found didn't reach the call's line"
+        );
+    }
+
+    #[test]
+    fn an_answer_it_can_t_give_leaves_when_it_last_could_tell() {
+        assert_eq!(
+            [Call::On, Call::Off, Call::Unknown("timed out".to_string())]
+                .map(|answer| cleared(&answer, 100, 200)),
+            [200, 200, 100],
+            "an answer it couldn't give moved when it last could tell"
         );
     }
 
@@ -914,7 +983,12 @@ mod tests {
 
     #[test]
     fn the_hour_reads_calls_since_the_last_hour_or_else_the_day_s_newest() {
-        let call = |ended| line(&summed(ended - 60, ended, &[])).to_string();
+        let tick = || Tick {
+            worst_ms: Some(10.0),
+            who: Some("chrome:renderer:WebRTC_W_and_N".to_string()),
+            load15: 1.0,
+        };
+        let call = |ended| line(&summed(ended - 60, ended, &[tick()])).to_string();
         let history = [
             call(1_000),
             r#"{"at": 1500, "run": {"started": 1400}, "measures": {}}"#.to_string(),
@@ -947,6 +1021,12 @@ mod tests {
         assert!(
             heard("", 0, 0).is_empty(),
             "no call watched yet reads as none"
+        );
+        let unread = line(&summed(4_400, 4_500, &[])).to_string();
+        assert_eq!(
+            ended(heard(&format!("{history}\n{unread}"), 4_000, 5_000)),
+            [3_000, 4_500],
+            "a call since the last hour the watch couldn't read hid the standing figure"
         );
     }
 
