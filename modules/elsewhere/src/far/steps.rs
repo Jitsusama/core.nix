@@ -291,9 +291,13 @@ pub(super) fn bringing(kind: &Kind) -> String {
         // fails, on a compound command or a function as on a special
         // builtin: then only this step ends, never the far line, and the
         // list gets no end. `true` rather than `:` for the same reason.
+        // What can't be cleared, as a folder the job made at a list's
+        // name, is left for the list's own write to fail on, so each path
+        // is lost as when nowhere is left to list them.
         r#"names="$work.back" wrote=0
 (
-rm -f "$names" "$names".* "$job/{BROUGHT}" && set -C || exit 1
+rm -f "$names" "$names".* "$job/{BROUGHT}" 2>/dev/null
+set -C
 lose() {{
   for path in {paths}; do
     [ -e "$path" ] || continue
