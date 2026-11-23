@@ -8,8 +8,11 @@ late. The camera was left running with nothing asking it for frames,
 and nothing noticed until the service was restarted by hand. An error
 on the camera's pipeline leaves a waiting client the same way.
 
-A client that has waited 10 s with no frame now gets the camera's
-pipeline made again, and if that gives none either, the relay ends for
+A client that has waited 90 s with no frame now gets the camera's
+pipeline made again. Not sooner: the camera's first frame can follow
+its start by 40 s under load, its capture buffers given out only as
+the kernel compacts memory for them, and a pipeline made again starts
+that wait over, so a shorter wait never gives a frame. And and if that gives none either, the relay ends for
 its service to start it afresh. A main loop blocked for 90 s ends it
 too. Each says so on standard error.
 
@@ -23,7 +26,7 @@ too. Each says so on standard error.
 + * made again, how often that's looked at, and how long the main loop may
 + * stay blocked, as in a camera that won't stop, before the relay ends so
 + * its service starts it afresh. */
-+#define STALL_SECONDS 10
++#define STALL_SECONDS 90
 +#define STALL_CHECK_SECONDS 2
 +#define HUNG_SECONDS 90
 +
