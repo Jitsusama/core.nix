@@ -91,6 +91,10 @@ let
   sleepingNode =
     toString
       (linux (links // { easesSleep = true; })).systemd.user.services.mycelium.Service.ExecStart;
+  # The home realm's node of a machine that makes the carries it chooses.
+  carryingNode =
+    toString
+      (linux (links // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart;
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -353,16 +357,25 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions or makes its carries though its machine doesn't say to or doesn't where it does, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
         && !(lib.hasInfix "--eases" otherNode)
         && !(lib.hasInfix "--eases" (
           toString
-            (linux (both // { easesSleep = true; })).systemd.user.services.mycelium-other.Service.ExecStart
+            (linux (
+              both
+              // {
+                easesSleep = true;
+                easesCarry = true;
+              }
+            )).systemd.user.services.mycelium-other.Service.ExecStart
         ))
         && !(lib.hasInfix "--eases-sleep" linuxNode)
+        && !(lib.hasInfix "--eases-carry" linuxNode)
+        && !(lib.hasInfix "--eases-carry" sleepingNode)
+        && lib.hasInfix "--eases --eases-carry" carryingNode
         && lib.hasInfix "--eases --eases-sleep /home/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease" sleepingNode
         && lib.hasInfix "--ssh one --ssh two --via /bin/cell:cell-1 --waiting" (viaNode "/bin/cell:cell-1")
         && lib.all (wrong: !(builtins.tryEval (viaNode wrong)).success) [
