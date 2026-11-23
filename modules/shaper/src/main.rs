@@ -359,6 +359,10 @@ struct Shaped {
     /// The share of their split agents straight on the link are held to,
     /// while the VPN's flow waits beside what they send.
     agents_share: f64,
+    /// The share agents' class was split at when last changed, which the
+    /// queues hold until the next split changes it, up to a second later
+    /// or never, so a trace says the share the class holds.
+    split_agents_share: f64,
     /// The packets the upload's CAKE had dropped when last read, and what
     /// it and the VPNs riding the link dropped since the controller was
     /// last told, and when that was.
@@ -423,6 +427,9 @@ impl Shaped {
         if split.moved_from(&self.split, rate) {
             let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
             self.split = self.split.after(split, took);
+            if took {
+                self.split_agents_share = self.agents_share;
+            }
         }
         self.split.vpn
     }
@@ -439,12 +446,15 @@ impl Shaped {
         let split = self.lanes.at(float(self.applied.0));
         let took = run_all(lanes::change(&self.uplink.name, self.applied.0, &split));
         self.split = self.split.after(split, took);
+        if took {
+            self.split_agents_share = 1.0;
+        }
     }
 
     /// The shares this link's queues are held to now, as a trace says them
     /// (`applied_held`).
     fn held(&self) -> trace::Held {
-        applied_held((self.vpn_share, self.agents_share), &self.split)
+        applied_held((self.vpn_share, self.split_agents_share), &self.split)
     }
 
     /// Reads the upload's CAKE: what it has sent, as CAKE counts it, since
@@ -710,6 +720,7 @@ fn start(
         vpn_reads: (0, 0),
         vpn_share: 1.0,
         agents_share: 1.0,
+        split_agents_share: 1.0,
         drops: None,
         dropped: 0,
         told_at: None,
@@ -1914,7 +1925,8 @@ fn held_shares(
 /// given, and agents' only while the split caps their lane, which it does
 /// only while they wait straight (src/lanes.rs). A hold climbing back while
 /// they don't caps nothing, so a trace saying it would read as a hold that
-/// wasn't there.
+/// wasn't there. Agents' is the share asked: where their part of the floor
+/// is more, the class holds them to the floor, above it.
 fn applied_held((vpn, agents): (f64, f64), split: &lanes::Split) -> trace::Held {
     trace::Held {
         vpn,

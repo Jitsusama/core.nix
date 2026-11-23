@@ -81,7 +81,9 @@ pub struct Line {
     /// link, as main put them there, down to a hundredth, while under one:
     /// holds that leave the upload's rate as it was, and that the journal
     /// says only as they begin or end. A line with a `why` was written by a
-    /// shaper whose `link_wait_ms` leaves agents' lane out (src/oneway.rs).
+    /// shaper whose `link_wait_ms` leaves agents' lane out (src/oneway.rs);
+    /// a replay says how many seconds it fed from lines without one
+    /// (`counting_agents`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub why: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -268,6 +270,27 @@ pub fn merge(stays: &mut [Stay], lines: &BTreeMap<u64, Line>) -> Vec<Vec<Rates>>
                 .collect()
         })
         .collect()
+}
+
+/// How many of the `stays`' seconds took a wait of ours from a line with
+/// no `why`: one an older shaper wrote, whose `link_wait_ms` counted what
+/// agents' lane held too (src/oneway.rs). The two can't be told apart
+/// after the fact, so a replay through the rebuilt controller reads the
+/// VPN's hidden wait short there, and says how much of it did.
+#[must_use]
+pub fn counting_agents(stays: &[Stay], lines: &BTreeMap<u64, Line>) -> u64 {
+    let older = |at: u64| {
+        lines
+            .get(&at)
+            .is_some_and(|line| line.ours.is_some() && line.why.is_none())
+    };
+    let seconds = stays.iter().flat_map(|stay| {
+        let began = stay.began_ms / 1_000;
+        stay.seconds
+            .iter()
+            .map(move |s| began + crate::rate::whole(s.t_s))
+    });
+    seconds.filter(|&at| older(at)).map(|_| 1).sum()
 }
 
 /// Puts the trace's `lines` into `stays` as `merge` does, giving the
@@ -542,6 +565,39 @@ mod tests {
             s[3].up_ours, None,
             "nothing heard, nothing put in: {:?}",
             s[3]
+        );
+    }
+
+    // A replay over days an older shaper traced feeds the rebuilt
+    // controller a wait that counted agents' lane, which it reads as
+    // ours, so it says how much did (traces round 2's F3, F14 and F19).
+    #[test]
+    fn a_stay_counts_the_seconds_whose_wait_an_older_shaper_wrote() {
+        let stays = vec![Stay {
+            network: "home".into(),
+            began_ms: NOV16 * 1_000,
+            seconds: (0..6).map(second).collect(),
+        }];
+        let lines = BTreeMap::from([
+            (NOV16 + 1, line(NOV16 + 1, Some(5_000), None)),
+            (NOV16 + 2, line(NOV16 + 2, Some(5_000), None)),
+            (
+                NOV16 + 3,
+                line(NOV16 + 3, Some(5_000), None).because("tunnel"),
+            ),
+            (
+                NOV16 + 4,
+                Line {
+                    ours: None,
+                    ..line(NOV16 + 4, Some(5_000), None)
+                },
+            ),
+            (NOV16 + 9, line(NOV16 + 9, Some(5_000), None)),
+        ]);
+        assert_eq!(
+            counting_agents(&stays, &lines),
+            2,
+            "only a stay's seconds with a wait and no reason are an older shaper's"
         );
     }
 
