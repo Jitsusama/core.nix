@@ -231,29 +231,45 @@ QtObject {
 
         // What the journal says of each ask, whatever the reports: as it
         // begins, and how it ended, so an ask that failed is read, not guessed.
+        // Each is lived from polkit handing it over at 1000 ms, through what
+        // the prompt hears of it, each [what, at], to its end.
+        function lived(action, keys, heard, end) {
+            let ask = Polkit.begun(action, 1000, keys);
+            for (const [what, at] of heard)
+                ask = Polkit.heard(ask, what, at);
+            return Polkit.finished(ask, end);
+        }
+        const unitsSaid = "polkit: org.freedesktop.systemd1.manage-units";
+        const execSaid = "polkit: org.freedesktop.policykit.exec";
         const journalled = [
-            ["a beginning", Polkit.began(units),
-                "polkit: org.freedesktop.systemd1.manage-units asked, the prompt shown"],
-            ["an answer", Polkit.finished({
-                action: units, how: "answered", ms: 4512, keysMs: 38.6, wrong: 0
-            }), "polkit: org.freedesktop.systemd1.manage-units answered after 4.5 s;"
-                + " it had the keys 39 ms after it showed"],
-            ["an answer after a wrong password", Polkit.finished({
-                action: exec, how: "answered", ms: 9700, keysMs: 12, wrong: 1
-            }), "polkit: org.freedesktop.policykit.exec answered after 9.7 s,"
-                + " after 1 wrong password; it had the keys 12 ms after it showed"],
-            ["an Escape after wrong passwords", Polkit.finished({
-                action: exec, how: "refused", ms: 15000, keysMs: 0, wrong: 2
-            }), "polkit: org.freedesktop.policykit.exec refused with Escape after 15.0 s,"
-                + " after 2 wrong passwords; it had the keys 0 ms after it showed"],
-            ["an ask left 25 s", Polkit.finished({
-                action: units, how: "dropped", ms: 25004, keysMs: null, wrong: 0
-            }), "polkit: org.freedesktop.systemd1.manage-units given up by its asker,"
-                + " unanswered after 25.0 s; it never had the keys"],
-            ["an end nothing said", Polkit.finished({
-                action: units, how: "", ms: 300, keysMs: null, wrong: 0
-            }), "polkit: org.freedesktop.systemd1.manage-units ended without saying how"
-                + " after 0.3 s; it never had the keys"]
+            ["a beginning", Polkit.began(units), `${unitsSaid} asked`],
+            ["an answer", lived(units, false, [["keys", 1038.6], ["answered", 5500]], 5512),
+                `${unitsSaid} answered after 4.5 s; it had the keys 39 ms in`],
+            ["an answer after a wrong password",
+                lived(exec, false, [["keys", 1012], ["wrong", 6000], ["answered", 10700]], 10700),
+                `${execSaid} answered after 9.7 s, after 1 wrong password;`
+                    + " it had the keys 12 ms in"],
+            ["an Escape, and the cancel it makes",
+                lived(exec, true, [["wrong", 3000], ["wrong", 8000], ["refused", 16000],
+                    ["withdrawn", 16001]], 16002),
+                `${execSaid} refused with Escape after 15.0 s, after 2 wrong passwords;`
+                    + " it had the keys 0 ms in"],
+            ["an answer polkit then calls cancelled",
+                lived(units, true, [["answered", 4000], ["withdrawn", 4001]], 4002),
+                `${unitsSaid} answered after 3.0 s; it had the keys 0 ms in`],
+            ["an ask left 25 s", lived(units, false, [["withdrawn", 26004]], 26004),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, unanswered;`
+                    + " it never had the keys"],
+            ["an ask withdrawn after a wrong password",
+                lived(units, false, [["keys", 1100], ["wrong", 9000], ["withdrawn", 26000]],
+                    26000),
+                `${unitsSaid} withdrawn by polkit after 25.0 s, after 1 wrong password;`
+                    + " it had the keys 100 ms in"],
+            ["keys given again",
+                lived(units, false, [["keys", 1040], ["keys", 1900], ["answered", 3000]], 3000),
+                `${unitsSaid} answered after 2.0 s; it had the keys 40 ms in`],
+            ["an end nothing said", lived(units, false, [], 1300),
+                `${unitsSaid} ended without saying how after 0.3 s; it never had the keys`]
         ];
         for (const [what, got, wanted] of journalled) {
             asked++;

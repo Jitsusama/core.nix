@@ -76,38 +76,32 @@ Scope {
 
     readonly property string why: flow ? Said.reason(flow.message, cmdline, flow.details) : ""
 
-    // The ask the journal follows, from its prompt showing to its end, reports
-    // on or not, so a failed ask is read from the record rather than guessed
-    // (Polkit.js, began and finished). askHow is how it ended, once known.
-    property string askAction: ""
-    property real askShownAt: 0
-    property var askKeysMs: null
-    property int askWrong: 0
-    property string askHow: ""
+    // The ask the journal follows, from polkit handing it over to its end,
+    // reports on or not, so a failed ask is read from the record rather than
+    // guessed (Polkit.js, begun, heard and finished). askSerial counts asks,
+    // so an end said later belongs to its own ask and never to the next.
+    property var ask: null
+    property int askSerial: 0
 
-    function askEnds() {
-        if (askAction === "")
+    function askHeard(what) {
+        if (ask)
+            ask = Said.heard(ask, what, Date.now());
+    }
+
+    function askEnds(serial) {
+        if (!ask || serial !== askSerial)
             return;
-        console.info(Said.finished({
-            action: askAction,
-            how: askHow,
-            ms: Date.now() - askShownAt,
-            keysMs: askKeysMs,
-            wrong: askWrong
-        }));
-        askAction = "";
+        console.info(Said.finished(ask, Date.now()));
+        ask = null;
     }
 
     onFlowChanged: {
-        askEnds();
+        askEnds(askSerial);
         if (!flow)
             return;
-        askAction = flow.actionId;
-        askShownAt = Date.now();
-        askKeysMs = null;
-        askWrong = 0;
-        askHow = "";
-        console.info(Said.began(askAction));
+        askSerial += 1;
+        ask = Said.begun(flow.actionId, Date.now(), keysHeld.keys);
+        console.info(Said.began(ask.action));
     }
 
     Connections {
@@ -115,20 +109,22 @@ Scope {
 
         function onIsSuccessfulChanged() {
             if (root.flow.isSuccessful)
-                root.askHow = "answered";
+                root.askHeard("answered");
         }
         function onIsCancelledChanged() {
-            if (root.flow.isCancelled && root.askHow === "")
-                root.askHow = "dropped";
+            if (root.flow.isCancelled)
+                root.askHeard("withdrawn");
         }
         function onAuthenticationFailed() {
-            root.askWrong += 1;
+            root.askHeard("wrong");
         }
-        // Later, so how it ended is set first, whichever order the flow says
-        // its end in.
+        // Later, so how it ended is heard first, whichever order the flow
+        // says its end in, and only for the ask that ended.
         function onIsCompletedChanged() {
-            if (root.flow.isCompleted)
-                Qt.callLater(root.askEnds);
+            if (!root.flow.isCompleted)
+                return;
+            const serial = root.askSerial;
+            Qt.callLater(() => root.askEnds(serial));
         }
     }
 
@@ -153,12 +149,14 @@ Scope {
             name: "polkit"
         }
 
-        // When niri gives the prompt the keys, for the journal's line on the ask.
+        // Whether niri gives the prompt the keys, for the journal's line on
+        // the ask: held as an ask comes, or given while it waits.
         Item {
+            id: keysHeld
             readonly property bool keys: Window.active
             onKeysChanged: {
-                if (keys && root.askAction !== "" && root.askKeysMs === null)
-                    root.askKeysMs = Date.now() - root.askShownAt;
+                if (keys)
+                    root.askHeard("keys");
             }
         }
 
@@ -179,7 +177,7 @@ Scope {
             secret: !(root.flow && root.flow.responseVisible)
             onSubmitted: text => root.flow.submit(text)
             onRefused: {
-                root.askHow = "refused";
+                root.askHeard("refused");
                 root.flow.cancelAuthenticationRequest();
             }
         }

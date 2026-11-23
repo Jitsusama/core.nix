@@ -335,35 +335,61 @@ function reason(message, cmdline, details) {
 }
 
 // How an ask can end, as the journal says it: Joel's password taken, his
-// Escape, or polkit taking the ask back once its asker stopped waiting.
-// systemd waits 25 s for polkit's answer to run0 or systemctl, so an ask
-// left unanswered that long ends the third way.
+// Escape, or polkit withdrawing it, which the shell can't see the cause of.
+// On 2026-11-23 three asks were withdrawn 25 s in, as long as systemd waits
+// for polkit's answer to run0 or systemctl.
 const endings = new Map([
     ["answered", "answered"],
     ["refused", "refused with Escape"],
-    ["dropped", "given up by its asker, unanswered"]
+    ["withdrawn", "withdrawn by polkit"]
 ]);
 
-// What the journal says as an ask begins, whether or not reports are on, so
-// an ask is seen even when the shell ends before it does. Never the command,
-// which polkit-asks journals with its cgroup, nor anything typed.
+// What the journal says as polkit hands the prompt an ask, reports on or
+// not, so an ask is seen even when the shell ends before it does. Never the
+// command, which polkit-asks journals with its cgroup, nor anything typed.
 function began(action) {
-    return `polkit: ${action} asked, the prompt shown`;
+    return `polkit: ${action} asked`;
 }
 
-// What the journal says once an ask ends: how, after how long, after how
-// many wrong passwords, and whether niri gave the prompt the keys. On
-// 2026-11-23 three asks ended 25 s in, and nothing said whether the prompt
-// had held the keys or nobody had typed. ask is {action, how, ms, keysMs,
-// wrong}, keysMs null while the prompt never had them.
-function finished(ask) {
+// An ask the journal follows, from polkit handing it over at `at`: keys is
+// whether the prompt already holds them, as one asked straight after another
+// can while its window stays focused.
+function begun(action, at, keys) {
+    return { action, at, how: "", wrong: 0, keysAt: keys ? at : null };
+}
+
+// The ask once `what` is heard of it at `at`: a wrong password, the keys, or
+// one of the endings. The first ending heard stands, as Joel's Escape cancels
+// the flow too, and that cancel mustn't be taken for polkit's withdrawal. The
+// keys count from when the prompt first had them.
+function heard(ask, what, at) {
+    const next = Object.assign({}, ask);
+    if (what === "wrong") {
+        next.wrong += 1;
+    } else if (what === "keys") {
+        next.keysAt = next.keysAt ?? at;
+    } else if (endings.has(what) && next.how === "") {
+        next.how = what;
+    }
+    return next;
+}
+
+// What the journal says once an ask ends at `at`: how, after how long,
+// after how many wrong passwords, and whether niri gave the prompt the keys.
+// On 2026-11-23 nothing said whether the prompt had held the keys or nobody
+// had typed. An ask polkit withdraws before its prompt shows, queued behind
+// another, never reaches the prompt, so it's said only by polkit's journal.
+function finished(ask, at) {
     const how = endings.get(ask.how) ?? "ended without saying how";
-    const up = `${(ask.ms / 1000).toFixed(1)} s`;
-    const wrong = ask.wrong > 0
-        ? `, after ${ask.wrong} wrong ${ask.wrong === 1 ? "password" : "passwords"}`
-        : "";
-    const keys = ask.keysMs === null
+    const up = `${((at - ask.at) / 1000).toFixed(1)} s`;
+    let tried = "";
+    if (ask.wrong > 0) {
+        tried = `, after ${ask.wrong} wrong ${ask.wrong === 1 ? "password" : "passwords"}`;
+    } else if (ask.how === "withdrawn") {
+        tried = ", unanswered";
+    }
+    const keys = ask.keysAt === null
         ? "it never had the keys"
-        : `it had the keys ${Math.round(ask.keysMs)} ms after it showed`;
-    return `polkit: ${ask.action} ${how} after ${up}${wrong}; ${keys}`;
+        : `it had the keys ${Math.round(ask.keysAt - ask.at)} ms in`;
+    return `polkit: ${ask.action} ${how} after ${up}${tried}; ${keys}`;
 }
