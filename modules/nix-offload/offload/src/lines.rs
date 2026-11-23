@@ -466,11 +466,12 @@ enum Unvouched {
     /// its pinned fingerprints show anything done to it meanwhile once the
     /// cloud answers again.
     Unanswered(String),
-    /// It answered, and the instance sits under a project setting a boot
-    /// script it would run: it lends nothing while that's so, and is
-    /// trusted again once it's gone, since a script runs only at a boot and
-    /// a builder that started again is refused.
-    Withheld(String),
+    /// It answered, and the instance sits under a project setting what
+    /// would run on it or make accounts there: it's trusted no more, even
+    /// one root never trusted, since what that ran stays on its disk once
+    /// the setting goes, and a boot script runs at a reboot from inside the
+    /// guest, which the cloud doesn't count as a start.
+    Spoiled(String),
     /// It answered, and the instance isn't as made.
     Refused(String),
 }
@@ -521,6 +522,9 @@ pub struct HostKeys {
     asked: HashMap<(String, String), Asked>,
     config: PathBuf,
     said: HashMap<String, String>,
+    /// How many lines it has journalled, so a test can tell a note said
+    /// once from one said again.
+    told: usize,
     /// The project as the cloud last described it, and when that was asked.
     project: Option<(Instant, Value)>,
 }
@@ -532,6 +536,7 @@ impl HostKeys {
             asked: HashMap::new(),
             config,
             said: HashMap::new(),
+            told: 0,
             project: None,
         }
     }
@@ -543,6 +548,7 @@ impl HostKeys {
         match what {
             Some(what) if self.said.get(about) != Some(&what) => {
                 eprintln!("nix-offload: {what}");
+                self.told += 1;
                 self.said.insert(about.to_owned(), what);
             }
             Some(_) => {}
@@ -668,16 +674,15 @@ impl HostKeys {
                     ..before
                 };
             }
-            Err(Unvouched::Withheld(why)) => {
+            Err(Unvouched::Spoiled(why)) => {
                 self.say(
                     name,
-                    Some(format!(
-                        "{name} in {zone} {why}, so it lends nothing until that's gone"
-                    )),
+                    Some(format!("{name} in {zone} {why}, so root trusts it no more")),
                 );
                 return Asked {
                     host_key: None,
                     at: Some(now),
+                    spoiled: true,
                     ..before
                 };
             }
@@ -716,10 +721,13 @@ impl HostKeys {
     /// When instance `name` in `zone` last started, and its fingerprints,
     /// while the cloud says it's as `pinned` holds it, in a project whose
     /// metadata holds, and that neither moved since `first`, when root
-    /// first trusted it; why not otherwise. At first trust, its boot disk's
-    /// image is asked, it must have started once, soon after its making,
-    /// and the audit log must hold its making alone, as it must still when
-    /// `first` says it's read again.
+    /// first trusted it; why not otherwise. A start or fingerprint moved is
+    /// said before the project, so the journal gives that as the reason. At
+    /// first trust, the project is asked afresh, so a read taken before the
+    /// builder booted can't vouch for it, its boot disk's image is asked,
+    /// it must have started once, soon after its making, and the audit log
+    /// must hold its making alone, as it must still when `first` says it's
+    /// read again.
     fn vouched(
         &mut self,
         settings: &Settings,
@@ -732,7 +740,6 @@ impl HostKeys {
         let described = self.describe(settings, "instances", name, zone, token)?;
         let started = vet::vetted(&described, pinned)?;
         let marks = vet::marks(&described).ok_or("says nothing of its fingerprints".to_owned())?;
-        self.project_holds(settings, token, &described)?;
         match first {
             Some((first, _, _)) if first != started => Err(Unvouched::Refused(format!(
                 "started again at {started}, after root first trusted it at {first}"
@@ -742,6 +749,7 @@ impl HostKeys {
                  to {marks}"
             ))),
             Some((_, _, again)) => {
+                self.project_holds(settings, token, &described, false)?;
                 if again {
                     let disk = vet::boot_disk(&described).ok_or("names no boot disk".to_owned())?;
                     let history = self.history(settings, name, zone, &disk, token)?;
@@ -752,6 +760,7 @@ impl HostKeys {
             }
             None => {
                 vet::started_once(&described)?;
+                self.project_holds(settings, token, &described, true)?;
                 let disk = vet::boot_disk(&described).ok_or("names no boot disk".to_owned())?;
                 let described = self.describe(settings, "disks", &disk, zone, token)?;
                 vet::imaged(&described, pinned)?;
@@ -763,16 +772,19 @@ impl HostKeys {
 
     /// Whether the project's metadata holds for the instance `instance`,
     /// as [`vet::project_holds`] says, the project asked again every
-    /// [`ASK_AGAIN`] while the cloud answers. A key it lets through that
-    /// root doesn't know is journalled once, so it can be looked into.
+    /// [`ASK_AGAIN`] while the cloud answers, or at once when `fresh`. A
+    /// key it lets through that root doesn't know is journalled once,
+    /// whatever the verdict, so it can be looked into, and the note goes
+    /// once the key does.
     fn project_holds(
         &mut self,
         settings: &Settings,
         token: &Path,
         instance: &Value,
+        fresh: bool,
     ) -> Result<(), Unvouched> {
         let described = match &self.project {
-            Some((at, described)) if at.elapsed() < ASK_AGAIN => described.clone(),
+            Some((at, described)) if !fresh && at.elapsed() < ASK_AGAIN => described.clone(),
             _ => {
                 let words = ["compute", "project-info", "describe", "--format=json"];
                 let said = self.gcloud(settings, &words, token)?;
@@ -783,18 +795,17 @@ impl HostKeys {
                 described
             }
         };
-        let unknown = vet::project_holds(&described, instance).map_err(Unvouched::Refused)?;
-        vet::project_scripts(&described, instance).map_err(Unvouched::Withheld)?;
+        let unknown = vet::project_unknown(&described);
         let noted = (!unknown.is_empty()).then(|| {
             format!(
                 "the project sets the metadata {}, which root doesn't know what it does; it \
-                 names no boot script, ssh key, OS Login or OS Config, so builders are lent \
-                 still, and it's worth a look",
+                 names no boot script, ssh key, OS Login or OS Config, so it alone takes no \
+                 builder away, and it's worth a look",
                 unknown.join(", ")
             )
         });
         self.say("the project", noted);
-        Ok(())
+        vet::project_holds(&described, instance).map_err(Unvouched::Spoiled)
     }
 
     /// A copy of the token in `token`, which the lender's account writes,
@@ -1628,18 +1639,50 @@ mod tests {
         );
     }
 
-    #[test]
-    fn an_instance_under_a_project_setting_more_lends_nothing() {
-        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+    /// Sets the project's startup script in `dir`'s cloud.
+    fn scripted(dir: &tempfile::TempDir) {
         let project = json!({"commonInstanceMetadata": {"items": [
             {"key": "startup-script-url", "value": "gs://mine/script"},
         ]}});
         fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
+    }
+
+    // A builder first seen under a project script ran it at its one boot,
+    // which nothing on the instance or its disk shows, so it's never lent,
+    // even once the script goes.
+    #[test]
+    fn an_instance_under_a_project_setting_more_lends_nothing() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        scripted(&dir);
         copy_once(&settings, &mut keys);
         assert_eq!(
             lent_to_root(&dir),
             "",
             "a project's startup script was let run"
+        );
+        fs::write(dir.path().join("project.json"), "{}").expect("the project");
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a builder first seen under a project script was trusted once it went"
+        );
+    }
+
+    // First trust asks the project afresh, so a read another builder left
+    // from before this one booted can't vouch for it.
+    #[test]
+    fn first_trust_reads_the_project_afresh() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        keys.project = Some((Instant::now(), json!({})));
+        scripted(&dir);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a project read from before the builder booted vouched for it"
         );
     }
 
@@ -1669,14 +1712,11 @@ mod tests {
                 .is_some_and(|said| said.contains("gke-a-cluster-0e6a923f-secondary-ranges")),
             "the key root doesn't know wasn't named: {noted:?}"
         );
+        let told = keys.told;
         keys.project = None;
         due(&mut keys);
         copy_once(&settings, &mut keys);
-        assert_eq!(
-            keys.said.get("the project"),
-            noted.as_ref(),
-            "the same key was said anew"
-        );
+        assert_eq!(keys.told, told, "the same key was journalled anew");
         fs::write(dir.path().join("project.json"), "{}").expect("the project");
         keys.project = None;
         due(&mut keys);
@@ -1688,17 +1728,18 @@ mod tests {
         );
     }
 
-    // A boot script only runs at a boot, and a builder that started again
-    // is refused, so a trusted builder under a project script lends nothing
-    // while it's there and is lent again once it's gone.
+    // A reboot from inside the guest runs a project's boot script without
+    // the cloud counting a start, so a trusted builder seen under one is
+    // trusted no more, and the unknown key that came with it is still said.
     #[test]
-    fn a_project_boot_script_withholds_a_trusted_builder_while_its_set() {
+    fn a_project_boot_script_spoils_a_trusted_builder() {
         let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
         copy_once(&settings, &mut keys);
         let trusted = format!("{}\n", line(URI, KEY, HOST));
         assert_eq!(lent_to_root(&dir), trusted, "never trusted");
         let project = json!({"commonInstanceMetadata": {"items": [
             {"key": "startup-script-url", "value": "gs://mine/script"},
+            {"key": "came-with-it", "value": "x"},
         ]}});
         fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
         keys.project = None;
@@ -1709,14 +1750,42 @@ mod tests {
             "",
             "a project's startup script was let run"
         );
+        assert!(
+            keys.said
+                .get("the project")
+                .is_some_and(|said| said.contains("came-with-it")),
+            "a key that came with the script wasn't said"
+        );
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(lent_to_root(&dir), "", "a cached read lent it again");
         fs::write(dir.path().join("project.json"), "{}").expect("the project");
         keys.project = None;
         due(&mut keys);
         copy_once(&settings, &mut keys);
         assert_eq!(
             lent_to_root(&dir),
-            trusted,
-            "a trusted builder stayed away once the project's script was gone"
+            "",
+            "a builder seen under a project script was trusted again once it went"
+        );
+    }
+
+    // A builder started again while a project script is set is said to
+    // have started again, which is what spoiled it.
+    #[test]
+    fn a_builder_started_again_under_a_project_script_is_said_to_have_started_again() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        scripted(&dir);
+        instance_in(dir.path(), "2026-11-10T06:00:00.000-08:00", &[]);
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(lent_to_root(&dir), "", "a restarted builder was lent");
+        let said = keys.said.get("offload-1a2b");
+        assert!(
+            said.is_some_and(|said| said.contains("started again")),
+            "the journal gave another reason than the start: {said:?}"
         );
     }
 

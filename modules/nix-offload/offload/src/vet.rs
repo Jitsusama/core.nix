@@ -23,12 +23,16 @@
 //! hold no script the guest agent would run at boot, no ssh keys it
 //! would make accounts of and no OS Login, unless the builder sets its
 //! own, and no OS Config, nor any of its agent's settings, that would run
-//! jobs. A boot script there only withholds the builder while it's set,
-//! since it runs at a boot and a builder that started again is refused
-//! anyway; the rest act on a running builder, so it's trusted no more. Any
-//! other project key is let through and said, since a cloud product such
-//! as GKE writes keys of its own there that no guest agent reads, and
-//! refusing on one stopped every builder on 22 November.
+//! jobs. A builder seen under any of them is trusted no more, whether root
+//! trusted it yet or not: a boot script may have run at a boot the cloud
+//! doesn't count as a start, as a reboot from inside the guest is, and
+//! the rest act on a running builder. Any other project key is let
+//! through and said, since a cloud product such as GKE writes keys of its
+//! own there that no guest agent reads, and refusing on one stopped every
+//! builder on 22 November.
+//!
+//! Long because its tests, about half of it, stay beside the private
+//! checks they read, one case each.
 
 use serde_json::Value;
 
@@ -47,7 +51,7 @@ const METADATA: [&str; 7] = [
 /// The project's metadata a lent builder sits under unremarked, once the
 /// instance's own `block-project-ssh-keys` and `enable-oslogin` turn it
 /// off, or root has judged it.
-const PROJECT_METADATA: [&str; 4] = ["enable-oslogin", "enable-osconfig", "ssh-keys", "sshKeys"];
+const PROJECT_METADATA: [&str; 3] = ["enable-oslogin", "ssh-keys", "sshKeys"];
 
 /// Whether `said` is true as the guest agents read it: they are written
 /// in Go and take a boolean with its `strconv.ParseBool`, so `1` and `t`
@@ -77,8 +81,22 @@ const PROJECT_SSH_KEYS: [&str; 2] = ["ssh-keys", "sshKeys"];
 
 /// What the OS Config agent's own settings start with, under both the
 /// names it reads: some turn on its patch jobs and package policies, which
-/// run as root, apart from `enable-osconfig`.
+/// run as root, apart from [`OS_CONFIG_SWITCHES`].
 const OS_CONFIG_SETTINGS: [&str; 2] = ["osconfig-", "os-config-"];
+
+/// The OS Config agent's switches that neither of its prefixes catch:
+/// `enable-osconfig` itself, its inventory's under both names, the
+/// package and patch switches older agents read, and its debug log. A
+/// project may set one only to a false the agent reads, since how it
+/// takes anything else isn't known here.
+const OS_CONFIG_SWITCHES: [&str; 6] = [
+    "enable-os-config-debug",
+    "enable-os-inventory",
+    "enable-osconfig",
+    "os-inventory-enabled",
+    "os-package-enabled",
+    "os-patch-enabled",
+];
 
 /// The call that makes an instance, as the audit log names it.
 const MAKING: &str = ".compute.instances.insert";
@@ -210,94 +228,78 @@ pub fn marks(described: &Value) -> Option<String> {
     Some(format!("{instance} {metadata}"))
 }
 
-/// Whether the project `described` sets no boot script the instance
-/// `instance` would run, as the guest agent runs a project's script of a
-/// name the instance sets none of; why not otherwise.
-pub fn project_scripts(described: &Value, instance: &Value) -> Result<(), String> {
-    let keys = |items: &Value| -> Vec<String> {
-        items
-            .as_array()
-            .map_or(&[][..], Vec::as_slice)
-            .iter()
-            .filter_map(|item| item["key"].as_str().map(str::to_owned))
-            .collect()
-    };
-    let own = keys(&instance["metadata"]["items"]);
-    match keys(&described["commonInstanceMetadata"]["items"])
-        .into_iter()
-        .find(|key| PROJECT_SCRIPTS.contains(&key.as_str()) && !own.contains(key))
-    {
-        Some(key) => Err(format!(
-            "sits in a project setting the metadata {key}, which every builder would run"
-        )),
-        None => Ok(()),
-    }
+/// The metadata `items`, as the cloud lists them in JSON.
+fn items(items: &Value) -> &[Value] {
+    items.as_array().map_or(&[][..], Vec::as_slice)
 }
 
-/// Whether the project `described` sets no ssh keys, OS Login or OS Config
-/// the instance `instance` would take, with the project's keys it lets
-/// through that root doesn't know; why not otherwise. Its boot scripts are
-/// [`project_scripts`]'s. OS Config is refused whatever the builder sets,
-/// since no builder may carry `enable-osconfig` of its own.
-pub fn project_holds(described: &Value, instance: &Value) -> Result<Vec<String>, String> {
-    let keys = |items: &Value| -> Vec<String> {
-        items
-            .as_array()
-            .map_or(&[][..], Vec::as_slice)
-            .iter()
-            .filter_map(|item| item["key"].as_str().map(str::to_owned))
-            .collect()
-    };
-    let said = |items: &Value, key: &str, is: fn(&str) -> bool| {
-        items
-            .as_array()
-            .map_or(&[][..], Vec::as_slice)
-            .iter()
-            .any(|item| item["key"] == key && item["value"].as_str().is_some_and(is))
-    };
+/// The keys the metadata `items` set, in order.
+fn keys(items: &Value) -> Vec<String> {
+    self::items(items)
+        .iter()
+        .filter_map(|item| item["key"].as_str().map(str::to_owned))
+        .collect()
+}
+
+/// Whether the metadata `items` set `key` to a value `is` holds of.
+fn said(items: &Value, key: &str, is: fn(&str) -> bool) -> bool {
+    self::items(items)
+        .iter()
+        .any(|item| item["key"] == key && item["value"].as_str().is_some_and(is))
+}
+
+/// The keys the project `described` sets that root doesn't know what they
+/// do, which pass and are said, whatever else it holds.
+pub fn project_unknown(described: &Value) -> Vec<String> {
+    keys(&described["commonInstanceMetadata"]["items"])
+        .into_iter()
+        .filter(|key| {
+            let key = key.as_str();
+            !PROJECT_SCRIPTS.contains(&key)
+                && !PROJECT_METADATA.contains(&key)
+                && !OS_CONFIG_SWITCHES.contains(&key)
+                && !OS_CONFIG_SETTINGS
+                    .iter()
+                    .any(|setting| key.starts_with(setting))
+        })
+        .collect()
+}
+
+/// Whether the project `described` sets no boot script, ssh keys, OS Login
+/// or OS Config the instance `instance` would take; why not otherwise. A
+/// boot script counts where the instance sets none of the same name, as
+/// the guest agent runs it then. OS Config is refused whatever the builder
+/// sets, since no builder may carry `enable-osconfig` of its own.
+pub fn project_holds(described: &Value, instance: &Value) -> Result<(), String> {
     let (project, builder) = (
         &described["commonInstanceMetadata"]["items"],
         &instance["metadata"]["items"],
     );
-    let blocks = said(builder, "block-project-ssh-keys", go_true);
-    if let Some(key) = keys(project).into_iter().find(|key| {
-        OS_CONFIG_SETTINGS
+    let sits = |key: &str, what: &str| Err(format!("sits in a project setting {key}, {what}"));
+    let own = keys(builder);
+    for key in keys(project) {
+        let named = key.as_str();
+        if OS_CONFIG_SETTINGS
             .iter()
-            .any(|setting| key.starts_with(setting))
-    }) {
-        return Err(format!(
-            "sits in a project setting the metadata {key}, which could let OS Config run \
-             jobs on every builder"
-        ));
-    }
-    if said(project, "enable-osconfig", go_true) {
-        return Err(
-            "sits in a project setting enable-osconfig, which would let OS Config \
-                    run jobs on every builder"
-                .to_owned(),
-        );
+            .any(|setting| named.starts_with(setting))
+            || (OS_CONFIG_SWITCHES.contains(&named) && !said(project, named, go_false))
+        {
+            return sits(named, "which could let OS Config run jobs on every builder");
+        }
+        if PROJECT_SCRIPTS.contains(&named) && !own.contains(&key) {
+            return sits(named, "which every builder would run");
+        }
+        if PROJECT_SSH_KEYS.contains(&named) && !said(builder, "block-project-ssh-keys", go_true) {
+            return sits(named, "whose keys every builder would take");
+        }
     }
     if said(project, "enable-oslogin", go_true) && !said(builder, "enable-oslogin", go_false) {
-        return Err(
-            "sits in a project setting enable-oslogin, which would let OS Login make \
-                    accounts on a builder not turning it off"
-                .to_owned(),
+        return sits(
+            "enable-oslogin",
+            "which would let OS Login make accounts on a builder not turning it off",
         );
     }
-    let mut unknown = Vec::new();
-    for key in keys(project) {
-        let script = PROJECT_SCRIPTS.contains(&key.as_str());
-        if PROJECT_SSH_KEYS.contains(&key.as_str()) && !blocks {
-            return Err(format!(
-                "sits in a project setting the metadata {key}, whose keys every builder \
-                 would take"
-            ));
-        }
-        if !script && !PROJECT_METADATA.contains(&key.as_str()) {
-            unknown.push(key);
-        }
-    }
-    Ok(unknown)
+    Ok(())
 }
 
 /// Whether the audit log's `entries` for an instance and its boot disk
@@ -514,102 +516,133 @@ mod tests {
         assert_eq!(marks(&described(&[])), None, "none at all");
     }
 
-    #[test]
-    fn a_project_may_set_no_boot_script_ssh_key_os_login_or_os_config_a_builder_would_take() {
-        let items = |pairs: &[(&str, &str)]| -> Vec<Value> {
-            pairs
-                .iter()
-                .map(|(key, value)| json!({"key": key, "value": value}))
-                .collect()
-        };
-        let project = |keys: &[&str]| {
-            let pairs: Vec<(&str, &str)> = keys.iter().map(|key| (*key, "x")).collect();
-            json!({"commonInstanceMetadata": {"items": items(&pairs)}})
-        };
-        let builder = json!({"metadata": {"items": items(&[
+    /// Metadata items setting each of `pairs`.
+    fn pairs(pairs: &[(&str, &str)]) -> Vec<Value> {
+        pairs
+            .iter()
+            .map(|(key, value)| json!({"key": key, "value": value}))
+            .collect()
+    }
+
+    /// A project setting each of `keys` to `x`.
+    fn project(keys: &[&str]) -> Value {
+        let set: Vec<(&str, &str)> = keys.iter().map(|key| (*key, "x")).collect();
+        json!({"commonInstanceMetadata": {"items": pairs(&set)}})
+    }
+
+    /// A project setting `key` to `value` alone.
+    fn setting(key: &str, value: &str) -> Value {
+        json!({"commonInstanceMetadata": {"items": pairs(&[(key, value)])}})
+    }
+
+    /// A builder as made, blocking the project's ssh keys and OS Login.
+    fn builder() -> Value {
+        json!({"metadata": {"items": pairs(&[
             ("block-project-ssh-keys", "TRUE"),
             ("enable-oslogin", "FALSE"),
             ("startup-script", "#!/bin/bash\n"),
-        ])}});
-        let open = json!({"metadata": {"items": items(&[("startup-script", "#!/bin/bash\n")])}});
-        let overridden = json!({"commonInstanceMetadata": {"items": items(&[
+        ])}})
+    }
+
+    /// A builder blocking nothing of the project's.
+    fn open() -> Value {
+        json!({"metadata": {"items": pairs(&[("startup-script", "#!/bin/bash\n")])}})
+    }
+
+    #[test]
+    fn a_project_setting_only_what_a_builder_overrides_holds() {
+        let overridden = json!({"commonInstanceMetadata": {"items": pairs(&[
             ("enable-oslogin", "TRUE"),
             ("ssh-keys", "x"),
         ])}});
         assert_eq!(
-            project_holds(&overridden, &builder),
-            Ok(vec![]),
-            "what every builder overrides was remarked on"
+            project_holds(&overridden, &builder()),
+            Ok(()),
+            "what every builder overrides was refused"
         );
         assert_eq!(
-            project_holds(&json!({}), &builder),
-            Ok(vec![]),
+            project_holds(&json!({}), &builder()),
+            Ok(()),
             "a project setting nothing was refused"
         );
         assert_eq!(
-            project_scripts(&project(&["startup-script"]), &builder),
+            project_holds(&project(&["startup-script"]), &builder()),
             Ok(()),
             "a script the builder sets its own of was refused"
         );
-        assert_eq!(
-            project_holds(&project(&["startup-script-url"]), &builder),
-            Ok(vec![]),
-            "a boot script was named as a key root doesn't know"
-        );
-        for setting in [
-            "osconfig-enabled-prerelease-features",
-            "os-config-log-level",
-        ] {
-            assert!(
-                project_holds(&project(&[setting]), &builder)
-                    .is_err_and(|why| why.contains(setting)),
-                "a project's OS Config setting {setting} was let through"
-            );
+        for off in ["FALSE", "false", "0", "f"] {
+            for switch in OS_CONFIG_SWITCHES {
+                assert_eq!(
+                    project_holds(&setting(switch, off), &builder()),
+                    Ok(()),
+                    "a project's {switch}, said {off}, was refused"
+                );
+            }
         }
-        let gke = "gke-a-cluster-0e6a923f-secondary-ranges";
-        assert_eq!(
-            project_holds(&project(&["ssh-keys", gke, "enable-osconfig"]), &builder),
-            Ok(vec![gke.to_owned()]),
-            "a key root doesn't know wasn't let through and named alone"
-        );
+    }
+
+    #[test]
+    fn a_project_may_set_no_boot_script_a_builder_would_run() {
         for script in PROJECT_SCRIPTS
             .iter()
             .filter(|key| **key != "startup-script")
         {
-            let refused = project_scripts(&project(&["ssh-keys", script]), &builder);
+            let refused = project_holds(&project(&["ssh-keys", script]), &builder());
             assert!(
                 refused.is_err_and(|why| why.contains(script)),
                 "a project's {script} was let run"
             );
         }
-        let setting = |key: &str, value: &str| {
-            let set = items(&[(key, value)]);
-            json!({"commonInstanceMetadata": {"items": set}})
-        };
+        assert!(
+            project_holds(&project(&["startup-script"]), &open()).is_err(),
+            "a project's startup script ran on a builder setting none"
+        );
+    }
+
+    // OS Config is refused unless a switch is said false as the agent
+    // reads it, since how it takes anything else isn't known here.
+    #[test]
+    fn a_project_may_set_no_os_config_but_off() {
+        for setting in [
+            "osconfig-enabled-prerelease-features",
+            "os-config-log-level",
+        ] {
+            assert!(
+                project_holds(&project(&[setting]), &builder())
+                    .is_err_and(|why| why.contains(setting)),
+                "a project's OS Config setting {setting} was let through"
+            );
+        }
+        for said in ["TRUE", "true", "1", "t", "x", "yes", ""] {
+            for switch in OS_CONFIG_SWITCHES {
+                assert!(
+                    project_holds(&setting(switch, said), &builder())
+                        .is_err_and(|why| why.contains(switch)),
+                    "a project's {switch}, said {said:?}, reached a builder"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_project_may_set_no_ssh_key_or_os_login_a_builder_would_take() {
         for on in ["TRUE", "true", "1", "t"] {
             assert!(
-                project_holds(&setting("enable-osconfig", on), &builder)
-                    .is_err_and(|why| why.contains("enable-osconfig")),
-                "a project's OS Config, said {on}, reached a builder"
-            );
-            assert!(
-                project_holds(&setting("enable-oslogin", on), &open)
+                project_holds(&setting("enable-oslogin", on), &open())
                     .is_err_and(|why| why.contains("enable-oslogin")),
                 "a project's OS Login, said {on}, reached a builder not turning it off"
             );
             assert_eq!(
-                project_holds(&setting("enable-oslogin", on), &builder),
-                Ok(vec![]),
+                project_holds(&setting("enable-oslogin", on), &builder()),
+                Ok(()),
                 "a project's OS Login, said {on}, was refused though the builder turns it off"
             );
         }
-        let unblocking = json!({"metadata": {"items": items(&[
+        let unblocking = json!({"metadata": {"items": pairs(&[
             ("block-project-ssh-keys", "FALSE"),
             ("startup-script", "#!/bin/bash\n"),
         ])}});
-        let wrongly = json!({"metadata": {"items": items(&[
-            ("block-project-ssh-keys", "tRuE"),
-        ])}});
+        let wrongly = json!({"metadata": {"items": pairs(&[("block-project-ssh-keys", "tRuE")])}});
         for not_blocking in [&unblocking, &wrongly] {
             assert!(
                 project_holds(&project(&["ssh-keys"]), not_blocking)
@@ -618,17 +651,32 @@ mod tests {
             );
         }
         for keys in PROJECT_SSH_KEYS {
-            let refused = project_holds(&project(&[keys]), &open);
             assert!(
-                refused.is_err_and(|why| why.contains(keys)),
+                project_holds(&project(&[keys]), &open()).is_err_and(|why| why.contains(keys)),
                 "a project's {keys} reached a builder not blocking them"
             );
             assert_eq!(
-                project_holds(&project(&[keys]), &builder),
-                Ok(vec![]),
+                project_holds(&project(&[keys]), &builder()),
+                Ok(()),
                 "a project's {keys} was refused though the builder blocks them"
             );
         }
+    }
+
+    #[test]
+    fn only_the_project_keys_root_doesnt_know_are_named() {
+        let gke = "gke-a-cluster-0e6a923f-secondary-ranges";
+        let mut keys = vec!["ssh-keys", gke, "startup-script-url", "os-config-log-level"];
+        keys.extend(OS_CONFIG_SWITCHES);
+        assert_eq!(
+            project_unknown(&project(&keys)),
+            [gke],
+            "a key root judges was named, or one it doesn't wasn't"
+        );
+        assert!(
+            project_unknown(&json!({})).is_empty(),
+            "a project setting nothing named a key"
+        );
     }
 
     #[test]
