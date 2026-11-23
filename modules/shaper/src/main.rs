@@ -1024,12 +1024,19 @@ fn local(shaped: &BTreeMap<String, Shaped>, vpns: &BTreeMap<String, Vpn>) -> cla
 /// and a call goes as best effort for at most this long after it starts.
 const CALL_EVERY: Duration = Duration::from_secs(2);
 
-/// Whether a call is on in any account, as a-call-is-on last said, and when
-/// it was last asked.
+/// How long a-call-is-on may go unanswered before no call is taken to be
+/// on: a call held through a few missed answers keeps its marks, while one
+/// left on for good would put apps' UDP in the video tin and hold the
+/// download for a call that ended (download hold round 1's F20).
+const CALL_UNSURE: Duration = Duration::from_secs(60);
+
+/// Whether a call is on in any account, as a-call-is-on last said, when it
+/// was last asked, and since when it hasn't answered.
 #[derive(Default)]
 struct Call {
     on: bool,
     asked: Option<Instant>,
+    unsure: Option<Instant>,
 }
 
 impl Call {
@@ -1053,18 +1060,36 @@ impl Call {
                 Ok(Some(1)) => Some(false),
                 _ => None,
             };
-            if let Some(on) = on
-                && on != self.on
-            {
-                if on {
-                    eprintln!("a call is on, so what apps send by UDP goes as video");
-                } else {
-                    eprintln!("no call is on, so apps' UDP to 443 goes as a page's again");
-                }
-                self.on = on;
+            if let Some(said) = self.answered(on, now) {
+                eprintln!("{said}");
             }
         }
         classes::calling(self.on)
+    }
+
+    /// Takes a-call-is-on's answer at `now`, none where it couldn't tell,
+    /// and gives the journal's line when whether a call is on changes.
+    /// What was last known stands through answers missed for under
+    /// `CALL_UNSURE`, and a call is taken to have ended after that.
+    fn answered(&mut self, on: Option<bool>, now: Instant) -> Option<&'static str> {
+        let Some(on) = on else {
+            let since = *self.unsure.get_or_insert(now);
+            if !self.on || now.saturating_duration_since(since) < CALL_UNSURE {
+                return None;
+            }
+            self.on = false;
+            return Some("a-call-is-on hasn't answered for a minute, so no call is taken to be on");
+        };
+        self.unsure = None;
+        if on == self.on {
+            return None;
+        }
+        self.on = on;
+        Some(if on {
+            "a call is on, so what apps send by UDP goes as video"
+        } else {
+            "no call is on, so apps' UDP to 443 goes as a page's again"
+        })
     }
 }
 
@@ -1747,10 +1772,11 @@ fn step_links(
     let why = live.why(now);
     let share = live.vpn_share(now);
     let agents = live.agents_share(now);
-    // What the link the recorder follows carried down its last second.
+    // What the link the recorder follows carried down its last second,
+    // while that second says anything of the line now.
     let carried = live
-        .heard()
-        .map(|(link, h)| (link.to_string(), h.down_kbit));
+        .carried(now)
+        .map(|(link, kbit)| (link.to_string(), kbit));
     for (name, s) in shaped.iter_mut() {
         let held = link.as_deref() == Some(name.as_str());
         // The VPN is held only while the upload is: a recorder gone
@@ -1763,6 +1789,12 @@ fn step_links(
             s.let_agents_go();
         }
         if s.follows.is_some() {
+            // A follower takes its leader's rates, so a hold it had as
+            // leader ends rather than coming back unchecked once it leads
+            // again (download hold round 1's F3).
+            if let (_, Some(said)) = s.room.step(name, false, None, None) {
+                eprintln!("{said}");
+            }
             continue;
         }
         let most = lower(
@@ -1778,11 +1810,8 @@ fn step_links(
             eprintln!("{said}");
         }
         let rates = led(rates, held, most);
-        let rates = replay::Rates {
-            down: lower(rates.down, room),
-            ..rates
-        };
-        hold(s, rates, if held { &why } else { &why::Judged::Nothing });
+        let why = if held { &why } else { &why::Judged::Nothing };
+        hold(s, rates, why, room);
     }
 }
 
@@ -1991,15 +2020,19 @@ fn led(rates: replay::Rates, held: bool, most: Option<u64>) -> replay::Rates {
 /// Holds a link to the rates the one-way controller answers, at its
 /// ceiling where it sets none, and tells the journal when a spell of limits
 /// begins, with the controller's reason `why`, and when it ends, rather
-/// than of each second's cut.
-fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged) {
+/// than of each second's cut. A call's `room` holds the download under
+/// that, apart from the spell: room.rs says when it begins and ends, and
+/// the link's state and the spell's lines stay the controller's, so
+/// neither credits it with a hold it didn't ask (download hold round 1's
+/// F12).
+fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged, room: Option<u64>) {
     let most = Held {
         up: s.up.bounds.max,
         down: s.down.bounds.max,
     };
     let spell = spell(&s.uplink.name, (s.told, s.ceiling), rates, most, why);
     s.up.rate = spell.held.up;
-    s.down.rate = spell.held.down;
+    s.down.rate = lower(Some(spell.held.down), room).unwrap_or(spell.held.down);
     if let Some(line) = &spell.said {
         eprintln!("{line}");
     }
@@ -2011,7 +2044,7 @@ fn hold(s: &mut Shaped, rates: replay::Rates, why: &why::Judged) {
         State::Resting
     };
     apply(s, s.up.bounds.max);
-    go_straight(s, rates.down.is_none());
+    go_straight(s, rates.down.is_none() && room.is_none());
 }
 
 /// What a second's rates come to on a link: what each way is held to,
@@ -2364,6 +2397,58 @@ fn sweep(kept: &BTreeSet<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_call_is_taken_to_end_once_a_call_is_on_stops_answering_for_a_minute() {
+        let start = Instant::now();
+        let at = |s: u64| start + Duration::from_secs(s);
+        let mut call = Call::default();
+        assert_eq!(
+            call.answered(Some(true), start),
+            Some("a call is on, so what apps send by UDP goes as video"),
+            "a call starting wasn't said"
+        );
+        assert_eq!(
+            call.answered(None, at(2)),
+            None,
+            "one missed answer was said"
+        );
+        assert_eq!(
+            call.answered(None, at(61)),
+            None,
+            "answers missed under a minute were said"
+        );
+        assert!(call.on, "answers missed under a minute ended the call");
+        assert_eq!(
+            call.answered(None, at(62)),
+            Some("a-call-is-on hasn't answered for a minute, so no call is taken to be on"),
+            "a minute unanswered didn't end the call"
+        );
+        assert!(!call.on, "the call was said ended but kept");
+        assert_eq!(call.answered(None, at(64)), None, "no call ended twice");
+
+        // An answer starts the count over.
+        assert!(
+            call.answered(Some(true), at(66)).is_some(),
+            "a call again wasn't said"
+        );
+        assert_eq!(
+            call.answered(None, at(68)),
+            None,
+            "a missed answer was said"
+        );
+        assert_eq!(
+            call.answered(Some(true), at(100)),
+            None,
+            "the same answer was said"
+        );
+        assert_eq!(
+            call.answered(None, at(130)),
+            None,
+            "a minute counted across an answer ended the call"
+        );
+        assert!(call.on, "a call heard 30 s ago was ended");
+    }
 
     // The controller's holds land on a link only while it holds the
     // link's upload, each on its own lane.

@@ -11,7 +11,16 @@
 //! Only a network that declares its line's `down` is held. A rate learned
 //! from what the download carried would read a burst past the line as the
 //! line, and never hold, or a line seldom filled as a slower one, and hold
-//! Joel's download under what it could carry.
+//! Joel's download under what it could carry. Held, the download can't
+//! show a line faster than the one declared, so a line made faster is
+//! declared again, or each call holds it at nine tenths of the old one.
+//!
+//! What the link carried is all it received, the network's own traffic
+//! too, so a copy from a machine beside it at the line's rate starts a
+//! hold as a download would. The hold itself keeps to the internet: the
+//! IFB sends what's local past its CAKE (`qdisc::LOCAL_BIT`), so the copy
+//! goes at its whole rate, and the download a tenth under its line until
+//! the call ends.
 
 use crate::rate::{float, whole};
 
@@ -90,6 +99,13 @@ mod tests {
             (Some(81_000), None),
             "a held download carries under the line, and stays held, said once"
         );
+    }
+
+    #[test]
+    fn a_hold_begins_where_the_download_carries_nine_tenths_of_its_line() {
+        let mut room = Room::default();
+        let (held, _) = room.step("eth1", true, Some(81_000.0), Some(LINE));
+        assert_eq!(held, Some(81_000), "a download at nine tenths wasn't held");
     }
 
     #[test]

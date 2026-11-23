@@ -161,7 +161,9 @@ in
             the call first, rather than in a router's flow queues, where a
             call that shares one with a bulk download loses what it loses.
             The controller may hold it lower, and the hold goes when the
-            call ends.
+            call ends. Declare the line at its slowest busy hour, and again
+            when it's made faster: held, the download can't show a faster
+            line, so each call would hold it at nine tenths of the old one.
           '';
         };
         options.most = lib.mkOption {
@@ -179,6 +181,8 @@ in
             never higher. Under nine tenths of `up`, it also stands for
             the line's hold below: the router's queue is looked for, and
             the guard returns the upload, against it rather than `up`.
+            With `up` null it holds the upload all the same, and guards
+            nothing.
           '';
         };
         options.house = lib.mkOption {
@@ -243,12 +247,13 @@ in
     };
     description = ''
       What each network's line is known to carry, keyed by its router's
-      hardware address in lower case. On a network named here the one-way
-      controller keeps the upload near the line: a queue past its CAKE
-      counts as the router's only while the link carries near the line,
-      and an upload held under four fifths of it for a minute, with no cut
-      that drained a queue, goes back to nine tenths. Leaving a network
-      out turns both off on it.
+      hardware address in lower case. On a network that declares its `up`
+      the one-way controller keeps the upload near the line: a queue past
+      its CAKE counts as the router's only while the link carries near the
+      line, and an upload held under four fifths of it for a minute, with
+      no cut that drained a queue, goes back to nine tenths. Leaving a
+      network out, or its `up` null, turns both off on it; its `down`
+      gives a call room on the download.
     '';
   };
 

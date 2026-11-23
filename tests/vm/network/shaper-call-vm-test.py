@@ -114,6 +114,7 @@ CALL_FLAG = "/run/call-is-on"
 # What the shaper's journal says as it holds the download for a call: nine tenths of the
 # line's declared 90 Mbit/s (ROOM in src/room.rs).
 ROOM_HELD = "held to 81000 kbit/s, where its own queue puts the call first"
+ROOM_KBIT = 81_000
 # What systemctl exits with when it's asked to stop a unit that isn't loaded.
 NOT_LOADED = 5
 
@@ -176,6 +177,17 @@ class Rig:
         """Give the name of the IFB that carries eth1's downloads."""
         index = int(self.client.succeed("cat /sys/class/net/eth1/ifindex"))
         return f"shaper{index:x}"
+
+    def download_held(self) -> int | None:
+        """Give the rate eth1's download is held to in its IFB's CAKE, in kbit/s.
+
+        None while it goes straight in, past the IFB, or its CAKE has no rate.
+        """
+        _, turn = self.client.execute("tc filter show dev eth1 ingress 2>/dev/null")
+        if "mirred" not in turn:
+            return None
+        bandwidth = self.cake(self.ifb())["options"]["bandwidth"]
+        return int(bandwidth) * 8 // 1000 if isinstance(bandwidth, int) else None
 
     def holding(self) -> bool:
         """Give whether the controller holds eth1 under a queue it took back.
@@ -490,7 +502,6 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
 def under_load(
     rig: Rig,
     *,
-    shaped: bool,
     app_uploads: int = 0,
     names: list[str] | None = None,
     room: bool = False,
@@ -504,7 +515,7 @@ def under_load(
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
-    Shaped, they run on until the controller holds the link too, as it has all day on a
+    They run on until the controller holds the link too, as it has all day on a
     connection the jobs keep full: a call that starts in the seconds before it does crosses
     the router's queue as an unshaped one would. The loads stop however the calls end, so a
     test that fails here leaves the next its own loads to start.
@@ -533,16 +544,15 @@ def under_load(
             ),
             timeout=FILLING,
         )
-        if shaped:
-            retry(
-                lambda last_try: met(
-                    rig,
-                    now=rig.holding(),
-                    last_try=last_try,
-                    otherwise="the controller never held the link",
-                ),
-                timeout=FILLING,
-            )
+        retry(
+            lambda last_try: met(
+                rig,
+                now=rig.holding(),
+                last_try=last_try,
+                otherwise="the controller never held the link",
+            ),
+            timeout=FILLING,
+        )
         if room:
             retry(
                 lambda last_try: met(
@@ -554,6 +564,12 @@ def under_load(
                 timeout=FILLING,
             )
         results = rig.calls(names)
+        if room:
+            # Read before the loads stop, the call still on: the hold the journal said
+            # began has to have stood on the IFB through the calls.
+            held = rig.download_held()
+            assert held is not None, "the download went straight in while held for a call"
+            assert held <= ROOM_KBIT, f"the IFB's CAKE was at {held} kbit/s, over the room"
     finally:
         # Every load, started or not: a start can fail after making its unit.
         stuck = rig.stop(*(unit for unit, _, _, _ in loads))
@@ -668,13 +684,17 @@ def test_a_call_loses_little(rig: Rig) -> None:
     before = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
     try:
         rig.client.succeed(f"touch {CALL_FLAG}")
-        lost = under_load(rig, shaped=True, room=True)
+        lost = under_load(rig, room=True)
     finally:
         # A call left on would put the next tests' calls in the video tin by the flag alone.
         rig.client.succeed(f"rm -f {CALL_FLAG}")
     after = {dev: rig.counts(dev, "drops") for dev in ["eth1", ifb]}
+    # Once the call ends, the hold goes, and with nothing else limiting the download, it
+    # goes straight in again.
     rig.client.wait_until_succeeds(
-        "journalctl -u shaper -o cat | grep -q 'no longer held for a call'", timeout=HEARING
+        "journalctl -u shaper -o cat | sed -n '/no longer held for a call/,$p'"
+        " | grep -q 'goes straight in'",
+        timeout=HEARING,
     )
     dropped = {
         dev: dict(
@@ -683,6 +703,9 @@ def test_a_call_loses_little(rig: Rig) -> None:
         for dev in after
     }
     print(f"dropped by tin meanwhile: {dropped}")
+    # Held under the line, the download's excess is dropped in the IFB's CAKE, not the
+    # router's queue; with no drop there, the queue stood elsewhere whatever the rate read.
+    assert sum(dropped[ifb].values()) > 0, f"the IFB dropped none of the download: {dropped}"
     if any(ways["down"] > DOWN_MOST for ways in lost.values()):
         trace = rig.trace()
         for name, ways in lost.items():
@@ -707,7 +730,7 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
         rig.client.succeed(f"echo '{{\"most_kbit\": {HELD_KBIT}}}' > {TRIAL}")
         before = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
         since = int(rig.client.succeed("date +%s"))
-        under_load(rig, shaped=True, app_uploads=APP_UPLOADS, names=["media"])
+        under_load(rig, app_uploads=APP_UPLOADS, names=["media"])
         least = rig.least_up(since)
         after = {what: rig.counts("eth1", what) for what in ("drops", "sent_packets")}
         # The step that moves the classes' rate tells Joel's CAKE a moment after, so a read
@@ -719,8 +742,8 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
             time.sleep(1)
     finally:
         # A ceiling left on would hold the next tests' upload under it for ten minutes, and
-        # the rate climbs back gently even once it's gone: test_unshaped, next, stops the
-        # shaper, so no shaped test is to follow this one.
+        # the rate climbs back gently even once it's gone, so no shaped test is to follow
+        # this one.
         rig.client.succeed(f"rm -f {TRIAL}")
     meanwhile = {
         what: dict(
@@ -751,22 +774,3 @@ def test_a_call_goes_ahead_of_its_own_uploads(rig: Rig) -> None:
         f"the shaper's upload dropped {dropped['video']} of the video call's datagrams, over"
         f" {UP_DROPPED_MOST}; by tin: {dropped}\n{rig.trace()}"
     )
-
-
-def test_unshaped(rig: Rig) -> None:
-    """Without the shaper, the same calls under the same loads meet the same bar coming down.
-
-    So the bar is one the router alone meets, and what a shaped call loses past it is the
-    shaper's.
-    """
-    rig.client.succeed("systemctl stop shaper.service")
-    lost = under_load(rig, shaped=False)
-    if any(ways["down"] > DOWN_MOST for ways in lost.values()):
-        # Unshaped, only the router's queues and the machines' own gaps are left to lose
-        # them, which their counts as the loads started and now tell apart.
-        trace = rig.trace()
-        for name, ways in lost.items():
-            assert ways["down"] <= DOWN_MOST, (
-                f"the {name} call lost {ways['down']} datagrams down unshaped, before the"
-                f" client's socket, over {DOWN_MOST}\n{trace}"
-            )
