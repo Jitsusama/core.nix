@@ -102,16 +102,21 @@ impl Writing {
     /// Keeps the embedding of each piece of a take of theirs embedded,
     /// with the sample of the call it starts at and how many it holds,
     /// and which line the take is, if it has one; a piece is worded when
-    /// one of the line's `words` starts in it. The voices check has one
-    /// worded when the reference has any speech in it, so a piece holding
-    /// only the end of a word is worded there and not here.
+    /// the line's `words` that start in it say more than hesitation, as a
+    /// run must to be split into a line of its own. The voices check has
+    /// one worded when the reference has any speech in it, so a piece
+    /// holding only the end of a word is worded there and not here.
     fn heard(&mut self, line: Option<usize>, words: &[Word], embedded: Vec<Embedded>) {
         for (embedding, start, samples) in embedded {
-            let in_it = |word: &Word| (start..start + samples).contains(&word.at);
+            let in_it: Vec<&str> = words
+                .iter()
+                .filter(|word| (start..start + samples).contains(&word.at))
+                .map(|word| word.text.as_str())
+                .collect();
             self.heard.push(Heard {
                 embedding,
                 samples,
-                worded: line.is_some() && words.iter().any(in_it),
+                worded: line.is_some() && said::spoken(&in_it.join(" ")).is_some(),
             });
             self.pieces.push(Piece {
                 take: self.takes,
@@ -256,7 +261,7 @@ pub fn hear(
 
 /// What hears a take: Parakeet, or a script in the cases, so what's
 /// kept of a take is pinned without a model.
-trait Hears {
+pub trait Hears {
     /// The words said in a take, each timed from its start.
     fn words(&mut self, samples: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)>;
     /// What's said in a take.
@@ -285,7 +290,7 @@ impl Hears for Parakeet {
 /// their text a space between each, as `transcribe` would, and timed
 /// from the call's start, which is where its pieces are, so each word
 /// finds the piece it was said in.
-fn transcribe_take(
+pub fn transcribe_take(
     hears: &mut impl Hears,
     side: Side,
     start: usize,
