@@ -145,5 +145,19 @@
       "test_a_second_move_holds_on_from_where_the_first_got_to"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1795414135,
+    "commit": "c733a13dc676d59eefb86cce91e81c8823dd1565",
+    "due": "2026-11-25",
+    "owner_pr": 6152,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at c733a13dc676",
+    "subtests": [
+      "test_an_app_outruns_the_jobs",
+      "test_unshaped",
+      "test_work_put_first_outruns_the_jobs"
+    ],
+    "test": "vm-a-hidden-queue-is-taken-back"
   }
 ]
