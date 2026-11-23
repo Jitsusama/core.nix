@@ -46,6 +46,10 @@ const APPS: [&str; 4] = ["chrome", "slack", "tuple", "zoom"];
 /// (modules/lag-watch/src/apps.rs): the test call's, a terminal's, which
 /// a pi may run in, and mycelium's and its hosts'.
 const NOT_HIS: [&str; 4] = ["call-under-load", "kitty-", "mycelium-pi-", "pi-host-"];
+/// Units in his app.slice whose children aren't his, as lag-watch judges
+/// a Chrome's parent: those `NOT_HIS` names but his terminal, which may
+/// carry his call, and those `systemd-run` makes as they're run.
+const NOT_HIS_PARENT: [&str; 4] = ["call-under-load", "mycelium-pi-", "pi-host-", "run-"];
 
 /// The threads whose waits hold up what Joel sends, as Chromium names
 /// them, cut to 15 bytes: the software encoder and the thread that hands
@@ -65,11 +69,16 @@ fn clean(text: &str) -> String {
 
 /// What a Chromium process is, from its command line: its utility
 /// sub-type or `--type`, or `main` for the browser itself.
+/// Only a whole argument counts, so a URL the browser was opened with
+/// can't name it a capture process.
 pub fn role(cmdline: &str) -> String {
     let kind = ["--utility-sub-type=", "--type="]
         .iter()
-        .find_map(|key| cmdline.split_once(key))
-        .and_then(|(_, rest)| rest.split(['\0', ' ']).next())
+        .find_map(|key| {
+            cmdline
+                .split(['\0', ' '])
+                .find_map(|arg| arg.strip_prefix(key))
+        })
         .map_or("main", |kind| kind.split('.').next().unwrap_or(kind));
     clean(kind)
 }
@@ -105,8 +114,11 @@ pub fn his_parent(cgroup: &str) -> bool {
     };
     let in_apps = path
         .split_once("/app.slice/")
-        .is_some_and(|(_, unit)| !NOT_HIS.iter().any(|not| unit.starts_with(not)));
-    in_apps || path.ends_with("/init.scope") || path.contains("/session-")
+        .is_some_and(|(_, unit)| !NOT_HIS_PARENT.iter().any(|not| unit.starts_with(not)));
+    in_apps
+        || path.ends_with("/init.scope")
+        || path.contains("/session-")
+        || path.contains("/session.slice/")
 }
 
 /// Whether a unit in his app.slice is his, read from `proc`: one not named
@@ -504,6 +516,11 @@ mod tests {
             "a31mb",
             "a terminal escape got through"
         );
+        assert_eq!(
+            role("chrome\0https://x.test/?--type=video_capture"),
+            "main",
+            "a URL named the browser"
+        );
     }
 
     #[test]
@@ -530,13 +547,20 @@ mod tests {
             "{user}/user@1000.service/init.scope\n"
         )));
         assert!(his_parent(&format!("{user}/session-2.scope\n")));
-        assert!(his_parent(&format!(
-            "{user}/user@1000.service/app.slice/app-niri-x-9.scope\n"
-        )));
+        for his in [
+            "app.slice/app-niri-x-9.scope",
+            "app.slice/kitty-70-0.scope",
+            "session.slice/xdg-desktop-portal.service",
+        ] {
+            assert!(
+                his_parent(&format!("{user}/user@1000.service/{his}\n")),
+                "{his} wasn't Joel's"
+            );
+        }
         for not in [
             "user@1000.service/agents.slice/pi-host-work.service",
             "user@1000.service/jobs.slice/jobs-work.slice/x.scope",
-            "user@1000.service/app.slice/kitty-70-0.scope",
+            "user@1000.service/app.slice/run-u12.service",
             "user@1000.service/app.slice/call-under-load.service",
         ] {
             assert!(

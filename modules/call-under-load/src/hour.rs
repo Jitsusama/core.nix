@@ -24,6 +24,8 @@ const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
 const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
 /// Joel's own calls' figure, in ms of waiting per second.
 const REAL: &str = "real call sending wait p99 ms per s";
+/// How many of them the watch couldn't read.
+const REAL_BLIND: &str = "real calls with no sending thread found";
 /// How far, in tenths, a figure may sit past a whole tenth and still be
 /// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
 /// times carry error near 1e-8 ms, far inside it, and the page's clock
@@ -277,7 +279,7 @@ pub fn append(history: &Path, line: &Value) -> io::Result<()> {
 /// wait for a CPU, from the calls `heard` names, with the load and the
 /// thread behind it said, as of `at`. Unread when no call was ever
 /// watched.
-pub fn real(calls: &[crate::watch::Real], at: u64) -> Measure {
+pub fn real(calls: &[crate::watch::Real], at: u64) -> Vec<Measure> {
     let p99 = |call: &&crate::watch::Real| call.sending_p99.unwrap_or(0.0);
     let worst = calls
         .iter()
@@ -315,13 +317,34 @@ pub fn real(calls: &[crate::watch::Real], at: u64) -> Measure {
     if unread > 0 {
         behind.push(format!("{unread} with no sending thread found"));
     }
-    measure(
-        REAL,
-        worst.and_then(|call| call.sending_p99),
-        crate::watch::LATE_MS,
-        true,
-        behind,
-    )
+    // Beside the wait, which is unread when no call's sending threads
+    // were found and so drops off cadence's card, a count that files a
+    // fault when the watch saw a call it couldn't read.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a count of calls is far below f64's exact range"
+    )]
+    let blind = unread as f64;
+    vec![
+        measure(
+            REAL,
+            worst.and_then(|call| call.sending_p99),
+            crate::watch::LATE_MS,
+            true,
+            behind,
+        ),
+        measure(
+            REAL_BLIND,
+            Some(blind),
+            0.0,
+            true,
+            vec![format!(
+                "of {} of Joel's own calls read, those with no sending thread found in his \
+                 call apps, so their waits are unread",
+                calls.len()
+            )],
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -348,7 +371,8 @@ mod tests {
             call(2_000, Some(412.5), "chrome:renderer:CodecWorker"),
             call(2_500, None, "none"),
         ];
-        let figure = real(&calls, 2_600);
+        let figures = real(&calls, 2_600);
+        let figure = &figures[0];
         assert_eq!(figure.now, Some(412.5));
         assert!(figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9);
         assert_eq!(figure.owner, OWNER);
@@ -366,7 +390,24 @@ mod tests {
             ],
             "a call cut short or unread wasn't said"
         );
-        assert_eq!(real(&[], 0).now, None, "no call watched read as a figure");
+        assert_eq!(
+            (
+                figures[1].now,
+                figures[1].target,
+                figures[1].lower_is_better
+            ),
+            (Some(1.0), 0.0, true),
+            "a call the watch couldn't read filed no fault"
+        );
+        let none = real(&[], 0);
+        assert_eq!(none[0].now, None, "no call watched read as a wait");
+        assert_eq!(none[1].now, Some(0.0), "no call watched read as one unread");
+        let blind = real(&calls[2..], 2_600);
+        assert_eq!(
+            (blind[0].now, blind[1].now),
+            (None, Some(1.0)),
+            "an hour whose calls were all unread looked like an hour with none"
+        );
     }
 
     #[test]

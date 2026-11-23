@@ -44,13 +44,12 @@ in
       ExecStart = "${lib.getExe package} watch";
       Restart = "on-failure";
       RestartSec = "30s";
-      # In the apps' slice, at the least weight there, so under the
-      # heaviest load, when a call is most worth reading, its asks of
-      # a-call-is-on still get a CPU before agents' work, while Joel's
-      # own apps go first. It reads a few files each 5 s during a call
-      # and asks once each 30 s, well under 1% of a core.
+      # In the apps' slice, weighted as any app, so under the heaviest
+      # load, when a call is most worth reading, its asks of a-call-is-on
+      # still answer in time ahead of agents' work. It reads a few files
+      # each 5 s during a call and asks once each 30 s, well under 1% of
+      # a core, so Joel's apps lose nothing to it.
       Slice = "app.slice";
-      CPUWeight = 1;
     };
     Install.WantedBy = [ "default.target" ];
   };
