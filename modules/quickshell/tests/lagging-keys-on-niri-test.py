@@ -1,4 +1,4 @@
-"""What the launcher's journal says of a slow key while reports are off, on niri.
+"""What the launcher's journal says of a lagging key while reports are off, on niri.
 
 modules/quickshell/checks/core.nix runs this through pytest inside tests/nested-niri.sh, with the
 shell's reports off. A key slower to its frame than launcher/Trials.js's FELT_MS is said in the
@@ -7,7 +7,7 @@ arrow and the letters of the row it named, and a key the launcher names itself, 
 since nobody wrote it. Each of Launcher.qml's callers of keyTimed says which its key is, which
 no case in Qt's engine reaches, so these press each kind and read its line. A key listed
 without a daemon's answer, and the answer that comes late, count its letters the same way, and
-a slow drawer is said by its row's kind (Presented.rowShown), not by the id its key carries.
+a lagging drawer is said by its row's kind (Presented.rowShown), not by the id its key carries.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 TRIES = 6
 # How long a key's line has to reach the shell's log after its frame, in seconds.
 WRITTEN_WITHIN = 2.0
-# A slow key's line, holding what it said of the key.
+# A lagging key's line, holding what it said of the key.
 TOOK = re.compile(r"launcher: (.+?) took \d+ ms to its frame")
 # An arrow as its line says it whole, quoted as Presented.typedShown quotes.
 ARROWS = {'"\u2193"', '"\u2191"'}
@@ -49,7 +49,7 @@ shell = launcher_on_niri.shell
 
 
 def keys_said(shell: Shell, mark: int) -> list[str]:
-    """Give what each slow key's line since the mark said of its key, oldest first."""
+    """Give what each lagging key's line since the mark said of its key, oldest first."""
     return [found.group(1) for found in TOOK.finditer(launcher_on_niri.logged_since(shell, mark))]
 
 
@@ -171,8 +171,8 @@ def program_timed_since(shown: Json, before: int) -> bool:
     return timed["count"] > before and str(timed["key"]).startswith("program:")
 
 
-def test_a_programs_slow_drawer_is_said_by_its_kind(shell: Shell) -> None:
-    """A program's drawer slow to its frame is said by its row's kind, not by the program's id.
+def test_a_programs_lagging_drawer_is_said_by_its_kind(shell: Shell) -> None:
+    """A program's drawer lagging to its frame is said by its row's kind, not by the program's id.
 
     Launcher.qml's drawerMade hands Trials.drawerTimed the row as Presented.rowShown says it;
     handed the row's key, the line would say the id after `program:`, which a package wrote, as

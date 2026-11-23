@@ -243,12 +243,14 @@ in
       '';
 
   # Wi-Fi joins a network by the acts wifid serves on its row, asking each word
-  # a join needs in the field before it's sent (modules/quickshell/tests/
-  # wifi-acts.qml), with the launcher's asking stood in. What its journal says
-  # of a refused join is the-launcher-keeps-a-daemons-words-out-of-its-journal's.
+  # a join needs in the field before it's sent, with the launcher's asking
+  # stood in, and no launcher line says a network's name, a password typed or
+  # wifid's words (modules/quickshell/tests/wifi-acts.qml, read by
+  # wifi-acts-heard.sh). How a refusal reads in each mode is
+  # the-launcher-keeps-a-daemons-words-out-of-its-journal's.
   wifi-asks-each-word-a-join-needs-first =
     wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml
-      null;
+      ../tests/wifi-acts-heard.sh;
 
   # The launcher's journal says how many letters a daemon's refusal held, not
   # its words, with reports off, in each line saying one: an act that shuts

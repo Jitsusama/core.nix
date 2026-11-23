@@ -4649,16 +4649,16 @@
     it says, its note saying when it's signed out or out of reach
   '';
   the-launcher-says-a-lagging-keys-kind-on-niri = ''
-    on niri with reports off, a slow key's journal line says an arrow whole, and a step in by
+    on niri with reports off, a lagging key's journal line says an arrow whole, and a step in by
     Return, out by - and in by a word and a space by its arrow and how many letters its row's name
     has, never the name; a key listed without the notices' answer, and their answer late, say
-    what was typed by how many letters; and a program's slow drawer is said by its row's kind,
+    what was typed by how many letters; and a program's lagging drawer is said by its row's kind,
     never the program's id
   '';
   the-launcher-says-asks-from-outside-by-kind-on-niri = ''
-    on niri with reports off, a link to a session, a network, a machine or a repository, a catalogue
-    run and a terminal's do each say in the journal the words they were given by how many letters
-    and the rows they walked by kind, never whole, and a terminal's do that fails says only its
+    on niri with reports off, a link to a session, a network, a machine or a repository says in
+    the journal the words it was given by how many letters, a catalogue run and a terminal's do
+    say the rows they walked by kind, never whole, and a terminal's do that fails says only its
     error's name
   '';
   the-launcher-says-how-each-session-stands = ''
@@ -6639,7 +6639,9 @@
     the launcher's Wi-Fi joins a network by the acts wifid serves it: a password asked as a
     secret, an account's name, its server's domain and password in turn, each set in the ask and
     sent after the last; a step out partway sends nothing and says so; a join's steps and a
-    refusal are said in the foot, never a card; and no password is shown
+    refusal are said in the foot, never a card; no password is shown; and with reports off a
+    refused join is journalled by its act and code, with no network's name, password or wifid's
+    words on any launcher line
   '';
   wifi-holds-the-network-joined-ahead = ''
     the launcher's Wi-Fi holds the network joined ahead while the launcher's open and Wi-Fi's on,
