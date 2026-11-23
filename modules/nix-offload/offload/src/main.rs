@@ -874,6 +874,13 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
             "there",
         ));
     };
+    let (asked, named) = asked.bulk_by_name(&bulk_patterns());
+    if let Some(named) = named {
+        eprintln!(
+            "nix-offload: {named} is named in {}, so this runs as bulk, behind runs that aren't",
+            config().join("nix-offload/bulk").display()
+        );
+    }
     let scratch = scratch();
     if let Some(refused) = here_refused(&asked) {
         return Err(refused);
@@ -1508,6 +1515,14 @@ fn built_idle(asked: &there::Asked, journal: &Path) -> Option<i32> {
         &ran,
     );
     Some(ran.status)
+}
+
+/// The patterns of what runs as bulk untold, from XDG's config folder's
+/// `nix-offload/bulk`; none where the machine names none.
+fn bulk_patterns() -> Vec<String> {
+    fs::read_to_string(config().join("nix-offload/bulk"))
+        .map(|text| there::patterns(&text))
+        .unwrap_or_default()
 }
 
 /// The patterns of VM tests' attributes, from XDG's config folder; none

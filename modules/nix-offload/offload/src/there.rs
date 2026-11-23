@@ -115,6 +115,10 @@ pub struct Asked {
     /// Whether it's one of many sent at once, as `--bulk` says, whose VM
     /// tests waiting for room let any run's that isn't go first.
     bulk: bool,
+    /// Whether it's the VM tests split from what was asked, for a builder
+    /// of their own, whose bulk runs are ordered as they wait for room
+    /// rather than held to the builder's bulk turns.
+    vm_part: bool,
     /// Whether the attributes are derivations' paths, with no flake.
     derivations: bool,
     /// The commit a git tree's flake was at when this was asked, which is
@@ -214,6 +218,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
             here,
             alone,
             bulk,
+            vm_part: false,
             derivations: true,
             pinned: None,
         });
@@ -232,6 +237,7 @@ pub fn asked(arguments: &[String]) -> Option<Asked> {
         here,
         alone,
         bulk,
+        vm_part: false,
         derivations: false,
         pinned: None,
     })
@@ -358,9 +364,31 @@ impl Asked {
             here: self.here,
             alone: self.alone,
             bulk: self.bulk,
+            vm_part: false,
             derivations: self.derivations,
             pinned: self.pinned.clone().filter(|_| flake == self.flake),
         }
+    }
+
+    /// The same, sent as bulk when one of what it builds is named by one of
+    /// `patterns`, as the machine's `nix-offload/bulk` lists them, with
+    /// the name that made it so. A derivation is matched by its name past
+    /// the store's hash, and an attribute whole or by its last part.
+    #[must_use]
+    pub fn bulk_by_name(mut self, patterns: &[String]) -> (Self, Option<String>) {
+        if self.bulk {
+            return (self, None);
+        }
+        let named = self.attributes.iter().find_map(|attribute| {
+            let names = bulk_names(attribute, self.derivations);
+            names
+                .into_iter()
+                .find(|name| patterns.iter().any(|pattern| matches(pattern, name)))
+        });
+        if named.is_some() {
+            self.bulk = true;
+        }
+        (self, named)
     }
 
     /// The same, its git tree's flake pinned at the commit it's at now,
@@ -439,16 +467,28 @@ impl Asked {
     }
 
     /// The same, from a `flake` that's locked or, as a folder unpacked
-    /// there is, not.
+    /// there is, not. A bulk run's builds one at a time, in one of the
+    /// builder's bulk turns ([`in_bulk_turn`]), but for its VM tests sent
+    /// apart, which are spread over the VM builders a test at a time
+    /// already.
     fn command_in(&self, flake: &str, locked: bool) -> String {
-        let build = std::iter::once("nix".to_owned())
+        let turned = self.bulk && !self.vm_part;
+        let mut build = std::iter::once("nix".to_owned())
             .chain(self.build_of(flake, locked).iter().map(|word| quoted(word)))
             .collect::<Vec<_>>()
             .join(" ");
-        if self.out.is_some() {
+        if turned {
+            build.push_str(" --max-jobs 1");
+        }
+        let command = if self.out.is_some() {
             format!("out=$({build}) && tar -czf - -C \"$out\" .")
         } else {
             build
+        };
+        if turned {
+            in_bulk_turn(&command)
+        } else {
+            command
         }
     }
 }
@@ -2833,17 +2873,76 @@ const TURNS_READ: &str = "turns=\"${NIX_OFFLOAD_TURNS:-$HOME/.cache/nix-offload/
 /// account in one pid namespace: two namespaces of one boot sharing a home
 /// read each other's turns as dead too, and nothing here tells them apart.
 pub fn in_turn_nearby(command: &str) -> String {
+    in_turns(
+        command,
+        &Turns {
+            read: TURNS_READ,
+            at_once: &NEARBY_AT_ONCE.to_string(),
+            full: "already runs as many builds sent to it as it takes at once",
+        },
+    )
+}
+
+/// The turns a run takes on the machine it's sent to before it builds.
+struct Turns<'a> {
+    /// What a shell runs to set `turns` to their folder, and anything
+    /// `at_once` reads.
+    read: &'a str,
+    /// How many there are, as a shell's arithmetic reads it.
+    at_once: &'a str,
+    /// What a run waiting for one says of the machine.
+    full: &'a str,
+}
+
+/// What a shell runs to name the folder of the turns bulk runs take on a
+/// lent builder, and how many: all but a quarter of its `max-jobs` (its
+/// cores, where that's `auto`), and at least two of those, so the builds
+/// of runs that aren't bulk always find room. Each bulk run builds one at a time in its turn, so the
+/// turns bound its builds. On 22 November about 35 bulk model checks
+/// held both general builders' 14 places each for hours, while two
+/// changes' checks waited an hour to evaluate.
+const BULK_TURNS_READ: &str = "turns=\"${NIX_OFFLOAD_BULK_TURNS:-$HOME/.cache/nix-offload/bulk-turns}\"; \
+     bulkmost=$(nix config show max-jobs 2>/dev/null); \
+     case \"$bulkmost\" in ''|*[!0-9]*) bulkmost=$(getconf _NPROCESSORS_ONLN 2>/dev/null);; esac; \
+     case \"$bulkmost\" in ''|*[!0-9]*) bulkmost=4;; esac; \
+     bulkkept=$((bulkmost / 4)); [ \"$bulkkept\" -lt 2 ] && bulkkept=2; \
+     bulkat=$((bulkmost - bulkkept)); [ \"$bulkat\" -lt 1 ] && bulkat=1;";
+
+/// `command`, a bulk run's build, run once it holds one of the lent
+/// builder's bulk turns ([`BULK_TURNS_READ`]), as [`in_turn_nearby`]
+/// takes a nearby machine's. It runs in a subshell of its own, so a
+/// nearby machine's turn taken around it keeps its own trap and names.
+pub fn in_bulk_turn(command: &str) -> String {
+    let taken = in_turns(
+        command,
+        &Turns {
+            read: BULK_TURNS_READ,
+            at_once: "$bulkat",
+            full: "already runs as many bulk builds as it keeps room for",
+        },
+    );
+    format!("( {taken} )")
+}
+
+/// `command`, run once it holds one of `turns`, as [`in_turn_nearby`]
+/// says.
+fn in_turns(command: &str, turns: &Turns) -> String {
+    let Turns {
+        read,
+        at_once,
+        full,
+    } = turns;
     format!(
-        "{TURNS_READ} \
+        "{read} \
          boot=$({BOOT_READ}); mine=\"$$ $boot\"; \
          here=$(uname -n); turn=; waited=0; unmadebefore=; \
-         trap 'k=1; while [ \"$k\" -le {NEARBY_AT_ONCE} ]; do \
+         trap 'k=1; while [ \"$k\" -le {at_once} ]; do \
          if [ \"$(readlink \"$turns/$k\" 2>/dev/null)\" = \"$mine\" ]; then \
          rm -f \"$turns/$k\"; fi; \
          k=$((k + 1)); done' EXIT; \
          if [ -z \"$boot\" ]; then turn=none; fi; \
          while [ -z \"$turn\" ]; do mkdir -p \"$turns\" 2>/dev/null; n=1; unmade=0; holders=; \
-         while [ \"$n\" -le {NEARBY_AT_ONCE} ]; do \
+         while [ \"$n\" -le {at_once} ]; do \
          if [ -d \"$turns/$n\" ] && [ ! -L \"$turns/$n\" ]; then \
          unmade=$((unmade + 1)); n=$((n + 1)); continue; fi; \
          if ln -s \"$mine\" \"$turns/$n\" 2>/dev/null; then turn=\"$turns/$n\"; break; fi; \
@@ -2864,13 +2963,13 @@ pub fn in_turn_nearby(command: &str) -> String {
          if [ -n \"$taker\" ] && [ \"${{taker#* }}\" != \"$boot\" ]; then turn=shared; break; fi; \
          turn=; unmadebefore=; sleep \"${{NIX_OFFLOAD_TURN_LOOK:-1}}\" 2>/dev/null || sleep 1; \
          continue; fi; \
-         if [ \"$unmade\" -ge {NEARBY_AT_ONCE} ]; then \
+         if [ \"$unmade\" -ge {at_once} ]; then \
          if [ -n \"$unmadebefore\" ]; then turn=none; break; fi; \
          unmadebefore=1; sleep 1; continue; fi; \
          unmadebefore=; \
          if [ $((waited % ${{NIX_OFFLOAD_TURN_EVERY:-300}})) -eq 0 ]; then also=; \
          if [ \"$unmade\" -gt 0 ]; then also=\", with $unmade more it can't make\"; fi; \
-         echo \"nix-offload: $here already runs as many builds sent to it as it takes at once, \
+         echo \"nix-offload: $here {full}, \
          so this waits there for its turn, held in $turns by shells $holders$also\" >&2; fi; \
          sleep 1; waited=$((waited + 1)); done; \
          if [ -z \"$boot\" ]; then echo \"nix-offload: the boot of $here can't be read from \
@@ -3867,6 +3966,25 @@ impl Nearby {
     }
 }
 
+/// The names a bulk pattern may match for what a run builds: a
+/// derivation's name without its store folder, hash, outputs or `.drv`,
+/// and an attribute whole and its last part.
+fn bulk_names(attribute: &str, derivation: bool) -> Vec<String> {
+    let path = attribute.split('^').next().unwrap_or(attribute);
+    if derivation {
+        let file = path.rsplit('/').next().unwrap_or(path);
+        let file = file.strip_suffix(".drv").unwrap_or(file);
+        let name = file.split_once('-').map_or(file, |(_, name)| name);
+        return vec![name.to_owned()];
+    }
+    let last = path.rsplit('.').next().unwrap_or(path);
+    let mut names = vec![path.to_owned()];
+    if last != path {
+        names.push(last.trim_matches('"').to_owned());
+    }
+    names
+}
+
 /// Whether `text` is what `pattern` describes, where each `*` stands for
 /// any run of characters, none included.
 fn matches(pattern: &str, text: &str) -> bool {
@@ -4022,10 +4140,13 @@ pub fn vm_tests(
                 patterns.iter().any(|pattern| matches(pattern, attribute))
             }
         });
-    let part = |attributes: Vec<String>| {
-        (!attributes.is_empty()).then(|| asked.with(&asked.flake, attributes))
+    let part = |attributes: Vec<String>, vm_part: bool| {
+        (!attributes.is_empty()).then(|| Asked {
+            vm_part,
+            ..asked.with(&asked.flake, attributes)
+        })
     };
-    (part(vm), part(rest))
+    (part(vm, true), part(rest, false))
 }
 
 /// How many of `count` VM tests go to each VM builder, in order, each
@@ -6108,6 +6229,124 @@ mod tests {
     }
 
     #[test]
+    fn a_bulk_build_past_the_bulk_turns_waits_leaving_a_quarter_of_the_builds() {
+        // On 22 November about 35 bulk model checks held both general
+        // builders' 14 places for hours, while other runs waited.
+        let folder = tempfile::tempdir().unwrap();
+        let (bin, turns) = (folder.path().join("bin"), folder.path().join("bulk-turns"));
+        fs::create_dir(&bin).unwrap();
+        fs::create_dir(&turns).unwrap();
+        // A builder of 8 builds keeps 2 for runs that aren't bulk.
+        crate::testing::executable(&bin.join("nix"), "#!/bin/sh\necho 8\n");
+        let boot = this_boot();
+        let live = format!("{} {boot}", std::process::id());
+        for n in 1..=6 {
+            held_turn(&turns, n, &live);
+        }
+        let path = format!("{}:{}", bin.display(), std::env::var("PATH").unwrap());
+        let mut waiting = Command::new("dash")
+            .args([
+                "-c",
+                &in_bulk_turn("readlink \"$NIX_OFFLOAD_BULK_TURNS/6\""),
+            ])
+            .env("NIX_OFFLOAD_BULK_TURNS", &turns)
+            .env("NIX_OFFLOAD_TURN_EVERY", "1")
+            .env("PATH", path)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut said = BufReader::new(waiting.stderr.take().unwrap());
+        let mut heard = String::new();
+        said.read_line(&mut heard).unwrap();
+        assert_eq!(
+            heard.trim_end(),
+            format!(
+                "nix-offload: {} already runs as many bulk builds as it keeps room for, so \
+                 this waits there for its turn, held in {} by shells {pid}, {pid}, {pid}, \
+                 {pid}, {pid}, {pid}",
+                this_machine(),
+                turns.display(),
+                pid = std::process::id()
+            ),
+            "what a bulk build past its turns said"
+        );
+        assert_eq!(
+            turn_holder(&turns, 7),
+            None,
+            "a bulk build took a turn kept for runs that aren't bulk"
+        );
+        fs::remove_file(turns.join("6")).unwrap();
+        let taker = waiting.id();
+        let ran = ended(waiting);
+        assert_eq!(ran.status.code(), Some(0), "{ran:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&ran.stdout),
+            format!("{taker} {boot}\n"),
+            "a bulk build didn't hold the freed turn while it ran"
+        );
+        assert_eq!(turn_holder(&turns, 6), None, "a bulk build kept its turn");
+    }
+
+    #[test]
+    fn a_bulk_run_builds_one_at_a_time_in_a_bulk_turn_and_others_take_none() {
+        let bulk = asked(&words(
+            "--bulk github:o/r checks.x86_64-linux.a checks.x86_64-linux.vm-b",
+        ))
+        .unwrap();
+        let (vm, rest) = vm_tests(&bulk, &words("checks.*.vm-*"), &BTreeSet::new());
+        let command = rest.unwrap().command();
+        assert!(
+            command.contains("bulk-turns") && command.contains("--max-jobs 1"),
+            "a bulk run's command took no bulk turn, or built more than one at once: {command}"
+        );
+        let command = vm.unwrap().command();
+        assert!(
+            !command.contains("bulk-turns") && !command.contains("--max-jobs"),
+            "a bulk run's VM tests, spread a test at a time, took bulk turns too: {command}"
+        );
+        let whole = bulk.command();
+        assert!(
+            whole.contains("bulk-turns"),
+            "a bulk run sent whole took no bulk turn: {whole}"
+        );
+        let plain = asked(&words("github:o/r checks.x86_64-linux.a")).unwrap();
+        let command = plain.command();
+        assert!(
+            !command.contains("bulk-turns") && !command.contains("--max-jobs"),
+            "a run that isn't bulk was held to the bulk turns: {command}"
+        );
+    }
+
+    #[test]
+    fn a_run_whose_name_a_bulk_pattern_matches_runs_as_bulk_and_says_which() {
+        let patterns = vec!["heavy-*".to_owned()];
+        let cases = [
+            (
+                "github:o/r checks.x86_64-linux.heavy-one",
+                Some("heavy-one"),
+            ),
+            ("github:o/r checks.x86_64-linux.light", None),
+            ("github:o/r heavy-top", Some("heavy-top")),
+            ("/nix/store/0123abcd-heavy-two.drv^out", Some("heavy-two")),
+            ("/nix/store/0123abcd-light.drv", None),
+        ];
+        for (said, named) in cases {
+            let (run, heard) = asked(&words(said)).unwrap().bulk_by_name(&patterns);
+            assert_eq!(heard.as_deref(), named, "the name that made {said} bulk");
+            assert_eq!(run.bulk, named.is_some(), "whether {said} ran as bulk");
+        }
+        let (run, heard) = asked(&words("--bulk github:o/r checks.x86_64-linux.heavy-one"))
+            .unwrap()
+            .bulk_by_name(&patterns);
+        assert!(run.bulk, "a run told --bulk stopped being bulk");
+        assert_eq!(
+            heard, None,
+            "a run told --bulk was said to be bulk by its name"
+        );
+    }
+
+    #[test]
     fn a_turn_whose_shell_is_gone_or_from_an_earlier_boot_is_taken_in_dash_and_zsh() {
         // A shell killed outright gives nothing back, and a reboot ends
         // every shell while its links stay, where a pid can since name
@@ -7153,6 +7392,7 @@ mod tests {
                 here: Here::default(),
                 alone: Alone::Ends,
                 bulk: false,
+                vm_part: false,
                 derivations: false,
                 pinned: None,
             })
@@ -8282,10 +8522,11 @@ mod tests {
         ] {
             let applied = asked(&words(words_given)).unwrap();
             let (vm, rest) = vm_tests(&applied, &patterns, &none);
-            assert_eq!(
-                vm,
-                Some(applied.with(&applied.flake, applied.attributes.clone()))
-            );
+            let whole = Asked {
+                vm_part: true,
+                ..applied.with(&applied.flake, applied.attributes.clone())
+            };
+            assert_eq!(vm, Some(whole), "{words_given}");
             assert_eq!(rest, None, "{words_given}");
         }
         let other = asked(&words("--apply f path:/z packages.x86_64-linux.a")).unwrap();

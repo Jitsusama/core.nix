@@ -251,6 +251,18 @@ in
         mid-build at midnight. Idle time still gives it back first.
       '';
     };
+    bulk = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = ''
+        What `there` sends as bulk without being told `--bulk`: derivations
+        and attributes whose names match these patterns, where `*` stands
+        for any run of characters. A bulk run waits for room behind those
+        that aren't, and on a lent builder takes one of its bulk turns,
+        which leave a quarter of its builds for the rest.
+      '';
+    };
+
     vmTests = lib.mkOption {
       type = lib.types.nullOr (
         lib.types.submodule {
@@ -661,6 +673,10 @@ in
 
       xdg.configFile."nix-offload/vm-tests" = lib.mkIf (cfg.vmTests != null) {
         text = lib.concatMapStrings (pattern: "${pattern}\n") (vmTestsOfCore ++ cfg.vmTests.patterns);
+      };
+
+      xdg.configFile."nix-offload/bulk" = lib.mkIf (cfg.bulk != [ ]) {
+        text = lib.concatMapStrings (pattern: "${pattern}\n") cfg.bulk;
       };
 
       xdg.configFile."nix-offload/vm-builds" = lib.mkIf (cfg.vmTests.builds or null != null) {
