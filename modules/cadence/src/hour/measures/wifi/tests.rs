@@ -44,6 +44,7 @@ fn a_minute_is_read_from_its_video_clause_and_none_is_no_hold() {
         Some(Minute {
             at: AT,
             bssid: NEAR.to_owned(),
+            best: 15.0,
             p95: 881.0,
             lost: 38.3,
             call: true,
@@ -112,32 +113,29 @@ fn held_minutes_are_counted_by_access_point_with_each_ones_worst() {
         [
             format!(
                 "on {NEAR}, 2 of 3 minutes held, the worst 881.0 ms at p95 and 38.3% lost at \
-                 11:25"
+                 11:25, best effort then 15.0 ms"
             ),
             format!(
                 "on {FAR}, 1 of 2 minutes held, the worst 20.0 ms at p95 and 2.5% lost at 11:28, \
-                 during a call"
+                 during a call, best effort then 15.0 ms"
             ),
         ]
     );
 }
 
 #[test]
-fn one_held_minute_is_within_and_none_read_is_unjudged_saying_why() {
-    let one = journal(&[
-        entry(
-            AT,
-            &said_by_wifid(NEAR, Some("300.0 ms at p95, 0.0% of 120 echoes lost"), false),
-        ),
-        entry(
-            AT + 60,
-            &said_by_wifid(NEAR, Some("9.0 ms at p95, 0.0% of 120 echoes lost"), false),
-        ),
+fn one_moments_two_held_minutes_are_within_and_none_read_is_unjudged_saying_why() {
+    let held = "300.0 ms at p95, 0.0% of 120 echoes lost";
+    let quick = "9.0 ms at p95, 0.0% of 120 echoes lost";
+    let moment = journal(&[
+        entry(AT, &said_by_wifid(NEAR, Some(held), false)),
+        entry(AT + 60, &said_by_wifid(NEAR, Some(held), false)),
+        entry(AT + 120, &said_by_wifid(NEAR, Some(quick), false)),
     ]);
-    let m = video(Some(&one), &TimeZone::UTC);
+    let m = video(Some(&moment), &TimeZone::UTC);
     assert!(
-        (m.now - 1.0).abs() < f64::EPSILON && m.past().is_none(),
-        "a lone held minute was filed with wifid's owner: {m:?}"
+        (m.now - 2.0).abs() < f64::EPSILON && m.past().is_none(),
+        "one bad moment, in the two lines covering it, was filed with wifid's owner: {m:?}"
     );
     let before = journal(&[entry(AT, &said_by_wifid(NEAR, None, false))]);
     for (text, why) in [
