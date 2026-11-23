@@ -138,11 +138,17 @@ in
             description = ''
               The startup script every lent builder is made with. An instance
               running any other, started again or changed since root first
-              trusted it, whose audit log holds more than its making, or in a
-              project setting a boot script, ssh keys or OS Login its own
-              doesn't override, or OS Config, lends nothing; any other
-              project key is only journalled. Each lent token must read the project's Admin Activity
-              audit log. Unset, a lent builder is trusted on its host key
+              trusted it, whose audit log holds more than its making, or seen
+              in a project setting a boot script its own doesn't override,
+              lends nothing until the lender replaces it, and nor does every
+              builder root trusts once one is seen in a project setting that
+              script, ssh keys or OS Login its own doesn't override, or OS
+              Config; each is kept in the service's state folder, whose
+              `spoiled` file root alone may take one out of. A builder not
+              yet trusted waits while the project sets the rest. Any other
+              project key is only journalled. A setting put on and taken off
+              between two looks goes unseen. Each lent token must read the
+              project's Admin Activity audit log. Unset, a lent builder is trusted on its host key
               alone, which anything able to change the instance can get
               round, and the machine warns so.
             '';

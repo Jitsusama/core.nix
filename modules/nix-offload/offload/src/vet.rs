@@ -23,13 +23,28 @@
 //! hold no script the guest agent would run at boot, no ssh keys it
 //! would make accounts of and no OS Login, unless the builder sets its
 //! own, and no OS Config, nor any of its agent's settings, that would run
-//! jobs. A builder seen under any of them is trusted no more, whether root
-//! trusted it yet or not: a boot script may have run at a boot the cloud
-//! doesn't count as a start, as a reboot from inside the guest is, and
-//! the rest act on a running builder. Any other project key is let
+//! jobs. Keys are read with their case folded, as the agents' Go decoding
+//! folds it. A builder seen under a boot script is trusted no more,
+//! whether root trusted it yet or not, since the script may have run at a
+//! boot the cloud doesn't count as a start, as a reboot from inside the
+//! guest is; seen under the rest, which act on a running builder, a
+//! trusted builder is trusted no more and one not yet trusted waits for
+//! the setting to go. Either way every builder root trusts goes with it,
+//! since the project is every builder's. Any other project key is let
 //! through and said, since a cloud product such as GKE writes keys of its
 //! own there that no guest agent reads, and refusing on one stopped every
 //! builder on 22 November.
+//!
+//! What root sees of the project is what it reads at each look, which
+//! leaves two windows the audit log could close but doesn't, since every
+//! `gcloud compute ssh` in the project writes its metadata too. A setting
+//! put on and taken off between two looks, at most 30 seconds apart while
+//! root's own files name a builder and 5 minutes while only the lent file
+//! does, goes unseen, and OS Config needs no boot to act within one. And a
+//! boot script set for a builder's first boot and taken off before root
+//! first looks at it goes unseen too, since the account that makes a
+//! builder also says when root looks. Both are recorded with the machine's
+//! security review rather than closed here.
 //!
 //! Long because its tests, about half of it, stay beside the private
 //! checks they read, one case each.
@@ -50,8 +65,9 @@ const METADATA: [&str; 7] = [
 
 /// The project's metadata a lent builder sits under unremarked, once the
 /// instance's own `block-project-ssh-keys` and `enable-oslogin` turn it
-/// off, or root has judged it.
-const PROJECT_METADATA: [&str; 3] = ["enable-oslogin", "ssh-keys", "sshKeys"];
+/// off, or root has judged it. Its keys, as every project key below, are
+/// held with their case folded, as a project's are read.
+const PROJECT_METADATA: [&str; 3] = ["enable-oslogin", "ssh-keys", "sshkeys"];
 
 /// Whether `said` is true as the guest agents read it: they are written
 /// in Go and take a boolean with its `strconv.ParseBool`, so `1` and `t`
@@ -76,8 +92,8 @@ const PROJECT_SCRIPTS: [&str; 4] = [
 ];
 
 /// The project's ssh keys, under both names the guest agent reads, which
-/// it makes sudoers of on an instance not blocking them.
-const PROJECT_SSH_KEYS: [&str; 2] = ["ssh-keys", "sshKeys"];
+/// it makes sudoers of on an instance not blocking them, `sshKeys` folded.
+const PROJECT_SSH_KEYS: [&str; 2] = ["ssh-keys", "sshkeys"];
 
 /// What the OS Config agent's own settings start with, under both the
 /// names it reads: some turn on its patch jobs and package policies, which
@@ -141,9 +157,10 @@ pub fn vetted(described: &Value, pinned: &Pinned) -> Result<String, String> {
         return Err("takes the project's ssh keys".to_owned());
     }
     // Anything but a false the agent reads, `1` among them, may turn OS
-    // Login on, so only a false passes; the project's is judged apart.
-    if value("enable-oslogin").is_some_and(|said| !go_false(said)) {
-        return Err("lets OS Login make accounts".to_owned());
+    // Login on, and a builder saying nothing takes the project's, so only
+    // a false passes, as its maker sets.
+    if !value("enable-oslogin").is_some_and(go_false) {
+        return Err("doesn't turn OS Login off, so it could make accounts".to_owned());
     }
     if !value("offload-hook-key").is_some_and(|said| same_key(said, &pinned.hook_key)) {
         return Err("names another key than root's for its hook".to_owned());
@@ -248,12 +265,38 @@ fn said(items: &Value, key: &str, is: fn(&str) -> bool) -> bool {
         .any(|item| item["key"] == key && item["value"].as_str().is_some_and(is))
 }
 
+/// Whether every one of the metadata `items` setting `key` sets it to a
+/// value `is` holds of, so one said twice, as case folding makes of
+/// `enable-osconfig` and `Enable-OsConfig`, passes only when both do.
+fn only_said(items: &Value, key: &str, is: fn(&str) -> bool) -> bool {
+    self::items(items)
+        .iter()
+        .filter(|item| item["key"] == key)
+        .all(|item| item["value"].as_str().is_some_and(is))
+}
+
+/// The project `described`'s metadata items with their keys' case folded,
+/// as the guest agents' Go decoding reads them into their settings.
+fn folded(described: &Value) -> Value {
+    items(&described["commonInstanceMetadata"]["items"])
+        .iter()
+        .map(|item| {
+            let mut item = item.clone();
+            if let Some(key) = item["key"].as_str() {
+                item["key"] = Value::from(key.to_ascii_lowercase());
+            }
+            item
+        })
+        .collect()
+}
+
 /// The keys the project `described` sets that root doesn't know what they
-/// do, which pass and are said, whatever else it holds.
+/// do, which pass and are said, whatever else it holds, as it spells them.
 pub fn project_unknown(described: &Value) -> Vec<String> {
     keys(&described["commonInstanceMetadata"]["items"])
         .into_iter()
         .filter(|key| {
+            let key = key.to_ascii_lowercase();
             let key = key.as_str();
             !PROJECT_SCRIPTS.contains(&key)
                 && !PROJECT_METADATA.contains(&key)
@@ -265,39 +308,53 @@ pub fn project_unknown(described: &Value) -> Vec<String> {
         .collect()
 }
 
+/// A project setting that would act on a builder.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Sits {
+    /// What it sets and what that would do, to follow the builder's name.
+    pub why: String,
+    /// Whether it acts at a boot, as a script does, so a builder that
+    /// booted under it may hold what it ran whether root trusted it or not.
+    pub at_boot: bool,
+}
+
 /// Whether the project `described` sets no boot script, ssh keys, OS Login
-/// or OS Config the instance `instance` would take; why not otherwise. A
-/// boot script counts where the instance sets none of the same name, as
+/// or OS Config the instance `instance` would take; what it sets otherwise.
+/// A boot script counts where the instance sets none of the same name, as
 /// the guest agent runs it then. OS Config is refused whatever the builder
 /// sets, since no builder may carry `enable-osconfig` of its own.
-pub fn project_holds(described: &Value, instance: &Value) -> Result<(), String> {
-    let (project, builder) = (
-        &described["commonInstanceMetadata"]["items"],
-        &instance["metadata"]["items"],
-    );
-    let sits = |key: &str, what: &str| Err(format!("sits in a project setting {key}, {what}"));
-    let own = keys(builder);
+pub fn project_holds(described: &Value, instance: &Value) -> Result<(), Sits> {
+    let (project, builder) = (&folded(described), &instance["metadata"]["items"]);
+    let sits = |key: &str, what: &str, at_boot: bool| {
+        Err(Sits {
+            why: format!("sits in a project setting {key}, {what}"),
+            at_boot,
+        })
+    };
+    let own: Vec<String> = keys(builder)
+        .iter()
+        .map(|key| key.to_ascii_lowercase())
+        .collect();
     for key in keys(project) {
         let named = key.as_str();
         if OS_CONFIG_SETTINGS
             .iter()
             .any(|setting| named.starts_with(setting))
-            || (OS_CONFIG_SWITCHES.contains(&named) && !said(project, named, go_false))
+            || (OS_CONFIG_SWITCHES.contains(&named) && !only_said(project, named, go_false))
         {
-            return sits(named, "which could let OS Config run jobs on every builder");
+            let what = "which could let OS Config run jobs on every builder";
+            return sits(named, what, false);
         }
         if PROJECT_SCRIPTS.contains(&named) && !own.contains(&key) {
-            return sits(named, "which every builder would run");
+            return sits(named, "which every builder would run", true);
         }
         if PROJECT_SSH_KEYS.contains(&named) && !said(builder, "block-project-ssh-keys", go_true) {
-            return sits(named, "whose keys every builder would take");
+            return sits(named, "whose keys every builder would take", false);
         }
     }
     if said(project, "enable-oslogin", go_true) && !said(builder, "enable-oslogin", go_false) {
-        return sits(
-            "enable-oslogin",
-            "which would let OS Login make accounts on a builder not turning it off",
-        );
+        let what = "which would let OS Login make accounts on a builder not turning it off";
+        return sits("enable-oslogin", what, false);
     }
     Ok(())
 }
@@ -456,7 +513,7 @@ mod tests {
 
     #[test]
     fn an_instance_changed_after_it_was_made_is_refused() {
-        let changes: [(&str, (&str, Value)); 10] = [
+        let changes: [(&str, (&str, Value)); 11] = [
             ("ssh keys", ("ssh-keys", json!("me:ssh-ed25519 AAAA me"))),
             ("project keys", ("block-project-ssh-keys", json!("FALSE"))),
             (
@@ -479,6 +536,7 @@ mod tests {
                 ("startup-script", json!("#!/bin/bash\nmine\n")),
             ),
             ("no script", ("startup-script", Value::Null)),
+            ("OS Login unsaid", ("enable-oslogin", Value::Null)),
         ];
         for (what, change) in changes {
             assert!(
@@ -589,8 +647,8 @@ mod tests {
         {
             let refused = project_holds(&project(&["ssh-keys", script]), &builder());
             assert!(
-                refused.is_err_and(|why| why.contains(script)),
-                "a project's {script} was let run"
+                refused.is_err_and(|sits| sits.at_boot && sits.why.contains(script)),
+                "a project's {script} was let run, or not said to run at a boot"
             );
         }
         assert!(
@@ -609,7 +667,7 @@ mod tests {
         ] {
             assert!(
                 project_holds(&project(&[setting]), &builder())
-                    .is_err_and(|why| why.contains(setting)),
+                    .is_err_and(|sits| !sits.at_boot && sits.why.contains(setting)),
                 "a project's OS Config setting {setting} was let through"
             );
         }
@@ -617,7 +675,7 @@ mod tests {
             for switch in OS_CONFIG_SWITCHES {
                 assert!(
                     project_holds(&setting(switch, said), &builder())
-                        .is_err_and(|why| why.contains(switch)),
+                        .is_err_and(|sits| sits.why.contains(switch)),
                     "a project's {switch}, said {said:?}, reached a builder"
                 );
             }
@@ -629,7 +687,7 @@ mod tests {
         for on in ["TRUE", "true", "1", "t"] {
             assert!(
                 project_holds(&setting("enable-oslogin", on), &open())
-                    .is_err_and(|why| why.contains("enable-oslogin")),
+                    .is_err_and(|sits| !sits.at_boot && sits.why.contains("enable-oslogin")),
                 "a project's OS Login, said {on}, reached a builder not turning it off"
             );
             assert_eq!(
@@ -646,13 +704,14 @@ mod tests {
         for not_blocking in [&unblocking, &wrongly] {
             assert!(
                 project_holds(&project(&["ssh-keys"]), not_blocking)
-                    .is_err_and(|why| why.contains("ssh-keys")),
+                    .is_err_and(|sits| sits.why.contains("ssh-keys")),
                 "a project's ssh keys reached a builder whose block isn't one the agent reads"
             );
         }
         for keys in PROJECT_SSH_KEYS {
             assert!(
-                project_holds(&project(&[keys]), &open()).is_err_and(|why| why.contains(keys)),
+                project_holds(&project(&[keys]), &open())
+                    .is_err_and(|sits| sits.why.contains(keys)),
                 "a project's {keys} reached a builder not blocking them"
             );
             assert_eq!(
@@ -661,6 +720,46 @@ mod tests {
                 "a project's {keys} was refused though the builder blocks them"
             );
         }
+    }
+
+    // The agents decode metadata in Go, which matches a key to a setting
+    // with its case folded, so a project's ENABLE-OSCONFIG turns OS Config
+    // on as enable-osconfig does, and wins when said after it.
+    #[test]
+    fn a_project_key_is_judged_with_its_case_folded() {
+        for key in ["ENABLE-OSCONFIG", "Osconfig-Endpoint", "Startup-Script-Url"] {
+            assert!(
+                project_holds(&setting(key, "TRUE"), &builder()).is_err(),
+                "a project's {key} was let through"
+            );
+            assert!(
+                project_unknown(&project(&[key])).is_empty(),
+                "a project's {key} was named as a key root doesn't know"
+            );
+        }
+        for keys in ["sshKeys", "SSH-Keys"] {
+            assert!(
+                project_holds(&project(&[keys]), &open()).is_err(),
+                "a project's {keys} reached a builder not blocking them"
+            );
+            assert!(
+                project_unknown(&project(&[keys])).is_empty(),
+                "a project's {keys} was named as a key root doesn't know"
+            );
+        }
+        let both = json!({"commonInstanceMetadata": {"items": pairs(&[
+            ("enable-osconfig", "FALSE"),
+            ("Enable-OsConfig", "TRUE"),
+        ])}});
+        assert!(
+            project_holds(&both, &builder()).is_err(),
+            "a project saying OS Config is off and on, in two cases, was let through"
+        );
+        assert_eq!(
+            project_unknown(&project(&["GKE-Range"])),
+            ["GKE-Range"],
+            "an unknown key wasn't named as the project spells it"
+        );
     }
 
     #[test]

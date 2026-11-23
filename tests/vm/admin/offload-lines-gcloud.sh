@@ -39,7 +39,10 @@ case "$1 $2 $3" in
   jq --null-input '{sourceImage: "https://compute.example/images/a-builder-image"}'
   ;;
 "compute project-info describe")
-  jq --null-input '{commonInstanceMetadata: {items: [{key: "enable-oslogin", value: "TRUE"}]}}'
+  jq --null-input '{commonInstanceMetadata: {
+    fingerprint: "p1",
+    items: [{key: "enable-oslogin", value: "TRUE"}]
+  }}'
   ;;
 "logging read "*)
   jq --null-input '[range(2) | {
