@@ -541,7 +541,7 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # the cursor far above. Both are held to the whole run's count, since what's laid first
     # this deep is itself past whole_least. G lands each time on the end of what's laid, the
     # run's end as far as it's laid, so this is also the case for go()'s showing or laying more
-    # and moving again, whose edges are cased in Qt's engine (DrawerPage.runReach).
+    # and moving again, whose edges and steps are cased in Qt's engine (DrawerRun.walk).
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l G")
     shell.launcher_until(
         lambda shown: (

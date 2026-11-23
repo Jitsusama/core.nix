@@ -3,9 +3,9 @@
 // takes the cursor and the view, read apart from the drawing (Drawer.qml)
 // so tests/query-keys.qml can hold it in Qt's own engine.
 //
-// A page is its lines, each { top, height, length, text } in pixels down
-// the drawer's content, letters along it and the words it says, as Qt laid
-// them out, in order; the
+// A page is its lines, each { top, height, length, text, parts } in pixels
+// down the drawer's content, letters along it, the words it says and the
+// pieces of texts it holds (DrawerLines.js), as Qt laid them out, in order; the
 // cursor's line and letter, and `want`, how far along the line it wants to
 // be, as Vim's curswant keeps the column j and k go back to; the view's top
 // and height, and `end`, the furthest its top goes; the pitch its body's
@@ -38,16 +38,6 @@ function chosen(began, cursor, kind, lines) {
     return taken;
 }
 
-// How many paragraphs words hold, as the drawer's foot counts those it
-// hides, never their lines (VKCF3Z, 2026-11-05). Each line another program
-// broke is one, which Qt keeps in a pre-wrap block as a line separator, and
-// so is each a styled text breaks; a line Qt wraps is part of its own, and
-// a blank one is none.
-const PARAGRAPH_BREAK = /[\n\u2028\u2029]/;
-function paragraphs(text) {
-    return text.split(PARAGRAPH_BREAK).filter(paragraph => paragraph.trim() !== "").length;
-}
-
 // How far from the view's edges the cursor keeps: `off` lines, but never
 // past the view's middle, so a short view still has a place for it.
 function margin(page) {
@@ -56,10 +46,74 @@ function margin(page) {
 }
 
 // Every match of a search in lines as they're shown, as { line, letter },
-// in order down the page, matched by smartcase as Search.js matches.
+// in order down the page, matched by smartcase as Search.js matches. It
+// reads each text whole, as the wash does: along its pieces, wherever on
+// a line each stands, and on across a line Qt wrapped with what the piece
+// broke at, its `on`, as Vim's search runs on across its wrap. A text's
+// end, or a piece's `on` of null or none, stops it, and so does another
+// text beside it, which the wash never runs into either. Matches never
+// overlap, as the wash's don't, so one crossing a wrap takes letters
+// another would have begun the next line with.
 function matchesIn(lines, pattern) {
-    return [].concat(...lines.map((line, at) => Search.found(pattern, line.text ?? "")
-        .map(([start]) => ({ line: at, letter: start }))));
+    const find = Search.finder(pattern);
+    const matches = [];
+    for (const { text, places } of textsOf(lines)) {
+        let along = 0;
+        for (const [start] of find(text)) {
+            while (along + 1 < places.length && places[along + 1].from <= start) {
+                along += 1;
+            }
+            // One begun at the spaces a piece wrapped at lands on the
+            // next, which a text's `on` is only ever put before.
+            const { line, at, from, length } = places[along];
+            const next = places[along + 1];
+            matches.push(start - from < length ? { line, letter: at + start - from }
+                : { line: next.line, letter: next.at });
+        }
+    }
+    // Texts side by side are read one after the other, so their matches
+    // go back in order down the page, those begun at one wrap's spaces
+    // one place to the eye.
+    matches.sort((one, other) => one.line - other.line || one.letter - other.letter);
+    return matches.filter((match, at) => at === 0 || match.line !== matches[at - 1].line
+        || match.letter !== matches[at - 1].letter);
+}
+
+// Each text on the lines, its letters along its pieces as one, with what
+// each piece wrapped at between it and the next: { text, places }, each
+// place { line, at, from, length }, its piece's line, its first letter
+// there and in the text, and how many letters it has. A line's parts are
+// its pieces, each { words, length, on } (DrawerLines.linesOf), its text
+// theirs in turn; a line with none is one piece of a text of its own. A
+// piece runs on only into its own words' piece on the very next line.
+function textsOf(lines) {
+    const texts = [];
+    let open = new Map();
+    lines.forEach((line, at) => {
+        const said = line.text ?? "";
+        const parts = line.parts ?? [{ words: line, length: said.length, on: null }];
+        const going = new Map();
+        let letter = 0;
+        for (const { words, length, on } of parts) {
+            const was = open.get(words);
+            const text = was?.text ?? { text: "", places: [] };
+            if (was) {
+                text.text += was.on;
+            } else {
+                texts.push(text);
+            }
+            const letters = said.slice(letter, letter + length);
+            text.places.push({ line: at, at: letter, from: text.text.length,
+                length: letters.length });
+            text.text += letters;
+            if ((on ?? null) !== null) {
+                going.set(words, { text, on });
+            }
+            letter += length;
+        }
+        open = going;
+    });
+    return texts;
 }
 
 // Which match the cursor stands on, of how many, as { at, of } counting
@@ -78,9 +132,9 @@ function found(lines, pattern, line, letter) {
 // count going on that many, round past either end as Vim's wrapscan does,
 // `wrapped` naming the end it went round, "bottom" or "top", as the rows'
 // Finding.matchTo does, else ""; matched by smartcase as Search.js
-// matches. Each line is searched as it's shown, so a match never runs
-// across a line's end, and the view follows the cursor there as a move's
-// does.
+// matches. A match runs on across a text's wrap but never past its end
+// nor into another text (matchesIn), and the view follows the cursor
+// there as a move's does.
 function sought(page, pattern, forward, count) {
     const matches = matchesIn(page.lines, pattern);
     if (matches.length === 0) {
@@ -116,46 +170,6 @@ function sought(page, pattern, forward, count) {
         at: which + 1,
         of: matches.length
     };
-}
-
-// What a move needs laid of a run whose rest is still to come, so it never
-// lands on what follows the run while that rest would come between:
-// "whole" for one past the line the laid run ends on (`last`), as G's;
-// "more" for one that comes within `off` lines of it, or whose view, a
-// `height` tall from the move's top, reaches past that line's `top`; or
-// "" for one that stays clear of it.
-function runReach(landed, last, edge) {
-    if (landed.line > last) {
-        return "whole";
-    }
-    if (landed.line + edge.off >= last || landed.top + edge.height > edge.top) {
-        return "more";
-    }
-    return "";
-}
-
-// What a move does next while its run's rest is still to come, from what
-// runReach says the move (`landed`) needs of the run laid to `last`, in
-// its view's `edge`: "whole" lays the rest at once, read once; "show"
-// shows the parts laid quietly; "part" lays one part more, each read as
-// it's laid; "" stops. `so` says how many parts it has laid already
-// (`parts`) and whether the parts laid are still unshown (`quiet`). One
-// that lands on the laid end again after a part, as G does each time,
-// lays the rest whole, read once rather than some 45 times on Emoji's; a
-// page move that needs a second part lays only that, since the rest laid
-// whole in its key's turn would cost some 850 ms there.
-function runStep(landed, last, edge, so) {
-    const reach = runReach(landed, last, edge);
-    if (reach === "whole") {
-        return "whole";
-    }
-    if (reach !== "more") {
-        return "";
-    }
-    if (so.quiet) {
-        return "show";
-    }
-    return so.parts > 0 && landed.line >= last ? "whole" : "part";
 }
 
 // A part's pieces as last read, moved by what moved above the part since:

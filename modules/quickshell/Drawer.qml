@@ -44,15 +44,19 @@
 // visual to start from. Its words are laid out by Qt as read-only
 // TextEdits (PageText, below), which can say which letters each line
 // holds and where, so the cursor stands on the letters drawn;
-// DrawerPage.js says where each key takes it and the view.
+// DrawerPage.js says where each key takes it and the view, and
+// DrawerRun.js what a key and a page shown lay of a long run, and
+// DrawerLines.js how its laid texts are read as lines.
 pragma ComponentBehavior: Bound
 import Quickshell
 import QtQuick
 import QtQuick.Effects
 import "launcher/Moment.js" as Moment
 import "DrawerFigure.js" as Figure
+import "DrawerLines.js" as Lines
 import "DrawerPage.js" as Page
 import "DrawerProse.js" as Prose
+import "DrawerRun.js" as Run
 import "DrawerValue.js" as Value
 import "Identifier.js" as Identifier
 import "Measures.js" as Measures
@@ -843,7 +847,7 @@ Floating {
                 pieces.push(piece);
         }
         laidPieces.of = read;
-        return linesOf(pieces);
+        return Lines.linesOf(pieces);
     }
     // Every line's piece of one text, its reader made to read them: none of
     // one hidden, but for a run's part, drawn only near the view, whose
@@ -868,42 +872,19 @@ Floating {
                 : words.length;
             const box = words.positionToRectangle(from);
             const place = words.mapToItem(into, box.x, box.y);
-            pieces.push({ text, words, from, y,
-                length: words.getText(from, next).replace(/\s+$/, "").length,
+            // All it holds to the next line, the space it wrapped at too,
+            // so a search runs on across a wrap (DrawerLines.runsOn). The
+            // next line of another paragraph begins past the break, which
+            // getText gives as Qt's selection does: a \n in a plain text,
+            // a paragraph or line separator in a styled one.
+            const raw = words.getText(from, next);
+            const length = raw.replace(/\s+$/, "").length;
+            pieces.push({ text, words, from, y, length,
+                on: at + 1 < words.lineCount ? Lines.runsOn(raw, length) : null,
                 x: place.x, top: place.y, height: box.height,
                 base: place.y + words.baselineOffset, caps: words.caps });
         }
         return pieces;
-    }
-    // Pieces as lines, top to bottom, those sharing a baseline one line.
-    function linesOf(pieces) {
-        pieces.sort((one, other) => one.base - other.base || one.x - other.x);
-        const found = [];
-        for (const piece of pieces) {
-            const line = found[found.length - 1];
-            const together = line && Math.abs(line.base - piece.base) < 2;
-            // A blank piece on another's baseline is no part of its line,
-            // which would take a letter the eye can't see: a blank line
-            // is a line only where it stands alone.
-            if (together && piece.length === 0)
-                continue;
-            if (together && line.length === 0) {
-                found[found.length - 1] = { base: piece.base, top: piece.top,
-                    height: piece.height, caps: piece.caps, length: piece.length,
-                    parts: [piece] };
-            } else if (together) {
-                const bottom = Math.max(line.top + line.height, piece.top + piece.height);
-                line.top = Math.min(line.top, piece.top);
-                line.height = bottom - line.top;
-                line.caps = Math.max(line.caps, piece.caps);
-                line.length += piece.length;
-                line.parts.push(piece);
-            } else {
-                found.push({ base: piece.base, top: piece.top, height: piece.height,
-                    caps: piece.caps, length: piece.length, parts: [piece] });
-            }
-        }
-        return found;
     }
 
     // The part of a line a letter along it lies in, and the letter's place
@@ -1156,36 +1137,29 @@ Floating {
         }
         return -1;
     }
-    // Whether a page shown anew waits on its deferred lay (anew).
-    property bool anewWaits: false
+    // Whether a page shown anew waits on its lay (DrawerRun.anew).
+    property var anewWaiting: ({
+            lay: false
+        })
     // Another page shown while it holds the keys, as its list of keys is:
     // read from its top once Qt has laid it out, as a window opened on it,
-    // and timed as going in is. A run is laid as going into it lays it.
+    // and timed as going in is, from the key that asked it. A run is laid
+    // as going into it lays it. Not once the keys have gone meanwhile,
+    // which would lay the run at rest.
     function anew() {
         if (keys) {
             // At once, so the new page's first frame draws none of it.
             unflash();
             runCut();
-            // A second page shown before the first is laid is laid in its
-            // place, by the going-in the first began: both deferred lays
-            // would lay the page shown last, and the launcher keeps one
-            // going-in at a time, so a second would take the first's.
-            if (anewWaits)
-                return;
-            anewWaits = true;
-            // Said now, while the key that asked it is still held, so the
-            // launcher times it from that key rather than from this turn's
-            // end, which would leave out the new page's own lay.
-            keysComing();
-            Qt.callLater(() => {
-                anewWaits = false;
-                // Not once the keys have gone meanwhile, which would
-                // lay the run at rest.
-                if (!keys)
-                    return;
-                scrolled = 0;
-                enter();
-                keysIn();
+            Run.anew(anewWaiting, {
+                coming: () => keysComing(),
+                later: laid => Qt.callLater(laid),
+                held: () => keys,
+                lay: () => {
+                    scrolled = 0;
+                    enter();
+                    keysIn();
+                }
             });
         }
     }
@@ -1223,30 +1197,26 @@ Floating {
             fold();
             return;
         }
-        let moved = movedBy(act, count);
         // While its run is still being laid, a move past what's laid of it
         // lays it all first, as G's does, and one that comes near its end,
         // or shows what's under it, shows the parts laid quietly or lays a
         // part more, and moves again, so it never lands on what follows the
-        // run while the run's rest is still to come (DrawerPage.runReach),
-        // and one landing on the end of what's laid again once a part is
-        // laid, as G does each time, lays the rest whole (DrawerPage.runStep).
-        let parts = 0;
-        for (let end = runEnd(); (runQuiet || runNext >= 0) && end >= 0; end = runEnd()) {
-            const step = Page.runStep(moved, end,
-                { off: drawer.scrolloff, height: drawer.viewRoom, top: laid[end].top },
-                { parts, quiet: runQuiet });
-            if (step === "whole")
-                layWhole();
-            else if (step === "show")
-                runShow();
-            else if (step === "part") {
-                layPart(runPart, true);
-                parts += 1;
-            } else
-                break;
-            moved = movedBy(act, count);
-        }
+        // run while the run's rest is still to come; and one landing on the
+        // end of what's laid again once a part is laid, as G does each
+        // time, lays the rest whole (DrawerRun.walk).
+        const moved = Run.walk(() => movedBy(act, count), {
+            laying: () => runQuiet || runNext >= 0,
+            end: () => runEnd(),
+            edge: end => ({
+                    off: drawer.scrolloff,
+                    height: drawer.viewRoom,
+                    top: laid[end].top
+                }),
+            quiet: () => runQuiet,
+            whole: () => layWhole(),
+            show: () => runShow(),
+            part: () => layPart(runPart, true)
+        });
         cursor = { line: moved.line, letter: moved.letter, want: moved.want };
         scrollTo(moved.top);
     }
@@ -2262,7 +2232,7 @@ Floating {
         // A run's lines are where it was laid to wrap, one paragraph still.
         const left = reader.getText(at, reader.length);
         return shownAndHidden.hidden
-            + Page.paragraphs(drawer.runs ? left.replace(/[\n\u2028]/g, " ") : left);
+            + Lines.paragraphs(drawer.runs ? left.replace(/[\n\u2028]/g, " ") : left);
     }
     // Whether the words are cut at the foot, so their reader is made to
     // count their paragraphs. It's handed to the words once the cut is
