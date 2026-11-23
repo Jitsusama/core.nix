@@ -1,0 +1,82 @@
+// The cases of realtime.rules, run by duktape, polkit's own engine, after
+// modules/slices/agents-ask-polkit.rules, which stands in for polkitd,
+// polkit's init.js and a workstation's 10-nixos.rules as polkitd reads it
+// (modules/pipewire/checks.nix). Each asker is the account's, with no
+// session at the seat yet, as PipeWire is when the account's manager
+// starts it.
+var account = "/user.slice/user-1000.slice/user@1000.service/";
+var where = {
+  pipewire: account + "session.slice/pipewire.service",
+  chain: account + "app.slice/speaker-tuning.service",
+  below: account + "session.slice/pipewire-pulse.service/sub",
+  app: account + "app.slice/app-niri-kitty-41.scope",
+  brokered: account + "app.slice/pi-jobs-qestabc-1.scope",
+  host: account + "agents.slice/pi-host-work-background.service",
+  command: account + "jobs.slice/jobs.service",
+  near: account + "session.slice.d/pipewire.service",
+  system: "/system.slice/pipewire.service",
+};
+var pids = {};
+var next = 10;
+for (var place in where) {
+  pids[place] = next;
+  processes[next] = where[place];
+  next += 1;
+}
+
+function beforeTheSeat(pid) {
+  var subject = new Subject();
+  subject.pid = pid;
+  subject.user = "jitsusama";
+  subject.groups = ["users", "wheel"];
+  subject.seat = "";
+  subject.session = "1";
+  subject.local = false;
+  subject.active = false;
+  return subject;
+}
+
+function asking(id) {
+  var action = new Action();
+  action.id = id;
+  return action;
+}
+
+var failed = 0;
+function expect(what, action, place, said) {
+  var answer = polkit._runRules(action, beforeTheSeat(pids[place] || 99));
+  if (answer !== said) {
+    failed += 1;
+    print("FAIL " + what + " from " + place + ": " + answer + ", not " + said);
+  }
+}
+
+var realTime = asking("org.freedesktop.RealtimeKit1.acquire-real-time");
+var highPriority = asking("org.freedesktop.RealtimeKit1.acquire-high-priority");
+// PipeWire, a tuning chain in app.slice and anything below one of the
+// account's sound services takes real time and a high priority.
+var sound = ["pipewire", "chain", "below"];
+for (var i = 0; i < sound.length; i += 1) {
+  expect("real time", realTime, sound[i], "yes");
+  expect("a high priority", highPriority, sound[i], "yes");
+}
+// An app's scope keeps rtkit's own answer, its seat session's, and so do
+// the system's units and a near name. An agent's
+// places, and a process gone, are refused, as agents-ask-last.rules
+// refuses what nothing grants them.
+var others = ["app", "near", "system"];
+for (var j = 0; j < others.length; j += 1) {
+  expect("real time", realTime, others[j], null);
+}
+var agents = ["brokered", "host", "command", "gone"];
+for (var k = 0; k < agents.length; k += 1) {
+  expect("real time", realTime, agents[k], "no");
+  expect("a high priority", highPriority, agents[k], "no");
+}
+// Another action from a sound service is no business of the rule's.
+expect("another action", asking("org.example.another"), "pipewire", null);
+
+if (failed > 0) {
+  throw new Error(failed + " cases failed");
+}
+print("every case held");

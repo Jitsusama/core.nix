@@ -579,6 +579,12 @@
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
   '';
+  sound-takes-real-time-before-the-seat = ''
+    PipeWire's units in the account's session.slice and app.slice, and what runs below them, are
+    granted rtkit's real time and high priority before the seat has a session, while an app's
+    scope, the system's units and a near name keep rtkit's own answer and agents' places are
+    still refused
+  '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
     down with no more of their words wrong than the ceiling the last measurement set

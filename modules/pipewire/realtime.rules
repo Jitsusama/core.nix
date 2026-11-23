@@ -1,0 +1,45 @@
+// The account's sound services may take real time from rtkit whether or
+// not a session sits at the seat yet. rtkit's own actions grant it to an
+// active session alone (allow_any is no), and the account's manager
+// starts PipeWire, its tuning chains and WirePlumber before greetd opens
+// the seat's session: on 21 November the four PipeWire processes asked at
+// 10:07:30, the session began at 10:07:32, and each was refused, so their
+// audio ran on the ordinary policy for two days, the speakers' chain
+// waiting 7 ms for a CPU at each wake under load. module-rt says it
+// acquired real time whatever rtkit answers, so nothing showed it.
+//
+// A sound service is one of the account's own units in session.slice or
+// app.slice, where PipeWire's run; an app's scope there, or an agent's
+// pi-jobs scope, is no service, and keeps rtkit's own answer. rtkit still
+// holds each thread to priority 20 and 200 ms at a time. polkit's own
+// engine reads this, in the JavaScript it knows.
+
+// Where the process asking runs: the cgroup the kernel has it in, or null
+// for one that's gone or can't be read.
+function soundPlaceOf(subject) {
+  try {
+    var cgroup = polkit.spawn(["@cat@", "/proc/" + subject.pid + "/cgroup"]);
+    return cgroup.replace(/^0::/, "").replace(/\n$/, "");
+  } catch (_gone) {
+    return null;
+  }
+}
+
+var soundService = new RegExp(
+  "^/user\\.slice/user-[0-9]+\\.slice/user@[0-9]+\\.service/" +
+    "(session|app)\\.slice/[^/]+\\.service(/|$)"
+);
+
+polkit.addRule(function (action, subject) {
+  if (
+    action.id !== "org.freedesktop.RealtimeKit1.acquire-real-time" &&
+    action.id !== "org.freedesktop.RealtimeKit1.acquire-high-priority"
+  ) {
+    return polkit.Result.NOT_HANDLED;
+  }
+  var place = soundPlaceOf(subject);
+  if (place !== null && soundService.test(place)) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NOT_HANDLED;
+});

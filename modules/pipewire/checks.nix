@@ -4,6 +4,7 @@
   graphical,
   holds,
   lib,
+  pkgs,
   ...
 }:
 {
@@ -28,4 +29,22 @@
         && (units.DefaultLimitRTPRIO or null) == manager.LimitRTPRIO
         && (units.DefaultLimitRTTIME or null) == manager.LimitRTTIME
       );
+
+  # A workstation's polkit rules, as polkitd assembles them, run in duktape,
+  # polkit's own engine, after polkit's init.js, with the account's manager
+  # asking before the seat has a session: PipeWire's units in session.slice
+  # and app.slice, and what runs below them, are given real time and a high
+  # priority from rtkit, while an app's scope, the system's units and a near
+  # name keep rtkit's own answer and agents' places are still refused
+  # (realtime-test.rules). The slices' stand-in for polkitd serves here too.
+  sound-takes-real-time-before-the-seat =
+    let
+      rules = graphical.config.environment.etc."polkit-1/rules.d/10-nixos.rules".text;
+    in
+    pkgs.runCommandLocal "sound-takes-real-time-before-the-seat" { } ''
+      ${lib.getExe' pkgs.duktape "duk"} ${../slices/agents-ask-polkit.rules} \
+        ${pkgs.polkit.src}/src/polkitbackend/init.js \
+        ${pkgs.writeText "10-nixos.rules" rules} ${./realtime-test.rules}
+      touch $out
+    '';
 }
