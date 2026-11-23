@@ -552,7 +552,7 @@ Singleton {
     // automatic, you decided that by yourself"); on 11-01 he had chosen
     // to reopen them by hand.
     readonly property var lastBoot: offered.filter(one => one.way === "boot")
-        .map(one => one.session)
+        .map(one => root.wayCame(one))
 
     // The sessions offered apart from the last boot's, whatever the boot,
     // until each runs here, and never put off with the last boot's
@@ -560,7 +560,13 @@ Singleton {
     // away, and those pi's host gave back, so they run in plain pi again
     // (2QZBX9, [44e65ce0]). The newest first, as the daemon orders them.
     readonly property var apart: offered.filter(one => one.way !== "boot")
-        .map(one => one.session)
+        .map(one => root.wayCame(one))
+    // Each offered session with the way it came, which decides whether one
+    // kept nowhere comes back without a window (Reopening.broughtBack): on
+    // 2026-11-21 the session alone went on, and two kept nowhere got one.
+    function wayCame(one) {
+        return Object.assign({}, one.session, { way: one.way });
+    }
 
     // Every session there is to reopen: the last boot's, then those apart.
     readonly property var toReopen: lastBoot.concat(apart)
@@ -1050,8 +1056,8 @@ Singleton {
         // it opens on, so its sessions back before its pi says who it is
         // join it rather than make a workspace of their own (homeSpace).
         const into = root.keptOrKin(one, at, beside, others);
-        const name = into === null ? "" : Places.homeToName(one, naming, into.workspace,
-            Object.values(Niri.workspaces ?? {}));
+        const name = into === null ? "" : into.name || Places.homeToName(one, naming,
+            into.workspace, Object.values(Niri.workspaces ?? {}));
         if (name !== "")
             Niri.act({ SetWorkspaceName: { name, workspace: { Id: into.workspace } } });
         return into;
@@ -1063,18 +1069,28 @@ Singleton {
             const where = Places.whereBack(at, beside);
             if (!where.make)
                 return { workspace: where.join, column: Places.opensAt(where, beside) };
-            // The screen's empty workspace, niri's last, so a workspace kept
-            // is never taken for one of Joel's by a number it had last boot.
+            // One kept on a workspace named for an orchestrator goes back to
+            // the one named so now, whatever its number; else to the
+            // screen's empty workspace, niri's last, so a workspace kept is
+            // never taken for one of Joel's by a number it had last boot,
+            // and that one takes the kept name.
+            const back = Reopening.namedBack(at, Object.values(Niri.workspaces));
+            const named = back?.join !== undefined ? Niri.workspace(back.join) : null;
             const its = Object.values(Niri.workspaces).filter(one => one.output === at.output)
                 .sort((a, b) => a.idx - b.idx);
             const empty = root.lastOn(at.output);
-            const there = (empty !== null ? Niri.workspace(empty) : null) ?? its[its.length - 1];
+            const emptied = empty !== null ? Niri.workspace(empty) : null;
+            const there = named ?? emptied ?? its[its.length - 1];
             if (!there)
                 return null;
             const columns = Object.values(Niri.windows)
                 .filter(one => one.workspace_id === there.id)
                 .map(one => one.layout?.pos_in_scrolling_layout?.[0] ?? 0);
-            return { workspace: there.id, column: Math.max(0, ...columns) + 1 };
+            // Only the empty workspace it found takes the kept name, and
+            // only unnamed, as homeToName names: the last with windows may
+            // be one Joel named. opensOn sends it, so it's sent once.
+            const name = Reopening.keptName(back, there, emptied);
+            return { workspace: there.id, column: Math.max(0, ...columns) + 1, name };
         }
         const asked = { from: one.from ?? "", quest: one.quest ?? "",
             orchestratedBy: one.orchestratedBy ?? "" };
@@ -1165,8 +1181,11 @@ Singleton {
         const found = Places.whereBack(entry.at, beside);
         const where = found.make ? Object.assign({}, found,
             { output: found.output ?? entry.at.output }) : found;
+        // One sent to a workspace by its kept name holds there, though
+        // that workspace stands on another screen than the one kept.
         const holds = entry.quiet === true && !where.make ? workspace.id === where.join
-            : Places.holds(where, { workspace, column }, beside);
+            : where.make && Reopening.onNamed(entry.at, workspace)
+                || Places.holds(where, { workspace, column }, beside);
         // One that holds on a screen standing in for its own, gone as it
         // opened, only stands there: it hasn't landed, so settling places
         // it again once its screen is back. Taken as landed, two sessions
@@ -1581,15 +1600,16 @@ Singleton {
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
-        const places = Places.placed(keptPlaces, root.screensThere(),
+        const placeable = keptPlaces.map(Reopening.placeOf);
+        const places = Places.placed(placeable, root.screensThere(),
             Niri.workspace()?.output ?? null,
             here.map(one => momentOf(one.id)).map(moment => Array.isArray(moment) ? moment : []));
         // Only Reopen Them All tells each to carry on, which marks its walk.
         const walk = told === root.carryOn;
         const queue = Reopening.leadersFirst(here.map((one, at) => ({ one, at: places[at],
-            kept: keptPlaces[at], gone, told,
+            kept: placeable[at], unplaced: keptPlaces[at]?.unplaced === true, gone, told,
             back: Reopening.broughtBack(walk, keptPlaces[at], arranged === true,
-                one.way === "boot") }))
+                Reopening.satHere(one)) }))
             .sort(order));
         if (reopening !== null) {
             reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
@@ -1949,8 +1969,9 @@ Singleton {
             }
             // Placed by its connector and the number it's given now, so it
             // goes beside those given the same screen, a gone one's too.
-            const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-                column: next.at.column, tile: next.at.tile ?? 1 } : null;
+            // Its workspace's name too, which says where it goes better
+            // than the number (Reopening.namedBack).
+            const at = Reopening.atOf(next.at);
             // It opens where it goes, its orchestrator's workspace first
             // (opensOn), and never where Joel is unless he asked for it by
             // itself, handed over to be focused with no home and no place.
@@ -2009,7 +2030,9 @@ Singleton {
     // place the boot kept, quietly, as any other reopened window does: it
     // goes in the one walk, waited for and placed as theirs are, so the
     // columns after it land beside it (Y2YBTS and KP0L6A, [342c50d4]). One
-    // whose viewer is open, or that the boot kept no place of, opens none.
+    // whose viewer is open, or that the boot kept no place of, opens none;
+    // one it kept as unplaced, floating or untold, had a window, so it
+    // opens going home, as a pi kept so does.
     // One whose host isn't serving it yet, as after a crash, while the host
     // comes back, opens there all the same by the words its restore entry
     // says (Viewers.waitingWords), and waits in the window for its host:
@@ -2028,13 +2051,21 @@ Singleton {
     function reopenViewer(next) {
         const id = next.one.id;
         const session = root.hostedHere(id);
-        const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-            column: next.at.column, tile: next.at.tile ?? 1 } : null;
-        const into = at !== null ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
-            next.back?.home === false ? "" : undefined) : null;
+        const at = Reopening.atOf(next.at);
+        const opens = at !== null || next.unplaced === true
+            ? root.opensOn(next.one, at, root.besideOf(reopening.placed),
+                next.back?.home === false ? "" : undefined)
+            : null;
+        // One kept as unplaced with nowhere quiet to open, as while Joel is
+        // on the screen's empty workspace, is bound for his, so it waits for
+        // him to leave (joelThere), as a pi kept so opens beside him.
+        const joels = Niri.workspace();
+        const into = opens ?? (next.unplaced === true && joels
+            ? { workspace: joels.id, column: null } : null);
         if (session?.window || into === null) {
             console.info(`sessions: ${id}'s viewer not opened, since `
-                + (session?.window ? "it is open" : `none was kept at ${root.keptSaid(at)}`));
+                + (session?.window ? "it is open" : next.unplaced === true
+                    ? "it has nowhere to open" : `none was kept at ${root.keptSaid(at)}`));
             reopenNext();
             return;
         }
@@ -2105,8 +2136,7 @@ Singleton {
     // November until it was woken by hand (OSPHT4, [58d7fa8e]).
     function wakeReopened(session, next) {
         const id = next.one.id;
-        const at = next.at ? { output: next.at.output, workspace: next.at.workspace,
-            column: next.at.column, tile: next.at.tile ?? 1 } : null;
+        const at = Reopening.atOf(next.at);
         const slept = keptPlaces[id]?.slept === true ? keptPlaces[id] : null;
         const into = slept ? null
             : root.opensOn(next.one, at, root.besideOf(reopening.placed),
@@ -2245,9 +2275,13 @@ Singleton {
     // so a screen test that fails shows whether the shell waited.
     property var heldSaid: []
     function sayHeld(waiting) {
-        const held = Object.values(waiting).reduce((all, kept) => all.concat(kept), []);
+        // By the connector it left as well as the screen it waits for,
+        // since twins wait for one screen, and one noted on the screen in
+        // use before that was heard waits for one that may be it.
+        const held = Object.entries(waiting).reduce((all, [screen, kept]) =>
+            all.concat(kept.map(one => ({ id: one.id, screen, left: one.output }))), []);
         held.filter(one => !heldSaid.includes(one.id)).forEach(one => console.info(
-            `workspace ${one.id} waits for ${one.output ?? "its screen"} to come back`));
+            `workspace ${one.id} left ${one.left ?? "its screen"}, waits for ${one.screen}`));
         heldSaid = held.map(one => one.id);
     }
     function noteGone() {
@@ -2357,8 +2391,9 @@ Singleton {
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
-        const output = found.output ?? Places.whereKept(at, going.kept, there)
-            ?? Niri.workspace()?.output ?? null;
+        const inUse = Niri.workspace()?.output ?? null;
+        const kept = Places.whereKept(at, going.kept, there, { inUse });
+        const output = found.output ?? kept ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
         const column = window.layout.pos_in_scrolling_layout[0];
@@ -2371,9 +2406,9 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.whereKept(at, going.kept, there) === undefined)
-            root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output, others: Places.othersGone(at, going.kept, there) }, into);
+        const away = Places.awayOf(at, kept, going.kept, there);
+        if (into !== null && away !== null)
+            root.noteAway(away, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
@@ -2936,14 +2971,17 @@ Singleton {
     // reason, or none, and the act refused where its caller names it
     // ("wake", "pause"), else "", so a row becoming what one act asked is
     // taken back only for that act; `then`, when given, is told whether it
-    // was put.
+    // was put, the node's answer, and whether it was sent: one sent with
+    // no answer is the node gone before answering, perhaps having written
+    // it, and one unsent never left the shell, both apart from a refusal.
     signal unsteered(var session, string why, string act)
     function steer(address, fields, then) {
         const upper = String(address).toUpperCase();
+        const sent = PiSource.reaches();
         PiSource.steer(upper, fields, answer => {
             const put = steered(upper, answer, fields?.act ?? "");
             if (then)
-                then(put);
+                then(put, answer, sent);
         });
     }
     // Says what became of a steer by the node's answer, the agents

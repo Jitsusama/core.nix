@@ -15,15 +15,14 @@
   {
     "at": 1794631096,
     "commit": "580dc8dbd5803c7bea2650e02ecb099ec1408af3",
-    "due": "2026-11-27",
-    "due_why": "Its owner, the call shaper's, by 2026-11-24 23:59 UTC finds where the call's datagrams are lost coming down on a loaded builder, and says from that what each of the three subtests bars. Its due is when it comes off, three days after the fix's date, since twenty runs after the fix take about two and a quarter at the net's pace of about nine a day. That leaves room for about seven runs more, so a red run past the count's first seven, which starts it again, moves the due, and its owner sends the new one before this one passes. Only the media call's drops by the shaper can be told already, from the video tin it alone fills; with no call on in test_a_call_loses_little, the page call goes best effort beside the app's downloads. The router's fq_codel counts every flow together, and the builder's own losses are counted only for every flow together and printed only on a failure, so the fix counts both calls' own datagrams at each step of their path, the shaper's included, and prints them on a pass too. test_unshaped, with the shaper stopped, failed too, so its premise that the router alone meets the bar is in question, and the fix says what it bars rather than keep a bar the builder's own losses can break. It moved from 2026-11-22 since 4 of 26 net runs from 19 to 21 Nov failed with the call losing 56 to 441 datagrams down, once with the shaper off in test_unshaped, and once losing 441 while the shaper's tins dropped about 1; where the 441 went, and the other two runs' counts, are still to be read. It then takes it off once twenty net runs in a row after the fix exit 0 and their printed counts show each call's loss under its bar at each step, counted by exit code, since a failure only here is recorded as passed: at 4 in 26, three pass by luck about three times in five, and twenty about once in thirty. Before: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after its failure trace was added, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s, which the fix must answer too. test_a_call_goes_ahead_of_its_own_uploads joined it on 20 Nov for sharing that holding wait and the call's bars, not for a failure of its own, and while it is listed a failure in it alone is said and blocks nothing, before a merge or after, so until it comes off nothing catches a change that stops telling Joel's CAKE its rate: the unit tests cover only the rate chosen and the command's form",
+    "due": "2026-12-01",
+    "due_why": "Its owner, the call shaper's, read on 23 Nov where the calls' datagrams went in the net's runs that lost past the bar, and the fix that answers what was the builder's lands by 24 Nov 18:00 EST. With the shaper stopped on 20 Nov (00ddeee71091), the client's own receive buffers overflowed, 376 datagrams, iperf3 starved on the builder: the calls' sockets now have room for seconds of datagrams, and the bar counts only what was lost before the client's socket. Shaped in that run, the shaper's IFB dropped them, media's 12 all in its video tin and the page call's beside the app's downloads in best effort; and on 20 Nov (f0197badd1be) the router's down queue dropped 441 of the media call while nothing limited the download. Those two, both in shaped subtests, are the shaper's to prevent, so they still count against the bar, and a run that loses so again shows the shaper's own drops by tin, and what went missing between the router's count and the client's input hook, which the router's queue, the wire, the shaper's IFB or the client's own receive path took, the IFB's share named by its drops. The router's are the download hold's to prevent (jitsusama/shaper-holds-the-download-for-a-call): while a call is on and the download carries nine tenths of its declared 90 Mbit/s, the shaper holds it there, so it queues in the IFB's CAKE, where the call goes first, and that fix moved the due from 2026-11-27. A handshake reply lost coming down failed a call on 22 Nov (519b71b08ac0) with a stale errno, and is now made again as any lost handshake is, but only while the shaper's IFB dropped nothing meanwhile in the video and voice tins a call comes down in, so one lost while the shaper's own call tins dropped still fails. Every machine on a call's path now counts its datagrams each way, printed on a pass too, and a count under what iperf3 read fails, so a counter that misses the call can't read as nothing lost. test_a_call_loses_little bars a hundredth of a call lost coming down before the client's socket, and test_a_call_goes_ahead_of_its_own_uploads a hundredth of it dropped by the shaper's video tin going up. Its due is when it comes off, three days after the fix lands, since twenty runs after the fix take about two and a quarter at the net's pace of about nine a day. That leaves room for about seven runs more, so a red run past the seventh run after the fix, which starts the count again, moves the due, and its owner sends the new one before this one passes. It comes off once twenty net runs in a row after the fix exit 0, counted by exit code, since a failure only here is recorded as passed: at 4 in 26, three pass by luck about three times in five, and twenty about once in thirty. Before: the net excused 7 failures from 14 to 18 Nov, and about 5 in 20 runs failed after its failure trace was added, each a call losing 69 to 3,106 datagrams down, once with the shaper stopped, or the shaper not holding within 60 s, which #5897's asking a dark network again soon answered: none of the 15 net runs since it failed so. test_a_call_goes_ahead_of_its_own_uploads joined it on 20 Nov for sharing that holding wait and the call's bars, not for a failure of its own, and while it is listed a failure in it alone is said and blocks nothing, before a merge or after, so until it comes off nothing catches a change that stops telling Joel's CAKE its rate: the unit tests cover only the rate chosen and the command's form",
     "owner_pr": 4228,
     "owner_session": "6EAC3DA6",
     "reason": "failed, then passed, at 580dc8dbd580",
     "subtests": [
       "test_a_call_goes_ahead_of_its_own_uploads",
-      "test_a_call_loses_little",
-      "test_unshaped"
+      "test_a_call_loses_little"
     ],
     "test": "vm-a-call-keeps-its-packets"
   },
@@ -109,10 +108,11 @@
   {
     "at": 1795384050,
     "commit": "e9a62305b022e4f5beb11f49f70ba293926c50d2",
-    "due": "2026-11-24",
-    "owner_pr": 6086,
-    "owner_session": "orchestrator",
-    "reason": "failed, then passed, at e9a62305b022",
+    "due": "2026-11-26",
+    "due_why": "Its owner, Y2YBTS, who owns For You and Now, by 2026-11-24 23:00 UTC makes the case lay its turn beside Return by holding the turn's line until the launcher has heard Return's key, rather than steering a lead in time until one lands within 50 ms. It failed 6 of the net's 73 runs of it from 20 to 22 Nov, on main at ed3c843822c2, 0e420d94fa78, f76d551d20c1, 82ec1c141cda, 1e68b60f40fe and e9a62305b022, and besides on the train at 72509e55ecec, each time saying no turn was heard within 50 ms of Return: on a loaded builder the node-to-Now way varies by more than the 50 ms it aims for, so the case never reached the race it is about, and nothing was drawn as Return's act in any of them. Its due is when it comes off: once twenty net runs in a row after the fix exit 0, about 14 hours at the net's 73 runs of it in two days. At 6 in 73 twenty pass by luck about one time in five, so the count alone can't show the fix: the fix also shows, by a run with the guard on Return's act undone, that with the turn's line held the case meets its race and fails every time. If they haven't by the end of 25 Nov UTC, its owner moves the due and sends the new one before this one passes. While it stands, a session's turn redrawn as Return's act on For You goes uncaught here; tests/now-moment.qml still proves Now's own comparison in Qt's engine on every run",
+    "owner_pr": 6136,
+    "owner_session": "Y2YBTS",
+    "reason": "failed on main at ed3c843822c2, 0e420d94fa78, f76d551d20c1, 82ec1c141cda, 1e68b60f40fe and e9a62305b022, passing between; never reaching its race under load, not a change's fault",
     "subtests": [
       "test_a_session_turning_beside_return_into_for_you_draws_nothing"
     ],
@@ -130,5 +130,45 @@
       "test_a_walk_holds_where_it_got_to_while_the_launcher_is_up"
     ],
     "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1795386900,
+    "commit": "1e68b60f40fe90967c6cb28effeae33696a30809",
+    "due": "2026-11-26",
+    "due_why": "Its owner, XY9H5C, who owns the margin cat, by 2026-11-24 23:00 UTC finds why, on a loaded builder, the cat's way off a closed row can begin turns, lands and a second move can land away from where the first got to, and fixes the cat or the cases. test_a_row_closed_under_it_has_it_fall_at_once failed on main at 0e420d94fa78 twice and f76d551d20c1, its way off a closed row beginning turns, lands rather than rides, lands, shakes, and once hanging 1.16 s; test_a_second_move_holds_on_from_where_the_first_got_to failed at 0e420d94fa78 and 1e68b60f40fe, the second move's first place farther than a few steps from where the first got to. They passed between, in 4 of the net's 66 runs of the check from 20 to 22 Nov, three of them beside other cases timed against the clock failing in the same run, which points at the builder's load. Their sibling test_a_walk_holds_where_it_got_to_while_the_launcher_is_up, which failed beside them in three of the four, is listed in the entry above, so such a run is excused whole. Its due is when it comes off: once twenty net runs in a row after the fix exit 0, about 15 hours at the 66 runs of it that results.jsonl holds from 20 to 22 Nov; the entry above reckons about nine a day, and if the net runs it that seldom its owner moves this due. At 4 in 66 twenty pass by luck a little over one time in four, so the count alone can't show the fix: the fix also names the cause it found, as one of those failing runs' logs shows it, and keeps what the cases assert. If they haven't by the end of 25 Nov UTC, its owner moves the due and sends the new one before this one passes. While it stands, nothing here catches a closed row's fall hanging, being shoved or not landing on the window left, or a second move putting the cat where it never got to or not moving it on; MarginCatFalls.js's cases in Qt's engine still prove the fall frame by frame",
+    "owner_pr": 6132,
+    "owner_session": "XY9H5C",
+    "reason": "failed on main at 0e420d94fa78, f76d551d20c1 and 1e68b60f40fe, passing between, under builder load",
+    "subtests": [
+      "test_a_row_closed_under_it_has_it_fall_at_once",
+      "test_a_second_move_holds_on_from_where_the_first_got_to"
+    ],
+    "test": "the-margin-cat-follows-the-keys-on-niri"
+  },
+  {
+    "at": 1795414135,
+    "commit": "c733a13dc676d59eefb86cce91e81c8823dd1565",
+    "due": "2026-11-25",
+    "owner_pr": 6152,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at c733a13dc676",
+    "subtests": [
+      "test_an_app_outruns_the_jobs",
+      "test_unshaped",
+      "test_work_put_first_outruns_the_jobs"
+    ],
+    "test": "vm-a-hidden-queue-is-taken-back"
+  },
+  {
+    "at": 1795445399,
+    "commit": "3bdb3ff3d5ab32229543c192d0af39f7a83d9dc4",
+    "due": "2026-11-25",
+    "owner_pr": 6189,
+    "owner_session": "orchestrator",
+    "reason": "failed, then passed, at 3bdb3ff3d5ab",
+    "subtests": [
+      "test_the_first_step_into_landed_after_a_start_makes_no_landings_row_anew"
+    ],
+    "test": "an-agents-return-does-its-harmless-act-on-niri"
   }
 ]

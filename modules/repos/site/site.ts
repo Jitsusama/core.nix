@@ -7,9 +7,10 @@ import { follow, type Standing } from "../../local-sites/kit/feed.ts";
 import { type Actions, listen, toggle } from "../../local-sites/kit/keys.ts";
 import { Held } from "../../local-sites/kit/records.ts";
 import { themeSwitch } from "../../local-sites/kit/theme.ts";
-import { addressed, forgotten, landing, outward, type Place } from "./address.ts";
+import { addressed, forgotten, landing, type Place } from "./address.ts";
 import { drawer, groveOfTrees, rows } from "./draw.ts";
 import { footOf, headOf, worst } from "./head.ts";
+import { Listing } from "./listed.ts";
 import { drawMap } from "./mapview.ts";
 import {
   type Feed,
@@ -24,13 +25,14 @@ import {
 import { UNHEARD, watchMycelium } from "./mycelium.ts";
 import { footed, USING } from "./using.ts";
 import {
-  copyFolder,
+  copyFrom,
   element,
   keepIn,
   keepRoom,
   keepTime,
   markRows,
   markTree,
+  openOutward,
   paced,
   pressHead,
   write,
@@ -57,14 +59,14 @@ const held: { -readonly [kind in keyof Feed]: Held } = {
 };
 const standings = new Map<string, Standing>();
 const heard = new Map<string, string>();
-// The kinds whose records have arrived, and whether the node's cells have: draws go unpaced,
-// and the room kept from the last visit held, until they all have.
+// The kinds whose records have arrived, and whether the node's cells have: draws keep only their
+// own rest, and the room kept from the last visit is held, until they all have.
 const arrived = new Set<string>();
 let cellsHeard = false;
 const repos = (): boolean => KINDS.every((kind) => arrived.has(kind));
 // A reload draws again only what the address says, so what it won't keeps no room.
 const roomDrawn = keepRoom(() =>
-  forgotten(location.hash, grove, { query, place, cursor, unfolded }),
+  forgotten(location.hash, grove, { query, place, cursor, unfolded, whole }),
 );
 let mycelium = UNHEARD;
 
@@ -74,7 +76,8 @@ let grove: Grove | undefined;
 let cursor: string | null = null;
 // The tree the cursor is on once Joel has stepped into the repository.
 let inner: string | null = null;
-const unfolded = new Map<string, Set<Season>>();
+const listing = new Listing();
+const { unfolded, whole } = listing;
 
 /** The repositories the list shows: the place's, narrowed by what's found. */
 function shown(): readonly Repository[] {
@@ -125,7 +128,9 @@ function drawOpen(): void {
     write(opened, '<p class="quiet">Step onto a repository to open it here.</p>');
     return;
   }
-  const at = { now: Date.now(), home: mycelium.home, homes: mycelium.homes };
+  const { home, homes } = mycelium;
+  const keep = listing.kept(open.key, inner);
+  const at = { now: Date.now(), home, homes, keep, whole: whole.has(open.key) };
   write(opened, drawer(open, grove, at, unfolded.get(open.key) ?? new Set()));
   if (!markInner(false) && inner !== null) {
     inner = null;
@@ -133,8 +138,16 @@ function drawOpen(): void {
   }
 }
 
-/** Marks the tree the cursor is on inside the open repository. */
-const markInner = (focus: boolean): boolean => markTree(opened, inner, focus);
+/**
+ * Marks the tree the cursor is on inside the open repository, and keeps it listed there, so a
+ * row j, k or a click stood on stays once the cursor steps off, whenever the next draw comes.
+ */
+function markInner(focus: boolean): boolean {
+  if (cursor !== null) {
+    listing.kept(cursor, inner);
+  }
+  return markTree(opened, inner, focus);
+}
 
 function draw(): void {
   grove = groveOf(held, mycelium.cells, Date.now());
@@ -165,7 +178,9 @@ function drawList(): void {
   markRows(cursor, false);
 }
 
-// Draws on the frame after a record, then at most twice a second while records keep coming.
+// Draws on the frame after a record, then at most twice a second while records keep coming, and
+// for about a fifth of the time while a draw takes under half a second, since the rest after one
+// stops at two seconds so a stall can't leave the page minutes behind.
 const soon = paced(draw, 500, repos);
 
 const followed: readonly (keyof Feed)[] = [...KINDS, USING];
@@ -349,22 +364,13 @@ function goOut(): void {
   }
 }
 
-/** Opens or folds the open repository's resting and gone trees. */
+/** Opens or folds the open repository's resting and gone trees, and lists or shortens the rest. */
 function fold(): void {
   const open = current();
   if (open === undefined) {
     return;
   }
-  const seasons = unfolded.get(open.key) ?? new Set<Season>();
-  const shut = !seasons.has("resting");
-  for (const season of ["resting", "gone"] as const) {
-    if (shut) {
-      seasons.add(season);
-    } else {
-      seasons.delete(season);
-    }
-  }
-  unfolded.set(open.key, seasons);
+  listing.listWhole(open.key, !whole.has(open.key));
   // Redrawing the drawer replaces the tree that held focus, so focus goes back to it, or to
   // the list when the cursor stood on a tree that has just folded away.
   const inside = opened.contains(document.activeElement);
@@ -376,27 +382,6 @@ function fold(): void {
     markInner(false);
     list.focus({ preventScroll: true });
     follows();
-  }
-}
-
-/** Copies the tree's folder, or the repository's first checkout's, and says so. */
-function copy(): void {
-  const open = current();
-  const path = inner ?? open?.checkouts[0]?.path;
-  if (path !== undefined) {
-    copyFolder(path, asof);
-  }
-}
-
-/** Opens the tree's change, or the repository where its remote keeps it. */
-function openOut(): void {
-  const open = current();
-  if (open === undefined) {
-    return;
-  }
-  const url = outward(open, inner);
-  if (url !== undefined) {
-    globalThis.open(url, "_blank", "noopener");
   }
 }
 
@@ -416,8 +401,8 @@ const actions: Actions = {
   Enter: goIn,
   "-": goOut,
   z: fold,
-  y: copy,
-  o: openOut,
+  y: () => copyFrom(current(), inner, asof),
+  o: () => openOutward(current(), inner),
   Escape: letGo,
   "/": () => {
     find.focus();
@@ -465,6 +450,16 @@ for (const region of [stand, list]) {
 }
 
 opened.addEventListener("click", (event) => {
+  // The button under a folded or shortened season lists every tree, as z does, from a tap; it
+  // only opens, and the tree the cursor is on stays listed, so focus goes to it or the drawer.
+  const open = current();
+  const unfold = event.target instanceof Element ? event.target.closest(".unfold") : null;
+  if (unfold !== null && open !== undefined) {
+    listing.listWhole(open.key, true);
+    drawOpen();
+    keepIn(opened, inner);
+    return;
+  }
   const tree = event.target instanceof Element ? event.target.closest(".tree") : null;
   if (
     tree instanceof HTMLElement &&

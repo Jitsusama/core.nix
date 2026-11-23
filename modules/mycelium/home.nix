@@ -142,11 +142,11 @@ let
   # bind the relay's socket in the runtime folder, and it already reaches
   # every key that account holds, so the lend opens it nothing new. A key
   # left out is left out of the file, as mycelium reads a budget whose
-  # upstream adds its own. Only Linux lends: on a Mac the runtime folder the
-  # upstream sits in is DARWIN_USER_TEMP_DIR, every pi session's TMPDIR,
-  # which fenced agents write, so one could bind the socket and be handed
-  # the key; and model-relay, the upstream a lend is built for, is Linux's
-  # alone.
+  # upstream adds its own. Only Linux lends: model-relay, the upstream a lend
+  # is built for, is Linux's alone. And on a Mac the node's runtime folder,
+  # onto which the lender joins the upstream, is the account's cache folder,
+  # DARWIN_USER_CACHE_DIR: nothing yet shows that a fenced agent there can't
+  # bind a socket at the upstream and be handed the key.
   lendArgs = lib.optionals (isLinux && cfg.lend != null) [
     "--lend"
     "${pkgs.writeText "mycelium-lend.json" (
@@ -311,13 +311,14 @@ let
   servesFile = realm: "${config.xdg.configHome}/mycelium/serves-${realm}.json";
   realms = lib.optional serving cfg.realm ++ lib.attrNames cfg.alsoJoins;
   builders = import ./builders.nix;
-  # The home realm's node writes, as it judges the machine, the carry it
-  # would make to ease it, and makes none, so a day of those lines can be read
-  # before it may act; a further realm's sessions aren't its to move. It
-  # alone lends, since the machines it lends to are the ones it made.
+  # What the home realm's node may do to ease the machine (eases.nix).
+  eases = import ./eases.nix { inherit config lib; };
+  # The home realm's node alone eases the machine, since a further realm's
+  # sessions aren't its to move, and alone lends, since the machines it
+  # lends to are the ones it made.
   node =
     nodeIn cfg.realm cfg.links cfg.vias cfg.providers [ ]
-    ++ [ "--eases" ]
+    ++ eases.args
     ++ lendArgs
     ++ lib.optionals isLinux builders
     ++ ownAgent cfg.signsInWith
@@ -383,6 +384,11 @@ let
       # realm's node down for seven minutes.
       Restart = "always";
       RestartSec = "5s";
+      # Each client, link and session it holds is a file, and at systemd's
+      # 1024 a failed accept once ended the node (mycelium #372). A bare
+      # number would set the hard limit too, so the hard limit is named
+      # as systemd's own default, 524288, rather than lowered.
+      LimitNOFILE = "65536:524288";
       # The node wakes with every session it carries, so it runs among
       # them rather than among Joel's programs, whose tasks each wakeup
       # would preempt. Moving it restarts it once, which the sessions,
@@ -414,6 +420,12 @@ let
       # Started again whenever it stops, but not more than every 30 s.
       KeepAlive = true;
       ThrottleInterval = 30;
+      # Each client, link and session it holds is a file, and launchd
+      # gives an agent 256. 10240 is macOS's OPEN_MAX, and the kernel
+      # quietly lowers a soft limit above its kern.maxfilesperproc to that.
+      # No hard limit is named, so launchd's stays, unlimited unless
+      # someone lowered it.
+      SoftResourceLimits.NumberOfFiles = 10240;
       StandardErrorPath = "${config.home.homeDirectory}/Library/Logs/${log}.log";
     };
   };
@@ -598,7 +610,9 @@ in
     # Internal, so no machine widens it; only a test sets it otherwise. An
     # agent asking as fenced runs strict, which is stricter than it needs,
     # never looser; a Mac runs its strict for either, which writes the
-    # run's folder and the account's temporary folder, its runtime folder.
+    # run's folder and the account's temporary folder. For one release the
+    # node's socket is there too, beside the cache folder's, for a session
+    # that still looks there, so a fenced run can reach it.
     fenceRuns = lib.mkOption {
       type = lib.types.nullOr (lib.types.listOf lib.types.str);
       default = [
@@ -618,7 +632,8 @@ in
         Null says none, so every agent's run is refused.
       '';
     };
-  };
+  }
+  // eases.options;
 
   config = lib.mkMerge [
     {
@@ -652,9 +667,10 @@ in
           message = "jitsusama.mycelium.lend needs jitsusama.mycelium.realm, the realm whose node lends.";
         }
         {
-          # As lendArgs says, a Mac's runtime folder is one its agents write.
+          # Both reasons lendArgs gives are in the message, so neither
+          # going alone reads as leave to lend from a Mac.
           assertion = isDarwin -> cfg.lend == null;
-          message = "jitsusama.mycelium.lend is set on a Mac, whose runtime folder is every pi session's TMPDIR, so an agent could bind the upstream and take the key: lend from Linux.";
+          message = "jitsusama.mycelium.lend is set on a Mac, where model-relay, the upstream a lend is built for, doesn't run, and nothing shows a fenced agent can't bind the upstream in the node's runtime folder and take the key: lend from Linux.";
         }
         {
           assertion = cfg.lend != null -> lib.all (vm: cfg.lend.budgets ? ${vm.budget}) cfg.lend.vms;

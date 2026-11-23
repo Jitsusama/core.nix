@@ -70,8 +70,11 @@ KINDS = ["reading", "repository", "checkout", "tree", "change", "using"]
 # kilobytes and elements count its section, its keys' lines in the list of keys and the tying
 # cell's link too, two of the kilobytes lead each tree's cells on to the other repositories
 # they work across, and two say what works unread where the daemon's reading stopped. One
-# element is each drawer's way to its row in the launcher, where its acts are.
-BUDGET = Budget(files=34, kilobytes=531, elements=276)
+# element is each drawer's way to its row in the launcher, where its acts are. Three of the files
+# and four of the kilobytes are what keeps a draw light: its pace, the trees a drawer lists and
+# the foot's reasons. One kilobyte is the theme's 12 px floor on each step of its type, which
+# every page reads.
+BUDGET = Budget(files=37, kilobytes=536, elements=276)
 CELLS_SITE = "cells/"
 
 
@@ -307,6 +310,27 @@ def test_a_repository_that_goes_leaves_the_list(code_page: Page, repos_daemon: S
     repos_daemon.tell("repository", gone=["repository:local:~/src/notes"])
     expect(notes, "the gone repository was still drawn").to_have_count(0, timeout=PACE_MS)
     expect(row(code_page, "github:owl/core"), "the one left went too").to_be_visible()
+
+
+def test_a_seasons_button_opens_its_trees_and_keeps_focus_in_the_drawer(code_page: Page) -> None:
+    says_it_stands(code_page, "live")
+    row(code_page, "github:owl/core").click()
+    trees = code_page.locator("#open .tree")
+    expect(trees, "core's folded trees were drawn before they were asked for").to_have_count(0)
+    code_page.evaluate(
+        """() => {
+          globalThis.listFocused = false;
+          document.querySelector("#list").addEventListener("focus", () => {
+            globalThis.listFocused = true;
+          });
+        }"""
+    )
+    code_page.get_by_role("button", name="Open them").first.click()
+    expect(trees, "the button didn't open the folded trees").to_have_count(2)
+    expect(
+        code_page.locator(".drawer:focus, .drawer :focus"), "focus left the drawer"
+    ).to_have_count(1)
+    assert not code_page.evaluate("() => globalThis.listFocused"), "focus went by the list"
 
 
 def test_a_repositorys_weight_and_due_upkeep_are_said(code_page: Page) -> None:

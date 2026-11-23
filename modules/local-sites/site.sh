@@ -129,6 +129,26 @@ for page in "${out}"/*.html; do
     echo "${page##*/} doesn't read the theme from the sites' one copy: ${theme}" >&2
     exit 1
   fi
+  # A face the first screen sets, not asked for ahead, is found only once the
+  # styles are read, so the words paint late or jump as it lands: three pages
+  # did on 22 November. These are the theme's web kit's own file names
+  # (modules/theme/web/web.nix); its italic mono sets nothing on a first
+  # screen, so it's left to load when asked. The whole tag is asked for:
+  # without crossorigin a preload is never matched to the face's own fetch,
+  # and the page is read without its comments, where a preload asks for
+  # nothing: each ends at its first two dashes or more and a >, as HTML ends
+  # one, dashes and a lone -> inside it held, and one never ended runs to the
+  # page's end.
+  ended='s/<!--\([^-]\|-\+[^->]\|->\)*-\{2,\}>//g'
+  bare=$(tr '\n' ' ' <"${page}" | sed -e "${ended}" -e 's/<!--.*$//')
+  for face in fraunces fraunces-italic monaspace; do
+    preload="<link rel=\"preload\" href=\"../local-sites/web/fonts/${face}.woff2\" as=\"font\""
+    preload+=" type=\"font/woff2\" crossorigin>"
+    if [[ ${bare} != *"${preload}"* ]]; then
+      echo "${page##*/} doesn't preload ${face}.woff2, so its words paint late: ${preload}" >&2
+      exit 1
+    fi
+  done
   skips=$(grep -c '<a class="skip"' "${page}" || true)
   if [[ ${skips} != 1 ]]; then
     echo "${page##*/} has ${skips} skip links, and the strip goes after its one" >&2

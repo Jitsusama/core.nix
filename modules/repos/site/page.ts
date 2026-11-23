@@ -3,7 +3,10 @@
 // and copying a folder. What the cursor is, and where, stays with site.ts.
 
 import { pressable } from "../../local-sites/kit/steps.ts";
+import { outward } from "./address.ts";
 import { ago } from "./draw.ts";
+import type { Repository } from "./model.ts";
+import { UNDRAWN, waitBeforeDrawing } from "./pace.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -191,27 +194,52 @@ function keepTime(redraw: () => void): void {
 
 /**
  * `act`, on the next frame once asked for, then, once `pacing` says so, at most once each `gap`
- * milliseconds while asks keep coming, so a burst of records draws a few times rather than every
- * frame, and its last record always lands. A page out of sight draws nothing until it's back,
- * since frames wait.
+ * milliseconds while asks keep coming, and never sooner than a few times what it last took, so a
+ * burst of records draws a few times rather than every frame, its last record always lands, and
+ * a slow draw leaves the reader most of the time. A page out of sight draws nothing until it's
+ * back, since frames wait.
  */
 function paced(act: () => void, gap: number, pacing: () => boolean): () => void {
-  let last = Number.NEGATIVE_INFINITY;
+  let drawn = UNDRAWN;
   let asked = false;
-  return () => {
+  // From a draw until the frame after it, while its cost is still being measured: an ask then
+  // waits for the measure, so the next draw's rest counts the style and layout too.
+  let measuring = false;
+  let askedWhileMeasuring = false;
+  const ask = (): void => {
+    if (measuring) {
+      askedWhileMeasuring = true;
+      return;
+    }
     if (asked) {
       return;
     }
     asked = true;
-    const wait = pacing() ? Math.max(0, last + gap - performance.now()) : 0;
+    const wait = waitBeforeDrawing(drawn, performance.now(), gap, pacing());
     setTimeout(() => {
       requestAnimationFrame(() => {
         asked = false;
-        last = performance.now();
-        act();
+        measuring = true;
+        const start = performance.now();
+        try {
+          act();
+        } finally {
+          // The style, layout and paint the markup asks for follow this frame's callbacks, so
+          // the cost runs to the next frame, a draw that throws counted all the same.
+          requestAnimationFrame(() => {
+            const painted = performance.now();
+            drawn = { end: painted, cost: painted - start };
+            measuring = false;
+            if (askedWhileMeasuring) {
+              askedWhileMeasuring = false;
+              ask();
+            }
+          });
+        }
       });
     }, wait);
   };
+  return ask;
 }
 
 // The parts whose height the feeds decide, each held at index.html's --room-<id> until they draw.
@@ -283,14 +311,31 @@ function copyFolder(path: string, note: HTMLElement): void {
   );
 }
 
+/** Copies the tree at `inner`'s folder, or `open`'s first checkout's, and says so on `note`. */
+function copyFrom(open: Repository | undefined, inner: string | null, note: HTMLElement): void {
+  const path = inner ?? open?.checkouts[0]?.path;
+  if (path !== undefined) {
+    copyFolder(path, note);
+  }
+}
+
+/** Opens the change of the tree at `inner`, or `open` where its remote keeps it. */
+function openOutward(open: Repository | undefined, inner: string | null): void {
+  const url = open === undefined ? undefined : outward(open, inner);
+  if (url !== undefined) {
+    globalThis.open(url, "_blank", "noopener");
+  }
+}
+
 export {
-  copyFolder,
+  copyFrom,
   element,
   keepRoom,
   keepTime,
   markRows,
   keepIn,
   markTree,
+  openOutward,
   paced,
   pressHead,
   type Room,

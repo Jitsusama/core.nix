@@ -90,6 +90,14 @@ let
   vpns = config.jitsusama.shaper.vpns;
   networks = config.jitsusama.shaper.networks;
   networksFile = pkgs.writeText "shaper-networks.json" (builtins.toJSON networks);
+  # The port src/house.rs hears another machine's reports on.
+  housePort = 47110;
+  houses = lib.filter (house: house != null) (lib.catAttrs "house" (lib.attrValues networks));
+  # An address as the firewall and src/networks.rs read it alike.
+  address = import ./address.nix lib;
+  # A house's addresses, one written alone taken as a list of one, so a
+  # machine that named one before names it the same way still.
+  addresses = lib.types.coercedTo address lib.toList (lib.types.nonEmptyListOf address);
 in
 {
   imports = [
@@ -130,9 +138,33 @@ in
     type = lib.types.attrsOf (
       lib.types.submodule {
         options.up = lib.mkOption {
-          type = lib.types.ints.positive;
+          type = lib.types.nullOr lib.types.ints.positive;
+          default = null;
           example = 12000;
-          description = "What the network's line carries up, in kbit/s.";
+          description = ''
+            What the network's line carries up, in kbit/s, or null where
+            it isn't known, which leaves the upload unguarded there.
+          '';
+        };
+        options.down = lib.mkOption {
+          # Under 6 Mb/s a value is most likely written in Mb/s, and a
+          # call's room under one that low would fall to the download's
+          # floor.
+          type = lib.types.nullOr (lib.types.ints.between 6000 10000000);
+          default = null;
+          example = 90000;
+          description = ''
+            What the network's line carries down, in kbit/s, or null where
+            it isn't known. While a call is on and the download carries
+            nine tenths of it, the download is held there, under the
+            router's queue, so it queues in this machine's CAKE, which puts
+            the call first, rather than in a router's flow queues, where a
+            call that shares one with a bulk download loses what it loses.
+            The controller may hold it lower, and the hold goes when the
+            call ends. Declare the line at its slowest busy hour, and again
+            when it's made faster: held, the download can't show a faster
+            line, so each call would hold it at nine tenths of the old one.
+          '';
         };
         options.most = lib.mkOption {
           # Under 4 Mb/s a value is most likely written in Mb/s, and one
@@ -149,6 +181,62 @@ in
             never higher. Under nine tenths of `up`, it also stands for
             the line's hold below: the router's queue is looked for, and
             the guard returns the upload, against it rather than `up`.
+            With `up` null it holds the upload all the same, and guards
+            nothing.
+          '';
+        };
+        options.house = lib.mkOption {
+          type = lib.types.nullOr (
+            lib.types.submodule {
+              options.most = lib.mkOption {
+                type = lib.types.ints.between 4000 10000000;
+                example = 7000;
+                description = ''
+                  The most this machine and the other send up between
+                  them, in kbit/s, under the rate where the router's queue
+                  starts.
+                '';
+              };
+              options.from = lib.mkOption {
+                type = addresses;
+                example = [
+                  "192.0.2.7"
+                  "192.0.2.8"
+                ];
+                description = ''
+                  The addresses the other machine reports from, one or a
+                  list, the only ones heard, so a report from anywhere else
+                  holds nothing. Name one for each interface it may send
+                  by, its Wi-Fi's and its cable's, since it reports by the
+                  one its routes send by: what it sent is read from the
+                  fresh report saying the most, so one from an address it
+                  isn't sending by can only tighten the hold. The address
+                  alone says a report is the other machine's, so any
+                  device on the line could forge one by sending from it: for
+                  as long as it keeps sending, it holds this machine's
+                  upload as low as 4 Mb/s, as a trial may, or lets it go.
+                  Name a private IPv4 or unique local IPv6 address, not a
+                  link-local one: every link the machine has, a virtual
+                  machine's bridge among them, shares a link-local address,
+                  and the rule names no interface. An IPv4 address written
+                  as IPv6 is refused. Make it a reserved address the other
+                  machine sends from: reports from a new lease, or from a
+                  temporary IPv6 address, are dropped without a word, and
+                  the house holds nothing. house-report sends over IPv4
+                  alone, for that reason.
+                '';
+              };
+            }
+          );
+          default = null;
+          description = ''
+            Another machine on this network's line, which says each second
+            what it sends up, to UDP port ${toString housePort}. While it
+            has said so in the last 3 s, this machine's upload is held under
+            `most` less what it sent, never under 4 Mb/s, where a call
+            still fits; with no word lately, the house holds nothing. Its uploads
+            fill the router's queue this machine's VPN waits in, which this
+            machine never sees otherwise.
           '';
         };
       }
@@ -159,12 +247,13 @@ in
     };
     description = ''
       What each network's line is known to carry, keyed by its router's
-      hardware address in lower case. On a network named here the one-way
-      controller keeps the upload near the line: a queue past its CAKE
-      counts as the router's only while the link carries near the line,
-      and an upload held under four fifths of it for a minute, with no cut
-      that drained a queue, goes back to nine tenths. Leaving a network
-      out turns both off on it.
+      hardware address in lower case. On a network that declares its `up`
+      the one-way controller keeps the upload near the line: a queue past
+      its CAKE counts as the router's only while the link carries near the
+      line, and an upload held under four fifths of it for a minute, with
+      no cut that drained a queue, goes back to nine tenths. Leaving a
+      network out, or its `up` null, turns both off on it; its `down`
+      gives a call room on the download.
     '';
   };
 
@@ -209,6 +298,15 @@ in
   config.networking.nftables.preCheckRuleset = ''
     sed -i '/cgroupv2 level [0-9]* @/d' ruleset.conf
   '';
+
+  # Only the house's other machine reaches the port its reports go to. The
+  # rule holds on every network, but a report holds only the links of the
+  # network that names the house.
+  config.networking.firewall.extraInputRules = lib.concatMapStrings (address: ''
+    ${
+      if lib.hasInfix ":" address then "ip6" else "ip"
+    } saddr ${address} udp dport ${toString housePort} accept
+  '') (lib.unique (lib.concatMap (house: house.from) houses));
 
   # The shaper makes the IFBs it needs, one per link; the module's own two
   # would only sit there.

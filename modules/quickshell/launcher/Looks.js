@@ -1,10 +1,12 @@
 // The looks folder's files, as For You reads them (Now.qml, ForYouHolds.qml): what each look is,
 // which wait on Joel and which are history, and how one is written again once it's done with.
-// They're read apart from the launcher, so tests/for-you.qml holds them in Qt's own engine. The
+// They're read apart from the launcher, so tests/for-you.qml and tests/look-cells.qml hold them
+// in Qt's own engine. The
 // to-do daemon reads the looks for the shell (KP0L6A's #4032), and serves each done with as
 // History's row ready to draw (modules/to-do/src/history.rs), which these rules must agree with.
 .pragma library
 .import "ForYou.js" as ForYou
+.import "LookForm.js" as LookForm
 .import "Order.js" as Order
 
 // What a look is about, and how it stands, as the harness writes them, and
@@ -18,10 +20,11 @@ const OWN = ["since", "resolved", "file", "words", "offers", "cellLent"];
 // How many of a look's choices are offered, as the harness writes at most
 // four (85PKB2, 2026-11-12).
 const OFFERED = 4;
-// How long an answer shows as given while the look's file still waits:
-// its session writes the look resolved as it reads the steer, so one
-// still waiting a minute on didn't take, and its choices come back.
-const ANSWER_TAKES = 60 * 1000;
+// How long an answer shows as given while the node hasn't said it took
+// it, before saying it may not have gone: "no answer in 5 s" (docs/
+// design.md). Its side says so from then until a word comes, the node
+// going included, since nothing else times out a steer it was asked.
+const ANSWER_HEARD = 5 * 1000;
 // How long a look waits before it goes quiet: it leaves what waits, and so
 // every count of it, for History, where it's still opened as it was. By then
 // why it came is lost (Joel, 2026-11-11: "by the time i find them the context
@@ -50,13 +53,21 @@ function look(text) {
     if (!whole(read)) {
         return null;
     }
-    return Object.assign({}, read, {
+    // A lent cell is the shell's own mark (doneWith), never a file's, so one
+    // a file carries can't drop its own cell from the settled text, nor can
+    // one under a "__proto__" key, which as an own key of the parse would
+    // become the copy's prototype and lend it that way.
+    const kept = {};
+    for (const key of Object.keys(read).filter(name => name !== "cellLent"
+        && name !== "__proto__")) {
+        kept[key] = read[key];
+    }
+    return Object.assign(kept, {
         why: typeof read.why === "string" ? read.why : "",
-        // Its drawer says why, then the ask and its choices, to act on hours on (Joel, 2026-11-11).
-        words: [read.why, read.ask].filter(part => part && typeof part === "string").join("\n\n"),
+        words: LookForm.wordsOf(read),
         since: ForYou.when(read.at),
         resolved: ForYou.when(read.resolvedAt),
-        offers: offers(read.choices)
+        offers: offers(read.choices, read.wants)
     });
 }
 
@@ -87,25 +98,43 @@ function written(value) {
     return typeof value === "string" ? value : "";
 }
 
-// A look's choices as it's offered them, each { value, label }: one
-// naming no value left out, one naming no label labelled by its value,
-// and at most OFFERED.
-function offers(choices) {
+// A look's choices as it's offered them, each { value, label, follows }:
+// one naming no value left out, one naming no label labelled by its value,
+// and at most OFFERED. What follows a choice is its own, else what the look
+// wants back says of its label (`wants`), else "".
+function offers(choices, wants) {
     const named = value => typeof value === "string" && value !== "";
+    const wanted = Array.isArray(wants?.choices) ? wants.choices : [];
+    const follows = (one, label) => named(one.follows) ? one.follows
+        : written(wanted.find(each => each?.label === label)?.follows);
     return (Array.isArray(choices) ? choices : [])
         .filter(one => one !== null && typeof one === "object" && named(one.value))
         .slice(0, OFFERED)
-        .map(one => ({ value: one.value, label: named(one.label) ? one.label : one.value }));
+        .map(one => {
+            const label = named(one.label) ? one.label : one.value;
+            return { value: one.value, label, follows: follows(one, label) };
+        });
 }
 
 // Joel's answer to a look, as the steer that tells it to the session that
-// left it, `{ address, steer }`, at `at`: to that session while it runs,
-// else to its quest's, whose address is the quest's own last part, so the
-// look is answered where the asking goes on (85PKB2, 2026-11-12). Null
-// where neither is known.
-function answer(one, choice, live, at) {
+// left it, `{ address, steer }`, at `at`: to that session where it is the
+// look's cell (`cell`, cellFor's) and left it (leftIt) by its id, the
+// look's address or as the cell the look names, by the address it goes by
+// now, which Talk and Go To reach too, else to its quest's, whose address is the
+// quest's own last part, so the look is answered where the asking goes on
+// (85PKB2, 2026-11-12). A cell that is its leaver only by listing the
+// look's address among its own, which any session may claim, takes it at
+// the look's own address, as before cells, never at one of its choosing.
+// Null where neither is known.
+function answer(one, choice, cell, at) {
     const quest = String(one.quest ?? "").split("-").pop();
-    const address = String((live ? one.address : quest) || one.address || "").toUpperCase();
+    const live = leftIt(one, cell);
+    const upper = name => String(name ?? "").toUpperCase();
+    const itself = live && (leftByItsId(one, cell)
+        || [one.address, one.cell].some(name => upper(name) !== ""
+            && upper(name) === upper(cell.address)));
+    const address = upper((itself ? cell.address : live ? one.address : quest)
+        || one.address);
     if (address === "") {
         return null;
     }
@@ -129,15 +158,73 @@ function cellOf(one, running, parked) {
         return left ?? null;
     }
     const own = quest.split("-").pop().toUpperCase();
-    const on = held.filter(session => questOf(session) === quest);
+    const on = held.filter(session => onQuest(session, quest));
     return on.find(session => String(session.address ?? "").toUpperCase() === own)
         ?? on[0] ?? null;
 }
 
-// The quest a session works on, as pi publishes it: its questInfo's, else
-// its `quest` (Holders.js and Sessions.qml read it so too).
+// The quest a session works on: the first quest it owns, else its
+// questInfo's, else its `quest`, in the agents daemon's order
+// (modules/agents/src/cells.rs `quest_of`). Only whether it is "" is read
+// here yet, and onQuest decides which quests a session is on; the order is
+// kept for Holders.js and Sessions.qml, which still read questInfo first
+// and move onto this by Mon 23 Nov 2026.
+// Read as cells.rs reads them, a questInfo id or quest that isn't a
+// string is passed over, and a `quest` that isn't one is "".
 function questOf(session) {
-    return session.presence?.questInfo?.id ?? session.presence?.quest;
+    return ownedBy(session)[0] ?? loadedBy(session);
+}
+
+// The quest a session says it has loaded: its questInfo's, else its older
+// `quest`, else "".
+function loadedBy(session) {
+    return textOf(session.presence?.questInfo?.id) ?? textOf(session.presence?.quest) ?? "";
+}
+
+// The quests a session owns, in its own order.
+function ownedBy(session) {
+    return (Array.isArray(session.presence?.owns) ? session.presence.owns : [])
+        .filter(one => typeof one === "string" && one.startsWith("QEST-"));
+}
+
+// `value` where it's a string, else undefined.
+function textOf(value) {
+    return typeof value === "string" ? value : undefined;
+}
+
+// Whether `session` works on `quest`: one it owns, or the one it has
+// loaded (loadedBy). A look names the quest its session had loaded
+// (the harness's looks.ts), which can be its questInfo's while it owns
+// another, so a look's own leaver stays on it either way, as do the
+// daemon's answer and the sessions on its quest. An older `quest` its
+// questInfo has since replaced is not one it works on.
+function onQuest(session, quest) {
+    return quest !== "" && (ownedBy(session).includes(quest) || loadedBy(session) === quest);
+}
+
+// Whether opening served look `one` asks the to-do daemon to settle it:
+// only once it `opened`, since a terminal whose session is gone opened
+// nothing and stays as it was, and only one the shell holds no file of,
+// still waiting or gone quiet, since the shell settles its own.
+function servedSettles(one, opened) {
+    return opened === true && one.file === ""
+        && (one.state === "waiting" || one.state === "quiet");
+}
+
+// Whether `cell`, the session a look's Talk reaches, left look `one`: by
+// the session or an address the look names (ForYou.leftBy), or as the very
+// cell the look names, so Joel's answer and who asks go where Talk does.
+function leftIt(one, cell) {
+    const upper = name => String(name ?? "").toUpperCase();
+    return cell !== null && cell !== undefined && (ForYou.leftBy(one, cell)
+        || (upper(one.cell) !== "" && upper(one.cell) === upper(cell.address)));
+}
+
+// Whether `session` is the one that left look `one`, by pi's own id for it,
+// which no other session lists and which carries across a move.
+function leftByItsId(one, session) {
+    return typeof one.session === "string" && one.session !== ""
+        && session.presence?.session === one.session;
 }
 
 // The address the agents daemon says the cell a look names (`cell`) goes
@@ -153,18 +240,27 @@ function cellGoes(one, cells) {
     return typeof record?.goes === "string" ? record.goes : "";
 }
 
-// The cell a look leads to: the cell itself while the lists hold it, else
-// the live session the agents daemon names (cellGoes), found among
-// `running` and `parked` by the address it goes to. Where the daemon names
-// a session those lists don't hold, says the cell goes nowhere, or has not
+// The cell a look leads to: the cell itself while the lists hold it on the
+// look's quest or on none yet, never one going by its address on another
+// (cells.rs refuses a name contested across quests), else the live
+// session the agents daemon names (cellGoes), found among `running` and
+// `parked` by the address it goes to, where it is on the look's quest
+// (onQuest). The daemon reads the cell's quest, not the look's, and once
+// the node forgets the cell it names its one lister on any quest (cells.rs
+// `claim`), so its answer alone never sends Talk to another quest. Where
+// that is held nowhere, or the daemon says the cell goes nowhere or hasn't
 // answered (away, or not yet served), cellOf's search decides among the
-// sessions on the look's quest alone; a look on none, sharing no quest,
-// reaches only the session that left it, by that session's own id: the
-// daemon and the lists each read the node and either can be a beat
-// behind, so a cell back again wins over an older answer. A session that
-// merely lists the cell's address is never found by that search; the
-// daemon names one only where cells.rs finds it was the cell, its one
-// lister while no session goes by the name. A look naming no cell searches
+// sessions on the look's quest alone: the one that left it, by its id or
+// any address it answers to, as cells.rs `claim` ranks a cell's old name
+// on its quest, then the quest's own, so the daemon going away never moves
+// Talk off the look's quest; the one that left it, by its own id, counts
+// there on no quest yet too, as the cell itself does, since a session
+// started again can name its quest a beat after it's held. A look on no
+// quest reaches only the session that left it, by its own id, wherever it
+// is, since sessions on no quest share nothing, and there a session that
+// merely lists the cell's address is never found. The daemon and the
+// lists each read the node and either can be a beat behind, so a cell
+// back again wins over an older answer. A look naming no cell searches
 // every session until every look names its cell, by Mon 23 Nov 2026.
 function cellFor(one, cells, running, parked) {
     if (typeof one.cell !== "string" || one.cell === "") {
@@ -174,16 +270,46 @@ function cellFor(one, cells, running, parked) {
     const held = (Array.isArray(running) ? running : [])
         .concat(Array.isArray(parked) ? parked : []);
     const quest = typeof one.quest === "string" ? one.quest : "";
-    const named = held.find(session => session.address === one.cell)
-        ?? held.find(session => goes !== null && goes !== "" && session.address === goes);
-    if (named !== undefined) {
-        return named;
+    const itself = held.find(session => session.address === one.cell
+        && (quest === "" || questOf(session) === "" || onQuest(session, quest)));
+    if (itself !== undefined) {
+        return itself;
     }
     if (quest === "") {
-        return held.find(session => typeof one.session === "string" && one.session !== ""
-            && session.presence?.session === one.session) ?? null;
+        return held.find(session => leftByItsId(one, session)) ?? null;
     }
-    return cellOf(one, held.filter(session => questOf(session) === quest), []);
+    const on = held.filter(session => onQuest(session, quest)
+        || (questOf(session) === "" && leftByItsId(one, session)));
+    return on.find(session => goes !== null && goes !== "" && session.address === goes)
+        ?? cellOf(one, on, []);
+}
+
+// The words a Go To whose session isn't held says, `{ gone, why }`, from
+// its notice's `said` (words/notices.json's verb:notice:goTo): its `moved`
+// pair where the session has `moved` on to another quest, else its own, and
+// its own again where the moved pair says nothing, so the foot is never
+// bare.
+function goneWords(said, moved) {
+    const pair = one => ({ gone: typeof one?.gone === "string" ? one.gone : "",
+        why: typeof one?.why === "string" ? one.why : "" });
+    const onward = pair(said?.moved);
+    return moved === true && onward.gone !== "" ? onward : pair(said);
+}
+
+// Whether the session that left look `one` is still held, running or
+// parked, by pi's id for it or the very address the look names, where
+// cellFor leads nowhere, and on a quest other than the look's: it has
+// moved on to another quest rather than ended, so Go says so. One that
+// merely lists the look's address among its own is no sign the leaver
+// lives, and one on no quest hasn't moved on to another.
+function movedOn(one, running, parked) {
+    const held = (Array.isArray(running) ? running : [])
+        .concat(Array.isArray(parked) ? parked : []);
+    const address = typeof one.address === "string" ? one.address : "";
+    const quest = typeof one.quest === "string" ? one.quest : "";
+    return held.some(session => (leftByItsId(one, session)
+        || (address !== "" && session.address === address))
+        && questOf(session) !== "" && (quest === "" || !onQuest(session, quest)));
 }
 
 // A look done with, as History leads it to its cell: one written before
@@ -200,10 +326,51 @@ function doneWith(one) {
 }
 
 // The label of the answer Joel gave a look still waiting, by `answered`'s
-// { [look id]: { label, at } }, while it may yet take, or "".
+// { [look id]: { label, at, sent, taken, failed } }, for ANSWER_HEARD
+// while the node may yet say it took it, or "".
 function answering(one, answered, now) {
     const given = answered?.[one.id];
-    return one.state === "waiting" && given && now - given.at < ANSWER_TAKES ? given.label : "";
+    return one.state === "waiting" && given && !given.failed && now - given.at < ANSWER_HEARD
+        ? given.label : "";
+}
+
+// Why Joel's answer to a look still waiting may not have gone, "nobody"
+// to tell, "unsent" with no node connected, "untaken" where the node
+// couldn't give it, refused or its machine out of reach, "dropped" where
+// it went before saying, or "unheard" past ANSWER_HEARD with no word, else
+// "", said until he answers again or the look is settled, however much
+// later he comes back to it: his choices coming back unsaid left him no
+// way "to in any way follow through" (Joel, 2026-11-22).
+function unanswered(one, answered, now) {
+    const given = answered?.[one.id];
+    if (one.state !== "waiting" || !given || given.taken) {
+        return "";
+    }
+    if (typeof given.failed === "string") {
+        return given.failed;
+    }
+    return now - given.at >= ANSWER_HEARD ? "unheard" : "";
+}
+
+// Whether Joel's answer to a look still waiting is out: given, with no
+// word come of it, which only the node answering or going ends. Its
+// choices stay away meanwhile, so a second answer can't follow one still
+// on its way and the session hear both. Once the node went they come
+// back, though it may have written the first, since a look left with no
+// way to answer until the shell restarts is worse; the side's "yet" says
+// it may still come.
+function awaiting(one, answered) {
+    const given = answered?.[one.id];
+    return one.state === "waiting" && !!given && !given.taken && !given.failed;
+}
+
+// How long until an answer's side next changes as time passes, or null:
+// its 5 s, while no word has come.
+function answersChange(answered, now) {
+    const ahead = Object.values(answered ?? {})
+        .filter(given => given && !given.taken && !given.failed)
+        .map(given => given.at + ANSWER_HEARD).filter(at => at > now);
+    return ahead.length === 0 ? null : Math.min(...ahead) - now;
 }
 
 // The looks as `looks` splits them, with each waiting one whose answer the

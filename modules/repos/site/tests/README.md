@@ -6,6 +6,9 @@ What proves the Code page, each in the cheapest tier that can show it.
 | ------------------------- | ------------------------------------------------------ | ---------------------- |
 | `model.test.ts`           | the grove drawn from the record: seasons, order, cells | `code-site-holds`      |
 | `draw.test.ts`            | every name the record says put in the markup as words  | `code-site-holds`      |
+| `head.test.ts`            | what the foot says was read, and what couldn't be      | `code-site-holds`      |
+| `listed.test.ts`          | which trees the cursor stood on a drawer keeps listed  | `code-site-holds`      |
+| `pace.test.ts`            | how long a draw waits after the last, and its ceiling  | `code-site-holds`      |
 | `address.test.ts`         | where an address lands, and what it says as it moves   | `code-site-holds`      |
 | `homes.test.ts`           | which site is home to a kind, and where each thing is  | `code-site-holds`      |
 | `asking.test.ts`          | when cells' homes are asked again, and the rows read   | `code-site-holds`      |

@@ -71,6 +71,7 @@
       cp ${../pieces/StatusFile.qml} StatusFile.qml
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "SpendWatch.qml"
         "Words.qml"
         "launcher/Catalogue.js"

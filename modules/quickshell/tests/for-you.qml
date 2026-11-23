@@ -1,7 +1,7 @@
 // How For You weighs what needs Joel, run in Qt's own JavaScript engine, the
 // one the shell runs it in. The `for-you-weighs-what-needs-joel` check copies
-// modules/quickshell/launcher/ForYou.js, Looks.js and Order.js
-// beside this file and runs `qml -platform offscreen for-you.qml`. Each case
+// modules/quickshell/launcher/ForYou.js, LookForm.js, Looks.js and
+// Order.js beside this file and runs `qml -platform offscreen for-you.qml`. Each case
 // is one of the design's rules (VKCF3Z, 2026-11-08): what blocks a session
 // counts most, then what's due, what he can do now, its kind and how long it
 // has waited; the heaviest leads and ties keep the order they came in; a
@@ -12,9 +12,14 @@
 // only one that changed parsed again, and one waiting three days gone quiet;
 // what other sources give For You, as Passwords' one to-do, is gathered into
 // what waits and what's done, and weighed beside the rest. How each stands
-// under its cell is for-you-cells.qml's.
+// under its cell is for-you-cells.qml's. Long because a look's cases, its
+// second form's and its answers' among them, read the same records the
+// weighing cases build, in the one run of the files its check copies;
+// LookForm.js's own cases are the first to go to a file of their own if
+// it grows past this.
 import QtQuick
 import "ForYou.js" as ForYou
+import "LookForm.js" as LookForm
 import "Looks.js" as Looks
 
 QtObject {
@@ -385,7 +390,7 @@ QtObject {
 
         // A look's choices are offered on its row, each answered by a steer to
         // the session that left it, or its quest's once that's ended, and shown
-        // as given for a minute while its file still waits (85PKB2, 2026-11-12).
+        // as given while the node may yet say it took it (85PKB2, 2026-11-12).
         const choosing = Looks.looks([{ file: "p.json", text: lookOf({ id: "P",
             address: "vp50pc", quest: "QEST-20261104-VP50PC", choices: [
                 { value: "posted", label: "Posted" }, { value: "later" }, { label: "no value" },
@@ -394,6 +399,102 @@ QtObject {
             (choosing.offers ?? []).map(one => [one.value, one.label]),
             [["posted", "Posted"], ["later", "later"], ["c", "c"], ["d", "d"]]);
         expect("an older look, offering none", read.waiting[1].offers, []);
+        // A look said in its second form (85PKB2's harness #2008) says what
+        // happened and why it matters in place of its why and ask, which its
+        // harness made from them; what it presses, and what follows each
+        // choice, from the choice itself, else what it wants back by label.
+        // It asks Joel back only where it wants a choice or his own words, or
+        // offers choices; its act is never a choice's or another act's name.
+        const second = fields => Looks.looks([{ file: "s.json", text: lookOf(Object.assign({
+            id: "S", why: "The bar keeps the branch. You couldn't see a cost.",
+            ask: "Review It: Keep It, or Roll It Back.",
+            happened: "The bar keeps the branch at narrow widths",
+            matters: "At 76 columns you couldn't see what a session cost.",
+            act: "Review It",
+            choices: [{ value: "Keep It", label: "Keep It", follows: "It stays as it is." },
+                { value: "Roll It Back", label: "Roll It Back" }],
+            wants: { choices: [{ label: "Keep It", follows: "Not this one." },
+                { label: "Roll It Back", follows: "The old bar comes back tonight." }] },
+            about: { kind: "pr", target: "https://github.com/o/r/pull/1",
+                title: "Review the change" }
+        }, fields)) }], {}, now).waiting[0];
+        const secondly = second({});
+        expect("a second form's words, what happened then why it matters, never its ask",
+            secondly.words, "The bar keeps the branch at narrow widths. At 76 columns you"
+                + " couldn't see what a session cost.");
+        expect("what follows each choice, its own, else what it wants back by label",
+            secondly.offers.map(one => [one.label, one.follows]),
+            [["Keep It", "It stays as it is."],
+                ["Roll It Back", "The old bar comes back tonight."]]);
+        expect("a choice saying nothing of what follows, follows with nothing",
+            choosing.offers.map(one => one.follows), ["", "", "", ""]);
+        expect("its words end as a sentence ends, after a closing quote or bracket too",
+            second({ happened: "It said \u201cdone.\u201d", matters: "(It wasn't.)" }).words,
+            "It said \u201cdone.\u201d (It wasn't.)");
+        // A first form carrying the second form's fields, but no happened.
+        const firstly = second({ happened: "" });
+        expect("what it presses, in the second form only, never past four words or another's"
+            + " name",
+            [LookForm.actOf(secondly), LookForm.actOf(firstly), LookForm.actOf(read.waiting[1]),
+                LookForm.actOf(second({ act: "keep it" })),
+                LookForm.actOf(secondly, ["Clear It", "review it"]),
+                LookForm.actOf(second({ act: "Read It All the Way" })),
+                LookForm.actOf(second({ act: "Read the Whole Diff" })),
+                LookForm.actOf(second({ act: " Review It " }))],
+            ["Review It", "", "", "", "", "", "Read the Whole Diff", "Review It"]);
+        expect("never another's name however it's spaced, stopped or hides what draws as"
+            + " nothing",
+            [LookForm.actOf(second({ act: "Keep It." })),
+                LookForm.actOf(second({ act: "Keep  It" })),
+                LookForm.actOf(second({ act: "Roll It Back\u2060" })),
+                LookForm.actOf(second({ act: "Clear\u00a0It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Clear It\u200b!" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Clear\u3164It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Cle\u034far It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "Clear\u2800It" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "\u200b" })),
+                LookForm.actOf(second({ act: "\u202etI raelC" }), ["Clear It"]),
+                LookForm.actOf(second({ act: "\u2067ti weiveR\u2069" }))],
+            ["", "", "", "", "", "", "", "", "", "", ""]);
+        // A choice can't pass for one of the launcher's own acts either, since
+        // pressing it to clear a look would answer it.
+        expect("a choice named as one of the launcher's own acts poses, however written",
+            [LookForm.poses("Clear It", ["Clear It", "Talk"]),
+                LookForm.poses(" clear\u00a0it.", ["Clear It"]),
+                LookForm.poses("Talk\u200b", ["Clear It", "Talk"]),
+                LookForm.poses("Clear It\ufe0f", ["Clear It"]),
+                LookForm.poses("Clear It\udb40\udc41", ["Clear It"]),
+                LookForm.poses("Clear It\udb40\udd00", ["Clear It"]),
+                LookForm.poses("Talk\u180b", ["Talk"]),
+                LookForm.poses("Ta\u17b4lk", ["Talk"]),
+                LookForm.poses("Clear It\ud834\udd73", ["Clear It"]),
+                LookForm.poses("Talk\ud82f\udca0", ["Talk"]),
+                LookForm.poses("Clear\u2065 It\ufff0", ["Clear It"]),
+                LookForm.poses("Clear It\udb40\uddf0", ["Clear It"]),
+                LookForm.poses("\u202etI raelC", ["Clear It"]),
+                LookForm.poses("\u2067klaT\u2069", ["Talk"]),
+                LookForm.poses("Keep It\u200f", ["Clear It"]),
+                LookForm.poses("Keep It", ["Clear It", "Talk"]),
+                LookForm.poses("Clear It Away", ["Clear It"]),
+                LookForm.poses("\u202etI raelC", [])],
+            [true, true, true, true, true, true, true, true, true, true, true, true, true,
+                true, true, false, false, false]);
+        expect("it asks back wanting a choice or his words, or offering choices, in the second"
+            + " form only",
+            [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },
+                choices: undefined })),
+                LookForm.asksBack(second({ wants: undefined })),
+                LookForm.asksBack(second({ choices: undefined })),
+                LookForm.asksBack(second({ wants: undefined, choices: undefined })),
+                LookForm.asksBack(second({ wants: { choices: [] }, choices: undefined })),
+                LookForm.asksBack(firstly), LookForm.asksBack(choosing)],
+            [true, true, true, true, false, false, false, false]);
+        const secondBack = JSON.parse(Looks.rewritten(secondly, "opened", "opened", now));
+        expect("written back, its second form as its session wrote it",
+            [secondBack.happened, secondBack.act, secondBack.wants.choices[1].follows,
+                secondBack.about.title, "follows" in secondBack.choices[1]],
+            ["The bar keeps the branch at narrow widths", "Review It",
+                "The old bar comes back tonight.", "Review the change", false]);
         // Who asks, in plain words, and what happens if Joel does nothing, as
         // its session writes them, else from what's known (Joel, 2026-11-19:
         // "i almost never know what I am supposed to do with it").
@@ -417,19 +518,74 @@ QtObject {
             ["The trunk disk incident", "Merge it now, or hold it?",
                 "It waits, unmerged, and the rescans go on."]);
         const posted = { value: "posted", label: "Posted" };
-        expect("an answer, to the session while it runs",
-            Looks.answer(choosing, posted, true, now),
-            { address: "VP50PC", steer: { act: "answer", look: "P", value: "posted",
+        const elsewhere = Object.assign({}, choosing, { address: "07HV3N" });
+        expect("an answer, to the session that left it, by the address it goes by now",
+            Looks.answer(Object.assign({}, elsewhere, { session: "s-p" }), posted,
+                { address: "m0ved1", presence: { session: "s-p" } }, now),
+            { address: "M0VED1", steer: { act: "answer", look: "P", value: "posted",
                 from: "joel", at: "2026-11-08T14:00:00.000Z" } });
+        expect("and to the cell the look names, by its own address",
+            (Looks.answer(Object.assign({}, elsewhere, { cell: "CCCCCC" }), posted,
+                { address: "CCCCCC", presence: { addresses: ["07HV3N"] } }, now) ?? {})
+                .address, "CCCCCC");
+        expect("and to the cell the look names, though it lists none of the look's names",
+            (Looks.answer(Object.assign({}, elsewhere, { cell: "CCCCCC", session: "s-p" }), posted,
+                { address: "CCCCCC", presence: { session: "s-q" } }, now) ?? {}).address,
+            "CCCCCC");
+        expect("a cell that only lists the look's address, at the look's own, never its own",
+            (Looks.answer(elsewhere, posted, { address: "DDDDDD",
+                presence: { quest: "QEST-2-XXXXXX", addresses: ["07HV3N"] } }, now) ?? {})
+                .address, "07HV3N");
         expect("and to its quest once it's ended",
-            (Looks.answer(Object.assign({}, choosing, { address: "07HV3N" }), posted, false,
-                now) ?? {}).address, "VP50PC");
-        expect("with nowhere to go, none", Looks.answer({ id: "N" }, posted, false, now), null);
+            (Looks.answer(elsewhere, posted, null, now) ?? {}).address, "VP50PC");
+        expect("and to its quest where its cell is another that didn't leave it",
+            (Looks.answer(elsewhere, posted, { address: "DDDDDD", presence: {} }, now) ?? {})
+                .address, "VP50PC");
+        expect("with nowhere to go, none", Looks.answer({ id: "N" }, posted, null, now), null);
         const given = { P: { label: "Posted", at: now } };
-        expect("an answer given, while it may take, then not",
-            [Looks.answering(choosing, given, now + 59 * 1000),
-                Looks.answering(choosing, given, now + 61 * 1000),
+        expect("an answer given, while the node may yet say it took it, then not",
+            [Looks.answering(choosing, given, now + 4 * 1000),
+                Looks.answering(choosing, given, now + 6 * 1000),
                 Looks.answering(choosing, {}, now)], ["Posted", "", ""]);
+        // An answer nobody could be told, that the node refused or went before
+        // saying it took, or that no word came for in 5 s (docs/design.md),
+        // says so until he answers again, an hour on too, rather than its
+        // choices just coming back (Joel, 2026-11-22: "to in any way follow
+        // through").
+        const failed = how => ({ P: { label: "Posted", at: now, failed: how } });
+        const hourOn = now + 60 * 60 * 1000;
+        expect("an answer that may not have gone, said so an hour on, and never as given",
+            [Looks.unanswered(choosing, failed("nobody"), hourOn),
+                Looks.unanswered(choosing, failed("untaken"), now),
+                Looks.unanswered(choosing, failed("dropped"), hourOn),
+                Looks.unanswered(choosing, given, now + 4 * 1000),
+                Looks.unanswered(choosing, given, now + 6 * 1000),
+                Looks.unanswered(choosing, given, hourOn),
+                Looks.unanswered(choosing, { P: { label: "Posted", at: now, taken: true } },
+                    now + 6 * 1000),
+                Looks.answering(choosing, failed("nobody"), now),
+                Looks.unanswered(Object.assign({}, choosing, { state: "resolved" }), given,
+                    now + 6 * 1000)],
+            ["nobody", "untaken", "dropped", "", "unheard", "unheard", "", "", ""]);
+        // While no word of an answer has come its choices stay away, however
+        // long, so a second can't follow it and the session hear both; any
+        // word, the node going included, brings them back.
+        expect("an answer out while no word of it came, never once said or taken",
+            [Looks.awaiting(choosing, given),
+                Looks.awaiting(choosing, failed("dropped")),
+                Looks.awaiting(choosing, failed("unsent")),
+                Looks.awaiting(choosing, failed("untaken")),
+                Looks.awaiting(choosing, failed("nobody")),
+                Looks.awaiting(choosing, { P: { label: "Posted", at: now, taken: true } }),
+                Looks.awaiting(Object.assign({}, choosing, { state: "resolved" }), given),
+                Looks.awaiting(choosing, {})],
+            [true, false, false, false, false, false, false, false]);
+        expect("when an answer's side next changes, at its 5 s, never once said or taken",
+            [Looks.answersChange(given, now + 1000), Looks.answersChange(given, now + 6 * 1000),
+                Looks.answersChange(failed("dropped"), now + 1000),
+                Looks.answersChange({ P: { label: "Posted", at: now, taken: true } }, now),
+                Looks.answersChange({}, now)],
+            [4000, null, null, null, null]);
         const saying = label => `answered ${label}`;
         // Once the node takes it, the look leaves what waits for History at once
         // (VKCF3Z, 2026-11-12), though its file waits until its session writes it.
@@ -664,128 +820,6 @@ QtObject {
         expect("nothing to do, the heaviest look", ForYou.heaviest([], "Read the plan"),
             "Read the plan");
         expect("only things to try, none", ForYou.heaviest([], undefined), "");
-
-        // The cell a look leads to, which Talk to It and Open It reach (Joel,
-        // 2026-11-16: "i have no way to go from the thing it shows to engaging
-        // with the thing working on it"): the session that left it, running
-        // or parked, else the quest's own session, else one on its quest,
-        // running first, else none.
-        const leaver = { address: "AAAAAA", presence: { session: "s-1", quest: "Q-1" } };
-        const heir = { address: "BBBBBB", presence: { session: "s-2", quest: "Q-1" } };
-        const resting = { address: "CCCCCC", presence: { session: "s-3", quest: "Q-1" } };
-        const stranger = { address: "DDDDDD", presence: { session: "s-4", quest: "Q-2" } };
-        const lookLeft = { session: "s-1", address: "AAAAAA", quest: "Q-1" };
-        expect("a look leads to the session that left it",
-            Looks.cellOf(lookLeft, [stranger, heir, leaver], []).address, "AAAAAA");
-        expect("parked, that session still",
-            Looks.cellOf(lookLeft, [heir], [leaver]).address, "AAAAAA");
-        expect("gone, a running session on its quest",
-            Looks.cellOf(lookLeft, [stranger, heir], [resting]).address, "BBBBBB");
-        expect("none running there, a parked one on its quest",
-            Looks.cellOf(lookLeft, [stranger], [resting]).address, "CCCCCC");
-        expect("none on its quest, none", Looks.cellOf(lookLeft, [stranger], []), null);
-        expect("a look naming no quest leads only to its own session",
-            Looks.cellOf({ session: "s-9" }, [heir], [resting]), null);
-        expect("and to that session while it's held",
-            Looks.cellOf({ session: "s-2" }, [stranger, heir], []).address, "BBBBBB");
-        expect("its session found by an address it had before",
-            Looks.cellOf({ address: "OLDADR" }, [stranger, { address: "EEEEEE",
-                presence: { session: "s-5", addresses: ["OLDADR"] } }], []).address,
-            "EEEEEE");
-        // The quest's own session, where a look's answers go once the one
-        // that left it has ended, before another listed ahead of it.
-        const own = { address: "ABCDEF", presence: { session: "s-6", quest: "QEST-1-ABCDEF" } };
-        const helper = { address: "FFFFFF", presence: { session: "s-7", quest: "QEST-1-ABCDEF" } };
-        expect("gone, the quest's own session before another on it",
-            Looks.cellOf({ session: "s-0", quest: "QEST-1-ABCDEF" }, [helper], [own]).address,
-            "ABCDEF");
-        expect("nothing held, none", Looks.cellOf(lookLeft, undefined, undefined), null);
-        // As the agents daemon names it (cells.rs): the cell a look names goes
-        // to the live session it is now, running or parked; ended with none
-        // to go to, or to one not listed yet, itself, else one on its quest
-        // only; not served yet, or the daemon away, the same; naming no cell,
-        // cellOf's search over every session.
-        const cells = {
-            "agent-cell:agents:AAAAAA": { cell: "AAAAAA", goes: "BBBBBB" },
-            "agent-cell:agents:CCCCCC": { cell: "CCCCCC", goes: "CCCCCC" },
-            "agent-cell:agents:GGGGGG": { cell: "GGGGGG", goes: null }
-        };
-        const naming = cell => Object.assign({}, lookLeft, { cell: cell });
-        expect("a cell goes where the daemon says, running",
-            Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir], []).address, "BBBBBB");
-        expect("the daemon's answer before another on its quest, running first",
-            Looks.cellFor(naming("AAAAAA"), { "agent-cell:agents:AAAAAA": { goes: "CCCCCC" } },
-                [heir], [resting]).address, "CCCCCC");
-        expect("a look on no quest said to go nowhere, never one listing its address",
-            Looks.cellFor({ cell: "GGGGGG", address: "GGGGGG" }, cells, [{ address: "LLLLLL",
-                presence: { quest: "Q-2", addresses: ["LLLLLL", "GGGGGG"] } }], []), null);
-        expect("a cell back again before an older answer",
-            Looks.cellFor(naming("AAAAAA"), cells, [stranger, heir, leaver], []).address,
-            "AAAAAA");
-        expect("or parked",
-            Looks.cellFor({ cell: "CCCCCC" }, cells, [stranger], [resting]).address, "CCCCCC");
-        expect("ended with none to go to, none where the lists hold none",
-            Looks.cellFor(naming("GGGGGG"), cells, [stranger], []), null);
-        expect("said to go nowhere, one on its quest the lists hold, as the record may be stale",
-            Looks.cellFor(naming("GGGGGG"), cells, [stranger, heir], []).address, "BBBBBB");
-        expect("a name contested, the one on the look's quest",
-            Looks.cellFor(naming("OLDOLD"), { "agent-cell:agents:OLDOLD": { goes: null } },
-                [{ address: "TTTTTT", presence: { quest: "Q-2", addresses: ["AAAAAA"] } },
-                    heir], []).address, "BBBBBB");
-        const lister = { address: "TTTTTT",
-            presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "AAAAAA"] } };
-        expect("ended with none to go to, never one on another quest listing its address",
-            Looks.cellFor(naming("GGGGGG"), cells, [lister], []), null);
-        expect("ended with none to go to, itself where the lists hold it back",
-            Looks.cellFor(naming("GGGGGG"), cells, [lister],
-                [{ address: "GGGGGG", presence: { session: "s-10" } }]).address, "GGGGGG");
-        expect("the address a cell goes to, keyed", Looks.cellGoes(naming("AAAAAA"), cells),
-            "BBBBBB");
-        expect("null for one going nowhere", Looks.cellGoes(naming("GGGGGG"), cells), null);
-        expect("none for one not served", Looks.cellGoes(naming("HHHHHH"), cells), "");
-        expect("none for one naming no cell", Looks.cellGoes(naming(7), cells), "");
-        expect("going to a session not listed yet, the cell itself",
-            Looks.cellFor(naming("AAAAAA"), cells, [leaver], []).address, "AAAAAA");
-        expect("going to a session not listed yet, the quest's own before another on it",
-            Looks.cellFor({ cell: "OLDOLD", quest: "QEST-1-ABCDEF" },
-                { "agent-cell:agents:OLDOLD": { goes: "ZZZZZZ" } }, [helper], [own]).address,
-            "ABCDEF");
-        expect("said to go nowhere, one on its quest by the quest pi publishes",
-            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "QQQQQQ",
-                presence: { questInfo: { id: "Q-1" } } }], []).address, "QQQQQQ");
-        expect("its questInfo's quest before an older quest it names",
-            Looks.cellFor(naming("GGGGGG"), cells, [{ address: "PPPPPP",
-                presence: { questInfo: { id: "Q-2" }, quest: "Q-1" } }], []), null);
-        expect("not served yet, a look on no quest, the session that left it by its id",
-            Looks.cellFor({ session: "s-4", cell: "HHHHHH" }, cells, [stranger], []).address,
-            "DDDDDD");
-        expect("going to a session not listed yet, the cell itself, on another quest too",
-            Looks.cellFor({ cell: "AAAAAA", quest: "Q-9" }, cells, [stranger, leaver], [])
-                .address, "AAAAAA");
-        const listing = { address: "TTTTTT",
-            presence: { session: "s-9", quest: "Q-2", addresses: ["TTTTTT", "AAAAAA"] } };
-        expect("going to a session not listed yet, never one on another quest listing it",
-            Looks.cellFor(naming("AAAAAA"), cells, [listing], []), null);
-        expect("going to a session not listed yet, one on its quest",
-            Looks.cellFor(naming("AAAAAA"), cells, [listing], [resting]).address, "CCCCCC");
-        expect("not served yet, cellOf's search on its quest",
-            Looks.cellFor(naming("HHHHHH"), cells, [heir], [leaver]).address,
-            "AAAAAA");
-        expect("the daemon away, never one on another quest listing its address",
-            Looks.cellFor(naming("GGGGGG"), {}, [listing], []), null);
-        expect("naming no cell, cellOf's search over every quest",
-            Looks.cellFor(lookLeft, {}, [listing], []).address, "TTTTTT");
-        expect("done with, naming no cell, never one on another quest listing its address",
-            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing], []), null);
-        expect("done with, naming no cell, the session that left it by its address",
-            Looks.cellFor(Looks.doneWith(lookLeft), {}, [listing, leaver], []).address,
-            "AAAAAA");
-        expect("done with, naming its cell, that cell kept",
-            Looks.doneWith({ cell: "BBBBBB", address: "AAAAAA" }).cell, "BBBBBB");
-        expect("naming no cell, cellOf's search",
-            Looks.cellFor(naming(7), cells, [heir], [leaver]).address, "AAAAAA");
-        expect("nothing served, cellOf's search",
-            Looks.cellFor(naming("AAAAAA"), undefined, [heir], [leaver]).address, "AAAAAA");
 
         if (failures.length > 0) {
             for (const failure of failures)

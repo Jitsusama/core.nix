@@ -46,31 +46,25 @@
 //! misses one said while it was down. Starting with nothing kept, it
 //! begins ten minutes back rather than judging Slack's whole history.
 
-use std::collections::HashSet;
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use pineapple::deaf::{self, Deaf, Deafness, Round, Waiting};
-use pineapple::ears::{Api, Ears, Through};
-use pineapple::gate::{Asked, gate};
+use pineapple::ears::{Api, Through};
 use pineapple::judged::{self, Afresh, Judged};
 use pineapple::mcp::Gateway;
-use pineapple::phone;
-use pineapple::record::{self, Source};
-use pineapple::reply::{self, Post};
-use pineapple::resume;
 use pineapple::sign_in::{self, ran_over};
-use pineapple::slack::{Message, micros};
 use pineapple::vocabulary::Words;
-use pineapple::{Context, Heard, Joel, Platform, Target, Verdict, decide};
 use serde_json::{Value, json};
 use slack_people::{Account, LastSignIn, Signed, Slack};
 use terminal_kit::{Exit, Failure, Format, Help, flags};
 
 mod alerts;
+mod round;
 use alerts::Phone;
+use round::{Reader, round};
 
 /// How often Slack is searched, unless a test says otherwise: with the
 /// enforcer's few seconds after, a stop lands well inside five minutes.
@@ -511,9 +505,7 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         file: state.join("waiting.json"),
         refused: None,
     };
-    let mut through = Through {
-        gateway: Gateway::new(url, program),
-    };
+    let mut through = Through::new(Gateway::new(url, program));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::new();
     loop {
@@ -528,248 +520,6 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         tell_deaf(&mut deaf, &waiting, heard);
         std::thread::sleep(how.every);
     }
-}
-
-/// What the reader acts with: where replies go, the words they say, and
-/// whether its stops, replies and resumes are only written down.
-struct Reader {
-    origin: String,
-    words: Words,
-    shadow: bool,
-}
-
-/// One search of each kind, and each new message judged and written down;
-/// what it came to, a refused sign-in before a Slack that couldn't be asked.
-/// `me` is Joel's Slack id, and his sign-in, where a reply could be said
-/// with it.
-fn round(
-    ears: &mut dyn Ears,
-    reader: &Reader,
-    me: (&str, Option<&Account>),
-    state: &Path,
-    judged: &mut Judged,
-) -> Round {
-    let (me, account) = me;
-    let joel = Joel {
-        slack_ids: vec![me.to_owned()],
-        logins: Vec::new(),
-        emails: Vec::new(),
-    };
-    // Checked each round, as a clock set back while it runs leaves a
-    // since that would pass over everything said until it caught up.
-    if judged.look_back_to(seconds().saturating_sub(LOOK_BACK)) {
-        eprintln!(
-            "<4>how far Slack was read starts later than ten minutes ago, as a clock set back \
-             leaves it, so it reads from ten minutes back"
-        );
-    }
-    let tag = format!("<@{me}>");
-    // A round counts as read only once both searches answered, so
-    // judged.json's read_at never says Slack was read when it wasn't. A
-    // sign-in refused or missing for the first isn't asked for again; an
-    // answer that couldn't be read is, so the journal says if the other
-    // reads.
-    let (phrase, tagged) = match ears.search("pineapple") {
-        Err(deaf @ Round::Deaf(Deafness::Refused | Deafness::NoSignIn)) => return deaf,
-        phrase => (phrase, ears.search(&tag)),
-    };
-    let (phrase, tagged) = match (phrase, tagged) {
-        (Ok(phrase), Ok(tagged)) => (phrase, tagged),
-        (phrase, tagged) => {
-            let failed = [phrase.err(), tagged.err()];
-            // A refusal is said first, then a sign-in none could give,
-            // then an answer none could read.
-            return [Deafness::Refused, Deafness::NoSignIn, Deafness::Unreadable]
-                .into_iter()
-                .map(Round::Deaf)
-                .find(|deaf| failed.contains(&Some(*deaf)))
-                .unwrap_or(Round::Unasked);
-        }
-    };
-    let mut seen = HashSet::new();
-    let mut heard: Vec<&Message> = phrase
-        .iter()
-        .chain(&tagged)
-        .filter(|message| judged.is_new(message) && seen.insert(message.key()))
-        .collect();
-    heard.sort_by_key(|message| micros(&message.ts));
-    for message in heard {
-        // The reader's own alert quotes others as Joel, so it's no saying.
-        if message.author == me && phone::is_alert(&message.text) {
-            judged.judged(message);
-            continue;
-        }
-        judge(ears, reader, account, state, &joel, message);
-        judged.judged(message);
-    }
-    if let Err(error) = judged::write(state, judged, millis()) {
-        eprintln!("<3>couldn't keep how far it has read: {error}");
-    }
-    Round::Heard
-}
-
-/// One message judged where it was said, and written down.
-fn judge(
-    ears: &mut dyn Ears,
-    reader: &Reader,
-    account: Option<&Account>,
-    state: &Path,
-    joel: &Joel,
-    message: &Message,
-) {
-    let context = message
-        .thread
-        .as_deref()
-        .and_then(|thread| ears.root(&message.channel, thread))
-        .map(|root| Context::of_thread(&root))
-        .unwrap_or_default();
-    let decision = decide(
-        &Heard {
-            platform: Platform::Slack,
-            author: message.author.clone(),
-            by_bot: message.by_bot,
-            // Slack says no standing to weigh; a shared channel's guests
-            // are judged as anyone there is.
-            outsider: false,
-            text: message.text.clone(),
-            context,
-        },
-        joel,
-    );
-    let key = message.key();
-    let thread = message.thread_key();
-    let source = Source {
-        key: &key,
-        thread: &thread,
-        link: &message.link,
-        author: &message.author,
-        text: &message.text,
-        said_at: &message.ts,
-    };
-    let now = millis();
-    let read_at = now / MILLIS;
-    let said_at =
-        micros(&message.ts).map_or(0, |at| u64::try_from(at / MICROS).unwrap_or(u64::MAX));
-    let went_out = state.join("replies.jsonl");
-    // A stop Joel resumed no longer holds its thread's reply back.
-    let sent = record::ledger(&resume::cleared(
-        &std::fs::read_to_string(&went_out).unwrap_or_default(),
-        &state.join("stops"),
-    ));
-    let asked = Asked {
-        reply: decision.reply,
-        thread: &thread,
-        by_joel: decision.by_joel,
-        by_bot: message.by_bot,
-        edited: message.edited,
-        age: read_at.saturating_sub(said_at),
-    };
-    let gated = gate(&asked, &sent, read_at, replies_off(state));
-    let line = record::line(&source, &decision, gated, now, reader.shadow);
-    if let Err(error) = record::append(&state.join("decisions.jsonl"), &line) {
-        eprintln!("<3>couldn't write a decision down: {error}");
-    }
-    if gated.goes() {
-        let named: Vec<String> = decision.reaches.iter().map(ToString::to_string).collect();
-        let post = reply::post(message, decision.reply, &named, &reader.words);
-        if answer(reader, account, message, post.as_ref()) {
-            let one = record::sent(
-                &source,
-                decision.reply,
-                read_at,
-                reader.shadow,
-                &reply::kept(post.as_ref()),
-            );
-            if let Err(error) = record::append(&went_out, &one) {
-                eprintln!("<3>couldn't keep a reply's line: {error}");
-            }
-        }
-    }
-    if decision.stops() {
-        let stop = record::stop(&source, &decision, now, reader.shadow);
-        match record::keep(&state.join("stops"), &key, &stop) {
-            Ok(true) if reader.shadow => eprintln!("<5>a stop, in shadow: {}", message.link),
-            Ok(true) => eprintln!("<5>a stop: {}", message.link),
-            Ok(false) => {}
-            Err(error) => eprintln!("<3>couldn't keep a stop's record: {error}"),
-        }
-    }
-    if decision.verdict == Verdict::Resume && decision.by_joel {
-        let said = micros(&message.ts).unwrap_or(0);
-        resume_as_joel(
-            &state.join("stops"),
-            &decision.reaches,
-            (now, said),
-            &message.link,
-            reader.shadow,
-        );
-    }
-}
-
-/// Ends the stops Joel's own "pineapple resume" names (src/resume.rs):
-/// what it reaches, or every stop when it reaches everything. In shadow,
-/// and until Slack resumes are let go live, only the stops written in
-/// shadow. `at` is when it's heard, in milliseconds, and when it was
-/// said, in microseconds.
-fn resume_as_joel(stops: &Path, reaches: &[Target], at: (u64, u128), link: &str, shadow: bool) {
-    let (now, said) = at;
-    let shadow = shadow || !SLACK_RESUMES_LIVE;
-    for reach in reaches {
-        let scope = match reach {
-            Target::Everything => "all".to_owned(),
-            named => named.to_string(),
-        };
-        let ended = resume::as_joel(stops, &scope, now, said, shadow);
-        match ended {
-            Ok(ids) if ids.is_empty() => {}
-            Ok(ids) if shadow => eprintln!("<5>a resume, in shadow, of {}: {link}", ids.join(", ")),
-            Ok(ids) => eprintln!("<5>Joel resumed {}: {link}", ids.join(", ")),
-            Err(error) => eprintln!("<3>couldn't resume what Joel named: {error}"),
-        }
-    }
-}
-
-/// Say a reply the rules let through, and whether it counts as said: in
-/// shadow each does, said or not, so the rules are tried as they will be;
-/// out of it, only one Slack took.
-fn answer(
-    reader: &Reader,
-    account: Option<&Account>,
-    message: &Message,
-    post: Option<&Post>,
-) -> bool {
-    if reader.shadow {
-        eprintln!("<5>a reply, in shadow: {}", message.link);
-        return true;
-    }
-    let Some(account) = account else {
-        eprintln!("<3>no sign-in to say a reply with: {}", message.link);
-        return false;
-    };
-    let Some(post) = post else {
-        eprintln!(
-            "<4>a reply has no words Joel said yes to, so none was said: {}",
-            message.link
-        );
-        return false;
-    };
-    match reply::send(&reader.origin, account, post) {
-        Ok(()) => {
-            eprintln!("<5>a reply, said: {}", message.link);
-            true
-        }
-        Err(why) => {
-            eprintln!("<3>Slack didn't take a reply: {why}");
-            false
-        }
-    }
-}
-
-/// Whether replies-switch says `off`, read afresh each time so a switch
-/// acts on the next message.
-fn replies_off(state: &Path) -> bool {
-    std::fs::read_to_string(state.join("replies-switch"))
-        .is_ok_and(|said| said.lines().any(|line| line.trim() == "off"))
 }
 
 fn since_epoch() -> Duration {

@@ -87,13 +87,19 @@ onLinux {
         && (read none).machines == [ ]
         && (read none).kinds == { }
         && pkgs.lib.any (package: package.pname or "" == "elsewhere") none.home.packages
-        && taken ".runs"
+        && pkgs.lib.all taken [
+          ".runs"
+          "..."
+          "..x"
+        ]
         && !pkgs.lib.any taken [
           "runs"
           "handover"
           "."
           ".."
           ".a/b"
+          "../x"
+          "..x/y"
         ]
       );
 }

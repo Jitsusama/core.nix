@@ -50,6 +50,7 @@
       cp ${(account graphical).xdg.configFile."quickshell/Theme.qml".source} Theme.qml
       ${copied [
         "Daemon.qml"
+        "Options.qml"
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"

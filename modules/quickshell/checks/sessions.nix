@@ -321,8 +321,9 @@ in
       export FONTCONFIG_FILE=${noFonts}
       ${shellFolderLint}
       # Its walks wait out the walk's 30 s patience for a carried session
-      # that opens no window, so the case runs for over a minute.
-      timeout 120 ${qs} -p shell.qml
+      # that opens no window, and its named stages follow its led ones, so
+      # the case runs for over a minute.
+      timeout 180 ${qs} -p shell.qml
       touch $out
     '';
 

@@ -139,9 +139,8 @@ rec {
           behind a door it lacked. The kinds aren't the same on each system:
           a Mac's strict reads the home folder but what pi's fence hides,
           where Linux's reads only what it lists, and it writes the account's
-          temporary folder, which on a Mac is also its runtime folder, yet
-          both say strict. So a carry from Linux to a Mac lands looser in
-          what it may read and write.
+          temporary folder, yet both say strict. So a carry from Linux to a
+          Mac lands looser in what it may read and write.
         '';
       };
     };
@@ -162,7 +161,60 @@ rec {
         type = lib.types.listOf lib.types.str;
         description = "The secrets released to a fenced command.";
       };
+      # A carry lands only where no door is wider than here's, but the
+      # person may allow one machine a wider door for sessions carried
+      # from here. The machine there still declares every door it opens,
+      # so the gain is said beside the allowance, never hidden. A name no
+      # realm could give a machine fails here, rather than leaving the
+      # carry refused with nothing said; a well-shaped name for a machine
+      # that isn't there can't be caught here, since realms are read live.
+      # Every realm's node reads the one declaration, so a name holds in
+      # each realm with a machine of that name, and a mycelium older than
+      # accepted doors ignores them, so the description says both.
+      accepts = lib.mkOption {
+        type = byMachine accepted;
+        default = { };
+        example.other-machine.secrets = [ "tokens" ];
+        description = "The doors each other machine, by name, may open beyond these for a session carried from here. A name holds in every realm this machine joins, and a mycelium that predates accepted doors ignores them, refusing the carry as before.";
+      };
     };
+  };
+  # An attribute set of `type`, keyed by machines as the realm names them.
+  byMachine = type: namingMachines (lib.types.attrsOf type);
+  # `machines`, whose merge refuses a key no realm could name a machine,
+  # saying which. `addCheck` can't: the module system rebuilds a set of
+  # submodules from its functor to give them their file, dropping any
+  # check added beside it, so the rebuilt set is wrapped again too. The
+  # names are read from the merged set, so one under a false `mkIf` is
+  # dropped first, as attrsOf drops it. The functor is still attrsOf's, so
+  # two declarations of this option merged by type would lose the check;
+  # declares declares it once.
+  namingMachines =
+    machines:
+    machines
+    // {
+      merge =
+        loc: defs:
+        let
+          merged = machines.merge loc defs;
+          misnamed = lib.filter (machine: !name.check machine) (lib.attrNames merged);
+        in
+        if misnamed == [ ] then
+          merged
+        else
+          throw "${lib.showOption loc} names ${lib.concatStringsSep ", " misnamed}, which no realm could name a machine: ${name.description}.";
+      substSubModules = modules: namingMachines (machines.substSubModules modules);
+    };
+  # The doors of each kind a session carried from here may gain there.
+  accepted = lib.types.submodule {
+    options = lib.genAttrs [ "builders" "forges" "secrets" ] (
+      door:
+      lib.mkOption {
+        type = lib.types.listOf lib.types.str;
+        default = [ ];
+        description = "The ${door} a carried session may gain there.";
+      }
+    );
   };
   # One machine within another, as either names it.
   another = lib.types.submodule {

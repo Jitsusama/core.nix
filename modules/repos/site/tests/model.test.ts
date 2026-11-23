@@ -39,7 +39,7 @@ const reading = {
   roots: ["/home/ada/src"],
   sources: [
     { name: "git", what: "the disk", unread: [] },
-    { name: "github", what: "changes", unread: ["owl/nest: not found"] },
+    { name: "github", what: "changes", unread: ["github:owl/nest: not found"] },
   ],
 };
 
@@ -207,6 +207,27 @@ it("gives each cell to the deepest folder it works in, and none outside them", (
   );
 });
 
+it("gives a cell in a tree inside a checkout to the tree, not a folder it only prefixes", () => {
+  const inside = tree("/home/ada/src/core/.trees/deep", HOUR);
+  const cells = cellsOf({
+    cells: [
+      { name: "DEEP01", title: "Deep", standing: "moving", cwd: `${inside.path}/lib/a` },
+      { name: "NEAR01", title: "Near", standing: "moving", cwd: "/home/ada/src/core-two" },
+    ],
+  });
+  const drawn = groveOf(told([reading, core, checkout, inside]), cells, NOW)?.repositories[0];
+  assert.deepEqual(
+    drawn?.trees[0]?.cells.map((each) => each.name),
+    ["DEEP01"],
+    "the cell wasn't given to the tree it works in",
+  );
+  assert.deepEqual(
+    drawn?.checkouts[0]?.cells.map((each) => each.name),
+    [],
+    "the checkout took a cell of the tree inside it, or of a folder its name only begins",
+  );
+});
+
 it("joins repositories one cell works across, by the networks it's in", () => {
   const grove = groveOf(told(records), cellsOf(map), NOW);
   assert.deepEqual(grove?.repositories[0]?.joined, ["github:owl/world"]);
@@ -333,7 +354,57 @@ it("addresses a repository by its owner and name, encoded", () => {
 });
 
 it("says what a source couldn't read", () => {
-  assert.deepEqual(groveOf(told(records), [], NOW)?.unread, ["github: owl/nest: not found"]);
+  assert.deepEqual(groveOf(told(records), [], NOW)?.unread, ["owl/nest on github, not found"]);
+});
+
+it("says each reason a source couldn't read once, with every key it holds for, named once", () => {
+  const hidden = "not readable here: its App can't see it, or it's gone";
+  const many = {
+    ...reading,
+    sources: [
+      {
+        name: "github",
+        unread: [
+          `github:owl/a: ${hidden}`,
+          "github:owl/b: not found",
+          `github:owl/c: ${hidden}`,
+          `github:owl/d: ${hidden}`,
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(
+    groveOf(told([many]), [], NOW)?.unread,
+    [`owl/a, owl/c and owl/d on github, ${hidden}`, "owl/b on github, not found"],
+    "a reason was said for each key, or a key kept its source's name",
+  );
+});
+
+it("says what a source said of itself as it said it, after the source's name", () => {
+  const down = {
+    ...reading,
+    sources: [
+      {
+        name: "github",
+        unread: [
+          "GitHub: Bad credentials",
+          "github.json couldn't be read: denied",
+          "github.json isn't a refresh's record",
+          "github:owl/a: not found",
+        ],
+      },
+    ],
+  };
+  assert.deepEqual(
+    groveOf(told([down]), [], NOW)?.unread,
+    [
+      "github: GitHub: Bad credentials",
+      "github: github.json couldn't be read: denied",
+      "github: github.json isn't a refresh's record",
+      "owl/a on github, not found",
+    ],
+    "a sentence the source said of itself was read as a key",
+  );
 });
 
 it("counts as growing only a repository with a tree written today", () => {

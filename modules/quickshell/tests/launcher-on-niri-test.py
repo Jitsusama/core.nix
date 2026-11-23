@@ -541,7 +541,7 @@ def test_a_places_run_is_laid_whole_for_its_keys_and_kept_where_they_left(
     # the cursor far above. Both are held to the whole run's count, since what's laid first
     # this deep is itself past whole_least. G lands each time on the end of what's laid, the
     # run's end as far as it's laid, so this is also the case for go()'s showing or laying more
-    # and moving again, whose edges are cased in Qt's engine (DrawerPage.runReach).
+    # and moving again, whose edges and steps are cased in Qt's engine (DrawerRun.walk).
     shell.as_account("wtype -M ctrl -k w -m ctrl -k l G")
     shell.launcher_until(
         lambda shown: (
@@ -2671,13 +2671,16 @@ def test_a_drawer_is_said_presented_from_the_key_that_brought_it(shell: Shell) -
     assert DRAWERS_SAID.search(closed), "the close never said the drawers presented by place"
 
 
-def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
-    """An emoji's row shows the drawer the clipboard's history serves, said from its key.
+def test_an_emoji_shows_the_drawer_the_shell_makes_of_it(shell: Shell) -> None:
+    """An emoji's row shows the drawer the shell makes of it, worded, said from its key.
 
-    Each held no drawer, only a list of Paste and Copy, which Return and y already do (Joel,
-    2026-11-11 22:00: "if they have nothing under them, we shouldn't open a submenu for
-    them"). That it opens no list is modules/quickshell/tests/ready-rows.qml's, over what the
-    history serves. Emoji lists Unicode's groups, so the emoji are a step into the first.
+    The history serves no emoji's drawer, its row saying only that it has one, since the row
+    holds all it says (launcher/EmojiDrawer.js): its group, keywords and code points, named
+    in the launcher's words. An emoji once held no drawer, only a list of Paste and Copy,
+    which Return and y already do (Joel, 2026-11-11 22:00: "if they have nothing under them,
+    we shouldn't open a submenu for them"). That it opens no list is
+    modules/quickshell/tests/ready-rows.qml's, over what the history serves. Emoji lists
+    Unicode's groups, so the emoji are a step into the first.
     """
     shell.as_account(shell.ipc("toggle"))
     shell.launcher_ready()
@@ -2689,7 +2692,11 @@ def test_an_emoji_shows_the_drawer_its_history_serves(shell: Shell) -> None:
     shell.launcher_until(functools.partial(stands_in, FIRST_GROUP))
     shell.normal()
     shell.launcher_until(drawer_on_selected)
-    title = shell.showing()["drawer"]["title"]
+    drawer = shell.showing()["drawer"]
+    title = drawer["title"]
+    assert drawer["eyebrow"] == FIRST_GROUP, f"the emoji's drawer named no group: {drawer}"
+    assert drawer["nerd"] == ["Code Points"], f"its code points went unnamed: {drawer}"
+    assert drawer["facts"] in ([], ["Keywords"]), f"its keywords went unnamed: {drawer}"
     since = shell.mark()
     shell.send_chars("j")
     shell.launcher_until(functools.partial(drawer_moved, title))

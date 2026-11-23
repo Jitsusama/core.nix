@@ -594,6 +594,7 @@ gather {
     ./modules/hang-panic/checks.nix
     ./modules/health/checks.nix
     ./modules/hibernate/checks.nix
+    ./modules/house-report/checks.nix
     ./modules/inkscape/checks.nix
     ./modules/inlyne/checks.nix
     ./modules/ir-camera/checks.nix
@@ -695,6 +696,7 @@ gather {
     ./modules/tcp/checks.nix
     ./modules/terminal-kit/checks.nix
     ./modules/theme/checks.nix
+    ./modules/theme/web/checks.nix
     ./modules/to-do/checks.nix
     ./modules/touchpad/checks.nix
     ./modules/treefmt/checks.nix

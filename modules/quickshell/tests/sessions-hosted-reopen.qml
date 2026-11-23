@@ -23,8 +23,11 @@ pragma ComponentBehavior: Bound
 // viewer or plain pi goes back where the boot kept it, ahead of its
 // orchestrator's workspace; a plain pi kept nowhere comes back held, with no
 // window, its folder gone or not, the walk going on at its pace; and with
-// no boot's places known, one kept nowhere opens in a window. It exits 0
-// once that holds, and otherwise 1, saying what didn't. Long because its
+// no boot's places known, one kept nowhere opens in a window. One kept on a
+// workspace named for its orchestrator goes back to the one named so now,
+// whatever its number, and one whose name no workspace has names the empty
+// one it opens on. It exits 0 once that holds, and otherwise 1, saying what
+// didn't. Long because its
 // stages run in turn on one walk, one stand-in niri and node, and one
 // windows daemon, each stage's workspaces and windows the next one's
 // ground, so a split would build that world again for each half.
@@ -169,6 +172,14 @@ ShellRoot {
                 led();
             else if (stage === "unarranged")
                 unarranged();
+            else if (stage === "naming")
+                naming();
+            else if (stage === "named")
+                named();
+            else if (stage === "cornered")
+                cornered();
+            else if (stage === "renamed")
+                renamed();
         } catch (error) {
             Expect.fail(error.message);
         }
@@ -333,7 +344,8 @@ ShellRoot {
 
     // Each is asked to reopen as a plain pi, as Reopen Them All asks the last
     // boot's, telling each to carry on; with them, one carried here from
-    // another machine, which no boot here kept.
+    // another machine, which no boot here kept, and two the boot kept as
+    // unplaced, a window it couldn't place, one plain and one hosted.
     function told() {
         if (!find("STALE") || !Sessions.parkedAs("NAPPED"))
             return;
@@ -341,10 +353,14 @@ ShellRoot {
         Sessions.reopenAll([{ id: "s-viewed", cwd: "/tmp", way: "boot" },
             { id: "s-stale", cwd: "/tmp", way: "boot" },
             { id: "s-napped", cwd: "/tmp", way: "boot" },
-            { id: "s-carried", cwd: "/tmp", way: "carried" }],
+            { id: "s-carried", cwd: "/tmp", way: "carried" },
+            { id: "s-drifted", cwd: "/tmp", way: "boot" }, waitingEntry("s-floated")],
             (one, cwd) => Expect.fail(`${one.id}'s ${cwd} gone`),
-            kept({ "s-napped": keptOn(2) }), Sessions.carryOn);
+            kept({ "s-napped": keptOn(2), "s-drifted": { unplaced: true },
+                "s-floated": { unplaced: true } }), Sessions.carryOn);
     }
+    // The windows niri opens for those the walk waits on, beside Joel.
+    readonly property var openedFor: ({ "s-carried": 59, "s-drifted": 68, "s-floated": 69 })
 
     // The id as a whole word, since a viewer's words end in its own pi's,
     // and s-led-viewer's would be read as s-led's.
@@ -357,16 +373,33 @@ ShellRoot {
         // waiting out its patience, and once the rest are back it is done,
         // with no window it gave up on left to come.
         const carried = Sessions.reopening?.waiting;
-        if (carried?.id === "s-carried" && carried.classed && carried.opened === null) {
-            const window = { id: 59, pid: 590, workspace_id: 40, session: true,
+        const opens = root.openedFor[carried?.id] ?? 0;
+        if (opens > 0 && carried.classed && carried.opened === null) {
+            const window = { id: opens, pid: opens * 10, workspace_id: 40, session: true,
                 opened: carried.classed, layout: { pos_in_scrolling_layout: [1, 1] } };
-            Niri.windows = Object.assign({}, Niri.windows, { "59": window });
+            Niri.windows = Object.assign({}, Niri.windows, { [opens]: window });
             Niri.revision += 1;
             Niri.windowOpenedOrChanged(window);
         }
         const woken = steers.find(one => one.address === "NAPPED");
-        if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken)
+        const floated = viewerSpawns("s-floated").length > 0
+            || Sessions.keptPlaces["s-floated"] !== undefined;
+        if (piFor("s-stale").length === 0 || piFor("s-carried").length === 0 || !woken
+            || piFor("s-drifted").length === 0 || (!floated && Sessions.reopening !== null))
             return;
+        // Kept as unplaced, floating or drawn beside another in its kitty,
+        // it had a window, so it comes back in one, going home, never held
+        // as one kept nowhere; a hosted one's viewer opens, or waits for
+        // Joel to leave, rather than none.
+        Expect.expect("one kept as unplaced comes back in a window, not held",
+            piFor("s-drifted").length === 1
+            && piFor("s-drifted")[0].includes("/pi-sessions/kitty.sock")
+            && !piFor("s-drifted")[0].includes("holds add --detached"),
+            Niri.spawns.join("\n"));
+        Expect.expect("a hosted one kept as unplaced has its viewer asked for",
+            viewerSpawns("s-floated").length === 1
+            || Sessions.keptPlaces["s-floated"] !== undefined,
+            `${Niri.spawns.join("\n")}\n${JSON.stringify(Sessions.keptPlaces)}`);
         Expect.expect("one its host lists is begun no more", piFor("s-viewed").length === 0,
             Niri.spawns.join("\n"));
         Expect.expect("one parked is woken, told to carry on, never begun",
@@ -785,6 +818,99 @@ ShellRoot {
         Expect.expect("with no boot's places known, one kept nowhere opens in a window",
             started.length === 1 && started[0].includes("/pi-sessions/kitty.sock")
             && heldFor("s-unarranged").length === 0, Niri.spawns.join("\n"));
+        // KELP's workspace, named for its orchestrator, comes back fifth
+        // this boot, with a window of its own, and niri's empty one after.
+        Niri.workspaces = Object.assign({}, Niri.workspaces, {
+            "44": { id: 44, idx: 5, name: "KELP", output: "DP-4", is_focused: false,
+                active_window_id: 92 },
+            "45": { id: 45, idx: 6, output: "DP-4", is_focused: false, active_window_id: null }
+        });
+        Niri.windows = Object.assign({}, Niri.windows, { "92": { id: 92, pid: 920,
+            workspace_id: 44, opened: "pi-hosted.s-lead",
+            layout: { pos_in_scrolling_layout: [1, 1] } } });
+        Niri.revision += 1;
+        stage = "naming";
+        Watch.tell(root.watch, { changed: [
+            Object.assign(hosted("s-kelp", "KELPER"), { told: "0000000000000011" }),
+            Object.assign(hosted("s-reef", "REEFER"), { told: "0000000000000012" })] });
+    }
+
+    // One kept on a workspace named for its orchestrator goes back to the
+    // one named so now, though niri numbers it otherwise this boot
+    // (2026-11-21 10:08: WM4KSZ's sessions came back on workspace 3 by
+    // number), naming nothing.
+    function naming() {
+        if (!find("KELPER") || !find("REEFER") || (Sessions.reopening?.queue.length ?? 0) > 0)
+            return;
+        stage = "named";
+        Sessions.reopenAll([{ id: "s-kelp", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-kelp": Object.assign(keptOn(3), { workspaceName: "KELP" }) }), "");
+    }
+    function named() {
+        const opens = opensOn("s-kelp");
+        if (opens.length === 0)
+            return;
+        Expect.expect("one kept on a named workspace goes back to the one named so now",
+            opens[0].reference?.Id === 44 && opens[0].column === 2, JSON.stringify(opens));
+        Expect.expect("naming nothing, since one has the name",
+            !Niri.acts.some(act => act.SetWorkspaceName), JSON.stringify(Niri.acts));
+        const window = { id: 93, pid: 930, workspace_id: 44, session: true,
+            opened: "pi-hosted.s-kelp", layout: { pos_in_scrolling_layout: [2, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "93": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(93, "pi-hosted.s-kelp", 44)] });
+        stage = "renamed";
+        Niri.windowOpenedOrChanged(window);
+        Sessions.reopenAll([{ id: "s-reef", cwd: "/tmp", hosted: true }], root.never,
+            kept({ "s-reef": Object.assign(keptOn(4), { workspaceName: "REEF" }) }), "");
+    }
+
+    // One whose name no workspace has now opens on the screen's empty
+    // workspace and names it, once.
+    function renamed() {
+        const opens = opensOn("s-reef");
+        if (opens.length === 0)
+            return;
+        const naming = Niri.acts.filter(act => act.SetWorkspaceName)
+            .map(act => act.SetWorkspaceName);
+        Expect.expect("one whose name no workspace has names the empty one it opens on, once",
+            naming.length === 1 && naming[0].name === "REEF"
+            && naming[0].workspace?.Id === opens[0].reference?.Id
+            && Niri.workspaces[opens[0].reference?.Id]?.active_window_id === null,
+            `${JSON.stringify(naming)} ${JSON.stringify(opens)}`);
+        const reef = opens[0].reference?.Id;
+        const window = { id: 94, pid: 940, workspace_id: reef, session: true,
+            opened: "pi-hosted.s-reef", layout: { pos_in_scrolling_layout: [1, 1] } };
+        Niri.windows = Object.assign({}, Niri.windows, { "94": window });
+        Niri.revision += 1;
+        windowsTell({ changed: [windowRecord(94, "pi-hosted.s-reef", reef)] });
+        Niri.windowOpenedOrChanged(window);
+        // Joel goes to the screen's empty workspace, niri's last, so there's
+        // nowhere quiet for a viewer kept as unplaced, with no home or kin.
+        const its = Object.values(Niri.workspaces).filter(one => one.output === "DP-4")
+            .sort((a, b) => a.idx - b.idx);
+        cornerOn = its[its.length - 1].id;
+        joelOn(cornerOn);
+        corneredAt = Date.now();
+        stage = "cornered";
+        Sessions.reopenAll([waitingEntry("s-cornered")], root.never,
+            kept({ "s-cornered": { unplaced: true } }), "");
+    }
+    property int cornerOn: -1
+    property real corneredAt: 0
+
+    // Its viewer waits for Joel to leave, as one bound for his workspace
+    // does, rather than being dropped from the walk. Looked at once its
+    // place is kept, or a walk's few paces after: s-next, given up on
+    // earlier, keeps the reopening going, so it never ends to wait on.
+    function cornered() {
+        const place = Sessions.keptPlaces["s-cornered"];
+        if (place === undefined && Date.now() - corneredAt < 10000)
+            return;
+        Expect.expect("one kept as unplaced, with nowhere quiet, waits for Joel to leave",
+            place?.workspace === cornerOn && place?.there === true
+            && viewerSpawns("s-cornered").length === 0,
+            `${JSON.stringify(Sessions.keptPlaces)} ${Niri.spawns.join("\n")}`);
         console.log("a hosted viewer reopens where it was, in "
             + `${Math.round((Date.now() - root.begunAt) / 1000)} s`);
         Qt.exit(0);
@@ -833,11 +959,13 @@ ShellRoot {
     }
 
     // Long enough for each walk to be done before the next begins, and
-    // short of the check's own 120 s timeout, so a stage that never ends
-    // says which it is rather than the check ending with no word.
+    // short of the check's own 180 s timeout, so a stage that never ends
+    // says which it is rather than the check ending with no word. The
+    // named stages run after the led ones' walks, so it's longer than one
+    // set of walks needs.
     Timer {
         running: true
-        interval: 110000
+        interval: 170000
         onTriggered: Expect.fail(`still at ${root.stage}, the walk holding `
             + JSON.stringify((Sessions.reopening?.queue ?? []).map(next => next.one?.id))
             + ` and waiting on ${Sessions.reopening?.waiting?.id ?? "none"}, held starts `

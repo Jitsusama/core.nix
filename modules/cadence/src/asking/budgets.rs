@@ -61,7 +61,10 @@ pub(super) fn remember(state: &mut State, key: &str, now: i64) {
 
 /// The breaches standing now, but for no budget watched until it has stood
 /// for `UNWATCHED_FOR` of waking time, so a machine just woken isn't told
-/// of it.
+/// of it. Where a window's reset drifted, on any read of its allowance,
+/// past a level or not, what's remembered of it moves to the reset read
+/// now, its times kept, so it stays told, a level that eased ages out as
+/// it would have, and the next read is matched to this one.
 pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
     let since = s.now - state.ticked.unwrap_or(s.now);
     let (slept, waking_ms) = match (&state.asleep, &s.asleep) {
@@ -83,12 +86,31 @@ pub(super) fn standing(s: &Snapshot, state: &mut State) -> Vec<Breach> {
         state.unwatched_ms = None;
         0
     };
-    breaches(s)
+    let standing: Vec<Breach> = breaches(s)
         .into_iter()
         .filter(|b| {
             b.key != crate::watch::budgets::UNWATCHED || unwatched_ms >= UNWATCHED_FOR * 1000
         })
-        .collect()
+        .collect();
+    let moves: Vec<(String, String)> = crate::watch::budgets::windows(s)
+        .iter()
+        .flat_map(|key| {
+            let told = state
+                .seen
+                .keys()
+                .filter_map(|key| key.strip_prefix("alarm:"));
+            crate::watch::budgets::moved(key, told)
+        })
+        .collect();
+    for (was, now) in moves {
+        if let Some(at) = state.seen.remove(&format!("alarm:{was}")) {
+            // Two remembered resets of one window, as an hour's key and a
+            // second's, move to one key, keeping the later time.
+            let kept = state.seen.entry(format!("alarm:{now}")).or_insert(at);
+            *kept = (*kept).max(at);
+        }
+    }
+    standing
 }
 
 #[cfg(test)]
@@ -194,6 +216,188 @@ mod tests {
             [(To::Orchestrator, false)],
             "a rolling window climbing back past 90% after a night's easing went untold"
         );
+    }
+
+    #[test]
+    fn a_window_whose_reset_drifts_across_the_half_hour_is_told_once() {
+        let mut s = calm(100_000);
+        let resets = |at: &str| crate::watch::budgets::Allowance {
+            resets: Some(at.into()),
+            ..week(0.91, "91% of five hours")
+        };
+        s.budgets = vec![resets("2026-11-21T16:29:59Z")];
+        let mut state = State::default();
+        assert_eq!(
+            tick(&s, &mut state).len(),
+            1,
+            "a window past 90% wasn't told"
+        );
+        // It crosses the half hour, then creeps two minutes a read, past
+        // five minutes from the reset first told.
+        let creeping = (33..=53)
+            .step_by(2)
+            .map(|minute| format!("2026-11-21T16:{minute:02}:02Z"));
+        for at in ["2026-11-21T16:30:01Z".to_owned()]
+            .into_iter()
+            .chain(creeping)
+        {
+            s.now += 5 * 60;
+            s.budgets = vec![resets(&at)];
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a window whose reset drifted to {at} was told again"
+            );
+        }
+        let kept: Vec<&String> = state
+            .seen
+            .keys()
+            .filter(|key| key.starts_with("alarm:budget:"))
+            .collect();
+        assert_eq!(
+            kept,
+            [
+                "alarm:budget:proxy:weekly:80:2026-11-21T16:53:02Z",
+                "alarm:budget:proxy:weekly:90:2026-11-21T16:53:02Z"
+            ],
+            "a drifting window left its old keys behind"
+        );
+        s.now += 5 * 3600;
+        s.budgets = vec![resets("2026-11-21T21:30:00Z")];
+        assert_eq!(
+            tick(&s, &mut state).len(),
+            1,
+            "the next window past 90% went untold"
+        );
+    }
+
+    #[test]
+    fn a_window_whose_reset_drifts_under_80_is_told_once() {
+        let mut s = calm(100_000);
+        let at = |share: f64, resets: &str| crate::watch::budgets::Allowance {
+            resets: Some(resets.into()),
+            ..week(share, "of five hours")
+        };
+        s.budgets = vec![at(0.91, "2026-11-21T16:29:59Z")];
+        let mut state = State::default();
+        assert_eq!(tick(&s, &mut state).len(), 1, "90% wasn't told");
+        // It eases under 80%, where no level stands to carry its keys, while
+        // its reset creeps two minutes a read, past five from the one told.
+        for minute in (31..=53).step_by(2) {
+            s.now += 5 * 60;
+            s.budgets = vec![at(0.70, &format!("2026-11-21T16:{minute:02}:02Z"))];
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a window under 80% was told at 16:{minute:02}"
+            );
+        }
+        s.now += 5 * 60;
+        s.budgets = vec![at(0.92, "2026-11-21T16:55:02Z")];
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a window told past 90% was told again once its reset crept under 80%"
+        );
+    }
+
+    #[test]
+    fn a_level_crossed_as_the_reset_drifts_is_still_told() {
+        let mut s = calm(100_000);
+        let at = |share: f64, resets: &str| crate::watch::budgets::Allowance {
+            resets: Some(resets.into()),
+            ..week(share, "of five hours")
+        };
+        s.budgets = vec![at(0.85, "2026-11-21T16:29:59Z")];
+        let mut state = State::default();
+        assert_eq!(tick(&s, &mut state).len(), 1, "80% wasn't told");
+        s.now += 5 * 60;
+        s.budgets = vec![at(0.91, "2026-11-21T16:30:01Z")];
+        let told = tick(&s, &mut state);
+        assert!(
+            told.len() == 1 && told[0].text.contains("past 90%"),
+            "90% crossed as the reset drifted wasn't told once: {told:?}"
+        );
+    }
+
+    #[test]
+    fn a_level_eased_while_its_reset_jitters_is_told_again_after_its_rest() {
+        let mut s = calm(100_000);
+        let at = |share: f64, resets: &str| crate::watch::budgets::Allowance {
+            resets: Some(resets.into()),
+            ..week(share, "of the week")
+        };
+        s.budgets = vec![at(0.91, "2026-11-28T05:00:00Z")];
+        let mut state = State::default();
+        assert_eq!(tick(&s, &mut state).len(), 1, "90% wasn't told");
+        // It eases past 80% for longer than its rest, its reset read two
+        // seconds apart on alternate reads.
+        for read in 0..=(BUDGET_REST / 300) {
+            s.now += 5 * 60;
+            let resets = if read % 2 == 0 {
+                "2026-11-28T05:00:02Z"
+            } else {
+                "2026-11-28T05:00:00Z"
+            };
+            s.budgets = vec![at(0.85, resets)];
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a share easing past 80% was told"
+            );
+        }
+        s.budgets = vec![at(0.92, "2026-11-28T05:00:00Z")];
+        assert_eq!(
+            told_whom(&tick(&s, &mut state)),
+            [(To::Orchestrator, false)],
+            "a level eased past its rest went untold as it climbed back, its time refreshed \
+             by each move"
+        );
+    }
+
+    #[test]
+    fn a_window_told_before_resets_were_kept_to_the_second_isnt_told_again() {
+        let mut s = calm(100_000);
+        s.budgets = vec![crate::watch::budgets::Allowance {
+            resets: Some("2026-11-21T16:20:00Z".into()),
+            ..week(0.92, "92% of five hours")
+        }];
+        let mut state = State::default();
+        for level in [80, 90] {
+            state.seen.insert(
+                format!("alarm:budget:proxy:weekly:{level}:2026-11-21T16:00:00Z"),
+                s.now - 600,
+            );
+        }
+        assert!(
+            tick(&s, &mut state).is_empty(),
+            "a window told past 90% under its hour was told again once kept to the second"
+        );
+    }
+
+    #[test]
+    fn a_window_split_across_two_hours_keeps_its_later_telling() {
+        let mut s = calm(100_000);
+        let at = |share: f64| crate::watch::budgets::Allowance {
+            resets: Some("2026-11-21T16:30:00Z".into()),
+            ..week(share, "of five hours")
+        };
+        // As the old rounding left it: 80% told under 16:00 long ago, then
+        // 80% and 90% under 17:00 lately, as each telling keeps the levels
+        // beneath it. Read first under 80%, where no level standing renews
+        // the time its keys meet with, so the one kept decides whether its
+        // rest is over, then past 80% a read later.
+        let mut state = State::default();
+        let key = |level: u32, hour: u32| {
+            format!("alarm:budget:proxy:weekly:{level}:2026-11-21T{hour}:00:00Z")
+        };
+        state.seen.insert(key(80, 16), s.now - 7 * 3600);
+        state.seen.insert(key(80, 17), s.now - 600);
+        state.seen.insert(key(90, 17), s.now - 600);
+        for share in [0.70, 0.85] {
+            s.budgets = vec![at(share)];
+            assert!(
+                tick(&s, &mut state).is_empty(),
+                "a split window took its older telling and was told again at {share}"
+            );
+            s.now += 5 * 60;
+        }
     }
 
     #[test]

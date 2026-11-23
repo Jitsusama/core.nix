@@ -7,8 +7,19 @@
 # name only when the system switches, so a job here sets it back whenever
 # macOS writes its network settings, and once a minute in case a change
 # lands elsewhere, but at most once in five minutes, so a conflict that
-# lasts can't have it and macOS trading the name (keep.sh says why). A Mac
-# that declares no local name is left as it is.
+# lasts can't have it and macOS trading the name (keep.sh says why).
+#
+# macOS answers to name.local only while some service it advertises points
+# at the machine, and drops the name everywhere once none does. Remote
+# Login's ssh is often the only one, and once mDNSResponder had restarted
+# launchd was seen not advertising it at all, so a Mac can go unfound with
+# every setting right. A second job advertises the machine itself, as a
+# workstation on port 9, the type and port Avahi announces a Linux machine
+# with: it claims no service the Mac may not run, and it can't clash with
+# Remote Login's. So the Mac answers to its name on every network it joins,
+# as one with Remote Login advertised already does. dns-sd ends when
+# mDNSResponder goes away, so launchd starts it again and the name comes
+# back with the daemon. A Mac that declares no local name is left as it is.
 {
   config,
   lib,
@@ -38,5 +49,44 @@ in
       # in five minutes, so at most twenty-four lines an hour.
       StandardErrorPath = "/var/log/local-name.log";
     };
+  };
+
+  config.launchd.daemons.local-name-answers = lib.mkIf (name != null) {
+    serviceConfig = {
+      ProgramArguments = [
+        "/usr/bin/dns-sd"
+        "-R"
+        name
+        "_workstation._tcp"
+        "local"
+        "9"
+      ];
+      RunAtLoad = true;
+      KeepAlive = true;
+      # What dns-sd says is the only word on whether the advertisement took:
+      # registered, renamed or refused, and why it ended. It runs as root, as
+      # the job above does, so launchd can open this log in /var/log.
+      StandardOutPath = "/var/log/local-name-answers.log";
+      StandardErrorPath = "/var/log/local-name-answers.log";
+    };
+  };
+
+  # A few lines each time dns-sd starts is the usual, but a daemon that
+  # keeps refusing the advertisement has launchd start it every ten seconds,
+  # a few lines each time. So macOS's newsyslog moves each log aside past
+  # 512 KB, keeping three before it. It sends no signal, since neither job
+  # takes one: launchd opens a job's log anew each time it starts it, so
+  # keep.sh's runs and a restarting dns-sd write to the fresh file. This
+  # doesn't bound a dns-sd that stays up: a machine on the network answering
+  # to the same name has mDNSResponder rename the advertisement again and
+  # again, at its probe pace, and that dns-sd writes on into the file it
+  # opened, moved aside as .0, until it next starts. When the log is empty,
+  # read local-name-answers.log.0.
+  config.environment.etc."newsyslog.d/local-name.conf" = lib.mkIf (name != null) {
+    text = ''
+      # logfilename                    mode count size(KB) when flags
+      /var/log/local-name.log          644  3     512      *    N
+      /var/log/local-name-answers.log  644  3     512      *    N
+    '';
   };
 }

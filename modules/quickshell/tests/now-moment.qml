@@ -238,6 +238,26 @@ ShellRoot {
         function say(keys) {
             said = keys;
         }
+        // What it was told failed, as toldThat's what and why, the place it
+        // was last asked to open into, and how often it was asked to say a
+        // Go To's session is gone, its keys held back (Launcher.qml's
+        // toldGone), which Now asks rather than opening it bare.
+        property var told: []
+        property string intoAsked: ""
+        property int goneTold: 0
+        property var goneMoved: []
+
+        function toldThat(what, why) {
+            told = told.concat([{ what: what, why: why }]);
+        }
+        function into(name) {
+            intoAsked = name;
+        }
+        function toldGone(moved) {
+            goneTold += 1;
+            goneMoved = goneMoved.concat([moved]);
+            return true;
+        }
         // Set without one only by a case that asks what's left without it.
         property var sources: [weather, calendar, cameras, power, pastNotices, agents, quests]
         property int placed: 0
@@ -1024,8 +1044,57 @@ ShellRoot {
             waiting = "";
             Timekeeping.keptFor = 60000;
             Timekeeping.trying = true;
-            Qt.exit(0);
+            answerLapses();
         }
+    }
+
+    // An answer with no word come, its 5 s let come on its own: the timer
+    // hands Now its answers anew, with nothing the case does, which is what
+    // redraws an idle For You's rows (lookAnswers), and the look then reads
+    // unheard (answersLapse).
+    readonly property var lapsing: ({ id: "lapsing", kind: "page", title: "Read L",
+        state: "waiting" })
+    function answerLapses() {
+        now.lookAnswers = { lapsing: { label: "Keep It", at: Date.now() - 4700, sent: -1 } };
+        lapseStage.given = answersHanded;
+        lapseStage.at = Date.now();
+        waiting = "answer lapses";
+    }
+    // How many times Now's answers were handed it anew.
+    property int answersHanded: 0
+    Connections {
+        target: now
+
+        function onLookAnswersChanged() {
+            root.answersHanded += 1;
+        }
+    }
+    Timer {
+        id: lapseStage
+
+        property int given: 0
+        property real at: 0
+
+        running: root.waiting === "answer lapses"
+        interval: 20
+        repeat: true
+        onTriggered: root.answerLapsed()
+    }
+    function answerLapsed() {
+        // Until it's handed them and nothing's left to redraw, since a timer
+        // a millisecond early is armed again for what's left.
+        const since = Date.now() - lapseStage.at;
+        if ((answersHanded === lapseStage.given || now.answersDue !== -1) && since < 3000)
+            return;
+        const side = now.lookSide(lapsing, Date.now(), now.forYouSaid(Date.now()));
+        if (!tried(() => expect("its 5 s come, the timer hands Now its answers anew, unheard",
+            answersHanded > lapseStage.given && now.answersDue === -1
+                && side === "Keep It not answered yet \u00b7 no answer",
+            JSON.stringify([answersHanded - lapseStage.given, now.answersDue, side]))))
+            return;
+        waiting = "";
+        now.lookAnswers = {};
+        Qt.exit(0);
     }
 
     // What Moved: no row while nothing moved; a workstream that moved is
@@ -1821,6 +1890,236 @@ ShellRoot {
                 && Sessions.steered[steeredBefore]?.fields?.value === "merge"
                 && askingRow() === undefined,
             JSON.stringify([Sessions.steered.slice(steeredBefore), askingRow()?.side]));
+        // Where an answer goes: to the cell Talk reaches where that is the
+        // one that left it, by the address it goes by now, else to the
+        // quest's own, never to a stranger on another quest that lists the
+        // look's address; and who asks, where the look says none, is that
+        // same cell's title where it is the one that left it, else none.
+        const queue = { value: "merge", label: "Queue It" };
+        const onQuestOne = { id: "r", kind: "pr", title: "Read R", state: "waiting",
+            quest: "QEST-1-ABCDEF", session: "s-1", address: "AAAAAA", cell: "AAAAAA" };
+        const lister = { address: "DDDDDD", title: "Elsewhere", presence: { session: "s-4",
+            quest: "QEST-2-XXXXXX", addresses: ["AAAAAA"] } };
+        const ownOne = { address: "ABCDEF", title: "Here", presence: { session: "s-2",
+            quest: "QEST-1-ABCDEF" } };
+        const movedOne = { address: "NNNNNN", title: "Moved", presence: { session: "s-1",
+            quest: "QEST-1-ABCDEF" } };
+        const heldBefore = [Sessions.running, Sessions.parked];
+        const steerOf = (running, parked) => {
+            Sessions.running = running;
+            Sessions.parked = parked;
+            const from = Sessions.steered.length;
+            now.answerLook(onQuestOne, queue);
+            now.lookAnswers = {};
+            return Sessions.steered.slice(from).map(one => one.address);
+        };
+        expect("an answer, a stranger on another quest listing its address, to its quest's",
+            steerOf([lister], []), ["ABCDEF"]);
+        expect("an answer, the one that left it under a new address, there",
+            steerOf([lister, movedOne], []), ["NNNNNN"]);
+        expect("an answer, the one that left it parked, there too",
+            steerOf([lister], [movedOne]), ["NNNNNN"]);
+        Sessions.running = [lister, ownOne];
+        Sessions.parked = [];
+        expect("who asks, where the look names none, never a cell that didn't leave it",
+            now.lookAsker(onQuestOne) === "", JSON.stringify(now.lookAsker(onQuestOne)));
+        Sessions.running = [lister, ownOne, movedOne];
+        expect("and the cell Talk reaches where it is the one that left it",
+            now.lookAsker(onQuestOne) === "Moved", JSON.stringify(now.lookAsker(onQuestOne)));
+        const namedOne = Object.assign({}, onQuestOne, { cell: "CCCCCC" });
+        Sessions.running = [lister, ownOne, { address: "CCCCCC", title: "Named",
+            presence: { session: "s-9", quest: "QEST-1-ABCDEF" } }];
+        expect("and the cell the look names, though it lists none of the look's names",
+            now.lookAsker(namedOne) === "Named", JSON.stringify(now.lookAsker(namedOne)));
+        Sessions.running = heldBefore[0];
+        Sessions.parked = heldBefore[1];
+        // A look in its second form (85PKB2's harness #2008) says at its side
+        // that it asks him, then why it waits, and one asking nothing back
+        // only why; its drawer leads with what happened and why it matters,
+        // a fact a choice saying what follows it; its act is named in its
+        // own words, keeping the launcher's verb; and each choice's drawer
+        // says what follows it (QGB4ON's layout of 2026-11-22).
+        const secondText = (id, fields) => JSON.stringify(Object.assign({ v: 1, id: id,
+            kind: "pr", at: root.lookedAt, target: "https://example.com/pull/2",
+            title: "The bar at narrow widths", state: "waiting", address: "lefts",
+            why: "The bar keeps the branch at narrow widths. You couldn't see a cost.",
+            ask: "Review It: Keep It, or Roll It Back.",
+            happened: "The bar keeps the branch at narrow widths",
+            matters: "At 76 columns you couldn't see what a session cost.", act: "Review It",
+            choices: [{ value: "Keep It", label: "Keep It", follows: "It stays as it is." },
+                { value: "Roll It Back", label: "Roll It Back",
+                    follows: "The old bar comes back tonight." }],
+            wants: { choices: [{ label: "Keep It", follows: "It stays as it is." },
+                { label: "Roll It Back", follows: "The old bar comes back tonight." }] }
+        }, fields));
+        const textsFirst = now.lookTexts;
+        now.lookTexts = Object.assign({}, textsFirst, { "s.json": secondText("s", {}),
+            "i.json": secondText("i", { choices: [], wants: undefined,
+                ask: "Review It." }),
+            // One choice saying what follows and one not, its want naming only
+            // the first; a first form whose choices say what follows; and
+            // one whose act would pass itself off as Clear It.
+            "m.json": secondText("m", { choices: [{ value: "Keep It", label: "Keep It",
+                follows: "It stays as it is." }, { value: "Roll It Back", label: "Roll It Back" }],
+                wants: { choices: [{ label: "Keep It", follows: "It stays as it is." }] } }),
+            "f.json": secondText("f", { happened: "" }),
+            "c.json": secondText("c", { act: "Clear It" }) });
+        const secondRow = () => looked().find(row => row.key === "on:look:s");
+        const seconds = secondRow();
+        const informing = looked().find(row => row.key === "on:look:i");
+        expect("a second form's side says it asks you, then why, never its ask; one asking"
+            + " nothing back says only why",
+            String(seconds?.side).startsWith("asks you \u00b7 ")
+                && seconds?.side === `asks you \u00b7 ${informing?.side}`
+                && informing?.side !== "" && !String(informing?.side).includes("Review It"),
+            JSON.stringify([seconds?.side, informing?.side]));
+        const secondDrawer = seconds?.drawer() ?? {};
+        const secondFacts = (secondDrawer.facts ?? []).map(each => [each.label, each.value]);
+        expect("its drawer, what happened then why it matters, a fact a choice and what follows",
+            secondDrawer.body === "The bar keeps the branch at narrow widths. At 76 columns"
+                + " you couldn't see what a session cost."
+                && JSON.stringify(secondFacts.slice(0, 2)) === JSON.stringify([
+                    ["Keep It", "It stays as it is."],
+                    ["Roll It Back", "The old bar comes back tonight."]])
+                && !secondFacts.some(each => each[0] === "Choices"),
+            JSON.stringify([secondDrawer.body, secondFacts]));
+        const mixedFacts = (looked().find(row => row.key === "on:look:m")?.drawer().facts ?? [])
+            .map(each => [each.label, each.value]);
+        expect("a choice that doesn't say what follows is a fact still, saying so",
+            JSON.stringify(mixedFacts.slice(0, 2)) === JSON.stringify([
+                ["Keep It", "It stays as it is."],
+                ["Roll It Back", "it doesn't say what follows"]]),
+            JSON.stringify(mixedFacts));
+        const secondActs = seconds?.verbs() ?? [];
+        const plain = looked().find(row => row.key === "on:look:a");
+        const firstOpen = (plain?.verbs() ?? []).find(act => act.key === "verb:on:look:open:a");
+        expect("its row's Return the launcher's own, as a first form's is",
+            seconds?.verb === plain?.verb && seconds?.later === plain?.later
+                && seconds?.stays === plain?.stays,
+            JSON.stringify([[seconds?.verb, seconds?.later, seconds?.stays],
+                [plain?.verb, plain?.later, plain?.stays]]));
+        const firstActs = looked().find(row => row.key === "on:look:f")?.verbs() ?? [];
+        expect("a first form's choices have no drawer, though they say what follows",
+            firstActs[0]?.key === "verb:on:look:answer:f:Keep It"
+                && firstActs[0]?.drawer === undefined,
+            JSON.stringify([firstActs[0]?.key, typeof firstActs[0]?.drawer]));
+        const posing = (looked().find(row => row.key === "on:look:c")?.verbs() ?? [])
+            .find(act => act.key === "verb:on:look:open:c");
+        expect("an act named as another act is, named as the launcher names it",
+            posing !== undefined && posing.name === firstOpen?.name,
+            JSON.stringify([posing?.name, firstOpen?.name]));
+        const secondOpen = secondActs.find(act => act.key === "verb:on:look:open:s");
+        expect("its act named in its own words, its verb the launcher's",
+            secondOpen?.name === "Review It" && secondOpen?.verb === firstOpen?.verb
+                && firstOpen?.name !== "Review It",
+            JSON.stringify([secondOpen?.name, secondOpen?.verb, firstOpen?.name]));
+        const keepDrawer = secondActs[0]?.drawer?.() ?? {};
+        expect("a choice's drawer says what follows it",
+            secondActs[0]?.key === "verb:on:look:answer:s:Keep It"
+                && keepDrawer.title === "Keep It" && keepDrawer.body === "It stays as it is.",
+            JSON.stringify([secondActs[0]?.key, keepDrawer.title, keepDrawer.body]));
+        // An answer the node couldn't give, refused or its machine out of
+        // reach, or with nobody to tell, says so at its side, its choices
+        // back, rather than silently nothing (Joel, 2026-11-22: "to in any
+        // way follow through").
+        Sessions.puts = false;
+        secondActs[0]?.run();
+        Sessions.puts = true;
+        const untaken = secondRow();
+        expect("an answer the node couldn't give says so, its choices back",
+            untaken?.side === "Keep It not answered \u00b7 the node couldn't give it"
+                && (untaken?.verbs() ?? [])[0]?.key === "verb:on:look:answer:s:Keep It",
+            JSON.stringify([untaken?.side, (untaken?.verbs() ?? []).map(act => act.key)]));
+        const nobody = { id: "n", kind: "page", title: "Read N", state: "waiting" };
+        const steersNobody = Sessions.steered.length;
+        now.answerLook(nobody, { value: "Keep It", label: "Keep It" });
+        expect("an answer with nobody to tell steers nothing and says so",
+            Sessions.steered.length === steersNobody
+                && now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))
+                    === "Keep It not answered \u00b7 no session to tell",
+            JSON.stringify(now.lookSide(nobody, Date.now(), now.forYouSaid(Date.now()))));
+        // An answer the node is slow to say it took: shown as given, its
+        // choices away while no word comes, however long, so no second
+        // follows it, even from acts drawn before it was given, though the
+        // drawer still says each, and the side redrawn at its 5 s; then said
+        // not heard; the node going brings them back, saying it may yet
+        // come; and a late word for an answer since replaced leaves the
+        // newer alone.
+        const answers = () => (secondRow()?.verbs() ?? [])
+            .filter(act => act.key.startsWith("verb:on:look:answer:s:"));
+        const aged = by => {
+            now.lookAnswers = Object.assign({}, now.lookAnswers,
+                { s: Object.assign({}, now.lookAnswers.s, { at: now.lookAnswers.s.at - by }) });
+        };
+        // Each held word given by a plain call: an optional call of one
+        // read from the stand-in's list crashed the shell here (2026-11-23).
+        const heard = (at, put, answer) => {
+            const then = Sessions.held[at];
+            if (typeof then === "function")
+                then(put, answer, true);
+        };
+        // An answer never sent, with no node connected, says so, its choices
+        // back, and never that it went.
+        now.lookAnswers = {};
+        const unsentFrom = answers();
+        Sessions.reaches = false;
+        (unsentFrom[0] ?? { run: () => {} }).run();
+        Sessions.reaches = true;
+        expect("an answer never sent says so, its choices back",
+            unsentFrom.length === 2
+                && secondRow()?.side === "Keep It not answered \u00b7 the node isn't connected"
+                && answers().length === 2,
+            JSON.stringify([unsentFrom.length, secondRow()?.side, answers().length]));
+        now.lookAnswers = {};
+        Sessions.holds = true;
+        Sessions.held = [];
+        const drawnBefore = answers();
+        if (drawnBefore.length > 0)
+            drawnBefore[0].run();
+        expect("an answer on its way, shown as given, its choices away, redrawn at its 5 s",
+            drawnBefore.length === 2 && secondRow()?.side === "answered Keep It"
+                && answers().length === 0 && now.answersDue > 0 && now.answersDue <= 5000,
+            JSON.stringify([drawnBefore.length, secondRow()?.side, answers().length,
+                now.answersDue]));
+        const heldFacts = (secondRow()?.drawer?.()?.facts ?? []).map(each => each.label);
+        expect("and its drawer still says each choice and what follows it",
+            heldFacts.includes("Keep It") && heldFacts.includes("Roll It Back"),
+            JSON.stringify(heldFacts));
+        const steersHeld = Sessions.steered.length;
+        if (drawnBefore.length > 1)
+            drawnBefore[1].run();
+        expect("a choice drawn before it, run while it's on its way, sends nothing",
+            Sessions.steered.length === steersHeld && Sessions.held.length === 1
+                && now.lookAnswers.s?.label === "Keep It",
+            JSON.stringify([Sessions.steered.length - steersHeld, now.lookAnswers.s]));
+        aged(60 * 60 * 1000);
+        expect("unheard an hour on, said so, its choices away still, nothing left to redraw",
+            secondRow()?.side === "Keep It not answered yet \u00b7 no answer"
+                && answers().length === 0 && now.answersDue === -1,
+            JSON.stringify([secondRow()?.side, answers().length, now.answersDue]));
+        heard(0, false, null);
+        expect("the node gone before saying, said so as it may yet come, its choices back",
+            secondRow()?.side
+                === "Keep It not answered yet \u00b7 the node went before saying it took it"
+                && answers().length === 2,
+            JSON.stringify([secondRow()?.side, answers().length]));
+        // An answer since replaced, as by a shell answered again, hears its
+        // late word change nothing.
+        Sessions.held = [];
+        now.lookAnswers = {};
+        const drawnAgain = answers();
+        if (drawnAgain.length > 0)
+            drawnAgain[0].run();
+        const newer = { label: "Roll It Back", at: Date.now(), sent: -1 };
+        now.lookAnswers = { s: newer };
+        heard(0, true, { steered: { machine: "here" } });
+        expect("a late word for an answer since replaced leaves the newer one alone",
+            JSON.stringify(now.lookAnswers.s) === JSON.stringify(newer),
+            JSON.stringify(now.lookAnswers.s));
+        Sessions.holds = false;
+        Sessions.held = [];
+        now.lookAnswers = {};
+        now.lookTexts = textsFirst;
         // Later cases count the steers the shell itself sends from none.
         Sessions.steered = Sessions.steered.slice(0, steeredBefore);
         now.lookAnswers = {};
@@ -2154,6 +2453,61 @@ ShellRoot {
             cell: null } }, "row:looks-history:t").run();
         expect("a terminal look done with naming no cell opens no session listing it",
             Sessions.wentTo === null, JSON.stringify(Sessions.wentTo?.address ?? null));
+        Sessions.wentTo = null;
+        // Go on a terminal look whose session is gone opens nothing, settles
+        // nothing and says so through the launcher's own toldGone, which
+        // holds Joel's keys back, never by opening it bare.
+        const textsGone = now.lookTexts;
+        const goneLook = { id: "g", file: "g.json", kind: "terminal", title: "Read G",
+            target: "", state: "waiting", session: "s-gone", address: "GONEGG",
+            quest: "QEST-G", cell: "GONEGG" };
+        now.lookTexts = Object.assign({}, textsGone, { "g.json": JSON.stringify(goneLook) });
+        const textGone = now.lookTexts["g.json"];
+        theLauncher.told = [];
+        theLauncher.intoAsked = "";
+        theLauncher.goneTold = 0;
+        theLauncher.goneMoved = [];
+        const openedGone = now.openLook(goneLook);
+        expect("Go on a gone session opens nothing",
+            openedGone === false && Sessions.wentTo === null,
+            JSON.stringify([openedGone, Sessions.wentTo?.address ?? null]));
+        expect("and leaves its look waiting as it was",
+            now.lookTexts["g.json"] === textGone && now.looksSettling["g.json"] === undefined,
+            JSON.stringify([now.lookTexts["g.json"], now.looksSettling["g.json"] ?? null]));
+        expect("and says so through the launcher's toldGone, as ended, never opening it bare",
+            theLauncher.goneTold === 1 && theLauncher.told.length === 0
+                && theLauncher.intoAsked === ""
+                && JSON.stringify(theLauncher.goneMoved) === "[false]",
+            JSON.stringify([theLauncher.goneTold, theLauncher.told, theLauncher.intoAsked,
+                theLauncher.goneMoved]));
+        now.lookTexts = textsGone;
+        theLauncher.goneTold = 0;
+        theLauncher.goneMoved = [];
+        now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
+            state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
+            cell: "GONEQQ" } }, "row:looks-history:q").run();
+        expect("a served quiet terminal look whose session is gone opens nothing and says so",
+            Sessions.wentTo === null && theLauncher.goneTold === 1
+                && JSON.stringify(theLauncher.goneMoved) === "[false]",
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneTold,
+                theLauncher.goneMoved]));
+        // One whose session is still held, on another quest now, says it has
+        // moved on, not that it has ended.
+        const runningBefore = Sessions.running;
+        Sessions.running = [{ address: "GONEQQ", title: "Elsewhere",
+            presence: { session: "s-gone", quest: "QEST-OTHER" } }];
+        theLauncher.goneMoved = [];
+        now.lookServed({ held: { id: "q", kind: "terminal", title: "Read Q", target: "",
+            state: "quiet", session: "s-gone", address: "GONEQQ", quest: "QEST-Q",
+            cell: "GONEQQ" } }, "row:looks-history:q").run();
+        expect("one whose session works on another quest now says it moved on, not gone",
+            Sessions.wentTo === null && JSON.stringify(theLauncher.goneMoved) === "[true]",
+            JSON.stringify([Sessions.wentTo?.address ?? null, theLauncher.goneMoved]));
+        Sessions.running = runningBefore;
+        theLauncher.goneMoved = [];
+        theLauncher.goneTold = 0;
+        theLauncher.told = [];
+        theLauncher.intoAsked = "";
         Sessions.wentTo = null;
         // As the shell makes one itself, the daemon not serving it.
         const textsBefore = now.lookTexts;

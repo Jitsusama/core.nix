@@ -226,6 +226,26 @@ impl<'a> Session<'a> {
         )
     }
 
+    /// The kind of want it has, whoever the want is put to, such as
+    /// "approval" or "question" ("want" where it names none); none where
+    /// it wants nothing. The node counts any cell with a want as needing
+    /// Joel, so a network's count reads this (networks.rs).
+    #[must_use]
+    pub fn wants(self) -> Option<&'a str> {
+        let wants = self
+            .presence()?
+            .get("wants")
+            .filter(|wants| is_set(wants))?;
+        Some(wants.get("kind").and_then(Value::as_str).unwrap_or("want"))
+    }
+
+    /// How it would stand were its want not Joel's, as one he put off
+    /// stands for its hour: parked, paused, in line, working or listening.
+    #[must_use]
+    pub fn stands_wanting_nothing(self, jobs: &[Value]) -> Stands {
+        standing::state(self.presence(), false, in_line(jobs, self.id()).is_some())
+    }
+
     /// How it stands as Joel looks for what waits on him: parked with its
     /// want his still open, it needs him, as For You lists it (wants.rs),
     /// so it wears his mark, counts, ranks and sorts first and is never

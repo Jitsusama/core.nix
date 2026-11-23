@@ -16,12 +16,14 @@ pub mod apps;
 mod balanced;
 mod broken;
 mod card;
+mod carried;
 mod cells;
 mod locked;
 mod misses;
 mod owner;
 mod pains;
 mod promised;
+pub mod queues;
 mod reports;
 pub mod rounds;
 pub mod spent;
@@ -33,9 +35,13 @@ pub mod unresolved;
 pub use balanced::balanced;
 pub use broken::{Main, broken, failed_in};
 pub use card::{card_if_fresh, card_median, merge_to_on};
+pub use carried::carried;
 pub use cells::{Quest, cells, mapped, mid_resume, quest};
 pub use locked::read as unlocked;
-pub use misses::{BLIND, HELD, UNREAD, UNRUN, UNSEEN, checked, held, hosts_started, ledger, said};
+pub use misses::{
+    BLIND, FINDINGS, HELD, UNREAD, UNRUN, UNSEEN, checked_beside, findings, held, held_for_good,
+    held_unseen, hosts_started, ledger, said,
+};
 pub use pains::{keeper, pains};
 pub use reports::{REPORTS_SINCE, Report, report, unasked};
 
@@ -55,6 +61,9 @@ pub enum Class {
     Ship,
     Cells,
     Clean,
+    /// The queues the work waits in, which never lead the drag: the worst
+    /// is asked apart, once a day (owing.rs).
+    Queues,
     /// Joel's pains, last: the hearer routes each to its owner itself.
     Pains,
 }
@@ -71,6 +80,7 @@ impl Class {
             Self::Ship => "ship",
             Self::Cells => "cell health",
             Self::Clean => "clean zones",
+            Self::Queues => "queues",
             Self::Pains => "his pains",
         }
     }
@@ -106,12 +116,13 @@ impl Measure {
 
 /// The measure to move this hour: the first class with one past its
 /// target, and within it the one furthest past. A merge's rounds past five
-/// can't move, so they are filed to its owner apart and never lead.
+/// can't move, so they are filed to its owner apart and never lead; nor do
+/// the queues, whose worst is asked apart once a day.
 #[must_use]
 pub fn drag(measures: &[Measure]) -> Option<&Measure> {
     measures
         .iter()
-        .filter(|m| !m.key.starts_with(rounds::FRUITLESS))
+        .filter(|m| !m.key.starts_with(rounds::FRUITLESS) && m.class != Class::Queues)
         .filter_map(|m| m.past().map(|past| (m, past)))
         .min_by(|(a, pa), (b, pb)| a.class.cmp(&b.class).then(pb.total_cmp(pa)))
         .map(|(m, _)| m)

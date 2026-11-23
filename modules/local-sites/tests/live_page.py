@@ -238,6 +238,9 @@ class Opened:
         )
         self.page = self.context.new_page()
         self.address = address
+        # Whether the skill's checks have opened the page's folds, after which
+        # its shift is theirs as much as the page's (see holds_every_pixel).
+        self.unfolded = False
         # Every file the tab asks for, and every socket it opens, from its first
         # load on, which keeps_to reads.
         self.asked: list[Request] = []
@@ -285,9 +288,32 @@ class Opened:
     def passes_the_skills_checks(self) -> None:
         """Hold the page to the web-design skill's checks, each finding nothing."""
         skill = Path(os.environ["WEB_SKILL"])
+        self.unfolded = True
         for check in PAGE_CHECKS:
             found = self.page.evaluate((skill / check).read_text())
             assert found == [], f"{check} at {self.size} in the {self.look} look found {found}"
+
+    def holds_every_pixel(self) -> None:
+        """Hold the page to the pixels, words and names probes: width, shift, type, contrast, names.
+
+        A page's test calls this once its page keeps to the rules, so each page
+        takes the probe as it's moved onto them (1HE06W's plan of 22 November
+        2026), rather than every page failing at once before it's moved. The
+        probe counts every layout shift since the load, waiting for the page
+        to go quiet, so call this once the page's first reading is drawn, as
+        its own wait for that says, and before anything presses, scrolls or
+        opens a fold, passes_the_skills_checks among them, whose layout.js
+        opens each one. Called sooner, a feed answering after half a second's
+        quiet lands unmeasured. Called after them, it refuses, rather than
+        name a shift the page never made.
+        """
+        assert not self.unfolded, (
+            "holds_every_pixel ran after passes_the_skills_checks, whose layout.js opened "
+            "every fold, so the shift it would count is theirs: call it first"
+        )
+        for probe in ("pixels.js", "words.js", "names.js"):
+            found = self.page.evaluate((Path(os.environ["WEB_SKILL"]) / probe).read_text())
+            assert found == [], f"{probe} at {self.size} in the {self.look} look found {found}"
 
     def keeps_to(self, budget: Budget) -> None:
         """Hold the drawn page to `budget`, then visit it again and find nothing sent twice.

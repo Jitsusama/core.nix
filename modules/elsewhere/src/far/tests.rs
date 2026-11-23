@@ -1,11 +1,12 @@
-use super::{
-    Heard, Missed, bring_back, crossing, listed, plain_quest, quoted, relay, script, travels,
-};
+use super::{Heard, Missed, bring_back, listed, plain_quest, quoted, script, travels, within_tree};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
 mod crossing;
 mod heard;
+mod leaving;
+mod sweeping;
+mod unpacking;
 
 pub(super) fn kind(setup: &str) -> Kind {
     Kind {
@@ -49,6 +50,25 @@ fn neither_secrets_nor_hidden_files_nor_what_s_excluded_travel() {
 }
 
 #[test]
+fn only_a_path_within_the_tree_is_read_from_it() {
+    for path in [
+        "/etc/passwd",
+        "",
+        "a//b",
+        "a/",
+        "../x",
+        "a/../b",
+        "./a",
+        "a/.",
+    ] {
+        assert!(!within_tree(path), "{path:?} was read as within the tree");
+    }
+    for path in ["a", "src/lib.rs", "a..b/c", "web/node_modules/a.js"] {
+        assert!(within_tree(path), "{path:?} was read as outside the tree");
+    }
+}
+
+#[test]
 fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     let command: Vec<String> = ["/nix/store/x-tla-rs/bin/tla-rs", "-config", "it's.cfg"]
         .map(str::to_owned)
@@ -56,6 +76,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
     let line = script(
         "QEST-20261115-ABC123",
         "7-9",
+        1 << 20,
         ".e",
         Path::new("a b"),
         &kind("export PATH=/far/bin:$PATH"),
@@ -65,6 +86,7 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
         "/quest-workspace/QEST-20261115-ABC123/handover/elsewhere/7-9\n",
         "work=\"${XDG_CACHE_HOME:-$HOME/.cache}\"/pi/agentic-harness.pi/quest-workspace/\
          QEST-20261115-ABC123/.e/7-9\n",
+        "bytes=1048576\n",
         "until arrived; do",
         "cd \"$work\"/'a b' || {\n",
         "  say 'elsewhere: refusing 7-9'\n  exit 77\n}\nsay 'elsewhere: running 7-9'\n",
@@ -82,7 +104,8 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
         script(
             "QEST-20261115-ABC123",
             "1",
-            "s",
+            0,
+            ".s",
             Path::new(""),
             &kind(""),
             &command
@@ -94,7 +117,8 @@ fn the_far_line_waits_for_the_files_then_runs_the_setup_and_the_job_by_name() {
         script(
             "QEST-20261115-ABC123",
             "1",
-            "s",
+            0,
+            ".s",
             Path::new(""),
             &kind(""),
             &command
@@ -153,38 +177,23 @@ fn a_word_is_quoted_only_when_a_shell_would_split_it() {
     );
 }
 
-#[test]
-fn a_name_a_share_keeps_home_crosses_marked_and_a_marked_one_twice() {
-    assert_eq!(
-        crossing("src/main.rs"),
-        "src/main.rs",
-        "a plain path changed"
-    );
-    assert_eq!(
-        crossing("lib/target/x.ts"),
-        "lib/target.elsewhere/x.ts",
-        "a build-named folder crossed bare"
-    );
-    assert_eq!(
-        crossing("web/node_modules/a.js"),
-        "web/node_modules.elsewhere/a.js",
-        "node_modules crossed bare"
-    );
-    assert_eq!(
-        crossing("notes.elsewhere"),
-        "notes.elsewhere.elsewhere",
-        "a name already marked would lose its own mark far"
-    );
-    assert_eq!(
-        crossing("targets/x"),
-        "targets/x",
-        "a name only like a build's was marked"
-    );
-}
-
 /// How long the far line waits for a job's files in these tests, in
 /// seconds, rather than the five minutes a real crossing gets.
 pub(super) const WAITS: u64 = 5;
+
+/// The slowest a job's files may cross at in these tests, in bytes a
+/// second, so a test can outlast its ceiling in seconds.
+pub(super) const SLOWEST: u64 = 100;
+
+/// The most of that wait one pass may spend in these tests, in seconds:
+/// no less than the slowest pass they make, three seconds over a slow
+/// `wc`, and inside `WAITS`, so a clock stepping on while nothing crosses
+/// is seen to spend no more.
+pub(super) const A_PASS_AT_MOST: u64 = 3;
+const _: () = assert!(
+    A_PASS_AT_MOST < WAITS,
+    "a pass must spend less than the wait"
+);
 
 /// How many files, and bytes, a share carries in these tests' far lines,
 /// so a test can pass them without making ten thousand files.
@@ -196,10 +205,10 @@ pub(super) fn said(home: &Path) -> Vec<u8> {
     std::fs::read(home.join("said")).unwrap()
 }
 
-/// The folder the far line's copies run in under `home`, the `s` within
+/// The folder the far line's copies run in under `home`, the `.s` within
 /// the quest's scratch that `far_line_in` names.
 pub(super) fn work(home: &Path) -> PathBuf {
-    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s")
+    home.join(".cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/.s")
 }
 
 /// The job's handover folder in a far run's `home`.
@@ -210,13 +219,29 @@ pub(super) fn handover(home: &Path) -> PathBuf {
     ))
 }
 
-/// Runs the far line for a job whose handover lists `list` over `files`,
-/// each a crossed path in the job's tree and its text, in a home of its
+/// What the near side left for a far line in these tests.
+#[derive(Clone, Copy)]
+pub(super) enum Left<'a> {
+    /// The files left as the near side leaves them, in archives.
+    Whole,
+    /// As `Whole`, but each archive at half its size until a second has
+    /// passed, as a share still writing it leaves it.
+    Short,
+    /// This list, with each file in the tree under its own path, as no
+    /// near side leaves them, for a list that is odd or never arrives.
+    Listed(&'a str),
+    /// As `Listed`, with the near side saying the files come to these
+    /// bytes, whatever the list says.
+    Sized(&'a str, u64),
+}
+
+/// Runs the far line for a job whose handover holds `files`, each a path
+/// in the job's tree and its text, left as `list` says, in a home of its
 /// own, and answers how it ended, what it said on stderr, and the home.
 /// It waits only `WAITS` for the files, so a list they never match ends
 /// quickly.
 pub(super) fn far_run(
-    list: &str,
+    list: Left,
     files: &[(&str, &str)],
     run: &str,
 ) -> (Option<i32>, String, PathBuf) {
@@ -225,7 +250,7 @@ pub(super) fn far_run(
 
 /// Runs the far line as `far_line_in` does, for a job at the tree's top.
 pub(super) fn far_line(
-    list: &str,
+    list: Left,
     files: &[(&str, &str)],
     run: &str,
     kind: &Kind,
@@ -239,10 +264,11 @@ pub(super) fn far_line(
 /// `meanwhile` to the job's tree a second after it starts, as a share
 /// still crossing would, with each of `programs`, a name and its script,
 /// ahead of the rest on its path, in the tree's `folder`. What it said
-/// for the near side to hear, on stdout, is left in the home's `said`.
+/// for the near side to hear, on stdout, is left in the home's `said`,
+/// and the signal it died by, if one ended it, in its `signal`.
 pub(super) fn far_line_in(
     folder: &Path,
-    list: &str,
+    list: Left,
     files: &[(&str, &str)],
     run: &str,
     kind: &Kind,
@@ -257,15 +283,9 @@ pub(super) fn far_line_in(
     ));
     let _ = std::fs::remove_dir_all(&home);
     let job = handover(&home);
-    // No tree at all when no file crosses, as a share carrying only files
-    // leaves it.
     std::fs::create_dir_all(&job).unwrap();
-    for (path, text) in files {
-        let into = job.join(super::TREE).join(path);
-        std::fs::create_dir_all(into.parent().unwrap()).unwrap();
-        std::fs::write(into, text).unwrap();
-    }
-    std::fs::write(job.join(super::LEFT), list).unwrap();
+    let tree = job.join(super::TREE);
+    let (bytes, still_crossing) = leave(list, files, &home, &job);
     let bin = home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     for (name, text) in programs {
@@ -282,20 +302,15 @@ pub(super) fn far_line_in(
         std::env::var("PATH").unwrap_or_default()
     );
     let command = ["sh", "-c", run].map(str::to_owned);
-    let waits = format!("-ge {}", super::CROSSES_WITHIN);
-    let line = script("QEST-20261115-ABC123", "1", "s", folder, kind, &command);
-    assert!(line.contains(&waits), "the far line's wait moved:\n{line}");
-    let line = line.replace(&waits, &format!("-ge {WAITS}"));
-    let most = format!(
-        "most_files={} most_bytes={}",
-        super::MOST_FILES,
-        super::MOST_BYTES
-    );
-    assert!(line.contains(&most), "the far line's totals moved:\n{line}");
-    let line = line.replace(
-        &most,
-        &format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
-    );
+    let line = quickened(&script(
+        "QEST-20261115-ABC123",
+        "1",
+        bytes,
+        ".s",
+        folder,
+        kind,
+        &command,
+    ));
     // The gate names dash, the strictest sh a far machine may have.
     let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
     let far = std::process::Command::new(sh)
@@ -307,12 +322,24 @@ pub(super) fn far_line_in(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
+    if !still_crossing.is_empty() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        for (part, whole) in &still_crossing {
+            std::fs::write(part, whole).unwrap();
+        }
+    }
     if let Some(meanwhile) = meanwhile {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        meanwhile(&job.join(super::TREE));
+        meanwhile(&tree);
     }
     let output = far.wait_with_output().unwrap();
     std::fs::write(home.join("said"), &output.stdout).unwrap();
+    let signal = std::os::unix::process::ExitStatusExt::signal(&output.status);
+    std::fs::write(
+        home.join("signal"),
+        signal.map(|signal| signal.to_string()).unwrap_or_default(),
+    )
+    .unwrap();
     // Its own words, then what it said for the near side to hear.
     let said = [output.stderr, output.stdout].concat();
     (
@@ -322,18 +349,99 @@ pub(super) fn far_line_in(
     )
 }
 
-#[test]
-fn what_is_left_is_listed_at_the_size_its_copy_came_to() {
-    let root = scratch("left");
-    std::fs::write(root.join("x"), "xyz").unwrap();
-    let job = root.join("job");
-    super::left(&root, ["x"], &job).unwrap();
-    assert_eq!(
-        std::fs::read_to_string(job.join(super::LEFT)).unwrap(),
-        "3\tx\nend\n",
-        "a file was listed at the size it was gathered at, not the one that crossed"
-    );
-    let _ = std::fs::remove_dir_all(&root);
+/// Leaves `files` in the `job` folder of `home` as `left` says, and
+/// answers what the near side says they come to (what it archived, or for
+/// a list of its own, what `Sized` says, else the sizes listed that are
+/// numbers, else, as for a list still to come, the most a share carries)
+/// and each archive left short, with its whole, for `far_line_in` to
+/// finish crossing.
+fn leave(
+    left: Left,
+    files: &[(&str, &str)],
+    home: &Path,
+    job: &Path,
+) -> (u64, Vec<(PathBuf, Vec<u8>)>) {
+    let tree = job.join(super::TREE);
+    let mut still_crossing = Vec::new();
+    if let Left::Listed(list) | Left::Sized(list, _) = left {
+        for (path, text) in files {
+            let into = tree.join(path);
+            std::fs::create_dir_all(into.parent().unwrap()).unwrap();
+            std::fs::write(into, text).unwrap();
+        }
+        std::fs::write(job.join(super::LEFT), list).unwrap();
+        let bytes: u64 = list
+            .lines()
+            .filter_map(|line| line.split('\t').next()?.parse::<u64>().ok())
+            .sum();
+        let bytes = match left {
+            Left::Sized(_, bytes) => bytes,
+            _ if bytes == 0 => SHARE_BYTES,
+            _ => bytes,
+        };
+        return (bytes, still_crossing);
+    }
+    let source = home.join("source");
+    for (path, text) in files {
+        let into = source.join(path);
+        std::fs::create_dir_all(into.parent().unwrap()).unwrap();
+        std::fs::write(into, text).unwrap();
+    }
+    let bytes = super::left(&source, files.iter().map(|(path, _)| *path), job).unwrap();
+    // No tree at all when no file crosses, as a share carrying only
+    // files leaves it.
+    let _ = std::fs::remove_dir(&tree);
+    if matches!(left, Left::Short) {
+        for part in std::fs::read_dir(&tree).unwrap() {
+            let part = part.unwrap().path();
+            let whole = std::fs::read(&part).unwrap();
+            // Short of a block's end, so tar can't unpack what's
+            // there as a whole archive whose close is still to come.
+            std::fs::write(&part, &whole[..whole.len() / 2 - 1]).unwrap();
+            still_crossing.push((part, whole));
+        }
+    }
+    (bytes, still_crossing)
+}
+
+/// The far `line` with these tests' waits and totals for a real
+/// crossing's: `WAITS`, `SLOWEST`, `A_PASS_AT_MOST`, `SHARE_FILES` and
+/// `SHARE_BYTES`.
+fn quickened(line: &str) -> String {
+    let mut line = line.to_owned();
+    for (real, quick) in [
+        (
+            format!("-ge {}", super::CROSSES_WITHIN),
+            format!("-ge {WAITS}"),
+        ),
+        (
+            format!(
+                "most=$(({} + bytes / {}))",
+                super::CROSSES_WITHIN,
+                super::CROSSES_AT
+            ),
+            format!("most=$(({WAITS} + bytes / {SLOWEST}))"),
+        ),
+        (
+            format!("-gt {0} ] && step={0}", super::steps::A_PASS_SPENDS_AT_MOST),
+            format!("-gt {A_PASS_AT_MOST} ] && step={A_PASS_AT_MOST}"),
+        ),
+        (
+            format!(
+                "most_files={} most_bytes={}",
+                super::MOST_FILES,
+                super::MOST_BYTES
+            ),
+            format!("most_files={SHARE_FILES} most_bytes={SHARE_BYTES}"),
+        ),
+    ] {
+        assert!(
+            line.contains(&real),
+            "the far line no longer holds {real}:\n{line}"
+        );
+        line = line.replace(&real, &quick);
+    }
+    line
 }
 
 #[test]
@@ -344,7 +452,7 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
     let mut kind = kind("");
     kind.brings_back = vec!["early".into(), "out".into()];
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir early out && printf bb > early/b && \
          printf a > out/a && printf ccc > out/c && ln -s a out/l",
@@ -455,7 +563,7 @@ fn the_far_side_lists_what_a_share_can_t_hold_but_never_copies_it() {
     let mut kind = kind("");
     kind.brings_back = vec!["big".into(), "out".into()];
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         &format!(
             "mkdir big out && printf a > out/a && \
@@ -527,43 +635,6 @@ fn a_file_that_won_t_land_is_said_with_the_lost_and_the_rest_land() {
         Some("b"),
         "one that failed to land stopped the rest"
     );
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
-fn the_near_side_waits_for_each_file_at_its_listed_size() {
-    let (code, err, home) = far_run(
-        "1\tx\nend\n",
-        &[("x", "x")],
-        "mkdir out && printf a > out/a",
-    );
-    assert_eq!(code, Some(0), "the job didn't run: {err}");
-    let job = handover(&home);
-    // The far list says out/a is longer than the copy that crossed.
-    std::fs::write(job.join(super::BROUGHT), "5\tout/a\nend\n").unwrap();
-    let into = home.join("near");
-    let landed = bring_back(&job, &into, &["out".into()], 1);
-    assert!(
-        landed
-            .as_ref()
-            .is_err_and(|why| why.why().contains("didn't cross")),
-        "a copy short of its listed size was taken: {landed:?}"
-    );
-    assert!(!into.join("out/a").exists(), "a short copy landed");
-    // A link where the copy should be, to a file of the listed size, is
-    // no copy at all.
-    let secret = home.join("secret");
-    std::fs::write(&secret, "12345").unwrap();
-    std::fs::remove_file(job.join(super::BACK).join("0")).unwrap();
-    std::os::unix::fs::symlink(&secret, job.join(super::BACK).join("0")).unwrap();
-    let landed = bring_back(&job, &into, &["out".into()], 1);
-    assert!(
-        landed
-            .as_ref()
-            .is_err_and(|why| why.why().contains("didn't cross")),
-        "a link in the handover was followed: {landed:?}"
-    );
-    assert!(!into.join("out/a").exists(), "a linked file landed");
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -710,81 +781,4 @@ fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
     names.sort();
     assert_eq!(names, ["a", "b"], "landing left a file of its own behind");
     let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
-fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
-    // Marks inside marks, and one name marked once beside it marked
-    // twice, each landing at its own name.
-    let (code, err, home) = far_run(
-        "2\tlib/target.elsewhere/x.ts\n1\tnotes.elsewhere.elsewhere\n\
-         1\ta/target.elsewhere/node_modules.elsewhere/y\n\
-         1\ttarget.elsewhere.elsewhere/z\n1\ttarget.elsewhere/w\nend\n",
-        &[
-            ("lib/target.elsewhere/x.ts", "ok"),
-            ("notes.elsewhere.elsewhere", "!"),
-            ("a/target.elsewhere/node_modules.elsewhere/y", "1"),
-            ("target.elsewhere.elsewhere/z", "2"),
-            ("target.elsewhere/w", "3"),
-        ],
-        "cat lib/target/x.ts notes.elsewhere a/target/node_modules/y \
-         target.elsewhere/z target/w > ../seen",
-    );
-    assert_eq!(
-        code,
-        Some(0),
-        "a job over a file under target didn't run: {err}"
-    );
-    assert_eq!(
-        std::fs::read_to_string(work(&home).join("seen"))
-            .ok()
-            .as_deref(),
-        Some("ok!123"),
-        "a marked file didn't land at its own name"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-    // A tree no near side writes, naming one path twice, is refused
-    // rather than nesting one inside the other.
-    let (code, err, home) = far_run(
-        "1\tx/a\n1\tx.elsewhere/b\nend\n",
-        &[("x/a", "1"), ("x.elsewhere/b", "2")],
-        "true",
-    );
-    assert!(
-        code == Some(77) && err.contains("names") && err.contains("twice"),
-        "a tree naming x twice wasn't refused ({code:?}): {err}"
-    );
-    // So --there ends refused, not as a far side mycelium never reached.
-    let heard = relay(said(&home).as_slice(), "1");
-    assert_eq!(heard, Heard::Refused, "a far refusal wasn't said: {err}");
-    let ends = heard.unstarted().0;
-    assert_eq!(
-        ends,
-        terminal_kit::Exit::Refused,
-        "a far refusal read as {ends:?}"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-    for named in ["../out", "/abs/out", "a/./b", "..", "a/..", ""] {
-        let (code, err, home) = far_run(&format!("2\t{named}\nend\n"), &[("out", "no")], "true");
-        assert!(
-            code == Some(77) && err.contains("outside its folder"),
-            "a list naming {named:?} wasn't refused ({code:?}): {err}"
-        );
-        assert!(
-            !work(&home).join("out").exists()
-                && !work(&home).join("1").exists()
-                && !handover(&home).join(super::TREE).exists(),
-            "a refused job left a file outside its folder, or its copies, for {named:?}"
-        );
-        let _ = std::fs::remove_dir_all(&home);
-    }
-    // A name that is only a dot or two once its mark comes off.
-    for named in ["..elsewhere", "...elsewhere"] {
-        let (code, err, home) = far_run(&format!("1\t{named}\nend\n"), &[(named, "x")], "true");
-        assert!(
-            code == Some(77) && err.contains(&format!("/{named}, outside its folder")),
-            "a tree naming {named} wasn't refused ({code:?}): {err}"
-        );
-        let _ = std::fs::remove_dir_all(&home);
-    }
 }

@@ -81,7 +81,10 @@
     "TalkLine.js"
     "Told.js"
   ];
-  "SetWords.js" = [ "Commands.js" ];
+  "SetWords.js" = [
+    "Commands.js"
+    "launcher/Presented.js"
+  ];
   "SpendWatch.qml" = [ "SpendWatch.js" ];
   "StatusLine.qml" = [ "Bands.js" ];
   "TalkLine.js" = [
@@ -151,6 +154,7 @@
     "Fuzzy.js"
     "Hearing.js"
     "launcher/Order.js"
+    "launcher/Presented.js"
     "launcher/Seen.js"
   ];
   "launcher/Explainer.qml" = [ "launcher/Explaining.js" ];
@@ -178,6 +182,7 @@
   "launcher/Light.qml" = [ "launcher/Numbers.js" ];
   "launcher/Looks.js" = [
     "launcher/ForYou.js"
+    "launcher/LookForm.js"
     "launcher/Order.js"
   ];
   "launcher/Machine.js" = [ "launcher/Numbers.js" ];
@@ -217,6 +222,7 @@
     "launcher/ForYouFilter.js"
     "launcher/Here.js"
     "launcher/Lately.js"
+    "launcher/LookForm.js"
     "launcher/Looks.js"
     "launcher/Moment.js"
     "launcher/NeedsYou.js"
@@ -276,6 +282,7 @@
     "launcher/Beneath.js"
     "launcher/Found.js"
     "launcher/Moved.js"
+    "launcher/Presented.js"
     "launcher/ReadyRows.js"
   ];
   "launcher/RealmMachines.js" = [
@@ -344,6 +351,7 @@
     "Fuzzy.js"
     "launcher/ActForms.js"
     "launcher/Order.js"
+    "launcher/Presented.js"
     "launcher/ReadyRows.js"
     "launcher/WirelessPlate.js"
   ];

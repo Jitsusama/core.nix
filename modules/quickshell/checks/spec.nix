@@ -34,6 +34,7 @@
       ${copied [
         "Daemon.qml"
         "Fuzzy.js"
+        "Options.qml"
         "Words.qml"
         "launcher/Provider.qml"
         "launcher/ReadyRows.qml"

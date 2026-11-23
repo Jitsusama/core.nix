@@ -7,16 +7,20 @@
 //! its owner in the loop's ledger, due a day on; says the next hour
 //! whether it moved; and sends the card to the orchestrator. A miss Joel
 //! found himself outranks every figure, and stays open until a check
-//! that would have caught it merges.
+//! that would have caught it merges. The queues the work waits in show
+//! apart, and the worst is asked for its next change once a day.
 //!
 //! This file reads the measures and runs the hour; `card` composes what it
-//! says and keeps, and `owing` files its drag with each owner.
+//! says and keeps, `owing` files its drag with each owner, `records`
+//! reads the queues' records, and `reviews` the harness's review records.
 
 mod card;
 mod lines;
 mod measures;
 mod moved;
 mod owing;
+mod records;
+mod reviews;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -29,13 +33,14 @@ use jiff::tz::TimeZone;
 use terminal_kit::Failure;
 
 use crate::findings;
-use crate::mesh::Mesh;
+use crate::mesh::{Mesh, Presence, Rosters, running};
 use crate::tracking::Tracking;
 use crate::{DAY, axes, clock, command, failed, folders, message, now_ms, write_whole, wrongly};
 use card::{Kept, compose};
 use measures::{Class, Measure};
 use moved::{HARNESS, moved};
 use owing::file;
+use records::{RECORD_READ, aboard, tail};
 
 /// Who moves the measures no file names an owner for: the merge net's
 /// rules and its quarantine are cadence's keeper's, the net that finds a
@@ -49,7 +54,8 @@ const BUMPS: &str = "0FX11G";
 /// orchestrator's; one without `--to` is a look, keeping nothing. Each
 /// checkout is another repository whose main says which of the misses'
 /// checks merged, beside core's and the harness's; each realm's node says
-/// whether a machine is crowded beside one with room.
+/// whether a machine is crowded beside one with room, and where its
+/// sessions run.
 pub fn run(mut args: impl Iterator<Item = String>) -> Result<(), Failure> {
     let mut to = None;
     let mut checkouts = Vec::new();
@@ -93,6 +99,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         now,
         checkouts,
         &mut kept.fetched,
+        to,
     )?;
     for m in measures
         .iter_mut()
@@ -127,6 +134,7 @@ fn hour(to: Option<&str>, checkouts: &[String], realms: &[String]) -> io::Result
         let quests = quests();
         // The kit's reader, which every tool matching mycelium's names shares.
         let here = terminal_kit::environment::machine();
+        measures.push(measures::carried(&sessions, &answers, &here));
         measures.extend(measures::cells(
             &sessions,
             quests.as_deref(),
@@ -205,8 +213,9 @@ fn card_to<'a>(to: &'a str, keeper: Option<&'a str>) -> Vec<(&'a str, &'static s
 }
 
 /// Reads every measure from the machine: the orchestrator's misses and
-/// asks, the net's quarantine, reverts and results, the tick's card, the
-/// three mains, code health's hourly read, and the realm's balance.
+/// asks, the work system's findings on the mesh, the net's quarantine,
+/// reverts and results, the tick's card, the three mains, code health's
+/// hourly read, and the realm's balance.
 fn gather(
     folder: &Path,
     state_home: &Path,
@@ -214,6 +223,7 @@ fn gather(
     now: i64,
     checkouts: &[String],
     fetched: &mut Vec<i64>,
+    orchestrator: Option<&str>,
 ) -> io::Result<Vec<Measure>> {
     let text = |path: &Path| fs::read_to_string(path).unwrap_or_default();
     let mission = state_home.join("mission");
@@ -231,13 +241,19 @@ fn gather(
     let card_text = fresh_card(folder, now);
     let [core_log, harness_log, machine_log] = axes::repository::mains(folder, now);
     let asks = text(&mission.join("asks.jsonl"));
+    let switches = text(&state_home.join("integration/switches.jsonl"));
+    // The work system's findings count against their owners, and one
+    // naming none is the orchestrator's to assign.
+    let findings = measures::findings(
+        &state_home.join("pi/agentic-harness.pi"),
+        folder,
+        now,
+        orchestrator,
+    );
+    let (misses, found) =
+        measures::checked_beside(misses, folder, checkouts, &switches, findings.as_ref(), now)?;
     let mut all = vec![
-        measures::checked(
-            misses,
-            folder,
-            checkouts,
-            &text(&state_home.join("integration/switches.jsonl")),
-        )?,
+        misses,
         measures::slips(&asks, now, Tracking::His),
         measures::to_first_slice(&asks, now, Tracking::His),
         measures::slips(&asks, now, Tracking::Derived),
@@ -253,6 +269,7 @@ fn gather(
         ),
         landed(&core_log, &harness_log, &machine_log, now),
     ];
+    all.extend(found);
     all.extend(rounds_per_merge(
         state_home,
         &core,
@@ -288,17 +305,36 @@ fn gather(
     let keeper = measures::keeper(routes.as_deref());
     let owner = keeper.as_deref().unwrap_or(measures::ASKS);
     all.push(measures::pains(pains.as_deref(), now, owner));
+    let outcomes = tail(
+        &state_home.join("pi/agentic-harness.pi/priority-workflow/outcomes.jsonl"),
+        RECORD_READ,
+    );
+    let sends = tail(&state_home.join("nix-offload/there.jsonl"), RECORD_READ);
+    let train = state_home.join("net/train");
+    let landed = tail(&train.join("landed.jsonl"), RECORD_READ);
+    let aboard = aboard(&train.join("riders"));
+    all.extend(measures::queues::queues(
+        &measures::queues::Records {
+            outcomes: outcomes.as_deref(),
+            sends: sends.as_deref(),
+            landed: landed.as_deref(),
+            aboard: aboard.as_deref(),
+        },
+        now,
+    ));
     Ok(all)
 }
 
 /// The council rounds each change merged to core's and the harness's
-/// mains in the last day took, from the harness's review runs and the
-/// fixes their findings led to, reading only the records written since
+/// mains in the last day took, from the harness's review runs, those it
+/// mirrors from other machines under `runs-from`, and the fixes their
+/// findings led to, reading only the records written since
 /// the oldest round that could count, with who landed each change from
 /// the mesh's landing notes of the last day, read only when a merge is to
-/// be filed. Each note's sender is taken to the quest its presence works
-/// on, as the spend measure does, since a session can end before its
-/// drag is due while its quest's cell answers.
+/// be filed. A merge's rounds are owed to the session that merged it while
+/// it is there, running or parked, since a quest's short id reaches the
+/// quest's first session; once it has ended, to the quest its presence
+/// worked on, whose cell answers for it.
 fn rounds_per_merge(
     state_home: &Path,
     core_git: &Path,
@@ -322,36 +358,44 @@ fn rounds_per_merge(
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(s)
     });
     let review = state_home.join("pi/agentic-harness.pi/review");
-    let written = |folder: &str| -> Vec<String> {
-        fs::read_dir(review.join(folder))
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|entry| {
-                entry
-                    .metadata()
-                    .and_then(|m| m.modified())
-                    .is_ok_and(|at| at >= since)
-            })
-            .filter_map(|entry| fs::read_to_string(entry.path()).ok())
-            .collect()
-    };
+    let here = reviews::rounds(&review.join("runs"), since);
+    // One folder for each machine whose rounds the harness mirrors here.
+    let mirrored = reviews::mirrored(&review.join("runs-from"), since);
+    let fixes = reviews::fixes(&review.join("fixes"), since);
+    // A trouble names files a mirror chose, so a name holding a newline
+    // could otherwise write a journal line that reads as cadence's own.
+    for trouble in [&here, &mirrored, &fixes].iter().flat_map(|r| &r.trouble) {
+        eprintln!(
+            "cadence: rounds: {}",
+            trouble.replace(char::is_control, "?")
+        );
+    }
     let landed = || {
         let mesh = Mesh {
             root: state_home.join("pi/agentic-harness.pi"),
         };
         let notes = mesh.sent_since((now - DAY) * 1000);
         let presences = mesh.all();
-        let mut landed = BTreeMap::new();
-        for (quest, changes) in measures::spent::landed_by(
+        let boot = fs::read_to_string("/proc/sys/kernel/random/boot_id")
+            .map(|b| b.trim().to_owned())
+            .unwrap_or_default();
+        let rosters = mesh.rostered(now);
+        let there = |address: &str| {
+            presences
+                .iter()
+                .filter(|p| p.addresses.iter().any(|a| a == address))
+                .max_by_key(|p| p.at.to_string())
+                .is_some_and(|p| {
+                    reachable(p, &boot, &rosters, |pid| {
+                        Path::new(&format!("/proc/{pid}")).exists()
+                    })
+                })
+        };
+        landed_by_session(
             notes.iter().map(|m| (m.from.as_str(), m.text.as_str())),
+            there,
             |address| measures::spent::quest_of(&presences, address),
-        ) {
-            for change in changes {
-                landed.insert(change, quest.clone());
-            }
-        }
-        landed
+        )
     };
     let mains = [
         Main {
@@ -367,8 +411,9 @@ fn rounds_per_merge(
     ];
     rounds(
         &mains,
-        &written("runs"),
-        &written("fixes"),
+        &here,
+        &mirrored,
+        &fixes,
         landed,
         now,
         measures::ASKS,
@@ -539,6 +584,32 @@ fn today(now: i64) -> String {
         .unwrap_or_default()
 }
 
+/// Each change the mesh's landing notes, given as sender and text, say
+/// landed, beside whom its rounds are owed: the session that merged it,
+/// which the mesh sends the note from, while it is `there`, since a
+/// quest's short id reaches the quest's first session, not the one that
+/// ran them; else the quest it worked on, by `quest_of`, which outlives it.
+fn landed_by_session<'a>(
+    notes: impl IntoIterator<Item = (&'a str, &'a str)>,
+    there: impl Fn(&str) -> bool,
+    quest_of: impl Fn(&str) -> String,
+) -> BTreeMap<String, String> {
+    let owed = |session: &str| {
+        if there(session) {
+            session.to_owned()
+        } else {
+            quest_of(session)
+        }
+    };
+    let mut landed = BTreeMap::new();
+    for (session, changes) in measures::spent::landed_by(notes, owed) {
+        for change in changes {
+            landed.insert(change, session.clone());
+        }
+    }
+    landed
+}
+
 /// A measure for the card's and the owing's tests, said as "`key` said"
 /// and owned by `OWNER`.
 #[cfg(test)]
@@ -552,6 +623,28 @@ fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
         owner: "OWNER".to_owned(),
         behind: Vec::new(),
     }
+}
+
+/// Whether the session `presence` describes can still be told of a merge's
+/// rounds: running in this `boot` and held by its host, as `running` says,
+/// since a pid from another boot may name some other process now; or
+/// parked where it will start again: on its host's roster, read, which the
+/// host resumes, or, held by no host, parked in this boot, since its
+/// holder from an earlier one is gone. A host with no roster to read can't
+/// say it holds one parked, so its rounds go to its quest instead.
+fn reachable(
+    presence: &Presence,
+    boot: &str,
+    rosters: &Rosters,
+    process_exists: impl Fn(u32) -> bool,
+) -> bool {
+    let resumes = match &presence.hosted {
+        Some(hosted) => rosters
+            .holders(&presence.session)
+            .contains(&hosted.host.as_str()),
+        None => presence.owner.as_ref().and_then(|o| o.boot_id.as_deref()) == Some(boot),
+    };
+    (presence.state == "parked" && resumes) || running(presence, boot, rosters, process_exists)
 }
 
 /// The changes the three mains landed in the hour, shown unjudged: an
@@ -576,6 +669,30 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_merges_rounds_go_to_the_session_that_merged_it_not_its_quest() {
+        // 6EAC3DA6 works on ZINAWZ, whose short id reaches another session.
+        let note = "6EAC3DA6 landed core.nix#6020, Keep the Shaper's Queues. \
+                    Said by the mesh; feedback to 6EAC3DA6.";
+        let quest_of = |address: &str| {
+            if address == "6EAC3DA6" {
+                "ZINAWZ".to_owned()
+            } else {
+                address.to_owned()
+            }
+        };
+        assert_eq!(
+            landed_by_session([("6EAC3DA6", note)], |a| a == "6EAC3DA6", quest_of),
+            BTreeMap::from([("core.nix#6020".to_owned(), "6EAC3DA6".to_owned())]),
+            "a merge's rounds went to someone other than the session that merged it"
+        );
+        assert_eq!(
+            landed_by_session([("6EAC3DA6", note)], |a| a != "6EAC3DA6", quest_of),
+            BTreeMap::from([("core.nix#6020".to_owned(), "ZINAWZ".to_owned())]),
+            "a merge's rounds went to a session that has ended rather than its quest"
+        );
+    }
+
+    #[test]
     fn the_card_asks_the_wish_lists_keeper_besides_telling_the_orchestrator() {
         assert_eq!(
             card_to("ORCH", Some("KEEPER")),
@@ -584,6 +701,48 @@ mod tests {
         assert_eq!(card_to("ORCH", Some("ORCH")), [("ORCH", "fyi")], "once");
         assert_eq!(card_to("ORCH", None), [("ORCH", "fyi")]);
         assert_eq!(card_to("ORCH", Some("")), [("ORCH", "fyi")]);
+    }
+
+    #[test]
+    fn a_merging_session_is_there_only_where_it_can_take_a_turn() {
+        // A parked session's pi has exited, so only a busy one's runs.
+        let presence = |state: &str, boot: &str, hosted: bool| -> Presence {
+            let pid = if state == "parked" { 8 } else { 7 };
+            let mut said = serde_json::json!({
+                "session": "s1",
+                "addresses": ["AB12"],
+                "state": state,
+                "owner": {"pid": pid, "bootId": boot},
+            });
+            if hosted {
+                said["hosted"] = serde_json::json!({"host": "h", "conversation": "c"});
+            }
+            serde_json::from_value(said).expect("a presence the test writes")
+        };
+        let holding = |held: &[&str]| {
+            Rosters(BTreeMap::from([(
+                "h".to_owned(),
+                Some(held.iter().map(|s| (*s).to_owned()).collect()),
+            )]))
+        };
+        let (held, dropped) = (holding(&["s1"]), holding(&[]));
+        let torn = Rosters(BTreeMap::from([("h".to_owned(), None)]));
+        let up = |pid: u32| pid == 7;
+        let cases = [
+            ("busy", "now", false, &held, true, "running here"),
+            ("busy", "then", false, &held, false, "from another boot"),
+            ("busy", "now", true, &held, true, "running on its host"),
+            ("busy", "now", true, &dropped, false, "its host dropped it"),
+            ("parked", "now", false, &held, true, "parked this boot"),
+            ("parked", "then", false, &held, false, "before a reboot"),
+            ("parked", "then", true, &held, true, "on its host's roster"),
+            ("parked", "now", true, &dropped, false, "off its roster"),
+            ("parked", "then", true, &torn, false, "its roster unread"),
+        ];
+        for (state, boot, hosted, rosters, there, why) in cases {
+            let presence = presence(state, boot, hosted);
+            assert_eq!(reachable(&presence, "now", rosters, up), there, "{why}");
+        }
     }
 
     #[test]

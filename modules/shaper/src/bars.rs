@@ -18,7 +18,7 @@
 //! as the ceiling arms at 01:12 on 17 November held it at 9.5 and then
 //! 8.0 Mb/s, which read as two breaches of the controller's, and a
 //! network's own ceiling holds it so for good. A second held at a
-//! ceiling, a trial's or its network's, and a fall to it, are the
+//! ceiling, a trial's, its network's or its house's, and a fall to it, are the
 //! ceiling's: counted apart and judged no further. A cut under the
 //! ceiling is still the controller's.
 
@@ -86,8 +86,8 @@ pub struct Bar {
     /// holds the whole anchor.
     pub busy_s: u64,
     pub busy_hold: Option<f64>,
-    /// Seconds the upload was held at a ceiling, a trial's or its
-    /// network's: the ceiling's doing, so none of the rest counts them.
+    /// Seconds the upload was held at a ceiling, a trial's, its network's
+    /// or its house's: the ceiling's doing, so none of the rest counts them.
     pub ceiling_s: u64,
 }
 

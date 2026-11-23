@@ -153,6 +153,58 @@
         && !delegated laptop
       );
 
+  # A unit the account's manager starts opens as many files as a login
+  # shell does. Left to systemd's soft 1024, a git fetch in a transient unit
+  # ran out in a repository of 265 packs and then called a sound object
+  # corrupt, though the same command worked in a shell. systemd reads a
+  # bare number as both limits and "soft:hard" as each, either of them a
+  # count or infinity. The hard limit has to stay at or above the 524288
+  # the manager itself holds, or every unit would lose what it may raise
+  # itself to, and the soft one has to match it. A count is written as
+  # plain decimal of at most 18 digits: a leading zero may read as octal
+  # or be refused, and a longer count would overflow Nix's integers and
+  # stop evaluation rather than fail the check. The check holds the rule
+  # itself to the settings it must take and refuse, so a looser rule
+  # fails here too.
+  a-unit-opens-as-many-files-as-a-shell =
+    let
+      fits =
+        said:
+        let
+          limit = "([1-9][0-9]{0,17}|infinity)";
+          parts = builtins.match "${limit}(:${limit})?" said;
+          soft = lib.elemAt parts 0;
+          hard = lib.elemAt parts 2;
+          ceiling = if hard == null then soft else hard;
+        in
+        parts != null && soft == ceiling && (ceiling == "infinity" || lib.toInt ceiling >= 524288);
+      takes = [
+        "524288:524288"
+        "524288"
+        "1048576:1048576"
+        "infinity"
+        "infinity:infinity"
+      ];
+      refuses = [
+        "65536"
+        "65536:65536"
+        "524287:524287"
+        "1024:524288"
+        "65536:524288"
+        "524288:infinity"
+        "infinity:524288"
+        "0524288:0524288"
+        "1000000000000000000000:1000000000000000000000"
+        ""
+        "abc"
+        "0"
+      ];
+      said = toString (graphical.config.systemd.user.settings.Manager.DefaultLimitNOFILE or "");
+    in
+    holds "a-unit-opens-as-many-files-as-a-shell"
+      "The account's units start with a soft open-files limit below their hard one, or a hard one below the manager's 524288, or the rule no longer takes and refuses what it should."
+      (fits said && lib.all fits takes && !(lib.any fits refuses));
+
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes
   # one wait, and not his programs making each other wait.
@@ -539,17 +591,38 @@
   # systemd-run, in front of a stand-in that says what it was given, adds
   # --slice-inherit for an agent's --user call alone: not Joel's terminal
   # or launcher, nor a call naming a slice, nor one to the system manager.
-  # One from agents' places in jobs.slice, jobs.service and the spawners'
-  # scopes, is given jobs-work.slice instead.
+  # One from agents' places, jobs.service and the spawners' scopes in
+  # jobs.slice and pi's host and conversation units in agents.slice, is
+  # given jobs-work.slice instead. Only systemd-run's own options are read,
+  # never the command's, bundled and shortened as its parser takes them, by
+  # a table the wrapper is built only once it holds to the options of the
+  # systemd it wraps, nixpkgs' here, and isn't built without: given another
+  # systemd, as a machine's own patched one, it holds the table to that one.
   an-agents-run-stays-in-its-slice =
     let
       run = pkgs.callPackage ./systemd-run.nix {
         real = "${pkgs.writeShellScript "said" ''echo "$*"''}";
         cgroup = "cgroup";
       };
+      patched = pkgs.runCommandLocal "a-patched-systemd" {
+        inherit (pkgs.systemd) version;
+      } "mkdir $out";
+      # A regex may not name a store path, so the stand-in's is matched as text.
+      patchedRun = builtins.unsafeDiscardStringContext "${patched}/bin/systemd-run";
+      heldToPatched = lib.hasInfix patchedRun (
+        (pkgs.callPackage ./systemd-run.nix {
+          systemd = patched;
+          real = "/x";
+          cgroup = "cgroup";
+        }).drvAttrs.holds.drvAttrs.buildCommand or ""
+      );
     in
-    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { } ''
-      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run}
+    assert lib.assertMsg (run.drvAttrs ? holds) "systemd-run is built without its options' hold";
+    assert lib.assertMsg heldToPatched "systemd-run's hold isn't to the systemd it wraps";
+    pkgs.runCommandLocal "an-agents-run-stays-in-its-slice" { nativeBuildInputs = [ pkgs.jq ]; } ''
+      ${pkgs.bash}/bin/bash ${./systemd-run-test.sh} ${lib.getExe run} \
+        ${./systemd-run-options.txt} ${./systemd-run-options-hold.sh} \
+        ${pkgs.systemd}/bin/systemd-run
       touch $out
     '';
 

@@ -7,7 +7,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use super::{Merging, Rider, alight, hub, slug_of, subject};
+use super::{Left, Merging, Rider, hub, leave, slug_of, subject};
 use crate::state::short;
 
 /// An open pull request into main from one of the repository's own
@@ -102,7 +102,7 @@ pub fn aboard(
                     "merge-net: {} steps off the train: {why}",
                     short(&rider.head)
                 );
-                alight(root, &rider.head);
+                leave(root, &rider.head, Left::Off);
             }
             (Boarding::Rides, Some(pull)) if fetched() => mergings.push(Merging {
                 number: pull.number,
@@ -115,7 +115,7 @@ pub fn aboard(
                     "merge-net: {} steps off the train: its pull request moved on or closed",
                     short(&rider.head)
                 );
-                alight(root, &rider.head);
+                leave(root, &rider.head, Left::Off);
             }
         }
     }

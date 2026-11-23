@@ -47,11 +47,12 @@
 //! A rider that conflicts, or that rode a failed candidate alone, falls:
 //! `train/fell/<head>` says why, and `ready` runs that head again alone, as
 //! before the train. A rider whose pull request moved on, or closed, steps
-//! off. What landed is kept a line each in `train/landed.jsonl`, so a day's
-//! rides can be counted against the runs again they saved.
+//! off. What landed, and each rider that left unlanded with when it
+//! boarded, is kept a line each in `train/landed.jsonl`, so a day's rides
+//! can be counted against the runs again they saved.
 
-use std::fs::{self, OpenOptions};
-use std::io::{self, Write};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 use std::time::Duration;
@@ -65,6 +66,7 @@ pub use right_of_way::gives_way;
 mod gated;
 mod hub;
 mod installed;
+mod landed;
 mod landing;
 mod pulls;
 mod splitting;
@@ -72,6 +74,7 @@ use gated::{Gated, gated, words_of};
 use hub::GitHub;
 pub use installed::install;
 use installed::{build, hand_over, handed, newer};
+use landed::{Left, boarded_at, keep_landed, keep_left};
 use landing::{Landing, land};
 use pulls::aboard;
 pub use pulls::drafted;
@@ -162,9 +165,20 @@ pub fn fell(root: &Path, head: &str) -> Option<String> {
         .map(|why| why.trim().to_owned())
 }
 
-/// Take the rider at `head` off the train.
-fn alight(root: &Path, head: &str) {
-    let _ = fs::remove_file(riders_folder(root).join(format!("{head}.json")));
+/// Take the rider at `head` off the train, saying whether it was on it.
+fn alight(root: &Path, head: &str) -> bool {
+    fs::remove_file(riders_folder(root).join(format!("{head}.json"))).is_ok()
+}
+
+/// Take the rider at `head` off the train without landing, as it left
+/// `how`, keeping when it boarded. Kept only once it is off, so a rider
+/// not aboard keeps nothing, and one whose file stays keeps no line until
+/// it truly leaves, which would count it twice.
+fn leave(root: &Path, head: &str, how: Left) {
+    let boarded = boarded_at(root, &[head.to_owned()]);
+    if alight(root, head) {
+        keep_left(root, head, &boarded, how);
+    }
 }
 
 /// Take the rider at `head` off the train for `why`, so `ready` runs it
@@ -177,7 +191,7 @@ pub fn fall(root: &Path, head: &str, why: &str) -> io::Result<()> {
     let fell = fell_folder(root);
     fs::create_dir_all(&fell)?;
     fs::write(fell.join(head), format!("{why}\n"))?;
-    alight(root, head);
+    leave(root, head, Left::Fell);
     Ok(())
 }
 
@@ -279,7 +293,13 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         }
     }
     if !goes_or_starts(&root) {
-        alight(&root, head);
+        // One that boarded only now waited on no train, so only a rider
+        // already aboard keeps its wait.
+        if boarded {
+            leave(&root, head, Left::Off);
+        } else {
+            alight(&root, head);
+        }
         return None;
     }
     let others = riders(&root).len().saturating_sub(1);
@@ -303,7 +323,7 @@ pub fn riding(head: &str) -> Option<String> {
     let root = crate::state::State::from_env().root;
     rider_at(&root, head)?;
     if !goes_or_starts(&root) {
-        alight(&root, head);
+        leave(&root, head, Left::Off);
         return None;
     }
     Some(rides_said(&root))
@@ -549,10 +569,12 @@ fn after_landing(
     match landing {
         Landing::Landed(landed) => {
             splitting.landed(merged.len());
+            // Read before alighting, which takes each rider's file.
+            let boarded = boarded_at(root, merged);
             for head in merged {
                 alight(root, head);
             }
-            keep_landed(root, &landed, merged, crate::state::now() - began);
+            keep_landed(root, &landed, merged, &boarded, crate::state::now() - began);
             println!("merge-net: the train landed {} on main", short(&landed));
             let left = !riders(root).is_empty();
             way(root, &Ended::Landed { left });
@@ -569,10 +591,11 @@ fn after_landing(
             // The refused rider leaves the front with those landed, so a
             // search for a red candidate looks past it too.
             splitting.landed(kept.len() + 1);
+            let boarded = boarded_at(root, &kept);
             for head in &kept {
                 alight(root, head);
             }
-            keep_landed(root, &landed, &kept, crate::state::now() - began);
+            keep_landed(root, &landed, &kept, &boarded, crate::state::now() - began);
             let (before, stay) = match kept.len() {
                 1 => ("the rider before it".to_owned(), "stays"),
                 riders => (format!("the {riders} riders before it"), "stay"),
@@ -729,25 +752,6 @@ fn gate(checkout: &Path, log: &Path) -> Gated {
         .stderr(errors)
         .status();
     ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
-}
-
-/// Keep what landed at `landed`, the heads it carried and how long since
-/// its run began, a line in `train/landed.jsonl`.
-fn keep_landed(root: &Path, landed: &str, heads: &[String], seconds: u64) {
-    let line = json!({
-        "at": crate::state::now(),
-        "landed": landed,
-        "heads": heads,
-        "seconds": seconds,
-    });
-    let kept = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder(root).join("landed.jsonl"))
-        .and_then(|mut file| file.write_all(format!("{line}\n").as_bytes()));
-    if let Err(error) = kept {
-        eprintln!("merge-net: the train's landing at {landed} wasn't kept: {error}");
-    }
 }
 
 /// `owner/name` of the repository at `url`.

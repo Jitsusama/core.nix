@@ -200,7 +200,7 @@ fn session(row: &Row, fold: Option<&str>) -> Value {
     let mut held = json!({
         "also": row.also, "note": row.note, "state": row.state, "doing": row.doing,
         "mark": row.mark, "markHue": row.mark_hue, "waitsOnJoel": row.waits_on_joel,
-        "rank": crate::standing::rank(if row.waits_on_joel { "needs" } else { row.state }),
+        "rank": crate::standing::rank(if row.waits_on_joel { "needs" } else { row.counts_as() }),
         "gone": row.gone,
         "orchestrates": row.orchestrates,
         "returns": format!("verb:agent:{}", row.returns),
@@ -390,6 +390,8 @@ mod tests {
             orchestrates: false,
             gone: false,
             waits_on_joel: false,
+            unwanted: None,
+            wants: None,
             state: "working",
             doing: "working".to_owned(),
             returns: "switch",
@@ -478,6 +480,18 @@ mod tests {
             ),
             (Some("parked"), Some(0)),
             "parked with his want open, it ranks with those needing him"
+        );
+        // Its want put off, it ranks as it would stand wanting nothing.
+        let mut put_off = self::row("X", "needs");
+        if let Shown::Session(one) = &mut put_off {
+            (one.state, one.unwanted) = ("needs", Some(crate::standing::Stands::Working));
+        }
+        let mut later = Served::default();
+        later.take(made(&[put_off], "1 working"));
+        assert_eq!(
+            later.get("row:agents:X").expect("its row")["row"]["held"]["rank"].as_u64(),
+            Some(1),
+            "put off, it ranks with those working, not those needing him"
         );
         assert_eq!(
             served

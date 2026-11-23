@@ -330,6 +330,7 @@
         fonts = ./modules/fonts/system.nix;
         home-manager = moduleFrom ./modules/home-manager/darwin.nix { inherit home-manager; };
         homebrew = ./modules/homebrew/darwin.nix;
+        house-report = ./modules/house-report/darwin.nix;
         linux-builder = ./modules/linux-builder/darwin.nix;
         local-name = ./modules/local-name/darwin.nix;
         mycelium = moduleFrom ./modules/mycelium/system.nix { inherit mycelium; };
@@ -393,6 +394,7 @@
         hardening = ./modules/hardening/nixos.nix;
         hibernate = ./modules/hibernate/nixos.nix;
         home-manager = moduleFrom ./modules/home-manager/nixos.nix { inherit home-manager; };
+        house-report = ./modules/house-report/nixos.nix;
         idevicerestore = ./modules/idevicerestore/nixos.nix;
         idle-sleep = ./modules/idle-sleep/nixos.nix;
         inlyne = ./modules/inlyne/nixos.nix;

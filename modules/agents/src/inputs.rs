@@ -38,6 +38,7 @@ use crate::row::{self, Known, Row, Shown, Words};
 use crate::served;
 use crate::session::{self, JoelCan, Lives, Session};
 use crate::shape;
+use crate::standing::Stands;
 use crate::starts;
 use crate::starts_stopped::{self, Stood};
 use crate::summary;
@@ -261,9 +262,11 @@ impl Inputs {
     /// Keeps where each session's window sits now (arrangement.rs),
     /// writing it to `path` when it moved and saying when it can't. Nothing's kept on a boot
     /// Linux doesn't name, nor before the windows daemon has said a window.
-    pub fn keep_places(&mut self, path: &Path) {
+    /// It answers when, in ms since the epoch, a place closed by hand is
+    /// to be let go, so it's kept again then.
+    pub fn keep_places(&mut self, path: &Path) -> Option<u64> {
         if self.boot.is_empty() || self.windows.records().next().is_none() {
-            return;
+            return None;
         }
         let sessions: Vec<Session> = self
             .sessions
@@ -278,19 +281,22 @@ impl Inputs {
             screens: &screens,
         };
         let now = arrangement::now(sessions.iter().copied(), &paired, &desk);
+        let unwindowed = arrangement::unwindowed(sessions.iter().copied(), &paired, &desk);
         let kept = self.arrangement.kept(
             &self.boot,
             self.restoring(),
             now,
             arrangement::others(&desk),
+            &unwindowed,
+            u64::try_from(clock::now_ms()).unwrap_or(u64::MAX),
         );
-        if kept == self.arrangement {
-            return;
+        if kept != self.arrangement {
+            if let Err(why) = kept.write(path) {
+                eprintln!("agents: can't keep {}: {why}", path.display());
+            }
+            self.arrangement = kept;
         }
-        if let Err(why) = kept.write(path) {
-            eprintln!("agents: can't keep {}: {why}", path.display());
-        }
-        self.arrangement = kept;
+        self.arrangement.let_go_at(&self.boot)
     }
 
     /// Every session there is to reopen, by the sessions running or
@@ -562,6 +568,8 @@ impl Inputs {
         let to_dos = |quest: &str| self.needs(quest).len();
         let by_lead = shape::by_lead(self.teams.records().map(|(_, team)| team));
         let shaped = |id: &str| by_lead.get(id).copied();
+        let now_ms = clock::now_ms();
+        let put_off = |one: Session| self.put_off.holds_for(one, now_ms);
         let known = Known {
             joel_can: &joel_can,
             jobs: &jobs,
@@ -572,6 +580,7 @@ impl Inputs {
             sharing: self.sharing,
             needs: &to_dos,
             shape: &shaped,
+            put_off: &put_off,
         };
         let mut reopens = self.reopens();
         let recent = self.recent(&reopens);
@@ -583,9 +592,15 @@ impl Inputs {
             self.sessions.records().map(|(_, one)| Session(one)),
             &last_used,
         );
+        // One whose want Joel put off needs him nowhere for its hour, so
+        // Home's summary counts it as it would stand wanting nothing, as
+        // its row's hue and the networks' counts do.
         let states: Vec<_> = sessions
             .iter()
-            .map(|one| one.stands_to_joel(&joel_can, &jobs))
+            .map(|one| match one.stands_to_joel(&joel_can, &jobs) {
+                Stands::Needs if put_off(*one) => one.stands_wanting_nothing(&jobs),
+                stands => stands,
+            })
             .collect();
         let mut rows = row::rows(&sessions, &known, &self.words);
         let answers = self.answers();
@@ -640,7 +655,7 @@ impl Inputs {
         .with_wants(wants::records(
             &sessions,
             &joel_can,
-            (&self.put_off, clock::now_ms()),
+            (&self.put_off, now_ms),
         ))
         .with_talks(inboxes::records(
             &talks::by_address(self.talks.records().map(|(_, one)| one)),
@@ -1496,6 +1511,122 @@ mod tests {
         );
         inputs.sharing = true;
         assert_eq!(spent(&inputs), None, "no amount while the screen is shared");
+    }
+
+    #[test]
+    fn a_networks_cells_sort_and_say_as_the_tree_marks_them() {
+        let mut inputs = inputs();
+        // Q, in P's team under O, asks Joel; T works; R is parked with his want open.
+        inputs.sessions.took(&json!({"changed": [
+            {"key": "session:q", "standing": "running", "here": true,
+             "presence": {"addresses": ["Q"], "session": "s-q", "orchestratedBy": "P",
+                          "wants": {"kind": "approval", "said": "May I push?"}}},
+            {"key": "session:t", "standing": "running", "here": true,
+             "presence": {"addresses": ["T"], "session": "s-t", "busy": true}},
+            {"key": "session:r", "standing": "running", "here": true,
+             "presence": {"addresses": ["R"], "session": "s-r", "state": "parked",
+                          "wants": {"kind": "approval", "said": "Run it?"}}}]}));
+        // The node counts each cell by its own standing, any with a want as
+        // needing Joel: R in reef, but P, wanting nothing itself, moving.
+        let network = |name: &str, cells: [&str; 2], counts: Value| {
+            json!({"key": format!("network:{name}"), "kind": "network", "name": name,
+                   "shape": "repository", "short": name, "title": name, "heard": 0,
+                   "cells": cells, "machines": [], "counts": counts})
+        };
+        inputs.networks.took(&json!({"records": [
+            network("repo.kelp", ["t", "p"], json!({"needs-you": 0, "moving": 2})),
+            network("repo.reef", ["t", "r"], json!({"needs-you": 1, "moving": 1}))]}));
+        let shown = served(&inputs);
+        let row = |key: &str| {
+            shown
+                .get(&format!("row:agents-top:network:{key}"))
+                .expect(key)["row"]
+                .clone()
+        };
+        let worn = |key: &str| format!("{}:{}", row(key)["glyph"], row(key)["hue"]);
+        let first = |name: &str| {
+            let parent = format!("row:agents-top:network:{name}");
+            shown
+                .all()
+                .filter(|one| one["row"]["parent"] == parent.as_str())
+                .min_by_key(|one| one["row"]["order"].as_i64())
+                .and_then(|one| one["row"]["key"].as_str())
+                .unwrap_or_default()
+                .to_owned()
+        };
+        assert_eq!(
+            [
+                worn("repo.kelp:p"),
+                worn("repo.kelp:t"),
+                worn("repo.reef:r")
+            ],
+            [
+                "\"waitsOnJoel\":\"alert\"",
+                "\"agent\":\"program\"",
+                "\"waitsOnJoel\":\"alert\""
+            ],
+            "P wears Joel's mark for Q under it, R for its own open want, T none"
+        );
+        assert_eq!(
+            [first("repo.kelp"), first("repo.reef")],
+            [
+                "row:agents-top:network:repo.kelp:p",
+                "row:agents-top:network:repo.reef:r"
+            ],
+            "each network sorts first the cell wearing the mark, as the tree served it"
+        );
+        assert_eq!(
+            [sides(&row("repo.kelp")), sides(&row("repo.reef"))],
+            ["1 needs you, 1 moving", "1 needs you, 1 moving"],
+            "kelp's lead counts once for the want under it, which isn't a cell of kelp; reef's \
+             R the node counted already, so it counts once"
+        );
+    }
+
+    /// What a served row says at its right, its items in order.
+    fn sides(row: &Value) -> String {
+        row["side"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|item| item["said"].as_str())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+
+    #[test]
+    fn a_want_joel_put_off_lights_nothing_above_it_nor_home() {
+        let mut inputs = inputs();
+        // Q, in P's team under O, asks Joel, who put it off for the hour,
+        // and works on meanwhile.
+        inputs.sessions.took(&json!({"changed": [
+            {"key": "session:q", "standing": "running", "here": true,
+             "presence": {"addresses": ["Q"], "session": "s-q", "orchestratedBy": "P",
+                          "busy": true,
+                          "wants": {"kind": "approval", "said": "May I push?"}}}]}));
+        inputs
+            .put_off
+            .put("Q approval May I push?", clock::now_ms());
+        inputs.networks.took(&json!({"records": [
+            {"key": "network:repo.kelp", "kind": "network", "name": "repo.kelp",
+             "shape": "repository", "short": "kelp", "title": "kelp", "heard": 0,
+             "cells": ["q", "p"], "machines": [],
+             "counts": {"needs-you": 1, "moving": 1, "quiet": 0}}]}));
+        let shown = served(&inputs);
+        let row = |key: &str| shown.get(key).expect(key)["row"].clone();
+        let p = row("row:agents-top:network:repo.kelp:p");
+        assert_ne!(p["glyph"], "waitsOnJoel", "P wears no mark for Q: {p}");
+        assert_eq!(
+            sides(&row("row:agents-top:network:repo.kelp")),
+            "2 moving",
+            "the node counted Q needing Joel; put off, it counts as working, as it is"
+        );
+        assert_eq!(
+            summary_of(&shown),
+            "2 working \u{b7} $214 today",
+            "Home's summary says nobody needs him, and counts Q working, as it would stand \
+             wanting nothing"
+        );
     }
 
     #[test]

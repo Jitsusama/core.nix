@@ -72,7 +72,8 @@ pub struct Second {
     /// A call's round trip through the VPN riding the link, in ms, as only
     /// the live shaper hears it (src/vpndelay.rs); a replay leaves it None.
     pub vpn_ms: Option<f64>,
-    /// The ceiling the upload was held under, a trial's or its network's,
+    /// The ceiling the upload was held under, a trial's, its network's or
+    /// its house's,
     /// in kbit/s, as the live shaper's trace says it or a replay's `--most`
     /// sets it; None while none held it.
     pub ceiling: Option<u64>,
@@ -850,7 +851,7 @@ fn judged_lines(out: &mut String, judged: &bars::Judged) {
         // trials kept theirs, or another controller replayed with no
         // network's ceiling, has none.
         if bars().any(|(_, bar)| bar.ceiling_s > 0) {
-            "; a ceiling, a trial's or its network's, set aside"
+            "; a ceiling, a trial's, its network's or its house's, set aside"
         } else {
             ""
         }
@@ -1107,7 +1108,7 @@ mod tests {
         let mut out = String::new();
         judged_lines(&mut out, &judged);
         assert!(
-            out.contains("; a ceiling, a trial's or its network's, set aside\n"),
+            out.contains("; a ceiling, a trial's, its network's or its house's, set aside\n"),
             "{out}"
         );
         let home = out.lines().find(|l| l.starts_with("home,")).expect("home");

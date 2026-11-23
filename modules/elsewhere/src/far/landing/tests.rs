@@ -1,5 +1,4 @@
-use super::{Fault, SWEEPS_AFTER, copied, land, opened_as_listed, opened_plain};
-use crate::far::MARK;
+use super::{Fault, MARK, SWEEPS_AFTER, copied, land, opened_as_listed, opened_plain};
 use crate::far::tests::scratch;
 use std::collections::HashSet;
 use std::path::Path;

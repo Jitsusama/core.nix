@@ -17,6 +17,21 @@ const OWNER: &str = "5193FV";
 const LAUNCHER: &str = "XY9H5C";
 /// The one sound figure cadence always reads, higher being better.
 const HEARD: &str = "call sound heard and counted";
+/// Each app's wait figure: the p99 across the hour's 10 s windows of each
+/// window's worst drawing-thread wait, which the name says, so no one
+/// reads it as the p99 of every wakeup.
+const CHROME_WAIT: &str = "Chrome worst wait per 10 s p99 ms";
+const SLACK_WAIT: &str = "Slack worst wait per 10 s p99 ms";
+/// Joel's own calls' figure, in ms of waiting per second.
+const REAL: &str = "real call sending wait p99 ms per s";
+/// How many of them the watch couldn't read.
+const REAL_BLIND: &str = "real calls with no sending thread found";
+/// How far, in tenths, a figure may sit past a whole tenth and still be
+/// read as on it: a ten-thousandth, which is 10 ns of a time. The page's
+/// times carry error near 1e-8 ms, far inside it, and the page's clock
+/// steps by at least 5 microseconds. A wait from lag-watch can sit 10 ns
+/// past a tenth and read as on it, which no reader could tell apart.
+const NOISE: f64 = 1e-4;
 
 /// What stands in for Joel's voice, said beside the sound's figures. The
 /// far end plays on this machine too, under the same load, so what it
@@ -46,9 +61,22 @@ fn measure(
     lower_is_better: bool,
     behind: Vec<String>,
 ) -> Measure {
+    // Rounded to the tenth cadence shows, toward the worse side, so a
+    // figure just past its target never shows as on it. The nudge keeps a
+    // whole tenth's float error from moving it a tenth.
+    let tenth = |x: f64| {
+        let tenths = x * 10.0;
+        let whole = if lower_is_better {
+            (tenths - NOISE).ceil()
+        } else {
+            (tenths + NOISE).floor()
+        };
+        (whole + 0.0) / 10.0
+    };
     Measure {
         measure,
-        now: now.map(|x| (x * 10.0).round() / 10.0),
+        // A figure that isn't a number reads as unread, never on target.
+        now: now.filter(|x| x.is_finite()).map(tenth),
         target,
         lower_is_better,
         owner: OWNER,
@@ -200,14 +228,14 @@ pub fn measures(
             ],
         ),
         measure(
-            "Chrome CPU wait per wakeup p99 ms",
+            CHROME_WAIT,
             chrome.worst_p99,
             2.0,
             true,
             left_out("Chrome", chrome),
         ),
         measure(
-            "Slack CPU wait per wakeup p99 ms",
+            SLACK_WAIT,
             slack.worst_p99,
             2.0,
             true,
@@ -234,16 +262,200 @@ pub fn write(folder: &Path, at: u64, measures: &[Measure], run: &Value) -> io::R
         .map(|m| (m.measure.to_string(), json!(m.now)))
         .collect();
     let line = json!({"at": at, "run": run, "measures": figures});
-    let mut history = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(folder.join("history.jsonl"))?;
-    writeln!(history, "{line}")
+    append(&folder.join("history.jsonl"), &line)
+}
+
+/// Adds one line to the history, as a single write, so the hour's run
+/// and the call watch can't interleave their lines.
+pub fn append(history: &Path, line: &Value) -> io::Result<()> {
+    if let Some(folder) = history.parent() {
+        fs::create_dir_all(folder)?;
+    }
+    let mut file = OpenOptions::new().create(true).append(true).open(history)?;
+    file.write_all(format!("{line}\n").as_bytes())
+}
+
+/// Joel's own calls' figure: the worst of their sending threads' p99
+/// wait for a CPU, from the calls `heard` names, with the load and the
+/// thread behind it said, as of `at`. Unread when no call was ever
+/// watched.
+pub fn real(calls: &[crate::watch::Real], at: u64) -> Vec<Measure> {
+    let p99 = |call: &&crate::watch::Real| call.sending_p99.unwrap_or(0.0);
+    let worst = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_some())
+        .max_by(|a, b| p99(a).total_cmp(&p99(b)));
+    let mut behind = vec![format!(
+        "Joel's own calls, {} read: the p99 of each 5 s tick's slowest sending thread's wait \
+         for a CPU per second, in his call apps, which in a call under 8 minutes is its worst \
+         tick",
+        calls.len()
+    )];
+    if let Some(call) = worst {
+        behind.push(format!(
+            "the worst ended {} min ago, {} of {} ticks past {} ms/s or load {}, its 15-minute \
+             load up to {:.0}, its slowest thread {}",
+            at.saturating_sub(call.ended) / 60,
+            call.flagged,
+            call.ticks,
+            crate::watch::LATE_MS,
+            crate::watch::HEAVY,
+            call.load15_max,
+            call.worst_who.as_deref().unwrap_or("unread"),
+        ));
+        if call.unsure {
+            behind.push("it was closed when a-call-is-on couldn't tell for 3 min".to_string());
+        }
+        if call.cut {
+            behind.push("it was cut short when the watch stopped".to_string());
+        }
+    }
+    let unread = calls
+        .iter()
+        .filter(|call| call.sending_p99.is_none())
+        .count();
+    if unread > 0 {
+        behind.push(format!("{unread} with no sending thread found"));
+    }
+    // Beside the wait, which is unread when no call's sending threads
+    // were found and so drops off cadence's card, a count that files a
+    // fault when the watch saw a call it couldn't read.
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a count of calls is far below f64's exact range"
+    )]
+    let blind = unread as f64;
+    vec![
+        measure(
+            REAL,
+            worst.and_then(|call| call.sending_p99),
+            crate::watch::LATE_MS,
+            true,
+            behind,
+        ),
+        measure(
+            REAL_BLIND,
+            Some(blind),
+            0.0,
+            true,
+            vec![format!(
+                "of {} of Joel's own calls read, those with no sending thread found in his \
+                 call apps, so their waits are unread",
+                calls.len()
+            )],
+        ),
+    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joel_s_calls_give_their_worst_sending_wait_and_say_whose() {
+        let call = |ended, p99: Option<f64>, who: &str| crate::watch::Real {
+            began: ended - 600,
+            ended,
+            ticks: 120,
+            read: 110,
+            flagged: 3,
+            sending_p99: p99,
+            worst_ms: p99,
+            worst_who: Some(who.to_string()),
+            load15_max: 121.4,
+            unsure: false,
+            cut: ended == 2_000,
+        };
+        let calls = [
+            call(1_000, Some(40.0), "chrome:renderer:Compositor"),
+            call(2_000, Some(412.5), "chrome:renderer:CodecWorker"),
+            call(2_500, None, "none"),
+        ];
+        let figures = real(&calls, 2_600);
+        let figure = &figures[0];
+        assert_eq!(figure.now, Some(412.5));
+        assert!(
+            figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9,
+            "a wait is lower-better against the 300 ms/s bar"
+        );
+        assert_eq!(figure.owner, OWNER);
+        assert_eq!(
+            figure.behind[1],
+            "the worst ended 10 min ago, 3 of 120 ticks past 300 ms/s or load 80, its \
+             15-minute load up to 121, its slowest thread chrome:renderer:CodecWorker",
+            "the figure doesn't say which call and thread it is"
+        );
+        assert_eq!(
+            figure.behind[2..],
+            [
+                "it was cut short when the watch stopped",
+                "1 with no sending thread found"
+            ],
+            "a call cut short or unread wasn't said"
+        );
+        assert_eq!(
+            (
+                figures[1].now,
+                figures[1].target,
+                figures[1].lower_is_better
+            ),
+            (Some(1.0), 0.0, true),
+            "a call the watch couldn't read filed no fault"
+        );
+        let none = real(&[], 0);
+        assert_eq!(none[0].now, None, "no call watched read as a wait");
+        assert_eq!(none[1].now, Some(0.0), "no call watched read as one unread");
+        let blind = real(&calls[2..], 2_600);
+        assert_eq!(
+            (blind[0].now, blind[1].now),
+            (None, Some(1.0)),
+            "an hour whose calls were all unread looked like an hour with none"
+        );
+    }
+
+    #[test]
+    fn a_figure_is_rounded_toward_its_worse_side() {
+        let now = |x: f64, lower_is_better: bool| {
+            measure("x", Some(x), 30.0, lower_is_better, vec![]).now
+        };
+        assert_eq!(
+            now(30.04, true),
+            Some(30.1),
+            "30.04 ms showed on a 30 ms target"
+        );
+        assert_eq!(
+            now(29.96, false),
+            Some(29.9),
+            "29.96 fps showed on a 30 fps target"
+        );
+        assert_eq!(now(1.1, true), Some(1.1), "a whole tenth moved up");
+        assert_eq!(now(28.8, false), Some(28.8), "a whole tenth moved down");
+        // Float error leaves 0.1 * 3 just over 0.3 and 1 - 0.9 just under
+        // 0.1; the nudge keeps each on its tenth.
+        assert_eq!(now(0.1 * 3.0, true), Some(0.3), "float error moved up");
+        assert_eq!(now(1.0 - 0.9, false), Some(0.1), "float error moved down");
+        // The page's click times come with error near 1e-8 ms: 50.3 ms
+        // arrived as this at 05:37 on 23 November and showed as 50.4.
+        assert_eq!(
+            now(50.300_000_011_920_93, true),
+            Some(50.3),
+            "a click time's error moved it up"
+        );
+        assert_eq!(now(50.301, true), Some(50.4), "a real thousandth was lost");
+        // The same error under a figure where higher is better.
+        assert_eq!(
+            now(29.999_999_988_079_07, false),
+            Some(30.0),
+            "a rate's error moved it down"
+        );
+        assert_eq!(now(29.999, false), Some(29.9), "a real thousandth was lost");
+        assert_eq!(now(f64::NAN, true), None, "NaN read as a figure");
+        let none = now(0.0, true).unwrap_or(f64::NAN);
+        assert!(
+            none == 0.0 && none.is_sign_positive(),
+            "no wait is 0, not -0: {none}"
+        );
+    }
 
     fn call() -> Call {
         Call {
@@ -283,7 +495,8 @@ mod tests {
         let named = |name: &str| all.iter().find(|m| m.measure == name).unwrap();
         for (name, now, target) in [
             (HEARD, 1.0, 1.0),
-            ("call sound concealed %", 0.4, 1.0),
+            // 0.42% made up shows as 0.5, rounded toward the worse side.
+            ("call sound concealed %", 0.5, 1.0),
             ("call sound jitter p99 ms", 24.0, 30.0),
             ("call sound packets lost", 3.0, 0.0),
         ] {
@@ -298,7 +511,8 @@ mod tests {
                 "{name} doesn't say what it heard"
             );
         }
-        assert_eq!(named("call sent fps p10").now, Some(30.0));
+        // 29.96 fps sent is short of 30, so it shows as 29.9, never on target.
+        assert_eq!(named("call sent fps p10").now, Some(29.9));
         // A figure read the wrong way passes cadence at any value.
         for m in &all {
             let higher = m.measure.contains(" fps ") || m.measure == HEARD;
@@ -310,13 +524,13 @@ mod tests {
                 if m.lower_is_better { "lower" } else { "higher" }
             );
         }
-        assert_eq!(named("Chrome CPU wait per wakeup p99 ms").now, Some(19.7));
-        let behind = &named("Chrome CPU wait per wakeup p99 ms").behind;
+        assert_eq!(named(CHROME_WAIT).now, Some(19.7));
+        let behind = &named(CHROME_WAIT).behind;
         assert!(
             behind[1].contains("12 windows"),
             "Chrome's wait doesn't say how many windows it read: {behind:?}"
         );
-        assert_eq!(named("Slack CPU wait per wakeup p99 ms").now, None);
+        assert_eq!(named(SLACK_WAIT).now, None);
         assert_eq!(named("launcher open ms p99").owner, "XY9H5C");
         assert_eq!(named("launcher open ms p99").now, Some(31.0));
         assert_eq!(

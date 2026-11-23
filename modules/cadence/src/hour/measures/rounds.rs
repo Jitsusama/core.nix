@@ -17,6 +17,13 @@
 //! WCJQSG's ruling makes of what a late round needn't raise, so it catches
 //! nothing and is named apart.
 //!
+//! A round counts once it was collected and one of its reviewers answered,
+//! so a round a reload killed before anyone answered, which stays open,
+//! isn't a round, nor one whose every reviewer was stopped before filing a
+//! finding. Rounds run on another machine count from its mirror, but their
+//! fixes are kept there, so a late one's catch can't be read here and its
+//! merge isn't filed; nor is any merge while a mirror can't be read.
+//!
 //! Long because its main test needs six merges' records, one for each way
 //! a late round's fix can be read, and splitting it would hide how they
 //! differ.
@@ -40,16 +47,43 @@ pub const TARGET: f64 = 3.0;
 /// nothing, before the change it names.
 pub const FRUITLESS: &str = "rounds-past-five-fixed-nothing:";
 
-/// What the median says when it read no record of rounds, or none of
-/// fixes, so it can't tell which merges' rounds past five caught nothing.
-const NO_RUNS: &str = "no review record read";
+/// What the median says when this machine's record of rounds, or of
+/// fixes, couldn't be read, so it can't tell which merges' rounds past
+/// five caught nothing. A record with no round in the day is read, quiet.
+const NO_RUNS: &str = "this machine's review records unread";
 const NO_FIXES: &str = "no fixes record read";
+/// What it says when a mirror of another machine's rounds couldn't be read,
+/// so which rounds came after a merge's fifth can't be told.
+const NO_MIRROR: &str = "another machine's rounds unread";
 
 /// Whether `median`, the rounds measure, read the records that say which
 /// merges' rounds past five caught nothing.
 #[must_use]
 pub fn read_whole(median: &Measure) -> bool {
-    median.key == KEY && !median.says.contains(NO_RUNS) && !median.says.contains(NO_FIXES)
+    median.key == KEY
+        && ![NO_RUNS, NO_FIXES, NO_MIRROR]
+            .iter()
+            .any(|no| median.says.contains(no))
+}
+
+/// What the median says it read: how many merges had a review record,
+/// then which records it couldn't read, each `true` when it could.
+fn read_said(unrecorded: usize, runs: bool, fixes: bool, mirrors: bool) -> String {
+    let mut read = format!(" with a review record, {unrecorded} with none");
+    for (whole, no) in [(runs, NO_RUNS), (fixes, NO_FIXES), (mirrors, NO_MIRROR)] {
+        if !whole {
+            read = format!("{read}, {no}");
+        }
+    }
+    read
+}
+
+/// The rounds one machine's records hold, each the text of one file, and
+/// why any of its records couldn't be read.
+#[derive(Debug, Default)]
+pub struct Records {
+    pub runs: Vec<String>,
+    pub trouble: Vec<String>,
 }
 
 /// How long before its merge a round still counts toward it. A branch's
@@ -147,8 +181,8 @@ impl Reviewed {
             .filter_map(|run| {
                 let id = run["id"].as_str()?;
                 // A judge or a critique reads a council's findings; only a
-                // council is a round of review.
-                if !id.starts_with("council-") {
+                // council or a stack's round is a round of review.
+                if !answered(run) {
                     return None;
                 }
                 Some((id.to_owned(), seconds(&run["startedAt"])?))
@@ -200,6 +234,52 @@ impl Reviewed {
         );
         self.named == merged.branch || self.tree == tree
     }
+}
+
+/// Whether `run` is a council or stack round, collected, neither open nor
+/// closed nor unpinned, and one of whose reviewers answered, as merge-net's
+/// `speaks` reads a round, so the two count the same rounds: didn't fail,
+/// and either finished, leaving its answer's file, or filed a finding
+/// before it was stopped. A round whose reviewers were all cancelled, or
+/// stopped at their wall having filed nothing, said nothing. An answer is
+/// a sign it left, never the lack of a sign it didn't, so an outcome naming
+/// neither its answer nor a finding, or a failure or stop of any value,
+/// `null` among them, answers nothing.
+fn answered(run: &Value) -> bool {
+    let flag = |name: &str| run[name].as_bool().unwrap_or(false);
+    let filed = |o: &Value| {
+        o["findingIds"]
+            .as_array()
+            .is_some_and(|ids| !ids.is_empty())
+    };
+    let answer = |o: &Value| {
+        let finished = o.get("stopped").is_none() && o["answerPath"].is_string();
+        o.get("failure").is_none() && (finished || filed(o))
+    };
+    matches!(run["round"].as_str(), Some("council" | "stack"))
+        && !flag("open")
+        && !flag("closed")
+        && run.get("unpinned").is_none()
+        && run["startedAt"].is_string()
+        && run["outcomes"]
+            .as_array()
+            .is_some_and(|outcomes| outcomes.iter().any(answer))
+}
+
+/// The councils `there`, another machine's records, holds that `here`
+/// doesn't: rounds run elsewhere, whose fixes are kept elsewhere too.
+fn away<'a>(here: &[Reviewed], there: &'a [Reviewed]) -> BTreeSet<&'a str> {
+    let held: BTreeSet<&str> = here
+        .iter()
+        .flat_map(|r| &r.councils)
+        .map(|(id, _)| id.as_str())
+        .collect();
+    there
+        .iter()
+        .flat_map(|r| &r.councils)
+        .map(|(id, _)| id.as_str())
+        .filter(|id| !held.contains(id))
+        .collect()
 }
 
 /// A finding whose fix was committed, or is still queued.
@@ -266,6 +346,11 @@ struct Late {
     /// Queued fixes whose rounds' heads couldn't be read, so they are
     /// neither caught nor follow-ups.
     unread: usize,
+    /// Rounds past five run on another machine.
+    away: usize,
+    /// Those of them with no fix here, whose fixes are kept there, so
+    /// what they caught can't be read here.
+    away_unread: usize,
 }
 
 impl Late {
@@ -283,16 +368,24 @@ impl Late {
     /// changes it too, so a queued one is caught only if the change moved
     /// after each of the round's own commits as well, and is a follow-up if
     /// it didn't after one; a commit not named leaves it unread. Git is asked
-    /// once a round and commit, and only for a round with a queued fix.
+    /// once a round and commit, and only for a round with a queued fix. A
+    /// round that ran on another machine, as `away` holds, is counted
+    /// away, and unread there too when it has no fix here, since its fixes
+    /// are kept there.
     fn split(
         merged: &Merged,
         councils: &BTreeSet<(i64, &str)>,
         fixes: &BTreeMap<String, Vec<Fix>>,
         witnesses: &BTreeMap<&str, &str>,
-    ) -> (Vec<String>, usize, usize) {
+        away: &BTreeSet<&str>,
+    ) -> (Vec<String>, usize, usize, usize, usize) {
         let (mut caught, mut follow_ups, mut unread) = (Vec::new(), 0, 0);
+        let (mut elsewhere, mut elsewhere_unread) = (0, 0);
         for (_, id) in councils.iter().skip(PAST) {
+            let ran_away = away.contains(id);
+            elsewhere += usize::from(ran_away);
             let Some(each) = fixes.get(*id) else {
+                elsewhere_unread += usize::from(ran_away);
                 continue;
             };
             let moved = each
@@ -322,7 +415,7 @@ impl Late {
                 }
             }
         }
-        (caught, follow_ups, unread)
+        (caught, follow_ups, unread, elsewhere, elsewhere_unread)
     }
 
     /// The merge's line under the median.
@@ -333,6 +426,8 @@ impl Late {
             caught,
             follow_ups,
             unread,
+            away,
+            away_unread,
         } = self;
         let queued = match follow_ups {
             0 => String::new(),
@@ -342,10 +437,26 @@ impl Late {
             0 => String::new(),
             1 => ", 1 queued fix unread".to_owned(),
             many => format!(", {many} queued fixes unread"),
+        } + &match away {
+            0 => String::new(),
+            1 => ", 1 round past five run on another machine".to_owned(),
+            many => format!(", {many} rounds past five run on another machine"),
+        } + &match (*away, *away_unread) {
+            (_, 0) => String::new(),
+            (1, _) => ", what it caught unread".to_owned(),
+            (all, some) if all == some => ", what they caught unread".to_owned(),
+            (_, some) => format!(", what {some} of them caught unread"),
         };
+        // What a round elsewhere caught is kept there, so nothing caught is
+        // known only of the rounds run here, and of none when all ran there.
+        let here = if *away_unread > 0 { " here" } else { "" };
+        let all_away = *away_unread > 0 && *away_unread == n.saturating_sub(PAST);
         match caught.as_slice() {
             _ if !fixes_read => format!("{change}: {n} rounds, what they caught unread"),
-            [] => format!("{change}: {n} rounds, those past five caught nothing{queued}"),
+            [] if all_away => {
+                format!("{change}: {n} rounds, those past five run on another machine, unread")
+            }
+            [] => format!("{change}: {n} rounds, those past five caught nothing{here}{queued}"),
             [one] => format!(
                 "{change}: {n} rounds, past five caught {}{queued}",
                 short(one)
@@ -360,8 +471,9 @@ impl Late {
 }
 
 /// The median council rounds per change merged to `mains` in the day
-/// before `now`, from `records`, each the text of one file of the
-/// harness's review runs, then a line of its own for each merge past five
+/// before `now`, from `records`, this machine's review runs, and
+/// `mirrored`, other machines' kept here by the harness, then a line of
+/// its own for each merge past five
 /// whose rounds after the fifth caught nothing in `fixes`, owned by whoever
 /// `landed` it, else `owner`; `landed` is asked only when there is one.
 /// With no fixes record read, what the rounds caught can't be told, so
@@ -371,17 +483,35 @@ impl Late {
 /// when it started in the `BEFORE` up to it, and once by its id however
 /// many records hold it. A change with a record but no council counts
 /// nought; one with no record at all may be one the matching can't see,
-/// so it is counted apart rather than read as nought.
+/// so it is counted apart rather than read as nought. Each record whose
+/// trouble says it couldn't be read, or that names no change, here or
+/// mirrored, is said on the median whatever the others hold, and while
+/// one is, nothing is filed; one with no round in the day is read, and
+/// quiet.
 #[must_use]
 pub fn rounds(
     mains: &[Main],
-    records: &[String],
-    fixes: &[String],
+    records: &Records,
+    mirrored: &Records,
+    fixes: &Records,
     landed: impl FnOnce() -> BTreeMap<String, String>,
     now: i64,
     owner: &str,
 ) -> Vec<Measure> {
-    let reviewed: Vec<Reviewed> = records.iter().filter_map(|r| Reviewed::read(r)).collect();
+    let here: Vec<Reviewed> = records
+        .runs
+        .iter()
+        .filter_map(|r| Reviewed::read(r))
+        .collect();
+    let there: Vec<Reviewed> = mirrored
+        .runs
+        .iter()
+        .filter_map(|r| Reviewed::read(r))
+        .collect();
+    let away = away(&here, &there);
+    // This machine's own copy of a round comes last, so where a mirror
+    // holds it too, its witness, basis and start are the ones kept.
+    let reviewed: Vec<&Reviewed> = there.iter().chain(&here).collect();
     let bases: BTreeMap<&str, &str> = reviewed
         .iter()
         .flat_map(|r| &r.bases)
@@ -392,14 +522,14 @@ pub fn rounds(
         .flat_map(|r| &r.witnesses)
         .map(|(id, head)| (id.as_str(), head.as_str()))
         .collect();
-    let caught = caught(fixes, &bases);
-    let fixes_read = !fixes.is_empty();
+    let caught = caught(&fixes.runs, &bases);
+    let fixes_read = fixes.trouble.is_empty();
     let mut unrecorded = 0;
     let mut each: Vec<Late> = mains
         .iter()
         .flat_map(|main| merged(main, now))
         .filter_map(|m| {
-            let about: Vec<&Reviewed> = reviewed.iter().filter(|r| r.about(&m)).collect();
+            let about: Vec<&Reviewed> = reviewed.iter().copied().filter(|r| r.about(&m)).collect();
             if about.is_empty() {
                 unrecorded += 1;
                 return None;
@@ -414,7 +544,8 @@ pub fn rounds(
                 .filter(|(_, at)| *at <= m.at && *at >= m.at - BEFORE)
                 .map(|(id, at)| (at, id))
                 .collect();
-            let (after_fifth, follow_ups, unread) = Late::split(&m, &councils, &caught, &witnesses);
+            let (after_fifth, follow_ups, unread, away, away_unread) =
+                Late::split(&m, &councils, &caught, &witnesses, &away);
             let label = m.repo.rsplit('/').next().unwrap_or(m.repo);
             Some(Late {
                 rounds: councils.len(),
@@ -422,6 +553,8 @@ pub fn rounds(
                 caught: after_fifth,
                 follow_ups,
                 unread,
+                away,
+                away_unread,
             })
         })
         .collect();
@@ -433,13 +566,11 @@ pub fn rounds(
             .then_with(|| a.change.cmp(&b.change))
     });
     each.retain(|late| late.rounds > PAST);
-    let read = if reviewed.is_empty() {
-        format!(", {NO_RUNS}")
-    } else if !fixes_read {
-        format!(" with a review record, {unrecorded} with none, {NO_FIXES}")
-    } else {
-        format!(" with a review record, {unrecorded} with none")
-    };
+    // A record that is JSON but names no change or repository is as unread
+    // as one that isn't, since its rounds would be left out unsaid.
+    let local_read = records.trouble.is_empty() && here.len() == records.runs.len();
+    let mirrors_read = mirrored.trouble.is_empty() && there.len() == mirrored.runs.len();
+    let read = read_said(unrecorded, local_read, fixes_read, mirrors_read);
     let median = Measure {
         key: KEY.to_owned(),
         class: Class::Ship,
@@ -452,26 +583,43 @@ pub fn rounds(
         owner: owner.to_owned(),
         behind: each.iter().map(|late| late.line(fixes_read)).collect(),
     };
-    each.retain(|late| fixes_read && late.caught.is_empty() && late.unread == 0);
+    let whole = local_read && fixes_read && mirrors_read;
+    each.retain(|late| {
+        whole && late.caught.is_empty() && late.unread == 0 && late.away_unread == 0
+    });
+    std::iter::once(median)
+        .chain(fruitless(each, landed, owner))
+        .collect()
+}
+
+/// A drag for each merge in `each`, whose rounds past five caught nothing,
+/// owned by whoever `landed` it, else `owner`; `landed` is asked only when
+/// there is one.
+fn fruitless(
+    each: Vec<Late>,
+    landed: impl FnOnce() -> BTreeMap<String, String>,
+    owner: &str,
+) -> Vec<Measure> {
     let landed = if each.is_empty() {
         BTreeMap::new()
     } else {
         landed()
     };
-    let fruitless = each.into_iter().map(
-        |Late {
-             rounds: n, change, ..
-         }| Measure {
-            key: format!("{FRUITLESS}{change}"),
-            class: Class::Ship,
-            says: format!("council rounds on {change}, whose rounds past five caught nothing"),
-            now: count(n),
-            target: Some(count(PAST)),
-            owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
-            behind: Vec::new(),
-        },
-    );
-    std::iter::once(median).chain(fruitless).collect()
+    each.into_iter()
+        .map(
+            |Late {
+                 rounds: n, change, ..
+             }| Measure {
+                key: format!("{FRUITLESS}{change}"),
+                class: Class::Ship,
+                says: format!("council rounds on {change}, whose rounds past five caught nothing"),
+                now: count(n),
+                target: Some(count(PAST)),
+                owner: landed.get(&change).map_or(owner, String::as_str).to_owned(),
+                behind: Vec::new(),
+            },
+        )
+        .collect()
 }
 
 #[cfg(test)]
@@ -483,10 +631,14 @@ mod tests {
 
     const CORE: &str = "github:Jitsusama/core.nix";
 
-    /// A round started `ago` seconds before `NOW`, as the record keeps it.
+    /// A round started `ago` seconds before `NOW`, collected with one
+    /// reviewer's answer, as the record keeps it.
     fn started(id: &str, ago: i64) -> String {
         let at = jiff::Timestamp::from_second(NOW - ago).expect("a moment the tests read");
-        format!(r#"{{"id": "{id}", "round": "council", "startedAt": "{at}"}}"#)
+        format!(
+            r#"{{"id": "{id}", "round": "council", "startedAt": "{at}",
+                "outcomes": [{{"participantId": "one", "answerPath": "/answers/one.md"}}]}}"#
+        )
     }
 
     /// One record of `runs` on a change, as the harness writes it.
@@ -499,9 +651,9 @@ mod tests {
         )
     }
 
-    #[test]
-    fn each_merge_counts_the_councils_on_its_number_branch_or_tree() {
-        let log = format!(
+    /// Four merges this day, one past it, and two reverts.
+    fn merges() -> String {
+        format!(
             "{}\n{}\n{}\n{}\n{}\n",
             format_args!(
                 "aaaa {} Merge pull request #11 from Jitsusama/here/eleven",
@@ -529,7 +681,12 @@ mod tests {
              9999 {} Merge pull request #16 from Jitsusama/merge-net/revert-aaaa\n",
             NOW - 30,
             NOW - 20
-        );
+        )
+    }
+
+    #[test]
+    fn each_merge_counts_the_councils_on_its_number_branch_or_tree() {
+        let log = merges();
         let six: Vec<String> = (0..6)
             .map(|n| started(&format!("council-six-{n}"), 600))
             .collect();
@@ -543,7 +700,7 @@ mod tests {
                 &[
                     started("council-a", 900),
                     started("council-b", 600),
-                    started("judge-a", 500),
+                    started("judge-a", 500).replace("council", "judge"),
                 ],
             ),
             // By its branch, the same council again in another record,
@@ -590,8 +747,12 @@ mod tests {
                 log: &log,
                 moved: &|_, _| None,
             }],
-            &records,
-            &[],
+            &kept(&records),
+            &Records::default(),
+            &Records {
+                runs: Vec::new(),
+                trouble: vec!["can't be listed".to_owned()],
+            },
             || panic!("asked who landed a merge though none is filed"),
             NOW,
             "ORCH",
@@ -742,7 +903,6 @@ mod tests {
             ("council-f-0", "a follow-up", None),
             ("council-f-0", "a second follow-up", None),
         ])];
-        let landed = BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]);
         // Each ask of git may fetch, so #25's sixth, queuing two, asks once.
         let asked = std::cell::Cell::new(0);
         let counted = |merge: &str, witness: &str| {
@@ -755,9 +915,10 @@ mod tests {
                 log: &log,
                 moved: &counted,
             }],
-            &records,
-            &fixed,
-            || landed,
+            &kept(&records),
+            &Records::default(),
+            &kept(&fixed),
+            || BTreeMap::from([("core.nix#22".to_owned(), "B8RBNW".to_owned())]),
             NOW,
             "ORCH",
         );
@@ -799,28 +960,336 @@ mod tests {
     }
 
     #[test]
-    fn with_no_review_record_read_the_line_says_so() {
+    fn records_that_cant_be_read_say_so_and_ones_with_no_round_are_quiet() {
         let log = format!(
             "aaaa {} Merge pull request #11 from Jitsusama/here\n",
             NOW - 60
         );
-        let all = rounds(
-            &[Main {
-                repo: CORE,
-                log: &log,
-                moved: &|_, _| None,
-            }],
-            &[],
-            &[],
-            BTreeMap::new,
-            NOW,
-            "ORCH",
-        );
-        let m = &all[0];
+        let mains = [Main {
+            repo: CORE,
+            log: &log,
+            moved: &|_, _| None,
+        }];
+        let unread = Records {
+            runs: Vec::new(),
+            trouble: vec!["can't be listed".to_owned()],
+        };
+        let quiet = Records::default();
+        let all = rounds(&mains, &unread, &quiet, &quiet, BTreeMap::new, NOW, "ORCH");
         assert!(
-            m.says.ends_with("of 0, no review record read"),
+            all[0].says.ends_with(
+                "of 0 with a review record, 1 with none, this machine's review \
+                 records unread"
+            ) && !read_whole(&all[0]),
             "{}",
-            m.says
+            all[0].says
         );
+        let all = rounds(&mains, &quiet, &quiet, &quiet, BTreeMap::new, NOW, "ORCH");
+        assert!(
+            all[0]
+                .says
+                .ends_with("of 0 with a review record, 1 with none")
+                && read_whole(&all[0]),
+            "a day with no round here or in a mirror read as unread: {}",
+            all[0].says
+        );
+    }
+
+    /// One reviewer's outcome as the harness writes it, with `rest`: as
+    /// merge-net's own tests read them, a finished one names its answer's
+    /// file, a stop is an object naming its limit, and a failure a string.
+    fn outcome(rest: &str) -> String {
+        format!(r#"{{"participantId": "one", "findingIds": []{rest}}}"#)
+    }
+
+    /// What a finished outcome carries.
+    const FINISHED: &str = r#", "answerPath": "/answers/one.md""#;
+
+    /// What a council's run carries.
+    const COUNCIL: &str = r#", "round": "council""#;
+
+    /// Whether a run holding `outcomes`, with `rest` beside them, counts.
+    fn counted(outcomes: &[String], rest: &str) -> bool {
+        let text = format!(
+            r#"{{"startedAt": "2026-11-23T07:00:00Z", "outcomes": [{}]{rest}}}"#,
+            outcomes.join(", ")
+        );
+        answered(&serde_json::from_str(&text).expect("a run the test writes"))
+    }
+
+    #[test]
+    fn only_a_collected_council_or_stack_round_counts() {
+        let finished = [outcome(FINISHED)];
+        for (rest, counts, why) in [
+            (COUNCIL, true, "a council a reviewer finished didn't count"),
+            (
+                r#", "round": "stack""#,
+                true,
+                "a stack's round didn't count",
+            ),
+            (r#", "round": "judge""#, false, "a judge counted as a round"),
+            ("", false, "a run naming no kind of round counted"),
+            (
+                r#", "round": "council", "open": true"#,
+                false,
+                "an open round counted",
+            ),
+            (
+                r#", "round": "council", "closed": true"#,
+                false,
+                "a closed round counted",
+            ),
+            (
+                r#", "round": "council", "unpinned": "main""#,
+                false,
+                "a round that read no pinned commit counted",
+            ),
+        ] {
+            assert_eq!(counted(&finished, rest), counts, "{why}");
+        }
+    }
+
+    #[test]
+    fn a_round_counts_once_one_reviewer_answered() {
+        let cancelled =
+            outcome(r#", "stopped": {"limit": "cancelled", "detail": "asked to stop"}"#);
+        let cases = [
+            (
+                vec![outcome(FINISHED)],
+                true,
+                "a reviewer that finished didn't answer",
+            ),
+            (
+                vec![outcome("")],
+                false,
+                "an outcome with no sign of an answer counted",
+            ),
+            (
+                vec![outcome(r#", "answerPath": "/a.md", "failure": "the wall""#)],
+                false,
+                "a failure answered",
+            ),
+            (
+                vec![outcome(r#", "answerPath": "/a.md", "failure": null"#)],
+                false,
+                "a failure written null answered",
+            ),
+            (vec![], false, "a round with no outcome counted"),
+            (
+                vec![cancelled.clone()],
+                false,
+                "a cancel filing nothing answered",
+            ),
+            (
+                vec![outcome(r#", "stopped": {"limit": "soft-deadline"}"#)],
+                false,
+                "a reviewer stopped at its wall with nothing filed answered",
+            ),
+            (
+                vec![cancelled.replace("[]", "[7]")],
+                true,
+                "a finding filed before a cancel didn't count",
+            ),
+            (
+                vec![
+                    cancelled,
+                    outcome(r#", "answerPath": "/a.md", "stopped": null"#),
+                ],
+                false,
+                "a stop written null, filing nothing, answered",
+            ),
+            (
+                vec![outcome(r#", "stopped": true"#)],
+                false,
+                "a stop written as true, filing nothing, answered",
+            ),
+        ];
+        for (outcomes, counts, why) in cases {
+            assert_eq!(counted(&outcomes, COUNCIL), counts, "{why}: {outcomes:?}");
+        }
+    }
+
+    #[test]
+    fn rounds_elsewhere_count_once_and_only_those_with_no_fix_here_go_unread() {
+        let log = format!(
+            "aaaa {} Merge pull request #33 from Jitsusama/here/c\n\
+             dddd {} Merge pull request #34 from Jitsusama/here/d\n\
+             bbbb {} Merge pull request #32 from Jitsusama/here/b\n\
+             eeee {} Merge pull request #35 from Jitsusama/here/e\n\
+             ffff {} Merge pull request #36 from Jitsusama/here/f\n",
+            NOW - 60,
+            NOW - 90,
+            NOW - 120,
+            NOW - 150,
+            NOW - 180
+        );
+        let runs = |change: &str, each: std::ops::Range<i64>| -> Vec<String> {
+            each.map(|n| started(&format!("council-{change}-{n}"), 3600 - 60 * n))
+                .collect()
+        };
+        let on = |number: &str, runs: &[String]| record("github", CORE, number, "elsewhere", runs);
+        // #34's six rounds, and one whose reviewer was cancelled having
+        // filed nothing, which isn't a round.
+        let mut d = runs("d", 0..6);
+        d.push(started("council-d-cancelled", 3000).replace(
+            r#""answerPath": "/answers/one.md""#,
+            r#""findingIds": [], "stopped": {"limit": "cancelled"}"#,
+        ));
+        let ours = [
+            on("32", &runs("b", 0..6)),
+            on("33", &runs("c", 0..5)),
+            on("34", &d),
+            on("35", &runs("e", 0..6)),
+            on("36", &runs("f", 0..6)),
+        ];
+        // The Mac holds #32's sixth too, which is read here and counts
+        // once, its seventh and eighth, and its ninth, whose fix is kept
+        // here; #33's sixth; #35's seventh; and #36's seventh and eighth.
+        let theirs = kept(&[
+            on("32", &runs("b", 5..9)),
+            on("33", &runs("c", 5..6)),
+            on("35", &runs("e", 6..7)),
+            on("36", &runs("f", 6..8)),
+        ]);
+        let fixed = kept(&[fixes(&[("council-b-8", "in the ninth", Some("committed"))])]);
+        let ours = kept(&ours);
+        let mains = [Main {
+            repo: CORE,
+            log: &log,
+            moved: &|_, _| None,
+        }];
+        let landed = || BTreeMap::from([("core.nix#34".to_owned(), "LANDER".to_owned())]);
+        let all = rounds(&mains, &ours, &theirs, &fixed, landed, NOW, "ORCH");
+        assert!(
+            (all[0].now - 7.0).abs() < f64::EPSILON,
+            "the median of #32's 9, #33's 6, #34's 6, #35's 7 and #36's 8: {}",
+            all[0].now
+        );
+        assert_eq!(
+            all[0].behind,
+            [
+                concat!(
+                    "core.nix#32: 9 rounds, past five caught in the ninth, ",
+                    "3 rounds past five run on another machine, what 2 of them caught unread"
+                ),
+                concat!(
+                    "core.nix#36: 8 rounds, those past five caught nothing here, ",
+                    "2 rounds past five run on another machine, what they caught unread"
+                ),
+                concat!(
+                    "core.nix#35: 7 rounds, those past five caught nothing here, ",
+                    "1 round past five run on another machine, what it caught unread"
+                ),
+                "core.nix#33: 6 rounds, those past five run on another machine, unread",
+                "core.nix#34: 6 rounds, those past five caught nothing",
+            ],
+            "a round held here too was read as away, one away with its fix here went uncounted, \
+             or a cancel counted"
+        );
+        let owed: Vec<(&str, &str)> = all[1..]
+            .iter()
+            .map(|m| (m.key.as_str(), m.owner.as_str()))
+            .collect();
+        assert_eq!(
+            owed,
+            [("rounds-past-five-fixed-nothing:core.nix#34", "LANDER")],
+            "a merge was filed though its late rounds ran elsewhere or caught something"
+        );
+        // #34 is filed with every record read, so each one unread, alone,
+        // is what keeps it from being filed.
+        for (said, unread) in [(NO_RUNS, 0), (NO_MIRROR, 1), (NO_FIXES, 2)] {
+            let mut each = [kept(&ours.runs), kept(&theirs.runs), kept(&fixed.runs)];
+            each[unread].trouble.push("can't be listed".to_owned());
+            let [local, mirrored, kept_fixes] = each;
+            let all = rounds(&mains, &local, &mirrored, &kept_fixes, landed, NOW, "ORCH");
+            let unsaid = [NO_RUNS, NO_MIRROR, NO_FIXES]
+                .iter()
+                .filter(|no| **no != said)
+                .all(|no| !all[0].says.contains(no));
+            assert!(
+                all.len() == 1 && !read_whole(&all[0]) && all[0].says.contains(said) && unsaid,
+                "a merge was filed, its drag closed, or records read were said unread: {}",
+                all[0].says
+            );
+        }
+    }
+
+    #[test]
+    fn this_machines_copy_of_a_round_wins_and_a_record_naming_no_change_is_said() {
+        let log = format!(
+            "dddd {} Merge pull request #24 from Jitsusama/here/d\n",
+            NOW - 60
+        );
+        let mains = [Main {
+            repo: CORE,
+            log: &log,
+            moved: &moved,
+        }];
+        // Here #24's sixth read the head its change moved on from, so its
+        // queued fix was made before the merge; the mirror's copy of the
+        // same round names a head the change merged as it was.
+        let here = record("github", CORE, "24", "elsewhere", &seven("d"));
+        let there = here.replace(r#""witness": "d-read""#, r#""witness": "d-made""#);
+        assert_ne!(here, there, "the mirror's copy names another head");
+        let fixed = kept(&[fixes(&[("council-d-1", "queued alone", None)])]);
+        let said = |local: &str, mirrored: &str| {
+            let local = kept(&[local.to_owned()]);
+            let mirrored = kept(&[mirrored.to_owned()]);
+            let all = rounds(
+                &mains,
+                &local,
+                &mirrored,
+                &fixed,
+                BTreeMap::new,
+                NOW,
+                "ORCH",
+            );
+            all[0].behind.clone()
+        };
+        assert_eq!(
+            said(&here, &there),
+            ["core.nix#24: 7 rounds, past five caught queued alone"],
+            "a mirror's copy of a round held here too was read over this machine's"
+        );
+        assert_ne!(
+            said(&there, &here),
+            said(&here, &there),
+            "which copy won made no difference, so the test proves nothing"
+        );
+        // With no fix recorded, #24's rounds past five caught nothing, so
+        // a whole read files it; one beside a record naming no change
+        // mustn't, as that record may hold what they caught.
+        let caught_nothing = kept(&[]);
+        let read = |records: &Records| {
+            rounds(
+                &mains,
+                records,
+                &kept(&[]),
+                &caught_nothing,
+                BTreeMap::new,
+                NOW,
+                "ORCH",
+            )
+        };
+        assert_eq!(
+            read(&kept(std::slice::from_ref(&here))).len(),
+            2,
+            "a whole read didn't file a merge whose rounds caught nothing, so the test proves \
+             nothing"
+        );
+        let all = read(&kept(&[here, r#"{"runs": []}"#.to_owned()]));
+        assert!(
+            all.len() == 1 && all[0].says.contains(NO_RUNS),
+            "a record naming no change was left out unsaid, or its merge filed: {}",
+            all[0].says
+        );
+    }
+
+    /// Records read whole, holding `runs`.
+    fn kept(runs: &[String]) -> Records {
+        Records {
+            runs: runs.to_vec(),
+            trouble: Vec::new(),
+        }
     }
 }

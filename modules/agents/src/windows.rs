@@ -6,8 +6,9 @@
 //! daemon's key, found as Sessions.qml finds it: the window opened with
 //! the session's app id, or of several, the one its own kitty draws; and
 //! for a window opened without one, the one window its kitty draws. One
-//! that can't be told apart says no window rather than the wrong one;
-//! only Sessions.qml asks kitty which of several a session is in.
+//! that can't be told apart says no window rather than the wrong one, and
+//! that it couldn't tell; only Sessions.qml asks kitty which of several a
+//! session is in.
 
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
@@ -21,6 +22,10 @@ use crate::session::{Lives, Session};
 
 /// The kind each record is served as.
 pub const KIND: &str = "agent-window";
+
+/// The key a record says it couldn't tell its window from another's by,
+/// which arrangement.rs reads, so neither side spells it alone.
+pub const UNTOLD: &str = "untold";
 
 /// The kitty pane a session runs in, `(socket, id)`: as the node says a
 /// held one's window is, else as its record's terminal says.
@@ -169,7 +174,10 @@ pub fn records<S: BuildHasher>(
                 })
                 .collect();
             let window = one_of(&among, pid);
-            if kitty.is_none() && window.is_none() {
+            // One with no kitty and no window has no record, unless it has
+            // several it can't tell apart, as a hosted one with two viewers
+            // does, which says so below.
+            if kitty.is_none() && window.is_none() && among.is_empty() {
                 return None;
             }
             let address = one.address();
@@ -177,7 +185,7 @@ pub fn records<S: BuildHasher>(
                 Value::Null,
                 |(address, title)| json!({"address": address, "title": title}),
             );
-            Some(json!({
+            let mut record = json!({
                 "key": format!("{KIND}:{PLACE}:{address}"), "kind": KIND,
                 "address": address,
                 "kitty": kitty.map_or(Value::Null, |(within, id)| {
@@ -185,7 +193,13 @@ pub fn records<S: BuildHasher>(
                 }),
                 "app_id": opened, "window": window, "title": titles[address],
                 "orchestration": orchestration,
-            }))
+            });
+            // One of several it couldn't tell apart says so, so its window
+            // isn't taken as closed (arrangement.rs's unwindowed).
+            if window.is_none() && !among.is_empty() {
+                record[UNTOLD] = json!(true);
+            }
+            Some(record)
         })
         .collect()
 }
@@ -305,9 +319,47 @@ mod tests {
             "a kitty drawing two windows says neither; a hosted one is its viewer"
         );
         assert_eq!(
+            (made[0].get(UNTOLD), made[1].get(UNTOLD)),
+            (Some(&json!(true)), None),
+            "and says it couldn't tell, so its window isn't taken as closed (arrangement.rs)"
+        );
+        assert_eq!(
             made[1]["kitty"],
             json!(null),
             "a hosted session runs in no kitty"
+        );
+    }
+
+    #[test]
+    fn only_one_whose_windows_cant_be_told_apart_says_so() {
+        let shut = json!({"terminal": "kitty", "within": "unix:@kitty-8", "id": 3});
+        let made = made(
+            &[
+                held(
+                    "REEF",
+                    &json!({"hosted": true, "session": "s-reef"}),
+                    &json!(null),
+                ),
+                held("BUOY", &json!({}), &shut),
+            ],
+            &[
+                window(6, 5, "pi-hosted.s-reef"),
+                window(8, 5, "pi-hosted.s-reef"),
+            ],
+        );
+        assert_eq!(
+            windows_of(&made),
+            vec![
+                ("REEF".to_owned(), json!(null)),
+                ("BUOY".to_owned(), json!(null)),
+            ],
+            "a hosted one with two viewers says neither, and one whose kitty draws none, none"
+        );
+        assert_eq!(
+            (made[0].get(UNTOLD), made[1].get(UNTOLD)),
+            (Some(&json!(true)), None),
+            "the hosted one says it couldn't tell, so its window isn't taken as closed; one \
+             with no window at all doesn't, so its close is seen"
         );
     }
 

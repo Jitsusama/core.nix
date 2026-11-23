@@ -31,7 +31,7 @@
         fileset = lib.fileset.fileFilter (file: file.hasExt "qml") ../../.;
       };
       pages = [
-        ../../reader/src/page.rs
+        ../../reader/src/page/mod.rs
         ../../reader/src/prompt.rs
       ];
     in

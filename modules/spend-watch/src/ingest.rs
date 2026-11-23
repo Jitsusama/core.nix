@@ -14,12 +14,166 @@
 use crate::config::Config;
 use crate::history::History;
 use crate::logs::{Ancestry, Carry, ancestry, read_after};
+use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 /// The most read from one log in one pass.
 const SLICE: u64 = 32 << 20;
+
+/// How long a folder at a pattern's first `*` has gone unwritten, every
+/// log in it read to its end, before the walks stop going into it. A
+/// council's round takes minutes and its retries come within the hour.
+const QUIET: Duration = Duration::from_hours(24);
+
+/// How often every folder is walked again, settled or not, for what
+/// neither a watch nor a folder's time shows: a log made in a folder that
+/// held none, which no watch follows and whose time no pass reads.
+const SWEEP: Duration = Duration::from_hours(6);
+
+/// What the walks know can't have moved: each folder at a pattern's first
+/// `*`, a council's run or a quest's workspace, whose logs were all read
+/// to their ends and which nothing has written for a day, with the logs
+/// it holds. On 22 November a walk read 36,295 folders to find 1,283
+/// reviewers' logs, nearly all in runs weeks over, and took 42 s under
+/// load: a pass walked at least once and the watch again every 30 s, so
+/// the watch read 3 to 5 MB a second of the filesystem's records all
+/// day. A settled folder is walked again when a folder the walk read in
+/// it changes (a reviewer asked again makes one), when the watch hears a
+/// write under it (`touched`), and at least every six hours.
+#[derive(Debug, Default)]
+pub struct Walks {
+    settled: HashMap<(String, PathBuf), Walked>,
+    walked: HashMap<(String, PathBuf), Walked>,
+    /// On the wall's clock, as `QUIET` is, so a machine asleep still
+    /// sweeps on waking.
+    swept: Option<SystemTime>,
+}
+
+/// What one walk under a folder at a pattern's first `*` found: the logs,
+/// and each folder it read to reach a part past the next, with when that
+/// was last written. Those folders are a run's own and its reviewers', two
+/// a run, so looking at their times each pass costs a few hundred looks,
+/// not the walk's tens of thousands; a log's own folder is the watch's.
+#[derive(Debug)]
+struct Walked {
+    logs: Vec<PathBuf>,
+    read: Vec<(PathBuf, Option<SystemTime>)>,
+}
+
+impl Walks {
+    /// Starts a walk, forgetting what's settled once a sweep is due, and
+    /// each settled folder one of whose folders has changed since.
+    fn begin(&mut self) {
+        self.walked.clear();
+        let now = SystemTime::now();
+        // A clock set back sweeps too, rather than waiting for it.
+        if !self
+            .swept
+            .is_some_and(|at| now.duration_since(at).is_ok_and(|since| since < SWEEP))
+        {
+            if !self.settled.is_empty() {
+                eprintln!(
+                    "walking again the {} folders settled, as each six hours",
+                    self.settled.len()
+                );
+            }
+            self.settled.clear();
+            self.swept = Some(now);
+        }
+        self.settled
+            .retain(|_, walked| walked.read.iter().all(|(dir, at)| written(dir) == *at));
+    }
+
+    /// Walks again each settled folder holding `dir`, or held by it, as
+    /// the watch hears something written there.
+    pub fn touched(&mut self, dir: &Path) {
+        self.settled
+            .retain(|(_, top), _| !dir.starts_with(top) && !top.starts_with(dir));
+    }
+
+    /// Settles each folder the last walk went into whose logs the history
+    /// has read to their ends, none of it written since a day before `now`.
+    pub fn settle(&mut self, history: &History, now: SystemTime) {
+        for (key, walked) in self.walked.drain() {
+            let still = walked
+                .read
+                .iter()
+                .all(|(_, at)| at.is_none_or(|at| aged(at, now)));
+            if still
+                && walked
+                    .logs
+                    .iter()
+                    .all(|log| read_through(history, log, now))
+            {
+                self.settled.insert(key, walked);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+impl Walks {
+    /// Walks with each of `tops` settled for `pattern`, holding no log,
+    /// for the daemon's tests.
+    pub fn settled_at(pattern: &str, tops: &[&str]) -> Walks {
+        let mut walks = Walks::default();
+        for top in tops {
+            let walked = Walked {
+                logs: Vec::new(),
+                read: Vec::new(),
+            };
+            walks
+                .settled
+                .insert((pattern.to_owned(), PathBuf::from(top)), walked);
+        }
+        walks
+    }
+
+    /// The folders settled, in order.
+    pub fn settled_tops(&self) -> Vec<PathBuf> {
+        let mut tops: Vec<PathBuf> = self.settled.keys().map(|(_, top)| top.clone()).collect();
+        tops.sort();
+        tops
+    }
+}
+
+/// When `path` was last written, none where it isn't there.
+fn written(path: &Path) -> Option<SystemTime> {
+    std::fs::metadata(path)
+        .and_then(|metadata| metadata.modified())
+        .ok()
+}
+
+/// Whether nothing has written `path` for a day before `now`.
+fn quiet(path: &Path, now: SystemTime) -> bool {
+    written(path).is_some_and(|modified| aged(modified, now))
+}
+
+/// Whether `at` is a day or more before `now`. A time so far ahead that a
+/// day past it can't be held is not, rather than a panic any agent could
+/// set off with `touch` on its own folder.
+fn aged(at: SystemTime, now: SystemTime) -> bool {
+    at.checked_add(QUIET).is_some_and(|then| then <= now)
+}
+
+/// Whether a log is quiet and read to its end, its copies known, so a
+/// pass would read nothing more of it.
+fn read_through(history: &History, log: &Path, now: SystemTime) -> bool {
+    let Ok(metadata) = std::fs::metadata(log) else {
+        return false;
+    };
+    let identity = format!("{}:{}", metadata.dev(), metadata.ino());
+    quiet(log, now)
+        && history
+            .file(&log.to_string_lossy(), &identity)
+            .is_some_and(|(offset, carry)| {
+                offset == metadata.len()
+                    && serde_json::from_str::<Carry>(&carry).is_ok_and(|carry| carry.copies_known)
+            })
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct Pass {
@@ -82,47 +236,70 @@ impl<'a> Reading<'a> {
 /// pattern's in turn, then each other machine's the same way. A log two
 /// patterns find is read once, as the first.
 pub fn found(config: &Config) -> Vec<Found> {
+    found_kept(config, &mut Walks::default())
+}
+
+/// Every log the config names, as `found`, going into no folder `walks`
+/// has settled.
+pub fn found_kept(config: &Config, walks: &mut Walks) -> Vec<Found> {
+    walks.begin();
     let mut seen = std::collections::HashSet::new();
-    let here = machine_logs(&config.sessions, &config.agents, None);
-    let elsewhere = config
-        .machines
-        .iter()
-        .flat_map(|machine| machine_logs(&machine.sessions, &machine.agents, Some(&machine.name)));
-    here.chain(elsewhere)
+    let mut all = machine_logs_kept(&config.sessions, &config.agents, None, walks);
+    for machine in &config.machines {
+        all.extend(machine_logs_kept(
+            &machine.sessions,
+            &machine.agents,
+            Some(&machine.name),
+            walks,
+        ));
+    }
+    all.into_iter()
         .filter(|found| seen.insert(found.path.clone()))
         .collect()
 }
 
-/// One machine's logs: its own sessions', then each agents' pattern's.
-fn machine_logs<'a>(
+/// One machine's logs, as `machine_logs_kept` finds them afresh.
+#[cfg(test)]
+fn machine_logs(
     sessions: &Path,
-    agents: &'a [crate::config::AgentLogs],
-    machine: Option<&'a String>,
-) -> impl Iterator<Item = Found> + 'a {
+    agents: &[crate::config::AgentLogs],
+    machine: Option<&String>,
+) -> impl Iterator<Item = Found> {
+    machine_logs_kept(sessions, agents, machine, &mut Walks::default()).into_iter()
+}
+
+/// One machine's logs: its own sessions', then each agents' pattern's.
+fn machine_logs_kept(
+    sessions: &Path,
+    agents: &[crate::config::AgentLogs],
+    machine: Option<&String>,
+    walks: &mut Walks,
+) -> Vec<Found> {
     let brought = machine.map(|_| sessions.to_path_buf());
-    let own_brought = brought.clone();
-    let own = logs(sessions)
+    let mut all: Vec<Found> = logs(sessions)
         .into_iter()
-        .filter(move |path| machine.is_none() || !linked(path))
-        .map(move |path| Found {
+        .filter(|path| machine.is_none() || !linked(path))
+        .map(|path| Found {
             path,
             kind: None,
             machine: machine.cloned(),
-            brought: own_brought.clone(),
-        });
-    let agents = agents.iter().flat_map(move |agents| {
-        let brought = brought.clone();
-        matching(&agents.pattern)
-            .into_iter()
-            .filter(move |path| machine.is_none() || !linked(path))
-            .map(move |path| Found {
-                path,
-                kind: Some(agents.kind.clone()),
-                machine: machine.cloned(),
-                brought: brought.clone(),
-            })
-    });
-    own.chain(agents)
+            brought: brought.clone(),
+        })
+        .collect();
+    for agents in agents {
+        all.extend(
+            matching_kept(&agents.pattern, walks)
+                .into_iter()
+                .filter(|path| machine.is_none() || !linked(path))
+                .map(|path| Found {
+                    path,
+                    kind: Some(agents.kind.clone()),
+                    machine: machine.cloned(),
+                    brought: brought.clone(),
+                }),
+        );
+    }
+    all
 }
 
 /// Whether a log, or the project folder it's in, is a link. Another
@@ -136,21 +313,15 @@ fn linked(path: &Path) -> bool {
     link(path) || path.parent().is_some_and(link)
 }
 
-/// The directories logs are in beyond this machine's own sessions, to
+/// The directories `logs` are in beyond this machine's own sessions, to
 /// watch: its agents', and every other machine's sessions' and agents'.
-pub fn followed_directories(config: &Config) -> Vec<PathBuf> {
-    let patterns = config
-        .agents
+/// They're taken from what a pass found rather than walked for, since a
+/// walk is what a pass costs.
+pub fn followed_directories(config: &Config, logs: &[Found]) -> Vec<PathBuf> {
+    let mut dirs: Vec<PathBuf> = logs
         .iter()
-        .chain(config.machines.iter().flat_map(|machine| &machine.agents));
-    let machines = config
-        .machines
-        .iter()
-        .flat_map(|machine| logs(&machine.sessions));
-    let mut dirs: Vec<PathBuf> = patterns
-        .flat_map(|agents| matching(&agents.pattern))
-        .chain(machines)
-        .filter_map(|path| path.parent().map(Path::to_path_buf))
+        .filter(|found| found.kind.is_some() || found.machine.is_some())
+        .filter_map(|found| found.path.parent().map(Path::to_path_buf))
         .chain(
             config
                 .machines
@@ -169,6 +340,12 @@ pub fn followed_directories(config: &Config) -> Vec<PathBuf> {
 /// them costs nothing, and a link is followed only where it stays within
 /// the pattern's root, the folder its parts name before the first `*`.
 pub fn matching(pattern: &str) -> Vec<PathBuf> {
+    matching_kept(pattern, &mut Walks::default())
+}
+
+/// The files a pattern names, as `matching`, going into no folder at its
+/// first `*` that `walks` has settled, and noting what's under each other.
+fn matching_kept(pattern: &str, walks: &mut Walks) -> Vec<PathBuf> {
     let parts: Vec<&str> = pattern.split('/').filter(|part| !part.is_empty()).collect();
     let fixed: PathBuf = std::iter::once("/")
         .chain(parts.iter().copied().take_while(|part| !part.contains('*')))
@@ -176,13 +353,53 @@ pub fn matching(pattern: &str) -> Vec<PathBuf> {
     let Ok(root) = fixed.canonicalize() else {
         return Vec::new();
     };
-    let mut at = vec![PathBuf::from("/")];
-    for (index, part) in parts.iter().enumerate() {
-        at = step(&at, part, index + 1 == parts.len(), &root);
+    let Some(last) = parts.len().checked_sub(1) else {
+        return Vec::new();
+    };
+    let first = parts
+        .iter()
+        .position(|part| part.contains('*'))
+        .unwrap_or(last);
+    // Walks `from` through `some` of the parts, the first of them the
+    // pattern's part number `skipped`.
+    let walk = |from: Vec<PathBuf>, some: &[&str], skipped: usize| {
+        some.iter().enumerate().fold(from, |at, (index, part)| {
+            step(&at, part, skipped + index == last, &root)
+        })
+    };
+    let mut found = Vec::new();
+    for top in walk(vec![PathBuf::from("/")], &parts[..=first], 0) {
+        // Keyed by the pattern too, so two patterns meeting in one folder
+        // keep their own logs and kinds.
+        let key = (pattern.to_owned(), top);
+        if let Some(walked) = walks.settled.get(&key) {
+            found.extend(walked.logs.iter().cloned());
+            continue;
+        }
+        let walked = walk_under(&key.1, &parts, first + 1, &root);
+        found.extend(walked.logs.iter().cloned());
+        walks.walked.insert(key, walked);
     }
-    let mut found: Vec<PathBuf> = at.into_iter().filter(|path| path.is_file()).collect();
     oldest_first(&mut found);
     found
+}
+
+/// Walks `top` through the parts from number `from` to the last, noting
+/// the folders read on the way short of the last part's, each with its
+/// time taken before it's read, so a folder made between the two shows
+/// as a change.
+fn walk_under(top: &Path, parts: &[&str], from: usize, root: &Path) -> Walked {
+    let last = parts.len() - 1;
+    let mut read = vec![(top.to_path_buf(), written(top))];
+    let mut at = vec![top.to_path_buf()];
+    for (number, part) in parts.iter().enumerate().skip(from) {
+        if part.contains('*') && number != last {
+            read.extend(at.iter().map(|dir| (dir.clone(), written(dir))));
+        }
+        at = step(&at, part, number == last, root);
+    }
+    let logs = at.into_iter().filter(|path| path.is_file()).collect();
+    Walked { logs, read }
 }
 
 /// What one part of a pattern reaches from each of `at`. Before the last
@@ -1010,6 +1227,333 @@ mod tests {
         );
     }
 
+    /// An agent's log of one turn in `run`'s `group`, as `name`, under
+    /// `root`'s runs, it and every folder above it to the run written a day
+    /// and a minute before now when `aged`.
+    fn agent(root: &Path, run: &str, group: &str, name: &str, aged: bool) -> PathBuf {
+        let session = empty(root, run, group, name, false);
+        let path = session.join(format!("2026_{name}.jsonl"));
+        let header = HEADER.replace("\"s1\"", &format!("\"{run}-{group}-{name}\""));
+        std::fs::write(&path, format!("{header}\n{TURN}\n")).unwrap();
+        if aged {
+            age(&path);
+            empty(root, run, group, name, true);
+        }
+        path
+    }
+
+    /// A reviewer's log of one turn, as `agent`'s.
+    fn reviewer(root: &Path, run: &str, name: &str, aged: bool) -> PathBuf {
+        agent(root, run, "reviewers", name, aged)
+    }
+
+    /// A reviewer's session folder holding no log yet, it and every folder
+    /// above it to the run aged as `agent` ages them.
+    fn empty(root: &Path, run: &str, group: &str, name: &str, aged: bool) -> PathBuf {
+        let run = root.join("runs").join(run);
+        let session = run.join(group).join(name).join("session");
+        std::fs::create_dir_all(&session).unwrap();
+        if aged {
+            for folder in session.ancestors().take(4) {
+                age(folder);
+            }
+        }
+        session
+    }
+
+    /// Sets `path`'s time a day and a minute before now.
+    fn age(path: &Path) {
+        let then = SystemTime::now() - QUIET - Duration::from_secs(60);
+        std::fs::File::open(path)
+            .unwrap()
+            .set_modified(then)
+            .unwrap();
+    }
+
+    /// A log of one turn written into a session folder `empty` made, its
+    /// session named for the run.
+    fn written_in(session: &Path) {
+        let run = session.ancestors().nth(3).unwrap().file_name().unwrap();
+        let header = HEADER.replace("\"s1\"", &format!("\"late-{}\"", run.display()));
+        std::fs::write(
+            session.join("2026_late.jsonl"),
+            format!("{header}\n{TURN}\n"),
+        )
+        .unwrap();
+    }
+
+    /// A config whose only logs are reviewers' under `root`'s runs.
+    fn reviewers(root: &Path) -> Config {
+        let root = root.display();
+        serde_json::from_value(serde_json::json!({
+            "sessions": format!("{root}/none"), "runs": "/r", "registry": "/g",
+            "quests": "/q", "state": "/t",
+            "agents": [{"pattern": format!("{root}/runs/*/reviewers/*/session/*.jsonl"),
+                "kind": "review"}],
+        }))
+        .unwrap()
+    }
+
+    /// One pass's reading, as the daemon's: walk, read, then settle.
+    fn read(history: &History, config: &Config, walks: &mut Walks) {
+        let logs = found_kept(config, walks);
+        scan(history, &logs, Reading::default()).unwrap();
+        walks.settle(history, SystemTime::now());
+    }
+
+    // A run whose logs were all read and which nothing has written for a
+    // day is walked no more: a log made in a session folder that held none
+    // is found only by the next sweep.
+    #[test]
+    fn a_quiet_run_is_walked_no_more_until_the_sweep() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", true);
+        let late = empty(dir.path(), "r1", "reviewers", "c", true);
+        let later = empty(dir.path(), "r1", "reviewers", "d", true);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 1);
+        written_in(&late);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 1, "a settled run was walked again");
+        walks.swept = SystemTime::now().checked_sub(SWEEP);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 2, "the sweep didn't walk the run again");
+        age(&late.join("2026_late.jsonl"));
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 1, "the swept run didn't settle again");
+        // A clock set back sweeps at once rather than waiting to catch up.
+        let header = HEADER.replace("\"s1\"", "\"later\"");
+        std::fs::write(
+            later.join("2026_later.jsonl"),
+            format!("{header}\n{TURN}\n"),
+        )
+        .unwrap();
+        walks.swept = SystemTime::now().checked_add(Duration::from_hours(1));
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 3, "a clock set back didn't sweep");
+    }
+
+    // A log written lately keeps its run walked though every folder above
+    // it is a day old, as a reviewer's appending leaves them.
+    #[test]
+    fn a_run_with_a_log_written_today_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        let log = reviewer(dir.path(), "r1", "a", true);
+        std::fs::File::open(&log)
+            .unwrap()
+            .set_modified(SystemTime::now())
+            .unwrap();
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 1);
+        assert!(walks.settled.is_empty(), "a run with a fresh log settled");
+    }
+
+    // A settled run's logs are still read each pass, so a turn written to
+    // one is counted without a walk.
+    #[test]
+    fn a_settled_run_s_logs_are_still_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        let log = reviewer(dir.path(), "r1", "a", true);
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 1, "the run didn't settle");
+        let later = TURN.replace("10:01:00Z", "10:02:00Z");
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .and_then(|mut file| {
+                std::io::Write::write_all(&mut file, format!("{later}\n").as_bytes())
+            })
+            .unwrap();
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 2, "a settled run's log went unread");
+    }
+
+    // A reviewer asked again in a settled run makes a folder of its own,
+    // which changes its reviewers' folder, and that walks the run again
+    // with no watch and no sweep, as in the daemon's poll.
+    #[test]
+    fn a_folder_made_in_a_settled_run_walks_it_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", true);
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 1, "the run didn't settle");
+        reviewer(dir.path(), "r1", "b", false);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 2, "the new reviewer wasn't found");
+        assert!(walks.settled.is_empty(), "the changed run stayed settled");
+    }
+
+    // A reviewer's folder made today in an old run, its log not yet
+    // written, keeps the run walked: the folder its log lands in is one no
+    // watch follows and no pass looks at.
+    #[test]
+    fn a_run_with_a_folder_made_today_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", true);
+        let late = empty(dir.path(), "r1", "reviewers", "c", false);
+        read(&history, &config, &mut walks);
+        assert!(walks.settled.is_empty(), "a run written today settled");
+        written_in(&late);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 2);
+    }
+
+    // A log read only to a line still being written keeps its run walked.
+    #[test]
+    fn a_run_with_a_log_read_partway_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        let log = reviewer(dir.path(), "r1", "a", true);
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&log)
+            .and_then(|mut file| file.write_all(br#"{"type":"mess"#))
+            .unwrap();
+        age(&log);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 1);
+        assert!(
+            walks.settled.is_empty(),
+            "a run with a log read partway settled"
+        );
+    }
+
+    // A write heard in one run leaves every other settled, even one whose
+    // name the first's starts with, and so does one in pi's own sessions.
+    #[test]
+    fn a_write_heard_elsewhere_leaves_a_run_settled() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", true);
+        let other = reviewer(dir.path(), "r10", "a", true);
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 2);
+        walks.touched(other.parent().unwrap());
+        walks.touched(&config.sessions);
+        let left: Vec<&Path> = walks.settled.keys().map(|(_, top)| top.as_path()).collect();
+        assert_eq!(left, [dir.path().join("runs").join("r1")]);
+    }
+
+    // A time too far ahead to add a day to is never quiet, and asking
+    // doesn't panic.
+    #[test]
+    fn a_time_past_the_clock_s_reach_is_never_quiet() {
+        let far = SystemTime::UNIX_EPOCH + Duration::from_secs(i64::MAX.unsigned_abs());
+        assert!(
+            !aged(far, SystemTime::now()),
+            "a time past reach counted as quiet"
+        );
+        assert!(
+            aged(SystemTime::now() - QUIET, SystemTime::now()),
+            "a day ago wasn't quiet"
+        );
+    }
+
+    // A write the watch hears in a settled run walks it again, as does an
+    // overflow, which may have missed any.
+    #[test]
+    fn a_settled_run_is_walked_again_once_it_s_written_in() {
+        for overflow in [false, true] {
+            let dir = tempfile::tempdir().unwrap();
+            let config = reviewers(dir.path());
+            let history = History::memory();
+            let mut walks = Walks::default();
+            let first = reviewer(dir.path(), "r1", "a", true);
+            let late = empty(dir.path(), "r1", "reviewers", "c", true);
+            read(&history, &config, &mut walks);
+            assert_eq!(walks.settled.len(), 1, "the run didn't settle");
+            written_in(&late);
+            let heard = if overflow {
+                Path::new("/")
+            } else {
+                first.parent().unwrap()
+            };
+            walks.touched(heard);
+            read(&history, &config, &mut walks);
+            assert_eq!(
+                turns(&history),
+                2,
+                "hearing {} didn't walk the run",
+                heard.display()
+            );
+        }
+    }
+
+    // A run written within the day, or with a log not yet read to its end,
+    // is walked each pass, so a reviewer starting in it is read at once.
+    #[test]
+    fn a_run_not_yet_quiet_is_walked_each_pass() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = reviewers(dir.path());
+        let history = History::memory();
+        let mut walks = Walks::default();
+        reviewer(dir.path(), "r1", "a", false);
+        let fresh = empty(dir.path(), "r1", "reviewers", "c", false);
+        read(&history, &config, &mut walks);
+        reviewer(dir.path(), "r2", "a", true);
+        let unread = empty(dir.path(), "r2", "reviewers", "c", true);
+        // Walked but not yet read, as a log is between a walk and its read.
+        found_kept(&config, &mut walks);
+        walks.settle(&history, SystemTime::now());
+        written_in(&fresh);
+        written_in(&unread);
+        read(&history, &config, &mut walks);
+        assert_eq!(turns(&history), 4);
+    }
+
+    // Two patterns meeting in one run's folder keep their own logs and
+    // kinds once it's settled.
+    #[test]
+    fn patterns_meeting_in_a_folder_keep_their_own_logs() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().display();
+        let config: Config = serde_json::from_value(serde_json::json!({
+            "sessions": format!("{root}/none"), "runs": "/r", "registry": "/g",
+            "quests": "/q", "state": "/t",
+            "agents": [
+                {"pattern": format!("{root}/runs/*/reviewers/*/session/*.jsonl"), "kind": "review"},
+                {"pattern": format!("{root}/runs/*/agents/*/session/*.jsonl"), "kind": "swarm"},
+            ],
+        }))
+        .unwrap();
+        let history = History::memory();
+        let mut walks = Walks::default();
+        agent(dir.path(), "r1", "agents", "a", true);
+        reviewer(dir.path(), "r1", "b", true);
+        read(&history, &config, &mut walks);
+        assert_eq!(walks.settled.len(), 2, "each pattern's run didn't settle");
+        for found in found_kept(&config, &mut walks) {
+            let group = found.path.ancestors().nth(3).unwrap().file_name().unwrap();
+            let kind = if group == "agents" { "swarm" } else { "review" };
+            assert_eq!(
+                found.kind.as_deref(),
+                Some(kind),
+                "{}",
+                found.path.display()
+            );
+        }
+        assert_eq!(found_kept(&config, &mut walks).len(), 2);
+    }
+
     // On 31 October one part of the agents' patterns reached 3,064,197
     // entries in quests' scratch folders, every 30 s, and the daemon grew
     // by up to 2.4 GB holding them. Only a folder, or a link that may be
@@ -1149,7 +1693,7 @@ mod tests {
             "a machine's logs weren't found, or weren't kept as its own"
         );
         assert_eq!(turns(&history), 3);
-        let watched = followed_directories(&config);
+        let watched = followed_directories(&config, &found(&config));
         for folder in [
             "teal/sessions",
             "teal/sessions/project",

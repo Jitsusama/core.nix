@@ -154,6 +154,14 @@ impl PutOff {
         self.0.get(known).is_some_and(|until| *until > now_ms)
     }
 
+    /// Whether what `one` wants of Joel now is put off at `now_ms`.
+    pub fn holds_for(&self, one: Session, now_ms: u128) -> bool {
+        one.presence()
+            .and_then(|presence| presence.get("wants"))
+            .filter(|wants| wants.is_object())
+            .is_some_and(|wants| self.holds(&known(one.address(), wants), now_ms))
+    }
+
     /// How long from `now_ms` until the soonest want still put off needs
     /// Joel again, so its record is made anew then, and at most a minute,
     /// since a sleep stops the wait's clock but not the hour's; none while
@@ -372,6 +380,16 @@ mod tests {
             said(1_000 + PUT_OFF_FOR_MS),
             [(json!(false), json!(true)), (json!(false), json!(true))],
             "and once it's over the want needs Joel again"
+        );
+        let held = |at: usize, now_ms| put_off.holds_for(Session(&sessions[at]), now_ms);
+        assert_eq!(
+            [
+                held(0, 1_000),
+                held(1, 1_000),
+                held(0, 1_000 + PUT_OFF_FOR_MS)
+            ],
+            [true, false, false],
+            "a session's own want is put off for the hour, as its row reads it"
         );
     }
 

@@ -27,7 +27,18 @@ import {
   UNDRAWN,
 } from "./draw.ts";
 import { escaped } from "./lineage.ts";
-import { type Forage, foragesOf, grewFrom, headline, holds, lede, startedFrom } from "./model.ts";
+import {
+  cursorAfter,
+  type Forage,
+  foragesOf,
+  grewFrom,
+  headline,
+  holds,
+  inView,
+  lede,
+  shownBy,
+  startedFrom,
+} from "./model.ts";
 
 /** The element `selector` finds, which the page's markup always holds. */
 function element<T extends Element>(selector: string, kind: new () => T): T {
@@ -46,6 +57,9 @@ const title = element("#headline", HTMLHeadingElement);
 const ledeLine = element("#lede", HTMLParagraphElement);
 const substrate = element("#substrate", HTMLSpanElement);
 const floor = element("#floor", HTMLDivElement);
+// The crest the page opens with, drawn again once every cell has gone, so the
+// floor never draws cells the list no longer holds.
+const CREST = floor.innerHTML;
 const asof = element("#asof", HTMLSpanElement);
 const panel = element("#panel-body", HTMLDivElement);
 const keys = element("#keys", HTMLDialogElement);
@@ -86,9 +100,7 @@ function cellIn(hash: string): string | null {
 
 /** The cells the find leaves, in the list's order. */
 function shown(): readonly Forage[] {
-  return forages.filter(
-    (forage) => holds(forage, sought) && (!hollowOnly || forage.purpose === ""),
-  );
+  return shownBy(forages, sought, hollowOnly);
 }
 
 /** The machine the cells run on, as the records say it. */
@@ -236,32 +248,21 @@ function openCell(cell: string): void {
     finder.hidden = true;
     sought = "";
   }
-  hollowOnly = hollowOnly && forage.purpose === "";
+  hollowOnly &&= inView(forage, hollowOnly);
   draw();
 }
 
 function draw(): void {
   const rows = shown();
-  // A find that matches nothing keeps the cursor while its cell lasts and the
-  // view still lists it, so ending the find finds it again; a cell that ends,
-  // or that a record takes out of the view of cells without purpose, takes the
-  // cursor with it. Only a find can then be what hides the cursor's cell.
-  if (!rows.some((each) => each.cell === cursor)) {
-    const open = current();
-    const listed = open !== undefined && (!hollowOnly || open.purpose === "");
-    cursor = rows[0]?.cell ?? (listed ? cursor : null);
-  }
+  cursor = cursorAfter(forages, sought, hollowOnly, cursor);
   list.innerHTML =
     rows.length === 0 && forages.length > 0
       ? `<p class="none">No cell here holds what you're finding.</p>`
       : rows.map(forageRow).join("");
   // Worked out for every list, an empty one too, so a step never draws a
-  // floor over a list the page no longer holds; an emptied list leaves the
-  // last drawing up, as it always has.
+  // floor over a list the page no longer holds.
   shownFloor = floorAfter(forages, shownFloor, cursor);
-  if (forages.length > 0) {
-    floor.innerHTML = floorOf(shownFloor, cursor, machine());
-  }
+  floor.innerHTML = forages.length > 0 ? floorOf(shownFloor, cursor, machine()) : CREST;
   listTitle.innerHTML = hollowOnly ? "The cells <em>without purpose</em>" : "The <em>cells</em>";
   select();
   drawPanel();
