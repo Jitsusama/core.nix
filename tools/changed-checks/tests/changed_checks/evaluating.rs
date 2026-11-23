@@ -112,7 +112,11 @@ fn a_check_that_stops_evaluating_fails_the_run_and_nothing_is_built() {
 
     let ran = stand_in.run(&["--system", "x86_64-linux", "--build"]);
 
-    assert_eq!(ran.status.code(), Some(1));
+    assert_eq!(
+        ran.status.code(),
+        Some(65),
+        "a check that no longer evaluates didn't end apart from a whole failure"
+    );
     assert_eq!(text(&ran.stdout), "KIND    CHECK\nbroken  a\n");
     assert_eq!(stand_in.built(), "");
 }
@@ -156,7 +160,9 @@ fn a_vm_test_that_stops_evaluating_beside_the_build_still_fails_the_run() {
 
     let ran = stand_in.run(&["--system", "x86_64-linux", "--build", "--no-vm"]);
 
-    assert_eq!(ran.status.code(), Some(1), "{}", text(&ran.stderr));
+    // Not 1, though the build beside it ran: a red read as whole would
+    // name only what it built, not the VM test it broke (round 5).
+    assert_eq!(ran.status.code(), Some(65), "{}", text(&ran.stderr));
     assert_eq!(
         text(&ran.stdout),
         "KIND     CHECK\nadded    new\nchanged  a\nremoved  gone\nbroken   vm-x\n",
