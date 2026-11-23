@@ -248,9 +248,9 @@ let
       inherit (pkgs) mesa;
       # A setting of the account's shell unit, by its name: the last assignment of it in
       # its Environment, as systemd takes the last, each entry's words split at its spaces.
-      # systemd also reads quotes, escapes, tabs and newlines, and resets the list at an
-      # empty entry, so an entry holding any of them fails the evaluation rather than being
-      # misread. So does a setting the unit no longer sets, or unsets, which systemd does
+      # systemd also reads quotes, escapes, tabs, newlines and % specifiers, and resets the
+      # list at an empty entry, so an entry holding any of them fails the evaluation rather
+      # than being misread. So does a setting the unit no longer sets, or unsets, which systemd does
       # last, by its bare name or by the very assignment taken, the two ways systemd.exec(5)
       # says remove it. Only the settings named below are carried; the unit's others aren't.
       unitSets =
@@ -269,6 +269,7 @@ let
               "\\"
               "\t"
               "\n"
+              "%"
             ];
           unread = lib.findFirst misread null (given ++ unsetting);
           words = lib.concatMap (lib.splitString " ");

@@ -1161,6 +1161,24 @@ def test_an_empty_workspace_has_it_fall_to_the_floor_and_climb_back(shell: Shell
     sits_over(shell, there, since)
 
 
+def the_turn(places: list[Json | None]) -> tuple[int, Json | None, Json | None]:
+    """Find where a move down turned back up, in the places the cat said.
+
+    It gives the second move's first place, by its index, past any step of the first said
+    after the mark and any report between the two that says no move, and the first move's
+    last place, which that is held to. A report with no move still says the place the first
+    left, so taking it for the second would hold the second move to nothing.
+    """
+    ways = [((one or {}).get("move") or {}).get("way") for one in places]
+    down = [way is not None and way > 0 for way in ways]
+    assert any(down), "the first move never said where the cat was"
+    first = down.index(True)
+    up = (i for i, way in enumerate(ways) if i > first and way is not None and way <= 0)
+    turned = next(up, None)
+    assert turned is not None, "the second move never said where the cat was"
+    return turned, places[max(i for i in range(first, turned) if down[i])], places[turned]
+
+
 def rides_back(place: Json | None) -> TypeGuard[Json]:
     """Say whether a place the cat said is on a ride back up, with nowhere yet to sit."""
     move = (place or {}).get("move") or {}
@@ -1199,12 +1217,7 @@ def test_a_second_move_holds_on_from_where_the_first_got_to(shell: Shell) -> Non
     sits_over(shell, upper, since)
     said, _ = shell.said_since(since)
     places = [placed(report[len(SITS) :]) for report in before + said if report.startswith(SITS)]
-    # The first place the second move says, past any step of the first said after the mark.
-    down = [((one or {}).get("move") or {}).get("way", 0) > 0 for one in places]
-    assert any(down), "the first move never said where the cat was"
-    turned = next((i for i in range(down.index(True), len(down)) if not down[i]), None)
-    assert turned is not None, "the second move never said where the cat was"
-    was, after = places[turned - 1], places[turned]
+    turned, was, after = the_turn(places)
     assert was is not None, "the cat was nowhere as the first move went"
     assert after is not None, "the cat was nowhere as the second move began"
     # Caught off the screen between workspaces, waiting to drop in, it
