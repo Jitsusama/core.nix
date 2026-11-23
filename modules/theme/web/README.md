@@ -33,7 +33,8 @@ What the theme module gives a website, on every machine:
   holds `looks.js` to its, as `looks-probe-finds-what-a-deploy-lost` does,
   and `pixels-test.py` holds `pixels.js` to its, as
   `pixels-probe-holds-every-pixel` does; all three read their pages in the
-  one Chromium `probe_browser.py` opens.
+  one Chromium `probe_browser.py` opens. `checks.nix` holds those three
+  checks, apart from the theme's own, since they change with the probes.
 
 A rule every site would need goes in `base.css`; a value every site would
 need goes in `theme.css` through `web.nix`; a verdict of his on a site goes in
