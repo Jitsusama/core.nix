@@ -113,20 +113,16 @@ done"#
 /// too, as when the asker's end goes before its signal comes. A signal
 /// that comes while it clears is dropped, so the clearing runs once, and
 /// one ignored when the far line began is never trapped at all. The copy
-/// is first renamed spent, at once, then removed: mycelium kills a group
+/// goes after the rest and before its run's file: mycelium kills a group
 /// still running a short grace after its signal, and a job's build can
 /// hold more files than go in that time, so a removal cut short leaves
-/// a copy the next run here knows for spent.
+/// the file that lets the next run here clear it.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && {{
-    copy=$work marked=${{work%/*}}/{SPENT}${{work##*/}}
-    [ -d "$work" ] && [ ! -e "$marked" ] && mv "$work" "$marked" && copy=$marked
-    rm -rf "$copy" "$work.names" "$work.back" "$work.back".* \
-      "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"
-  }}
+  cd "$HOME" && rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}" \
+    "$work.names" "$work.back" "$work.back".* "$work" "$work{RUN}"
   trap - "$1"
   kill -s "$1" "$$"
   exit "$2"
@@ -139,33 +135,41 @@ trap 'stopped TERM 143' TERM"#
 }
 
 /// The far line's step clearing what earlier runs here left beside its
-/// copy, before it waits on its files, which cross meanwhile: each copy a
-/// stop renamed spent, and anything else left untouched a day, as by a
-/// run killed outright, past any job's run, so no live run's copy goes.
-/// Only within the copies' own folder, and only when that is a folder,
-/// not a link, so nothing outside the quest's scratch is ever removed.
+/// copy, before it waits on its files, which cross meanwhile, and `here`,
+/// this machine and its process space, which each run writes down with
+/// its own number in its run's file before it makes its copy. A copy is
+/// cleared, with what lies beside it, only when its run's file names
+/// `here` and that run is gone, as when a kill cut its stop short or
+/// came with no stop at all: never by its age, since a copy's folder
+/// stops changing once it's made however long its job runs, and never
+/// one whose run's file is missing or names another machine. It never
+/// removes through a link: it reads only a folder of copies that is no
+/// link, and only run files that are plain files, and rm takes a link
+/// at a copy's name away alone.
 pub(super) fn sweeping() -> String {
     format!(
         r#"runs=${{work%/*}}
+here="$(uname -n) $(readlink /proc/self/ns/pid 2>/dev/null)"
 if [ -d "$runs" ] && [ ! -L "$runs" ]; then
-  for marked in "$runs"/{SPENT}*; do
-    [ -e "$marked" ] || [ -L "$marked" ] || continue
-    rm -rf "$marked" || printf "elsewhere: couldn't clear %s\n" "$marked" >&2
+  for run in "$runs"/*{RUN}; do
+    [ -f "$run" ] && [ ! -L "$run" ] || continue
+    pid='' machine='' space=''
+    read -r pid machine space < "$run"
+    [ "$machine $space" = "$here" ] || continue
+    case $pid in ''|*[!0-9]*) continue ;; esac
+    kill -0 "$pid" 2>/dev/null && continue
+    copy=${{run%{RUN}}}
+    rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" "$run" ||
+      printf "elsewhere: couldn't clear %s\n" "$copy" >&2
   done
-  find "$runs" -mindepth 1 -maxdepth 1 -mmin +{UNTOUCHED_MINUTES} -exec rm -rf {{}} + ||
-    printf "elsewhere: couldn't clear all that lay a day in %s\n" "$runs" >&2
 fi"#
     )
 }
 
-/// What a copy a stop couldn't finish removing is renamed with, hidden
-/// like the copies' own folder.
-pub(super) const SPENT: &str = ".spent-";
-
-/// How long, in minutes, what lies beside the far line's copy may be left
-/// untouched before it's spent: the near side's day for another machine's
-/// folder.
-const UNTOUCHED_MINUTES: u64 = super::spent::UNTOUCHED_A_DAY.as_secs() / 60;
+/// What follows a copy's name in its run's file, which says what machine
+/// and process space the run was in and its number there. A process that
+/// can't be signalled is gone, or another user's, which no far line is.
+pub(super) const RUN: &str = ".run";
 
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
@@ -332,5 +336,5 @@ fi
 /// Frees the job's copy, with what it made, and the tree it was made
 /// from, once nothing is brought back out of them.
 fn freed() -> String {
-    format!("cd \"$HOME\" && rm -rf \"$work\" \"$job/{TREE}\"\n")
+    format!("cd \"$HOME\" && rm -rf \"$job/{TREE}\" \"$work\" \"$work{RUN}\"\n")
 }

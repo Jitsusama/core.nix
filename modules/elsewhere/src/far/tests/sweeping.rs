@@ -1,0 +1,194 @@
+//! The far line clearing the copies of runs here that are gone: which it
+//! clears, which it leaves, and that it never reaches through a link.
+
+use super::{Left, far_line, kind, scratch, work};
+use crate::far::steps::{RUN, sweeping};
+use std::path::Path;
+
+/// This machine and its process space, as a far line writes them down.
+fn here() -> String {
+    let said = std::process::Command::new(far_sh())
+        .args([
+            "-c",
+            "printf '%s %s' \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\"",
+        ])
+        .output()
+        .unwrap();
+    String::from_utf8(said.stdout).unwrap()
+}
+
+/// The number of a process that has ended, as a killed run's has.
+fn gone() -> u32 {
+    let mut ended = std::process::Command::new("true").spawn().unwrap();
+    ended.wait().unwrap();
+    ended.id()
+}
+
+/// The sh a far line runs in: dash, as the gate names it, or the
+/// machine's own.
+fn far_sh() -> String {
+    std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned())
+}
+
+/// Runs the sweep alone for a run whose copy is `work`, answering what it
+/// said, once it ended well.
+fn sweep(work: &Path) -> String {
+    let swept = std::process::Command::new(far_sh())
+        .args(["-c", &format!("work={}\n{}", work.display(), sweeping())])
+        .output()
+        .unwrap();
+    let said = String::from_utf8_lossy(&swept.stderr).into_owned();
+    assert!(swept.status.success(), "the sweep failed: {said}");
+    said
+}
+
+/// A copy named `id` in `runs`, with a file in it, and its run's file
+/// saying `run`.
+fn copy(runs: &Path, id: &str, run: &str) {
+    std::fs::create_dir_all(runs.join(id)).unwrap();
+    std::fs::write(runs.join(id).join("f"), "f").unwrap();
+    std::fs::write(runs.join(format!("{id}{RUN}")), format!("{run}\n")).unwrap();
+}
+
+/// What lies in `runs`, by name, in order.
+fn left_in(runs: &Path) -> Vec<String> {
+    let mut left: Vec<_> = std::fs::read_dir(runs)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    left.sort();
+    left
+}
+
+#[test]
+fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
+    let root = scratch("far-swept");
+    let runs = root.join("s");
+    let (here, gone) = (here(), gone());
+    // Gone, with all a run leaves beside its copy.
+    copy(&runs, "2", &format!("{gone} {here}"));
+    std::fs::write(runs.join("2.names"), "n").unwrap();
+    std::fs::create_dir_all(runs.join("2.back")).unwrap();
+    std::fs::write(runs.join("2.back.lost"), "l").unwrap();
+    // Live: this test's own process.
+    copy(&runs, "3", &format!("{} {here}", std::process::id()));
+    // Another machine's, whose numbers say nothing here.
+    copy(&runs, "4", &format!("{gone} osprey"));
+    // A run's file that names no number.
+    copy(&runs, "5", &format!("x {here}"));
+    // A run's file that is a link, which is never read.
+    copy(&runs, "6", "");
+    std::fs::remove_file(runs.join(format!("6{RUN}"))).unwrap();
+    std::fs::write(root.join("elsewhere.run"), format!("{gone} {here}\n")).unwrap();
+    std::os::unix::fs::symlink(root.join("elsewhere.run"), runs.join(format!("6{RUN}"))).unwrap();
+    // A copy with no run's file, untouched for years, which no age clears.
+    std::fs::create_dir_all(runs.join("old")).unwrap();
+    let touched = std::process::Command::new("touch")
+        .args(["-t", "202001010000"])
+        .arg(runs.join("old"))
+        .status()
+        .unwrap();
+    assert!(touched.success(), "touch couldn't age the old copy");
+    let said = sweep(&runs.join("9"));
+    assert!(said.is_empty(), "the sweep said something: {said}");
+    let kept = [
+        "3", "3.run", "4", "4.run", "5", "5.run", "6", "6.run", "old",
+    ];
+    assert_eq!(
+        left_in(&runs),
+        kept,
+        "the sweep took a copy whose run isn't known gone, or left one whose is"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_far_line_whose_copies_lie_through_a_link_clears_nothing_it_leads_to() {
+    let root = scratch("far-swept-link");
+    let real = root.join("real");
+    copy(&real, "2", &format!("{} {}", gone(), here()));
+    std::os::unix::fs::symlink(&real, root.join("s")).unwrap();
+    sweep(&root.join("s/9"));
+    assert_eq!(
+        left_in(&real),
+        ["2", "2.run"],
+        "the sweep cleared what the copies' folder, a link, leads to"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+#[test]
+fn a_far_line_clears_a_gone_run_s_copy_and_leaves_nothing_of_its_own() {
+    // A uname that, the first time it's asked, leaves the copy of a run
+    // here that has gone, as the far line begins.
+    let uname = "PATH=${PATH#*:}
+runs=\"$HOME/.cache/pi/agentic-harness.pi/quest-workspace/QEST-20261115-ABC123/s\"
+if mkdir \"$HOME/left\" 2>/dev/null; then
+  sh -c : & gone=$!
+  wait \"$gone\"
+  mkdir -p \"$runs/7\" && touch \"$runs/7/f\" &&
+    printf '%s %s %s\\n' \"$gone\" \"$(uname -n)\" \"$(readlink /proc/self/ns/pid 2>/dev/null)\" > \"$runs/7.run\"
+fi
+exec uname \"$@\"";
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "1")],
+        "touch ../ran",
+        &kind(""),
+        None,
+        &[("uname", uname)],
+    );
+    assert!(
+        code == Some(0) && work(&home).join("ran").exists(),
+        "the job never ran ({code:?}): {err}"
+    );
+    assert!(home.join("left").exists(), "no gone run's copy was left");
+    assert_eq!(
+        left_in(&work(&home)),
+        ["ran"],
+        "the far line left a gone run's copy or something of its own: {err}"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
+fn a_stop_cut_short_leaves_its_run_s_file_for_the_next_sweep() {
+    // An rm that can't clear a stopped copy, as one killed in mycelium's
+    // grace doesn't, passing all else to the machine's own.
+    let rm = "PATH=${PATH#*:}
+case \" $* \" in *\"/s/1.names \"*\"/s/1 \"*) exit 1 ;; esac
+exec rm \"$@\"";
+    let (code, err, home) = far_line(
+        Left::Whole,
+        &[("a", "1")],
+        "touch ../ran && kill -TERM $PPID",
+        &kind(""),
+        None,
+        &[("rm", rm)],
+    );
+    let runs = work(&home);
+    assert!(
+        runs.join("ran").exists(),
+        "the job never ran ({code:?}): {err}"
+    );
+    let run = std::fs::read_to_string(runs.join(format!("1{RUN}"))).unwrap_or_default();
+    let number = run.split(' ').next().unwrap_or_default();
+    assert!(
+        runs.join("1/a").exists() && number.parse::<u32>().is_ok(),
+        "a stop cut short left no copy or no run's file to clear it by: {run:?}"
+    );
+    assert_eq!(
+        run.trim_end_matches('\n')
+            .split_once(' ')
+            .map(|(_, rest)| rest),
+        Some(here().as_str()),
+        "the run's file doesn't name this machine and its process space"
+    );
+    sweep(&runs.join("9"));
+    assert_eq!(
+        left_in(&runs),
+        ["ran"],
+        "the next sweep didn't clear what the stop left"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}

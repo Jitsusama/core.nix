@@ -1,9 +1,8 @@
 //! The far line making the job's tree from its archives: what it unpacks,
-//! what it refuses before the job runs, what it takes away when it is
-//! stopped, and what it clears of earlier runs'.
+//! what it refuses before the job runs, and what it takes away when it is
+//! stopped.
 
-use super::{Left, far_line, far_run, handover, kind, said, scratch, work};
-use crate::far::steps::{SPENT, sweeping};
+use super::{Left, far_run, handover, said, scratch, work};
 use crate::far::{BACK, Heard, TREE, archive, relay};
 use std::path::Path;
 
@@ -304,8 +303,10 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
             "a far line stopped by {signal} ended otherwise: {err}"
         );
         assert!(
-            !work(&home).join("1").exists() && !handover(&home).join(TREE).exists(),
-            "a far line stopped by {signal} left its copy or the job's archives"
+            !work(&home).join("1").exists()
+                && !work(&home).join("1.run").exists()
+                && !handover(&home).join(TREE).exists(),
+            "a far line stopped by {signal} left its copy, its run's file or the job's archives"
         );
         assert!(
             !handover(&home).join(BACK).exists(),
@@ -313,107 +314,4 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
         );
         let _ = std::fs::remove_dir_all(&home);
     }
-}
-
-#[test]
-fn a_stop_whose_removal_is_cut_short_leaves_its_copy_marked_spent() {
-    // An rm that can't remove what's marked spent, as one killed in
-    // mycelium's grace doesn't, passing all else to the machine's own.
-    let rm =
-        format!("PATH=${{PATH#*:}}\ncase \" $* \" in *{SPENT}*) exit 1 ;; esac\nexec rm \"$@\"");
-    let (code, err, home) = far_line(
-        Left::Whole,
-        &[("a", "1")],
-        "touch ../ran && kill -TERM $PPID",
-        &kind(""),
-        None,
-        &[("rm", &rm)],
-    );
-    assert!(
-        work(&home).join("ran").exists(),
-        "the job never ran ({code:?}): {err}"
-    );
-    let spent = work(&home).join(format!("{SPENT}1"));
-    assert!(
-        !work(&home).join("1").exists() && spent.join("a").exists(),
-        "a copy whose removal was cut short wasn't left marked spent: {err}"
-    );
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-#[test]
-fn a_far_line_clears_what_earlier_runs_left_spent_or_a_day_untouched() {
-    let root = scratch("far-swept");
-    let runs = root.join("s");
-    let outside = root.join("outside");
-    for folder in [
-        format!("s/{SPENT}7"),
-        "s/old".to_owned(),
-        "s/fresh".to_owned(),
-        "outside".to_owned(),
-    ] {
-        std::fs::create_dir_all(root.join(&folder)).unwrap();
-        std::fs::write(root.join(folder).join("f"), "f").unwrap();
-    }
-    std::fs::write(runs.join("old.names"), "n").unwrap();
-    std::os::unix::fs::symlink(&outside, runs.join(format!("{SPENT}8"))).unwrap();
-    // Two days untouched, after what's in it was written.
-    let touched = std::process::Command::new("touch")
-        .args(["-t", "202001010000"])
-        .args([runs.join("old"), runs.join("old.names")])
-        .status()
-        .unwrap();
-    assert!(touched.success(), "touch couldn't age what was left");
-    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    let swept = std::process::Command::new(sh)
-        .args(["-c", &format!("work={}/9\n{}", runs.display(), sweeping())])
-        .output()
-        .unwrap();
-    let err = String::from_utf8_lossy(&swept.stderr);
-    assert!(
-        swept.status.success() && err.is_empty(),
-        "the sweep failed: {err}"
-    );
-    let mut left: Vec<_> = std::fs::read_dir(&runs)
-        .unwrap()
-        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
-        .collect();
-    left.sort();
-    assert_eq!(
-        left,
-        ["fresh"],
-        "the sweep took a live run's copy or left a spent one"
-    );
-    assert!(
-        outside.join("f").exists(),
-        "the sweep cleared what a link marked spent leads to"
-    );
-    let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn a_far_line_whose_copies_lie_through_a_link_clears_nothing_it_leads_to() {
-    let root = scratch("far-swept-link");
-    let spent = root.join(format!("real/{SPENT}7"));
-    std::fs::create_dir_all(&spent).unwrap();
-    std::fs::write(spent.join("f"), "f").unwrap();
-    std::os::unix::fs::symlink(root.join("real"), root.join("s")).unwrap();
-    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
-    let swept = std::process::Command::new(sh)
-        .args([
-            "-c",
-            &format!("work={}/s/9\n{}", root.display(), sweeping()),
-        ])
-        .output()
-        .unwrap();
-    assert!(
-        swept.status.success(),
-        "the sweep failed: {}",
-        String::from_utf8_lossy(&swept.stderr)
-    );
-    assert!(
-        spent.join("f").exists(),
-        "the sweep cleared what the copies' folder, a link, leads to"
-    );
-    let _ = std::fs::remove_dir_all(&root);
 }
