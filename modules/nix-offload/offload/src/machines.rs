@@ -1667,8 +1667,14 @@ mod tests {
             said(reaches)
         };
         let run = a_run();
-        assert!(reached_lately(&run, kept, "mac", || ask(true)));
-        assert!(reached_lately(&run, kept, "mac.local", || ask(true)));
+        assert!(
+            reached_lately(&run, kept, "mac", || ask(true)),
+            "a machine ssh reaches read as unreached"
+        );
+        assert!(
+            reached_lately(&run, kept, "mac.local", || ask(true)),
+            "a second machine ssh reaches read as unreached"
+        );
         forget_reached_in(&run, kept, "mac");
         assert!(
             !folder.path().join("mac").exists(),
