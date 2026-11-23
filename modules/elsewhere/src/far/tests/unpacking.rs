@@ -169,6 +169,48 @@ fn a_folder_closed_to_its_owner_is_opened_so_its_files_are_checked_and_taken_awa
 }
 
 #[test]
+fn every_archive_is_unpacked_in_turn_into_one_tree() {
+    let made = scratch("several");
+    std::fs::create_dir_all(made.join("in/d")).unwrap();
+    std::fs::write(made.join("in/a"), "1").unwrap();
+    std::fs::write(made.join("in/d/b"), "2").unwrap();
+    std::fs::write(made.join("in/d/c"), "3").unwrap();
+    // Room for one file's entry and the close, so each goes in its own.
+    let most = archive::taken("d/b", 1) + archive::CLOSED;
+    let parts = archive::write(&made.join("in"), ["a", "d/b", "d/c"], &made, most).unwrap();
+    assert_eq!(parts.len(), 3, "the files didn't go in an archive each");
+    let texts: Vec<_> = parts
+        .iter()
+        .map(|part| {
+            let text = String::from_utf8(std::fs::read(made.join(&part.name)).unwrap()).unwrap();
+            (part.name.clone(), text)
+        })
+        .collect();
+    let _ = std::fs::remove_dir_all(&made);
+    let sizes: String = texts
+        .iter()
+        .map(|(name, text)| format!("{}\t{name}\n", text.len()))
+        .collect();
+    let list = format!("{sizes}end\n");
+    let files: Vec<_> = texts
+        .iter()
+        .map(|(name, text)| (name.as_str(), text.as_str()))
+        .collect();
+    let (code, err, home) = far_run(Left::Listed(&list), &files, "cat a d/b d/c > ../ran");
+    assert_eq!(code, Some(0), "a job over three archives didn't run: {err}");
+    assert_eq!(
+        std::fs::read_to_string(work(&home).join("ran")).unwrap(),
+        "123",
+        "a file of a later archive didn't land beside the first's"
+    );
+    assert!(
+        !work(&home).join("1").exists() && !handover(&home).join(TREE).exists(),
+        "the copy or the archives were left behind"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn a_link_one_archive_makes_is_refused_before_the_next_writes_through_it() {
     let outside = scratch("through-outside");
     let made = scratch("through");

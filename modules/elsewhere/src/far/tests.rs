@@ -1,4 +1,4 @@
-use super::{Heard, Missed, bring_back, listed, plain_quest, quoted, script, travels};
+use super::{Heard, Missed, bring_back, listed, plain_quest, quoted, script, travels, within_tree};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
@@ -44,6 +44,25 @@ fn neither_secrets_nor_hidden_files_nor_what_s_excluded_travel() {
         "web/node_modules/a.js",
     ] {
         assert!(travels(path, &excludes), "{path} was kept home");
+    }
+}
+
+#[test]
+fn only_a_path_within_the_tree_is_read_from_it() {
+    for path in [
+        "/etc/passwd",
+        "",
+        "a//b",
+        "a/",
+        "../x",
+        "a/../b",
+        "./a",
+        "a/.",
+    ] {
+        assert!(!within_tree(path), "{path:?} was read as within the tree");
+    }
+    for path in ["a", "src/lib.rs", "a..b/c", "web/node_modules/a.js"] {
+        assert!(within_tree(path), "{path:?} was read as outside the tree");
     }
 }
 

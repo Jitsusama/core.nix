@@ -107,9 +107,11 @@ pub fn write<'a>(
 }
 
 /// The plain file at `path`, read whole through one opening, with what
-/// that opening says of it. A link or a pipe put where the file was
-/// gathered from is refused, neither followed nor waited on, so nothing
-/// outside the tree goes in and nothing holds the job.
+/// that opening says of it. A link or a pipe where the file was gathered
+/// from is refused before any of it is read: one there at the look is never
+/// opened, and one swapped in after it is opened without waiting and
+/// refused as not the file looked at. So nothing outside the tree goes in
+/// and nothing holds the job.
 fn read(path: &Path) -> io::Result<(Vec<u8>, fs::Metadata)> {
     let mut file = super::landing::opened_plain(path).map_err(|error| {
         io::Error::new(
