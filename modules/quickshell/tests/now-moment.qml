@@ -3025,6 +3025,18 @@ ShellRoot {
             ?.pressing?.() ?? null;
         expect("and Desktop presses while it holds it", desktopPresses() === true,
             desktopPresses());
+        // Slack's row, made from its piece, presses the same way, by its own
+        // source's critical notices and no other's.
+        const slackPresses = () => forYou().find(row => row.key === "on:slack")
+            ?.pressing?.() ?? null;
+        expect("Slack's row made from its piece doesn't press for Desktop's notice",
+            slackPresses() === false, slackPresses());
+        const desktopCritical = Notices.history;
+        Notices.history = [{ id: 21, at: Date.now(), app: "Slack", summary: "Bo: are you there?",
+            urgency: "critical", read: false }].concat(desktopCritical);
+        expect("but presses while it holds a critical one of its own", slackPresses() === true,
+            slackPresses());
+        Notices.history = desktopCritical;
         // What's on screen is reached the same way, through For You.
         expect("and Super+N with notices on screen goes through For You to them",
             now.leadsTo("onScreen").length === 2 && now.leadsTo("onScreen")[0] === now.waiting
