@@ -101,10 +101,11 @@ let
     easesSleep = true;
     easesCarry = true;
   };
-  easingNode = toString (linux easing).systemd.user.services.mycelium.Service.ExecStart;
-  # Where the harness reads what the node asks it to park, on a Mac.
-  macEase = "${(mac links).xdg.stateHome}/pi/agentic-harness.pi/park-workflow/ease";
+  easingLinux = linux easing;
+  easingNode = toString easingLinux.systemd.user.services.mycelium.Service.ExecStart;
   macEasing = (mac easing).launchd.agents.mycelium.config.ProgramArguments;
+  # A machine with a further realm whose home node carries.
+  carryingBoth = (linux (both // { easesCarry = true; })).systemd.user.services;
   # Whether a node built from `mycelium` may make carries, by easing.nix's
   # own rule, and what the module's refusal of a machine setting it anyway
   # says of an account.
@@ -114,6 +115,26 @@ let
     map (check: check.assertion) (
       lib.filter (check: lib.hasInfix "easesCarry" check.message) account.assertions
     );
+  # A mycelium lacking #381's guards, as a machine overriding core's input
+  # to an older one has it: a source without its files. Assertions are
+  # lazy, so its package is never built.
+  stale = self.inputs.mycelium // {
+    outPath = ./tests;
+  };
+  # A Linux workstation whose account's node is built from `input` in
+  # place of core's own.
+  linuxFrom =
+    input: settings:
+    account (bareNixos [
+      self.nixosModules.workstation
+      {
+        home-manager.users.someone = {
+          disabledModules = [ (toString ./home.nix) ];
+          imports = [ (lib.modules.importApply ./home.nix { mycelium = input; }) ];
+          jitsusama.mycelium = settings;
+        };
+      }
+    ]);
   # The home realm's node for a machine naming one via, forced whole so a
   # value the option's type refuses fails here.
   viaNode =
@@ -376,7 +397,7 @@ in
   # harness's pi-carry, which a carry runs by name.
   mycelium-links-what-a-machine-names =
     holds "mycelium-links-what-a-machine-names"
-      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, it makes the carries it chooses though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine may make them with a mycelium from before the one that keeps the person's and the leading sessions, a machine in a realm naming none runs no node, or one in none runs one."
+      "A machine's links, over SSH or through a provider's program, don't each get dialled in its realm, its providers' programs aren't each asked, a via or a provider naming its program by no path or a place it could misread evaluates, Linux's node signs in with a key that may ask for a PIN or not the one its realm names, or through an agent the account's SSH config names, a Mac's node starts sessions whose commits wait on its sensor or finds the system's ssh after the account's programs or none of them, Linux's node isn't given a soft 65536 and a hard 524288 open files, or a Mac's a soft 10240 and no hard limit of its own, the home realm's node doesn't write how it would ease the machine or a further realm's does, it asks the harness to park sessions though its machine doesn't say to or doesn't where it does, it makes the carries it chooses though its machine doesn't say to or doesn't where it does, on Linux or a Mac, a machine may make them with a mycelium lacking the guards that keep the person's and the leading sessions, or one that never carries is refused for want of them, a machine in a realm naming none runs no node, or one in none runs one."
       (
         lib.hasInfix "--realm personal node --ssh one --ssh two" linuxNode
         && lib.hasInfix "--health-socket %t/daemons/system.sock --eases" linuxNode
@@ -393,18 +414,17 @@ in
         && lib.hasInfix "--eases-sleep /home/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease " easingNode
         && lib.hasInfix " --eases-carry " easingNode
         && lib.elem "--eases-carry" macEasing
-        && lib.hasInfix "--eases-sleep ${macEase} " (toString macEasing)
-        && keepsTheLed self.inputs.mycelium
-        && !(keepsTheLed (self.inputs.mycelium // { lastModified = 1795430327; }))
-        && !(keepsTheLed { })
-        && carryChecked (linux easing) == [ true ]
-        && lib.hasInfix "--eases --eases-carry" (
-          toString (linux (both // { easesCarry = true; })).systemd.user.services.mycelium.Service.ExecStart
+        && lib.hasInfix "--eases-sleep /Users/someone/.local/state/pi/agentic-harness.pi/park-workflow/ease " (
+          toString macEasing
         )
-        && !(lib.hasInfix "--eases" (
-          toString
-            (linux (both // { easesCarry = true; })).systemd.user.services.mycelium-other.Service.ExecStart
-        ))
+        && keepsTheLed self.inputs.mycelium
+        && !(keepsTheLed stale)
+        && !(keepsTheLed { })
+        && carryChecked easingLinux == [ true ]
+        && carryChecked (linuxFrom stale easing) == [ false ]
+        && carryChecked (linuxFrom stale (easing // { easesCarry = false; })) == [ true ]
+        && lib.hasInfix "--eases --eases-carry" (toString carryingBoth.mycelium.Service.ExecStart)
+        && !(lib.hasInfix "--eases" (toString carryingBoth.mycelium-other.Service.ExecStart))
         &&
           lib.elem "--eases-carry"
             (mac (links // { easesCarry = true; })).launchd.agents.mycelium.config.ProgramArguments
@@ -644,11 +664,19 @@ in
       lines = map (line: lib.filter (word: word != "") (lib.splitString " " line)) (
         map builtins.unsafeDiscardStringContext [
           linuxNode
+          otherNode
           stimulatingNode
           lendingNode
           sleepingNode
           carryingNode
           easingNode
+          (viaNode "/bin/cell:cell-1")
+          (providerNode "/bin/cell")
+          (toString bothFlowing.mycelium.Service.ExecStart)
+          (toString bothFlowing.mycelium-other.Service.ExecStart)
+          (toString
+            (linux (links // { declares = declaring; })).systemd.user.services.mycelium.Service.ExecStart
+          )
         ]
       );
       # Each flag of a line, with whether a value follows it there.
@@ -681,9 +709,10 @@ in
         grep -q -E -e "(^|[[:space:]])$flag([[:space:]=,]|\$)" help \
           || { echo "mycelium node doesn't take $flag"; exit 1; }
       done
-      # clap's help names a flag's value after it, as --flag <VALUE>.
+      # clap's help names a flag's value after it, as --flag <VALUE>, and one
+      # it takes only after an =, as --flag=<VALUE>, which a line can't give.
       for flag in ${lib.escapeShellArgs valued}; do
-        grep -q -E -e "(^|[[:space:]])$flag[ =]\[?<" help \
+        grep -q -E -e "(^|[[:space:]])$flag \[?<" help \
           || { echo "mycelium node takes no value after $flag, which is given one"; exit 1; }
       done
       for flag in ${lib.escapeShellArgs bare}; do

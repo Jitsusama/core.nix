@@ -8,11 +8,16 @@
 # says what each choice holds to.
 { lib }:
 let
-  # When the first of mycelium's main to keep a carry off the sessions the
-  # person writes in and those leading others was written: its #381, merged
-  # as 8f1b0e66, whose lastModified this is. One older takes the flag and
-  # makes carries without those guards, so it's a floor and not a name.
-  sparesTheLed = 1795430328;
+  # What mycelium's #381 brought, which keeps a carry off the sessions the
+  # person writes in and those leading others: a session's `driven` beside
+  # the lanes it `leads`, each file of its source with the words that say
+  # it. One without them takes the flag and carries without those guards.
+  # The source is read rather than its date or its name, since a branch cut
+  # before #381 may be dated after it.
+  guards = {
+    "src/carry/ease.rs" = "pub driven: Option<bool>";
+    "src/carry/easing.rs" = "fn leads(";
+  };
 in
 {
   options = {
@@ -35,26 +40,37 @@ in
         this machine is held over its room and another has some, rather
         than only saying so: an idle session at a time, off the screen and
         nobody's but the agents', never one orchestrating others, at most
-        one each half hour and six a day, and onto ground as firm as the
-        session's fence, as an orchestrator's ordered carry is. Ground is
-        judged as `declares` says, so a carry from Linux to a Mac lands
-        looser in what it may read and write. The session's harness carries
-        it only once nothing of its own would be lost, and says why it
-        refused otherwise. It needs a mycelium from its #381 on, which
-        keeps the person's and the leading sessions, so with this on a
-        machine overriding that input to an older one fails to evaluate.
-        Off, the node only
-        writes what it would do. To stop at once, set it false and switch,
-        which restarts the node; the sessions it carried stay where they
-        went.
+        one each half hour and six a day, and only onto a fence kind as
+        strict as the session's own, as an orchestrator's ordered carry
+        goes. Kinds are as each machine declares them, and a Mac's strict
+        reads more than Linux's, so a strict session carried from Linux to a
+        Mac lands looser in what it may read and write. The node only tells
+        the session's harness, which makes the carry itself once nothing of
+        its own would be lost, and says why it refused otherwise. The guards
+        are mycelium's, from its #381 on, read from the source a machine's
+        node is built from, so with this on a machine whose mycelium lacks
+        them fails to evaluate. Off, the node only writes what it would do.
+        To stop at once, set it false and switch, which restarts the node;
+        a carry it already asked for is the harness's, so it goes on, and
+        the sessions it carried stay where they went.
       '';
     };
   };
 
-  # Whether `mycelium`, the flake input a machine's node is built from,
-  # keeps the carries easesCarry promises. An input saying no time is
-  # taken to keep nothing.
-  keepsTheLed = mycelium: (mycelium.lastModified or 0) >= sparesTheLed;
+  # Whether `mycelium`, the source a machine's node is built from, keeps
+  # the carries easesCarry promises. A source with no file to read keeps
+  # nothing, and one renaming either word fails core's check of its own
+  # lock before any machine taking it is refused.
+  keepsTheLed =
+    mycelium:
+    mycelium ? outPath
+    && lib.all (
+      file:
+      let
+        path = "${mycelium}/${file}";
+      in
+      builtins.pathExists path && lib.hasInfix guards.${file} (builtins.readFile path)
+    ) (lib.attrNames guards);
 
   # The home realm's node's easing flags, for `cfg` and the account's state
   # folder: it asks the harness to park sessions in the folder each
