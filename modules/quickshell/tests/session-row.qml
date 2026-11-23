@@ -540,38 +540,57 @@ QtObject {
         }
 
         // Reopen Them All counts what it finds gone as Sessions finds it,
-        // after the run began, each run on its own: a second over the same
-        // kept row says only its own finds (core.nix#6037's F39), and one
-        // pressed while the first still walks, which Sessions joins to the
-        // first's walk and so finds nothing itself, leaves the first's
-        // count whole as the first's finds keep coming.
-        const reopens = (heard, finds) => {
+        // after the press, as Agents runs it: each press joins the walk
+        // under way while Sessions still walks it, and counts afresh once
+        // it has ended. A second over the same kept row says only its own
+        // finds (core.nix#6037's F39). One pressed mid-walk over the same
+        // sessions, which Sessions drops as already queued, leaves the
+        // walk's count whole as its finds keep coming. One pressed mid-walk
+        // with a session more, which Sessions queues with the second
+        // press's own `gone`, adds to the walk's count, since Agents' foot
+        // says only what was told last.
+        const walker = heard => {
             const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
-            return run => ReopenTally.run(3, gone => {
-                finds[run] = gone;
-            }, hear);
+            const at = { walk: null, walking: false, finds: {} };
+            at.press = (run, ids) => {
+                at.walk = ReopenTally.run(ReopenTally.joined(at.walk, at.walking), ids,
+                    gone => {
+                        at.finds[run] = gone;
+                    }, hear);
+                at.walking = true;
+            };
+            return at;
         };
         const inTurn = [];
-        const turnFinds = {};
-        const turn = reopens(inTurn, turnFinds);
-        turn("first");
-        turnFinds.first();
-        turnFinds.first();
-        turn("second");
-        turnFinds.second();
+        const turn = walker(inTurn);
+        turn.press("first", ["a", "b", "c"]);
+        turn.finds.first({ id: "a" });
+        turn.finds.first({ id: "b" });
+        turn.walking = false;
+        turn.press("second", ["a", "b", "c"]);
+        turn.finds.second({ id: "a" });
         const turns = inTurn.join("; ");
         if (turns !== "1 gone, 2 reopened; 2 gone, 1 reopened; 1 gone, 2 reopened")
             failures.push(`a second Reopen Them All counts afresh: "${turns}"`);
         const overlapping = [];
-        const overlapFinds = {};
-        const overlap = reopens(overlapping, overlapFinds);
-        overlap("first");
-        overlapFinds.first();
-        overlap("second");
-        overlapFinds.first();
+        const overlap = walker(overlapping);
+        overlap.press("first", ["a", "b", "c"]);
+        overlap.finds.first({ id: "a" });
+        overlap.press("second", ["a", "b", "c"]);
+        overlap.finds.first({ id: "b" });
         const overlaps = overlapping.join("; ");
         if (overlaps !== "1 gone, 2 reopened; 2 gone, 1 reopened")
             failures.push(`one pressed mid-walk leaves the first's count: "${overlaps}"`);
+        const grown = [];
+        const grow = walker(grown);
+        grow.press("first", ["a", "b", "c"]);
+        grow.finds.first({ id: "a" });
+        grow.press("second", ["a", "b", "c", "d"]);
+        grow.finds.second({ id: "d" });
+        grow.finds.first({ id: "b" });
+        const grows = grown.join("; ");
+        if (grows !== "1 gone, 2 reopened; 2 gone, 2 reopened; 3 gone, 1 reopened")
+            failures.push(`one pressed mid-walk with more joins the walk's count: "${grows}"`);
 
         // What Joel hears of a run: one folder gone or many, then how many
         // reopened, in Agents' words, and nothing where a word is missing.
