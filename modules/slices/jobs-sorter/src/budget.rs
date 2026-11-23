@@ -36,6 +36,9 @@
 //! leaves it, which no file says: it holds while the account's own
 //! children claim no more than the account's floor.
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
 use crate::hosts::Signs;
 
 /// What a floor trimmed short is rounded down to, and how far the room
@@ -104,6 +107,42 @@ pub fn order(signs: &[Signs]) -> Vec<usize> {
         std::cmp::Reverse((unit.viewed > 0, unit.orchestrators, unit.shown > 0))
     });
     order
+}
+
+/// How long a window's claim is held at its peak before it may fall
+/// ([`Peaks`]).
+pub const PEAK_FOR: Duration = Duration::from_secs(60);
+
+/// Each window's claim at its peak, with when it peaked, so a claim that
+/// dips is held for [`PEAK_FOR`]: a window's claim falls as soon as what
+/// it holds does, and the room the units are fitted into rose and fell
+/// with every page reclaimed, so their floors hunted.
+#[derive(Debug, Default)]
+pub struct Peaks(HashMap<String, (u64, Instant)>);
+
+impl Peaks {
+    /// What `window` claims at `now`, as it claims `claim`: its peak, while
+    /// that came within [`PEAK_FOR`], or `claim` itself, which is its peak
+    /// from then.
+    pub fn hold(&mut self, window: &str, claim: u64, now: Instant) -> u64 {
+        match self.0.get(window) {
+            Some(&(peak, at)) if peak > claim && now.saturating_duration_since(at) < PEAK_FOR => {
+                peak
+            }
+            _ => {
+                self.0.insert(window.to_owned(), (claim, now));
+                claim
+            }
+        }
+    }
+
+    /// Forgets the windows whose peak came [`PEAK_FOR`] or more before
+    /// `now`, as each would fall to what it claims anyway, so a window
+    /// gone is forgotten.
+    pub fn forget_before(&mut self, now: Instant) {
+        self.0
+            .retain(|_, (_, at)| now.saturating_duration_since(*at) < PEAK_FOR);
+    }
 }
 
 #[cfg(test)]
@@ -247,6 +286,49 @@ mod tests {
             steady(640 * MIB, 576 * MIB, None),
             640 * MIB,
             "one never set gets what fits"
+        );
+    }
+
+    #[test]
+    fn a_windows_claim_is_held_at_its_peak_for_a_minute() {
+        let mut peaks = Peaks::default();
+        let start = Instant::now();
+        let at = |secs: u64| start + Duration::from_secs(secs);
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", GIB, at(0)),
+            GIB,
+            "a first claim is its peak"
+        );
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", 512 * MIB, at(30)),
+            GIB,
+            "a dip inside the minute keeps the peak"
+        );
+        assert_eq!(
+            peaks.hold("kitty-1-2.scope", 512 * MIB, at(30)),
+            512 * MIB,
+            "each window keeps its own"
+        );
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", 512 * MIB, at(60)),
+            512 * MIB,
+            "one after it lets it fall"
+        );
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", 2 * GIB, at(70)),
+            2 * GIB,
+            "a rise is taken at once"
+        );
+        assert_eq!(
+            peaks.hold("kitty-1-1.scope", GIB, at(129)),
+            2 * GIB,
+            "and held a minute from when it came"
+        );
+        peaks.forget_before(at(129));
+        assert_eq!(
+            peaks.0.keys().collect::<Vec<_>>(),
+            ["kitty-1-1.scope"],
+            "a window whose peak is past the minute is forgotten, as it would fall anyway"
         );
     }
 }

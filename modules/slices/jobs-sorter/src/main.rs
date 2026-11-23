@@ -1439,6 +1439,7 @@ fn rank_hosts(windows: &Windows, prefix: &str, held: &[String], ranks: &mut Rank
         windows.prefixes,
         &ranks.hosts,
         &mut ranks.fitting,
+        now,
     );
     let control =
         kitty::me().map(|uid| PathBuf::from(format!("/run/user/{uid}/systemd/user.control")));
@@ -1729,6 +1730,8 @@ struct Fitting {
     /// The slices whose others claimed past the room the units Joel is at
     /// left them ([`Fitting::overran`]).
     overrun: HashSet<String>,
+    /// Each window's claim at its peak within the minute.
+    peaks: budget::Peaks,
 }
 
 impl Fitting {
@@ -1776,6 +1779,8 @@ fn claims(
     low: u64,
     prefixes: &[String],
     mine: &[&Path],
+    peaks: &mut budget::Peaks,
+    now: std::time::Instant,
 ) -> (u64, Vec<(String, u64)>) {
     // Only the windows' floors are taken first: any agent can start a scope here with a floor
     // of max, which would leave the units Joel is at none.
@@ -1793,20 +1798,24 @@ fn claims(
         let name = path.file_name()?.to_string_lossy().into_owned();
         Some((name, holds::current(path)?, memory_low(path)?))
     };
-    let windows: Vec<(String, u64, u64)> = windows.iter().filter_map(claim).collect();
+    // Each window claims what it held at its peak within the minute, so a window paging out
+    // doesn't hand the units room it takes back a look later.
+    let windows: Vec<(String, u64)> = windows
+        .iter()
+        .filter_map(|path| {
+            let (name, current, floor) = claim(path)?;
+            let held = peaks.hold(&path.display().to_string(), current.min(floor), now);
+            Some((name, held))
+        })
+        .collect();
     // A scope counts as a window by its name alone, and the sorter gives a window no more than
     // focus::FLOOR, so what one claims past that is claimed as a stray's is, after the units
     // Joel is at: an agent naming a scope as a window and asking for max would otherwise take
     // their floors.
-    let room = budget::room(
-        low,
-        windows
-            .iter()
-            .map(|(_, current, floor)| (*current, (*floor).min(focus::FLOOR))),
-    );
+    let room = budget::room(low, windows.iter().map(|(_, held)| (*held, focus::FLOOR)));
     let past = windows
         .into_iter()
-        .map(|(name, current, floor)| (name, current.min(floor).saturating_sub(focus::FLOOR)));
+        .map(|(name, held)| (name, held.saturating_sub(focus::FLOOR)));
     let strays = others
         .iter()
         .filter_map(claim)
@@ -1823,14 +1832,17 @@ fn claims(
 /// windows Joel types in, those under `prefixes`, keep theirs whole while
 /// those others fit in what the units Joel is at leave; past it the
 /// kernel shares the slice's floor among every child again, which is said
-/// once ([`Fitting::overran`]). A slice whose floor can't be read is left
+/// once ([`Fitting::overran`]). Each window claims its peak of the last
+/// minute at `now` ([`budget::Peaks`]). A slice whose floor can't be read is left
 /// as ranked, and said once, as `fitting` remembers.
 fn fit_floors(
     ranked: &mut [Ranked],
     prefixes: &[String],
     hosts: &hosts::Hosts,
     fitting: &mut Fitting,
+    now: std::time::Instant,
 ) {
+    fitting.peaks.forget_before(now);
     let mut slices: Vec<PathBuf> = ranked
         .iter()
         .filter_map(|unit| unit.path.parent().map(Path::to_path_buf))
@@ -1853,7 +1865,7 @@ fn fit_floors(
             .filter(|&at| ranked[at].path.parent() == Some(slice.as_path()))
             .collect();
         let paths: Vec<&Path> = mine.iter().map(|&at| ranked[at].path.as_path()).collect();
-        let (room, strays) = claims(&slice, low, prefixes, &paths);
+        let (room, strays) = claims(&slice, low, prefixes, &paths, &mut fitting.peaks, now);
         let claimed = strays
             .iter()
             .fold(0u64, |sum, (_, claim)| sum.saturating_add(*claim));
@@ -4619,6 +4631,7 @@ mod tests {
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
             &mut fitting,
+            std::time::Instant::now(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
@@ -4744,6 +4757,7 @@ mod tests {
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
             &mut Fitting::default(),
+            std::time::Instant::now(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
@@ -4792,6 +4806,7 @@ mod tests {
             &["kitty-".to_owned()],
             &hosts,
             &mut Fitting::default(),
+            std::time::Instant::now(),
         );
         let mut fresh = [ranked_in(&slice, unit, own, own + 4096 * MIB, viewed)];
         fit_floors(
@@ -4799,6 +4814,7 @@ mod tests {
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
             &mut Fitting::default(),
+            std::time::Instant::now(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
@@ -4836,6 +4852,7 @@ mod tests {
             &["kitty-".to_owned()],
             &hosts::Hosts::default(),
             &mut Fitting::default(),
+            std::time::Instant::now(),
         );
         fs::remove_dir_all(slice.parent().unwrap()).unwrap();
         assert_eq!(
@@ -4843,6 +4860,52 @@ mod tests {
             focus::FLOOR,
             "the unit Joel is at keeps its floor: past a window's own, the scope claims as a \
              stray does, after it"
+        );
+    }
+
+    #[test]
+    fn a_window_paging_out_gives_the_units_its_room_only_after_a_minute() {
+        const MIB: u64 = 1 << 20;
+        let unit = "pi-conversation-b@1.service";
+        let slice = slice_with(
+            "fit-peak",
+            3072 * MIB,
+            &[
+                ("kitty-1-1.scope", 2048 * MIB, "2147483648"),
+                (unit, 2048 * MIB, "0"),
+            ],
+        );
+        let viewed = hosts::Signs {
+            viewed: 1,
+            current: Some(2048 * MIB),
+            ..hosts::Signs::default()
+        };
+        let mut fitting = Fitting::default();
+        let start = std::time::Instant::now();
+        let mut floors = Vec::new();
+        for (secs, window) in [(0, 2048), (30, 512), (61, 512)] {
+            fs::write(
+                slice.join("kitty-1-1.scope/memory.current"),
+                (window * MIB).to_string(),
+            )
+            .unwrap();
+            let mut ranked = [ranked_in(&slice, unit, 0, 2048 * MIB, viewed)];
+            let now = start + Duration::from_secs(secs);
+            fit_floors(
+                &mut ranked,
+                &["kitty-".to_owned()],
+                &hosts::Hosts::default(),
+                &mut fitting,
+                now,
+            );
+            floors.push(ranked[0].rank.floor / MIB);
+        }
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            floors,
+            [1024, 1024, 2048],
+            "the window's dip inside the minute keeps the unit's floor where it was, and once \
+             the minute is out the unit grows into the room"
         );
     }
 
