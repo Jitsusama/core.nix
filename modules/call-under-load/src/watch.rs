@@ -525,8 +525,11 @@ mod tests {
 
     #[test]
     fn only_sending_threads_are_judged() {
-        assert!(sending("renderer", "CodecWorker"));
-        assert!(sending("renderer", "WebRTC_W_and_N"));
+        assert!(sending("renderer", "CodecWorker"), "the encoder sends");
+        assert!(
+            sending("renderer", "WebRTC_W_and_N"),
+            "WebRTC's worker sends"
+        );
         assert!(
             sending("video_capture", "Chrome_ChildIOT"),
             "a capture process counts whole"
@@ -543,10 +546,14 @@ mod tests {
     #[test]
     fn a_scope_is_his_when_his_manager_session_or_apps_started_it() {
         let user = "0::/user.slice/user-1000.slice";
-        assert!(his_parent(&format!(
-            "{user}/user@1000.service/init.scope\n"
-        )));
-        assert!(his_parent(&format!("{user}/session-2.scope\n")));
+        assert!(
+            his_parent(&format!("{user}/user@1000.service/init.scope\n")),
+            "his manager started it"
+        );
+        assert!(
+            his_parent(&format!("{user}/session-2.scope\n")),
+            "his session started it"
+        );
         for his in [
             "app.slice/app-niri-x-9.scope",
             "app.slice/kitty-70-0.scope",
@@ -688,7 +695,10 @@ mod tests {
         assert_eq!(real.flagged, 2, "a late tick and a heavy one are flagged");
         assert_eq!(real.sending_p99, Some(350.0));
         assert_eq!(real.worst_who.as_deref(), Some("w350"));
-        assert!((real.load15_max - 95.0).abs() < 1e-9);
+        assert!(
+            (real.load15_max - 95.0).abs() < 1e-9,
+            "the call's load is its heaviest tick's"
+        );
         let unread = summed(100, 120, &[tick(None, 40.0)]);
         assert_eq!(
             (unread.sending_p99, unread.worst_ms),

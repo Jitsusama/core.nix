@@ -374,7 +374,10 @@ mod tests {
         let figures = real(&calls, 2_600);
         let figure = &figures[0];
         assert_eq!(figure.now, Some(412.5));
-        assert!(figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9);
+        assert!(
+            figure.lower_is_better && (figure.target - 300.0).abs() < 1e-9,
+            "a wait is lower-better against the 300 ms/s bar"
+        );
         assert_eq!(figure.owner, OWNER);
         assert_eq!(
             figure.behind[1],
