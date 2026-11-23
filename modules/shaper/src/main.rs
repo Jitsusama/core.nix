@@ -817,6 +817,9 @@ struct Pinner {
     written: Option<String>,
     boot: String,
     asked_at: Option<(Instant, u64)>,
+    /// Since when the primary uplink's router has named no network, so a
+    /// pin kept through that lets go once it lasts `pin::APART`.
+    unnamed_since: Option<Instant>,
 }
 
 impl Pinner {
@@ -852,6 +855,7 @@ impl Pinner {
             written,
             boot: boot.trim().to_owned(),
             asked_at,
+            unnamed_since: None,
         }
     }
 
@@ -909,6 +913,17 @@ impl Pinner {
         {
             eprintln!("{}", pin::let_go(first, pin::ELSEWHERE));
         }
+        let since = self.unnamed_since.unwrap_or(now);
+        self.unnamed_since = uplink
+            .filter(|&(_, network)| pin::unnamed(network))
+            .map(|_| since);
+        if self
+            .unnamed_since
+            .is_some_and(|at| now.saturating_duration_since(at) >= pin::APART)
+            && let Some(first) = self.pinning.unheard(now)
+        {
+            eprintln!("{}", pin::let_go(first, pin::UNNAMED));
+        }
         while let Ok((end, read)) = self.read.try_recv() {
             let timeout = fs::read_to_string("/proc/sys/net/netfilter/nf_conntrack_udp_timeout");
             let from = now + pin::settle(&timeout.unwrap_or_default());
@@ -929,9 +944,7 @@ impl Pinner {
             eprintln!("{}", pin::said(moved.was, first, &self.last));
         }
         if let Some((link, _)) = uplink
-            && self
-                .looked
-                .is_none_or(|at| now - at >= Duration::from_secs(5))
+            && self.looked.is_none_or(|at| now - at >= pin::LOOK)
         {
             self.looked = Some(now);
             let counted = sh(&words(&format!(
@@ -941,7 +954,7 @@ impl Pinner {
                 Some(retried) => {
                     self.unread = false;
                     if let Some((pin::Moved { was: Some(first) }, times)) =
-                        self.pinning.heed(retried)
+                        self.pinning.heed(retried, now)
                     {
                         eprintln!("{}", pin::dropped(first, times));
                     }
