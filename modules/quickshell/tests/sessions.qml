@@ -528,6 +528,8 @@ ShellRoot {
     property var unopened: []
     // What Reopen Them All's walk said it found, reading by reading.
     property var tallied: []
+    // Whether s-counted, its folder gone, was found so.
+    property bool countedGone: false
     function tally(now) {
         tallied = tallied.concat([`${now.gone} gone, ${now.reopened} reopened`]);
         Qt.callLater(root.check);
@@ -589,13 +591,16 @@ ShellRoot {
         Sessions.reopenAll([{ id: "s-unkept", cwd: "/tmp", way: "boot" }], told("s-unkept"),
             undefined, Sessions.carryOn, root.tally);
         // Reopen Them All asks niri for its screens first, and niri here
-        // never answers, as it doesn't a request it refused. s-patient
-        // follows s-unkept by the walk's pace.
+        // never answers, as it doesn't a request it refused. Given before
+        // it would, Sessions joins each list to the one walk after, and
+        // they count as one. s-counted, its folder gone, is found so as
+        // s-unkept is begun, before s-patient, whose window niri never
+        // opens; s-patient follows by the walk's pace.
+        Sessions.reopenAll([{ id: "s-counted", cwd: "/gone/s-counted" }], () => {
+            root.countedGone = true;
+            Qt.callLater(root.check);
+        }, id => null, undefined, root.tally);
         Sessions.reopenAll([{ id: "s-patient", cwd: "/tmp" }], told("s-patient"), id => null,
-            undefined, root.tally);
-        // Given before niri answers too, so Sessions joins all three lists
-        // to one walk after the press, and they count as one.
-        Sessions.reopenAll([{ id: "s-counted", cwd: "/gone/s-counted" }], undefined, id => null,
             undefined, root.tally);
         patience.start();
     }
@@ -641,10 +646,11 @@ ShellRoot {
             || !kitties.some(one => one.endsWith(" pi --session s-warded"))
             || !kitties.some(one => one.endsWith(" pi --session s-hedged"))
             || !("UNSAID" in root.asleep) && !Niri.spawns.some(one => one.includes("s-unsaid"))
-            || !Niri.spawns.some(one => one.includes("s-unkept")) || tallied.length === 0)
+            || !Niri.spawns.some(one => one.includes("s-unkept")) || !countedGone)
             return;
-        // Agents decided at the press, so a list given before niri said
-        // its screens counted alone (core.nix#6126's round 3).
+        // Chosen as each list was given, before niri said its screens,
+        // the tally would count each list alone, "1 gone, 0 reopened"
+        // (core.nix#6126's round 3).
         expect("lists given before the walk begins count as one walk",
             tallied.join("; ") === "1 gone, 2 reopened", tallied.join("; "));
         expect("one the daemon's boot kept nowhere comes back held, with no window",

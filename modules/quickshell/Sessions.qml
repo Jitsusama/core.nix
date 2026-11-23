@@ -848,12 +848,13 @@ Singleton {
             if (late.quiet && late.at === null) {
                 root.placeQuietly(id, late);
                 if (going.late.length === 0 && going.queue.length === 0 && !going.waiting
-                    && !going.looking && !going.settling)
+                    && going.looking === null && !going.settling)
                     root.reopenDone();
                 return;
             }
             const entry = { id, at: late.at, away: late.away, quiet: late.quiet === true };
-            const running = going.queue.length > 0 || going.waiting !== null || going.looking;
+            const running = going.queue.length > 0 || going.waiting !== null
+                || going.looking !== null;
             // Placed now while the rest are still being reopened, and by
             // the check after them; once that's done, by its own check.
             if (running && entry.at !== null)
@@ -1329,7 +1330,7 @@ Singleton {
         // Sessions handed over meanwhile are reopened first, and this is
         // done once they're placed too: dropped here, they never opened
         // (2026-11-04, a second spawn 0.7 s after the first).
-        if (going.waiting !== null || going.looking)
+        if (going.waiting !== null || going.looking !== null)
             return;
         if (going.queue.length > 0) {
             if (!reopenPacing.running)
@@ -1553,8 +1554,7 @@ Singleton {
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
     function reopenHere(here, gone, kept, told, momentOf, arranged, counted) {
-        // Decided before the list joins, which would make a walk whose
-        // sessions are all begun seem to be counting again.
+        // Decided by what the walk holds of its own tally's sessions.
         const tally = counted === null ? null
             : Reopening.tallyOf(reopening, counted.ids, counted.tell);
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
@@ -1578,7 +1578,8 @@ Singleton {
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
             reopenSettling.stop();
-            if (reopening.waiting === null && !reopening.looking && !reopenPacing.running)
+            if (reopening.waiting === null && reopening.looking === null
+                && !reopenPacing.running)
                 reopenSoon();
             return;
         }
@@ -1586,7 +1587,8 @@ Singleton {
             queue,
             back: Niri.current,
             waiting: null,
-            looking: false,
+            // The one whose folder is looked for, or null.
+            looking: null,
             late: [],
             placed: [],
             behind: [],
@@ -1885,9 +1887,9 @@ Singleton {
             console.info(`sessions: ${next.one.id}'s hosted presence is stale, since `
                 + `${found.session.presence.owner.host} doesn't list it, so it's reopened`);
         reopening.begun.push(next.one.id);
-        reopening.looking = true;
+        reopening.looking = next;
         lookFor([next.one.cwd], there => {
-            reopening.looking = false;
+            reopening.looking = null;
             if (!there[0]) {
                 root.reopenAfresh(next);
                 return;
@@ -2138,9 +2140,9 @@ Singleton {
             reopenNext();
             return;
         }
-        reopening.looking = true;
+        reopening.looking = next;
         lookFor([start], there => {
-            reopening.looking = false;
+            reopening.looking = null;
             if (!there[0]) {
                 foundGone(next);
                 reopenNext();
@@ -2183,8 +2185,8 @@ Singleton {
     // answer to where it's called unqualified.
     function placingNow() {
         return screensWaiting.length > 0 || reopening !== null
-            && (reopening.queue.length > 0 || reopening.waiting !== null || reopening.looking
-                || reopening.settling);
+            && (reopening.queue.length > 0 || reopening.waiting !== null
+                || reopening.looking !== null || reopening.settling);
     }
 
     // Workspaces given the screen in use in place of a kept screen that was
@@ -2444,7 +2446,7 @@ Singleton {
                 && root.placeQuietly(held.entry.id, held.waiting) === "waiting")
                 going.behind.push(held);
         }
-        if (going.queue.length === 0 && going.waiting === null && !going.looking
+        if (going.queue.length === 0 && going.waiting === null && going.looking === null
             && !reopenPacing.running)
             root.settleReopened();
     }
