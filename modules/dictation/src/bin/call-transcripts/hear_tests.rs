@@ -478,33 +478,31 @@ fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
     );
 }
 
-/// A take heard as scripted: these words for theirs, this text for
-/// Joel's, or neither.
-struct Scripted(Option<(Vec<Word>, String)>);
+/// A take heard as scripted: these words for theirs and this text for
+/// Joel's, each given once, and a failure for what isn't scripted.
+struct Scripted {
+    words: Option<Vec<Word>>,
+    text: Option<String>,
+}
 
-impl Scripted {
-    fn heard<T>(
-        &self,
-        what: impl FnOnce(&(Vec<Word>, String)) -> T,
-    ) -> Result<(T, Timings), String> {
-        let took = Timings {
-            mel: Duration::ZERO,
-            encoder: Duration::ZERO,
-            decoder: Duration::ZERO,
-            tokens: 0,
-        };
-        let script = self.0.as_ref().ok_or("the encoder failed")?;
-        Ok((what(script), took))
-    }
+/// What's `heard`, with timings no case reads, or a failure if nothing.
+fn took<T>(heard: Option<T>) -> Result<(T, Timings), String> {
+    let took = Timings {
+        mel: Duration::ZERO,
+        encoder: Duration::ZERO,
+        decoder: Duration::ZERO,
+        tokens: 0,
+    };
+    Ok((heard.ok_or("the encoder failed")?, took))
 }
 
 impl Hears for Scripted {
     fn words(&mut self, _: &[f32]) -> Result<(Vec<Word>, Timings), String> {
-        self.heard(|(words, _)| words.clone())
+        took(self.words.take())
     }
 
     fn text(&mut self, _: &[f32]) -> Result<(String, Timings), String> {
-        self.heard(|(_, text)| text.clone())
+        took(self.text.take())
     }
 
     fn device(&self) -> &str {
@@ -519,7 +517,10 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
     // no piece, and no line would be given a voice.
     let start = 40 * SECOND;
     let said = vec![word("Not", 0), word("yet.", 4 * SECOND)];
-    let mut scripted = Scripted(Some((said, " Done. ".to_owned())));
+    let mut scripted = Scripted {
+        words: Some(said),
+        text: Some(" Done. ".to_owned()),
+    };
     let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]);
     assert_eq!(
         text.as_deref(),
@@ -548,8 +549,9 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
         (Some("Done.".to_owned()), Vec::new()),
         "Joel's text wasn't kept as Parakeet spelled it, without words"
     );
+    // Its words already given, the script fails another take of theirs.
     assert_eq!(
-        transcribe_take(&mut Scripted(None), Side::Theirs, start, &[]),
+        transcribe_take(&mut scripted, Side::Theirs, start, &[]),
         (None, Vec::new()),
         "a take that wasn't heard was kept"
     );
