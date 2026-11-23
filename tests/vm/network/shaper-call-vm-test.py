@@ -3,9 +3,11 @@
 shaper-call.nix, beside this, runs this through pytest inside the driver (tests/lib/vm_pytest.py),
 and its opening comment says what the test proves. The router is the connection, 90 Mbit/s down
 and 15 up, each shared flow by flow under fq_codel. iperf3 stands in for the calls: each sends
-datagrams of a video call's size and rate both ways and counts every one that never arrived,
-which is the loss a call hears, wherever it was lost. CAKE's own drop counts say whether the
-shaper's queues were the ones that lost them.
+datagrams of a video call's size and rate both ways. Every machine on a call's path counts its
+datagrams as it meets them (shaper-call-path.nft), so what a call lost is placed: between the
+machines, in the router's queues or the shaper's, or in the receiving socket, which a reader
+starved of the builder's CPU overflows. CAKE's own drop counts say whether the shaper's queues
+were the ones that lost them.
 """
 
 from __future__ import annotations
@@ -53,12 +55,20 @@ TRIAL = "/run/shaper-trial/upload.json"
 CALL_RATE = "2500K"
 CALL_LENGTH = 1200
 CALL_SECONDS = 20
+# The room each call's sockets ask for, both ends, about seven seconds of its datagrams, within
+# what shaper-call.nix lets a socket have: a call app keeps up with its datagrams, where iperf3
+# on a busy builder may not.
+WINDOW = "2M"
+# The machines on a call's path each way, in the order its datagrams meet them.
+WAYS = {"up": ["client", "router", "server"], "down": ["server", "router", "client"]}
 # The least of a direction's datagrams that must have been sent for a call to count: most of
 # what the rate sends in its seconds.
 CALL_LEAST = 2_500_000 * CALL_SECONDS // (CALL_LENGTH * 8) * 9 // 10
-# The most a call may lose coming down, of that least, shaped or not: a CAKE that limits the
-# download drops a few as it takes the queue home, and on 13 November the router alone lost
-# 4, then 6, on a busy builder, and none on a rerun. What it loses going up is only printed:
+# The most a call may lose coming down before it reaches the client's socket, of that least,
+# shaped or not: a CAKE that limits the download drops a few as it takes the queue home, and
+# on 13 November the router alone lost 4, then 6, on a busy builder, and none on a rerun.
+# What overflowed the client's socket is the builder's and only printed, as is what a call
+# loses going up:
 # the router VM dropped from 94 to 1,296 of an unshaped call's datagrams from run to run,
 # and dropped a shaped one's while the client sent 10 Mbit/s into its 15, which is the
 # builder's CPU and no queue of the shaper's.
@@ -76,11 +86,16 @@ UP_DROPPED_MOST = DOWN_MOST
 # there. Any other may have been lost in the shaper's IFB, so it's excused only when the IFB
 # dropped nothing meanwhile.
 HANDSHAKES = 2
-# What iperf3 says when a stream's handshake timed out unanswered. A reply that came back as
-# something else ends with whatever errno an earlier call left, so it's taken for unanswered
-# only when that was this one; the counters read it as lost going up when it was 4 bytes, and
-# coming down otherwise.
-UNANSWERED = "unable to read from stream socket: Resource temporarily unavailable"
+# What iperf3 says when a stream's handshake went unanswered, before the call's first second.
+# It sends a stream's connect once and takes the first datagram back for the reply
+# (iperf_udp_connect in 3.21's iperf_udp.c). With none in 30 s the error ends "Resource
+# temporarily unavailable". But the server starts the call once it hears every connect, so a
+# reply lost coming down leaves the call's own data to come first, and the error ends with
+# whatever errno an earlier call left: "No such file or directory" on 22 November, the server
+# having heard both connects. Either is a handshake lost, which the counters read as lost
+# coming down when the server heard more connects than replies reached the client, and going
+# up otherwise.
+UNANSWERED = "unable to read from stream socket: "
 # What the client takes in before the calls start: a few seconds of the line, so every
 # flow is past its slow start.
 FULL_BYTES = 50_000_000
@@ -209,7 +224,14 @@ class Rig:
         for made in range(1, HANDSHAKES + 1):
             before = self.downs()
             connects, replies = self.handshakes(self.server), self.handshakes(self.client)
+            walked = self.path()
             results = self.hold(held, seconds)
+            now = self.path()
+            for name in held:
+                results[name]["path"] = {
+                    way: [a - b for a, b in zip(now[name][way], walked[name][way], strict=True)]
+                    for way in WAYS
+                }
             dropped = sum(self.downs()) - sum(before)
             heard = {name: n - connects[name] for name, n in self.handshakes(self.server).items()}
             came = {name: n - replies[name] for name, n in self.handshakes(self.client).items()}
@@ -240,15 +262,22 @@ class Rig:
 
     def handshakes(self, machine: BaseMachine) -> dict[str, int]:
         """Give how many call handshake datagrams a machine has received, by call."""
-        counted = {}
-        for name in CALLS:
-            listed: Json = json.loads(
-                machine.succeed(f"nft -j list counter inet handshakes {name}")
-            )
-            counted[name] = next(
-                int(item["counter"]["packets"]) for item in listed["nftables"] if "counter" in item
-            )
-        return counted
+        return {name: counted(machine, "handshakes", name) for name in CALLS}
+
+    def path(self) -> dict[str, dict[str, list[int]]]:
+        """Give how many of each call's datagrams each machine on its path has met, each way.
+
+        In the order they meet them (WAYS): up, what the client sent, the router passed and the
+        server heard; down, what the server sent, the router passed and the client heard.
+        """
+        machines = {"client": self.client, "router": self.router, "server": self.server}
+        return {
+            name: {
+                way: [counted(machines[m], "path", f"{name}_{way}") for m in order]
+                for way, order in WAYS.items()
+            }
+            for name in CALLS
+        }
 
     def downs(self) -> list[int]:
         """Give the IFB's CAKE drops by tin, or none while it has no CAKE, as with no shaper."""
@@ -261,7 +290,8 @@ class Rig:
         """Hold the named calls at once from an app, and give what iperf3 made of each."""
         each = " ".join(
             f"{BIN}/iperf3 --client {FAR} --port {CALLS[name]} --udp --bidir --bitrate {CALL_RATE}"
-            f" --length {CALL_LENGTH} --time {seconds} --json > /tmp/call-{name}.json &"
+            f" --length {CALL_LENGTH} --window {WINDOW} --time {seconds} --json"
+            f" > /tmp/call-{name}.json &"
             for name in held
         )
         self.client.succeed(
@@ -406,6 +436,12 @@ class Rig:
         return "\n".join(parts)
 
 
+def counted(machine: BaseMachine, table: str, name: str) -> int:
+    """Give how many packets one of a machine's nft counters has counted."""
+    listed: Json = json.loads(machine.succeed(f"nft -j list counter inet {table} {name}"))
+    return next(int(item["counter"]["packets"]) for item in listed["nftables"] if "counter" in item)
+
+
 def said(machine: BaseMachine, command: str) -> str:
     """Give what a command printed, or that it failed and what it said, for a trace.
 
@@ -453,8 +489,9 @@ def under_load(
 ) -> dict[str, dict[str, int]]:
     """Hold the calls named, both unless named, while the jobs and an app fill the connection.
 
-    Each call's losses are given. With app_uploads, the app uploads too, filling Joel's lane
-    rather than the agents'.
+    What each call lost each way before its receiving socket is given, as the machines on its
+    path counted it, and where each was met is printed. With app_uploads, the app uploads too,
+    filling Joel's lane rather than the agents'.
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
@@ -506,14 +543,24 @@ def under_load(
         # The messages are made only on a failure, so the trace is taken only then.
         assert "error" not in result, f"the {name} call failed: {result['error']}\n{rig.trace()}"
         lost[name] = {}
-        for way in ["up", "down"]:
+        for way, order in WAYS.items():
             summary = received(result, way)
             assert summary.get("packets", 0) >= CALL_LEAST, (
                 f"the {name} call took {summary.get('packets')} datagrams {way},"
                 f" under {CALL_LEAST}\n{rig.trace()}"
             )
-            lost[name][way] = int(summary["lost_packets"])
-    print(f"lost by call and way: {lost}")
+            seen = result["path"][way]
+            read = int(summary["packets"]) - int(summary["lost_packets"])
+            steps = ", ".join(f"the {m} {n}" for m, n in zip(order, seen, strict=True))
+            print(f"the {name} call's datagrams {way}, as met: {steps}, iperf3 {read}")
+            # Every datagram iperf3 read passed each machine, so a count under it is a
+            # counter that missed the call, which would read as nothing lost.
+            assert min(seen) >= read, (
+                f"a machine counted fewer of the {name} call's datagrams {way} than iperf3"
+                f" read, so its counter missed them: {steps}, iperf3 {read}"
+            )
+            lost[name][way] = seen[0] - seen[-1]
+    print(f"lost before the receiving socket, by call and way: {lost}")
     # Last, so a load that wouldn't stop never takes the place of what the calls met.
     assert not stuck, f"the loads in {stuck} wouldn't stop"
     return lost
@@ -525,9 +572,13 @@ def unanswered(result: Json) -> bool:
 
 
 def over_the_bar(results: dict[str, Json], ran: list[str]) -> dict[str, int]:
-    """Give what each call that ran lost coming down, of those that lost more than the bar."""
+    """Give what each call that ran lost coming down, of those that lost more than the bar.
+
+    What was lost before the client's socket, as the bar counts it: the server sent it and
+    the client never heard it.
+    """
     lost = {
-        name: int(received(results[name], "down").get("lost_packets", 0))
+        name: results[name]["path"]["down"][0] - results[name]["path"]["down"][-1]
         for name in ran
         if "error" not in results[name]
     }
@@ -583,7 +634,10 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
 
 
 def test_a_call_loses_little(rig: Rig) -> None:
-    """Under a full connection both ways, each call loses at most a hundredth coming down.
+    """Under a full connection both ways, each call loses a hundredth at most coming down.
+
+    The bar counts what was lost from the server to the client's input hook; what overflows
+    the client's socket, which a starved builder causes, is only printed.
 
     While the controller sets no download limit, downloads go straight in, past the IFB's
     CAKE: at the link's ceiling it dropped four in five of the best-effort call's datagrams.
@@ -605,8 +659,8 @@ def test_a_call_loses_little(rig: Rig) -> None:
         trace = rig.trace()
         for name, ways in lost.items():
             assert ways["down"] <= DOWN_MOST, (
-                f"the {name} call lost {ways['down']} datagrams down, over {DOWN_MOST};"
-                f" dropped by tin: {dropped}\n{trace}"
+                f"the {name} call lost {ways['down']} datagrams down before the client's socket,"
+                f" over {DOWN_MOST}; dropped by tin: {dropped}\n{trace}"
             )
 
 
@@ -685,6 +739,6 @@ def test_unshaped(rig: Rig) -> None:
         trace = rig.trace()
         for name, ways in lost.items():
             assert ways["down"] <= DOWN_MOST, (
-                f"the {name} call lost {ways['down']} datagrams down unshaped,"
-                f" over {DOWN_MOST}\n{trace}"
+                f"the {name} call lost {ways['down']} datagrams down unshaped, before the"
+                f" client's socket, over {DOWN_MOST}\n{trace}"
             )
