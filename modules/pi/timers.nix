@@ -214,8 +214,8 @@ in
         # this mark the kernel takes that back from the sweep rather than
         # from what Joel is using. No hard limit of its own: a kill partway
         # through a take leaves a tree moved aside for the next run to put
-        # back. Only systemd-oomd, which watches the slice for pressure, may
-        # still end it.
+        # back. The two-hour timeout above, systemd-oomd watching the slice
+        # for pressure and the kernel's own OOM killer may still end it.
         MemoryHigh = "1536M";
       };
     };
