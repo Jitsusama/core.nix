@@ -1022,6 +1022,14 @@
     script keeping a comment, saying which; and the sheets a site, the kit and the theme build
     reach a page without their comments, and a site's scripts without one marked to stay
   '';
+  heads-are-the-kits = ''
+    every live page off the waiting list opens with the kit's head as the web-design skill's
+    sites.md writes it: one header holding its first heading, an eyebrow of two phrases, the
+    title, a lede, the standing line and the quiet row in that order and nothing else, only the
+    standing line's status live, a key line in the quiet row and the kit's head.css linked; a
+    page still waiting passes until it keeps to the head, then fails until it's taken off the
+    list; and the gate passes sites.md's own head and names each way a page strays from it
+  '';
   each-machine-signs-with-its-hardware = ''
     a Linux workstation signs through its TPM, one with no TPM with Joel's key on his YubiKey and
     the agents' key in a file served where the TPM's would be, and a Mac through its Secure
