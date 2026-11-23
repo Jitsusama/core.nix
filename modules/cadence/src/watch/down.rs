@@ -637,17 +637,15 @@ pub fn answer(program: &str, args: &[&str], within: Duration) -> io::Result<Stri
     // A program that ended just before its deadline still gets a moment
     // to hand its whole answer over.
     let left = deadline.saturating_duration_since(Instant::now());
-    let said = reader
-        .recv_timeout(left.max(HAND_OVER))
-        .map_err(|_| {
-            io::Error::new(
-                io::ErrorKind::TimedOut,
-                format!(
-                    "{program} {} left its output open past {within:?}",
-                    args.join(" ")
-                ),
-            )
-        })??;
+    let said = reader.recv_timeout(left.max(HAND_OVER)).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::TimedOut,
+            format!(
+                "{program} {} left its output open past {within:?}",
+                args.join(" ")
+            ),
+        )
+    })??;
     if status.success() {
         Ok(said)
     } else {
