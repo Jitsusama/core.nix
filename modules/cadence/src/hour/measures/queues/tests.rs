@@ -247,7 +247,13 @@ fn ten_waits_are_judged_by_their_p90_and_waits_unsaid_keep_the_ask() {
         .map(|n| {
             let asked = format!("2026-11-21T11:{n:02}:00Z");
             let waited = if n == 9 { 600 } else { 1 };
-            outcome("build", &asked, Some(&asked), "2026-11-21T11:30:00Z", waited)
+            outcome(
+                "build",
+                &asked,
+                Some(&asked),
+                "2026-11-21T11:30:00Z",
+                waited,
+            )
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -259,7 +265,9 @@ fn ten_waits_are_judged_by_their_p90_and_waits_unsaid_keep_the_ask() {
         NOW,
     );
     assert!(
-        found(&ten, "builds").says.starts_with("p90 seconds waiting for a build"),
+        found(&ten, "builds")
+            .says
+            .starts_with("p90 seconds waiting for a build"),
         "ten waits weren't judged by their p90: {:?}",
         found(&ten, "builds")
     );

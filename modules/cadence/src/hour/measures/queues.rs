@@ -90,7 +90,7 @@ const TRAINS: Queue = Queue {
 
 /// A queue's waits over the day, how many passed through it, whether or
 /// not their waits were said, and that flow as the card says it.
-struct Waits {
+struct Passed {
     waits: Vec<f64>,
     through: usize,
     flow: String,
@@ -100,7 +100,7 @@ struct Waits {
 /// the kind `kind` that ended within the day before `now`. Each line is a
 /// job that ended, written then, with how long it waited for its turn,
 /// given up or given.
-fn turns(outcomes: &str, kind: &str, now: i64) -> Waits {
+fn turns(outcomes: &str, kind: &str, now: i64) -> Passed {
     let ended: Vec<serde_json::Value> = lines(outcomes)
         .filter(|o| o["kind"].as_str() == Some(kind))
         .filter(|o| seconds(&o["ended"]).is_some_and(|at| at > now - DAY && at <= now))
@@ -117,7 +117,7 @@ fn turns(outcomes: &str, kind: &str, now: i64) -> Waits {
         .collect();
     let through = ended.len();
     let flow = format!("{through} ended in a day");
-    Waits {
+    Passed {
         waits,
         through,
         flow,
@@ -126,7 +126,7 @@ fn turns(outcomes: &str, kind: &str, now: i64) -> Waits {
 
 /// Each VM run's wait in nix-offload's `sends` that ended within the day
 /// before `now`.
-fn sends(text: &str, now: i64) -> Waits {
+fn sends(text: &str, now: i64) -> Passed {
     let ended: Vec<serde_json::Value> = lines(text)
         .filter(|line| line["on"].as_str().is_some_and(|on| on.contains("vm")))
         .filter(|line| {
@@ -141,7 +141,7 @@ fn sends(text: &str, now: i64) -> Waits {
         .collect();
     let through = ended.len();
     let flow = format!("{through} ended in a day");
-    Waits {
+    Passed {
         waits,
         through,
         flow,
@@ -152,7 +152,7 @@ fn sends(text: &str, now: i64) -> Waits {
 /// boarded, so far, and each that landed or fell off within the day before
 /// `now`, from when it boarded to then, where the line says so. Its flow
 /// is the riders, since a landing can carry several.
-fn trains(landed: &str, aboard: &[i64], now: i64) -> Waits {
+fn trains(landed: &str, aboard: &[i64], now: i64) -> Passed {
     let landings: Vec<serde_json::Value> = lines(landed)
         .filter(|line| {
             line["at"]
@@ -186,7 +186,7 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Waits {
         "{landed} landed in a day, {fell} fell off, {} aboard",
         aboard.len()
     );
-    Waits {
+    Passed {
         waits,
         through: landed + fell + aboard.len(),
         flow,
@@ -197,7 +197,7 @@ fn trains(landed: &str, aboard: &[i64], now: i64) -> Waits {
 /// read says so, unjudged; nothing through says so, unjudged; work through
 /// with no wait said says so, unjudged; else its p90 against its target,
 /// or its median with fewer than [`P90_FROM`] waits.
-fn measure(queue: &Queue, waits: Option<Waits>) -> Measure {
+fn measure(queue: &Queue, waits: Option<Passed>) -> Measure {
     let unjudged = |says: String| Measure {
         key: format!("{QUEUE}{}", queue.key),
         class: Class::Queues,
@@ -207,7 +207,7 @@ fn measure(queue: &Queue, waits: Option<Waits>) -> Measure {
         owner: KEEPER.to_owned(),
         behind: Vec::new(),
     };
-    let Some(Waits {
+    let Some(Passed {
         waits,
         through,
         flow,
