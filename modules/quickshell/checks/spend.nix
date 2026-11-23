@@ -113,7 +113,6 @@
           exit "$status"
         }
       }
-      QT_FORCE_STDERR_LOGGING=1 QML_IMPORT_PATH=${qt}/lib/qt-6/qml runs 60 ${qt}/bin/qml spend-now.qml
       runs 180 ${qs} -p shell.qml
       SPEND_WATCH=${lib.getExe watch} SERVE_CONFIG=$PWD/serve.json runs 180 ${qs} -p served.qml
       # Serve ended with the shell, its socket left behind for the stand-in.

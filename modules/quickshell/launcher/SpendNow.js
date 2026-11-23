@@ -33,5 +33,5 @@ function standing(key, spend) {
     if (spend.serves(recordOf(spend.place, key))) {
         return "served";
     }
-    return spend.sharing !== false || spend.answered ? "none" : "unsure";
+    return spend.answered ? "none" : "unsure";
 }
