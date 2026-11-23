@@ -360,8 +360,13 @@ fn rounds_per_merge(
     // One folder for each machine whose rounds the harness mirrors here.
     let mirrored = reviews::mirrored(&review.join("runs-from"), since);
     let fixes = reviews::fixes(&review.join("fixes"), since);
+    // A trouble names files a mirror chose, so a name holding a newline
+    // could otherwise write a journal line that reads as cadence's own.
     for trouble in [&here, &mirrored, &fixes].iter().flat_map(|r| &r.trouble) {
-        eprintln!("cadence: rounds: {trouble}");
+        eprintln!(
+            "cadence: rounds: {}",
+            trouble.replace(char::is_control, "?")
+        );
     }
     let landed = || {
         let mesh = Mesh {

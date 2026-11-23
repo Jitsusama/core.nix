@@ -484,9 +484,10 @@ impl Late {
 /// many records hold it. A change with a record but no council counts
 /// nought; one with no record at all may be one the matching can't see,
 /// so it is counted apart rather than read as nought. Each record whose
-/// trouble says it couldn't be read, here or mirrored, is said on the
-/// median whatever the others hold, and while one is, nothing is filed;
-/// one with no round in the day is read, and quiet.
+/// trouble says it couldn't be read, or that names no change, here or
+/// mirrored, is said on the median whatever the others hold, and while
+/// one is, nothing is filed; one with no round in the day is read, and
+/// quiet.
 #[must_use]
 pub fn rounds(
     mains: &[Main],
@@ -565,7 +566,10 @@ pub fn rounds(
             .then_with(|| a.change.cmp(&b.change))
     });
     each.retain(|late| late.rounds > PAST);
-    let (local_read, mirrors_read) = (records.trouble.is_empty(), mirrored.trouble.is_empty());
+    // A record that is JSON but names no change or repository is as unread
+    // as one that isn't, since its rounds would be left out unsaid.
+    let local_read = records.trouble.is_empty() && here.len() == records.runs.len();
+    let mirrors_read = mirrored.trouble.is_empty() && there.len() == mirrored.runs.len();
     let read = read_said(unrecorded, local_read, fixes_read, mirrors_read);
     let median = Measure {
         key: KEY.to_owned(),
@@ -1208,6 +1212,65 @@ mod tests {
                 all[0].says
             );
         }
+    }
+
+    #[test]
+    fn this_machines_copy_of_a_round_wins_and_a_record_naming_no_change_is_said() {
+        let log = format!(
+            "dddd {} Merge pull request #24 from Jitsusama/here/d\n",
+            NOW - 60
+        );
+        let mains = [Main {
+            repo: CORE,
+            log: &log,
+            moved: &moved,
+        }];
+        // Here #24's sixth read the head its change moved on from, so its
+        // queued fix was made before the merge; the mirror's copy of the
+        // same round names a head the change merged as it was.
+        let here = record("github", CORE, "24", "elsewhere", &seven("d"));
+        let there = here.replace(r#""witness": "d-read""#, r#""witness": "d-made""#);
+        assert_ne!(here, there, "the mirror's copy names another head");
+        let fixed = kept(&[fixes(&[("council-d-1", "queued alone", None)])]);
+        let said = |local: &str, mirrored: &str| {
+            let local = kept(&[local.to_owned()]);
+            let mirrored = kept(&[mirrored.to_owned()]);
+            let all = rounds(
+                &mains,
+                &local,
+                &mirrored,
+                &fixed,
+                BTreeMap::new,
+                NOW,
+                "ORCH",
+            );
+            all[0].behind.clone()
+        };
+        assert_eq!(
+            said(&here, &there),
+            ["core.nix#24: 7 rounds, past five caught queued alone"],
+            "a mirror's copy of a round held here too was read over this machine's"
+        );
+        assert_ne!(
+            said(&there, &here),
+            said(&here, &there),
+            "which copy won made no difference, so the test proves nothing"
+        );
+        let named = kept(&[here, r#"{"runs": []}"#.to_owned()]);
+        let all = rounds(
+            &mains,
+            &named,
+            &kept(&[]),
+            &fixed,
+            BTreeMap::new,
+            NOW,
+            "ORCH",
+        );
+        assert!(
+            all.len() == 1 && all[0].says.contains(NO_RUNS),
+            "a record naming no change was left out unsaid, or its merge filed: {}",
+            all[0].says
+        );
     }
 
     /// Records read whole, holding `runs`.

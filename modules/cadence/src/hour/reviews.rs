@@ -87,7 +87,8 @@ fn listed(folder: &Path, since: SystemTime) -> io::Result<(Vec<String>, Vec<Stri
 /// The record at `path`, with when it was written, or none where it isn't
 /// a plain file, was written before `since`, or was removed once listed,
 /// as the harness prunes; else why it can't be read. One that isn't JSON
-/// can't be read either, as its rounds would be left out unsaid.
+/// can't be read either, as its rounds would be left out unsaid, nor can a
+/// link left pointing at nothing, which is no record pruned.
 fn record(path: &Path, since: SystemTime) -> io::Result<Option<(SystemTime, String)>> {
     let gone = |error: io::Error| {
         if error.kind() == ErrorKind::NotFound {
@@ -98,6 +99,12 @@ fn record(path: &Path, since: SystemTime) -> io::Result<Option<(SystemTime, Stri
     };
     let found = match fs::metadata(path) {
         Ok(found) => found,
+        Err(error) if fs::symlink_metadata(path).is_ok() => {
+            return Err(io::Error::new(
+                error.kind(),
+                format!("a link to nothing: {error}"),
+            ));
+        }
         Err(error) => return gone(error),
     };
     let written = found.modified()?;
@@ -113,8 +120,10 @@ fn record(path: &Path, since: SystemTime) -> io::Result<Option<(SystemTime, Stri
 }
 
 /// Whether `text`, a change's record of rounds, is the shape read here:
-/// its change has an id and a repository, and its newest round an id, when
-/// it started and its reviewers' outcomes.
+/// its change has an id and a repository, and its newest round an id, its
+/// kind, when it started and its reviewers' outcomes. The kind is what
+/// says a council from a judge, so a harness that renamed it would
+/// otherwise count no round and close every drag.
 fn rounds_shaped(text: &str) -> bool {
     let Ok(record) = serde_json::from_str::<Value>(text) else {
         return false;
@@ -126,7 +135,10 @@ fn rounds_shaped(text: &str) -> bool {
             .as_array()
             .and_then(|runs| runs.last())
             .is_some_and(|run| {
-                run["id"].is_string() && run["startedAt"].is_string() && run["outcomes"].is_array()
+                run["id"].is_string()
+                    && run["round"].is_string()
+                    && run["startedAt"].is_string()
+                    && run["outcomes"].is_array()
             })
 }
 
@@ -216,7 +228,8 @@ mod tests {
     fn round(id: &str) -> String {
         serde_json::json!({
             "change": {"id": id, "repo": {"key": "github:Jitsusama/core.nix"}},
-            "runs": [{"id": "council-1", "startedAt": "2026-11-23T07:00:00Z", "outcomes": []}],
+            "runs": [{"id": "council-1", "round": "council", "startedAt": "2026-11-23T07:00:00Z",
+                       "outcomes": []}],
         })
         .to_string()
     }
@@ -247,10 +260,15 @@ mod tests {
             .expect("the old record's time set");
         // A record cut off as it was copied, which can't be read.
         put(&root.join("torn/seven.json"), "{\"change\": ");
-        // A harness that renamed its outcomes, every other field kept.
+        // A harness that renamed its outcomes, every other field kept, and
+        // one that renamed its rounds' kind.
         put(
             &root.join("renamed/six.json"),
             &round("six").replace("\"outcomes\"", "\"answers\""),
+        );
+        put(
+            &root.join("rekinded/eight.json"),
+            &round("eight").replace("\"round\"", "\"kind\""),
         );
         let since = SystemTime::now() - Duration::from_secs(3600);
         let read = mirrored(&root, since);
@@ -265,11 +283,12 @@ mod tests {
                 .is_some_and(|t| t.contains(node) && t.contains(why))
         };
         assert!(
-            read.trouble.len() == 4
+            read.trouble.len() == 5
                 && said(0, "from dangling", "can't be read")
                 && said(1, "from high", "too high")
-                && said(2, "from renamed", "of the shape")
-                && said(3, "torn/seven.json", "can't be read"),
+                && said(2, "from rekinded", "of the shape")
+                && said(3, "from renamed", "of the shape")
+                && said(4, "torn/seven.json", "can't be read"),
             "a node unread, mirrored too high or of another shape, or a record unread, went \
              unsaid: {:?}",
             read.trouble
@@ -370,12 +389,16 @@ mod tests {
         let torn = scratch.path().join("torn");
         put(&torn.join("one.json"), &round("one"));
         put(&torn.join("two.json"), "{\"change\": ");
+        std::os::unix::fs::symlink(torn.join("gone.json"), torn.join("three.json"))
+            .expect("the test's link made");
         let read = rounds(&torn, UNIX_EPOCH);
+        let unread = |name: &str| read.trouble.iter().any(|t| t.contains(name));
         assert!(
             read.runs == [round("one")]
-                && read.trouble.len() == 1
-                && read.trouble[0].contains("two.json can't be read"),
-            "a record that can't be read was left out unsaid: {read:?}"
+                && read.trouble.len() == 2
+                && unread("two.json can't be read")
+                && unread("three.json can't be read (a link to nothing"),
+            "a record that can't be read, or a link to none, was left out unsaid: {read:?}"
         );
         put(&runs.join("two.json"), "{\"runs\": []}");
         put(&scratch.path().join("fixes/one.json"), "{\"fixes\": []}");
