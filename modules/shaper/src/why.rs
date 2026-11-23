@@ -10,6 +10,10 @@
 pub enum Why {
     /// No queue has stood on this network yet, so nothing holds it.
     Unmeasured,
+    /// It was held on this network, and let go since: an idle spell left
+    /// no line to hold to, the queue was another machine's, or it started
+    /// over. Nothing holds it until a queue stands again.
+    LetGo,
     /// No reflector has answered for a while, so nothing measures a queue.
     Unanswered,
     /// The guard sent it back to its base three times in a row, and left
@@ -63,6 +67,7 @@ impl Why {
     pub fn kind(self) -> &'static str {
         match self {
             Why::Unmeasured => "unmeasured",
+            Why::LetGo => "let-go",
             Why::Unanswered => "unanswered",
             Why::GaveUp => "gave-up",
             Why::Clear => "clear",
@@ -88,6 +93,10 @@ pub fn say(why: Why, limit: Option<u64>, anchor: Option<f64>, for_s: f64) -> Str
     let held = format!("held so for {}", plural(for_s));
     match why {
         Why::Unmeasured => format!("Upload {rate}: no queue has stood on this network yet."),
+        Why::LetGo => format!(
+            "Upload {rate}: no queue has stood since its last hold let go, {} ago.",
+            plural(for_s)
+        ),
         Why::Unanswered => {
             format!("Upload {rate}: no reflector answers, so nothing measures a queue.")
         }
@@ -393,6 +402,7 @@ mod tests {
     fn each_kind_of_reason_keeps_a_word_of_its_own() {
         let kinds = [
             (Why::Unmeasured, "unmeasured"),
+            (Why::LetGo, "let-go"),
             (Why::Unanswered, "unanswered"),
             (Why::GaveUp, "gave-up"),
             (Why::Clear, "clear"),
@@ -594,6 +604,11 @@ mod tests {
         assert_eq!(
             say(Why::Unmeasured, None, None, 0.0),
             "Upload unlimited: no queue has stood on this network yet."
+        );
+        assert_eq!(
+            say(Why::LetGo, None, None, 240.0),
+            "Upload unlimited: no queue has stood since its last hold let go, 4 min ago.",
+            "an upload let go after a hold read as one never held"
         );
     }
 
