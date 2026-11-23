@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Proves the dev shell's cargo (cargo.sh): an agent's goes through
+# Proves the dev shell's cargo (cargo.sh): an agent's, from pi in a
+# terminal or a session in the shared pi host, goes through
 # `nix-offload cargo`, naming cargo itself and keeping each word whole,
 # while a person's, one already running on a lent builder, one where
 # nix-offload isn't installed and one where it's too old to know `cargo`
@@ -42,6 +43,10 @@ expect() {
 expect "an agent's cargo didn't go through nix-offload" \
 	"$(printf '%s\n' nix-offload cargo --cargo "$cargo" -- test 'a b')" \
 	env -i PATH="$knowing" PI_CODING_AGENT=1 "$shim" test 'a b'
+
+expect "a hosted session's cargo didn't go through nix-offload" \
+	"$(printf '%s\n' nix-offload cargo --cargo "$cargo" -- test 'a b')" \
+	env -i PATH="$knowing" PI_SESSION_ID=x "$shim" test 'a b'
 
 expect "a person's cargo didn't run cargo itself" \
 	"$(printf '%s\n' cargo test 'a b')" \

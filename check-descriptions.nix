@@ -336,8 +336,8 @@
     types no one-time password at the disk prompt, and udev reads the rule without a complaint
   '';
   agents-cargo-goes-through-nix-offload = ''
-    the dev shell's cargo sends an agent's words, each kept whole, through nix-offload cargo naming
-    cargo itself, and runs cargo itself for a person, on a lent builder, without nix-offload, or
+    the dev shell's cargo sends an agent's words, from pi in a terminal or a hosted session, each
+    kept whole, through nix-offload cargo naming cargo itself, and runs cargo itself for a person, on a lent builder, without nix-offload, or
     beside one too old to know cargo
   '';
   agents-lists-spec-once-on-niri = ''

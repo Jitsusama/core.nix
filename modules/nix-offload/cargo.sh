@@ -5,12 +5,16 @@
 # one where the nix-offload installed is too old to know `cargo` is cargo
 # itself. It passes cargo's own words and answers on, so it has no help of
 # its own.
+#
+# An agent is a pi session's command: pi in a terminal sets PI_CODING_AGENT,
+# and a session in the shared pi host sets PI_SESSION_ID alone, so either
+# counts. pi strips both from a terminal it opens for the person.
 set -euo pipefail
 
 # Asked with no words, a nix-offload that knows `cargo` runs what it's
 # named, here true; an older one refuses, as it would the real run, so
 # a machine not yet switched to it keeps its cargo working.
-if [ -n "${PI_CODING_AGENT:-}" ] && [ -z "${WORK_RUNS_ELSEWHERE:-}" ] &&
+if [ -n "${PI_CODING_AGENT:-}${PI_SESSION_ID:-}" ] && [ -z "${WORK_RUNS_ELSEWHERE:-}" ] &&
 	command -v nix-offload >/dev/null 2>&1 &&
 	nix-offload cargo --cargo @true@ -- >/dev/null 2>&1; then
 	exec nix-offload cargo --cargo @cargo@ -- "$@"
