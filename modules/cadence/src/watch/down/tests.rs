@@ -1,8 +1,11 @@
 use std::cell::RefCell;
 
+use super::telling::{escaped, notice_args};
 use super::*;
 
 mod cut_off;
+mod held;
+mod reach;
 
 const NOW: i64 = 1_795_200_000;
 
@@ -736,5 +739,21 @@ fn a_notices_body_is_kept_from_markup_and_a_slow_node_is_stopped() {
         answer(&shell, &["-c", "echo said"], Duration::from_secs(5)).ok(),
         Some("said\n".to_owned()),
         "a node's answer wasn't read"
+    );
+    // A child the node left behind holds its output open past its end.
+    let began = Instant::now();
+    let held_open = answer(
+        &shell,
+        &["-c", "sleep 20 & echo said"],
+        Duration::from_millis(500),
+    );
+    // Its end was seen, so the cut came at the read, not the wait.
+    let cut = held_open.map_err(|err| err.to_string());
+    assert!(
+        cut.as_ref()
+            .is_err_and(|err| err.contains("left its output open"))
+            && began.elapsed() < Duration::from_secs(10),
+        "a node whose child kept its output open held the tick, or was cut where it \
+         waited: {cut:?}"
     );
 }
