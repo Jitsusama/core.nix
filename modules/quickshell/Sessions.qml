@@ -2171,9 +2171,13 @@ Singleton {
     // so a screen test that fails shows whether the shell waited.
     property var heldSaid: []
     function sayHeld(waiting) {
-        const held = Object.values(waiting).reduce((all, kept) => all.concat(kept), []);
+        // By the connector it left as well as the screen it waits for,
+        // since twins wait for one screen, and one noted on the screen in
+        // use before that was heard waits for one that may be it.
+        const held = Object.entries(waiting).reduce((all, [screen, kept]) =>
+            all.concat(kept.map(one => ({ id: one.id, screen, left: one.output }))), []);
         held.filter(one => !heldSaid.includes(one.id)).forEach(one => console.info(
-            `workspace ${one.id} waits for ${one.output ?? "its screen"} to come back`));
+            `workspace ${one.id} left ${one.left ?? "its screen"}, waits for ${one.screen}`));
         heldSaid = held.map(one => one.id);
     }
     function noteGone() {
@@ -2283,8 +2287,9 @@ Singleton {
         const beside = root.besideOf(going.back);
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
-        const output = found.output ?? Places.whereKept(at, going.kept, there)
-            ?? Niri.workspace()?.output ?? null;
+        const inUse = Niri.workspace()?.output ?? null;
+        const kept = Places.whereKept(at, going.kept, there, { inUse });
+        const output = found.output ?? kept ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
         const column = window.layout.pos_in_scrolling_layout[0];
@@ -2297,9 +2302,9 @@ Singleton {
             .some(other => other.id !== window.id && other.workspace_id === window.workspace_id);
         if (workspace && (shared || !Places.holds(where, { workspace, column }, beside)))
             into = root.moveTo(window, where, workspace, column, beside);
-        if (into !== null && Places.whereKept(at, going.kept, there) === undefined)
-            root.noteAway({ screen: at.screen || at.output, workspace: at.workspace,
-                output: at.output, others: Places.othersGone(at, going.kept, there) }, into);
+        const away = Places.awayOf(at, kept, going.kept, there);
+        if (into !== null && away !== null)
+            root.noteAway(away, into);
         going.back.push({ id: window.id, at });
         if (going.used.length === going.kept.length)
             puttingBack = null;
