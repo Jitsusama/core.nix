@@ -1378,7 +1378,8 @@
   firmware-installs-once-for-each-sure = ''
     Firmware's step asking if Joel's sure asks the machine daemon to install on that device once,
     its row drawn at once as installing, and neither that row nor the step the daemon then serves
-    offers a second Return anything to run, so pressing it again only closes the launcher
+    offers a second Return anything to run, so pressing it again only closes the launcher; and
+    Firmware answers again once its watch is answered whole, so rows the daemon already held show
   '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings

@@ -1590,11 +1590,8 @@ Scope {
         const agents = collections.find(one => one.settings.name === "agents") ?? null;
         const offer = agents ? agents.newWorkFor(words, from) : null;
         // A link names the session it's from, so with reports off its address is counted, as
-        // talkTo's is (Presented.whomShown).
-        const linkedFrom = offer?.from?.address;
-        const whence = linkedFrom === undefined ? "from no session here"
-            : Options.reports ? `from ${linkedFrom}`
-            : `from a session, ${Presented.typedShown(linkedFrom, false)}`;
+        // talkTo's is (Presented.whenceShown).
+        const whence = Presented.whenceShown(offer?.from?.address, Options.reports);
         console.info("launcher: asked from outside to start new work, "
             + (offer === null ? "offering no plain words" : whence));
         if (offer === null)
