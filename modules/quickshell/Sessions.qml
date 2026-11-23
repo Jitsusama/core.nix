@@ -1144,8 +1144,11 @@ Singleton {
         // screen dropped and came back (screens-keep-places, 2026-11-09).
         if (holds) {
             root.noteAway(entry.away, workspace.id);
+            // One on the workspace its name sent it to has landed, whatever
+            // screen that stands on now.
             const own = entry.at?.output ?? "";
-            return own === "" || workspace.output === own ? "held" : "standing";
+            return own === "" || workspace.output === own
+                || Reopening.onNamed(entry.at, workspace) ? "held" : "standing";
         }
         const into = entry.quiet === true ? root.moveQuietly(window, where, workspace)
             : root.moveTo(window, where, workspace, column, beside);

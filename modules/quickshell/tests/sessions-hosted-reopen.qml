@@ -829,9 +829,10 @@ ShellRoot {
             return;
         }
         // KELP's workspace, named for its orchestrator, comes back fifth
-        // this boot, with a window of its own, and niri's empty one after.
+        // this boot on the laptop's screen, not the one kept, with a window
+        // of its own, and niri's empty one after.
         Niri.workspaces = Object.assign({}, Niri.workspaces, {
-            "44": { id: 44, idx: 5, name: "KELP", output: "DP-4", is_focused: false,
+            "44": { id: 44, idx: 5, name: "KELP", output: "eDP-1", is_focused: false,
                 active_window_id: 92 },
             "45": { id: 45, idx: 6, output: "DP-4", is_focused: false, active_window_id: null }
         });
@@ -881,6 +882,10 @@ ShellRoot {
         const opens = opensOn("s-reef");
         if (opens.length === 0)
             return;
+        Expect.expect("one sent by name to a workspace on another screen than kept stays there",
+            !Niri.acts.some(act => act.MoveWindowToWorkspace?.window_id === 93
+                || act.MoveWorkspaceToIndex?.reference?.Id === 44),
+            JSON.stringify(Niri.acts));
         const naming = Niri.acts.filter(act => act.SetWorkspaceName)
             .map(act => act.SetWorkspaceName);
         Expect.expect("one whose name no workspace has names the empty one it opens on, once",
