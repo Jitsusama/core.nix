@@ -257,8 +257,9 @@ feed speaks.
   settled folder is left (see Agents), and each pass hands the watch the
   folders it found rather than the watch walking again. Where inotify
   can't be had, pi's sessions folder can't be made (the daemon makes it
-  before pi's first run), or the watch can't be read, the daemon polls
-  until it's restarted, saying so once in its journal, and each poll is a
+  before pi's first run, readable by this account alone as the pi module
+  keeps it), or the watch can't be read, the daemon polls until it's
+  restarted, saying so and why once in its journal, and each poll is a
   whole walk, the old cost. A count that looks late, or a daemon polling,
   is mended by `systemctl --user restart spend-watch`, which forgets what's
   settled at the price of one whole walk. It runs at

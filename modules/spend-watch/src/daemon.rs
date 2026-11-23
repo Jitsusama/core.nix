@@ -307,22 +307,35 @@ fn watch(config: Config, wake: Sender<Wake>) -> Option<Arc<Watches>> {
     // the next quiet pass. Its folder is made here so there is one to
     // watch before anything is brought, and this machine's too, as before
     // pi's first run, rather than polling until the daemon is restarted.
-    // Unmade, as where it can't be, the daemon polls.
-    let _ = std::fs::create_dir_all(&config.sessions);
+    // One that can't be made is said with why, and the daemon polls.
+    if let Err(error) = private_folder(&config.sessions) {
+        eprintln!(
+            "pi's sessions folder {} can't be made: {error}",
+            config.sessions.display()
+        );
+        std::thread::spawn(move || poll(&config, &wake));
+        return None;
+    }
     let roots: Vec<PathBuf> = std::iter::once(config.sessions.clone())
         .chain(config.machines.iter().map(|machine| {
             // Unmade, it's found by the passes as it appears, a little
             // later than a watch would.
-            let _ = std::fs::create_dir_all(&machine.sessions);
+            let _ = private_folder(&machine.sessions);
             machine.sessions.clone()
         }))
         .collect();
-    let watches = inotify::init(CreateFlags::CLOEXEC).ok().map(Watches::new);
+    let watches = match inotify::init(CreateFlags::CLOEXEC) {
+        Ok(fd) => Some(Watches::new(fd)),
+        Err(error) => {
+            eprintln!("inotify can't be had: {error}");
+            None
+        }
+    };
     if let Some(watches) = &watches {
         watches.follow(projects(&roots));
     }
-    // A sessions folder that couldn't be made or watched: polling notices
-    // its logs, and the passes are handed no watch to feed.
+    // A sessions folder that couldn't be watched: polling notices its
+    // logs, and the passes are handed no watch to feed.
     let Some(watches) = watches.filter(|watches| watches.follows(&config.sessions)) else {
         std::thread::spawn(move || poll(&config, &wake));
         return None;
@@ -344,6 +357,18 @@ fn watch(config: Config, wake: Sender<Wake>) -> Option<Arc<Watches>> {
         }
     });
     Some(watches)
+}
+
+/// Makes `path` and each folder missing above it readable by this account
+/// alone, as pi's own folder is kept, since a log can hold a token; one
+/// already there is left as it is.
+#[cfg(target_os = "linux")]
+fn private_folder(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
 }
 
 /// The roots and each project folder in them, looked at again after each
@@ -1416,6 +1441,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn a_sessions_folder_is_made_or_polled_with_no_watch() {
+        use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         let config = |sessions: PathBuf| -> Config {
             serde_json::from_value(serde_json::json!({
@@ -1432,13 +1458,22 @@ mod tests {
             watch(config(file.join("sessions")), wake).is_none(),
             "a watch nobody reads was handed back"
         );
-        let sessions = dir.path().join("sessions");
+        let sessions = dir.path().join("agent/sessions");
         let (wake, _heard) = mpsc::channel();
         assert!(
             watch(config(sessions.clone()), wake).is_some(),
             "a sessions folder not yet made wasn't made and watched"
         );
-        assert!(sessions.is_dir(), "the sessions folder wasn't made");
+        // A log can hold a token, so pi's folders are this account's alone.
+        for folder in [&sessions, &dir.path().join("agent")] {
+            let mode = std::fs::metadata(folder).unwrap().permissions().mode() & 0o777;
+            assert_eq!(
+                mode,
+                0o700,
+                "{} was made readable by others",
+                folder.display()
+            );
+        }
     }
 
     fn found(key: &str, detector: &str) -> Finding {
