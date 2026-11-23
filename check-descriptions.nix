@@ -620,6 +620,11 @@
     and a near name keep rtkit's own answer with no grant logged, and agents' places are still
     refused
   '';
+  call-transcripts-hears-echoed-meetings-as-well-as-it-did = ''
+    three AMI meetings laid out as calls, the far end heard again in Joel's microphone 20 dB down
+    as speakers with no echo cancelling would, are written down with no more of their words wrong
+    than the ceiling the last measurement set
+  '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
     down with no more of their words wrong than the ceiling the last measurement set
