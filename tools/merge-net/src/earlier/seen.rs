@@ -264,12 +264,16 @@ fn read_in(text: &str) -> Vec<Read> {
         .iter()
         .filter(|round| speaks(round))
         .flat_map(|round| {
-            // A recorded base that's no commit is no base, rather than the
-            // range's name, which may be another commit than the round read.
-            let from = named.as_ref().map(|named| match round["from"].as_str() {
-                Some(from) if is_commit_id(from) => from.to_owned(),
-                Some(_) => String::new(),
+            // A recorded base that's no commit, null and other kinds
+            // included, is no base, rather than the range's name, which may
+            // be another commit than the round read. Only a round that
+            // records none, from before rounds did, falls back to the name.
+            let from = named.as_ref().map(|named| match round.get("from") {
                 None => named.clone(),
+                Some(from) => from
+                    .as_str()
+                    .filter(|from| is_commit_id(from))
+                    .map_or_else(String::new, str::to_owned),
             });
             round["witness"]
                 .as_str()
@@ -567,6 +571,60 @@ mod tests {
         );
     }
 
+    // A range round reads from the commit it recorded, whatever the range
+    // is named; a recorded base that's no commit (a ref, null, a number) is
+    // none, so the round counts for no head; and only a round recording
+    // nothing falls back to the range's name.
+    #[test]
+    fn a_range_round_reads_from_the_base_it_records() {
+        let folder = folder("recorded");
+        let cases = [
+            ("origin/main", json!(id('8')), Some(id('8'))),
+            (id('9').as_str(), json!(id('8')), Some(id('8'))),
+            ("origin/main", json!("origin/main"), Some(String::new())),
+            (id('9').as_str(), json!("origin/main"), Some(String::new())),
+            ("origin/main", json!(null), Some(String::new())),
+            (id('9').as_str(), json!(null), Some(String::new())),
+            (id('9').as_str(), json!(8), Some(String::new())),
+            (
+                id('9').as_str(),
+                json!(id('e').to_uppercase()),
+                Some(String::new()),
+            ),
+        ]
+        .map(|(base, from, read)| (base.to_owned(), Some(from), read));
+        let absent = [
+            ("origin/main", Some("origin/main".to_owned())),
+            (id('9').as_str(), Some(id('9'))),
+        ]
+        .map(|(base, read)| (base.to_owned(), None, read));
+        for (base, from, read) in cases.into_iter().chain(absent) {
+            let mut witness = json!({"witness": id('c')});
+            if let Some(from) = &from {
+                witness["from"] = from.clone();
+            }
+            written(
+                &folder,
+                "local-range_github_o_r_x.json",
+                &json!({
+                    "change": {"provider": "local-range", "id": format!("{base}..c")},
+                    "runs": [round(&witness)],
+                }),
+                0,
+            );
+            let seen = witnessed(&folder).unwrap();
+            assert_eq!(
+                seen,
+                HashSet::from([Read {
+                    commit: id('c'),
+                    from: read.clone()
+                }]),
+                "a round on {base}..c recording {from:?} read from the wrong base"
+            );
+        }
+        fs::remove_dir_all(&folder).unwrap();
+    }
+
     // A folder not made yet holds no round, as before the first is asked;
     // one that can't be read is said so.
     #[test]
@@ -614,30 +672,13 @@ mod tests {
             0,
         );
         // A range named by ref whose round recorded the commit it read from
-        // counts from that commit; a recorded base that's no commit doesn't.
+        // counts from that commit, though the name alone would be blanked.
         written(
             &root.join("ranges"),
             "by-ref-recorded.json",
             &json!({
                 "change": {"provider": "local-range", "id": "origin/main..x"},
-                "runs": [
-                    round(&json!({"witness": id('7'), "from": id('8')})),
-                    round(&json!({"witness": id('6'), "from": "origin/main"})),
-                ],
-            }),
-            0,
-        );
-        // A range named by commit takes the base its round recorded, and a
-        // recorded base that's no commit is none, not the range's name.
-        written(
-            &root.join("ranges"),
-            "by-commit-recorded.json",
-            &json!({
-                "change": {"provider": "local-range", "id": format!("{}..x", id('9'))},
-                "runs": [
-                    round(&json!({"witness": id('5'), "from": id('8')})),
-                    round(&json!({"witness": id('4'), "from": "origin/main"})),
-                ],
+                "runs": [round(&json!({"witness": id('7'), "from": id('8')}))],
             }),
             0,
         );
@@ -662,10 +703,6 @@ mod tests {
             commit: id('7'),
             from: Some(id('8')),
         };
-        let recorded_by_ref = Read {
-            commit: id('6'),
-            from: Some(String::new()),
-        };
         assert_eq!(
             mirrored.rounds,
             HashSet::from([
@@ -674,15 +711,6 @@ mod tests {
                 by_ref,
                 by_commit,
                 recorded,
-                recorded_by_ref,
-                Read {
-                    commit: id('5'),
-                    from: Some(id('8')),
-                },
-                Read {
-                    commit: id('4'),
-                    from: Some(String::new()),
-                },
             ]),
             "the rounds read, a range's base kept only when it names a commit"
         );
