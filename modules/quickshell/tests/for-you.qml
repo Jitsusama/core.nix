@@ -456,9 +456,14 @@ QtObject {
             [LookForm.poses("Clear It", ["Clear It", "Talk"]),
                 LookForm.poses(" clear\u00a0it.", ["Clear It"]),
                 LookForm.poses("Talk\u200b", ["Clear It", "Talk"]),
+                LookForm.poses("Clear It\ufe0f", ["Clear It"]),
+                LookForm.poses("Clear It\udb40\udc41", ["Clear It"]),
+                LookForm.poses("Clear It\udb40\udd00", ["Clear It"]),
+                LookForm.poses("Talk\u180b", ["Talk"]),
+                LookForm.poses("Ta\u17b4lk", ["Talk"]),
                 LookForm.poses("Keep It", ["Clear It", "Talk"]),
                 LookForm.poses("Clear It Away", ["Clear It"])],
-            [true, true, true, false, false]);
+            [true, true, true, true, true, true, true, true, false, false]);
         expect("it asks back wanting a choice or his words, or offering choices, in the second"
             + " form only",
             [LookForm.asksBack(secondly), LookForm.asksBack(second({ wants: { words: true },

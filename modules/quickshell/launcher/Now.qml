@@ -1338,7 +1338,7 @@ Provider {
     // one on another quest that lists its address, or else its quest's, which
     // writes the look resolved (Looks.js's answer). One the node took
     // leaves what waits at once. One with nobody to tell, never sent, that
-    // the node refused or went before saying it took, or that no word came
+    // the node couldn't give or went before saying it took, or that no word came
     // for, says so at its side (Looks.js's unanswered), the journal saying
     // why where it ended. Its choices stay away only while no word has come
     // on a connection still open (Looks.js's awaiting), and one run then,
@@ -1390,8 +1390,9 @@ Provider {
     // Why an answer the node didn't put failed: never sent, with no node
     // connected; the node gone before answering one it was sent, which may
     // be in the session's inbox all the same (Daemon.qml's gone gives
-    // none); or else refused, which is also what an answer of no known
-    // shape is taken for, so its choices come back saying so.
+    // none); or else not given, refused or its machine out of reach, which
+    // is also what an answer of no known shape is taken for, so its
+    // choices come back saying so.
     function answerFailed(reached, answer) {
         if (reached === false)
             return "unsent";

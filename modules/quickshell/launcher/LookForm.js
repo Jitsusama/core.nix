@@ -19,6 +19,28 @@ const UNSEEN = /[\u200b-\u200f\u202a-\u202e\u2060-\u2064\u2066-\u206f\ufeff]/gu;
 const UNMARKED = /[\u00ad\u061c\u180e]|\u034f/gu;
 const FILLERS = /[\u115f\u1160\u2800\u3164\uffa0]/gu;
 const STOPS = /[\s.!?,;:\u2026]+$/u;
+// And what draws as nothing after a letter that a range of Qt's engine's
+// can't be trusted to reach, past U+FFFF: selectors of a letter's variant
+// (Mongolian's, Unicode's and the supplement's), Khmer's inherent vowels,
+// and the tags; each by code point, from first to last.
+const UNDRAWN = [[0x17b4, 0x17b5], [0x180b, 0x180d], [0x180f, 0x180f], [0xfe00, 0xfe0f],
+    [0xe0000, 0xe007f], [0xe0100, 0xe01ef]];
+
+// `text` with what UNDRAWN names left out. It walks the text by code
+// point itself, since Qt's engine's Array.from walks a string by halves
+// of a pair, as a case past U+FFFF showed (23 Nov).
+function drawnOf(text) {
+    let kept = "";
+    for (let at = 0; at < text.length;) {
+        const point = text.codePointAt(at);
+        const width = point > 0xffff ? 2 : 1;
+        if (!UNDRAWN.some(([first, last]) => point >= first && point <= last)) {
+            kept += text.slice(at, at + width);
+        }
+        at += width;
+    }
+    return kept;
+}
 
 // `value` where it's a string, else "".
 function written(value) {
@@ -45,7 +67,7 @@ function wordsOf(read) {
 // A name as it reads, to tell two apart: what draws as nothing gone, its
 // spaces one, its closing stops gone, in small letters.
 function readAs(name) {
-    return String(name).replace(UNSEEN, "").replace(UNMARKED, "").replace(FILLERS, " ")
+    return drawnOf(String(name)).replace(UNSEEN, "").replace(UNMARKED, "").replace(FILLERS, " ")
         .replace(SPACES, " ").replace(STOPS, "").trim().toLowerCase();
 }
 

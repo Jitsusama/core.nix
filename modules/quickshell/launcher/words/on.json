@@ -421,7 +421,7 @@
         "doneByYou": "done by you",
         "answering": "answered {choice}",
         "unanswered:nobody": "{choice} not answered \u00b7 no session to tell",
-        "unanswered:untaken": "{choice} not answered \u00b7 the node refused it",
+        "unanswered:untaken": "{choice} not answered \u00b7 the node couldn't give it",
         "unanswered:dropped": "{choice} not answered yet \u00b7 the node went before saying it took it",
         "unanswered:unsent": "{choice} not answered \u00b7 the node isn't connected",
         "unanswered:unheard": "{choice} not answered yet \u00b7 no answer",

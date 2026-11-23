@@ -336,11 +336,11 @@ function answering(one, answered, now) {
 
 // Why Joel's answer to a look still waiting may not have gone, "nobody"
 // to tell, "unsent" with no node connected, "untaken" where the node
-// refused it, "dropped" where it went before saying, or "unheard" past
-// ANSWER_HEARD with no word, else "", said until he answers again or the
-// look is settled, however much later he comes back to it: his choices
-// coming back unsaid left him no way "to in any way follow through"
-// (Joel, 2026-11-22).
+// couldn't give it, refused or its machine out of reach, "dropped" where
+// it went before saying, or "unheard" past ANSWER_HEARD with no word, else
+// "", said until he answers again or the look is settled, however much
+// later he comes back to it: his choices coming back unsaid left him no
+// way "to in any way follow through" (Joel, 2026-11-22).
 function unanswered(one, answered, now) {
     const given = answered?.[one.id];
     if (one.state !== "waiting" || !given || given.taken) {

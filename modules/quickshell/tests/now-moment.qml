@@ -2018,15 +2018,16 @@ ShellRoot {
             secondActs[0]?.key === "verb:on:look:answer:s:Keep It"
                 && keepDrawer.title === "Keep It" && keepDrawer.body === "It stays as it is.",
             JSON.stringify([secondActs[0]?.key, keepDrawer.title, keepDrawer.body]));
-        // An answer the node refused, or with nobody to tell, says so at its
-        // side, its choices back, rather than silently nothing (Joel,
-        // 2026-11-22: "to in any way follow through").
+        // An answer the node couldn't give, refused or its machine out of
+        // reach, or with nobody to tell, says so at its side, its choices
+        // back, rather than silently nothing (Joel, 2026-11-22: "to in any
+        // way follow through").
         Sessions.puts = false;
         secondActs[0]?.run();
         Sessions.puts = true;
         const untaken = secondRow();
-        expect("an answer the node refused says so, its choices back",
-            untaken?.side === "Keep It not answered \u00b7 the node refused it"
+        expect("an answer the node couldn't give says so, its choices back",
+            untaken?.side === "Keep It not answered \u00b7 the node couldn't give it"
                 && (untaken?.verbs() ?? [])[0]?.key === "verb:on:look:answer:s:Keep It",
             JSON.stringify([untaken?.side, (untaken?.verbs() ?? []).map(act => act.key)]));
         const nobody = { id: "n", kind: "page", title: "Read N", state: "waiting" };
