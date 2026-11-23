@@ -2,6 +2,7 @@
 //! of their own.
 
 use super::gated::{gated, words_of};
+use super::installed::newer;
 use super::*;
 
 /// A state folder of the test's own.
