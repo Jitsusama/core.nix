@@ -71,15 +71,17 @@ in
     };
   };
 
-  # A few lines each time dns-sd starts is the usual, but nothing bounds it:
-  # a machine on the network answering to the same name renames the
-  # advertisement again and again, and a daemon that keeps refusing it has
-  # launchd start it every ten seconds. So macOS's newsyslog moves each log
-  # aside past 512 KB, keeping three before it. It sends no signal, since
-  # neither job takes one: keep.sh opens its log anew each run, and dns-sd
-  # each time it starts, so a refused daemon's lines stay bounded. A dns-sd
-  # that stays up writes on into the log it opened, moved aside, until it
-  # next starts; renames come only as fast as mDNSResponder probes again.
+  # A few lines each time dns-sd starts is the usual, but a daemon that
+  # keeps refusing the advertisement has launchd start it every ten seconds,
+  # a few lines each time. So macOS's newsyslog moves each log aside past
+  # 512 KB, keeping three before it. It sends no signal, since neither job
+  # takes one: launchd opens a job's log anew each time it starts it, so
+  # keep.sh's runs and a restarting dns-sd write to the fresh file. This
+  # doesn't bound a dns-sd that stays up: a machine on the network answering
+  # to the same name has mDNSResponder rename the advertisement again and
+  # again, at its probe pace, and that dns-sd writes on into the file it
+  # opened, moved aside as .0, until it next starts. When the log is empty,
+  # read local-name-answers.log.0.
   config.environment.etc."newsyslog.d/local-name.conf" = lib.mkIf (name != null) {
     text = ''
       # logfilename                    mode count size(KB) when flags

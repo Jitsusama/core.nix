@@ -101,16 +101,17 @@ in
         )
       );
 
-  # A Mac with a local name has newsyslog keep each of the two logs under
-  # 512 KB, with three before it, sending no signal; a Mac with no local
-  # name adds nothing to newsyslog.
+  # A Mac with a local name has newsyslog move aside, past 512 KB, the two
+  # logs its jobs write, keeping three of each, sending no signal; a Mac
+  # with no local name adds nothing to newsyslog. The paths are the jobs'
+  # own, so a log moved in one place and not the other is caught.
   local-name-logs-are-rotated =
     holds "local-name-logs-are-rotated"
-      "A Mac's local-name logs aren't kept by newsyslog under 512 KB with three before each and no signal sent, or a Mac with no local name has newsyslog lines for them."
+      "The logs a Mac's local-name jobs write aren't moved aside by newsyslog past 512 KB, keeping three of each and sending no signal, or a Mac with no local name has newsyslog lines for them."
       (
         rotation == [
           [
-            "/var/log/local-name.log"
+            (job.StandardErrorPath or "")
             "644"
             "3"
             "512"
@@ -118,7 +119,7 @@ in
             "N"
           ]
           [
-            "/var/log/local-name-answers.log"
+            (answers.StandardOutPath or "")
             "644"
             "3"
             "512"

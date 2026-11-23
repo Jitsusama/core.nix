@@ -1948,8 +1948,9 @@
     and a Mac with none runs nothing
   '';
   local-name-logs-are-rotated = ''
-    a Mac with a local name has newsyslog keep its two local-name logs under 512 KB each, with
-    three before each and no signal sent, and a Mac with none adds nothing to newsyslog
+    a Mac with a local name has newsyslog move aside, past 512 KB, the two logs its local-name
+    jobs write, by the jobs' own paths, keeping three of each and sending no signal, and a Mac
+    with none adds nothing to newsyslog
   '';
   local-sites-kit-holds = ''
     the kit every live local site is built on typechecks at its strictest and its tests pass: a
