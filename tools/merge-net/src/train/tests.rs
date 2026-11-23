@@ -142,8 +142,16 @@ fn rider(head: &str, at: u64) -> Rider {
 #[test]
 fn a_gate_no_builder_took_says_nothing_of_its_riders() {
     assert_eq!(gated(Some(0), ""), Gated::Passed, "a gate that passed");
-    assert_eq!(gated(Some(1), ""), Gated::Red, "a check that failed");
-    assert_eq!(gated(None, ""), Gated::Red, "a gate a signal ended");
+    assert_eq!(
+        gated(Some(1), ""),
+        Gated::Red { whole: true },
+        "a check that failed"
+    );
+    assert_eq!(
+        gated(None, ""),
+        Gated::Red { whole: false },
+        "a gate a signal ended, which may not have run every part"
+    );
     let lost = "error: failed to start SSH master connection to 'nix-offload-more'\n";
     for code in [75, 69] {
         assert_eq!(
@@ -167,8 +175,9 @@ fn an_untaken_gate_whose_words_name_a_failed_check_is_red() {
         for code in [75, 69] {
             assert_eq!(
                 gated(Some(code), words),
-                Gated::Red,
-                "a check that failed read as untaken with {code}: {words}"
+                Gated::Red { whole: false },
+                "a check that failed read as untaken, or as a gate that ran whole, with \
+                 {code}: {words}"
             );
         }
     }
@@ -189,7 +198,7 @@ fn a_gate_is_read_by_what_its_last_run_said() {
     fs::write(&log, odd).unwrap();
     assert_eq!(
         gated(Some(75), &words_of(&log)),
-        Gated::Red,
+        Gated::Red { whole: false },
         "a failed check beside a byte that isn't UTF-8 read as untaken"
     );
     let replayed = format!(

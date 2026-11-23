@@ -9,10 +9,10 @@ use std::process::Command;
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
 pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
     let Ok(words) = fs::File::create(log) else {
-        return Gated::Red;
+        return Gated::Red { whole: false };
     };
     let Ok(errors) = words.try_clone() else {
-        return Gated::Red;
+        return Gated::Red { whole: false };
     };
     let ran = Command::new("nix-offload")
         .args(["there", "--lent-only", "--changed"])
@@ -21,7 +21,9 @@ pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
         .stdout(words)
         .stderr(errors)
         .status();
-    ran.map_or(Gated::Red, |status| gated(status.code(), &words_of(log)))
+    ran.map_or(Gated::Red { whole: false }, |status| {
+        gated(status.code(), &words_of(log))
+    })
 }
 
 /// How a candidate's gate ended.
@@ -29,8 +31,10 @@ pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
 pub(super) enum Gated {
     /// Every check it reached passed.
     Passed,
-    /// A check failed, so a rider among them breaks it.
-    Red,
+    /// A check failed, so a rider among them breaks it. `whole` when every
+    /// part of the gate ran to its end, so its words name all it broke;
+    /// not when a part no builder took, or a signal, cut it short.
+    Red { whole: bool },
     /// No builder or evaluator took it, so it says nothing of its riders.
     Unsent,
 }
@@ -44,7 +48,9 @@ pub(super) fn gated(code: Option<i32>, words: &str) -> Gated {
     match code {
         Some(0) => Gated::Passed,
         _ if crate::watch::untaken(code) && !names_a_failure(words) => Gated::Unsent,
-        _ => Gated::Red,
+        _ => Gated::Red {
+            whole: code.is_some() && !crate::watch::untaken(code),
+        },
     }
 }
 

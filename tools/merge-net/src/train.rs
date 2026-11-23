@@ -35,12 +35,13 @@
 //! changes that would merge alone board it rather than move main again
 //! (`right_of_way.rs`).
 //!
-//! A red is main's own when every check it broke fails at the base the
-//! candidate was cut on too, each subtest it failed among those failing
-//! there: the candidate lands, and its line in `train/landed.jsonl` names
-//! those checks (`excused.rs`). Any other candidate that fails splits:
-//! the train takes the first half of its riders to board, and halves again while they fail, so the riders that
-//! broke nothing land together and the one that breaks it is found alone,
+//! A red is main's own when its gate ran whole and every check it broke
+//! fails at the base the candidate was cut on too, every line the
+//! candidate's build of it printed printed there: the candidate lands,
+//! and its line in `train/landed.jsonl` names those checks
+//! (`excused.rs`). Any other candidate that fails splits: the train
+//! takes the first half of its riders to board, and halves again while
+//! they fail, so the riders that broke nothing land together and the one that breaks it is found alone,
 //! five riders in five runs at most (`Splitting`). A train red for more
 //! than its riders gives up, and every rider runs again alone. A candidate
 //! no builder or evaluator took says nothing of its riders, unless its
@@ -526,9 +527,12 @@ fn ride_from(root: &Path, url: &str) -> Result<ExitCode, String> {
         let mut excused = Vec::new();
         match gate(&checkout, &log) {
             Gated::Passed => splitting.taken(),
-            Gated::Red => {
+            Gated::Red { whole } => {
                 splitting.taken();
-                let Some(checks) = excused::mains_own(&root, &slug, &base, &candidate, &log) else {
+                let mains = whole
+                    .then(|| excused::mains_own(&root, &slug, &base, &candidate, &log))
+                    .flatten();
+                let Some(checks) = mains else {
                     way(&root, &Ended::Otherwise);
                     red(&root, &candidate, &log, &done.merged, &mut splitting);
                     continue;

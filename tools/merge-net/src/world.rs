@@ -1096,6 +1096,25 @@ pub fn mac_args(base: &str) -> Vec<String> {
         .collect()
 }
 
+/// How `nix-offload` run with `args`, building at `commit` into `log`,
+/// ended, held to the watch's own clock: none when it couldn't be started
+/// or ran past `LONGEST` or `SILENT`, which stops it with its process
+/// group, as `ended` says.
+pub fn bounded(args: &[String], commit: &str, log: &Path) -> Option<i32> {
+    let output = file(log).ok()?;
+    let mut clock = Clock::new(log, Instant::now());
+    let child = Command::new("nix-offload")
+        .args(args)
+        .env_remove("SSH_AUTH_SOCK")
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(output.try_clone().ok()?)
+        .stderr(output)
+        .spawn()
+        .ok()?;
+    ended(child, &mut clock, commit, log, &|| false)
+}
+
 /// How `child`, building at `commit` into `log`, ended; none when it was
 /// dropped or ran past its time, which stops it with its process group.
 /// nix-offload's ssh to a builder is in that group, and one left when its
