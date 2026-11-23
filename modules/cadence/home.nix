@@ -300,7 +300,7 @@ in
         Slice = "background.slice";
         # A tick still starting holds back every tick after it, and one
         # whose node's grandchild keeps its output open would never end.
-        # Ticks took up to 3 min 52 s on a loaded optimus on 23 November,
+        # Ticks took up to 3 min 52 s on a loaded machine on 23 November,
         # so ten minutes ends only a hung one, which costs a tick or two.
         TimeoutStartSec = "10min";
       };
