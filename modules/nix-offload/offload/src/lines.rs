@@ -466,6 +466,11 @@ enum Unvouched {
     /// its pinned fingerprints show anything done to it meanwhile once the
     /// cloud answers again.
     Unanswered(String),
+    /// It answered, and the instance sits under a project setting a boot
+    /// script it would run: it lends nothing while that's so, and is
+    /// trusted again once it's gone, since a script runs only at a boot and
+    /// a builder that started again is refused.
+    Withheld(String),
     /// It answered, and the instance isn't as made.
     Refused(String),
 }
@@ -663,6 +668,19 @@ impl HostKeys {
                     ..before
                 };
             }
+            Err(Unvouched::Withheld(why)) => {
+                self.say(
+                    name,
+                    Some(format!(
+                        "{name} in {zone} {why}, so it lends nothing until that's gone"
+                    )),
+                );
+                return Asked {
+                    host_key: None,
+                    at: Some(now),
+                    ..before
+                };
+            }
             Err(Unvouched::Refused(why)) => {
                 self.say(
                     name,
@@ -766,10 +784,12 @@ impl HostKeys {
             }
         };
         let unknown = vet::project_holds(&described, instance).map_err(Unvouched::Refused)?;
+        vet::project_scripts(&described, instance).map_err(Unvouched::Withheld)?;
         let noted = (!unknown.is_empty()).then(|| {
             format!(
-                "the project sets the metadata {}, which root doesn't know; it is no boot \
-                 script, ssh key, OS Login or OS Config, so builders are lent still",
+                "the project sets the metadata {}, which root doesn't know what it does; it \
+                 names no boot script, ssh key, OS Login or OS Config, so builders are lent \
+                 still, and it's worth a look",
                 unknown.join(", ")
             )
         });
@@ -1641,6 +1661,62 @@ mod tests {
             lent_to_root(&dir),
             trusted,
             "a cloud product's own project key took a trusted builder away"
+        );
+        let noted = keys.said.get("the project").cloned();
+        assert!(
+            noted
+                .as_deref()
+                .is_some_and(|said| said.contains("gke-a-cluster-0e6a923f-secondary-ranges")),
+            "the key root doesn't know wasn't named: {noted:?}"
+        );
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            keys.said.get("the project"),
+            noted.as_ref(),
+            "the same key was said anew"
+        );
+        fs::write(dir.path().join("project.json"), "{}").expect("the project");
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            keys.said.get("the project"),
+            None,
+            "a key gone from the project was still said of it"
+        );
+    }
+
+    // A boot script only runs at a boot, and a builder that started again
+    // is refused, so a trusted builder under a project script lends nothing
+    // while it's there and is lent again once it's gone.
+    #[test]
+    fn a_project_boot_script_withholds_a_trusted_builder_while_its_set() {
+        let (dir, settings, mut keys) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
+        copy_once(&settings, &mut keys);
+        let trusted = format!("{}\n", line(URI, KEY, HOST));
+        assert_eq!(lent_to_root(&dir), trusted, "never trusted");
+        let project = json!({"commonInstanceMetadata": {"items": [
+            {"key": "startup-script-url", "value": "gs://mine/script"},
+        ]}});
+        fs::write(dir.path().join("project.json"), project.to_string()).expect("the project");
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            "",
+            "a project's startup script was let run"
+        );
+        fs::write(dir.path().join("project.json"), "{}").expect("the project");
+        keys.project = None;
+        due(&mut keys);
+        copy_once(&settings, &mut keys);
+        assert_eq!(
+            lent_to_root(&dir),
+            trusted,
+            "a trusted builder stayed away once the project's script was gone"
         );
     }
 
