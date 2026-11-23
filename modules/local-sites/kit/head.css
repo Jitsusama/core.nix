@@ -142,14 +142,15 @@
    shows, each a whole target for a finger. They're marked data-tap, in the
    page's markup so the line is there at first paint, and by steps.ts's
    pressable; a ? that only opens the list of keys is never marked, so a
-   help-only line waits too. A browser without :has drops the hiding rule
+   help-only line waits too, though once it shows its ? is a whole target
+   like any keycap that acts when tapped. A browser without :has drops the hiding rule
    whole, and the line shows, as it did before this sheet. */
 @media (hover: none) and (pointer: coarse) {
   :root:not([data-keyed]) .page-head .keys:not(:has(kbd[data-tap])) {
     display: none;
   }
 
-  .page-head .keys kbd[data-tap] {
+  .page-head .keys kbd:is([data-tap], [role="button"]) {
     display: inline-grid;
     place-items: center;
     min-inline-size: var(--target);

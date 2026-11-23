@@ -66,8 +66,8 @@ function typing(target: Element): boolean {
 /**
  * Keys that show no keyboard at hand: what a phone's own keyboard says
  * while it composes, and the buttons on a phone's side or a remote. A real
- * keyboard's dead accent key isn't one, though it marks nothing until the
- * key after it either way.
+ * keyboard's dead accent key isn't one: it shows a keyboard as much as any
+ * other key, so it marks the page on its own press.
  */
 const KEYLESS: ReadonlySet<string> = new Set([
   "Unidentified",

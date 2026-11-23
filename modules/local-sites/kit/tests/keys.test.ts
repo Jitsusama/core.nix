@@ -113,6 +113,25 @@ it("a key pressed outside a field marks the page as having keys; one in a field 
   });
 });
 
+it("a held key marks the page once, not at every repeat", () => {
+  onAPage((root, heard) => {
+    let writes = 0;
+    root.dataset = new Proxy({} as Record<string, string>, {
+      set: (held, name, value): boolean => {
+        writes += 1;
+        return Reflect.set(held, name, value);
+      },
+    });
+    listen({ actions: {} });
+    for (let repeat = 0; repeat < 30; repeat += 1) {
+      for (const then of heard) {
+        then({ ...bare, key: "j", target: new Element("body") });
+      }
+    }
+    assert.equal(writes, 1, `a held j wrote the mark ${String(writes)} times`);
+  });
+});
+
 it("a page answering its own keys is marked by its watch, and each watch stops apart", () => {
   onAPage((root, heard) => {
     const stopFirst = watchForKeys();
@@ -136,8 +155,13 @@ it("head.css hides the key line only on touch, by the names keys.ts and pressabl
   const sheet = readFileSync(new URL("../head.css", import.meta.url), "utf8");
   const touch = sheet.indexOf("@media (hover: none) and (pointer: coarse)");
   const hides = sheet.indexOf(":root:not([data-keyed]) .page-head .keys:not(:has(kbd[data-tap]))");
+  // The query ends at the first brace back at the start of a line after it.
+  const ends = sheet.indexOf("\n}", touch);
   assert.ok(touch >= 0, "head.css has no touch query");
-  assert.ok(hides > touch, "the rule hiding the key line isn't inside the touch query");
+  assert.ok(
+    hides > touch && hides < ends,
+    "the rule hiding the key line isn't inside the touch query",
+  );
 });
 
 it("a key the page doesn't name is nothing, even one every object answers to", () => {
