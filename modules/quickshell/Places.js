@@ -52,9 +52,9 @@ function twinsOf(at, moment) {
     return on.includes(at.output) ? on.filter(output => output !== at.output) : [];
 }
 
-// connectorOf, but not a twin's (twinsOf) nor one `given` a twin this pass
+// connectorOf (given `inUse`), but not a twin's (twinsOf) nor one `given` a twin this pass
 // (`{ at, output }` each), so with only those connected `at`'s is gone.
-function whereKept(at, moment, screens, given, inUse) {
+function whereKept(at, moment, screens, { given, inUse } = {}) {
     const twins = twinsOf(at, moment);
     const taken = twins.concat((given ?? []).filter(was => twins.includes(was.at.output)).map(was => was.output));
     const found = connectorOf(at, screens, inUse);
@@ -89,11 +89,12 @@ function awayOf(at, output, moment, screens) {
 function placed(places, screens, inUse, moments) {
     const known = Object.keys(screens ?? {}).length > 0;
     const given = [];
+    const pass = { given, inUse };
     const found = places.map((at, index) => {
         if (!at) {
             return null;
         }
-        const output = known ? whereKept(at, moments?.[index], screens, given, inUse) : at.output;
+        const output = known ? whereKept(at, moments?.[index], screens, pass) : at.output;
         given.push({ at, output });
         const gone = output === undefined ? at.screen || at.output : undefined;
         return { at, index, output, gone };

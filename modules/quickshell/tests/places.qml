@@ -304,7 +304,7 @@ QtObject {
             Places.placed([docked[0]], fourSoon, "eDP-1")
                 .map(at => [at.output, at.away?.screen ?? null]), [["eDP-1", monitor]]);
         expect("a place kept on the screen in use not heard yet is found there",
-            Places.whereKept(docked[2], [], panelSoon, [], "eDP-1"), "eDP-1");
+            Places.whereKept(docked[2], [], panelSoon, { inUse: "eDP-1" }), "eDP-1");
         // Its own screen heard on another connector is where it goes,
         // as a monitor renumbered while its old connector is now the
         // screen in use, not heard yet.
@@ -324,7 +324,7 @@ QtObject {
             Places.placed([docked[0]], { "eDP-1": panel, "DP-6": "" }, "eDP-1")[0].away?.others,
             { "eDP-1": panel });
         expect("a window put back on a screen not heard, not in use, is gone",
-            Places.whereKept(docked[0], [], fourSoon, [], "eDP-1"), undefined);
+            Places.whereKept(docked[0], [], fourSoon, { inUse: "eDP-1" }), undefined);
         // The note a window put back so carries, the same as placed's.
         const panelNote = Places.awayOf(docked[2], "eDP-1", [], panelSoon);
         expect("a window put back on the screen in use not heard yet is noted",

@@ -2287,7 +2287,7 @@ Singleton {
         const found = Places.whereBack(at, beside);
         const there = root.screensThere();
         const inUse = Niri.workspace()?.output ?? null;
-        const kept = Places.whereKept(at, going.kept, there, [], inUse);
+        const kept = Places.whereKept(at, going.kept, there, { inUse });
         const output = found.output ?? kept ?? inUse;
         const where = found.make ? Object.assign({}, found, { output }) : found;
         const workspace = Niri.workspace(window.workspace_id);
