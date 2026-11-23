@@ -297,6 +297,15 @@ impl Parakeet {
         if width != ENCODED {
             return Err(format!("the encoder's output is {width} wide"));
         }
+        // Word times rest on each frame standing for FRAME samples, so an
+        // encoder that steps otherwise is refused rather than misplacing
+        // every word. Its three halvings of 1501 frames give 188.
+        if all.abs_diff(WINDOW / FRAME) > 1 {
+            let wanted = WINDOW / FRAME;
+            return Err(format!(
+                "the encoder gave {all} frames a window, not {wanted}"
+            ));
+        }
         // The output is laid out a dimension at a time, every frame's value
         // for each, so each frame is gathered across them.
         Ok((0..usize_of(count)?.min(all))
@@ -752,16 +761,25 @@ mod tests {
     fn the_shipped_vocabulary_gives_a_word_for_each_its_text_has() {
         // The build names the vocabulary Parakeet ships with (package.nix),
         // so one spaced another way fails here rather than leaving every
-        // call's takes whole. A plain `cargo test` has none to read, nor
-        // has one in `nix develop`, which sets NIX_BUILD_TOP as a build
-        // does but sets IN_NIX_SHELL beside it.
+        // call's takes whole; `nix develop` on the package names it too.
+        // A plain `cargo test`, or one in the repository's shell, has none
+        // to read. A shell sets NIX_BUILD_TOP as a build does, but sets
+        // IN_NIX_SHELL beside it.
         let Some(path) = std::env::var_os("PARAKEET_VOCAB") else {
             let building = std::env::var_os("NIX_BUILD_TOP").is_some()
                 && std::env::var_os("IN_NIX_SHELL").is_none();
-            assert!(!building, "the build named no vocabulary");
+            assert!(
+                !building,
+                "the build named no vocabulary in PARAKEET_VOCAB, as package.nix does"
+            );
+            eprintln!("the shipped vocabulary wasn't read: PARAKEET_VOCAB names none");
             return;
         };
-        let vocab = Vocab::parse(&std::fs::read_to_string(path).unwrap()).unwrap();
+        let path = Path::new(&path);
+        let read = std::fs::read_to_string(path)
+            .unwrap_or_else(|why| panic!("PARAKEET_VOCAB's {} didn't read: {why}", path.display()));
+        let vocab = Vocab::parse(&read)
+            .unwrap_or_else(|why| panic!("PARAKEET_VOCAB's {} isn't one: {why}", path.display()));
         let tokens: Vec<usize> = (0..vocab.blank()).filter(|&t| vocab.allowed(t)).collect();
         let timed: Vec<(usize, usize)> = tokens.iter().map(|&t| (t, t * FRAME)).collect();
         let words = vocab.words(&timed);

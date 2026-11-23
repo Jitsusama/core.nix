@@ -1,3 +1,7 @@
+//! The cases of hearing a call, kept beside `hear` so they reach its
+//! private parts. Long because it is only cases, each pinning one step of
+//! hearing a call: a take's pieces and words, its voices and its names.
+
 use std::path::PathBuf;
 
 use super::*;
@@ -470,12 +474,39 @@ fn a_call_rejoined_after_a_split_numbers_its_new_lines_past_it() {
 }
 
 #[test]
-fn a_takes_words_are_timed_from_the_calls_start() {
-    let words = from_call_start(40 * SECOND, vec![word("Done.", SECOND)]);
+fn a_takes_words_find_the_pieces_they_were_said_in() {
+    // Parakeet times a take's words from the take's start and its pieces
+    // are timed from the call's, so words left unmoved 40 s in would find
+    // no piece, and no line would be given a voice.
+    let start = 40 * SECOND;
+    let said = vec![word("Not", 0), word("yet.", 4 * SECOND)];
+    let (text, words) = as_kept(start, None, said);
+    assert_eq!(
+        text.as_deref(),
+        Some("Not yet."),
+        "the words didn't spell the take"
+    );
     assert_eq!(
         words,
-        [word("Done.", 41 * SECOND)],
+        [word("Not", 40 * SECOND), word("yet.", 44 * SECOND)],
         "a word wasn't moved by where its take starts in the call"
+    );
+    let mut writing = Writing::default();
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (BO.to_vec(), start + 3 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(0), &words, pieces);
+    let worded: Vec<bool> = writing.heard.iter().map(|heard| heard.worded).collect();
+    assert_eq!(
+        worded,
+        [true, true],
+        "a piece didn't find the word said in it"
+    );
+    assert_eq!(
+        as_kept(start, Some(" Done. ".to_owned()), Vec::new()),
+        (Some("Done.".to_owned()), Vec::new()),
+        "Joel's text wasn't kept as Parakeet spelled it"
     );
 }
 

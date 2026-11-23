@@ -63,9 +63,9 @@ rustPlatform.buildRustPackage {
   env.DICTATION_COMPILED_WITH = "${openvino} ${openvino-genai}";
   # The tests split Parakeet's own vocabulary into words, since one written
   # by hand once spaced words otherwise and hid that no take was split.
-  preCheck = ''
-    export PARAKEET_VOCAB=${parakeet.vocab}
-  '';
+  # It's named on the package, not in its check phase, so `nix develop` on
+  # the package reads it too.
+  PARAKEET_VOCAB = parakeet.vocab;
   passthru = { inherit openvino openvino-genai openvino-tokenizers; };
   meta = {
     description = "Dictation, call transcripts, screenshot text and noise-cancelled microphones";

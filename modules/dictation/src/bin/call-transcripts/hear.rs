@@ -255,10 +255,8 @@ pub fn hear(
 }
 
 /// What Parakeet hears in a take of `side`'s, `start` samples into the
-/// call: its text, tidied, none when it holds no words or isn't heard,
-/// which is logged; and for their side, each word and when it was said,
-/// from the call's start. Their text is their words, a space between
-/// each, which is what `transcribe` spells.
+/// call, as `as_kept` keeps it: none when it isn't heard, which is
+/// logged. Only their side's words are timed.
 fn transcribe_take(
     parakeet: &mut Parakeet,
     side: Side,
@@ -266,25 +264,37 @@ fn transcribe_take(
     samples: &[f32],
 ) -> (Option<String>, Vec<Word>) {
     let transcribed = if side == Side::Theirs {
-        parakeet.transcribe_words(samples).map(|(words, took)| {
-            let joined: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
-            (joined.join(" "), words, took)
-        })
+        parakeet
+            .transcribe_words(samples)
+            .map(|(words, took)| (None, words, took))
     } else {
         parakeet
             .transcribe(samples)
-            .map(|(text, took)| (text, Vec::new(), took))
+            .map(|(text, took)| (Some(text), Vec::new(), took))
     };
     match transcribed {
         Ok((text, words, took)) => {
             eprintln!("call-transcripts: {}", took.describe(&parakeet.device));
-            (said::spoken(text.trim()), from_call_start(start, words))
+            as_kept(start, text, words)
         }
         Err(why) => {
             eprintln!("call-transcripts: a take wasn't heard: {why}");
             (None, Vec::new())
         }
     }
+}
+
+/// A take's text and words as the call keeps them, the take starting
+/// `start` samples into it: its text tidied, none when it holds no words,
+/// and its words timed from the call's start, which is where its pieces
+/// are, so each word finds the piece it was said in. With no `text`,
+/// the words spell it, a space between each, as `transcribe` would.
+fn as_kept(start: usize, text: Option<String>, words: Vec<Word>) -> (Option<String>, Vec<Word>) {
+    let text = text.unwrap_or_else(|| {
+        let spelled: Vec<&str> = words.iter().map(|word| word.text.as_str()).collect();
+        spelled.join(" ")
+    });
+    (said::spoken(text.trim()), from_call_start(start, words))
 }
 
 /// A take's `words`, timed from its start, timed from the call's instead,
