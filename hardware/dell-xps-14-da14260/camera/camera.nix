@@ -221,6 +221,17 @@ in
     enable = true;
     platform = "ipu75xa";
   };
+  # Intel's camera binaries and the vision chip's firmware, which
+  # hardware.ipu7 installs, are unfree, and so is the HAL's settings with
+  # Dell's tuning in them, for a machine that names its board. That one is
+  # named as nixpkgs names it, which drops a board's name that opens with a
+  # digit as though it were a version.
+  nixpkgs.config.allowUnfreePackages = [
+    "ipu7-camera-bins"
+    "ivsc-firmware"
+    "ivsc-firmware-unstable"
+  ]
+  ++ lib.optional (module != null) (lib.getName "camera-config-${module}");
   # Its relay makes the loopback with the default buffers, which nixos-hardware
   # measured at a few frames a second, so the camera service below runs the
   # relay instead.

@@ -4,7 +4,8 @@
 # machine has, and one account, someone, for home-manager to configure. A
 # check calls `nix-darwin.lib.darwinSystem` with it and the modules it
 # checks, since core builds no machine itself. It is only for checks, never a
-# machine's base: it allows unfree packages, as core's nixpkgs settings do.
+# machine's base: it allows the unfree packages core's nixpkgs settings and
+# modules name.
 # Its platform, primary user and state versions give way even to a module's
 # defaults, so a module checked on it may set its own.
 { self }:

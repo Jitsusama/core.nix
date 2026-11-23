@@ -18,6 +18,9 @@ in
 {
   imports = [ ../../../modules/fwupd/nixos.nix ];
 
+  # Microsoft's capsule comes under Microsoft's own licence, so it is unfree.
+  nixpkgs.config.allowUnfreePackages = [ "surface-laptop-4-amd-uefi" ];
+
   environment.etc."fwupd/remotes.d/surface-laptop-4-amd.conf".text = ''
     [fwupd Remote]
     Enabled=true

@@ -7,6 +7,12 @@
 # may.
 { config, lib, ... }:
 {
+  # Both are unfree, so they are named here, beside what installs them.
+  nixpkgs.config.allowUnfreePackages = [
+    "1password"
+    "1password-cli"
+  ];
+
   programs._1password.enable = true;
 
   programs._1password-gui = {
