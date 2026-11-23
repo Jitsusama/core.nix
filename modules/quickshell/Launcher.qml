@@ -8757,8 +8757,11 @@ Scope {
             root.viewerCommandLine(viewer, where, name);
         }
 
+        // What the launcher shows, or, where reading it threw, what threw,
+        // its kind and where but never its message (Held.js's answered).
         function showing(): string {
-            return root.showing();
+            return Held.answered(() => root.showing(),
+                threw => console.warn(`launcher: showing threw: ${threw}`));
         }
 
         // The catalogue, every place and action by id, as one line of JSON.

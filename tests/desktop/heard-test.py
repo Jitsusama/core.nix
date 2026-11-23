@@ -6,6 +6,7 @@ keeps of what the launcher showed.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import time
@@ -13,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
-from heard import CUT_SHORT, TIMED_OUT, diagnosed, ended, said_by, until_heard
+from heard import CUT_SHORT, TIMED_OUT, diagnosed, ended, said_by, shown, until_heard
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -375,3 +376,50 @@ def test_a_state_passing_at_first_read_hears_nothing() -> None:
     restart = {"rows": ["Restart"]}
     passed = until_heard(restart, lambda now: now == restart, hear, WHO)
     assert passed is restart, f"the wait gave back {passed}, not the first read that passed"
+
+
+# Who answered a call for its state, as the launcher's showing read gives it.
+ANSWERED = "the launcher's showing call answered"
+
+
+# What threw, as the launcher says it (launcher/Held.js's thrown): its kind and where.
+THREW = "TypeError: thrown at showing@file:///Launcher.qml:10021"
+
+
+def journal() -> str:
+    return f"launcher: showing threw: {THREW}\n"
+
+
+def test_a_state_answered_as_json_is_given_back_without_reading_the_journal() -> None:
+    # The journal is read only to explain a failure, since each read costs a paced call.
+    def unasked() -> str:
+        message = "read the journal though the answer was sound"
+        raise AssertionError(message)
+
+    state = shown('{"open": true, "rows": ["Machine"]}\n', unasked, ANSWERED)
+    assert state == {"open": True, "rows": ["Machine"]}, f"a sound answer gave {state}"
+
+
+@pytest.mark.parametrize("said", ["\n", "", '{"open": tr'])
+def test_an_answer_that_isnt_json_says_what_came_and_what_the_shell_said(said: str) -> None:
+    # A call once answered an empty line, which failed vm-desktop-looks as a bare
+    # JSONDecodeError with nothing of why (e73f6fe8, 22 Nov). It fails as a RuntimeError,
+    # which the waits that press again on an AssertionError don't press past.
+    with pytest.raises(RuntimeError) as unsound:
+        shown(said, journal, ANSWERED)
+    wanted = f"{ANSWERED} {said!r}, not a state as JSON\n{journal()}"
+    assert str(unsound.value) == wanted, f"{said!r} failed as: {unsound.value}"
+
+
+def test_an_answer_naming_a_throw_says_it_and_what_the_shell_said() -> None:
+    said = json.dumps({"threw": THREW}) + "\n"
+    with pytest.raises(RuntimeError) as threw:
+        shown(said, journal, ANSWERED)
+    wanted = f"{ANSWERED} that its read threw {THREW}\n"
+    assert str(threw.value) == wanted + journal(), f"a throw failed as: {threw.value}"
+
+
+def test_a_state_that_isnt_an_object_is_given_back_as_it_came() -> None:
+    # Only an object can name a throw; any other JSON is the state, for the test to judge.
+    state = shown("[1, 2]", journal, ANSWERED)
+    assert state == [1, 2], f"a list answered gave {state}"
