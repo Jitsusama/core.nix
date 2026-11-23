@@ -6072,6 +6072,28 @@ fn vm_tests_past_two_vm_builders_room_go_to_a_third_at_once() {
     );
 }
 
+// A lane kept for the runs that name it, as the bare metal one is for
+// Aquifer v2's own KVM guests at about 21 times an n2 lane's price, takes
+// none of what other runs spill past the first's room, and takes it again
+// once its `named-only` file goes.
+#[test]
+fn a_lane_kept_for_runs_naming_it_takes_none_of_the_spill() {
+    let rig = TwoVm::new();
+    rig.lend_third();
+    fs::write(rig.third.join("named-only"), "").unwrap();
+    let (built, said) = rig.sent(8);
+    assert_eq!(tests_on(&built, "nix-offload-vm-3"), 0, "{built:?} {said}");
+    assert_eq!(tests_on(&built, "nix-offload-vm"), 8, "{built:?} {said}");
+
+    fs::remove_file(rig.third.join("named-only")).unwrap();
+    let (built, said) = rig.sent(8);
+    assert_eq!(
+        tests_on(&built, "nix-offload-vm-3"),
+        2,
+        "an ordinary lane takes the spill: {built:?} {said}"
+    );
+}
+
 // On 6 November each fresh VM builder's first tests took 65 to 80 minutes
 // building the desktop for themselves, against 2 to 12 once warm, so while
 // a warm VM builder stands, none goes to one that's cold: one warming, or

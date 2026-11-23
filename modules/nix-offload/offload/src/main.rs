@@ -1093,16 +1093,17 @@ fn own_vm_extra_dirs() -> Vec<PathBuf> {
 /// 51 minutes on the first builder, with 2 of its 4 claimed, while the
 /// second sat idle. A builder past the first that stands while root
 /// doesn't vouch for it takes none, since a run split there would wait
-/// on root while the first had room.
+/// on root while the first had room. One kept for the runs that name it
+/// takes none past the first, as it's the first only for those runs.
 fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there::Asked>> {
     let mut parts: Vec<Option<there::Asked>> = vm_dirs.iter().map(|_| None).collect();
     let Some(part) = vm else {
         return parts;
     };
+    let spills_onto =
+        |index: &usize| there::lends(&vm_dirs[*index]) && !there::named_only(&vm_dirs[*index]);
     let lending: Vec<usize> = (0..vm_dirs.len())
-        .filter(|index| {
-            *index == 0 || (there::lends(&vm_dirs[*index]) && !there::unvouched(&vm_dirs[*index]))
-        })
+        .filter(|index| *index == 0 || (spills_onto(index) && !there::unvouched(&vm_dirs[*index])))
         .collect();
     if lending.len() == 1 {
         parts[0] = Some(part);
@@ -1114,7 +1115,7 @@ fn overflowed(vm: Option<there::Asked>, vm_dirs: &[PathBuf]) -> Vec<Option<there
     // Those left out as root vets them still come, so none more is asked
     // for in their place.
     let vetting = (1..vm_dirs.len())
-        .filter(|index| there::lends(&vm_dirs[*index]) && there::unvouched(&vm_dirs[*index]))
+        .filter(|index| spills_onto(index) && there::unvouched(&vm_dirs[*index]))
         .count();
     let lending = warm_of(&part, lending, vm_dirs, builds, vetting, busy_in);
     let busy: Vec<usize> = lending.iter().map(busy_in).collect();
@@ -1213,10 +1214,13 @@ fn at_once<'a>(
                 let scratch = scratch.join(index.to_string());
                 let vm = vm_dirs.contains(&dir);
                 // The other VM builders, while a lender runs to make each,
-                // which a VM part waiting for room goes to once one has some.
+                // which a VM part waiting for room goes to once one has some,
+                // all but those kept for the runs that name them.
                 let others: Vec<&Path> = vm_dirs
                     .iter()
-                    .filter(|other| **other != dir && there::lends(other))
+                    .filter(|other| {
+                        **other != dir && there::lends(other) && !there::named_only(other)
+                    })
                     .map(|other| other.as_path())
                     .collect();
                 scope.spawn(move || {
