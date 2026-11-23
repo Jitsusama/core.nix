@@ -131,14 +131,22 @@ let
 
   # A size that grows with the window from its least at a phone's width to
   # its most at a laptop's, in rem so the reader's own font size still counts.
-  fluid =
-    least: most:
+  # Its floor is what it never goes under, its least unless a step says more.
+  fluidOver =
+    floor: least: most:
     let
       narrow = 360.0;
       wide = 1280.0;
       slope = (most - least) / (wide - narrow);
     in
-    "clamp(${rem least}, ${rem (least - slope * narrow)} + ${fixed (slope * 100)}vw, ${rem most})";
+    "clamp(${floor}, ${rem (least - slope * narrow)} + ${fixed (slope * 100)}vw, ${rem most})";
+  fluid = least: fluidOver (rem least) least;
+
+  # Text is never under 12 px outside a drawing, whatever the root's size: a
+  # browser or a phone that sets its root under 16 px took --step-small to
+  # 11.8 px on forage at 390 px wide (1HE06W, 2026-11-22). A reader's larger
+  # font still grows it, since the rem least is the other side of max.
+  typeFloor = 12;
 
   # The type scale, fluid: the theme's ratio at a laptop's width, and a
   # smaller one at a phone's, so a display step doesn't swamp a narrow screen.
@@ -150,7 +158,13 @@ let
     least: most:
     lib.concatStrings (
       lib.mapAttrsToList (
-        name: n: "  --step-${name}: ${fluid (least * power narrowRatio n) (most * power ratio n)};\n"
+        name: n:
+        let
+          small = least * power narrowRatio n;
+        in
+        "  --step-${name}: ${
+            fluidOver "max(${toString typeFloor}px, ${rem small})" small (most * power ratio n)
+          };\n"
       ) cfg.type.steps
     );
 

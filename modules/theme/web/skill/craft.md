@@ -88,7 +88,10 @@ files. The light theme's figures are in brackets.
 ## Type Steps
 
 The kit's steps are fluid between a 360 px and a 1280 px window, at ratio 1.2
-narrow and the theme's 1.25 wide, in `rem` so zoom works.
+narrow and the theme's 1.25 wide, in `rem` so zoom works. No step goes
+under 12 px, whatever the root's size: each one's least is `max(12px, least)`,
+so a phone or a browser that sets its root under 16 px can't take the
+sites' smallest text under the floor, and a larger font still grows it.
 
 | Step | A page, px | An interface, px |
 | --- | --- | --- |
@@ -103,7 +106,8 @@ narrow and the theme's 1.25 wide, in `rem` so zoom works.
 On a page to read, no prose is under 15 px on screen, `--step-small` at
 its narrowest: a card's aside, a footnote, a table's head, a strip of
 labels or a slide's number takes the step, not a fraction of it. Only
-mono runs sit smaller, at 0.85 em, so code matches the serif beside it,
+mono runs sit smaller, at 0.85 em and never under 12 px, so code matches
+the serif beside it,
 and text kept for a screen reader alone (`.sr`) has no size anyone reads.
 The probe holds this at every width.
 
