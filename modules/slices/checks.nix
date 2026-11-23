@@ -158,18 +158,28 @@
   # ran out in a repository of 265 packs and then called a sound object
   # corrupt, though the same command worked in a shell. systemd reads a
   # bare number as both limits and "soft:hard" as each, either of them a
-  # count or infinity.
+  # count or infinity. The hard limit has to stay at the kernel's 524288
+  # the manager itself holds, or every unit would lose what it may raise
+  # itself to, and the soft one has to match it. A count may be written
+  # with leading zeros, which lib.toInt refuses, so they're dropped first.
   a-unit-opens-as-many-files-as-a-shell =
     let
       said = toString (graphical.config.systemd.user.settings.Manager.DefaultLimitNOFILE or "");
       parts = builtins.match "([0-9]+|infinity)(:([0-9]+|infinity))?" said;
       soft = if parts == null then null else lib.elemAt parts 0;
       hard = if parts == null then null else lib.elemAt parts 2;
-      enough = value: value == "infinity" || lib.toInt value >= 65536;
+      count =
+        value:
+        let
+          digits = lib.elemAt (builtins.match "0*([0-9]+)" value) 0;
+        in
+        if value == "infinity" then null else lib.toInt digits;
+      atLeast = least: value: value == "infinity" || count value >= least;
+      ceiling = if hard == null then soft else hard;
     in
     holds "a-unit-opens-as-many-files-as-a-shell"
-      "The account's units start with a soft open-files limit below their hard one, or near systemd's 1024."
-      (soft != null && (hard == null || hard == soft) && enough soft);
+      "The account's units start with a soft open-files limit below their hard one, or a hard one below the manager's 524288."
+      (soft != null && (soft == ceiling || count soft == count ceiling) && atLeast 524288 ceiling);
 
   # A probe waits beside Joel's programs at their weight, so a watcher
   # reading its slice's pressure reads what the rest of the machine makes

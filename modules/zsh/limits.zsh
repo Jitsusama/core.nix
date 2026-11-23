@@ -1,6 +1,6 @@
 # How many files the shell's commands, and its prompt's git-engine, may
-# hold open. A Linux desktop session gives each program systemd's default
-# of 1024, and a Mac's 256, and a git fetch in a large repository whose
+# hold open. Left to systemd's default, a Linux desktop session gives each
+# program 1024, and a Mac 256, and a git fetch in a large repository whose
 # refs are kept as tables holds every worktree's tables open beside its
 # packs, well past that, then calls a sound object corrupt when it can't
 # open one. So the shell raises its soft limit to 8192, or to the hard

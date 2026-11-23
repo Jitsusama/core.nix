@@ -3632,8 +3632,9 @@
     do it; one naming none holds nothing, nor does the laptop's hardware without the slices
   '';
   a-unit-opens-as-many-files-as-a-shell = ''
-    every unit the account's manager starts, a transient one included, may open as many files as
-    a login shell, its soft limit its hard one and far past systemd's 1024
+    a unit the account's manager starts, a transient one included, may open as many files as a
+    login shell unless it sets its own limit, as mycelium and quickshell do: by default its soft
+    limit is its hard one, and the hard one stays at the manager's 524288
   '';
   a-probe-waits-beside-the-programs = ''
     the sorter's probe runs in a slice of its own at Joel's programs' weight from login, so its
