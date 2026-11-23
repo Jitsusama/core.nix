@@ -183,8 +183,9 @@ in
                   holds nothing. Name one for each interface it may send
                   by, its Wi-Fi's and its cable's, since it reports by the
                   one its routes send by: what it sent is read from the
-                  fresh report saying the most, so one saying less never
-                  loosens the hold. The address alone says a report is the other machine's, so any
+                  fresh report saying the most, so one from an address it
+                  isn't sending by can only tighten the hold. The address
+                  alone says a report is the other machine's, so any
                   device on the line could forge one by sending from it: for
                   as long as it keeps sending, it holds this machine's
                   upload as low as 4 Mb/s, as a trial may, or lets it go.
@@ -195,7 +196,8 @@ in
                   as IPv6 is refused. Make it a reserved address the other
                   machine sends from: reports from a new lease, or from a
                   temporary IPv6 address, are dropped without a word, and
-                  the house holds nothing.
+                  the house holds nothing. house-report sends over IPv4
+                  alone, for that reason.
                 '';
               };
             }

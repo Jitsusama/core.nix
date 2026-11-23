@@ -1898,11 +1898,12 @@ fn house_holds(houses: &networks::Houses, ear: Option<&house::Ear>, now: Instant
         .filter_map(|(network, h)| {
             // The other machine reports by the interface it sends by, so
             // from one of its addresses. Of those fresh, the one that says
-            // the most holds: a report the address alone vouches for can
-            // then only tighten the hold, never loosen it, so one forged
-            // from an address the house isn't sending by takes nothing
-            // from the VPN, and a move's old address stands only until
-            // its last word is stale.
+            // the most holds, so a report forged from an address the other
+            // machine isn't sending by can only tighten the hold, and a
+            // move's old address stands only until its last word is stale.
+            // One forged from the address it is sending by replaces that
+            // address's word, so it can still loosen the hold until reports
+            // are signed.
             let sent = h
                 .from
                 .iter()
@@ -3060,6 +3061,14 @@ mod tests {
             house_holds(&houses, Some(&ear), quiet).get("00:00:5e:00:53:01"),
             None,
             "a house held with neither address fresh"
+        );
+        // The cable's word, saying more, is stale now, so the Wi-Fi's holds.
+        let stale = next + house::FRESH + Duration::from_secs(1);
+        ear.hear(wifi, report(437_500, 5_000), stale);
+        assert_eq!(
+            house_holds(&houses, Some(&ear), stale).get("00:00:5e:00:53:01"),
+            Some(&(500, 6_500)),
+            "a stale address saying more held over a fresh one"
         );
     }
 }

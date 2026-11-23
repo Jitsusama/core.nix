@@ -39,22 +39,22 @@ let
   # one alike: the reporter would exit on anything else each time it
   # started.
   address = import ../shaper/address.nix lib;
-  # A link-local IPv6 address (fe80::/10) is reached only by an interface
-  # named beside it, which a report's address never carries, so the
-  # reporter could never send to one.
-  linkLocal = to: builtins.match "[fF][eE][89abAB][0-9a-fA-F]:.*" to != null;
-  # An IPv6 address goes in brackets before its port.
-  to = if lib.hasInfix ":" cfg.to then "[${cfg.to}]:${port}" else "${cfg.to}:${port}";
+  # IPv4 alone: over IPv6, macOS and NixOS alike send from a temporary
+  # privacy address of their own by default, which no house can name, so
+  # every report would be dropped without a word.
+  ipv4 = to: !lib.hasInfix ":" to;
+  to = "${cfg.to}:${port}";
 in
 {
   options.jitsusama.house-report = {
     to = lib.mkOption {
-      type = lib.types.addCheck address (to: !linkLocal to);
+      type = lib.types.addCheck address ipv4;
       example = "192.0.2.3";
       description = ''
-        The shaped machine's address on the network the two share, where
-        its shaper hears this machine's reports. Never a link-local IPv6
-        one, which a report can't be sent to without its interface.
+        The shaped machine's IPv4 address on the network the two share,
+        where its shaper hears this machine's reports. Not an IPv6 one:
+        reports to it would go from a temporary address this machine
+        makes, which the shaped machine's house can't name.
       '';
     };
     interface = lib.mkOption {
