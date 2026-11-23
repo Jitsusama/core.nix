@@ -105,14 +105,19 @@ pub struct Code {
     /// Whether the disk is to be read again, asked while a read was under
     /// way, which may have read it before what moved it.
     wanted: AtomicBool,
-    /// How many resolutions of zoxide's folders ran past `RESOLVING` and
-    /// haven't ended, so no pass starts another while one is held.
+    /// How many reads of zoxide's database, and apart from them how many
+    /// resolutions of its folders, ran past `RESOLVING` and haven't ended,
+    /// so no pass starts another of the same while one is held. Counted
+    /// apart, so a folder on a stuck mount leaves the visits ordering Code
+    /// as written, and a stuck database leaves nothing to resolve anyway.
+    late_reads: Arc<AtomicUsize>,
     late: Arc<AtomicUsize>,
-    /// The number the next pass making Code's rows is given as it begins
-    /// to read zoxide's visits, and the latest whose rows were taken, kept
-    /// under the daemon's lock: a pass that began earlier than the one
-    /// last taken lets its rows go, so no order read before another is
-    /// taken after it, and no lock is held while the disk is read.
+    /// The number the next pass making Code's rows is given, under
+    /// `found`'s lock as it holds or reads the repositories it orders, and
+    /// the latest whose rows were taken, kept under the daemon's lock: a
+    /// pass numbered before the one last taken lets its rows go, so no
+    /// order read before another is taken after it, and no lock is held
+    /// while the disk is read.
     passes: AtomicU64,
     taken: AtomicU64,
     /// The checkouts a Pull, a switch or a tending is under way in, so a
@@ -168,6 +173,7 @@ impl Code {
             read_once: AtomicBool::new(false),
             reading: AtomicBool::new(false),
             wanted: AtomicBool::new(false),
+            late_reads: Arc::new(AtomicUsize::new(0)),
             late: Arc::new(AtomicUsize::new(0)),
             passes: AtomicU64::new(1),
             taken: AtomicU64::new(0),
@@ -198,16 +204,43 @@ impl Code {
         record
     }
 
+    /// Holds `record` as the repositories last found, answering the number
+    /// of the pass that orders them. Numbered under the lock that holds
+    /// it, as `latest` is, so a pass on an older record is never numbered
+    /// after one on a newer.
+    fn hold(&self, record: &Arc<Record>) -> u64 {
+        let mut found = lock(&self.found);
+        *found = Some(Arc::clone(record));
+        self.passes.fetch_add(1, Ordering::SeqCst)
+    }
+
+    /// The repositories last found, if any, with the number of the pass
+    /// that orders them, taken under the same lock as `hold` takes its.
+    fn latest(&self) -> Option<(Arc<Record>, u64)> {
+        let found = lock(&self.found);
+        let record = Arc::clone(found.as_ref()?);
+        Some((record, self.passes.fetch_add(1, Ordering::SeqCst)))
+    }
+
     /// zoxide's visits as they stand, each folder outside every checkout
     /// and tree of `record` as written resolved to its real path, read once
     /// a pass. It reads the disk, so it runs before the daemon's lock is
-    /// taken, and resolves them `within` `RESOLVING`, past which they're
-    /// taken as written.
+    /// taken: the database `within` `RESOLVING`, past which nothing orders
+    /// Code, and then its folders, past which they're taken as written.
     fn visits(&self, record: &Arc<Record>) -> Vec<(String, u64)> {
         let Some(database) = self.visited.as_deref() else {
             return Vec::new();
         };
-        let written = visited::visits_in(database);
+        // Read on a thread of its own too, so a database on a mount that
+        // stopped answering holds that thread, never the watch.
+        let database = database.to_path_buf();
+        let written = visited::within(RESOLVING, &self.late_reads, Vec::new(), move || {
+            visited::visits_in(&database)
+        });
+        // None read, or none in time, leaves nothing to resolve.
+        if written.is_empty() {
+            return written;
+        }
         let (visits, record) = (written.clone(), Arc::clone(record));
         visited::within(RESOLVING, &self.late, written, move || {
             let places = code_rows::places(&record);
@@ -300,16 +333,15 @@ fn kept(held: &BTreeMap<String, u32>, counted: Vec<(&str, Option<u32>)>) -> BTre
 pub fn begin(shared: &Arc<Shared>) {
     let code = &shared.code;
     if code.read_once.load(Ordering::Acquire) {
-        let found = lock(&code.found).clone();
-        if let Some(record) = found {
-            ordered(shared, &record);
+        if let Some((record, pass)) = code.latest() {
+            ordered(shared, &record, pass);
         }
         again(shared);
         return;
     }
     let record = Arc::new(code.record());
-    *lock(&code.found) = Some(Arc::clone(&record));
-    ordered(shared, &record);
+    let pass = code.hold(&record);
+    ordered(shared, &record, pass);
     // Counted behind its answer, which never waits on git.
     again(shared);
 }
@@ -332,12 +364,14 @@ fn again(shared: &Arc<Shared>) {
             while code.wanted.swap(false, Ordering::SeqCst) {
                 // Served before counting, so nothing read waits on git.
                 let record = Arc::new(code.record());
-                *lock(&code.found) = Some(Arc::clone(&record));
-                ordered(&shared, &record);
+                let pass = code.hold(&record);
+                ordered(&shared, &record, pass);
                 // Counting takes a while, so its rows are ordered by the
                 // visits as they stand once it ends, not as they stood.
-                if code.count(&record) {
-                    ordered(&shared, &record);
+                if code.count(&record)
+                    && let Some((record, pass)) = code.latest()
+                {
+                    ordered(&shared, &record, pass);
                 }
             }
             code.reading.store(false, Ordering::SeqCst);
@@ -350,12 +384,10 @@ fn again(shared: &Arc<Shared>) {
 }
 
 /// Takes `record`'s rows ordered by zoxide's visits as they stand, made
-/// with every lock let go, unless a pass that began after this one has
-/// taken its rows already, so no order read before another is taken
-/// after it.
-fn ordered(shared: &Shared, record: &Arc<Record>) {
+/// with every lock let go, unless a pass numbered after `pass` has taken
+/// its rows already, so no order read before another is taken after it.
+fn ordered(shared: &Shared, record: &Arc<Record>, pass: u64) {
     let code = &shared.code;
-    let pass = code.passes.fetch_add(1, Ordering::SeqCst);
     let rows = code.made(record, &code.visits(record));
     let mut daemon = lock(&shared.daemon);
     if newest(&code.taken, pass) {
@@ -698,6 +730,42 @@ mod tests {
             took,
             [true, false, true, true],
             "a pass that began earlier took its rows over a later one's"
+        );
+    }
+
+    /// Each pass on the repositories held is numbered after the one that
+    /// held them, and a pass on ones held later after both, so `newest`
+    /// never takes an older set's rows over a newer's.
+    #[test]
+    fn a_pass_on_repositories_held_later_is_numbered_later() {
+        let code = Code::new("", &Value::Null);
+        let held = |machine: &str| {
+            Arc::new(Record {
+                schema: repos::model::SCHEMA.to_owned(),
+                read_at: 0,
+                machine: machine.to_owned(),
+                roots: Vec::new(),
+                sources: Vec::new(),
+                repositories: Vec::new(),
+            })
+        };
+        assert!(
+            code.latest().is_none(),
+            "a pass was numbered before anything was held"
+        );
+        let first = code.hold(&held("first"));
+        let (record, on_first) = code.latest().expect("what was held wasn't found");
+        assert_eq!(record.machine, "first");
+        let second = code.hold(&held("second"));
+        let (record, on_second) = code.latest().expect("what was held wasn't found");
+        assert_eq!(
+            record.machine, "second",
+            "the repositories held last weren't found"
+        );
+        assert!(
+            first < on_first && on_first < second && second < on_second,
+            "passes weren't numbered in the order their repositories were held: \
+             {first} {on_first} {second} {on_second}"
         );
     }
 

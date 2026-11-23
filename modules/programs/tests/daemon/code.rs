@@ -16,6 +16,7 @@ use std::io::Write as _;
 use std::os::unix::fs::OpenOptionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{Duration, Instant};
 
 use daemon_client::until;
 use serde_json::{Value, json};
@@ -734,7 +735,15 @@ fn a_database_that_never_answers_holds_no_other_ask() {
         open
     });
     let mut third = running.client();
+    // Timed, since the read gives up at its deadline of two seconds: an
+    // ask held that long behind the read would still be answered.
+    let asked = Instant::now();
     let said = third.ask(&json!({"id": 3, "ask": "watch", "kind": "row", "place": "tabs"}));
+    let waited = asked.elapsed();
+    // Another of Code's own watches is answered too, its order let go
+    // rather than waiting on the database with the second.
+    let mut fourth = running.client();
+    let coded = fourth.ask(&json!({"id": 4, "ask": "watch", "kind": "row", "place": "code"}));
     // Freed before asserting, so no thread is left waiting on the pipe.
     let mut writer = writer.into_inner().expect("the pipe was opened to write");
     writer.write_all(&zoxide_database(&[])).unwrap();
@@ -743,6 +752,14 @@ fn a_database_that_never_answers_holds_no_other_ask() {
         said.get("error").is_none(),
         "an ask needing the daemon's lock wasn't answered while zoxide's database \
          was read: {said}"
+    );
+    assert!(
+        waited < Duration::from_secs(1),
+        "an ask needing the daemon's lock waited {waited:?} on zoxide's database"
+    );
+    assert!(
+        coded.get("error").is_none(),
+        "a watch of Code's rows waited on zoxide's database: {coded}"
     );
 }
 
