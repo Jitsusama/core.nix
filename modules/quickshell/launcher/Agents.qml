@@ -2105,18 +2105,6 @@ Provider {
     // they came from.
     // Made of what Sessions offers and how it words each, Not Now's last
     // boot read as it's stepped into.
-    // The tally of Reopen Them All's walk under way, which a press while
-    // Sessions still walks joins (ReopenTally.js's joined), let go as the
-    // walk ends. A plain value, so keeping it remakes no row.
-    property var reopenWalk: null
-    Connections {
-        target: Sessions
-
-        function onReopeningChanged() {
-            if (Sessions.reopening === null)
-                provider.reopenWalk = null;
-        }
-    }
     readonly property var toReopen: reopenRead ? ownKept("toReopen", [Words.all, provider.weight,
         Sessions.toReopen, Sessions.reopenRows, Sessions.reopenPlace], toReopenMade)
         : madeBefore("toReopen")
@@ -2185,7 +2173,8 @@ Provider {
         const reopenable = lost.filter(one => !goneHere(one));
         // Reopen Them All reopens those that can be, its side counting them
         // when any can't: "58 of 60 \u00b7 2 folders gone". Each found gone
-        // after is counted with how many reopened, and said once the
+        // after is counted with how many reopened, by the walk Sessions
+        // joins the press to (Reopening.js's tallyOf), and said once the
         // launcher opens next (ReopenTally.js).
         const tellAll = now => {
             const [gone, reopened] = ReopenTally.told(now, said);
@@ -2204,12 +2193,7 @@ Provider {
             // alone from its own row isn't, since Joel is there. Each walk
             // counts on its own, though the row is kept, and a press
             // mid-walk joins its count.
-            run: () => {
-                provider.reopenWalk = ReopenTally.run(
-                    ReopenTally.joined(provider.reopenWalk, Sessions.reopening !== null),
-                    reopenable.map(one => one.id),
-                    gone => Sessions.reopenThemAll(reopenable, gone), tellAll);
-            }
+            run: () => Sessions.reopenThemAll(reopenable, tellAll)
         });
         return thingRow({
             key: "agents:to-reopen",

@@ -1,7 +1,8 @@
 .pragma library
 // In what order and how fast Reopen Them All may go (Sessions.qml): leaders
-// first, each once, when it may begin the next session, and which of those
-// begun to tell to carry on, from the machine queue's own verdict. Where
+// first, each once, when it may begin the next session, which of those
+// begun to tell to carry on, from the machine queue's own verdict, and
+// what each walk found gone (tallyOf). Where
 // each goes back is Places.js's, but for a named workspace's (namedBack);
 // tests/places.qml holds both to their cases.
 
@@ -234,4 +235,45 @@ function givenBy(kept, places, before) {
 function queuedOnce(queue, more, begun) {
     const asked = new Set(queue.map(entry => entry.one.id).concat(begun));
     return queue.concat(more.filter(entry => !asked.has(entry.one.id)));
+}
+
+// The tally a Reopen Them All list counts what's found gone in, decided
+// where Sessions joins the list to `walk` or begins one (reopenHere), since
+// a press waits on niri's answer for the screens first (lookAtScreens), and
+// one decided at the press could count in a walk the list never joins
+// (core.nix#6126's round 3). The walk's own while it may still find a
+// folder gone, a session still queued or a folder still looked for; else
+// one of its own, as once every session is begun, though a window given up
+// on keeps the walk (`late`), or for a walk the harness began. Each of
+// `ids` counts once, however many lists ask for it, and `tell` hears each
+// reading, the last list's kept.
+function tallyOf(walk, ids, tell) {
+    const counting = walk !== null && walk.tally !== null && walk.tally !== undefined
+        && (walk.queue.length > 0 || walk.looking);
+    const tally = counting ? walk.tally : { asked: {}, gone: {}, tell };
+    for (const id of ids) {
+        tally.asked[id] = true;
+    }
+    tally.tell = tell;
+    return tally;
+}
+
+// `one` found gone, counted in `tally` by the id a list asked for it by,
+// one started afresh by the one it stands in for (Places.afresh), whichever
+// list queued it, and the reading told. One no list counting asked for
+// counts nowhere.
+function foundGone(tally, one) {
+    const id = one.afreshFor ?? one.id;
+    if (tally === null || tally === undefined || tally.asked[id] !== true) {
+        return;
+    }
+    tally.gone[id] = true;
+    tally.tell(reading(tally));
+}
+
+// How many of a tally's sessions were found gone, and how many of the rest
+// were asked to reopen.
+function reading(tally) {
+    const gone = Object.keys(tally.gone).length;
+    return { gone, reopened: Object.keys(tally.asked).length - gone };
 }

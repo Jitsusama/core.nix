@@ -782,15 +782,51 @@ QtObject {
         expect("handed over again while queued or begun, it isn't asked twice",
             Reopening.queuedOnce([asked("q1"), asked("q2")], [asked("q2"), asked("q3"), asked("q4")],
                 ["q4"]).map(entry => entry.one.id), ["q1", "q2", "q3"]);
-        // Each joins with the `gone` of the list that asked for it first, so
-        // a folder found gone is told to that press's count, which Reopen
-        // Them All's tally leans on (launcher/ReopenTally.js).
-        const askedBy = (id, gone) => ({ one: { id }, gone });
-        expect("handed over again mid-walk, each keeps the gone it was asked with",
-            Reopening.queuedOnce([askedBy("q1", "first"), askedBy("q2", "first")],
-                [askedBy("q2", "second"), askedBy("q3", "second")], [])
-                .map(entry => `${entry.one.id} ${entry.gone}`),
-            ["q1 first", "q2 first", "q3 second"]);
+        // What Reopen Them All's lists find gone, counted by the walk
+        // Sessions joins each to: its own while it may still find a folder
+        // gone, else one of the list's own. Each reading is what Agents'
+        // foot says next.
+        const heard = [];
+        const hear = now => heard.push(`${now.gone} gone, ${now.reopened} reopened`);
+        const walkOf = (tally, queue, looking, late) => ({ tally, queue, looking,
+            late: late ?? [] });
+        const walked = Reopening.tallyOf(null, ["a", "b", "c"], hear);
+        Reopening.foundGone(walked, { id: "a" });
+        expect("a list with no walk counts its own", heard, ["1 gone, 2 reopened"]);
+        // A second given while the walk still holds sessions joins it, the
+        // same sessions counting once and one more among them.
+        const walking = walkOf(walked, [asked("b")], false);
+        expect("given mid-walk, it counts in the walk's tally",
+            Reopening.tallyOf(walking, ["a", "b", "c", "d"], hear) === walked, true);
+        Reopening.foundGone(walked, { id: "d" });
+        Reopening.foundGone(walked, { id: "b" });
+        expect("and the walk's count grows by what it adds", heard.slice(1),
+            ["2 gone, 2 reopened", "3 gone, 1 reopened"]);
+        expect("given while the walk looks for its last folder, it joins too",
+            Reopening.tallyOf(walkOf(walked, [], true), ["a"], hear) === walked, true);
+        // Once every session is begun, a window given up on keeps the walk
+        // for good, but nothing more can be found gone, so a list given
+        // then counts afresh (core.nix#6037's F39).
+        const after = Reopening.tallyOf(walkOf(walked, [], false, [asked("c")]),
+            ["a", "b", "c"], hear);
+        Reopening.foundGone(after, { id: "a" });
+        expect("given once the walk can find no more gone, it counts afresh",
+            [after === walked, heard[heard.length - 1]], [false, "1 gone, 2 reopened"]);
+        // A walk the harness began counts nothing, and a list given during
+        // it counts the sessions both hold, whichever list queued them.
+        const harness = walkOf(null, [asked("h"), asked("a")], false);
+        const during = Reopening.tallyOf(harness, ["a", "b"], hear);
+        Reopening.foundGone(during, { id: "a" });
+        expect("given during the harness's walk, a session both hold counts",
+            heard[heard.length - 1], "1 gone, 1 reopened");
+        // One started afresh counts as the one it stands in for, and one
+        // no list asked for counts nowhere, telling nothing.
+        const soFar = heard.length;
+        Reopening.foundGone(during, { id: "fresh", afreshFor: "b" });
+        Reopening.foundGone(during, { id: "h" });
+        Reopening.foundGone(null, { id: "a" });
+        expect("one started afresh counts as the one it stands for, one not asked nowhere",
+            heard.slice(soFar), ["2 gone, 0 reopened"]);
         // Those whose kept place says they led others are begun first, so
         // the sessions they lead have them back to answer to; the rest,
         // those kept nowhere among them, keep their order.

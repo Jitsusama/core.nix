@@ -1568,9 +1568,11 @@ Singleton {
     // is being reopened joins its end, so two never open at once and
     // misplace each other.
     // `told`, when given, is each one's first prompt as it opens
-    // (reopened), as Reopen Them All tells each to carry on.
+    // (reopened), as Reopen Them All tells each to carry on. `tell`, when
+    // given, hears how many of the walk's sessions were found gone and how
+    // many reopened, after each found gone (Reopening.tallyOf).
     property var reopening: null
-    function reopenAll(lost, gone, keptAt, told) {
+    function reopenAll(lost, gone, keptAt, told, tell) {
         const boots = { now: arrangement[bootId], restored: arrangement[restoring.boot] };
         const kept = keptAt ?? (id => Places.keptFor(id, boots));
         // The other windows its place's boot kept at once, which say which
@@ -1584,7 +1586,10 @@ Singleton {
             || Object.keys(boots.restored ?? {}).length > 0;
         lost.filter(one => one.machine !== undefined).forEach(one => rejoin(one, true));
         const here = lost.filter(one => one.machine === undefined);
-        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf, arranged));
+        // Those joined again at once count among those reopened too.
+        const counted = tell === undefined ? null : { ids: lost.map(one => one.id), tell };
+        lookAtScreens(() => reopenHere(here, gone, kept, told ?? "", momentOf, arranged,
+            counted));
     }
     // What Reopen Them All tells each session it reopens, so a boot never
     // leaves them waiting to be poked one by one (P9R1KI, 2026-11-02
@@ -1596,7 +1601,11 @@ Singleton {
         + "left off: your plan's next open item."
     // Each kept place found on its own screen as it's connected now, or a
     // gone screen's after the one in use's (Places.js), then in order.
-    function reopenHere(here, gone, kept, told, momentOf, arranged) {
+    function reopenHere(here, gone, kept, told, momentOf, arranged, counted) {
+        // Decided before the list joins, which would make a walk whose
+        // sessions are all begun seem to be counting again.
+        const tally = counted === null ? null
+            : Reopening.tallyOf(reopening, counted.ids, counted.tell);
         const order = (a, b) => !a.at || !b.at ? Number(!a.at) - Number(!b.at)
             : root.keptOrder(a.at, b.at);
         const keptPlaces = here.map(one => kept(one.id));
@@ -1620,6 +1629,8 @@ Singleton {
                 Reopening.satHere(one)) }))
             .sort(order));
         if (reopening !== null) {
+            if (tally !== null)
+                reopening.tally = tally;
             reopening.queue = Reopening.queuedOnce(reopening.queue, queue, reopening.begun);
             // Settled again once these are placed too, beside the rest.
             reopening.settling = false;
@@ -1640,7 +1651,10 @@ Singleton {
             rounds: 0,
             focused: false,
             // Each it has begun, by id, so one handed over again isn't.
-            begun: []
+            begun: [],
+            // What Reopen Them All's lists found gone, or null for a walk
+            // only the harness's lists are in.
+            tally
         };
         reopenNext();
     }
@@ -2202,7 +2216,7 @@ Singleton {
         const start = quest === "" || next.one.afreshFor !== undefined ? ""
             : Places.questStart(root.questIndex(), quest);
         if (start === "" || start === next.one.cwd) {
-            next.gone?.(next.one, next.one.cwd);
+            foundGone(next);
             reopenNext();
             return;
         }
@@ -2210,7 +2224,7 @@ Singleton {
         lookFor([start], there => {
             reopening.looking = false;
             if (!there[0]) {
-                next.gone?.(next.one, next.one.cwd);
+                foundGone(next);
                 reopenNext();
                 return;
             }
@@ -2221,6 +2235,12 @@ Singleton {
                 .concat(reopening.queue);
             reopenNext();
         });
+    }
+    // One left shut, its folder gone, told to the list that asked for it
+    // and counted in the walk's tally, whichever list that was.
+    function foundGone(next) {
+        next.gone?.(next.one, next.one.cwd);
+        Reopening.foundGone(reopening?.tally ?? null, next.one);
     }
     // The harness's index of quests, read as it is now, or "" for none.
     // It's big and rewritten often, so it's read, as a host's list is, only
@@ -2362,14 +2382,16 @@ Singleton {
     // after a session that shared Chrome's workspace came back alone, and
     // Joel moved it by hand). Only Reopen Them All puts them back, since a
     // kept place means something only once the sessions are back.
-    // `keptAt`, when given, says where each sat, else where the shell kept
-    // it this boot or in the boot being restored (reopenAll).
-    function reopenThemAll(lost, gone, keptAt) {
+    // `tell` hears what the walk found gone, counted where its list joins
+    // the walk (reopenHere). `keptAt`, when given, says where each sat, else
+    // where the shell kept it this boot or in the boot being restored
+    // (reopenAll).
+    function reopenThemAll(lost, tell, keptAt) {
         const boot = root.arrangedBefore();
         const kept = Array.isArray(arrangedOthers[boot]) ? arrangedOthers[boot] : [];
         puttingBack = kept.length > 0
             ? { boot, kept, used: [], back: [], seen: [], given: [] } : null;
-        root.reopenAll(lost, gone, keptAt, carryOn);
+        root.reopenAll(lost, undefined, keptAt, carryOn, tell);
     }
     // Each window but kitty's, as it first shows tiled this boot, matched to
     // one kept by its program and title (Places.js's matchOther) and moved
