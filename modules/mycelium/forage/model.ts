@@ -463,10 +463,11 @@ function holds(forage: Forage, query: string): boolean {
 /**
  * Whether `forage` has no purpose written yet: what the headline counts,
  * the lede names, the floor draws hollow and the view of cells without
- * purpose takes in, so none of them can disagree with another.
+ * purpose takes in, so none of them can disagree with another. A purpose
+ * of nothing but spaces or breaks says nothing, so it counts as unwritten.
  */
 function unwritten(forage: Forage): boolean {
-  return forage.purpose === "";
+  return forage.purpose.trim() === "";
 }
 
 /**

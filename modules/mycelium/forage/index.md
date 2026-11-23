@@ -48,7 +48,7 @@ a terminal, `mycelium forage` gathers the realm's.
   purpose while that find holds you on a cell with one lets go of it too:
   nothing is ringed, and the floor stays where it was, since the cell
   still lasts. Once every cell has gone, the floor holds the page's crest
-  again.
+  again, until a cell is heard again.
 - **One sentence for the whole:** how many cells here work on a quest,
   and how many have no purpose written yet. Each count opens the cells
   it counts. The line under it first says how many things wait on you
