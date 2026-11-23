@@ -208,6 +208,7 @@
         chrony-network-servers =
           script "chrony-network-servers" ../../modules/chrony/network-servers.sh
             { };
+        chunks-given-back = script "chunks-given-back" ../../modules/disko/chunks-given-back.sh { };
         collect = script "collect" ../../modules/linux-builder/collect.sh { };
         console-setup = script "console-setup" ../../modules/console/setup.sh { };
         declared-last = script "declared-last" ../../modules/git/declared-last.sh { };

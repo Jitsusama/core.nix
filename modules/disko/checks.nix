@@ -3,6 +3,7 @@
 {
   bareNixos,
   holds,
+  lib,
   onLinux,
   pkgs,
   self,
@@ -16,6 +17,16 @@
     ${pkgs.bash}/bin/bash ${./swap-file-grows-check.sh} ${./swap-file-grows.sh}
     touch $out
   '';
+
+  # Data chunks are balanced only while too little of the disk is in no
+  # chunk, a step fuller each time, stopping as soon as enough is free.
+  chunks-are-given-back-only-while-short =
+    pkgs.runCommandLocal "chunks-are-given-back-only-while-short" { }
+      ''
+        PATH=${pkgs.gawk}/bin:$PATH ${pkgs.bash}/bin/bash \
+          ${./chunks-given-back-check.sh} ${./chunks-given-back.sh}
+        touch $out
+      '';
 
   # A disk's partitions and its open volume go by its name, so a machine's
   # drive and a stick attached beside it are never taken for each other.
@@ -57,6 +68,33 @@
     holds "disks-are-scrubbed" "The disk's Btrfs is never scrubbed, so damage stays hidden." (
       autoScrub.enable && autoScrub.fileSystems == [ "/" ]
     );
+
+  # The root's data chunks are given back each night, from a bounded unit
+  # that waits behind other work.
+  chunks-are-given-back-each-night =
+    let
+      machine = bareNixos [
+        self.nixosModules.disko
+        {
+          jitsusama.disk = {
+            device = "/dev/disk/by-id/nvme-example";
+            swapSize = "4G";
+          };
+        }
+      ];
+      service = machine.config.systemd.services.chunks-given-back.serviceConfig;
+      inherit (machine.config.systemd.timers.chunks-given-back) timerConfig;
+    in
+    holds "chunks-are-given-back-each-night"
+      "The root's empty data chunks aren't given back by night, bounded and behind other work."
+      (
+        lib.hasSuffix "/bin/chunks-given-back /" service.ExecStart
+        && timerConfig.OnCalendar == "*-*-* 03:00"
+        && !(timerConfig.Persistent or false)
+        && service.TimeoutStartSec == "2h"
+        && service.IOWeight == 1
+        && service.CPUWeight == 1
+      );
 }
 # What follows builds Linux's disk unlocking, which a Mac has none of.
 // onLinux {
