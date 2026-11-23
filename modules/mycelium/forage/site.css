@@ -258,10 +258,10 @@ rect.hollow {
   text-transform: lowercase;
 }
 
-/* Narrower than this the widest floor's words would be drawn under 9 px.
-   The eyebrow names the machine, the headline counts every cell and the
-   list holds them all, so the words go. */
-@container (max-width: 1030px) {
+/* Narrower than this the widest floor's 13 px words would be drawn under
+   the kit's 12 px floor for text. The eyebrow names the machine, the
+   headline counts every cell and the list holds them all, so the words go. */
+@container (max-width: 1374px) {
   .drawn text {
     display: none;
   }

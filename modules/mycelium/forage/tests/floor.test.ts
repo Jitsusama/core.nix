@@ -80,6 +80,9 @@ const RINGED = /<rect class="[^"]* on" data-cell="([^"]+)"/u;
 
 /** A floor's width and height in its own units. */
 const VIEWED = /viewBox="0 0 (\d+) (\d+)"/u;
+// The floor's smallest words in its own units, and the least the kit draws text at.
+const WORD_PX = 13;
+const LEAST_PX = 12;
 
 /** The cell whose compartment `floor` rings. */
 const ringed = (floor: string): string | undefined => floor.match(RINGED)?.[1];
@@ -438,15 +441,27 @@ it("keeps the floor where it is while it holds the cursor, else draws it around 
 });
 
 it("draws the widest, deepest floor in the room the page holds before the node speaks", () => {
-  const deep = LONG.map((each, at) =>
-    at === 1 ? { ...each, startedBy: named(0), depth: 9 } : each,
+  const startedAt = (depth: number) =>
+    LONG.map((each, at) => (at === 1 ? { ...each, startedBy: named(0), depth } : each));
+  const drawnAt = (depth: number) =>
+    floorOf(floorFor(startedAt(depth), named(0)), named(0), "kestrel");
+  const floor = drawnAt(9);
+  // A floor draws no deeper than its steps, and is as tall however deep it goes.
+  assert.equal(floor, drawnAt(3), "a floor drew deeper than its steps");
+  assert.equal(
+    floor.match(VIEWED)?.[2],
+    floorOf(floorFor(LONG, named(0)), named(0), "kestrel").match(VIEWED)?.[2],
+    "a flat floor and a deep one were drawn at different heights",
   );
-  const floor = floorOf(floorFor(deep, named(0)), named(0), "kestrel");
   const [, width = "", height = ""] = floor.match(VIEWED) ?? [];
   const sheet = readFileSync(new URL("../site.css", import.meta.url), "utf8");
-  // The room is this floor's shape at most half again as large, so a shift can't come of it.
-  const room = `100cqi * ${height} / ${width}, ${(Number(height) * 3) / 2}px`;
+  // The room is this floor's shape at most half again as large, never under 6rem, so a shift
+  // can't come of it and a floor of few cells on a phone still reads.
+  const room = `clamp(6rem, 100cqi * ${height} / ${width}, ${(Number(height) * 3) / 2}px)`;
   assert.ok(sheet.includes(room), `site.css holds no room of ${room}`);
+  // The words go where this floor would draw its smallest under the kit's floor for text.
+  const words = `@container (max-width: ${Math.ceil((Number(width) * LEAST_PX) / WORD_PX)}px)`;
+  assert.ok(sheet.includes(words), `site.css holds no ${words}`);
 });
 
 it("draws the cursor after a redraw around any kept cell, keeping it there while it can", () => {

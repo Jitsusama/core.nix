@@ -513,7 +513,7 @@ STILL = 0.1
 # none once it has kept none for a moment.
 SHIFTED = """() => new Promise((done) => {
   const box = (rect) => `${Math.round(rect.y)}+${Math.round(rect.height)}`;
-  const named = (node) => node?.id || node?.className?.baseVal || node?.className || node?.nodeName;
+  const named = (node) => node?.id || node?.getAttribute?.("class") || node?.nodeName;
   new PerformanceObserver((list, observer) => {
     observer.disconnect();
     const shifts = list.getEntries().filter((each) => !each.hadRecentInput);
@@ -525,8 +525,22 @@ SHIFTED = """() => new Promise((done) => {
   }).observe({ type: "layout-shift", buffered: true });
   setTimeout(() => done({ total: 0, moved: [] }), 500);
 })"""
-# A purpose holding a link with nowhere to break, not even a hyphen, longer than a phone is wide.
-LONG_LINK = "OSPREY reads https://example.org/tides/hourlyreadingsfortheouterbuoythewholeseasonlong"
+# A purpose holding a link whose last run of letters, with nowhere to break, not even a hyphen,
+# is wider than a phone.
+LONG_LINK = (
+    "OSPREY reads https://example.org/tides/"
+    "hourlyreadingsfortheouterbuoyandtheinnerbuoythewholeseasonlongfromfirstfrosttolastthaw"
+)
+# The floor's room and the size its words are drawn at, those shown, in pixels.
+DRAWN = """() => ({
+  room: document.querySelector(".drawn").getBoundingClientRect().height,
+  rem: parseFloat(getComputedStyle(document.documentElement).fontSize),
+  words: [...document.querySelectorAll(".drawn text")]
+    .filter((each) => each.getClientRects().length > 0)
+    .map((each) => parseFloat(getComputedStyle(each).fontSize) * each.getScreenCTM().a),
+})"""
+# The least a word may be drawn at, the kit's floor for text.
+LEAST_WORD_PX = 12
 
 
 @pytest.mark.parametrize("size", SIZES)
@@ -544,6 +558,11 @@ def test_a_first_visit_holds_still_and_a_long_link_never_widens_the_page(
         assert shifted["total"] < STILL, (
             f"a first visit at {size} shifted {shifted['total']}: {shifted['moved']}"
         )
+        drawn = page.evaluate(DRAWN)
+        # A floor of a few cells on a phone still reads, in a room no shorter than 6rem.
+        assert drawn["room"] >= 6 * drawn["rem"] - 1, f"at {size} the floor's room was {drawn}"
+        small = [each for each in drawn["words"] if each < LEAST_WORD_PX - 0.05]
+        assert not small, f"at {size} the floor drew words at {small} px"
         mycelium_node.tell("forage", changed=[{"key": "forage:OSPREY", "purpose": LONG_LINK}])
         expect(cell(page, "OSPREY"), "the long link wasn't drawn").to_contain_text("https://")
         # Open, so the panel draws the link as well as the row.
