@@ -1,5 +1,6 @@
-//! The far line's two steps around the job: making its tree of the files
-//! that crossed, and leaving what its kind brings back to cross home.
+//! The far line's two steps around the job: making its tree of the
+//! archives that crossed, and leaving what its kind brings back to cross
+//! home.
 //!
 //! Each step writes what it finds to a file of its own beside the job's
 //! copy, and checks it, rather than piping one command into the next: a
@@ -7,47 +8,41 @@
 //! a step failing would read as one that found nothing. The files lie
 //! beside the copy, not in the handover, since the handover crosses home.
 
-use super::{
-    BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MARK, MOST_BYTES, MOST_FILES, TREE, quoted,
-};
+use super::{BACK, BROUGHT, CUT, END, LARGEST_FILE, LEFT, MOST_BYTES, MOST_FILES, TREE, quoted};
 use crate::settings::Kind;
 
 /// The far line's step making the job's tree of its files, `copied`: 0
 /// once made, 1 for the tree's own fault, which every try meets, and 2
-/// for this machine's, which another may not. A tree with no file in it
-/// may not cross at all, and is made empty.
+/// for this machine's, which another may not. Each name the list holds
+/// must be one of the archives the near side writes, `0.tar` and on, all
+/// checked before any is unpacked. A job with no file that travels sends
+/// none, and its tree is made empty.
+///
+/// The near side writes only files and folders, so a tree holding
+/// anything else, as a link, came from no near side and is refused once
+/// unpacked, before the job runs. That an archive can't write outside
+/// the copy is both tars' own refusal of a name climbing out, and the
+/// fence around the far line, which writes only the quest's scratch.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
-  while IFS="$tab" read -r size path; do
+  while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
-    case "/$path/" in
-      //*|*/../*|*/./*) printf "elsewhere: the job's list names %s, outside its folder\n" "$path" >&2; return 1 ;;
+    case $part in *.tar) number=${{part%.tar}} ;; *) number= ;; esac
+    case $number in
+      ''|*[!0-9]*) printf "elsewhere: the job's list names %s, which isn't one of its archives\n" "$part" >&2; return 1 ;;
     esac
   done < "$job/{LEFT}"
-  [ ! -d "$job/{TREE}" ] || cp -R "$job/{TREE}/." "$work/" || return 2
-  # Deepest first, so a folder's contents are named before it is, and
-  # shortest first within a folder, so target.elsewhere is target before
-  # target.elsewhere.elsewhere takes its name.
-  marks="$work.marks"
-  find "$work" -name '*{MARK}' > "$marks" &&
-    awk -F/ '{{ print NF "\t" length($NF) "\t" $0 }}' "$marks" > "$marks.by" &&
-    sort -t "$tab" -k1,1nr -k2,2n "$marks.by" > "$marks.in" &&
-    cut -f3- "$marks.in" > "$marks" || {{ rm -f "$marks" "$marks".*; return 2; }}
-  (
-    # A subshell of its own, so its exit ends only the loop in every sh.
-    while IFS= read -r name; do
-      to=${{name%{MARK}}}
-      case "${{to##*/}}" in
-        ''|.|..) printf "elsewhere: the job's tree names %s, outside its folder\n" "$name" >&2; exit 1 ;;
-      esac
-      [ -e "$to" ] && {{ printf "elsewhere: the job's tree names %s twice\n" "$to" >&2; exit 1; }}
-      mv "$name" "$to" || exit 2
-    done
-  ) < "$marks"
-  stripped=$?
-  rm -f "$marks" "$marks".*
-  return "$stripped"
+  while IFS="$tab" read -r size part; do
+    [ "$size" = {END} ] && break
+    tar -xf "$job/{TREE}/$part" -C "$work" || return 2
+  done < "$job/{LEFT}"
+  odd=$(find "$work" -type l -o -type p -o -type s -o -type b -o -type c) || return 2
+  [ -z "$odd" ] || {{
+    printf "elsewhere: the job's tree holds %s, which is neither a file nor a folder\n" "${{odd%%
+*}}" >&2
+    return 1
+  }}
 }}"#
     )
 }

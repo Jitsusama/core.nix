@@ -15,12 +15,12 @@
 //! here while it was being written, so the size is what says the file
 //! arrived as it was left.
 //!
-//! A shared quest keeps home any folder a build fills, `target` and
-//! `node_modules`, wherever it lies, which a tracked file can sit in as
-//! source. So such a name crosses with [`MARK`] after it, as does a name
-//! already ending in it, and the far side takes one off each name ending
-//! in it. What comes back is few files, and crosses under its numbers in
-//! the list.
+//! The job's files cross as a few tar archives, not one by one, since a
+//! share's cost grows with each file it carries, and since within one a
+//! name a shared quest keeps home wherever it lies, as `target` and
+//! `node_modules` are, crosses as any other. The far side unpacks them
+//! with its own `tar`. What comes back is few files, and crosses under
+//! its numbers in the list.
 
 use crate::settings::{Copies, Kind};
 use landing::Fault;
@@ -51,13 +51,10 @@ const CUT: &str = "cut";
 const TREE: &str = "tree";
 const BACK: &str = "back";
 
-/// The names a shared quest keeps home wherever they lie, as a build
-/// fills them, and what such a name crosses with after it.
-const BUILT: [&str; 2] = ["target", "node_modules"];
-const MARK: &str = ".elsewhere";
-
 /// What a shared folder may hold at most, as mycelium refuses to name
-/// one holding more and holds each file whole as it lands.
+/// one holding more and holds each file whole as it lands: a job's
+/// archives are few, so only its bytes are held to these, and only what
+/// it brings back to its count.
 const MOST_FILES: usize = 10_000;
 const MOST_BYTES: u64 = 1 << 30;
 const LARGEST_FILE: u64 = 64 << 20;
@@ -193,13 +190,15 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
         if !meta.is_file() {
             continue;
         }
-        if meta.len() > LARGEST_FILE {
-            return Err(format!("{path} is past the 64 MiB a shared file may be"));
+        if meta.len() > LARGEST_FILE - archive::ROOM {
+            return Err(format!(
+                "{path} is past the 64 MiB a shared file may be, with its archive's header"
+            ));
         }
-        bytes += meta.len();
+        bytes += archive::taken(meta.len());
         files.push((path.to_owned(), meta.len()));
     }
-    if files.len() > MOST_FILES || bytes > MOST_BYTES {
+    if bytes > MOST_BYTES {
         return Err(format!(
             "its {} files and {bytes} bytes are past what a shared folder carries",
             files.len()
@@ -208,26 +207,10 @@ pub fn gathered(root: &Path, kind: &Kind) -> Result<Vec<(String, u64)>, String> 
     Ok(files)
 }
 
-/// `path` as it crosses: each name a share keeps home, and each already
-/// ending in [`MARK`], with the mark after it, which the far side takes
-/// off again.
-pub fn crossing(path: &str) -> String {
-    path.split('/')
-        .map(|name| {
-            if BUILT.contains(&name) || name.ends_with(MARK) {
-                format!("{name}{MARK}")
-            } else {
-                name.to_owned()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-/// Leaves `files`, from the tree at `root`, in the job's folder of the
-/// handover, each under the name it crosses by, and lists them last so
-/// the list is never ahead of its files. Each is listed at the size its
-/// copy came to, which a file rewritten since it was gathered changes.
+/// Leaves `paths`, files of the tree at `root`, in the job's folder of
+/// the handover as archives each a share carries whole, and lists the
+/// archives last so the list is never ahead of them, each at the size it
+/// was written at.
 pub fn left<'a>(
     root: &Path,
     paths: impl IntoIterator<Item = &'a str>,
@@ -236,15 +219,9 @@ pub fn left<'a>(
     let tree = job.join(TREE);
     fs::create_dir_all(&tree)?;
     let mut list = String::new();
-    for path in paths {
-        let crossed = crossing(path);
-        let into = tree.join(&crossed);
-        if let Some(parent) = into.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let size = fs::copy(root.join(path), into)?;
+    for part in archive::write(root, paths, &tree, LARGEST_FILE)? {
         // Writing to a String can't fail.
-        let _ = writeln!(list, "{size}\t{crossed}");
+        let _ = writeln!(list, "{}\t{}", part.size, part.name);
     }
     list.push_str(END);
     list.push('\n');
@@ -252,9 +229,8 @@ pub fn left<'a>(
 }
 
 /// What the far machine runs for the job `id`, through `sh -c`: it waits
-/// for the job's files to cross, copies them to `scratch` within the
-/// quest's own scratch there, the one folder a strict fence lets it write, and
-/// takes the mark off each name a share would have kept home, runs
+/// for the job's archives to cross, unpacks them in `scratch` within the
+/// quest's own scratch there, the one folder a strict fence lets it write, runs
 /// the kind's setup and then the job, its program found on the far path by
 /// its name, in the job's folder `within` the tree, then leaves what the
 /// kind brings back in the handover and takes its copy away.
@@ -785,6 +761,7 @@ pub fn quoted(word: &str) -> String {
     format!("'{}'", word.replace('\'', r"'\''"))
 }
 
+mod archive;
 mod heard;
 mod landing;
 pub mod spent;

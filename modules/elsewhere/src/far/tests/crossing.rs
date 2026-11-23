@@ -1,4 +1,4 @@
-use super::{SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
+use super::{Left, SHARE_BYTES, SHARE_FILES, WAITS, far_line, handover, kind, scratch};
 use crate::far::{BACK, BROUGHT, Brought, Missed, bring_back, landed};
 use std::io::ErrorKind;
 use std::path::Path;
@@ -47,7 +47,7 @@ fn what_couldn_t_be_found_or_sorted_to_bring_back_is_lost_not_whole() {
     ];
     for (step, stand_ins) in cases {
         let (code, err, home) = far_line(
-            "1\tx\nend\n",
+            Left::Whole,
             &[("x", "x")],
             "mkdir out && printf a > out/a",
             &kind,
@@ -78,7 +78,7 @@ fn a_bring_back_with_nowhere_to_list_its_names_loses_every_path_it_made() {
     kind.brings_back = vec!["out".into(), "logs".into(), "gone".into()];
     // A folder where the far line lists its names, so it can't.
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir \"$PWD.back\" out logs && printf a > out/a",
         &kind,
@@ -163,7 +163,7 @@ fn a_list_that_couldn_t_be_written_whole_ends_cut() {
             .map(|(step, text)| (*step, text.as_str()))
             .collect();
         let (code, err, home) = far_line(
-            "1\tx\nend\n",
+            Left::Whole,
             &[("x", "x")],
             "mkdir out && printf a > out/a",
             &kind,
@@ -208,7 +208,7 @@ fn a_list_on_a_full_disk_is_never_said_whole() {
         ),
     );
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir out && printf a > out/a",
         &kind,
@@ -265,7 +265,7 @@ fn a_list_whose_end_can_t_be_written_is_said_and_ends_after_the_room_is_freed() 
     // fails.
     let rm = freeing_first(&format!("ln -sf /dev/full \"$job/{BROUGHT}\""));
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir out && printf a > out/a",
         &kind,
@@ -433,7 +433,7 @@ fn the_far_side_counts_only_what_crossed_toward_a_share_s_totals() {
     let mut kind = kind("");
     kind.brings_back = (1..=8).map(|folder| format!("f{folder}")).collect();
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "for f in 1 2 3 4 5 6 7 8; do mkdir f$f; done && \
          printf '%300s' '' > f1/a && printf '%300s' '' > f2/b && \
@@ -700,7 +700,7 @@ fn a_file_two_brought_back_paths_both_hold_crosses_once() {
     let mut kind = kind("");
     kind.brings_back = vec!["out".into(), "out/a".into()];
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir out && printf x > out/a",
         &kind,

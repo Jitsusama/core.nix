@@ -1,6 +1,4 @@
-use super::{
-    Heard, Missed, bring_back, crossing, listed, plain_quest, quoted, relay, script, travels,
-};
+use super::{Heard, Missed, bring_back, listed, plain_quest, quoted, relay, script, travels};
 use crate::settings::{Copies, Kind};
 use std::path::{Path, PathBuf};
 
@@ -153,35 +151,6 @@ fn a_word_is_quoted_only_when_a_shell_would_split_it() {
     );
 }
 
-#[test]
-fn a_name_a_share_keeps_home_crosses_marked_and_a_marked_one_twice() {
-    assert_eq!(
-        crossing("src/main.rs"),
-        "src/main.rs",
-        "a plain path changed"
-    );
-    assert_eq!(
-        crossing("lib/target/x.ts"),
-        "lib/target.elsewhere/x.ts",
-        "a build-named folder crossed bare"
-    );
-    assert_eq!(
-        crossing("web/node_modules/a.js"),
-        "web/node_modules.elsewhere/a.js",
-        "node_modules crossed bare"
-    );
-    assert_eq!(
-        crossing("notes.elsewhere"),
-        "notes.elsewhere.elsewhere",
-        "a name already marked would lose its own mark far"
-    );
-    assert_eq!(
-        crossing("targets/x"),
-        "targets/x",
-        "a name only like a build's was marked"
-    );
-}
-
 /// How long the far line waits for a job's files in these tests, in
 /// seconds, rather than the five minutes a real crossing gets.
 pub(super) const WAITS: u64 = 5;
@@ -210,13 +179,26 @@ pub(super) fn handover(home: &Path) -> PathBuf {
     ))
 }
 
-/// Runs the far line for a job whose handover lists `list` over `files`,
-/// each a crossed path in the job's tree and its text, in a home of its
+/// What the near side left for a far line in these tests.
+#[derive(Clone, Copy)]
+pub(super) enum Left<'a> {
+    /// The files left as the near side leaves them, in archives.
+    Whole,
+    /// As `Whole`, but each archive at half its size until a second has
+    /// passed, as a share still writing it leaves it.
+    Short,
+    /// This list, with each file in the tree under its own path, as no
+    /// near side leaves them, for a list that is odd or never arrives.
+    Listed(&'a str),
+}
+
+/// Runs the far line for a job whose handover holds `files`, each a path
+/// in the job's tree and its text, left as `list` says, in a home of its
 /// own, and answers how it ended, what it said on stderr, and the home.
 /// It waits only `WAITS` for the files, so a list they never match ends
 /// quickly.
 pub(super) fn far_run(
-    list: &str,
+    list: Left,
     files: &[(&str, &str)],
     run: &str,
 ) -> (Option<i32>, String, PathBuf) {
@@ -225,7 +207,7 @@ pub(super) fn far_run(
 
 /// Runs the far line as `far_line_in` does, for a job at the tree's top.
 pub(super) fn far_line(
-    list: &str,
+    list: Left,
     files: &[(&str, &str)],
     run: &str,
     kind: &Kind,
@@ -242,7 +224,7 @@ pub(super) fn far_line(
 /// for the near side to hear, on stdout, is left in the home's `said`.
 pub(super) fn far_line_in(
     folder: &Path,
-    list: &str,
+    list: Left,
     files: &[(&str, &str)],
     run: &str,
     kind: &Kind,
@@ -257,15 +239,36 @@ pub(super) fn far_line_in(
     ));
     let _ = std::fs::remove_dir_all(&home);
     let job = handover(&home);
-    // No tree at all when no file crosses, as a share carrying only files
-    // leaves it.
     std::fs::create_dir_all(&job).unwrap();
-    for (path, text) in files {
-        let into = job.join(super::TREE).join(path);
-        std::fs::create_dir_all(into.parent().unwrap()).unwrap();
-        std::fs::write(into, text).unwrap();
+    let tree = job.join(super::TREE);
+    let mut still_crossing = Vec::new();
+    if let Left::Listed(list) = list {
+        for (path, text) in files {
+            let into = tree.join(path);
+            std::fs::create_dir_all(into.parent().unwrap()).unwrap();
+            std::fs::write(into, text).unwrap();
+        }
+        std::fs::write(job.join(super::LEFT), list).unwrap();
+    } else {
+        let source = home.join("source");
+        for (path, text) in files {
+            let into = source.join(path);
+            std::fs::create_dir_all(into.parent().unwrap()).unwrap();
+            std::fs::write(into, text).unwrap();
+        }
+        super::left(&source, files.iter().map(|(path, _)| *path), &job).unwrap();
+        // No tree at all when no file crosses, as a share carrying only
+        // files leaves it.
+        let _ = std::fs::remove_dir(&tree);
+        if matches!(list, Left::Short) {
+            for part in std::fs::read_dir(&tree).unwrap() {
+                let part = part.unwrap().path();
+                let whole = std::fs::read(&part).unwrap();
+                std::fs::write(&part, &whole[..whole.len() / 2]).unwrap();
+                still_crossing.push((part, whole));
+            }
+        }
     }
-    std::fs::write(job.join(super::LEFT), list).unwrap();
     let bin = home.join("bin");
     std::fs::create_dir_all(&bin).unwrap();
     for (name, text) in programs {
@@ -307,9 +310,15 @@ pub(super) fn far_line_in(
         .stderr(std::process::Stdio::piped())
         .spawn()
         .unwrap();
+    if !still_crossing.is_empty() {
+        std::thread::sleep(std::time::Duration::from_secs(1));
+        for (part, whole) in &still_crossing {
+            std::fs::write(part, whole).unwrap();
+        }
+    }
     if let Some(meanwhile) = meanwhile {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        meanwhile(&job.join(super::TREE));
+        meanwhile(&tree);
     }
     let output = far.wait_with_output().unwrap();
     std::fs::write(home.join("said"), &output.stdout).unwrap();
@@ -323,15 +332,20 @@ pub(super) fn far_line_in(
 }
 
 #[test]
-fn what_is_left_is_listed_at_the_size_its_copy_came_to() {
+fn what_is_left_is_its_archives_each_listed_at_its_size() {
     let root = scratch("left");
     std::fs::write(root.join("x"), "xyz").unwrap();
     let job = root.join("job");
     super::left(&root, ["x"], &job).unwrap();
+    let size = std::fs::metadata(job.join(super::TREE).join("0.tar"))
+        .unwrap()
+        .len();
+    // A header, the data's block and the two that close it.
+    assert_eq!(size, 4 * 512, "one small file's archive came to {size}");
     assert_eq!(
         std::fs::read_to_string(job.join(super::LEFT)).unwrap(),
-        "3\tx\nend\n",
-        "a file was listed at the size it was gathered at, not the one that crossed"
+        format!("{size}\t0.tar\nend\n"),
+        "an archive wasn't listed at the size it was written at"
     );
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -344,7 +358,7 @@ fn what_comes_back_comes_back_under_its_own_name_past_one_that_failed() {
     let mut kind = kind("");
     kind.brings_back = vec!["early".into(), "out".into()];
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "mkdir early out && printf bb > early/b && \
          printf a > out/a && printf ccc > out/c && ln -s a out/l",
@@ -455,7 +469,7 @@ fn the_far_side_lists_what_a_share_can_t_hold_but_never_copies_it() {
     let mut kind = kind("");
     kind.brings_back = vec!["big".into(), "out".into()];
     let (code, err, home) = far_line(
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         &format!(
             "mkdir big out && printf a > out/a && \
@@ -532,11 +546,7 @@ fn a_file_that_won_t_land_is_said_with_the_lost_and_the_rest_land() {
 
 #[test]
 fn the_near_side_waits_for_each_file_at_its_listed_size() {
-    let (code, err, home) = far_run(
-        "1\tx\nend\n",
-        &[("x", "x")],
-        "mkdir out && printf a > out/a",
-    );
+    let (code, err, home) = far_run(Left::Whole, &[("x", "x")], "mkdir out && printf a > out/a");
     assert_eq!(code, Some(0), "the job didn't run: {err}");
     let job = handover(&home);
     // The far list says out/a is longer than the copy that crossed.
@@ -713,22 +723,19 @@ fn what_comes_back_never_lands_through_a_link_out_of_its_folder() {
 }
 
 #[test]
-fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
-    // Marks inside marks, and one name marked once beside it marked
-    // twice, each landing at its own name.
+fn the_far_line_unpacks_every_name_as_it_is_and_puts_nothing_outside() {
+    // Names a share keeps home, one like the mark names once crossed
+    // under, and a path past both of ustar's name fields.
+    let long = format!("{}/{}", "d".repeat(160), "f".repeat(110));
     let (code, err, home) = far_run(
-        "2\tlib/target.elsewhere/x.ts\n1\tnotes.elsewhere.elsewhere\n\
-         1\ta/target.elsewhere/node_modules.elsewhere/y\n\
-         1\ttarget.elsewhere.elsewhere/z\n1\ttarget.elsewhere/w\nend\n",
+        Left::Whole,
         &[
-            ("lib/target.elsewhere/x.ts", "ok"),
-            ("notes.elsewhere.elsewhere", "!"),
-            ("a/target.elsewhere/node_modules.elsewhere/y", "1"),
-            ("target.elsewhere.elsewhere/z", "2"),
-            ("target.elsewhere/w", "3"),
+            ("lib/target/x.ts", "ok"),
+            ("web/node_modules/a.js", "!"),
+            ("notes.elsewhere", "1"),
+            (&long, "2"),
         ],
-        "cat lib/target/x.ts notes.elsewhere a/target/node_modules/y \
-         target.elsewhere/z target/w > ../seen",
+        &format!("cat lib/target/x.ts web/node_modules/a.js notes.elsewhere {long} > ../seen"),
     );
     assert_eq!(
         code,
@@ -739,52 +746,72 @@ fn the_far_line_takes_the_marks_off_and_puts_nothing_outside() {
         std::fs::read_to_string(work(&home).join("seen"))
             .ok()
             .as_deref(),
-        Some("ok!123"),
-        "a marked file didn't land at its own name"
+        Some("ok!12"),
+        "a file didn't land at its own name"
     );
     let _ = std::fs::remove_dir_all(&home);
-    // A tree no near side writes, naming one path twice, is refused
-    // rather than nesting one inside the other.
-    let (code, err, home) = far_run(
-        "1\tx/a\n1\tx.elsewhere/b\nend\n",
-        &[("x/a", "1"), ("x.elsewhere/b", "2")],
-        "true",
-    );
+    // A list naming what isn't one of the near side's archives, each
+    // there at its listed size where it can be, is refused before any
+    // is unpacked.
+    for named in ["../out", "/abs/out", "a/./b", "..", "a/..", ""] {
+        let list = format!("2\t{named}\nend\n");
+        let (code, err, home) = far_run(Left::Listed(&list), &[("out", "no")], "true");
+        refused_as_no_archive(code, &err, &home, named);
+    }
+    for named in ["x", "0", "0.tar.gz", "a/0.tar", ".tar"] {
+        let list = format!("2\t{named}\nend\n");
+        let (code, err, home) = far_run(Left::Listed(&list), &[(named, "no")], "true");
+        refused_as_no_archive(code, &err, &home, named);
+    }
+}
+
+/// Asserts a far run in `home` ended `code` refusing a list naming
+/// `named` as no archive, said so in `err`, and left nothing behind.
+fn refused_as_no_archive(code: Option<i32>, err: &str, home: &Path, named: &str) {
     assert!(
-        code == Some(77) && err.contains("names") && err.contains("twice"),
-        "a tree naming x twice wasn't refused ({code:?}): {err}"
+        code == Some(77) && err.contains("isn't one of its archives"),
+        "a list naming {named:?} wasn't refused ({code:?}): {err}"
     );
     // So --there ends refused, not as a far side mycelium never reached.
-    let heard = relay(said(&home).as_slice(), "1");
+    let heard = relay(said(home).as_slice(), "1");
     assert_eq!(heard, Heard::Refused, "a far refusal wasn't said: {err}");
-    let ends = heard.unstarted().0;
     assert_eq!(
-        ends,
+        heard.unstarted().0,
         terminal_kit::Exit::Refused,
-        "a far refusal read as {ends:?}"
+        "a far refusal read as another end"
+    );
+    assert!(
+        !work(home).join("out").exists()
+            && !work(home).join("1").exists()
+            && !handover(home).join(super::TREE).exists(),
+        "a refused job left a file outside its folder, or its copies, for {named:?}"
+    );
+    let _ = std::fs::remove_dir_all(home);
+}
+
+#[test]
+fn an_archive_holding_a_link_is_refused_before_the_job_runs() {
+    let made = scratch("linked");
+    std::os::unix::fs::symlink("/etc/passwd", made.join("l")).unwrap();
+    let archive = std::process::Command::new("tar")
+        .args(["-cf", "-", "-C"])
+        .arg(&made)
+        .arg("l")
+        .output()
+        .unwrap();
+    assert!(archive.status.success(), "tar made no archive of a link");
+    let _ = std::fs::remove_dir_all(&made);
+    // A header and nothing past it, all ASCII and NULs, so its text holds it.
+    let text = String::from_utf8(archive.stdout).unwrap();
+    let list = format!("{}\t0.tar\nend\n", text.len());
+    let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
+    assert!(
+        code == Some(77) && err.contains("neither a file nor a folder"),
+        "a tree holding a link wasn't refused ({code:?}): {err}"
+    );
+    assert!(
+        !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
+        "a job ran over a tree holding a link, or its copy was left"
     );
     let _ = std::fs::remove_dir_all(&home);
-    for named in ["../out", "/abs/out", "a/./b", "..", "a/..", ""] {
-        let (code, err, home) = far_run(&format!("2\t{named}\nend\n"), &[("out", "no")], "true");
-        assert!(
-            code == Some(77) && err.contains("outside its folder"),
-            "a list naming {named:?} wasn't refused ({code:?}): {err}"
-        );
-        assert!(
-            !work(&home).join("out").exists()
-                && !work(&home).join("1").exists()
-                && !handover(&home).join(super::TREE).exists(),
-            "a refused job left a file outside its folder, or its copies, for {named:?}"
-        );
-        let _ = std::fs::remove_dir_all(&home);
-    }
-    // A name that is only a dot or two once its mark comes off.
-    for named in ["..elsewhere", "...elsewhere"] {
-        let (code, err, home) = far_run(&format!("1\t{named}\nend\n"), &[(named, "x")], "true");
-        assert!(
-            code == Some(77) && err.contains(&format!("/{named}, outside its folder")),
-            "a tree naming {named} wasn't refused ({code:?}): {err}"
-        );
-        let _ = std::fs::remove_dir_all(&home);
-    }
 }

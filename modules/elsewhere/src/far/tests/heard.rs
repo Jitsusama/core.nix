@@ -1,22 +1,18 @@
-use super::{far_line, far_line_in, far_run, kind, said, work};
+use super::{Left, far_line, far_line_in, far_run, kind, said, work};
 use crate::far::{Heard, relay};
 use std::path::Path;
 use terminal_kit::Exit;
 
 #[test]
 fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
-    // A file the share is still writing is there, but short, until the
-    // share finishes it.
+    // An archive the share is still writing is there, but short, until
+    // the share finishes it.
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
-        &[("x", "x")],
+        Left::Short,
+        &[("x", "xyz")],
         "cat x > ../ran",
         &kind(""),
-        Some(&|tree| {
-            // A far line that didn't wait has taken the tree already,
-            // which the assertions below say better than this write.
-            let _ = std::fs::write(tree.join("x"), "xyz");
-        }),
+        None,
         &[],
     );
     assert_eq!(
@@ -33,7 +29,7 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
     );
     let _ = std::fs::remove_dir_all(&home);
     // One the share never finishes ends the wait with nothing run.
-    let (code, err, home) = far_run("3\tx\nend\n", &[("x", "x")], "touch ../ran");
+    let (code, err, home) = far_run(Left::Listed("3\tx\nend\n"), &[("x", "x")], "touch ../ran");
     assert_eq!(
         code,
         Some(75),
@@ -68,7 +64,7 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
     // long as its limit says.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
+        Left::Listed("3\tx\nend\n"),
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -100,10 +96,12 @@ const A_GAP: std::time::Duration = std::time::Duration::from_secs(3);
 /// Runs a far line over a tree that crosses in three steps a gap apart,
 /// the last well past the wait from its start but inside it from the one
 /// before, as a large tree crosses, with its list empty until all of it
-/// has crossed, so only what crossed can say the wait should go on.
+/// has crossed, so only what crossed can say the wait should go on. It
+/// answers whether the wait ended with all of it there, rather than
+/// giving up, and why: what crossed is no archive, so it goes no further.
 fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, String) {
     let (code, err, home) = far_line(
-        "",
+        Left::Listed(""),
         &[],
         "touch ../ran",
         &kind(""),
@@ -118,9 +116,9 @@ fn crossing_a_gap_apart(step: &dyn Fn(&Path, usize), list: &str) -> (bool, Strin
         }),
         &[],
     );
-    let ran = code == Some(0) && work(&home).join("ran").exists();
+    let arrived = code == Some(77) && err.contains("isn't one of its archives");
     let _ = std::fs::remove_dir_all(&home);
-    (ran, format!("({code:?}): {err}"))
+    (arrived, format!("({code:?}): {err}"))
 }
 
 #[test]
@@ -174,7 +172,7 @@ fn a_far_date_that_can_t_say_the_time_still_ends_the_wait() {
     // ending at once.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
+        Left::Listed("3\tx\nend\n"),
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -219,7 +217,7 @@ fn a_far_date_that_loses_readings_keeps_the_wait_on_the_clock() {
              echo $((1000000 + {step} * n))"
         );
         let (code, err, home) = far_line(
-            "3\tx\nend\n",
+            Left::Listed("3\tx\nend\n"),
             &[("x", "x")],
             "touch ../ran",
             &kind(""),
@@ -250,7 +248,7 @@ fn a_far_clock_that_steps_back_restarts_the_wait() {
                 echo $((n + 1)) > \"$HOME/clock\"\n\
                 if [ \"$n\" -eq 0 ]; then echo 1000000; else echo $((999990 + n)); fi";
     let (code, err, home) = far_line(
-        "3\tx\nend\n",
+        Left::Listed("3\tx\nend\n"),
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -276,11 +274,11 @@ fn a_far_clock_that_steps_back_restarts_the_wait() {
 fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
     // Each step of making the tree failing, as a full disk, a fenced
     // scratch or a program missing would, ahead of the far machine's own
-    // on its path, over a tree with a mark to take off.
-    for step in ["cp", "mkdir", "mv", "find", "awk", "sort", "cut"] {
+    // on its path.
+    for step in ["mkdir", "tar", "find"] {
         let (code, err, home) = far_line(
-            "1\ttarget.elsewhere/a\nend\n",
-            &[("target.elsewhere/a", "x")],
+            Left::Whole,
+            &[("target/a", "x")],
             "touch ../ran",
             &kind(""),
             None,
@@ -303,7 +301,7 @@ fn a_far_machine_that_can_t_make_the_tree_says_so_and_not_that_it_refused() {
 fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     let (code, err, home) = far_line_in(
         Path::new("drafts"),
-        "1\tx\nend\n",
+        Left::Whole,
         &[("x", "x")],
         "touch ../ran",
         &kind(""),
@@ -327,7 +325,7 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     // Nor when nothing at all travels, and no tree crosses.
     let (code, err, home) = far_line_in(
         Path::new("drafts"),
-        "end\n",
+        Left::Whole,
         &[],
         "touch ../ran",
         &kind(""),
@@ -340,7 +338,7 @@ fn a_job_s_folder_that_never_crossed_is_refused_and_said_and_swept() {
     );
     let _ = std::fs::remove_dir_all(&home);
     // At the tree's top, the job runs in a tree with nothing in it.
-    let (code, err, home) = far_run("end\n", &[], "touch ../ran");
+    let (code, err, home) = far_run(Left::Whole, &[], "touch ../ran");
     assert!(
         code == Some(0) && work(&home).join("ran").exists(),
         "a job with no file that travels didn't run ({code:?}): {err}"
@@ -368,7 +366,7 @@ impl std::io::Read for Trickle<'_> {
 #[test]
 fn the_far_line_s_word_is_heard_whatever_came_before_or_after_it() {
     // A banner with no newline of its own, and a terminal's line ends.
-    let glued = far_line("1\tx\nend\n", &[("x", "x")], "true", &kind(""), None, &[]);
+    let glued = far_line(Left::Whole, &[("x", "x")], "true", &kind(""), None, &[]);
     let mut out = b"a welcome with no end".to_vec();
     out.extend(said(&glued.2));
     assert_eq!(
