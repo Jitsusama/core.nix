@@ -241,8 +241,9 @@ a field, then stay for the visit: a phone has no keys, and the audit of 22 Nov f
 Code and the machines page telling one to press j and k. A tablet with a
 keyboard still sees the line the moment it types, which is why this was
 never a plain `(hover: none)`. Keycaps drawn as buttons that act when
-tapped (`pressable`) are the touch way in, so a line holding them always
-shows, each a whole target; a help button alone doesn't keep it. The
+tapped (`data-tap`, made to act by `pressable`) are the touch way in, so a
+line holding them always shows, each a whole target; a `?` or a help
+button alone doesn't keep it. The
 kit's `head.css` and `keys.ts` do both, so a page using the kit's head
 writes nothing for it:
 
