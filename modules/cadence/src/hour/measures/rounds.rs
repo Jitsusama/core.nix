@@ -18,8 +18,9 @@
 //! nothing and is named apart.
 //!
 //! A round counts once it was collected and one of its reviewers answered,
-//! as merge-net counts one, so a round a reload killed before anyone
-//! answered, which stays open, isn't a round. Rounds run on another
+//! so a round a reload killed before anyone answered, which stays open,
+//! isn't a round, nor one whose every reviewer was stopped before filing a
+//! finding. Rounds run on another
 //! machine count from its mirror, but their fixes are kept there, so a
 //! late one's catch can't be read here and its merge isn't filed.
 //!
@@ -209,14 +210,21 @@ impl Reviewed {
 }
 
 /// Whether `run` was collected, neither open nor closed, and one of its
-/// reviewers answered, as merge-net reads a round before counting it.
+/// reviewers answered: didn't fail, and either finished or filed a finding
+/// before it was stopped. Merge-net counts a round whose reviewers were all
+/// cancelled as read, but no one reviewed in it, so it isn't a round here.
 fn answered(run: &Value) -> bool {
     let flag = |name: &str| run[name].as_bool().unwrap_or(false);
+    let answer = |o: &Value| {
+        o.get("failure").is_none()
+            && (o.get("stopped").is_none()
+                || o["findingIds"].as_array().is_some_and(|ids| !ids.is_empty()))
+    };
     !flag("open")
         && !flag("closed")
         && run["outcomes"]
             .as_array()
-            .is_some_and(|outcomes| outcomes.iter().any(|o| o.get("failure").is_none()))
+            .is_some_and(|outcomes| outcomes.iter().any(answer))
 }
 
 /// The councils `there`, another machine's records, holds that `here`
@@ -893,10 +901,11 @@ mod tests {
             NOW - 60,
             NOW - 120
         );
-        // Of #31's five, only the first was collected with an answer: a
-        // reload killed the second open with every reviewer failed, the
-        // third ended with every reviewer failed, the fourth was closed,
-        // and the fifth has no outcomes at all.
+        // Of #31's seven, the first and last count: a reload killed the
+        // second open with every reviewer failed, the third ended with
+        // every reviewer failed, the fourth was closed, the fifth has no
+        // outcomes, and the sixth's reviewers were cancelled having filed
+        // nothing, but the seventh's filed a finding before it was.
         let ended =
             |id, ago, outcomes| started(id, ago).replace(r#"[{"participantId": "one"}]"#, outcomes);
         let a = [
@@ -909,6 +918,8 @@ mod tests {
             ended("council-a-failed", 400, r#"[{"failure": "wall"}]"#),
             ended("council-a-closed", 300, r#"[{}], "closed": true"#),
             ended("council-a-bare", 200, "[]"),
+            ended("council-a-cancelled", 150, r#"[{"stopped": {"limit": "cancelled"}}]"#),
+            ended("council-a-found", 100, r#"[{"stopped": {}, "findingIds": [1]}]"#),
         ];
         let ours = [
             record("github", CORE, "31", "elsewhere", &a),
@@ -949,7 +960,7 @@ mod tests {
             NOW,
             "ORCH",
         );
-        assert_eq!(all[0].now, 4.0, "the median of #31's 1 and #32's 7");
+        assert_eq!(all[0].now, 4.5, "the median of #31's 2 and #32's 7");
         assert_eq!(
             all[0].behind,
             [concat!(
