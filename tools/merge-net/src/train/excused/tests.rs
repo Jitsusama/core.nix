@@ -196,13 +196,22 @@ fn a_base_that_said_nothing_is_run_once_the_check_fails_again() {
         "a lent run at the base failing alike didn't excuse the check"
     );
     assert_eq!(ran.load(Ordering::SeqCst), 1, "the base wasn't run once");
-    let unasked = |_: &str| -> Option<AtBase> {
-        panic!("the base was run when it had already answered");
+    // Counted, not a panic: an ask runs on a thread of its own, whose
+    // panic `excused` reads as an ask that failed, as this one is meant to.
+    let unasked_ran = AtomicUsize::new(0);
+    let unasked = |_: &str| {
+        unasked_ran.fetch_add(1, Ordering::SeqCst);
+        Some(fails(&["x"]))
     };
     let known = |_: &str| Some(AtBase::Passes);
     assert!(
         excused(&words, &asks(&known, &FAILED_AGAIN, &unasked)).is_err(),
         "a check that passed at the base was excused"
+    );
+    assert_eq!(
+        unasked_ran.load(Ordering::SeqCst),
+        0,
+        "the base was run when it had already answered"
     );
     assert!(
         excused(&words, &asks(&nothing, &unsaid, &nothing)).is_err(),
@@ -299,6 +308,11 @@ fn a_red_the_excuse_cant_read_asks_nothing() {
              after 3600 seconds of silence\n"
             .to_owned(),
         red(&[("vm-test-run-desktop-looks", &["x"])], &[]),
+        // Names no derivation could have, which an evaluation's trace can
+        // print, and which would name a log outside the train's folder.
+        red(&[("/home/u/notes", &["x"])], &[]),
+        red(&[("../../notes", &["x"])], &[]),
+        red(&[(".hidden", &["x"])], &[]),
         red(&failed, &[]),
         red(&[("cat", &["x"]), ("quiet", &[])], &[]),
         red(&[("cat", &long)], &[]),
@@ -609,16 +623,15 @@ fn a_net_told_no_excuse_excuses_nothing() {
 fn excuses_turned_off_while_it_asks_let_its_runs_go() {
     let (root, train, log) = excusable("excused-turned-off");
     fs::write(&log, red(&[("cat", &["y"])], &[])).unwrap();
+    // What `dropped` said, before and after, read on this thread: an
+    // assert in the run would panic on the ask's own, which `excused`
+    // reads as an ask that failed, as this one is meant to end.
+    let before = AtomicBool::new(true);
+    let after = AtomicBool::new(false);
     let run = |_: &[String], _: &str, _: &Path, dropped: &dyn Fn() -> bool| {
-        assert!(
-            !dropped(),
-            "a run was let go before excuses were turned off"
-        );
+        before.store(dropped(), Ordering::SeqCst);
         fs::write(train.join("no-excuse"), "").unwrap();
-        assert!(
-            dropped(),
-            "a run wasn't let go once excuses were turned off"
-        );
+        after.store(dropped(), Ordering::SeqCst);
         Some(0)
     };
     let red = Red {
@@ -633,6 +646,14 @@ fn excuses_turned_off_while_it_asks_let_its_runs_go() {
         excuse(&red, &run),
         None,
         "a red was excused after excuses were turned off"
+    );
+    assert!(
+        !before.load(Ordering::SeqCst),
+        "a run was let go before excuses were turned off"
+    );
+    assert!(
+        after.load(Ordering::SeqCst),
+        "a run wasn't let go once excuses were turned off"
     );
     let _ = fs::remove_dir_all(&root);
 }
