@@ -498,6 +498,15 @@ impl Real {
         if untaken(checked.code()) {
             return Err(format!("{UNCHECKED}, {}", log.display()));
         }
+        // Only a whole failure, 1, names all its run broke, so only it is
+        // excused for failing at the base too: a run cut short (70) or
+        // broken (65) may have left a check it broke unbuilt (round 6's F20).
+        if !checked.success() && checked.code() != Some(1) {
+            return Err(format!(
+                "its checks didn't run to their end, {}",
+                log.display()
+            ));
+        }
         if !checked.success() {
             let failed = unbuilt(lines_of(&log));
             let new: Vec<&String> = failed

@@ -176,6 +176,7 @@ mod keep;
 mod kept;
 mod lines;
 mod machines;
+mod marked;
 mod outside;
 mod passed;
 mod progress;
@@ -457,6 +458,8 @@ fn main() -> ExitCode {
     // SAFETY: nothing has started a thread yet, and no dependency starts
     // one before `main`.
     unsafe { asking::never_ask() };
+    // SAFETY: as above, nothing has started a thread yet.
+    unsafe { marked::take() };
     // Read lossily only to see whether help is asked: a word that isn't
     // text reaches the kit whole, which refuses it as asked wrongly (64)
     // where `env::args` would panic.
@@ -469,14 +472,6 @@ fn main() -> ExitCode {
     if help::asked(&arguments) {
         return help::answered();
     }
-    // A panic aborts, after saying it, rather than unwinding to Rust's
-    // 101, which is also a code nix ends a failed build with, so a run
-    // that panicked is never read as one that ran to its end.
-    let said = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic| {
-        said(panic);
-        std::process::abort();
-    }));
     // Every other call's words are read below, exactly as its units and
     // gates give them, so the kit takes none of them: a `-v` or `--json`
     // given to `there` is nix's. It ends through the kit, so its exits
@@ -1995,7 +1990,7 @@ fn changed_there(
     // Said of the run as it ends, never of a part: a run named on one
     // builder and built on another (`built_named`) is never whole.
     if finished.whole {
-        eprintln!("{RAN_WHOLE}");
+        eprintln!("{}", marked::signed(RAN_WHOLE));
     }
     ended::status(finished.status, || {
         "the changed checks didn't pass, as the lines above say".to_owned()
@@ -2265,7 +2260,9 @@ fn runs_again(replayed: Option<&str>, status: i32) -> bool {
         return false;
     };
     if status != 0 && status != there::BUSY {
-        eprintln!("nix-offload: {replayed} failed, so the change runs again on its own base");
+        let again =
+            format!("nix-offload: {replayed} failed, so the change runs again on its own base");
+        eprintln!("{}", marked::signed(&again));
         return true;
     }
     eprintln!("nix-offload: what passed is {replayed}, and its pass is kept under that");
@@ -2418,8 +2415,9 @@ impl Finished {
 /// What nix-offload says once a `there --changed` run on a lent builder
 /// ends with every part of it run to its end. merge-net's train
 /// (`tools/merge-net/src/train/gated.rs`) reads a red as naming all it
-/// broke only beside this line, so a run cut short, or one that no
-/// longer says it, lets no red be excused.
+/// broke only beside this line, signed with the mark it gave the run
+/// (`marked`), so a run cut short, or one that no longer says it, lets
+/// no red be excused.
 const RAN_WHOLE: &str = "nix-offload: every part of the run ran to its end";
 
 /// Whether a part of a run that ended `status` ran to its end of itself:

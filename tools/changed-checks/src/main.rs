@@ -103,7 +103,7 @@ use std::thread;
 
 use building::{built, clean_commit, passed_at, unpassed};
 use checks::Derivations;
-use ending::{Built, Compared, broke};
+use ending::{Built, CUT_SHORT, Compared, broke};
 use evaluating::{busiest_system, derivations, evaluated, names};
 use quarantine::Held;
 use runs::Run;
@@ -222,7 +222,6 @@ fn say_vm_tests(targets: &[String]) {
 }
 
 fn main() -> ExitCode {
-    ending::abort_on_panic();
     terminal_kit::main(&command::help(), env!("CARGO_PKG_VERSION"), |context| {
         let arguments = &context.args;
         if let Some(("keep-main", rest)) = arguments
@@ -448,8 +447,11 @@ fn elsewhere(
             eprintln!("changed-checks: no builder took the run");
             None
         }
-        Some(code) => Some(u8::try_from(code).unwrap_or(1)),
-        None => Some(1),
+        // A nix-offload a signal ended, or one ending past a byte, ran
+        // nothing to its end that it said, so the run is cut short, never
+        // the whole failure 1 says (round 6's F3).
+        Some(code) => Some(u8::try_from(code).unwrap_or(CUT_SHORT)),
+        None => Some(CUT_SHORT),
     })
 }
 

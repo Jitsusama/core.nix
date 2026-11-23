@@ -2,11 +2,16 @@
 //! every build ran, and one failed, ends 1: nix-offload reads 1 as a part
 //! that ran to its end, and merge-net's train excuses a red only from such
 //! a run (`tools/merge-net/src/train/gated.rs`). A check that no longer
-//! evaluates, a build cut short, an error part way and a panic each end
-//! with a code of their own, so none is read as a whole red (round 5, 23
-//! November).
+//! evaluates, a build cut short and an error part way each end with a
+//! code of their own, so none is read as a whole red (round 5, 23
+//! November). A panic in the body ends 70 through terminal-kit's `caught`,
+//! never Rust's 101 (round 6).
 
 use terminal_kit::{Exit, Failure};
+
+/// What a run cut short ends with: terminal-kit's bug, 70, as `Cut` and
+/// `broke` end.
+pub const CUT_SHORT: u8 = 70;
 
 /// How a comparison ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,17 +79,6 @@ pub fn broke(why: String) -> Failure {
     Failure::new(Exit::Bug, why)
 }
 
-/// End the process at a panic, after saying it, rather than unwinding to
-/// Rust's 101, which is also a code nix ends a failed build with. An abort
-/// reads as a signal, so as cut short.
-pub fn abort_on_panic() {
-    let said = std::panic::take_hook();
-    std::panic::set_hook(Box::new(move |panic| {
-        said(panic);
-        std::process::abort();
-    }));
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -100,18 +94,22 @@ mod tests {
     fn only_a_failure_every_build_ran_to_ends_one() {
         assert_eq!(code(Compared::Passed), 0, "a pass didn't end 0");
         assert_eq!(code(Compared::Failed), 1, "a whole failure didn't end 1");
-        for compared in [Compared::Broken, Compared::Cut] {
-            let ended = code(compared);
+        assert_eq!(
+            code(Compared::Cut),
+            CUT_SHORT,
+            "a cut run ended other than a sent run cut short does"
+        );
+        let broken = broke("nix eval failed: signal: 9".into()).exit.code();
+        for (compared, ended) in [
+            ("Broken", code(Compared::Broken)),
+            ("Cut", code(Compared::Cut)),
+            ("an error part way", broken),
+        ] {
             assert!(
                 ![0, 1, 69, 75].contains(&ended) && !(100..=104).contains(&ended),
-                "{compared:?} ended {ended}, a code read as whole or untaken"
+                "{compared} ended {ended}, a code read as whole or untaken"
             );
         }
-        assert_ne!(
-            broke("nix eval failed: signal: 9".into()).exit.code(),
-            1,
-            "an error part way ended 1"
-        );
     }
 
     #[test]
