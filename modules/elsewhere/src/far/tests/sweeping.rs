@@ -34,7 +34,7 @@ fn far_sh() -> String {
 /// said, once it ended well.
 fn sweep(work: &Path) -> String {
     let swept = std::process::Command::new(far_sh())
-        .args(["-c", &format!("work={}\n{}", work.display(), sweeping())])
+        .args(["-c", &format!("work='{}'\n{}", work.display(), sweeping())])
         .output()
         .unwrap();
     let said = String::from_utf8_lossy(&swept.stderr).into_owned();
@@ -74,8 +74,16 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     copy(&runs, "3", &format!("{} {here}", std::process::id()));
     // Another machine's, whose numbers say nothing here.
     copy(&runs, "4", &format!("{gone} osprey"));
-    // A run's file that names no number.
+    // This machine's, but another process space's.
+    let machine = here.split(' ').next().unwrap();
+    copy(&runs, "7", &format!("{gone} {machine} pid:[1]"));
+    // A run's file that names no number, and one that is empty.
     copy(&runs, "5", &format!("x {here}"));
+    copy(&runs, "8", "");
+    // A run this sweep may not signal, which may well be alive.
+    copy(&runs, "10", &format!("1 {here}"));
+    // A name no job has, which would name what lies beside copy 3.
+    copy(&runs, "3.back", &format!("{gone} {here}"));
     // A run's file that is a link, which is never read.
     copy(&runs, "6", "");
     std::fs::remove_file(runs.join(format!("6{RUN}"))).unwrap();
@@ -92,7 +100,23 @@ fn only_the_copies_of_runs_here_that_are_gone_are_cleared() {
     let said = sweep(&runs.join("9"));
     assert!(said.is_empty(), "the sweep said something: {said}");
     let kept = [
-        "3", "3.run", "4", "4.run", "5", "5.run", "6", "6.run", "old",
+        "10",
+        "10.run",
+        "3",
+        "3.back",
+        "3.back.run",
+        "3.run",
+        "4",
+        "4.run",
+        "5",
+        "5.run",
+        "6",
+        "6.run",
+        "7",
+        "7.run",
+        "8",
+        "8.run",
+        "old",
     ];
     assert_eq!(
         left_in(&runs),

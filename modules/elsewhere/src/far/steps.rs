@@ -113,16 +113,18 @@ done"#
 /// too, as when the asker's end goes before its signal comes. A signal
 /// that comes while it clears is dropped, so the clearing runs once, and
 /// one ignored when the far line began is never trapped at all. The copy
-/// goes after the rest and before its run's file: mycelium kills a group
-/// still running a short grace after its signal, and a job's build can
-/// hold more files than go in that time, so a removal cut short leaves
-/// the file that lets the next run here clear it.
+/// goes after the rest, and its run's file only once all of that went:
+/// mycelium kills a group still running a short grace after its signal,
+/// and a job's build can hold more files than go in that time, so a
+/// removal cut short or failed leaves the file that lets the next run
+/// here clear it.
 pub(super) fn stopping() -> String {
     format!(
         r#"stopped() {{
   trap '' HUP INT PIPE TERM
   cd "$HOME" && rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}" \
-    "$work.names" "$work.back" "$work.back".* "$work" "$work{RUN}"
+    "$work.names" "$work.back" "$work.back".* "$work" &&
+    rm -f "$work{RUN}"
   trap - "$1"
   kill -s "$1" "$$"
   exit "$2"
@@ -139,27 +141,44 @@ trap 'stopped TERM 143' TERM"#
 /// this machine and its process space, which each run writes down with
 /// its own number in its run's file before it makes its copy. A copy is
 /// cleared, with what lies beside it, only when its run's file names
-/// `here` and that run is gone, as when a kill cut its stop short or
-/// came with no stop at all: never by its age, since a copy's folder
+/// `here` and that run is known gone, as when a kill cut its stop short
+/// or came with no stop at all: never by its age, since a copy's folder
 /// stops changing once it's made however long its job runs, and never
-/// one whose run's file is missing or names another machine. It never
-/// removes through a link: it reads only a folder of copies that is no
-/// link, and only run files that are plain files, and rm takes a link
-/// at a copy's name away alone.
+/// one whose run's file is missing or names another machine or space.
+/// A run is gone only when signalling it finds no such process; one it
+/// may not signal, as from inside a fence, is kept. Numbers are judged
+/// only where they name one process: on a Mac, which has one space of
+/// them, or on Linux once this run's space is known. Only a copy named
+/// as a job is, by digits and dashes, is taken, so no run's file can
+/// name what lies beside another's copy. It never removes through a
+/// link: it reads only a folder of copies that is no link, and only run
+/// files that are plain files, and rm takes a link at a copy's name away
+/// alone. A run's file goes only once its copy did.
 pub(super) fn sweeping() -> String {
     format!(
         r#"runs=${{work%/*}}
-here="$(uname -n) $(readlink /proc/self/ns/pid 2>/dev/null)"
-if [ -d "$runs" ] && [ ! -L "$runs" ]; then
+ours=$(readlink /proc/self/ns/pid 2>/dev/null)
+here="$(uname -n) $ours"
+case $(uname -s) in
+  Darwin) judged=yes ;;
+  Linux) judged=${{ours:+yes}} ;;
+  *) judged='' ;;
+esac
+if [ -n "$judged" ] && [ -d "$runs" ] && [ ! -L "$runs" ]; then
   for run in "$runs"/*{RUN}; do
     [ -f "$run" ] && [ ! -L "$run" ] || continue
+    copy=${{run%{RUN}}}
+    case ${{copy##*/}} in ''|*[!0-9-]*) continue ;; esac
     pid='' machine='' space=''
     read -r pid machine space < "$run"
     [ "$machine $space" = "$here" ] || continue
     case $pid in ''|*[!0-9]*) continue ;; esac
-    kill -0 "$pid" 2>/dev/null && continue
-    copy=${{run%{RUN}}}
-    rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" "$run" ||
+    case $(LC_ALL=C kill -0 "$pid" 2>&1) in
+      *'No such process'*) ;;
+      *) continue ;;
+    esac
+    {{ rm -rf "$copy.names" "$copy.back" "$copy.back".* "$copy" &&
+      rm -f "$run"; }} ||
       printf "elsewhere: couldn't clear %s\n" "$copy" >&2
   done
 fi"#
@@ -334,7 +353,8 @@ fi
 }
 
 /// Frees the job's copy, with what it made, and the tree it was made
-/// from, once nothing is brought back out of them.
+/// from, once nothing is brought back out of them, and then its run's
+/// file, once they went.
 fn freed() -> String {
-    format!("cd \"$HOME\" && rm -rf \"$job/{TREE}\" \"$work\" \"$work{RUN}\"\n")
+    format!("cd \"$HOME\" && rm -rf \"$job/{TREE}\" \"$work\" && rm -f \"$work{RUN}\"\n")
 }

@@ -333,14 +333,14 @@ if mkdir -p "$runs" && printf '%s %s\n' "$$" "$here" > "$work{RUN}" &&
   rm -rf "$work" && mkdir -p "$work"; then copied; why=$?; else why=2; fi
 rm -f "$work.names"
 if [ "$why" -ne 0 ]; then
-  cd "$HOME" && rm -rf "$job/{TREE}" "$work" "$work{RUN}"
+  cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
   [ "$why" -eq 1 ] && {{ say {refused}; exit {REFUSES}; }}
   say {untaken}
   exit {UNTAKEN}
 fi
 cd {folder} || {{
   printf "elsewhere: the job's folder holds nothing that travels\n" >&2
-  cd "$HOME" && rm -rf "$job/{TREE}" "$work" "$work{RUN}"
+  cd "$HOME" && rm -rf "$job/{TREE}" "$work" && rm -f "$work{RUN}"
   say {refused}
   exit {REFUSES}
 }}
