@@ -305,6 +305,15 @@ fn joels_answer_to_a_split_take_stays_written_after_a_restart() {
     // pieces to join it to Ada's, and with voices read back nothing since
     // is grouped. Ada says more, heard on Joel's side as an echo.
     let mut writing = resumed(&book, "call:e1", "Joel");
+    let read_back = &writing.lines[..writing.read];
+    let answer = read_back
+        .iter()
+        .find(|line| line.side == Side::Mine)
+        .unwrap();
+    assert!(
+        transcript::echoes(answer, read_back),
+        "Joel's answer, read back, isn't an echo of Bo's part, so keeping it shows nothing"
+    );
     hear_take(&mut writing, 80, &[ADA], &[("Right.", 0)]);
     writing.lines.push(joels(80, 81, "Right."));
     give_voices(&mut writing, None);
@@ -375,6 +384,31 @@ fn a_piece_of_a_take_with_no_line_is_never_worded() {
     assert!(
         !writing.heard[0].worded,
         "a take of only hesitation counted as speech"
+    );
+}
+
+#[test]
+fn a_piece_of_only_hesitation_in_a_take_with_a_line_isnt_worded() {
+    // Bo's backchannel in Ada's take is never a line of its own, since
+    // splitting folds a run of hesitation into its neighbour, so it
+    // mustn't count toward Bo's being a voice either.
+    let mut writing = Writing::default();
+    let start = 40 * SECOND;
+    let said = [
+        word("Ship", start),
+        word("it.", start + SECOND),
+        word("Mm-hmm.", start + 3 * SECOND),
+    ];
+    let pieces = vec![
+        (ADA.to_vec(), start, 3 * SECOND),
+        (BO.to_vec(), start + 3 * SECOND, 3 * SECOND),
+    ];
+    writing.heard(Some(0), &said, pieces);
+    let worded: Vec<bool> = writing.heard.iter().map(|heard| heard.worded).collect();
+    assert_eq!(
+        worded,
+        [true, false],
+        "a piece holding only hesitation counted as speech"
     );
 }
 
@@ -516,10 +550,9 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
     // are timed from the call's, so words left unmoved 40 s in would find
     // no piece, and no line would be given a voice.
     let start = 40 * SECOND;
-    let said = vec![word("Not", 0), word("yet.", 4 * SECOND)];
     let mut scripted = Scripted {
-        words: Some(said),
-        text: Some(" Done. ".to_owned()),
+        words: Some(vec![word("Not", 0), word("yet.", 4 * SECOND)]),
+        text: None,
     };
     let (text, words) = transcribe_take(&mut scripted, Side::Theirs, start, &[]);
     assert_eq!(
@@ -544,16 +577,36 @@ fn a_takes_words_find_the_pieces_they_were_said_in() {
         [true, true],
         "a piece didn't find the word said in it"
     );
+}
+
+#[test]
+fn joels_take_is_kept_as_spelled_with_no_words() {
+    let mut scripted = Scripted {
+        words: None,
+        text: Some(" Done. ".to_owned()),
+    };
     assert_eq!(
-        transcribe_take(&mut scripted, Side::Mine, start, &[]),
+        transcribe_take(&mut scripted, Side::Mine, 40 * SECOND, &[]),
         (Some("Done.".to_owned()), Vec::new()),
         "Joel's text wasn't kept as Parakeet spelled it, without words"
     );
-    // Its words already given, the script fails another take of theirs.
+}
+
+#[test]
+fn a_take_that_isnt_heard_is_left_out() {
+    let mut failing = Scripted {
+        words: None,
+        text: None,
+    };
     assert_eq!(
-        transcribe_take(&mut scripted, Side::Theirs, start, &[]),
+        transcribe_take(&mut failing, Side::Theirs, 40 * SECOND, &[]),
         (None, Vec::new()),
-        "a take that wasn't heard was kept"
+        "a take of theirs that wasn't heard was kept"
+    );
+    assert_eq!(
+        transcribe_take(&mut failing, Side::Mine, 40 * SECOND, &[]),
+        (None, Vec::new()),
+        "a take of Joel's that wasn't heard was kept"
     );
 }
 
