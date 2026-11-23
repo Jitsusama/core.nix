@@ -303,8 +303,10 @@ fn a_far_line_stopped_mid_job_takes_its_copy_away() {
             "a far line stopped by {signal} ended otherwise: {err}"
         );
         assert!(
-            !work(&home).join("1").exists() && !handover(&home).join(TREE).exists(),
-            "a far line stopped by {signal} left its copy or the job's archives"
+            !work(&home).join("1").exists()
+                && !work(&home).join("1.run").exists()
+                && !handover(&home).join(TREE).exists(),
+            "a far line stopped by {signal} left its copy, its run's file or the job's archives"
         );
         assert!(
             !handover(&home).join(BACK).exists(),

@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 mod crossing;
 mod heard;
 mod leaving;
+mod sweeping;
 mod unpacking;
 
 pub(super) fn kind(setup: &str) -> Kind {
