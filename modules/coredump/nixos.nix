@@ -14,7 +14,7 @@
   # keys and tokens, a password manager's vault. (A pi host started under
   # its unit's core limit of 0 keeps none; one started before a switch
   # keeps its old limit until its next start, and the six-hour removal
-  # covers that.) Any program running as the same account can abort
+  # below takes the host's own core, though not its commands'.) Any program running as the same account can abort
   # another and read its core seconds later, so the folder is root's alone
   # and the access lists lead nowhere. coredumpctl's list and each crash's stack
   # trace come from the journal and still reach an account in wheel, though
@@ -26,18 +26,18 @@
   systemd.services."systemd-coredump@".serviceConfig.StateDirectoryMode = "0700";
   systemd.tmpfiles.rules = [ "d /var/lib/systemd/coredump 0700 root root 2w" ];
 
-  # A node's core holds what its process held: a plain pi's holds its keys
-  # and tokens, and any other node program's whatever it was given. Six
-  # hours is long enough to read one for where it faulted, and the stack
+  # A pi's core holds its keys and tokens: a plain pi names its process
+  # pi, and a pi host's node, as any other node program is named, holding
+  # whatever it was given. Six hours is long enough to read one for where it faulted, and the stack
   # trace systemd-coredump wrote to the journal outlives it, so the core goes
   # then, rather than staying the two weeks or 4 GB the rest may. Checked each
   # quarter hour, so none stays much past it, and each one removed is named in
   # the service's journal. Root's job, since the cores are.
   systemd.services.coredump-forget-node = {
-    description = "Remove node's cores six hours after they were kept";
+    description = "Remove pi's and node's cores six hours after they were kept";
     serviceConfig.Type = "oneshot";
     script = ''
-      find /var/lib/systemd/coredump -maxdepth 1 -type f -name 'core.node.*' -mmin +360 -print -delete
+      find /var/lib/systemd/coredump -maxdepth 1 -type f \( -name 'core.pi.*' -o -name 'core.node.*' \) -mmin +360 -print -delete
     '';
   };
   systemd.timers.coredump-forget-node = {

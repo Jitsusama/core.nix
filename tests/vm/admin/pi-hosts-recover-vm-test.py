@@ -127,8 +127,8 @@ def host(booted: Host) -> Host:
 def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host) -> None:
     """A host that stays alive but stops pinging is killed by the watchdog and started again."""
     [first] = host.starts()
-    # The unit's limit, not the manager's default soft 0, which a process may raise: the hard
-    # limit is 0 as well, so nothing the host runs can turn cores back on.
+    # The unit's limit, and not only a soft 0, which a process may raise: the hard limit is 0
+    # as well, so nothing the host runs can turn cores back on.
     limits = host.run(f"cat /proc/{first}/limits")
     assert re.search(r"^Max core file size\s+0\s+0\s", limits, re.MULTILINE), limits
     host.run(f"touch {FOLDER}/hang")
@@ -146,7 +146,12 @@ def test_a_host_whose_loop_stops_pinging_is_killed_and_started_again(host: Host)
         timeout=COMING_BACK,
     )
     # And none is on disk: a kept core's name carries the process's pid between dots.
-    host.machine.succeed(f"! ls /var/lib/systemd/coredump | grep -qF '.{first}.'")
+    # The folder is there from boot (modules/coredump's tmpfiles line), so an empty listing
+    # says no core rather than no folder.
+    host.machine.succeed(
+        "test -d /var/lib/systemd/coredump"
+        f" && ! ls /var/lib/systemd/coredump | grep -qF '.{first}.'"
+    )
     assert host.starts()[0] == first
     assert first not in host.starts()[1:]
     # It came back by itself, so nobody is told it's down.
