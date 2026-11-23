@@ -4104,10 +4104,30 @@ impl Drop for Claim {
 pub const WHOLE: usize = 1000;
 
 impl Claim {
-    /// Makes this a claim of the builder whole, [`WHOLE`] places, once it
-    /// was admitted for the room the run read; whether it could be.
-    pub fn whole(&self) -> bool {
-        fs::write(&self.0, format!("{WHOLE}\n")).is_ok()
+    /// Makes this claim on `dir`'s builder one of it whole, [`WHOLE`]
+    /// places, once it was admitted for the room the run read: true when
+    /// it's the only claim there, false when another run's is there too,
+    /// as one made where the folder's lock couldn't be had is. It looks
+    /// and writes under that lock, which every run admitted takes, so none
+    /// reads this claim half-written, as `fs::write` empties it first, or
+    /// claims between the look and the write. Where the lock can't be had
+    /// no run admits under it either, so it looks and writes without.
+    pub fn whole(&self, dir: &Path) -> std::io::Result<bool> {
+        use std::os::fd::AsRawFd;
+        let lock = fs::File::create(dir.join("sending.lock")).ok();
+        // SAFETY: flock only locks the file it's given, open until dropped.
+        let _locked = lock
+            .as_ref()
+            .filter(|lock| unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX) } == 0);
+        let own = fs::read_to_string(&self.0)?
+            .trim()
+            .parse::<usize>()
+            .unwrap_or(0);
+        if claimed(dir) != own {
+            return Ok(false);
+        }
+        fs::write(&self.0, format!("{WHOLE}\n"))?;
+        Ok(true)
     }
 }
 
@@ -4288,21 +4308,36 @@ fn admitted_holding<'a>(
             return (other, Some(claimed), held);
         }
         if !said {
-            let queue = match before {
-                0 => String::new(),
-                1 => ", and a run waits ahead of this".to_owned(),
-                runs => format!(", and {runs} runs wait ahead of this"),
-            };
-            eprintln!(
-                "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
-                 {room}{queue}, so this waits for room"
-            );
-            if rank == Rank::Bulk {
-                eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
-            }
+            say_waiting_for_room(dir, busy, room, before, rank);
             said = true;
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
+/// Says why a run at `rank` waits for room in `dir`, which has `busy` VM
+/// tests of runs here and `room` for them, `before` runs ahead of it: an
+/// `--alone` run's claim of [`WHOLE`] is named as one, not as a count.
+fn say_waiting_for_room(dir: &Path, busy: usize, room: usize, before: usize, rank: Rank) {
+    let queue = match before {
+        0 => String::new(),
+        1 => ", and a run waits ahead of this".to_owned(),
+        runs => format!(", and {runs} runs wait ahead of this"),
+    };
+    if busy >= WHOLE {
+        eprintln!(
+            "nix-offload: an --alone run holds the VM builder in {} whole{queue}, so this \
+             waits for it to end",
+            dir.display()
+        );
+    } else {
+        eprintln!(
+            "nix-offload: the VM builder has {busy} VM tests of runs here and room for \
+             {room}{queue}, so this waits for room"
+        );
+    }
+    if rank == Rank::Bulk {
+        eprintln!("nix-offload: this run is bulk, so runs that aren't go first");
     }
 }
 

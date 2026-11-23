@@ -157,9 +157,10 @@ fn there() -> Help {
     .option(
         "--alone",
         "with --run, after it, waits for a VM builder with nothing sent to it, and for it \
-         to warm, and holds it alone, one --alone run at a time, running an hour at most \
-         in all; it runs nothing where it would share one, and with --never-ask waits for \
-         neither a warm nor another --alone run. VM tests from a fence don't see it",
+         to warm, and holds it alone, one --alone run at a time, waiting for as long as \
+         another holds one, and running an hour at most in all; it runs nothing where it \
+         would share one, and with --never-ask waits for neither a warm nor another \
+         --alone run. VM tests from a fence don't see it",
     )
     .option("--takes", "names a word each for what this there takes")
     .exit(Exit::Failed, "nix failed, as an evaluation does")

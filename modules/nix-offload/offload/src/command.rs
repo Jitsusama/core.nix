@@ -264,10 +264,22 @@ fn closure_of(nix: &str, paths: &[String]) -> Option<u64> {
         .sum()
 }
 
+/// Why a run sent to a builder gave no status there.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Unrun {
+    /// Nothing was started there: its store couldn't be read, its paths
+    /// couldn't go, or ssh never reached it, so sending it again shares
+    /// the builder with nothing of its own.
+    Unsent,
+    /// It started there and its link was lost, so it may still run there
+    /// in its own session.
+    Lost,
+}
+
 /// Runs `sending` for `asked` on the lent builder `store` names, as the run
-/// `run`, its paths sent first, and gives its status, or none when ssh
-/// couldn't reach it or its paths couldn't go. `[ssh, nix]` are the
-/// programs run, and `cuts` the run's copies up its keepalive cut.
+/// `run`, its paths sent first, and gives its status, or why it has none:
+/// whether it never started there or was lost once it had. `[ssh, nix]`
+/// are the programs run, and `cuts` the run's copies up its keepalive cut.
 pub fn on(
     store: &str,
     sending: &Sending,
@@ -276,8 +288,12 @@ pub fn on(
     scratch: &Path,
     [ssh, nix]: [&str; 2],
     cuts: &there::Cuts,
-) -> Option<i32> {
-    let lent = there::builder(store.lines().next()?.trim())?;
+) -> Result<i32, Unrun> {
+    let lent = store
+        .lines()
+        .next()
+        .and_then(|line| there::builder(line.trim()))
+        .ok_or(Unrun::Unsent)?;
     if !asked.copies.is_empty() {
         eprintln!(
             "nix-offload: sending {} to {}",
@@ -288,7 +304,7 @@ pub fn on(
         if let Err(why) = there::paths_up(&asked.copies, &lent, nix, there::send_within(size), cuts)
         {
             eprintln!("nix-offload: {why}");
-            return None;
+            return Err(Unrun::Unsent);
         }
     }
     eprintln!("nix-offload: building on the lent builder {}", lent.host);
@@ -299,15 +315,23 @@ pub fn on(
         pause: REATTACH_EVERY,
     };
     let out = || Box::new(std::io::stdout()) as Box<dyn Write + Send>;
-    match link.followed(sending, run, &out, &mut std::io::stderr()) {
-        Ok(status) if status != there::UNREACHED => Some(status),
+    let mut seen = Followed::default();
+    let unrun = |seen: &Followed| {
+        if seen.started {
+            Unrun::Lost
+        } else {
+            Unrun::Unsent
+        }
+    };
+    match link.followed(sending, run, &out, &mut std::io::stderr(), &mut seen) {
+        Ok(status) if status != there::UNREACHED => Ok(status),
         Ok(_) => {
             eprintln!("nix-offload: ssh couldn't reach {}", lent.host);
-            None
+            Err(unrun(&seen))
         }
         Err(why) => {
             eprintln!("nix-offload: {why}");
-            None
+            Err(unrun(&seen))
         }
     }
 }
@@ -336,21 +360,22 @@ impl Link<'_> {
     /// what `out` gives and its errors to `err`, giving its status. A link
     /// lost once it started is reached again every `pause` for
     /// `REATTACH_WITHIN`, and followed on from what had come back; ssh's
-    /// own 255 comes back once it can't be, or before the run started.
+    /// own 255 comes back once it can't be, or before the run started, as
+    /// `seen` says.
     fn followed(
         &self,
         sending: &Sending,
         run: &str,
         out: &dyn Fn() -> Box<dyn Write + Send>,
         err: &mut dyn Write,
+        seen: &mut Followed,
     ) -> Result<i32, String> {
-        let mut seen = Followed::default();
         let mut script = sending.command.clone();
         let mut bundle = sending.bundle.as_deref();
         let mut lost: Option<Instant> = None;
         loop {
             let began = Instant::now();
-            let status = self.attached(&script, bundle.take(), out(), err, &mut seen)?;
+            let status = self.attached(&script, bundle.take(), out(), err, seen)?;
             if status != there::UNREACHED || !seen.started || seen.gone {
                 return Ok(status);
             }
@@ -1291,7 +1316,13 @@ exit $?
                 bundle: None,
             };
             let to_out = move || Box::new(printed.clone()) as Box<dyn Write + Send>;
-            let _ = ended.send(link.followed(&sending, "relinked", &to_out, &mut erred));
+            let _ = ended.send(link.followed(
+                &sending,
+                "relinked",
+                &to_out,
+                &mut erred,
+                &mut Followed::default(),
+            ));
         });
         let status = status
             .recv_timeout(Duration::from_secs(60))

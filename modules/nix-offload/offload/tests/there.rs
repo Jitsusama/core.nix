@@ -6896,9 +6896,10 @@ fn a_run_alone_whose_builder_never_stands_runs_nothing() {
 }
 
 // Where its places can't be claimed, a run held whole runs nothing rather
-// than share the builder while saying it holds it; and from a fence,
+// than share the builder while saying it holds it, and says to try again,
+// since a folder it can write may take a claim later; but from a fence,
 // which lets the lender's folder be read alone, no run can ever hold one,
-// which it ends with an exit of its own rather than "try again".
+// which it ends with an exit of its own.
 #[test]
 fn a_run_alone_that_cant_hold_its_builder_runs_nothing() {
     use std::os::unix::fs::PermissionsExt as _;
@@ -6907,13 +6908,7 @@ fn a_run_alone_that_cant_hold_its_builder_runs_nothing() {
     let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
     fs::remove_dir(vm.join("sending")).unwrap();
     fs::write(vm.join("sending"), "not a folder").unwrap();
-    let ran = run.there(&never, &[]);
-    assert_eq!(ran.status.code(), Some(77), "{ran:?}");
-    assert!(
-        String::from_utf8_lossy(&ran.stderr).contains("couldn't be held")
-            && !run.bin.join("ssh-was-given").exists(),
-        "a run whose claim couldn't be made went, or didn't say why: {ran:?}"
-    );
+    run.refused(&run.there(&never, &[]), "couldn't be claimed");
     // The first run made the lock, which a fence's folder would lack.
     fs::remove_file(vm.join("sending")).unwrap();
     fs::remove_file(vm.join("alone.lock")).unwrap();
@@ -6928,9 +6923,108 @@ fn a_run_alone_that_cant_hold_its_builder_runs_nothing() {
     );
 }
 
+// A claim made where the folder's lock couldn't be had is taken without
+// room, so one found beside it once it's made whole runs nothing.
+#[test]
+fn a_run_alone_beside_another_runs_claim_runs_nothing() {
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    fs::create_dir(vm.join("sending.lock")).unwrap();
+    fs::write(
+        vm.join("sending").join(format!("{}.0", std::process::id())),
+        "1\n",
+    )
+    .unwrap();
+    let ran = run.there(
+        &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
+        &[],
+    );
+    run.refused(&ran, "another run's VM tests went to the VM builder");
+}
+
+/// How many times `host` was given an ssh run, as the stand-in kept them.
+fn reached(run: &RunTree, host: &str) -> usize {
+    fs::read_to_string(run.bin.join("ssh-hosts"))
+        .unwrap_or_default()
+        .lines()
+        .filter(|line| *line == host)
+        .count()
+}
+
+// A run held whole that never started on its builder, as when ssh doesn't
+// reach it, is sent again, a few times at most, on what's left of its
+// --longest, and to the builder its lender stands by then.
+#[test]
+fn a_run_alone_never_started_is_sent_again_on_what_is_left() {
+    let run = RunTree::new();
+    let vm = run.vm_lane("offload-vm", "nix-offload-vm");
+    let unreached = run.bin.join("unreached-nix-offload-vm");
+    fs::write(&unreached, "").unwrap();
+    let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
+    let ran = run.there(&never, &[]);
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("took none of 3 sends of the run")
+            && reached(&run, "nix-offload-vm") == 3,
+        "a run never started wasn't sent 3 times: {ran:?}"
+    );
+    assert!(
+        !String::from_utf8_lossy(&ran.stderr).contains("may still go on there"),
+        "a run never started was said to go on: {ran:?}"
+    );
+
+    // Its lender stands another builder once the first send fails.
+    let said = run.folder.path().join("said");
+    let going = run.starting(&never, &[], &said);
+    assert!(
+        within(AT_MOST, || reached(&run, "nix-offload-vm") >= 4),
+        "it was never sent: {}",
+        fs::read_to_string(&said).unwrap_or_default()
+    );
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm-b"),
+    )
+    .unwrap();
+    let ran = going.wait_with_output().unwrap();
+    let said = fs::read_to_string(&said).unwrap();
+    assert_eq!(ran.status.code(), Some(0), "{said}");
+    let given = fs::read_to_string(run.bin.join("ssh-was-given")).unwrap();
+    assert!(
+        given.starts_with("nix-offload-vm-b") && given.contains("sleep 359"),
+        "it wasn't sent again to the builder standing on what was left: {given}"
+    );
+
+    // With too little of its --longest left to show anything, it isn't.
+    fs::write(
+        vm.join("store"),
+        STORE.replace("nix-offload", "nix-offload-vm"),
+    )
+    .unwrap();
+    let ran = run.there(
+        &[
+            "--never-ask",
+            "--run",
+            "--alone",
+            "--longest",
+            "61",
+            "--",
+            "pnpm",
+            "test",
+        ],
+        &[],
+    );
+    assert_eq!(ran.status.code(), Some(75), "{ran:?}");
+    assert!(
+        String::from_utf8_lossy(&ran.stderr).contains("seconds left, too few to show anything"),
+        "a run with too little time left was sent again: {ran:?}"
+    );
+}
+
 // One --alone run holds a VM builder at once, leaving the rest to VM
 // tests: a second waits for the first to end, naming it, and goes once it
-// has; given --never-ask, it waits for nothing and ends at once.
+// has; given --never-ask, it waits for nothing and ends at once. It looks
+// before it packs anything, so one that would wait packs nothing yet.
 #[test]
 fn a_second_run_alone_waits_for_the_first_to_end() {
     let run = RunTree::new();
@@ -6938,13 +7032,16 @@ fn a_second_run_alone_waits_for_the_first_to_end() {
     let first = fs::File::create(vm.join("alone.lock")).unwrap();
     first.lock().unwrap();
     fs::write(vm.join("alone.lock"), "4242\n").unwrap();
+    // A tree packing refuses, which a run that packed first says.
+    let file = run.tree.join("package.json");
+    let text = fs::read_to_string(&file).unwrap();
+    fs::write(&file, "{ \"name\": \"changed\" }").unwrap();
+    let never = ["--never-ask", "--run", "--alone", "--", "pnpm", "test"];
     run.refused(
-        &run.there(
-            &["--never-ask", "--run", "--alone", "--", "pnpm", "test"],
-            &[],
-        ),
+        &run.there(&never, &[]),
         "another --alone run (pid 4242) holds a VM builder whole, and --never-ask waits",
     );
+    fs::write(&file, text).unwrap();
     let said = run.folder.path().join("said");
     let going = run.starting(&["--run", "--alone", "--", "pnpm", "test"], &[], &said);
     assert!(
