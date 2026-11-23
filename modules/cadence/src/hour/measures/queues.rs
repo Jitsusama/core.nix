@@ -20,9 +20,11 @@
 //! ask: a turn or a send is written only once it ends, so a queue wedged
 //! all day reads as one that held no work. One that let work through
 //! without saying how long it waited is unjudged and keeps its ask too.
-//! Each is judged by its p90 however few its waits: with fewer than ten
-//! that is the worst or the second worst, so the card says they were few,
-//! but a stuck wait on a quiet day was still waited.
+//! The train is the one exception: its riders aboard count as they wait,
+//! so a day with none through or aboard is truly idle, and closes it.
+//! Each is judged by its p90 however few its waits: with fewer than
+//! seventeen that is the worst or the second worst, so the card says they
+//! were few, but a stuck wait on a quiet day was still waited.
 
 use super::{Class, Measure, count, lines, seconds};
 use crate::stats::spread;
@@ -33,6 +35,7 @@ pub const QUEUE: &str = "queue:";
 /// Said after a queue that let nothing through in the day: it says
 /// nothing of its wait, and its ask stays open, since a record written as
 /// each wait ends can't tell a queue that held no work from a wedged one.
+/// The train's closes, since its riders aboard count as they wait.
 pub const QUIET: &str = ": none through in a day";
 
 /// Said after a queue whose record couldn't be read: it says nothing, and
@@ -45,9 +48,10 @@ const DAY: i64 = 86_400;
 /// workflow, nix-offload and merge-net's train.
 const KEEPER: &str = crate::hour::NET_RULES;
 
-/// The fewest waits whose p90 stands apart from their worst two; below
-/// it, the card says the waits were few.
-const P90_FROM: usize = 10;
+/// The fewest waits whose p90 stands apart from their worst two, by
+/// `stats::quantile`'s rank, round(0.9 * (n - 1)): from 7 to 16 it is the
+/// second worst. Below it, the card says the waits were few.
+const P90_FROM: usize = 17;
 
 /// A queue the card reads: its key after [`QUEUE`], what waits in it as
 /// the card says it, and the most its p90 wait may be, in seconds.
@@ -286,14 +290,16 @@ pub fn worst(measures: &[Measure]) -> Option<&Measure> {
 }
 
 /// Whether the ask filed for the queue keyed `key` is answered: its p90
-/// back in, or the queue gone from the hour, as its ask invites. One quiet,
-/// unread or unjudged keeps it open, since none says the wait came back.
+/// back in, the queue gone from the hour, as its ask invites, or the
+/// train quiet, since its record counts riders aboard as they wait. Any
+/// other quiet, unread or unjudged keeps it open, since none says the wait
+/// came back.
 #[must_use]
 pub fn answered(key: &str, measures: &[Measure]) -> bool {
-    measures
-        .iter()
-        .find(|m| m.key == key)
-        .is_none_or(|m| m.target.is_some() && m.past().is_none())
+    let train = key == format!("{QUEUE}{}", TRAINS.key);
+    measures.iter().find(|m| m.key == key).is_none_or(|m| {
+        (m.target.is_some() && m.past().is_none()) || (train && m.says.ends_with(QUIET))
+    })
 }
 
 #[cfg(test)]

@@ -229,8 +229,8 @@ fn queue_asked(m: &Measure, says: String) -> Filed {
              with what it protects, whether the work could go without it, and the change that \
              keeps the protection without the wait, weighed against at least two designs \
              beside the obvious one, with its date. It closes by itself once its p90 is back \
-             in, or nothing passes through it for a day, and goes late to the orchestrator \
-             only after a week, as its change takes its time."
+             in, or for the merge train a day with no rider, and goes late to the \
+             orchestrator only after a week, as its change takes its time."
         ),
         says,
     }
@@ -510,7 +510,7 @@ mod tests {
     }
 
     #[test]
-    fn a_queue_never_leads_the_drag_and_one_quiet_or_gone_closes_its_ask() {
+    fn a_queue_never_leads_the_drag_and_keeps_its_ask_while_quiet_or_unread() {
         let queue = measure(
             &format!("{QUEUE}world-walks"),
             Class::Queues,

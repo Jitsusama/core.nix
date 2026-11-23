@@ -47,7 +47,11 @@ pub fn tail(path: &Path, bytes: u64) -> Option<String> {
         if from == 0 {
             return Ok(Some(text.into_owned()));
         }
-        Ok(text.split_once('\n').map(|(_, rest)| rest.to_owned()))
+        // One whose only break ends it held a cut line alone.
+        Ok(text
+            .split_once('\n')
+            .map(|(_, rest)| rest.to_owned())
+            .filter(|rest| !rest.is_empty()))
     };
     read().ok().flatten()
 }
@@ -115,6 +119,12 @@ mod tests {
             tail(&unbroken, 12),
             None,
             "an end holding no whole line read as an empty record"
+        );
+        fs::write(&unbroken, format!("{}\n", "x".repeat(40))).expect("written");
+        assert_eq!(
+            tail(&unbroken, 12),
+            None,
+            "an end whose only break closes a cut line read as an empty record"
         );
         // A pipe at a record's path: opened, it would wait for a writer.
         let pipe = root.path().join("pipe.jsonl");

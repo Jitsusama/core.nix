@@ -293,7 +293,13 @@ pub fn offer(head: &str, branch: &str) -> Option<String> {
         }
     }
     if !goes_or_starts(&root) {
-        leave(&root, head, Left::Off);
+        // One that boarded only now waited on no train, so only a rider
+        // already aboard keeps its wait.
+        if boarded {
+            leave(&root, head, Left::Off);
+        } else {
+            alight(&root, head);
+        }
         return None;
     }
     let others = riders(&root).len().saturating_sub(1);

@@ -625,9 +625,10 @@ fn measure(key: &str, class: Class, now: f64, target: Option<f64>) -> Measure {
 /// Whether the session `presence` describes can still be told of a merge's
 /// rounds: running in this `boot` and held by its host, as `running` says,
 /// since a pid from another boot may name some other process now; or
-/// parked where it will start again: on its host's roster, which the host
-/// resumes, or, held by no host, parked in this boot, since its holder
-/// from an earlier one is gone.
+/// parked where it will start again: on its host's roster, read, which the
+/// host resumes, or, held by no host, parked in this boot, since its
+/// holder from an earlier one is gone. A host with no roster to read can't
+/// say it holds one parked, so its rounds go to its quest instead.
 fn reachable(
     presence: &Presence,
     boot: &str,
@@ -635,7 +636,9 @@ fn reachable(
     process_exists: impl Fn(u32) -> bool,
 ) -> bool {
     let resumes = match &presence.hosted {
-        Some(hosted) => rosters.holds(&hosted.host, &presence.session),
+        Some(hosted) => rosters
+            .holders(&presence.session)
+            .contains(&hosted.host.as_str()),
         None => presence.owner.as_ref().and_then(|o| o.boot_id.as_deref()) == Some(boot),
     };
     (presence.state == "parked" && resumes) || running(presence, boot, rosters, process_exists)
@@ -675,12 +678,12 @@ mod tests {
             }
         };
         assert_eq!(
-            landed_by_session([("6EAC3DA6", note)], |_| true, quest_of),
+            landed_by_session([("6EAC3DA6", note)], |a| a == "6EAC3DA6", quest_of),
             BTreeMap::from([("core.nix#6020".to_owned(), "6EAC3DA6".to_owned())]),
             "a merge's rounds went to someone other than the session that merged it"
         );
         assert_eq!(
-            landed_by_session([("6EAC3DA6", note)], |_| false, quest_of),
+            landed_by_session([("6EAC3DA6", note)], |a| a != "6EAC3DA6", quest_of),
             BTreeMap::from([("core.nix#6020".to_owned(), "ZINAWZ".to_owned())]),
             "a merge's rounds went to a session that has ended rather than its quest"
         );
@@ -699,12 +702,14 @@ mod tests {
 
     #[test]
     fn a_merging_session_is_there_only_where_it_can_take_a_turn() {
+        // A parked session's pi has exited, so only a busy one's runs.
         let presence = |state: &str, boot: &str, hosted: bool| -> Presence {
+            let pid = if state == "parked" { 8 } else { 7 };
             let mut said = serde_json::json!({
                 "session": "s1",
                 "addresses": ["AB12"],
                 "state": state,
-                "owner": {"pid": 7, "bootId": boot},
+                "owner": {"pid": pid, "bootId": boot},
             });
             if hosted {
                 said["hosted"] = serde_json::json!({"host": "h", "conversation": "c"});
@@ -718,6 +723,7 @@ mod tests {
             )]))
         };
         let (held, dropped) = (holding(&["s1"]), holding(&[]));
+        let torn = Rosters(BTreeMap::from([("h".to_owned(), None)]));
         let up = |pid: u32| pid == 7;
         let cases = [
             ("busy", "now", false, &held, true, "running here"),
@@ -727,6 +733,7 @@ mod tests {
             ("parked", "then", false, &held, false, "before a reboot"),
             ("parked", "then", true, &held, true, "on its host's roster"),
             ("parked", "now", true, &dropped, false, "off its roster"),
+            ("parked", "then", true, &torn, false, "its roster unread"),
         ];
         for (state, boot, hosted, rosters, there, why) in cases {
             let presence = presence(state, boot, hosted);
