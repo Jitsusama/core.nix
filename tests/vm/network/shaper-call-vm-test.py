@@ -635,8 +635,8 @@ def test_a_call_to_443_goes_as_video_while_one_is_on(rig: Rig) -> None:
 def test_a_call_loses_little(rig: Rig) -> None:
     """Under a full connection both ways, each call loses a hundredth at most coming down.
 
-    The bar counts what was lost before the client's socket; what overflows the socket is the
-    builder's, and only printed.
+    The bar counts what was lost from the server to the client's input hook; what overflows
+    the client's socket, which a starved builder causes, is only printed.
 
     While the controller sets no download limit, downloads go straight in, past the IFB's
     CAKE: at the link's ceiling it dropped four in five of the best-effort call's datagrams.
