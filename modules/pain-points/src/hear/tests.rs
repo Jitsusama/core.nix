@@ -755,6 +755,14 @@ fn a_pain_its_session_answered_him_on_is_taken_by_that_cell() {
     live.extend(tool("edit"));
     live.push(ended("2026-11-16T19:50:00.000Z", "error"));
     place.log("src", "s-live", Path::new("/home/j/src"), &live);
+    // A run whose node names no cell for the session keeps the answer for
+    // the run that does.
+    let unnamed = r#"{"Ok":{"Sessions":[{"id":"s-void","address":"VOID01","state":"idle"}]}}"#;
+    hear(&place.ears(), unnamed, &mut |_, _| true).expect("a run with no cell for the session");
+    assert!(
+        place.heard().iter().all(|h| h.taken_by.is_none()),
+        "a pain was taken with no cell for its session"
+    );
     let hour = hear(&place.ears(), CELLS, &mut |_, _| true).expect("a run");
     let heard = place.heard();
     let taken: Vec<(&str, Option<&str>)> = heard

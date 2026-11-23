@@ -412,7 +412,7 @@ fn hear_logs(
     for (name, path) in logs(&ears.sessions, since) {
         present.push(name.clone());
         let log = following.entry(name).or_default();
-        let (said, answers) = follow(&path, &ears.void, log);
+        let said = follow(&path, &ears.void, log);
         for said in said {
             let key = format!("{}/{}", log.session, said.entry);
             let kinds = sore::kinds(&said.words, said.at, &said.before);
@@ -450,8 +450,12 @@ fn hear_logs(
                 closed_by: None,
             });
         }
-        if let (Some(&last), Some(cell)) = (answers.last(), cells.get(&log.session)) {
-            answered(kept, &log.session, last, &cell.address);
+        // An answer read while the node names no cell for the session
+        // waits in its reading for a run that does.
+        if let Some(cell) = cells.get(&log.session)
+            && let Some(at) = log.carried.answered.take()
+        {
+            answered(kept, &log.session, at, &cell.address);
         }
     }
     following.retain(|name, _| present.contains(name));
@@ -702,12 +706,11 @@ fn logs(sessions: &Path, since: i64) -> Vec<(String, PathBuf)> {
 }
 
 /// Reads a log on from where it was left, whole lines alone, giving what
-/// he said in it and when the agent answered him. A log shorter than where
-/// it was left is read anew.
-fn follow(path: &Path, void: &Path, log: &mut Following) -> (Vec<said::Said>, Vec<i64>) {
-    let mut answers = Vec::new();
+/// he said in it; when the agent last answered him is kept in its
+/// reading. A log shorter than where it was left is read anew.
+fn follow(path: &Path, void: &Path, log: &mut Following) -> Vec<said::Said> {
     let Ok(file) = fs::File::open(path) else {
-        return (Vec::new(), answers);
+        return Vec::new();
     };
     let length = file.metadata().map_or(0, |m| m.len());
     if length < log.offset {
@@ -715,7 +718,7 @@ fn follow(path: &Path, void: &Path, log: &mut Following) -> (Vec<said::Said>, Ve
     }
     let mut reader = BufReader::new(file);
     if reader.seek(SeekFrom::Start(log.offset)).is_err() {
-        return (Vec::new(), answers);
+        return Vec::new();
     }
     let mut found = Vec::new();
     let mut line = Vec::new();
@@ -746,9 +749,8 @@ fn follow(path: &Path, void: &Path, log: &mut Following) -> (Vec<said::Said>, Ve
         if let Some(said) = said::line(text, &mut log.carried) {
             found.push(said);
         }
-        answers.extend(log.carried.answered.take());
     }
-    (found, answers)
+    found
 }
 
 /// A session log's first line.
