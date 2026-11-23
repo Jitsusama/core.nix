@@ -390,3 +390,30 @@ fn a_far_line_clears_what_earlier_runs_left_spent_or_a_day_untouched() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+fn a_far_line_whose_copies_lie_through_a_link_clears_nothing_it_leads_to() {
+    let root = scratch("far-swept-link");
+    let spent = root.join(format!("real/{SPENT}7"));
+    std::fs::create_dir_all(&spent).unwrap();
+    std::fs::write(spent.join("f"), "f").unwrap();
+    std::os::unix::fs::symlink(root.join("real"), root.join("s")).unwrap();
+    let sh = std::env::var("ELSEWHERE_FAR_SH").unwrap_or_else(|_| "sh".to_owned());
+    let swept = std::process::Command::new(sh)
+        .args([
+            "-c",
+            &format!("work={}/s/9\n{}", root.display(), sweeping()),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        swept.status.success(),
+        "the sweep failed: {}",
+        String::from_utf8_lossy(&swept.stderr)
+    );
+    assert!(
+        spent.join("f").exists(),
+        "the sweep cleared what the copies' folder, a link, leads to"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

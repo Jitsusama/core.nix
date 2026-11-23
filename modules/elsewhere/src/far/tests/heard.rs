@@ -78,8 +78,9 @@ fn the_far_line_waits_while_a_file_is_short_of_its_listed_size() {
 #[test]
 fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
     // A wc that takes a second, as a pass over a large tree takes long,
-    // so a pass takes three and a wait that counted its passes would last
-    // three times as long as its limit says.
+    // so a pass takes three and a wait that counted its passes would make
+    // as many as its limit has seconds. Each call is noted, so the passes
+    // are counted rather than timed, which a busy machine only lengthens.
     let started = std::time::Instant::now();
     let (code, err, home) = far_line(
         NEVER_CROSSING,
@@ -87,21 +88,34 @@ fn the_far_wait_is_measured_by_the_clock_not_by_its_passes() {
         "touch ../ran",
         &kind(""),
         None,
-        &[("wc", "PATH=${PATH#*:}\nsleep 1\nexec wc \"$@\"")],
+        &[(
+            "wc",
+            "PATH=${PATH#*:}\necho >> \"$HOME/wc\"\nsleep 1\nexec wc \"$@\"",
+        )],
     );
     let took = started.elapsed();
     assert!(
         code == Some(75) && err.contains(NONE_CROSSING),
         "a file that never crossed wasn't waited out ({code:?}): {err}"
     );
-    // Its limit, a last pass begun just inside it of two wc calls, one
-    // for the file and one for what has grown, and the second slept after
-    // them, and two for a busy machine. Counted passes, three seconds
-    // each, would take fifteen.
-    let most = std::time::Duration::from_secs(super::WAITS + 1 + 1 + 1 + 2);
     assert!(
-        took >= std::time::Duration::from_secs(super::WAITS) && took < most,
-        "a {}s wait lasted {took:?}, so it gave up early or counts passes",
+        took >= std::time::Duration::from_secs(super::WAITS),
+        "a {}s wait lasted {took:?}, so it gave up early",
+        super::WAITS
+    );
+    // One call for what has grown before the passes, then each pass looks
+    // at the file and at what has grown, and the last ends once it has
+    // seen what has grown. A wait by the clock ends in two passes of
+    // three seconds, or fewer as the machine slows; one counting its
+    // passes makes five.
+    let calls = std::fs::read_to_string(home.join("wc"))
+        .unwrap()
+        .lines()
+        .count();
+    let passes = calls / 2;
+    assert!(
+        passes < usize::try_from(super::WAITS).unwrap(),
+        "a {}s wait made {passes} passes of three seconds ({calls} calls), so it counts passes",
         super::WAITS
     );
     let _ = std::fs::remove_dir_all(&home);

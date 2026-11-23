@@ -301,7 +301,12 @@ mod tests {
     fn a_folder_whose_clearing_was_cut_short_goes_next_time() {
         let handover = Handover::new("cut");
         let cut = handover.unowned(&format!("{SPENT}6-6"));
-        assert_eq!(handover.clear(SystemTime::now()).gone, 1, "it was spent");
+        let cleared = handover.clear(SystemTime::now());
+        assert_eq!(
+            (cleared.gone, cleared.kept.len()),
+            (1, 0),
+            "it was spent, and goes in one pass"
+        );
         assert!(!cut.exists(), "what was left of it is gone");
     }
 
