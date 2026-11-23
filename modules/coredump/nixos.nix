@@ -13,8 +13,9 @@
   # account read it, and it holds whatever that process held: a plain pi's
   # keys and tokens, a password manager's vault. (A pi host started under
   # its unit's core limit of 0 keeps none; one started before a switch
-  # keeps its old limit until its next start, and the six-hour removal
-  # below takes the host's own core, though not its commands'.) Any
+  # keeps its old limit until its next start, as a conversation running
+  # then keeps its own until it ends, and the six-hour removal below
+  # takes either's own core, though not its commands'.) Any
   # program running as the same account can abort another and read its
   # core seconds later, so the folder is root's alone and the access lists
   # lead nowhere. coredumpctl's list and each crash's stack trace come from
