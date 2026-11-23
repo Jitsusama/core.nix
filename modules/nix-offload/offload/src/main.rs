@@ -733,10 +733,16 @@ fn built_nearby(
     let mut status = 0;
     for (machine, part) in near {
         let began = now();
-        let ran = (!held_nearby(machine, scratch) && there::fetches(machine, part, scratch, "ssh"))
+        let held = held_nearby(machine, scratch);
+        let ran = (!held && there::fetches(machine, part, scratch, "ssh"))
             .then(|| there::nearby_run(machine, part, scratch, ["ssh", "tar", "nix"]))
             .flatten();
         let Some(ran) = ran else {
+            // ssh failing there may be the machine going, which what it
+            // said within the last minute can't know, so it's asked afresh.
+            if !held {
+                machines::forget_reached(&machine.host);
+            }
             let (goes, stays) = there::lent_builds(part, dir);
             if !stays.is_empty() {
                 eprintln!(
@@ -898,7 +904,9 @@ fn there(arguments: &[String]) -> Result<(), Failure> {
     let vm_dir =
         env::var_os("NIX_OFFLOAD_VM_DIR").map_or_else(|| PathBuf::from(VM_DIR), PathBuf::from);
     let nearby = nearby();
-    let (near, left) = there::shared(&asked, &nearby, machines::answers);
+    let (near, left) = there::shared(&asked, &nearby, |machine| {
+        machines::nearby_answers(&machine.address, &machine.host)
+    });
     let (left, owed) = there::owed(left, &nearby, &this_system());
     if !owed.is_empty() {
         eprintln!(
@@ -1888,7 +1896,7 @@ fn held_for_a_mac(arguments: &[String]) -> Option<Failure> {
     let mac = nearby_listed()
         .into_iter()
         .filter(|machine| machine.systems.iter().any(|system| system == mac::SYSTEM))
-        .find(|machine| machines::answers(&machine.address))?;
+        .find(|machine| machines::nearby_answers(&machine.address, &machine.host))?;
     // A run that goes says the load it went at, so a busy Mac that was
     // sent one can be told from the gate that let it through.
     match mac::room_alone(&mac.host, there::load_of(&mac, &scratch(), "ssh")) {
@@ -2005,7 +2013,8 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
     if there::lent_only() {
         return skipped("--lent-only keeps the change off a Mac nearby".to_owned());
     }
-    let answering = |machine: &&there::Nearby| machines::answers(&machine.address);
+    let answering =
+        |machine: &&there::Nearby| machines::nearby_answers(&machine.address, &machine.host);
     let Some(mac) = macs.iter().find(answering) else {
         let names: Vec<&str> = macs.iter().map(|machine| machine.host.as_str()).collect();
         return skipped(format!("{} nearby doesn't answer", names.join(", ")));
@@ -2023,7 +2032,14 @@ fn on_a_mac(arguments: &[String], folder: &Path, waiting: there::Waiting) -> OnA
         "nix-offload: {read} is read by a Mac's checks, so they're compared there too: {room}"
     );
     let longest = mac::longest();
-    match compared_within(&mac::for_a_mac(arguments), waiting, longest) {
+    let compared = compared_within(&mac::for_a_mac(arguments), waiting, longest);
+    // A comparison that didn't pass, or never ended, may be the Mac going,
+    // which what ssh said of it within the last minute can't know, so it's
+    // asked afresh.
+    if compared != Some(0) {
+        machines::forget_reached(&mac.host);
+    }
+    match compared {
         Some(0) => OnAMac::Passed,
         None => skipped(format!(
             "{}'s comparison ran past {}",
@@ -2602,10 +2618,9 @@ impl Sent<'_> {
         let github = match source {
             there::Source::Pushed { github, .. } | there::Source::Bundled { github, .. } => github,
         };
-        for evaluator in evaluators
-            .iter()
-            .filter(|evaluator| evaluator.takes(github) && machines::answers(&evaluator.address))
-        {
+        for evaluator in evaluators.iter().filter(|evaluator| {
+            evaluator.takes(github) && machines::nearby_answers(&evaluator.address, &evaluator.host)
+        }) {
             eprintln!("nix-offload: evaluating on {}", evaluator.host);
             let ask = |words: &[String]| {
                 changed::evaluated(

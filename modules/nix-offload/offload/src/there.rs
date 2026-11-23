@@ -4501,7 +4501,7 @@ fn system_of(attribute: &str) -> Option<&str> {
 pub fn shared<'a>(
     asked: &Asked,
     nearby: &'a [Nearby],
-    answers: impl Fn(&str) -> bool,
+    answers: impl Fn(&Nearby) -> bool,
 ) -> (Vec<(&'a Nearby, Asked)>, Option<Asked>) {
     // An applied function or an output copied back goes the lent way,
     // which knows them, and derivations too: they may hold what only the
@@ -4523,7 +4523,7 @@ pub fn shared<'a>(
                 .any(|attribute| machine.takes(attribute))
         })
         .filter(|machine| {
-            let answering = answers(&machine.address);
+            let answering = answers(machine);
             // Said, so a machine nearby that builds nothing for a while
             // is seen to be away rather than thought idle.
             if !answering {
@@ -9293,7 +9293,7 @@ mod tests {
         // every build it would never take shouldn't wait out.
         let machines = [mac()];
         let probed = std::cell::Cell::new(0);
-        let answers = |_: &str| {
+        let answers = |_: &crate::there::Nearby| {
             probed.set(probed.get() + 1);
             true
         };
