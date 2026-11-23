@@ -3166,8 +3166,8 @@
     place of Chromium where the machine names one, but a plain pi's pools, its realm's
     conversation heap, its inspector shut and the variables that load code cleared, glibc's
     trim threshold fixed at 128 KiB beside its realm's own allocator tuning, unless the realm
-    names its own threshold there or in glibc's older variable, neither read from the login
-    where neither the realm nor the unit sets it, the realm's tuning kept for its hosts too, in
+    names its own threshold there or in glibc's older variable, neither of the two ever read
+    from the login, the realm's tuning kept for its hosts too, in
     agents.slice slowed past 12 GB, no core kept, failing rather than skipped when the
     program is missing, never restarted or watched by systemd, forgotten once ended, given 60 s to park
     and told so, left running through a switch, its host's restart and the kernel killing one
