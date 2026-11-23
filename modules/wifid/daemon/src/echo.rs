@@ -25,6 +25,7 @@
 
 use std::collections::VecDeque;
 use std::ffi::CString;
+use std::hash::{BuildHasher, RandomState};
 use std::io;
 use std::mem;
 use std::net::Ipv4Addr;
@@ -83,17 +84,19 @@ pub struct Late {
     pub took: Duration,
 }
 
-/// Echoes not answered within [`LOST`] over the span, by sequence, and
-/// when each was sent, so an answer to one that comes later is late. One
-/// sent a span ago is let go: its echo has left what's measured, and a
-/// second echo can't have its sequence until the sequence comes round,
-/// some 18 hours on.
+/// What a card's echoes still wait on, and the late answers heard since
+/// they were last taken. An echo not answered within [`LOST`] is kept by
+/// its sequence and when it was sent, so an answer to it that comes later
+/// is late. One sent a span ago is let go: its echo has left what's
+/// measured, and a second echo can't have its sequence until the sequence
+/// comes round, some 18 hours on.
 #[derive(Default)]
-struct Unanswered {
+struct Ledger {
     waiting: VecDeque<(u16, Instant)>,
+    late: Vec<Late>,
 }
 
-impl Unanswered {
+impl Ledger {
     /// Keeps the echo sent at `sent` with this sequence as unanswered, and
     /// lets go of any sent more than a span before it.
     fn wait(&mut self, sequence: u16, sent: Instant) {
@@ -106,18 +109,29 @@ impl Unanswered {
         self.waiting.push_back((sequence, sent));
     }
 
-    /// The late answer an answer with this sequence, read at `read`, is,
-    /// if it answers an echo still waited on. Each is answered once.
-    fn answered(&mut self, sequence: u16, read: Instant) -> Option<Late> {
+    /// Takes in an answer with this sequence, read at `read` while the echo
+    /// with `awaited`'s is waited on, saying whether it's that one's. One
+    /// to an echo still waited on is kept as late; each is late once.
+    fn heard(&mut self, sequence: u16, awaited: u16, read: Instant) -> bool {
+        if sequence == awaited {
+            return true;
+        }
         let held = self
             .waiting
             .iter()
-            .position(|&(asked, sent)| asked == sequence && read.duration_since(sent) <= SPAN)?;
-        let (_, sent) = self.waiting.remove(held)?;
-        Some(Late {
-            sent,
-            took: read.duration_since(sent),
-        })
+            .position(|&(asked, sent)| asked == sequence && read.duration_since(sent) <= SPAN);
+        if let Some((_, sent)) = held.and_then(|held| self.waiting.remove(held)) {
+            self.late.push(Late {
+                sent,
+                took: read.duration_since(sent),
+            });
+        }
+        false
+    }
+
+    /// The late answers heard since this was last asked.
+    fn late(&mut self) -> Vec<Late> {
+        mem::take(&mut self.late)
     }
 }
 
@@ -125,9 +139,7 @@ impl Unanswered {
 pub struct Echoer {
     socket: AsyncFd<OwnedFd>,
     sequence: u16,
-    unanswered: Unanswered,
-    /// Late answers read since they were last taken.
-    late: Vec<Late>,
+    ledger: Ledger,
 }
 
 impl Echoer {
@@ -164,29 +176,14 @@ impl Echoer {
         if bound < 0 {
             return Err(io::Error::last_os_error());
         }
-        let tos = class.tos();
-        if tos != 0 {
-            let length =
-                libc::socklen_t::try_from(mem::size_of_val(&tos)).map_err(io::Error::other)?;
-            // SAFETY: the value outlives the call, and the length is its own.
-            let marked = unsafe {
-                libc::setsockopt(
-                    owned.as_raw_fd(),
-                    libc::IPPROTO_IP,
-                    libc::IP_TOS,
-                    (&raw const tos).cast(),
-                    length,
-                )
-            };
-            if marked < 0 {
-                return Err(io::Error::last_os_error());
-            }
-        }
+        mark(&owned, class)?;
+        // A first sequence nobody off the card's link can guess, so nobody
+        // can answer an echo in the gateway's place unseen.
+        let [low, high, ..] = RandomState::new().hash_one(card).to_le_bytes();
         Ok(Echoer {
             socket: AsyncFd::with_interest(owned, Interest::READABLE)?,
-            sequence: 0,
-            unanswered: Unanswered::default(),
-            late: Vec::new(),
+            sequence: u16::from_le_bytes([low, high]),
+            ledger: Ledger::default(),
         })
     }
 
@@ -222,58 +219,87 @@ impl Echoer {
         if sent < 0 {
             return Err(io::Error::last_os_error());
         }
-        if let Ok(answered) = timeout(LOST, self.answer(sequence)).await {
+        if let Ok(answered) = timeout(LOST, self.answer(sequence, gateway)).await {
             return answered.map(|()| (sent_at, Echo::Answered(sent_at.elapsed())));
         }
-        self.unanswered.wait(sequence, sent_at);
+        self.ledger.wait(sequence, sent_at);
         Ok((sent_at, Echo::Lost))
     }
 
     /// The late answers read since this was last asked.
     pub fn late(&mut self) -> Vec<Late> {
-        mem::take(&mut self.late)
+        self.ledger.late()
     }
 
     /// Waits for the answer to the echo sent with this sequence, keeping
     /// any answer to an earlier one counted lost as late. A late answer is
     /// timed as it's read, which is as it comes while a later echo is
     /// waited on: one coming between echoes is timed at most a second
-    /// slower than it was, which leaves it late all the same.
-    async fn answer(&mut self, sequence: u16) -> io::Result<()> {
-        let Echoer {
-            socket,
-            unanswered,
-            late,
-            ..
-        } = self;
+    /// slower than it was, which leaves it late all the same. Only the
+    /// gateway's answers are heard.
+    async fn answer(&mut self, sequence: u16, gateway: Ipv4Addr) -> io::Result<()> {
+        let Echoer { socket, ledger, .. } = self;
         let mut datagram = [0u8; 64 + CARRIED];
         loop {
             let mut ready = socket.readable().await?;
             let read = ready.try_io(|socket| {
-                // SAFETY: the buffer outlives the call, and the length is
-                // its own.
+                // SAFETY: all zeros is an address, which the kernel fills.
+                let mut from: libc::sockaddr_in = unsafe { mem::zeroed() };
+                let mut length =
+                    libc::socklen_t::try_from(mem::size_of_val(&from)).map_err(io::Error::other)?;
+                // SAFETY: the buffer and the address outlive the call, and
+                // each length is its own.
                 let read = unsafe {
-                    libc::recv(
+                    libc::recvfrom(
                         socket.as_raw_fd(),
                         datagram.as_mut_ptr().cast(),
                         datagram.len(),
                         0,
+                        (&raw mut from).cast(),
+                        &raw mut length,
                     )
                 };
-                usize::try_from(read).map_err(|_| io::Error::last_os_error())
+                let read = usize::try_from(read).map_err(|_| io::Error::last_os_error())?;
+                Ok((read, Ipv4Addr::from(u32::from_be(from.sin_addr.s_addr))))
             });
             let Ok(read) = read else {
                 continue;
             };
-            match answered(&datagram[..read?]) {
-                Some(answered) if answered == sequence => return Ok(()),
-                Some(answered) => {
-                    late.extend(unanswered.answered(answered, Instant::now()));
-                }
-                None => {}
+            let (read, from) = read?;
+            if from != gateway {
+                continue;
+            }
+            if let Some(answered) = answered(&datagram[..read])
+                && ledger.heard(answered, sequence, Instant::now())
+            {
+                return Ok(());
             }
         }
     }
+}
+
+/// Marks the socket's echoes for the class's queue, leaving best effort's
+/// unmarked.
+fn mark(socket: &OwnedFd, class: Class) -> io::Result<()> {
+    let tos = class.tos();
+    if tos == 0 {
+        return Ok(());
+    }
+    let length = libc::socklen_t::try_from(mem::size_of_val(&tos)).map_err(io::Error::other)?;
+    // SAFETY: the value outlives the call, and the length is its own.
+    let marked = unsafe {
+        libc::setsockopt(
+            socket.as_raw_fd(),
+            libc::IPPROTO_IP,
+            libc::IP_TOS,
+            (&raw const tos).cast(),
+            length,
+        )
+    };
+    if marked < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// An echo request with this sequence, its identifier and checksum left
@@ -345,59 +371,85 @@ mod tests {
 
     #[test]
     fn an_answer_to_an_echo_counted_lost_is_late_at_what_it_took() {
+        // Two echoes held past their second, then let go in order while
+        // the next is waited on, as a held queue answers.
         let start = Instant::now();
-        let mut unanswered = Unanswered::default();
-        unanswered.wait(4, start);
-        unanswered.wait(5, start + Duration::from_secs(1));
+        let mut ledger = Ledger::default();
+        ledger.wait(4, start);
+        ledger.wait(5, start + Duration::from_secs(1));
 
         let read = start + Duration::from_millis(2400);
+        assert!(!ledger.heard(5, 6, read), "not the one waited on");
+        assert!(!ledger.heard(5, 6, read), "nor when said twice");
+        assert!(!ledger.heard(4, 6, read), "nor the one before");
+        assert!(!ledger.heard(9, 6, read), "nor one never sent");
+        assert!(ledger.heard(6, 6, read), "the one waited on is its own");
         assert_eq!(
-            unanswered.answered(5, read),
-            Some(Late {
-                sent: start + Duration::from_secs(1),
-                took: Duration::from_millis(1400),
-            }),
-            "the echo its sequence names, not the one before"
+            ledger.late(),
+            vec![
+                Late {
+                    sent: start + Duration::from_secs(1),
+                    took: Duration::from_millis(1400),
+                },
+                Late {
+                    sent: start,
+                    took: Duration::from_millis(2400),
+                },
+            ],
+            "each late once, at what it took, in the order heard"
         );
-        assert_eq!(
-            unanswered.answered(5, read),
-            None,
-            "an answer said twice is late once"
-        );
-        assert_eq!(
-            unanswered.answered(4, read).map(|late| late.took),
-            Some(Duration::from_millis(2400)),
-            "the one before is still waited on"
-        );
-        assert_eq!(
-            unanswered.answered(9, read),
-            None,
-            "one never sent answers nothing"
-        );
+        assert_eq!(ledger.late(), Vec::new(), "and taken once");
     }
 
     #[test]
     fn an_echo_sent_a_span_ago_is_waited_on_no_more() {
         let start = Instant::now();
-        let mut unanswered = Unanswered::default();
-        unanswered.wait(1, start);
-        unanswered.wait(2, start + Duration::from_secs(1));
+        let mut ledger = Ledger::default();
+        ledger.wait(1, start);
+        ledger.wait(2, start + Duration::from_secs(1));
 
         let now = start + SPAN + Duration::from_secs(1);
+        ledger.heard(1, 9, now);
         assert_eq!(
-            unanswered.answered(1, now),
-            None,
+            ledger.late(),
+            Vec::new(),
             "its echo has left what's measured"
         );
-        assert!(
-            unanswered.answered(2, now).is_some(),
-            "while one a span back is answered"
-        );
-        unanswered.wait(3, now);
+        ledger.heard(2, 9, now);
+        assert_eq!(ledger.late().len(), 1, "while one a span back is late");
+        ledger.wait(3, now);
         assert_eq!(
-            unanswered.waiting,
+            ledger.waiting,
             VecDeque::from([(3, now)]),
             "and the one past it is let go as the next is waited on"
         );
+    }
+
+    #[test]
+    fn a_video_socket_s_echoes_carry_the_mark_and_best_effort_s_none() {
+        let tos_of = |class| {
+            // SAFETY: it takes only numbers.
+            let fd = unsafe { libc::socket(libc::AF_INET, libc::SOCK_DGRAM, 0) };
+            assert!(fd >= 0, "a datagram socket opens");
+            // SAFETY: the descriptor was just made, and nothing else holds it.
+            let socket = unsafe { OwnedFd::from_raw_fd(fd) };
+            mark(&socket, class).expect("the socket takes its mark");
+            let mut tos: libc::c_int = -1;
+            let mut length = libc::socklen_t::try_from(mem::size_of_val(&tos)).unwrap();
+            // SAFETY: the value and its length outlive the call.
+            let read = unsafe {
+                libc::getsockopt(
+                    socket.as_raw_fd(),
+                    libc::IPPROTO_IP,
+                    libc::IP_TOS,
+                    (&raw mut tos).cast(),
+                    &raw mut length,
+                )
+            };
+            assert_eq!(read, 0, "its mark reads back");
+            tos
+        };
+        assert_eq!(tos_of(Class::Video), 0xa0, "CS5, video's");
+        assert_eq!(tos_of(Class::BestEffort), 0, "unmarked");
     }
 }

@@ -41,9 +41,14 @@ use crate::measure::Measured;
 /// learned of best effort alone, which holds a point stalling a call's
 /// queue as quick as its best effort, and on 23 Nov 2026 such a figure
 /// drew a card back to one 81 s after it was moved off. So the hours are
-/// learned again in a file of their own, and the old one is left for a
-/// wifid from before to go on with.
+/// learned again in a file of their own.
 pub const FILE: &str = "carried-weighing-video";
+
+/// The file the hours were kept in before, let go of as wifid starts:
+/// nothing keeps it to the networks still saved, and which access points
+/// a machine was near, and when, would say where it has been. A wifid
+/// from before begins its hours again.
+pub const BEFORE: &str = "carried";
 
 /// How many minutes an access point must have been measured at an hour,
 /// from about one place, before what it carried is gone by.
@@ -129,7 +134,8 @@ impl Learned {
 
     /// Folds in what the access point a card is on carried over the span,
     /// keeping it on the disk where its network is trusted. An echo never
-    /// answered counts as slow as it was waited for. A minute the card
+    /// answered counts as slow as it was waited for, and none slower: a
+    /// held one answering later is no better, and no worse. A minute the card
     /// brings a download down in teaches what it lost alike, and its slow
     /// end as what the access point carries under load, so points are
     /// weighed against each other by minutes alike.
@@ -138,7 +144,11 @@ impl Learned {
             return Ok(());
         }
         let loaded = choose::loaded(measured);
-        let p95 = measured.p95.unwrap_or(echo::LOST).as_secs_f64() * 1000.0;
+        let p95 = measured
+            .p95
+            .map_or(echo::LOST, |p95| p95.min(echo::LOST))
+            .as_secs_f64()
+            * 1000.0;
         let step = here.signal.div_euclid(STEP);
         let same = |learnt: &Learnt| {
             learnt.point == here.point && learnt.hour == here.hour && learnt.step == step
@@ -318,6 +328,22 @@ mod tests {
     fn p95_of(learned: &Learned, point: &str, hour: u8, signal: i16) -> Option<u64> {
         let measured = learned.of(point, hour, signal)?;
         Some(u64::try_from(measured.p95?.as_millis()).unwrap())
+    }
+
+    #[test]
+    fn a_point_held_past_an_echo_s_wait_is_learned_no_slower_than_one_unanswered() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut learned = Learned::kept_in(&dir.path().join(FILE));
+        for _ in 0..ENOUGH {
+            learned
+                .carried(&at(DESK, 20, -50), &carried(Some(2400), 40.0))
+                .unwrap();
+            learned
+                .carried(&at(HALL, 20, -50), &carried(None, 100.0))
+                .unwrap();
+        }
+        assert_eq!(p95_of(&learned, DESK, 20, -50), Some(1000), "held");
+        assert_eq!(p95_of(&learned, HALL, 20, -50), Some(1000), "unanswered");
     }
 
     #[test]
