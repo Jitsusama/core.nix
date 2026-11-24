@@ -176,24 +176,33 @@ fn an_items_wrapped_lines_are_read_as_one() {
 }
 
 #[test]
-fn a_line_under_no_item_or_a_key_broken_across_lines_is_counted() {
-    let page = "# Good\n\n## Loose\n\n- Measures: `one`\n- Target: 0.\n\
-                - Joel, 1 Nov: \"good\"\n- Over costs him: much,\n\n  after a blank.\n\
-                left unindented\n\n## Broken\n\n- Measures: `two\n  three`\n- Target: 0.\n\
-                - Joel, 1 Nov: \"good\"\n- Over costs him: much.\n";
-    let read = sections(page);
+fn a_line_or_item_no_field_reads_or_a_key_holding_a_space_is_counted() {
+    let page = "# Good\n\n## Loose\n\n- Measures: `one`\n- Target: 0.\n  - Target: 9.\n\
+                left unindented, with more words than six\n  indented after it\n\
+                - Joel, 1 Nov: \"good\"\n- Joel, 2 Nov: \"again\"\n\
+                - Over costs him: much,\n\n  after a blank.\n- Over costs him: again.\n\
+                - Over costs him: thrice.\n- Owner: me.\n\n## Broken\n\n\
+                - Measures: `two\n  three`\n- Target: 0.\n- Joel, 1 Nov: \"good\"\n\
+                - Over costs him: much.\n";
     assert_eq!(
-        read[0].cost.as_deref(),
+        sections(page)[0].cost.as_deref(),
         Some("much,"),
         "a line after a blank was joined to the item above it"
     );
+    // Each line here joined to the item above it would leave this list.
     assert_eq!(
         judged(page, &[]).behind,
         [
+            "Loose: under no item: - Target: 9.",
+            "Loose: under no item: left unindented, with more words than",
+            "Loose: under no item: indented after it",
             "Loose: under no item: after a blank.",
-            "Loose: under no item: left unindented",
-            "two three: broken across lines",
+            "Loose: Joel said again: Joel, 2 Nov: \"again\"",
+            "Loose: Over costs him said again: Over costs him: again.",
+            "Loose: Over costs him said again: Over costs him: thrice.",
+            "Loose: no such field: Owner: me.",
+            "Broken: two three holds a space, as a key broken across lines does",
         ],
-        "a line under no item or a broken key went uncounted"
+        "a line or item no field reads, or a key holding a space, went uncounted"
     );
 }

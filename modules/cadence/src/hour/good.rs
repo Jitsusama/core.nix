@@ -28,9 +28,13 @@ enum Target {
     Elsewhere,
 }
 
+/// The fields a section's items open with, each said once.
+const FIELDS: [&str; 4] = ["Measures:", "Target:", "Joel, ", "Over costs him:"];
+
 /// One section of the page: its title, the keys it names, and what they
 /// are held to and why, each none where the section doesn't say, and
-/// the lines it holds under no item.
+/// what it holds that no field reads: a line under no item, an item
+/// opening as no field, or a field said again.
 #[derive(Debug)]
 struct Section {
     title: String,
@@ -38,7 +42,7 @@ struct Section {
     target: Option<Target>,
     joel: Option<String>,
     cost: Option<String>,
-    stray: Vec<String>,
+    misread: Vec<String>,
 }
 
 /// The page's sections, each opening at a second-level heading, its
@@ -51,22 +55,34 @@ fn sections(page: &str) -> Vec<Section> {
 fn section(text: &str) -> Section {
     let (title, body) = text.split_once('\n').unwrap_or((text, ""));
     let mut items: Vec<String> = Vec::new();
-    let mut stray = Vec::new();
+    let mut misread = Vec::new();
     let mut open = false;
     for line in body.lines() {
         let more = line.trim_start();
         let indented = more.len() < line.len();
+        // An item indented under another is no field of it, nor its own.
+        let nested = more.starts_with("- ");
         if let Some(item) = line.strip_prefix("- ") {
             items.push(item.to_owned());
             open = true;
         } else if more.is_empty() {
             open = false;
-        } else if let Some(last) = items.last_mut().filter(|_| open && indented) {
+        } else if let Some(last) = items.last_mut().filter(|_| open && indented && !nested) {
             last.push(' ');
             last.push_str(more);
         } else {
             open = false;
-            stray.push(more.to_owned());
+            misread.push(format!("under no item: {}", opening(more)));
+        }
+    }
+    for (at, item) in items.iter().enumerate() {
+        match FIELDS.iter().find(|name| item.starts_with(*name)) {
+            None => misread.push(format!("no such field: {}", opening(item))),
+            Some(name) if items[..at].iter().any(|i| i.starts_with(name)) => {
+                let name = name.trim_end_matches([':', ',', ' ']);
+                misread.push(format!("{name} said again: {}", opening(item)));
+            }
+            Some(_) => {}
         }
     }
     let field = |name: &str| {
@@ -75,18 +91,19 @@ fn section(text: &str) -> Section {
             .find_map(|i| i.strip_prefix(name))
             .map(str::trim)
     };
+    let [keys, held, joel, cost] = FIELDS;
     Section {
         title: title.trim().to_owned(),
-        keys: field("Measures:").map(spans).unwrap_or_default(),
-        target: field("Target:").and_then(target),
-        joel: items.iter().find(|i| i.starts_with("Joel, ")).cloned(),
-        cost: field("Over costs him:").map(str::to_owned),
-        stray,
+        keys: field(keys).map(spans).unwrap_or_default(),
+        target: field(held).and_then(target),
+        joel: items.iter().find(|i| i.starts_with(joel)).cloned(),
+        cost: field(cost).map(str::to_owned),
+        misread,
     }
 }
 
-/// The first words of a line the page holds under no item, enough to
-/// find it by.
+/// The first words of a line or item no field reads, enough to find it
+/// by.
 fn opening(line: &str) -> String {
     line.split_whitespace()
         .take(6)
@@ -133,8 +150,9 @@ fn quoted(joel: &str) -> bool {
     when.chars().any(|c| c.is_ascii_digit()) && said.len() > 1 && said.ends_with('"')
 }
 
-/// What each section fails to say, each line it holds under no item,
-/// each key broken across lines, and each key two sections name, a key
+/// What each section fails to say, each thing it holds that no field
+/// reads, each key holding a space, as a key broken across lines does,
+/// and each key two sections name, a key
 /// a family names in another section counted as named twice too.
 fn unsaid(page: &[Section]) -> Vec<String> {
     let mut faults = Vec::new();
@@ -158,12 +176,15 @@ fn unsaid(page: &[Section]) -> Vec<String> {
         if !lacks.is_empty() {
             faults.push(format!("{}: {}", s.title, lacks.join(", ")));
         }
-        for line in &s.stray {
-            faults.push(format!("{}: under no item: {}", s.title, opening(line)));
+        for what in &s.misread {
+            faults.push(format!("{}: {what}", s.title));
         }
         for key in &s.keys {
             if key.contains(char::is_whitespace) {
-                faults.push(format!("{key}: broken across lines"));
+                faults.push(format!(
+                    "{}: {key} holds a space, as a key broken across lines does",
+                    s.title
+                ));
             }
             if seen
                 .iter()

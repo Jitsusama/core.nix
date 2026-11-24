@@ -182,9 +182,14 @@ fn a_miss_said_none_closes_with_why_and_is_never_told_fixed() {
         card.contains("a notice it meant to keep") && !card.contains("For Joel"),
         "a miss said none was told fixed, or its reason wasn't shown: {card}"
     );
+    // Judged, and none open: an hour that judged nothing would tell no one
+    // it was fixed either, so the misses' own line says this one judged.
     assert!(
-        !card.contains("Why didn't our checks catch these?"),
-        "a miss said none was still listed open: {card}"
+        card.contains(
+            "✓ misses Joel found himself, with no check yet running here to catch the \
+             next: 0, at most 0"
+        ) && !card.contains("Why didn't our checks catch these?"),
+        "a miss said none was still listed open, or the misses went unjudged: {card}"
     );
     let carried = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
     assert!(
