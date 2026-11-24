@@ -32,4 +32,5 @@
   "launcher/CarryBack.js"
   "launcher/Sprouting.js"
   "launcher/StartsStopped.js"
+  "launcher/TalkAnswers.js"
 ]

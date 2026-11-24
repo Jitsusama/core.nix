@@ -294,6 +294,26 @@
       touch $out
     '';
 
+  # Talk to It on a session asking Joel something shows what it asks whole, with
+  # what it takes, and his words answer it, a choice by its label or value or
+  # his own where it takes them, reading sent, then answered or working, or not
+  # delivered and why, as modules/quickshell/tests/talk-answers.qml holds
+  # launcher/TalkAnswers.js to in Qt's own engine.
+  a-talk-answers-what-its-session-asks =
+    let
+      qt = pkgs.qt6.qtdeclarative;
+    in
+    pkgs.runCommandLocal "a-talk-answers-what-its-session-asks" { } ''
+      cp ${../tests/talk-answers.qml} talk-answers.qml
+      ${copied [ "launcher/TalkAnswers.js" ]}
+      cp ${../../../tests/lib/Expect.js} Expect.js
+      export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
+      export FONTCONFIG_FILE=${noFonts}
+      ${shellFolderLint}
+      QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml talk-answers.qml
+      touch $out
+    '';
+
   # What Super+S's line sends with Joel's words, the quiet line naming who hears
   # it, and its talk sent, answered and taken back inside the line, as
   # modules/quickshell/tests/talk-line.qml holds TalkLine.js to in Qt's own

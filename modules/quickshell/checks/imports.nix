@@ -321,6 +321,7 @@
     "launcher/Addresses.js"
     "launcher/Numbers.js"
   ];
+  "launcher/TalkAnswers.js" = [ "TalkLine.js" ];
   "launcher/TalkOn.js" = [ "launcher/Order.js" ];
   "launcher/Today.qml" = [
     "launcher/Moment.js"

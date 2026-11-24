@@ -55,6 +55,7 @@ import "SessionRow.js" as SessionRow
 import "SpendDrawer.js" as SpendDrawer
 import "Sprouting.js" as Sprouting
 import "StartsStopped.js" as StartsStopped
+import "TalkAnswers.js" as TalkAnswers
 import "TalkTo.js" as TalkTo
 import "Wanted.js" as Wanted
 
@@ -1172,6 +1173,64 @@ Provider {
         };
     }
 
+    // Joel's answers to what each session asks, given in its Talk, by its address in capitals,
+    // newest first (TalkAnswers.js's said), so the Talk shows each as sent, then answered.
+    property var answeredTo: ({})
+
+    // What the session `session` asks Joel that its Talk answers (TalkAnswers.js's asked): its
+    // want's answers while it asks, parked or not, as Now's rows read it (Now.qml's asking).
+    function answersOf(session) {
+        const asking = SessionRow.asks(session.presence) && !Sessions.parkedAs(session.address);
+        return { want: wantOf(session.address), asking };
+    }
+
+    // What a Talk to `session` shows before its talks: what it asks in full while it asks, first
+    // so it has the first exchange's eight lines (TalkSpoken.qml), then Joel's answers to it,
+    // newest first (Joel at 13:15 on 2026-11-24, of a cell asking him from the realm's map: "no
+    // feedback at all"), each in TalkLine.js's exchange shape.
+    function answerTalks(session) {
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const stages = Words.of("orchestrators:talk").said ?? {};
+        const words = Object.assign({}, said, { sent: stages.sent ?? "",
+            unsent: stages.failed ?? "" });
+        const days = { yesterday: String((Words.of("agents:line").said ?? {}).yesterday ?? ""),
+            date: (date, format) => Qt.formatDate(date, format) };
+        const dayOf = since => When.day(since, Date.now(), days);
+        const working = stateOf(session) === "working";
+        const now = answersOf(session);
+        const asked = TalkAnswers.question(now, session.title, words, dayOf);
+        return (asked === null ? [] : [asked]).concat((answeredTo[to] ?? [])
+            .map(one => TalkAnswers.shown(one, working, words, dayOf)));
+    }
+
+    // Joel's `text` to `session`, which asks `answers`, answering it: shown sent at once, then
+    // answered once the node has put it in the session's inbox, or why not (answerWant). Words
+    // it takes no answer from go nowhere, the foot saying what it takes.
+    function answerIn(session, text, answers) {
+        const to = String(session.address).toUpperCase();
+        const said = Words.of("verb:agent:talk").said ?? {};
+        const answer = TalkAnswers.answerOf(text, answers);
+        if (answer === null) {
+            told = TalkAnswers.filled(said.takesOnly ?? "", {
+                choices: answers.choices.map(one => String(one.label ?? one.value))
+                    .join(" \u00b7 ") });
+            return;
+        }
+        const one = TalkAnswers.said(answer.label, Date.now());
+        const keep = changed => {
+            answeredTo = Object.assign({}, answeredTo, { [to]: [changed]
+                .concat((answeredTo[to] ?? []).filter(kept => kept !== one).slice(0, 2)) });
+        };
+        keep(one);
+        told = (Words.of("orchestrators").said ?? {}).sent?.replace("{name}", session.title) ?? "";
+        const fields = answer.value !== undefined ? { value: answer.value }
+            : { other: answer.other };
+        answerWant(session.address, fields, (put, why) => {
+            keep(TalkAnswers.put(one, put, why));
+        });
+    }
+
     // Who hears a line said from anywhere (TalkLine.qml), `{ to, name }`: the one standing at
     // Agents' top, the void, which passes it to whoever owns it (QCXZEB, 2026-11-13
     // [ae5dfdb6]); null while none stands there.
@@ -1479,18 +1538,35 @@ Provider {
         const steered = what => () => provider.actOn(current(), what);
         const talked = () => {
             const talk = provider.talking(session.address, session.title);
+            const talkWords = Words.of("verb:agent:talk");
+            // While it asks Joel something, Return answers it, as its inbox goes unread until
+            // its ask ends, and the Talk shows what it asks first (answerTalks).
+            const asks = () => {
+                const now = provider.answersOf(current());
+                return TalkAnswers.asked(now.want, now.asking);
+            };
+            const draft = String(session.address).toUpperCase();
             return act("talk", {
-                ask: Words.of("verb:agent:talk").ask ?? "",
+                ask: asks() !== null ? talkWords.said?.answerAsk ?? "" : talkWords.ask ?? "",
                 chip: session.title,
                 // Kept by whom it goes to until its talk is delivered.
-                draft: String(session.address).toUpperCase(),
+                draft,
                 state: () => provider.told,
-                talks: talk.talks,
+                talks: () => provider.answerTalks(current()).concat(talk.talks()),
                 heard: talk.heard,
                 given: words => {
                     const text = words.trim();
                     if (text === "")
                         return;
+                    const answers = asks();
+                    if (answers !== null) {
+                        // No talk's delivery settles an answer's words, so they go once given,
+                        // as they show under the field.
+                        provider.launcher?.drafts?.settle({ [draft]: [{ words: text,
+                            stage: "answered" }] });
+                        provider.answerIn(current(), text, answers);
+                        return;
+                    }
                     provider.actOn(session, "talk", { text });
                     talk.said(text);
                     provider.told = (Words.of("orchestrators").said ?? {}).sent
@@ -2367,7 +2443,8 @@ Provider {
             then(Sessions.steered(address, null));
             return;
         }
-        rowsKind.ask(said, reply => then(Sessions.steered(address, reply)));
+        rowsKind.ask(said, reply => then(Sessions.steered(address, reply),
+            String(reply?.error?.message ?? "")));
     }
 
     property string fedBack: ""
