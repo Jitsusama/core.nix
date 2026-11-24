@@ -29,7 +29,8 @@ enum Target {
 }
 
 /// One section of the page: its title, the keys it names, and what they
-/// are held to and why, each none where the section doesn't say.
+/// are held to and why, each none where the section doesn't say, and
+/// the lines it holds under no item.
 #[derive(Debug)]
 struct Section {
     title: String,
@@ -37,11 +38,12 @@ struct Section {
     target: Option<Target>,
     joel: Option<String>,
     cost: Option<String>,
+    stray: Vec<String>,
 }
 
 /// The page's sections, each opening at a second-level heading, its
 /// fields the list items under it, an item's lines after its first
-/// indented under it.
+/// indented under it with no blank line between.
 fn sections(page: &str) -> Vec<Section> {
     page.split("\n## ").skip(1).map(section).collect()
 }
@@ -49,12 +51,22 @@ fn sections(page: &str) -> Vec<Section> {
 fn section(text: &str) -> Section {
     let (title, body) = text.split_once('\n').unwrap_or((text, ""));
     let mut items: Vec<String> = Vec::new();
+    let mut stray = Vec::new();
+    let mut open = false;
     for line in body.lines() {
+        let more = line.trim_start();
+        let indented = more.len() < line.len();
         if let Some(item) = line.strip_prefix("- ") {
             items.push(item.to_owned());
-        } else if let (Some(more), Some(last)) = (line.strip_prefix("  "), items.last_mut()) {
+            open = true;
+        } else if more.is_empty() {
+            open = false;
+        } else if let Some(last) = items.last_mut().filter(|_| open && indented) {
             last.push(' ');
-            last.push_str(more.trim_start());
+            last.push_str(more);
+        } else {
+            open = false;
+            stray.push(more.to_owned());
         }
     }
     let field = |name: &str| {
@@ -69,7 +81,17 @@ fn section(text: &str) -> Section {
         target: field("Target:").and_then(target),
         joel: items.iter().find(|i| i.starts_with("Joel, ")).cloned(),
         cost: field("Over costs him:").map(str::to_owned),
+        stray,
     }
+}
+
+/// The first words of a line the page holds under no item, enough to
+/// find it by.
+fn opening(line: &str) -> String {
+    line.split_whitespace()
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The text inside each pair of backticks in `text`.
@@ -111,7 +133,8 @@ fn quoted(joel: &str) -> bool {
     when.chars().any(|c| c.is_ascii_digit()) && said.len() > 1 && said.ends_with('"')
 }
 
-/// What each section fails to say, and each key two sections name, a key
+/// What each section fails to say, each line it holds under no item,
+/// each key broken across lines, and each key two sections name, a key
 /// a family names in another section counted as named twice too.
 fn unsaid(page: &[Section]) -> Vec<String> {
     let mut faults = Vec::new();
@@ -135,7 +158,13 @@ fn unsaid(page: &[Section]) -> Vec<String> {
         if !lacks.is_empty() {
             faults.push(format!("{}: {}", s.title, lacks.join(", ")));
         }
+        for line in &s.stray {
+            faults.push(format!("{}: under no item: {}", s.title, opening(line)));
+        }
         for key in &s.keys {
+            if key.contains(char::is_whitespace) {
+                faults.push(format!("{key}: broken across lines"));
+            }
             if seen
                 .iter()
                 .any(|named| names(named, key) || names(key, named))

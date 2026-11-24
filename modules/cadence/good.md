@@ -16,6 +16,8 @@ Each section names its measures' keys, a key ending in `*` naming every key that
 same way. A target that opens with a number is the one the hour must hold the measure to; one
 that opens with "none" means the measure is shown and never judged; one that opens with "set
 where it's read" is taken from the measure's own source. Any other target is counted as none.
+An item's later lines are indented under it with no blank line between, and a key stays on one
+line; any other line in a section, or a key broken across two, is counted too.
 
 ## Apps Under Load
 
