@@ -4248,6 +4248,12 @@ fn stands(said: i32, error: &std::io::Error) -> bool {
     said == 0 || error.raw_os_error() == Some(libc::EPERM)
 }
 
+/// Whether opening `path` to read it is refused, as a sandbox refuses a
+/// file its policy doesn't grant whatever the file's own mode says.
+fn refused(path: &Path) -> bool {
+    fs::File::open(path).is_err_and(|error| error.kind() == std::io::ErrorKind::PermissionDenied)
+}
+
 /// The pid a file holds, when it holds one.
 fn pid_in(path: &Path) -> Option<i32> {
     fs::read_to_string(path).ok()?.trim().parse().ok()
@@ -4398,13 +4404,26 @@ fn waited_vouching(dir: &Path, waiting: Waiting, file: &Path) -> Option<String> 
 
 /// Whether `dir`'s lender runs, waiting up to `waiting.restarting` for one
 /// that stopped, its pid left behind, to start again; with none ever
-/// started here, it says so at once.
+/// started here, or a sandbox that refuses this run its `lender` file, it
+/// says so at once. On 24 November a session in pi's strict sandbox saw
+/// the file but couldn't open it, and was told its lender was starting
+/// again while all 18 builders stood lent.
 fn lender_runs(dir: &Path, waiting: Waiting) -> bool {
     let lender = dir.join("lender");
     if lender_stands(dir) {
         return true;
     }
     if !lender.exists() {
+        return false;
+    }
+    if refused(&lender) {
+        eprintln!(
+            "nix-offload: this run's sandbox refuses it {}, so it can't tell whether the \
+             lender runs or ask it for a builder; run it from a session whose sandbox reads \
+             {}",
+            lender.display(),
+            dir.display()
+        );
         return false;
     }
     eprintln!(
@@ -8978,6 +8997,28 @@ mod tests {
             runs(i32::try_from(std::process::id()).unwrap()),
             "this test's own process was taken for stopped"
         );
+    }
+
+    #[test]
+    fn a_lender_file_the_run_cant_open_is_said_at_once() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let lender = dir.path().join("lender");
+        fs::write(&lender, format!("{}\n", gone_pid())).unwrap();
+        fs::set_permissions(&lender, fs::Permissions::from_mode(0o000)).unwrap();
+        // Root opens it whatever its mode, so only a run that is refused
+        // it shows the case.
+        let refusing = refused(&lender);
+        let began = std::time::Instant::now();
+        let runs = lender_runs(dir.path(), QUICK);
+        let _ = fs::set_permissions(&lender, fs::Permissions::from_mode(0o644));
+        assert!(!runs, "a lender it can't see running isn't taken to run");
+        if refusing {
+            assert!(
+                began.elapsed() < QUICK.restarting,
+                "it says so at once rather than wait for a restart"
+            );
+        }
     }
 
     #[test]
