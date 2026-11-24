@@ -8,7 +8,8 @@ Reads the table of acts (acts.toml) and fails, naming each, on:
 - a mycelium command whose --help doesn't say its words;
 - a pi tool with no name, an owing with no cell, no due time or no why,
   and a waiver giving no reason;
-- an act named twice, or one that doesn't say what it is.
+- an act named twice, or one that doesn't say what it is or the way to
+  it every surface takes.
 
 On passing it prints what each surface is still owed, by whom and when, so
 the check's log is the list of gaps.
@@ -137,8 +138,10 @@ def act_faults(act: dict[str, Any], sources: Sources) -> list[str]:
     faults.extend(
         f"{name} names {key}, which isn't a surface"
         for key in act
-        if key not in SURFACES and key not in {"name", "says"}
+        if key not in SURFACES and key not in {"name", "says", "through"}
     )
+    if not isinstance(act.get("through"), str) or act["through"].strip() == "":
+        faults.append(f"{name} doesn't say the way to it every surface takes")
     for surface, called in SURFACES.items():
         where = f"{name} on {called}"
         stands = act.get(surface)

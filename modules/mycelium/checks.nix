@@ -900,13 +900,15 @@ in
       untested = locked.overrideAttrs { doCheck = false; };
       check = "${lib.getExe pkgs.python3} ${./surfaces/stays-even.py}";
       # An act on each surface, with what one of them says in place of the
-      # rest, as a table of one act gives it.
+      # rest, as a table of one act gives it. Only the wayless act leaves
+      # out the way to it every surface takes.
       act =
         name: says:
         pkgs.writeText "${name}.toml" ''
           [[act]]
           name = "go"
           says = "go to a cell"
+          ${lib.optionalString (name != "wayless") ''through = "the launcher's go"''}
           [act.session.has]
           tool = "mesh_read"
           [act.map.has]
@@ -982,6 +984,15 @@ in
             waived = "none"
           '';
           says = "go names phone, which isn't a surface";
+        }
+        {
+          table = act "wayless" ''
+            [act.cli]
+            waived = "no window to raise"
+            [act.launcher]
+            waived = "none"
+          '';
+          says = "go doesn't say the way to it every surface takes";
         }
       ];
     in

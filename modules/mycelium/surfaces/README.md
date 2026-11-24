@@ -13,6 +13,8 @@ directly engagable to a meaningful level".
 
 An act one surface gains is added to the table with every other surface
 owing it, so the check fails until each has it, owes it by a time or
-waives it. Its log lists what is still owed, soonest first. A pi tool is
+waives it. Each act names the one way to it, the node's call or the
+files every surface reads, so a surface bringing it calls what the others
+call. The log lists what is still owed, soonest first. A pi tool is
 taken by its name, since the harness that holds the tools isn't an input
 of core.nix.

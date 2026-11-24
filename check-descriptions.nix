@@ -2296,8 +2296,8 @@
     every act Joel takes on his cells is offered on the mycelium command, a pi session, the map
     and the launcher, or owed by a cell by a time, or waived with a reason: a file said to have
     it holds its words and the locked mycelium's help says a command's, a surface left out, two
-    standings, a missing file or word, an owing with no time and a waiver with no reason each
-    failing first
+    standings, a missing file or word, an owing with no time, a waiver with no reason and an act
+    naming no way to it each failing first
   '';
   mycelium-completes-its-teams-in-zsh = ''
     mycelium swarm completes in zsh with its acts and the teams the line's realm's node names, a
