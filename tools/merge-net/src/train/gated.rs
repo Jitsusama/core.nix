@@ -10,21 +10,27 @@ use std::process::Command;
 /// Run the gate in `checkout`, its words going to `log`: how it ended.
 /// The log opens with a mark fresh to this run, which nix-offload signs
 /// the lines the train trusts with, so the same words in a rider's output
-/// stand for nothing (`words_of`). With no mark to be had it runs nothing
-/// and reads as a red not run whole, since an unmarked log's first line
-/// could be a rider's own mark line (round 7's F4).
+/// stand for nothing (`words_of`). With no mark or log to be had it runs
+/// nothing, since an unmarked log's first line could be a rider's own
+/// mark line (round 7's F4), and reads as untaken: a gate that never
+/// started says nothing of its riders, and a full disk would otherwise
+/// drop every one of them (round 8's F3, F15 and F19).
 pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
+    let unstarted = |why: &str| {
+        eprintln!("merge-net: the gate couldn't start, as {why}, so it's tried again");
+        Gated::Unsent
+    };
     let Ok(mut words) = fs::File::create(log) else {
-        return Gated::Red { whole: false };
+        return unstarted("its log couldn't be made");
     };
     let Some(mark) = fresh_mark() else {
-        return Gated::Red { whole: false };
+        return unstarted("no mark could be read from the kernel");
     };
     if writeln!(words, "{MARKED}{mark}").is_err() {
-        return Gated::Red { whole: false };
+        return unstarted("its mark couldn't be written to its log");
     }
     let Ok(errors) = words.try_clone() else {
-        return Gated::Red { whole: false };
+        return unstarted("its log couldn't take its errors");
     };
     let mut command = Command::new("nix-offload");
     command
@@ -34,10 +40,10 @@ pub(super) fn gate(checkout: &Path, log: &Path) -> Gated {
         .stdout(words)
         .stderr(errors)
         .env(MARK, &mark);
-    let ran = command.status();
-    ran.map_or(Gated::Red { whole: false }, |status| {
-        gated(status.code(), &words_of(log))
-    })
+    command.status().map_or_else(
+        |_| unstarted("nix-offload couldn't be started"),
+        |status| gated(status.code(), &words_of(log)),
+    )
 }
 
 /// What the log of a gate opens with, before its mark.
