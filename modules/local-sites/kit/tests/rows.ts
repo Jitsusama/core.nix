@@ -45,10 +45,15 @@ interface Control {
 /** One of a row's acts: a link to its name, a control saying nothing, or one told whole. */
 type Act = string | null | Control;
 
+/** What takes focus with no tabindex, as a page lets it: a link only where it goes somewhere. */
+const FOCUSABLE = new Set(["button", "input", "select", "textarea"]);
+
 /**
- * Something inside a row that takes focus, as a row's link does, saying
- * what it's given. Taken out, it has no parent and takes no focus, as an
- * element out of the page doesn't.
+ * Something inside a row, as a row's link is, saying what it's given: a
+ * link where told an href, else a button, unless told its kind. Taken out,
+ * it has no parent and takes no focus, as an element out of the page
+ * doesn't; nor does one disabled, a link going nowhere, a hidden input, or
+ * an element with no tabindex that a page doesn't let take focus.
  */
 class Inner implements Placed {
   parentElement: Placed | null;
@@ -56,14 +61,14 @@ class Inner implements Placed {
   readonly localName: string;
   readonly textContent: string;
   readonly #page: Page;
-  readonly #attributes: Readonly<Record<string, string>>;
+  readonly #attributes: Record<string, string>;
 
   constructor(parent: Placed, page: Page, says: string, told: Omit<Control, "says">) {
     this.parentElement = parent;
     this.#page = page;
     this.textContent = says;
-    this.#attributes = told.attributes;
-    this.localName = told.kind ?? "a";
+    this.#attributes = { ...told.attributes };
+    this.localName = told.kind ?? ("href" in told.attributes ? "a" : "button");
     for (const held of [told.holds ?? []].flat()) {
       this.children.push(new Inner(this, page, held.says, held));
     }
@@ -78,8 +83,20 @@ class Inner implements Placed {
   }
 
   focus(): void {
-    if (this.#page.holds(this) && !("disabled" in this.#attributes)) {
+    const takes =
+      "tabindex" in this.#attributes ||
+      (this.localName === "a" && "href" in this.#attributes) ||
+      (FOCUSABLE.has(this.localName) && this.#attributes["type"] !== "hidden");
+    if (takes && this.#page.holds(this) && !("disabled" in this.#attributes)) {
       this.#page.activeElement = this;
+    }
+  }
+
+  /** Disables it where it stands, which takes its focus away, as a page's does. */
+  disable(): void {
+    this.#attributes["disabled"] = "";
+    if (this.#page.activeElement === this) {
+      this.#page.activeElement = null;
     }
   }
 }
@@ -133,7 +150,7 @@ class Row implements Drawn, Placed {
   #links(): Inner[] {
     return this.#acts.map((act) => {
       if (act === null) {
-        return new Inner(this, this.#page, "", { attributes: {} });
+        return new Inner(this, this.#page, "", { attributes: {}, kind: "button" });
       }
       if (typeof act === "string") {
         const attributes = { href: `#${act}` };

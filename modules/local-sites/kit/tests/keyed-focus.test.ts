@@ -89,6 +89,22 @@ it("a focused row drawn again where it stands hands focus to the same place", ()
   assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
 });
 
+it("a focused control disabled where it stands hands focus to its row", () => {
+  const list = new List();
+  draw(list, cells("a", "b"));
+  list.rows[1]?.children[1]?.focus();
+  keyed(list, {
+    rows: cells("a", "b"),
+    key: (cell) => cell.key,
+    draw: (cell, was) => {
+      was?.children[1]?.disable();
+      return was ?? new Row(cell.works, list.ownerDocument);
+    },
+    moved: ["b"],
+  });
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]);
+});
+
 it("a focused link whose words show the changed record keeps focus by where it goes", () => {
   assert.equal(refocused(["open", "copy"], ["open", "copy"], "on b, moved"), "control");
 });
@@ -108,6 +124,30 @@ it("links all going to # or a script are told apart by their words", () => {
   assert.equal(refocused([hash("open"), hash("copy")], [hash("open"), hash("copy")]), "control");
   const run = (says: string): Act => ({ says, attributes: { href: "javascript:void 0" } });
   assert.equal(refocused([run("open"), run("copy")], [run("copy"), run("open")]), "row");
+  for (const href of ["#!", "#0", "#/", "java\tscript:void 0", " javascript:void 0"]) {
+    const shared = (says: string): Act => ({ says, attributes: { href } });
+    assert.equal(
+      refocused([shared("open"), shared("copy")], [shared("copy"), shared("open")]),
+      "row",
+      `${JSON.stringify(href)} was taken for where a link goes`,
+    );
+  }
+});
+
+it("links told apart only by their ids are told apart", () => {
+  const go = (says: string, id: string): Act => ({ says, attributes: { href: "/r/b", id } });
+  const [open, forget] = [go("Open", "open-b"), go("Forget", "forget-b")];
+  assert.equal(refocused([open, forget], [forget, open]), "row");
+  assert.equal(refocused([open, forget], [open, forget], "on b, moved"), "control");
+});
+
+it("a button sending a form named by its form attribute hands focus to its row", () => {
+  const start: Act = {
+    says: "Start",
+    kind: "button",
+    attributes: { form: "act-b", name: "id", value: "b" },
+  };
+  assert.equal(refocused(["open", start], ["open", start]), "row");
 });
 
 it("buttons sharing a name are told apart by their values", () => {
@@ -147,7 +187,7 @@ it("a control of another kind with the same name and value is another control", 
   const sent = (kind: string): Act => ({
     says: "copy",
     kind,
-    attributes: { name: "act", value: "copy" },
+    attributes: { name: "act", value: "copy", tabindex: "0" },
   });
   assert.equal(refocused(["open", sent("a")], ["open", sent("button")]), "row");
 });
@@ -201,6 +241,12 @@ it("a control whose state changed is still the same control", () => {
   assert.equal(refocused(["open", toggle("false")], ["open", toggle("true")]), "control");
   const busy = { "aria-disabled": "true", "aria-invalid": "true" };
   assert.equal(refocused(["open", toggle("false")], ["open", toggle("false", busy)]), "control");
+  const tick = (more: Record<string, string> = {}): Act => ({
+    says: "",
+    kind: "input",
+    attributes: { type: "checkbox", name: "pick", value: "b", ...more },
+  });
+  assert.equal(refocused(["open", tick()], ["open", tick({ checked: "" })]), "control");
 });
 
 it("a control now disabled takes no focus, so its row does", () => {
@@ -284,6 +330,34 @@ it("a list inside a form keeps focus on the same control", () => {
     refocused(["open", sent("b")], ["open", sent("c")], "on b", { around: form }),
     "row",
   );
+});
+
+it("a list inside a form keeps focus however another row's fields change", () => {
+  const form: Control = { says: "", attributes: { action: "/rows", method: "post" } };
+  const field = (value: string): Act => ({
+    says: "",
+    kind: "input",
+    attributes: { type: "hidden", name: "seen", value },
+  });
+  const list = new List();
+  inside(list, form);
+  // Row a's field changes; b's, beside the focused control, stays.
+  const rows = (seen: string) =>
+    keyed(list, {
+      rows: cells("a", "b"),
+      key: (cell) => cell.key,
+      draw: (cell) =>
+        new Row(cell.works, list.ownerDocument, true, [
+          "open",
+          "copy",
+          field(cell.key === "a" ? seen : "1"),
+        ]),
+      moved: ["a", "b"],
+    });
+  rows("1");
+  list.rows[1]?.children[1]?.focus();
+  rows("2");
+  assert.equal(list.ownerDocument.activeElement, list.rows[1]?.children[1]);
 });
 
 it("a control labelled by another element is never known again", () => {

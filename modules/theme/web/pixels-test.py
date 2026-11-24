@@ -152,8 +152,15 @@ def test_text_under_the_floor_is_named(tab: Page) -> None:
 
 
 def test_words_in_a_box_drawn_as_its_children_are_held_to_the_floor(tab: Page) -> None:
-    """Words at 10 px in a display: contents span, which draws no box, are under the floor."""
-    body = '<main><p><span style="display: contents; font-size: 10px">Ten</span></p></main>'
+    """Words at 10 px in a display: contents span, which draws no box, are under the floor.
+
+    Its overflow is hidden, which on a box of no size would mark it as for ears only, had
+    it a box.
+    """
+    body = (
+        '<main><p><span style="display: contents; font-size: 10px; overflow: hidden">Ten</span>'
+        "</p></main>"
+    )
     found = probed(tab, body)
     assert len(found) == 1, found
     assert found[0].startswith('text at 10.0 px ("Ten"), under 12 px'), found
@@ -629,9 +636,13 @@ def test_a_keycap_beside_words_a_clip_leaves_in_sight_passes(tab: Page) -> None:
     assert named(tab, body) == []
 
 
-@pytest.mark.parametrize("clip", ["inset(calc(100% - 0px) 0px 0px)", "circle(0px)"])
+@pytest.mark.parametrize("clip", ["inset(calc(1px + 0%) 0px 0px 0px)", "circle(100%)"])
 def test_a_keycap_beside_words_a_clip_it_cant_measure_cuts_is_an_icon(tab: Page, clip: str) -> None:
-    """Words under a clip-path of another shape, or a side it can't read, count as unseen."""
+    """Words under a clip-path of another shape, or a side it can't read, count as unseen.
+
+    Each clip leaves the words in sight, so only the rule that what it can't read cuts
+    everything names the keycap.
+    """
     body = (
         '<main><p class="keys"><kbd role="button" tabindex="0">?</kbd>'
         f'<span style="display: inline-block; clip-path: {clip}">lists every key</span>'
@@ -855,7 +866,10 @@ def test_a_dark_scheme_named_in_the_head_sits_on_a_dark_canvas(tab: Page) -> Non
 
 def test_words_in_a_box_drawn_as_its_children_are_measured(tab: Page) -> None:
     """#ccc words held by a display: contents span are read where its parent is drawn."""
-    body = '<main><p style="color: #ccc"><span style="display: contents">Faint</span></p></main>'
+    body = (
+        '<main><p style="color: #ccc"><span style="display: contents; overflow: hidden">Faint'
+        "</span></p></main>"
+    )
     found = probed(tab, body)
     assert len(found) == 1, found
     assert found[0].startswith('text "Faint" at 1.6'), found
