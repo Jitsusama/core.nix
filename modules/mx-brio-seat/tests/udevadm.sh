@@ -3,14 +3,17 @@
 # at MX_BRIO_ROOT, which that test runs through the bash it was given, since
 # a build's sandbox has no /usr/bin/env for a shebang to find.
 #
-# It answers as udev does: info fails for a node no longer in dev/, and
-# reads each node's record from facts/ otherwise. A trigger writes each
+# It answers as udev does: info fails for a node no longer in dev/, saying
+# so, and reads each node's record from facts/ otherwise. An add queued
+# before the give-back, as at boot, is a record in queued/, which a settle
+# that doesn't run out writes to facts/. A trigger writes each
 # replay to triggers before answering it. A removal leaves a node only the
 # kernel's own keys, as udev deletes its record, or unplugs the node when
 # after/ holds a .unplugged for it; an add takes the node's record from
 # after/. A file named fails makes every trigger fail, adds-fail only each
-# add, and hangs every settle; killed has the first settle end the
-# give-back with the TERM its unit's timeout sends.
+# add, and hangs every settle; lags has an add queued and not yet handled,
+# its settle running out; killed has the first settle end the give-back
+# with the TERM its unit's timeout sends.
 #
 # It refuses what give-back.sh must never ask: a flag it wasn't written for,
 # a trigger naming no device, which udev replays on every device the
@@ -30,7 +33,10 @@ refuse() {
 case "$1" in
 info)
   node=${3##*/}
-  [[ -e "${root}/dev/${node}" ]] || exit 1
+  if [[ ! -e "${root}/dev/${node}" ]]; then
+    echo "Unknown device \"$3\": No such device" >&2
+    exit 1
+  fi
   case "$2" in
   --query=property) cat "${root}/facts/${node}" ;;
   --query=path) echo "/devices/${node}" ;;
@@ -49,6 +55,7 @@ trigger)
   done
   [[ ! -e "${root}/fails" ]] || exit 1
   [[ "${action}" != add || ! -e "${root}/adds-fail" ]] || exit 1
+  [[ "${action}" != add || ! -e "${root}/lags" ]] || exit 0
   for path in "$@"; do
     node=${path##*/}
     if [[ "${action}" == remove && -e "${root}/after/${node}.unplugged" ]]; then
@@ -61,6 +68,7 @@ trigger)
   done
   ;;
 settle)
+  (($# <= 2)) || refuse "settle ${*:2}"
   bound=${2:-}
   [[ "${bound}" == --timeout=* ]] || refuse "a settle with no bound"
   seconds=${bound#--timeout=}
@@ -77,6 +85,17 @@ settle)
     kill -TERM "${PPID}"
   fi
   [[ ! -e "${root}/hangs" ]] || exit 1
+  # The adds queued before the give-back, handled once udev settles.
+  if [[ -d "${root}/queued" ]]; then
+    for queued in "${root}/queued"/*; do
+      [[ -e "${queued}" ]] || continue
+      mv "${queued}" "${root}/facts/${queued##*/}"
+    done
+  fi
+  # The add a lagging udev hasn't handled yet is the settle that runs out.
+  if [[ -e "${root}/lags" ]] && grep -q '^add ' "${root}/triggers"; then
+    exit 1
+  fi
   ;;
 *) refuse "$1" ;;
 esac
