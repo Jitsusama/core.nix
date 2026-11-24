@@ -52,17 +52,47 @@ use crate::windows;
 /// a full disk isn't asked every moment.
 const WRITE_AGAIN_MS: u64 = 10_000;
 
-/// What the journal hears of a write of the places to `path` that
-/// failed with `why`, or succeeded with none, after the write before it
-/// left `was` unwritten: a failure once until its error changes, so a
-/// full disk isn't journalled at every try, and once more on success.
-fn write_heard(path: &Path, why: Option<&str>, was: Option<&str>) -> Option<String> {
-    match (why, was) {
-        (Some(why), was) if was != Some(why) => {
-            Some(format!("agents: can't keep {}: {why}", path.display()))
-        }
-        (None, Some(_)) => Some(format!("agents: kept {} again", path.display())),
-        _ => None,
+/// A write of the places that failed, while memory holds more than
+/// their file does.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Unwritten {
+    /// Why the last try failed.
+    pub why: String,
+    /// When the file fell behind, in ms since the epoch.
+    pub since: u64,
+    /// When the journal last heard that it was behind.
+    pub said: u64,
+}
+
+/// What the journal hears of a write of the places to `path` at `at`
+/// that failed with `why`, or succeeded with none, after the writes
+/// before it left `was` unwritten, and what's left unwritten after it:
+/// a failure once until its error changes, so a full disk isn't
+/// journalled at every try, and once more on success.
+fn write_heard(
+    path: &Path,
+    why: Option<&str>,
+    was: Option<&Unwritten>,
+    at: u64,
+) -> (Option<String>, Option<Unwritten>) {
+    let Some(why) = why else {
+        let heard = was.map(|_| format!("agents: kept {} again", path.display()));
+        return (heard, None);
+    };
+    let since = was.map_or(at, |was| was.since);
+    let left = |said| {
+        Some(Unwritten {
+            why: why.to_owned(),
+            since,
+            said,
+        })
+    };
+    match was {
+        Some(was) if was.why == why => (None, left(was.said)),
+        _ => (
+            Some(format!("agents: can't keep {}: {why}", path.display())),
+            left(at),
+        ),
     }
 }
 
@@ -124,7 +154,7 @@ pub struct Inputs {
     /// Why the last write of `arrangement` failed, while it holds more
     /// than its file does, so the next keep writes it though nothing
     /// moved, and the journal hears a failure once until it changes.
-    pub unwritten: Option<String>,
+    pub unwritten: Option<Unwritten>,
     /// Why the last write of `kept_places` failed, while it holds more
     /// than its file does, so the file isn't read back over it.
     pub kept_places_unwritten: Option<String>,
@@ -315,7 +345,7 @@ impl Inputs {
         if self.windows.records().next().is_none() {
             let kept = self.arrangement.let_go(&self.boot, at);
             if kept != self.arrangement || self.unwritten.is_some() {
-                self.write_places(kept, path);
+                self.write_places(kept, path, at);
             }
             return self.kept_again_at(at);
         }
@@ -342,23 +372,23 @@ impl Inputs {
             at,
         );
         if kept != self.arrangement || self.unwritten.is_some() {
-            self.write_places(kept, path);
+            self.write_places(kept, path, at);
         }
         self.kept_again_at(at)
     }
 
-    /// Writes `kept` to `path`, journalling a failure once until its
-    /// error changes and once more when a write succeeds again. It's
-    /// kept in memory either way, so a closed mark keeps the time it was
-    /// stamped at: one stamped again at each try would never come due
-    /// while the disk stays full. A daemon stopped before a write goes
-    /// through loses what memory held past the file.
-    fn write_places(&mut self, kept: Arrangement, path: &Path) {
+    /// Writes `kept` to `path` at `at`, journalling as [`write_heard`]
+    /// says. It's kept in memory either way, so a closed mark keeps the
+    /// time it was stamped at: one stamped again at each try would never
+    /// come due while the disk stays full. A daemon stopped before a
+    /// write goes through loses what memory held past the file.
+    fn write_places(&mut self, kept: Arrangement, path: &Path, at: u64) {
         let why = kept.write(path).err().map(|why| why.to_string());
-        if let Some(heard) = write_heard(path, why.as_deref(), self.unwritten.as_deref()) {
+        let (heard, unwritten) = write_heard(path, why.as_deref(), self.unwritten.as_ref(), at);
+        if let Some(heard) = heard {
             eprintln!("{heard}");
         }
-        self.unwritten = why;
+        self.unwritten = unwritten;
         self.arrangement = kept;
     }
 
@@ -1455,26 +1485,38 @@ mod tests {
     fn a_failed_places_write_is_journalled_once_until_its_error_changes() {
         let path = Path::new("/k/arrangement.json");
         let full = "No space left on device";
+        let (heard, first) = write_heard(path, Some(full), None, 1_000);
         assert_eq!(
-            write_heard(path, Some(full), None).as_deref(),
+            heard.as_deref(),
             Some("agents: can't keep /k/arrangement.json: No space left on device")
         );
+        let first = first.expect("left unwritten");
         assert_eq!(
-            write_heard(path, Some(full), Some(full)),
-            None,
-            "the same failure again isn't journalled again"
+            (first.since, first.said),
+            (1_000, 1_000),
+            "behind and said from the first failure"
         );
-        assert!(
-            write_heard(path, Some("Not a directory"), Some(full)).is_some(),
-            "a failure of another kind is"
+        let (heard, again) = write_heard(path, Some(full), Some(&first), 11_000);
+        assert_eq!(heard, None, "the same failure again isn't journalled again");
+        assert_eq!(
+            again.as_ref(),
+            Some(&first),
+            "so it's still said as of then"
+        );
+        let (heard, other) = write_heard(path, Some("Not a directory"), Some(&first), 21_000);
+        assert!(heard.is_some(), "a failure of another kind is");
+        assert_eq!(
+            other.map(|other| (other.since, other.said)),
+            Some((1_000, 21_000)),
+            "behind still from the first, said now"
         );
         assert_eq!(
-            write_heard(path, None, Some(full)).as_deref(),
-            Some("agents: kept /k/arrangement.json again")
+            write_heard(path, None, Some(&first), 31_000),
+            (Some("agents: kept /k/arrangement.json again".into()), None)
         );
         assert_eq!(
-            write_heard(path, None, None),
-            None,
+            write_heard(path, None, None, 31_000),
+            (None, None),
             "a write that never failed says nothing"
         );
     }

@@ -544,7 +544,11 @@ mod tests {
         let ahead = Arrangement::of(&json!({"v": 1, "boots": {"this": {}}}));
         let mut inputs = Inputs {
             arrangement: ahead.clone(),
-            unwritten: Some("No space left on device".into()),
+            unwritten: Some(crate::inputs::Unwritten {
+                why: "No space left on device".into(),
+                since: 0,
+                said: 0,
+            }),
             ..Inputs::default()
         };
         inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
