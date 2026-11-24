@@ -241,23 +241,26 @@ pub(super) const RUN: &str = ".run";
 /// A job with no file that travels sends none, and its tree is made
 /// empty.
 ///
-/// The near side writes only files and folders, each named within the
-/// tree, so an archive naming a member from the root or through `..`
-/// came from no near side and is refused before it's unpacked. So is a
-/// tree holding anything else, a link of either kind, a pipe, a socket
-/// or a device, checked as each archive is unpacked, before the next,
-/// so no archive writes through what one before it made, and none takes
-/// away what one before it made before it's seen. Past that, the fence
-/// around the far line writes only the quest's scratch. A file under two
-/// names is found as one that isn't a folder yet has more than one link,
-/// not by its type, so this find reads apart from the bring-back step's.
-/// Each folder is made the far line's own to read, write and enter as it
-/// is unpacked, an unpacking that failed partway included, since an
-/// archive's folder modes are kept and one closed to its owner would
-/// leave its contents unchecked and its copy behind; one that still
-/// won't open fails the search after it, which can't read it. A file's
-/// mode stays as the near side sent it. Each archive's list of
-/// names is made new where nothing is, as the run's file is.
+/// The near side writes only plain ustar archives, so one whose first
+/// header says otherwise is refused before tar reads it: tar unpacks a
+/// compressed one too, to far more than a share carries. It writes only
+/// files and folders, each named within the tree, so an archive naming
+/// a member from the root or through `..` came from no near side and is
+/// refused before it's unpacked. So is a tree holding anything else, a
+/// link of either kind, a pipe, a socket or a device, checked as each
+/// archive is unpacked, before the next, so no archive writes through
+/// what one before it made, and none takes away what one before it made
+/// before it's seen. Past that, the fence around the far line writes
+/// only the quest's scratch. A file under two names is found as one that
+/// isn't a folder yet has more than one link, not by its type, so this
+/// find reads apart from the bring-back step's. Each folder is made the
+/// far line's own to read, write and enter as it is unpacked, an
+/// unpacking that failed partway included, since an archive's folder
+/// modes are kept and one closed to its owner would leave its contents
+/// unchecked and its copy behind; one that still won't open fails the
+/// search after it, which can't read it. A file's mode stays as the near
+/// side sent it. Each archive's list of names is made new where nothing
+/// is, as the run's file is.
 pub(super) fn copying() -> String {
     format!(
         r#"copied() {{
@@ -273,6 +276,13 @@ $left
 EOF
   while IFS="$tab" read -r size part; do
     [ "$size" = {END} ] && break
+    magic=$(dd if="$job/{TREE}/$part" bs=1 skip=257 count=8 2>/dev/null |
+      LC_ALL=C tr -d '\000')
+    [ "$magic" = ustar00 ] || {{
+      [ -r "$job/{TREE}/$part" ] || return 2
+      printf "elsewhere: the job's archive %s isn't a plain one, as the near side writes\n" "$part" >&2
+      return 1
+    }}
     rm -f "$work.names" && (set -C && tar -tf "$job/{TREE}/$part" > "$work.names") ||
       return 2
     while IFS= read -r member; do

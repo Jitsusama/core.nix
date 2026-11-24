@@ -171,6 +171,42 @@ fn a_folder_closed_to_its_owner_is_opened_so_its_files_are_checked_and_taken_awa
 }
 
 #[test]
+fn an_archive_that_isn_t_plain_ustar_is_refused_before_it_is_read() {
+    let made = scratch("not-plain");
+    std::fs::write(made.join("a"), "inside").unwrap();
+    let archive = std::process::Command::new("tar")
+        .env("COPYFILE_DISABLE", "1")
+        .args(["--format", "ustar", "-cf", "-", "-C"])
+        .arg(&made)
+        .arg("a")
+        .output()
+        .unwrap();
+    assert!(archive.status.success(), "tar made no archive");
+    let _ = std::fs::remove_dir_all(&made);
+    let mut bytes = archive.stdout;
+    // GNU's magic in place of ustar's, which every tar still unpacks, as
+    // it does a compressed archive; the sum is made again over the header
+    // with the sum's own field as spaces.
+    assert_eq!(&bytes[257..265], b"ustar\x0000", "tar wrote no ustar header");
+    bytes[257..265].copy_from_slice(b"ustar  \0");
+    bytes[148..156].copy_from_slice(b"        ");
+    let sum: u32 = bytes[..512].iter().map(|&byte| u32::from(byte)).sum();
+    bytes[148..156].copy_from_slice(format!("{sum:06o}\0 ").as_bytes());
+    let text = String::from_utf8(bytes).unwrap();
+    let list = format!("{}\t0.tar\nend\n", text.len());
+    let (code, err, home) = far_run(Left::Listed(&list), &[("0.tar", &text)], "touch ../ran");
+    assert!(
+        code == Some(77) && err.contains("0.tar isn't a plain one"),
+        "an archive with GNU's header wasn't refused ({code:?}): {err}"
+    );
+    assert!(
+        !work(&home).join("ran").exists() && !work(&home).join("1").exists(),
+        "a job ran over an archive that isn't plain, or its copy was left"
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+#[test]
 fn every_archive_is_unpacked_in_turn_into_one_tree() {
     let made = scratch("several");
     std::fs::create_dir_all(made.join("in/d")).unwrap();
