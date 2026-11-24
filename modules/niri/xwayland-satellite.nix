@@ -15,7 +15,8 @@
 # while the loop waited for a reply before it sleeps, so a window opened
 # then isn't left unseen until its program does something else. The script
 # in front of it (xwayland-satellite.sh) gives Xwayland a cookie, so only
-# Joel's programs connect. nixos.nix installs it, and checks.nix starts it on a nested niri.
+# Joel's programs connect. nixos.nix installs it, and checks.nix starts it
+# on a nested niri.
 {
   coreutils,
   rustPlatform,
