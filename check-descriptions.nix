@@ -3806,8 +3806,8 @@
     IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried, and a
     list to one address at least
   '';
-  shaper-refuses-a-house-key-it-can-t-see = ''
-    a house's key file that the shaper's service can't see, under /root, /home, /tmp or /var/tmp,
+  shaper-refuses-a-house-key-it-can-t-read = ''
+    a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
     or spelled through doubled slashes or dot folders, is refused as the machine builds, and so are
     two houses naming one address under two keys, while a key under /var/lib, and a keyed house
     beside a keyless one naming the same address, are taken

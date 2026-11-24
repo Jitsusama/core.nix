@@ -241,7 +241,7 @@ onLinux {
   # builds rather than read as missing at run time, holding nothing; and
   # so are two houses naming one address under two keys, while one keyed
   # beside one keyless, which the ear holds to the key, builds.
-  shaper-refuses-a-house-key-it-can-t-see = holds "shaper-refuses-a-house-key-it-can-t-see" (
+  shaper-refuses-a-house-key-it-can-t-read = holds "shaper-refuses-a-house-key-it-can-t-read" (
     if takenUnseen != [ ] then
       "A key the shaper can't see was taken: ${lib.concatStringsSep ", " takenUnseen}"
     else if keyRefused.twoKeys == [ ] then
