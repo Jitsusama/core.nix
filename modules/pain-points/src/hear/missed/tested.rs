@@ -58,22 +58,26 @@ enum Said<'a> {
 
 impl Said<'_> {
     /// Puts this on a miss's `line`, in place of what was said before, and
-    /// says whether the line said it already.
+    /// says whether the line said it already, with nothing else said
+    /// beside it. A reason said again keeps when it was first said.
     fn on(self, line: &mut Value) -> bool {
-        let (field, said, other) = match self {
-            Said::Test(test) => ("test", test, ["none", "none_at_ms"]),
-            Said::NoMiss { why, .. } => ("none", why, ["test", "none_at_ms"]),
+        let (field, said, rivals) = match self {
+            Said::Test(test) => ("test", test, &["none", "none_at_ms"][..]),
+            Said::NoMiss { why, .. } => ("none", why, &["test"][..]),
         };
-        let already = line[field].as_str() == Some(said);
+        let same = line[field].as_str() == Some(said);
+        let already = same && rivals.iter().all(|rival| line.get(rival).is_none());
         if !already {
             if let Some(fields) = line.as_object_mut() {
-                for gone in other {
-                    fields.remove(gone);
+                for rival in rivals {
+                    fields.remove(*rival);
                 }
             }
-            line[field] = json!(said);
-            if let Said::NoMiss { at_ms, .. } = self {
-                line["none_at_ms"] = json!(at_ms);
+            if !same {
+                line[field] = json!(said);
+                if let Said::NoMiss { at_ms, .. } = self {
+                    line["none_at_ms"] = json!(at_ms);
+                }
             }
         }
         already
@@ -263,6 +267,49 @@ mod tests {
             (&json!("core a b"), &Value::Null, &Value::Null),
             "a test named after didn't take its place: {line}"
         );
+    }
+
+    #[test]
+    fn naming_the_test_a_line_holds_beside_a_reason_takes_the_reason_off() {
+        let path = ledger(
+            "both",
+            &format!(r#"{{"at":"{AT}","test":"core a b","none":"x","none_at_ms":1}}"#),
+        );
+        let said = name_in(&path, AT, Said::Test("core a b")).expect("named");
+        assert!(
+            !said.contains("already"),
+            "a line saying both was taken as said: {said}"
+        );
+        let kept = fs::read_to_string(&path).expect("the ledger");
+        let line: Value = serde_json::from_str(kept.trim()).expect("the miss's line");
+        assert_eq!(
+            (&line["test"], &line["none"], &line["none_at_ms"]),
+            (&json!("core a b"), &Value::Null, &Value::Null),
+            "the reason beside the test stayed: {line}"
+        );
+    }
+
+    #[test]
+    fn a_test_and_a_reason_both_or_neither_or_a_reason_not_on_one_line_is_refused() {
+        let nowhere = std::env::temp_dir().join(format!("tested-refused-{}", std::process::id()));
+        for (given, what) in [
+            (&[("--test", "core a"), ("--none", "no pain")][..], "both"),
+            (&[][..], "neither"),
+            (&[("--none", "  ")][..], "an empty reason"),
+            (&[("--none", "a\nb")][..], "a reason of two lines"),
+        ] {
+            let mut flags: BTreeMap<&str, String> = given
+                .iter()
+                .map(|&(flag, value)| (flag, value.to_owned()))
+                .collect();
+            flags.insert("--miss", AT.to_owned());
+            flags.insert("--ledgers", nowhere.display().to_string());
+            let failed = named(&flags).expect_err("it was taken");
+            assert!(
+                matches!(failed.exit, Exit::Usage),
+                "{what} wasn't refused as usage"
+            );
+        }
     }
 
     #[test]

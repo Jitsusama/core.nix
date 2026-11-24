@@ -334,26 +334,30 @@ pub const SAID_NONE: &str = "misses-said-none";
 /// `pain-points test --none`: a pain heard as a miss that wasn't one, such
 /// as his reassurance, can't name a test, so the owner's word closes it
 /// instead, as a finding closes on its owner's word of why it's expected.
+/// A reason with no time it was said stays open, since the card couldn't
+/// show it for its day.
 fn no_miss(miss: &Value) -> bool {
-    miss["none"]
+    let said = miss["none"]
         .as_str()
-        .is_some_and(|why| !why.trim().is_empty())
+        .is_some_and(|why| !why.trim().is_empty());
+    said && miss["none_at_ms"].is_i64()
 }
 
 /// Takes from `open`, last hour's open misses as the card listed them,
 /// each miss in `text` its owner said was none, so the hour closes it
 /// without telling Joel it's fixed: it wasn't, and nothing catches it.
+/// Each is known by its words and its owner, so another owner's miss in
+/// the same words stays.
 pub fn forget_said_none(text: &str, open: &mut Vec<String>) {
     let none: Vec<String> = lines(text)
         .filter(no_miss)
-        .map(|miss| named_as(&miss).to_owned())
+        .map(|miss| {
+            let owner = first_owner(miss["owner"].as_str().unwrap_or_default());
+            format!("{} · {owner}", named_as(&miss))
+        })
         .collect();
-    open.retain(|line| {
-        let what = line
-            .rsplit_once(" · ")
-            .map_or(line.as_str(), |(what, _)| what);
-        !none.iter().any(|said| said == what)
-    });
+    let said_none = |line: &String| none.iter().any(|said| line.starts_with(said.as_str()));
+    open.retain(|line| !said_none(line));
 }
 
 /// The misses in `text` their owners said in the day before `now` were
@@ -689,7 +693,10 @@ mod tests {
             serde_json::json!({"at": AT, "words": "said closed", "owner": "KNURBN",
                 "closed_by": "255494bb414c"}),
             serde_json::json!({"at": AT, "words": "said none", "owner": "IKQ63G",
-                "pain": "s/e4", "heard_by": "pain-points", "none": "he was reassuring"}),
+                "pain": "s/e4", "heard_by": "pain-points", "none": "he was reassuring",
+                "none_at_ms": 1}),
+            serde_json::json!({"at": AT, "words": "said none, no time", "owner": "IKQ63G",
+                "none": "he was reassuring"}),
         ]
         .iter()
         .map(ToString::to_string)
@@ -704,9 +711,10 @@ mod tests {
             .collect();
         assert_eq!(
             named,
-            ["still open", "said closed"],
+            ["still open", "said closed", "said none, no time"],
             "a carried pain counted twice, or one closed by a commit running here stayed, \
-             or another writer's closed_by closed a miss, or one its owner said was none stayed"
+             or another writer's closed_by closed a miss, or one its owner said was none \
+             stayed, or one said none with no time it was said closed"
         );
     }
 
@@ -726,13 +734,15 @@ mod tests {
         .join("\n");
         let shown = said_none(&text, now).expect("one said in the day");
         assert_eq!(
-            (shown.behind, shown.target, shown.owner),
+            (shown.behind, shown.target, shown.owner, shown.class),
             (
                 vec!["it's fine · IKQ63G: he was reassuring".to_owned()],
                 None,
-                "IKQ63G".to_owned()
+                "IKQ63G".to_owned(),
+                Class::Cells
             ),
-            "a miss said none in the day wasn't shown with why, unjudged, or an older one was"
+            "a miss said none in the day wasn't shown with why, unjudged, beside the cells \
+             rather than the misses it would leave unjudged, or an older one was"
         );
         assert!(
             said_none(&text, now + DAY).is_none(),
@@ -740,13 +750,15 @@ mod tests {
         );
         let mut open = vec![
             "it's fine · IKQ63G".to_owned(),
+            "it's fine · ABC123".to_owned(),
             "still open · ABC123".to_owned(),
         ];
         forget_said_none(&text, &mut open);
         assert_eq!(
             open,
-            ["still open · ABC123"],
-            "a miss said none was kept open, so it would be told fixed"
+            ["it's fine · ABC123", "still open · ABC123"],
+            "a miss said none was kept open, so it would be told fixed, or another owner's \
+             in the same words was forgotten"
         );
     }
 

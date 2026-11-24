@@ -45,6 +45,8 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         measures::mapped(None, "", "OWNER"),
     ];
     shown.extend(measures::apps::apps(None, NOW));
+    let said = serde_json::json!({"none": "no pain", "none_at_ms": NOW * 1000});
+    shown.extend(measures::said_none(&said.to_string(), NOW));
     // Those read from a machine's records, under the keys and targets the
     // hour gives them, each target read where the hour holds it; a
     // family's by one of its keys.
@@ -75,12 +77,7 @@ fn every_measure_the_hour_shows_has_a_line_that_holds_it_to_its_target() {
         let key = format!("{}{}", measures::queues::QUEUE, queue.key);
         shown.push(held(&key, Some(queue.target)));
     }
-    let unjudged = [
-        "landed",
-        "balance",
-        measures::spent::KEY,
-        measures::SAID_NONE,
-    ];
+    let unjudged = ["landed", "balance", measures::spent::KEY];
     shown.extend(unjudged.map(|key| held(key, None)));
     let undefined = undefined(&shown);
     assert_eq!(
