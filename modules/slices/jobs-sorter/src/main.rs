@@ -1828,10 +1828,11 @@ struct Fitting {
 }
 
 /// The scopes the sorter floors itself: the windows it holds, each with its
-/// pi, and those keep.rs keeps. Those it holds are at most
-/// [`focus::MOST`], so they claim the room first and outside the windows'
-/// joint cap; those it keeps are every window running a pi, however many,
-/// so they claim first within the cap ([`claims`]).
+/// pi, and those keep.rs keeps. Both claim first within the windows' joint
+/// cap, those it holds ahead of those it keeps ([`claims`]): those it holds
+/// are up to twice [`focus::MOST`] scopes, and more while a give-back
+/// fails, and those it keeps are every window running a pi, so neither is
+/// bounded by its count.
 #[derive(Debug, Default)]
 struct Floored {
     held: HashSet<PathBuf>,
@@ -1928,14 +1929,14 @@ fn claims(
         let name = path.file_name()?.to_string_lossy().into_owned();
         Some((name, holds::current(path)?, memory_low(path)?))
     };
-    // The windows the sorter holds, with their pis, claim what they hold up to that floor,
-    // since it set each and holds at most focus::MOST. Every other scope counts as a window by
-    // its name, so together those claim no more than focus::MOST windows at focus::FLOOR:
-    // first those keep.rs keeps, whose floors it set but whose count is every window running
-    // a pi, then those named alone, each by name so a look's order is the next one's. Past
-    // that they claim as strays do, after the units Joel is at, and aren't held: an agent
-    // naming scopes as windows and asking for max would otherwise take the units' floors, or
-    // push the sorter's own floors out. Each window claims what it held at
+    // Every scope counts as a window by its name, and together they claim no more than
+    // focus::MOST windows at focus::FLOOR, the share the slice's floor is sized for: first
+    // those the sorter holds, a window and its pi each, so up to twice focus::MOST and more
+    // while a give-back fails; then those keep.rs keeps, every window running a pi; then those
+    // named alone; each by name so a look's order is the next one's. Past that they claim as
+    // strays do, after the units Joel is at, and aren't held: an agent naming scopes as
+    // windows and asking for max would otherwise take the units' floors, or push the sorter's
+    // own floors out. Each window claims what it held at
     // its peak within the minute, so a window paging out doesn't hand the units room it takes
     // back a look later, but never past its floor now: one the sorter has let go claims its
     // new floor at once.
@@ -1957,13 +1958,8 @@ fn claims(
         let peak = peaks
             .hold(&path.display().to_string(), claims.min(focus::FLOOR), now)
             .min(floor);
-        let held = if floored.held.contains(path) {
-            peak
-        } else {
-            let held = peak.min(left);
-            left -= held;
-            held
-        };
+        let held = peak.min(left);
+        left -= held;
         kept.push(held);
         strays.push((name, claims.saturating_sub(held)));
     }
@@ -5276,16 +5272,9 @@ mod tests {
     }
 
     #[test]
-    fn the_floors_the_sorter_sets_claim_first_and_only_scopes_named_as_windows_share_the_cap() {
+    fn within_the_cap_held_floors_claim_first_then_kept_ones_then_scopes_only_named() {
         const MIB: u64 = 1 << 20;
-        let held = [
-            "kitty-1-1.scope",
-            "mycelium-pi-1.scope",
-            "kitty-1-2.scope",
-            "mycelium-pi-2.scope",
-            "kitty-1-3.scope",
-            "mycelium-pi-3.scope",
-        ];
+        let held = ["kitty-1-1.scope", "mycelium-pi-1.scope"];
         let named = [
             "kitty-0-1.scope",
             "kitty-0-2.scope",
@@ -5294,8 +5283,8 @@ mod tests {
         ];
         let children: Vec<(&str, u64, &str)> = held
             .iter()
-            .chain(&named)
-            .map(|&name| (name, 2048 * MIB, "max"))
+            .map(|&name| (name, 1024 * MIB, "max"))
+            .chain(named.iter().map(|&name| (name, 2048 * MIB, "max")))
             .chain([("kitty-1-9.scope", 512 * MIB, "536870912")])
             .collect();
         let slice = slice_with("fit-floored-first", 32768 * MIB, &children);
@@ -5303,7 +5292,7 @@ mod tests {
             held: held.iter().map(|name| slice.join(name)).collect(),
             kept: ["kitty-1-9.scope".to_owned()].into(),
         };
-        let (_, strays) = claims(
+        let (room, strays) = claims(
             &slice,
             32768 * MIB,
             &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
@@ -5319,10 +5308,62 @@ mod tests {
             .map(|(name, _)| name.as_str())
             .collect();
         assert_eq!(
+            room,
+            32768 * MIB - focus::FLOOR * focus::MOST as u64,
+            "the windows together took the units Joel is at more than the cap"
+        );
+        // 2 GiB held and 512 MiB kept leave the named 3.5 GiB of the cap: all
+        // of the first, 1.5 GiB of the second, and none of the rest.
+        assert_eq!(
             past,
-            ["kitty-0-3.scope", "kitty-0-4.scope"],
-            "a held window's floor or its pi's was left past the cap, the one keep.rs keeps \
-             didn't come first within it, or scopes only named as windows weren't capped by name"
+            ["kitty-0-2.scope", "kitty-0-3.scope", "kitty-0-4.scope"],
+            "a held window's floor or its pi's didn't come first within the cap, the one keep.rs \
+             keeps didn't come next, or scopes only named as windows weren't capped by name"
+        );
+    }
+
+    // Held scopes are a window and its pi, so up to twice focus::MOST, and
+    // more while a give-back fails: outside the cap, six at their floor took
+    // 12 GiB ahead of the units Joel is at, against a cap of 6 sized to fit
+    // the slice's floor.
+    #[test]
+    fn held_floors_past_the_cap_claim_after_the_units_joel_is_at() {
+        const MIB: u64 = 1 << 20;
+        let held = [
+            "kitty-1-1.scope",
+            "mycelium-pi-1.scope",
+            "kitty-1-2.scope",
+            "mycelium-pi-2.scope",
+            "kitty-1-3.scope",
+            "mycelium-pi-3.scope",
+        ];
+        let children: Vec<(&str, u64, &str)> =
+            held.iter().map(|&name| (name, 2048 * MIB, "max")).collect();
+        let slice = slice_with("fit-held-capped", 32768 * MIB, &children);
+        let floored = Floored {
+            held: held.iter().map(|name| slice.join(name)).collect(),
+            kept: HashSet::new(),
+        };
+        let (room, strays) = claims(
+            &slice,
+            32768 * MIB,
+            &["kitty-".to_owned(), "mycelium-pi-".to_owned()],
+            &[],
+            &floored,
+            &mut budget::Peaks::default(),
+            std::time::Instant::now(),
+        );
+        fs::remove_dir_all(slice.parent().unwrap()).unwrap();
+        assert_eq!(
+            room,
+            32768 * MIB - focus::FLOOR * focus::MOST as u64,
+            "held floors took the units Joel is at more than the windows' cap"
+        );
+        let past: u64 = strays.iter().map(|(_, claim)| claim).sum();
+        assert_eq!(
+            past,
+            focus::FLOOR * focus::MOST as u64,
+            "what the held floors claim past the cap isn't claimed after the units"
         );
     }
 
