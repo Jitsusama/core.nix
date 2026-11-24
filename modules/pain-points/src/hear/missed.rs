@@ -45,8 +45,9 @@ pub const FROM_MS: i64 = 1_795_496_400_000;
 /// at `ledger` once, at his time by `offset_s`, and the check of each
 /// closed since, or that it is carried.
 /// Lines are added at its end; the ledger is written whole only when a
-/// line changes, under its lock either way, and read again first, so
-/// neither another run's writes nor a line added by hand are lost.
+/// line changes, under its lock either way, so another run's writes are
+/// kept, and only once the ledger reads as it did before, so a writer that
+/// skips the lock loses nothing but in the moment of the rename.
 ///
 /// # Errors
 ///
