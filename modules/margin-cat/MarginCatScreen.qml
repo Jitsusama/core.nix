@@ -13,6 +13,7 @@ import qs
 import Quickshell
 import Quickshell.Wayland
 import QtQuick
+import KeyTimes
 import "MarginCat.js" as MarginCat
 import "MarginCatFloats.js" as Floats
 import "MarginCatGames.js" as Games
@@ -164,42 +165,43 @@ PanelWindow {
         if (still) {
             rests();
         } else {
-            restsFrom = -1;
+            satAt = -1;
             stillSince = -1;
             unpetted();
         }
     }
-    // Its rest begins once niri has answered for a frame drawn after it
-    // sat, never as its walk ends, and counts from when the shell heard
-    // that answer, not when niri showed it. niri sends the pointer over
-    // its cells as it takes the commit moving them, before it shows that
-    // frame, so a pointer it came to under is felt before its rest
-    // begins, or as it does, however long the shell or niri were held up.
-    // Counted from its walk's end, a builder under load held that commit
-    // up to 233 ms after it sat and the cat leant on a pointer it had
-    // walked under (2026-11-24). The second frame begun after it sat is
-    // the first sure to have synced after: one can be on its way already.
-    property int restsFrom: -1
+    // Its rest begins once niri has answered for the first frame synced
+    // after it sat, which holds its cells where it sits, and counts from
+    // when the shell heard that answer, on the monotonic clock. niri sends
+    // the pointer over its cells as it takes the commit moving them,
+    // before it answers for that frame, so a pointer it came to under is
+    // felt before its rest begins, however long the shell or niri were
+    // held up. Counted from its walk's end, a builder under load held
+    // that commit up to 233 ms after it sat and the cat leant on a
+    // pointer it had walked under (2026-11-24). An ask only marks the
+    // frame Qt draws for its sitting pose, drawing none of its own, but
+    // for when no frame was coming: a glance still draws two.
+    property real satAt: -1
     function rests(): void {
         stillSince = -1;
         if (!window.FramePresentation.available) {
-            stillSince = Date.now();
+            stillSince = KeyTimes.now();
             return;
         }
-        restsFrom = window.FramePresentation.framesBegun + 2;
+        satAt = KeyTimes.now();
         window.FramePresentation.ask();
     }
-    // A frame niri showed or let go, `frame`: asked again until the one
-    // its rest waits for, which begins it.
+    // A frame niri showed or let go, `frame`: one synced after it sat
+    // begins its rest, and one on its way as it sat asks for the next.
     function restSeen(frame: int): void {
-        if (restsFrom < 0 || frame < restsFrom - 1)
+        if (satAt < 0)
             return;
-        if (frame < restsFrom) {
+        if (window.FramePresentation.timesOf(frame).synchronizing >= satAt) {
+            satAt = -1;
+            stillSince = KeyTimes.now();
+        } else {
             window.FramePresentation.ask();
-            return;
         }
-        restsFrom = -1;
-        stillSince = Date.now();
     }
     // Where the pointer was last seen over it, in the screen's pixels,
     // null with none; the way it leans into it, 0 while it doesn't
@@ -1276,7 +1278,7 @@ PanelWindow {
     // The pointer over it at `at`, in the screen's pixels, `across` its
     // cells: one that moved onto it as it sat still starts a pet.
     function felt(at: point, across: real): void {
-        const rested = still && stillSince >= 0 ? Date.now() - stillSince : -1;
+        const rested = still && stillSince >= 0 ? KeyTimes.now() - stillSince : -1;
         const moved = MarginCat.strokes(pointer, at, rested);
         // As the pointer comes onto it and as it strokes it, it says how
         // long it had rested and where the pointer was, so a test that
