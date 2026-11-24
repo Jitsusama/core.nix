@@ -28,6 +28,10 @@ const HIS: [&str; 1] = ["ask"];
 /// How far into a line its role is looked for. pi writes an entry's type,
 /// ids and time before its message's role, about 130 bytes in.
 const HEAD: usize = 400;
+/// How soon after a compaction's ask the call it cuts ends. pi's own cut
+/// lands a tenth of a second after the ask; five seconds leaves room for
+/// a loaded machine, and an abort later than that is his.
+const ASK_CUTS_MS: i64 = 5_000;
 
 /// How one call to the model ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -92,6 +96,32 @@ pub struct Turn {
     pub tool_mark: i64,
 }
 
+/// Where his turn stands after one of its calls stopped on an error.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Errored {
+    /// No call of his turn is left on an error.
+    #[default]
+    No,
+    /// The last call stopped on an error, with no word yet that pi tries
+    /// again.
+    Untried,
+    /// A peer's or the harness's message came after that error, so the
+    /// call after it, if pi never tries again, answers them, not him.
+    Crossed,
+}
+
+impl Errored {
+    /// Where a call of his turn that stopped so leaves it.
+    fn after(stop: Stop) -> Self {
+        if stop == Stop::Error {
+            Self::Untried
+        } else {
+            Self::No
+        }
+    }
+}
+
 /// What's been read of one session's log: how far, whether the last
 /// message in it was his, and his turns.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -103,10 +133,14 @@ pub struct Log {
     /// first token, which the harness logs just before the call itself.
     #[serde(default)]
     pub next: Option<(i64, i64)>,
-    /// A compaction was asked for and hasn't landed. pi's compaction
-    /// aborts the call it cuts, so an abort while one is asked is pi's.
+    /// When a compaction was asked for, until it lands or settles, his
+    /// next message opens a turn, or the next call of his turn is read.
+    /// pi's compaction aborts the call it cuts, so an abort ending soon
+    /// after the ask is pi's.
     #[serde(default)]
-    pub compacting: bool,
+    pub compacting: Option<i64>,
+    #[serde(default)]
+    pub errored: Errored,
 }
 
 impl Log {
@@ -173,15 +207,30 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 ..Turn::default()
             });
             log.open = true;
+            log.errored = Errored::No;
+            // A compaction asked before he typed can't cut a call he set
+            // off, whether or not it ever lands.
+            log.compacting = None;
             last = Some(text);
+        } else if log.errored != Errored::No && head_has(&line, r#""type":"custom_message""#) {
+            // pi tries an errored call again by first editing the error out
+            // of its context, so a peer's or the harness's message before
+            // that edit can still land inside his retry, and one after it
+            // does. Only one with no retry after it sets off a call that
+            // answers them, not him (hear/said.rs keeps the same rule).
+            log.errored = Errored::Crossed;
+        } else if log.errored != Errored::No && head_has(&line, r#""type":"context_edit""#) {
+            log.errored = Errored::No;
+        } else if log.errored == Errored::Crossed && begins_with_role(&line, "assistant") {
+            (log.errored, log.open) = (Errored::No, false);
         } else if head_has(&line, r#""customType":"harness-call""#) {
             log.next = harness_call(&line);
         } else if head_has(&line, r#""customType":"compaction-asked""#) {
-            log.compacting = true;
+            log.compacting = asked_at(&line);
         } else if head_has(&line, r#""type":"compaction""#)
             || head_has(&line, r#""customType":"compaction-settled""#)
         {
-            log.compacting = false;
+            log.compacting = None;
         } else if log.open
             && begins_with_role(&line, "assistant")
             && let (Some(turn), Some(mut call)) = (log.turns.last_mut(), call(&line))
@@ -191,13 +240,14 @@ pub fn follow<F: Read + Seek>(file: &mut F, log: &mut Log) -> io::Result<()> {
                 .take()
                 .filter(|(of, _)| *of == call.start)
                 .map(|(_, first)| first);
-            if std::mem::take(&mut log.compacting) && call.stop == Stop::Aborted {
+            if cut_for(log.compacting.take(), &call) {
                 call.stop = Stop::Compacted;
             }
             // A call that answers or is stopped hands the turn back: what
             // runs after it was set off by something else, a mesh message
             // or a job's result, not by him.
             log.open = matches!(call.stop, Stop::Tool | Stop::Error);
+            log.errored = Errored::after(call.stop);
             turn.tool_mark = turn.tool_mark.max(call.start + call.ms);
             turn.calls.push(call);
         } else if log.open
@@ -332,6 +382,29 @@ fn harness_call(line: &[u8]) -> Option<(i64, i64)> {
     Some((entry.data.of, entry.data.first_token_ms?))
 }
 
+/// Whether a call is the one pi cut for a compaction asked at `asked`: an
+/// abort ending soon after the ask.
+fn cut_for(asked: Option<i64>, call: &Call) -> bool {
+    asked.is_some_and(|at| call.stop == Stop::Aborted && call.start + call.ms - at <= ASK_CUTS_MS)
+}
+
+/// A compaction's ask, as the harness writes it: numbers alone, so it's
+/// parsed whole.
+#[derive(Deserialize)]
+struct AskLine {
+    data: Ask,
+}
+
+#[derive(Deserialize)]
+struct Ask {
+    at: i64,
+}
+
+fn asked_at(line: &[u8]) -> Option<i64> {
+    let entry: AskLine = serde_json::from_slice(line).ok()?;
+    Some(entry.data.at)
+}
+
 /// Whether a line is a message in this role, from the head of the line
 /// alone, so tool results, most of a log's bytes, are never parsed.
 fn begins_with_role(line: &[u8], role: &str) -> bool {
@@ -452,6 +525,15 @@ mod tests {
         ) + "\n"
     }
 
+    /// As the harness writes it, read from a session's log on 20 November
+    /// with its ids changed.
+    fn compaction_settled(at: i64) -> String {
+        format!(
+            r#"{{"type":"custom","customType":"compaction-settled","data":{{"at":{at},"resumed":false,"by":"asker"}},"id":"n","parentId":"k","timestamp":"{}"}}"#,
+            iso(at)
+        ) + "\n"
+    }
+
     fn compaction(at: i64) -> String {
         format!(
             r#"{{"type":"compaction","id":"m","parentId":"k","timestamp":"{}","summary":"what was said"}}"#,
@@ -507,12 +589,52 @@ mod tests {
     }
 
     #[test]
+    fn a_peers_message_after_an_error_takes_the_turn_unless_pi_tries_again() {
+        let retry =
+            || r#"{"type":"context_edit","targetId":"f","replacement":null}"#.to_owned() + "\n";
+        let errored = || typed(AT, AT, "hello") + &reply(AT + 100, 1000, "error");
+        let answered = || reply(AT + 5100, 2000, "stop");
+        for (text, stops, what) in [
+            (
+                errored() + &mesh(AT + 5000) + &answered(),
+                vec![Stop::Error],
+                "a peer's turn after an error pi never tried again",
+            ),
+            (
+                errored() + &mesh(AT + 5000) + &retry() + &answered(),
+                vec![Stop::Error, Stop::Done],
+                "a peer's message before pi's retry",
+            ),
+            (
+                errored() + &retry() + &mesh(AT + 5000) + &answered(),
+                vec![Stop::Error, Stop::Done],
+                "a peer's message during pi's retry",
+            ),
+            (
+                typed(AT, AT, "hello")
+                    + &reply(AT + 100, 1000, "toolUse")
+                    + &mesh(AT + 5000)
+                    + &answered(),
+                vec![Stop::Tool, Stop::Done],
+                "a peer's message mid-turn with no error",
+            ),
+        ] {
+            let log = read(&text);
+            let got: Vec<Stop> = log.turns[0].calls.iter().map(|c| c.stop).collect();
+            assert_eq!(got, stops, "{what} was read wrongly");
+            assert!(!log.open, "{what}: the turn was handed back at its end");
+        }
+    }
+
+    #[test]
     fn an_abort_pi_makes_to_compact_is_not_his_stop() {
         // As a session's log read on 23 November: a tool's result, the
         // harness asking to compact, the call it cut ending at once, the
         // compaction, and the run resumed by an automated message.
+        // Its first reply comes 2.5 s after Enter, so the go is named for
+        // that wait and its stopped count can be read.
         let text = typed(AT, AT, "check the gate")
-            + &reply(AT + 500, 20_000, "toolUse")
+            + &reply(AT + 2500, 18_000, "toolUse")
             + &tool_ended(AT + 20_800, "edit")
             + &compaction_asked(AT + 20_860)
             + &reply(AT + 20_975, 0, "aborted")
@@ -526,24 +648,55 @@ mod tests {
         let log = read(&text);
         let stops: Vec<Stop> = log.turns[0].calls.iter().map(|c| c.stop).collect();
         assert_eq!(stops, [Stop::Tool, Stop::Compacted]);
-        assert!(!log.compacting, "the compaction landed");
-        let stopped: u32 = painful(&[&log.turns], AT - 1, AT + 1)
-            .iter()
-            .map(|p| match &p.signs {
-                Signs::Pi(signs) => signs.stopped,
-                _ => 0,
-            })
-            .sum();
-        assert_eq!(stopped, 0, "pi cut its own call, he stopped nothing");
-
-        let after = text
-            + &typed(AT + 60_000, AT + 60_000, "look at the launcher")
-            + &reply(AT + 60_500, 4000, "aborted");
+        let named = painful(&[&log.turns], AT - 1, AT + 1);
+        assert_eq!(named.len(), 1, "the go is named for its wait");
+        let Signs::Pi(signs) = &named[0].signs else {
+            panic!("a pi moment carries pi's signs");
+        };
         assert_eq!(
-            read(&after).turns[1].calls[0].stop,
-            Stop::Aborted,
-            "once the compaction has landed, an abort is his again"
+            (signs.stopped, named[0].part),
+            (0, "pi"),
+            "pi cut its own call, he stopped nothing"
         );
+    }
+
+    #[test]
+    fn an_ask_ends_where_it_lands_settles_or_he_types() {
+        // Each abort below is his: the ask before it was spent first, or
+        // came too long before it ended.
+        let asked = || {
+            typed(AT, AT, "check the gate")
+                + &reply(AT + 500, 1000, "toolUse")
+                + &compaction_asked(AT + 2000)
+        };
+        let stop = || reply(AT + 3000, 1000, "aborted");
+        for (text, what) in [
+            (
+                asked() + &compaction(AT + 2500) + &stop(),
+                "an ask that landed between his calls",
+            ),
+            (
+                asked() + &compaction_settled(AT + 2500) + &stop(),
+                "an ask settled with no compaction",
+            ),
+            (
+                typed(AT, AT, "check the gate")
+                    + &reply(AT + 500, 1000, "stop")
+                    + &compaction_asked(AT + 2000)
+                    + &typed(AT + 2500, AT + 2500, "now the launcher")
+                    + &stop(),
+                "an ask never settled, before he typed again",
+            ),
+            (
+                asked() + &reply(AT + 3000, 9000, "aborted"),
+                "an abort ending long after the ask",
+            ),
+        ] {
+            let log = read(&text);
+            let last = log.turns.last().and_then(|t| t.calls.last());
+            assert_eq!(last.map(|c| c.stop), Some(Stop::Aborted), "{what}");
+            assert_eq!(log.compacting, None, "{what}: no ask is left");
+        }
     }
 
     #[test]
@@ -743,7 +896,8 @@ mod tests {
             open: true,
             turns: vec![turn(AT - 10, &[]), turn(AT - 5, &[])],
             next: None,
-            compacting: false,
+            compacting: None,
+            errored: Errored::No,
         };
         log.prune(AT);
         assert_eq!(log.turns.len(), 1, "the older is gone");
