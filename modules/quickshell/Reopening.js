@@ -250,18 +250,23 @@ function queuedOnce(queue, more, begun) {
 // join (queuedOnce) is no matter. Each of `ids` counts once, however many
 // lists ask for it, and `tell` hears each reading, the last list's kept. A
 // list joining a tally already told of one gone tells it again with those
-// it adds, or the reading Joel is told would stay short of them. A fresh
-// tally on a walk counts none the walk has `begun`, which it won't look
-// for again (queuedOnce) and the tally before counted: a folder found gone
-// among them would otherwise be said reopened.
+// it adds, or the reading Joel is told would stay short of them. No tally,
+// fresh or joined, counts one the walk has `begun` and is done with, which
+// it won't look for again (queuedOnce) and so can never find gone: a
+// folder found gone among them would otherwise be said reopened. One begun
+// and still findable, its folder looked for now or one queued afresh for
+// it, counts, so its folder found gone is told.
 function tallyOf(walk, ids, tell) {
     const own = walk?.tally ?? null;
-    const asked = entry => own.asked[entry.one.afreshFor ?? entry.one.id] === true;
+    const idOf = entry => entry.one.afreshFor ?? entry.one.id;
+    const asked = entry => own.asked[idOf(entry)] === true;
     const counting = own !== null
         && (walk.queue.some(asked) || (walk.looking !== null && asked(walk.looking)));
     const tally = counting ? own : { asked: {}, gone: {}, tell };
-    const begun = new Set(counting ? [] : walk?.begun ?? []);
-    const added = ids.filter(id => tally.asked[id] !== true && !begun.has(id));
+    const findable = new Set((walk?.queue ?? []).concat(walk?.looking ? [walk.looking] : [])
+        .map(idOf));
+    const done = new Set((walk?.begun ?? []).filter(id => !findable.has(id)));
+    const added = ids.filter(id => tally.asked[id] !== true && !done.has(id));
     for (const id of added) {
         tally.asked[id] = true;
     }

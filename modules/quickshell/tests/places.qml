@@ -820,13 +820,30 @@ QtObject {
         expect("given once the walk can find no more gone, it counts afresh",
             [after === walked, heard[heard.length - 1]], [false, "1 gone, 2 reopened"]);
         // Counting afresh on a walk that began some of what it's given, it
-        // counts none of those, which the walk won't look for again and
-        // the tally before counted, one found gone among them.
+        // counts none of those, which the walk won't look for again, one
+        // found gone among them.
         const later = Reopening.tallyOf(walkOf(walked, [], null, ["a", "b", "c"]),
             ["a", "b", "c", "d"], hear);
         Reopening.foundGone(later, { id: "d" });
         expect("given once the walk began some of it, it counts only the rest",
             heard[heard.length - 1], "1 gone, 0 reopened");
+        // Joining a tally still counting, as a press again while one of its
+        // sessions waits its turn, it counts none of those either.
+        const second = Reopening.tallyOf(walkOf(walked, [], null, ["a", "b", "c"]),
+            ["a", "b", "c", "d", "e"], hear);
+        const joining = Reopening.tallyOf(walkOf(second, [asked("e")], null, ["a", "b", "c", "d"]),
+            ["a", "b", "c", "d", "e"], hear);
+        Reopening.foundGone(second, { id: "e" });
+        expect("joined while it counts, it counts none the walk is done with",
+            [joining === second, heard[heard.length - 1]], [true, "1 gone, 1 reopened"]);
+        // One the walk began and can still find gone, its folder looked for
+        // now or one queued afresh for it, counts, so its folder gone is told.
+        const still = Reopening.tallyOf(walkOf(null, [{ one: { id: "fresh", afreshFor: "y" } }],
+            asked("c"), ["c", "y"]), ["c", "y", "x"], hear);
+        Reopening.foundGone(still, { id: "c" });
+        Reopening.foundGone(still, { id: "fresh", afreshFor: "y" });
+        expect("begun and still looked for, or queued afresh, it counts once found gone",
+            heard.slice(-2), ["1 gone, 2 reopened", "2 gone, 1 reopened"]);
         // A walk the harness began counts nothing, and a list given during
         // it counts the sessions both hold, whichever list queued them.
         const harness = walkOf(null, [asked("h"), asked("a")], null);
