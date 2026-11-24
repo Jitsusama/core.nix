@@ -326,7 +326,12 @@ impl Inputs {
             self.restore = file::read(path);
         } else if path == paths.arrangement {
             // Read again whenever it's written, by the daemon or another
-            // hand, as the shell read its own file of them.
+            // hand, as the shell read its own file of them. While a write
+            // has failed, memory is ahead of the file and is written over
+            // it at the next try, so the file isn't read back over it.
+            if self.unwritten.is_some() {
+                return;
+            }
             if let Some(kept) = Arrangement::read(path) {
                 self.arrangement = kept;
             }
