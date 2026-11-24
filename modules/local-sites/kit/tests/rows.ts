@@ -92,12 +92,13 @@ class Inner implements Placed {
     }
   }
 
-  /** Disables it where it stands, which takes its focus away, as a page's does. */
-  disable(): void {
-    this.#attributes["disabled"] = "";
-    if (this.#page.activeElement === this) {
-      this.#page.activeElement = null;
-    }
+  /**
+   * Marks it where it stands, as a page updating it in place does. Marked
+   * disabled, it stays the page's focus, as a browser may say it is until
+   * it next draws.
+   */
+  setAttribute(name: string, value: string): void {
+    this.#attributes[name] = value;
   }
 }
 
@@ -211,10 +212,12 @@ class List implements Holder<Row>, Placed {
   readonly rows: Row[] = [];
   readonly words: object[] = [];
   readonly ownerDocument = new Page();
-  readonly localName = "ul";
+  readonly localName: string;
   parentElement: Placed | null = null;
 
-  constructor() {
+  /** A list drawn as `localName`, a ul unless told, as a form holding its rows is. */
+  constructor(localName = "ul") {
+    this.localName = localName;
     this.ownerDocument.top = this;
   }
 

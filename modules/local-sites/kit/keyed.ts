@@ -16,24 +16,12 @@
 // throw keeps what it was given, and the records the throwing call moved
 // are the page's to draw again, whole, since keyed keeps no note of them.
 
+import { alike, inside, type Known, knownAs, type Placed, shut } from "./known.ts";
+
 /** As much of a drawn row as keyed reads: its key, kept on it. */
 interface Drawn {
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): void;
-}
-
-/**
- * As much of an element as keeping focus reads: where it sits, what it is
- * and says, and focusing it.
- */
-interface Placed {
-  readonly parentElement: Placed | null;
-  readonly children: ArrayLike<Placed>;
-  readonly localName?: string;
-  readonly textContent?: string | null;
-  getAttribute?(name: string): string | null;
-  getAttributeNames?(): string[];
-  focus?(options?: FocusOptions): void;
 }
 
 /** As much of the element a list is drawn into as keyed reads and moves. */
@@ -212,182 +200,6 @@ function within(
   return null;
 }
 
-/** Whether `node` is `row` or inside it. */
-function inside(node: Placed | null, row: object): boolean {
-  for (let at = node; at !== null; at = at.parentElement) {
-    if (at === row) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/** A link whose href runs a script, which says nothing of where it goes. */
-const SCRIPTED = /^javascript:/iu;
-
-/** What a browser drops from an address before reading it. */
-const DROPPED = /[\t\n\r]/gu;
-
-/** A fragment naming no element, as "#", "#!", "#0" and "#/" do, which many links share. */
-const PLACEHOLDER = /^#[^a-z]*$/iu;
-
-/**
- * What a control does, where its markup says it of this control alone:
- * where it goes, unless that's a placeholder or a script, which many
- * links share, read as a browser reads an address; else the page's own
- * act for it; else its name with its value, since a form's buttons and a
- * group's radios share a name and differ by value. Null where it says none
- * of them.
- */
-function does(control: Placed): string | null {
-  const href = (control.getAttribute?.("href") ?? "").replace(DROPPED, "").trim();
-  if (href !== "" && !PLACEHOLDER.test(href) && !SCRIPTED.test(href)) {
-    return `href ${href}`;
-  }
-  const act = control.getAttribute?.("data-act")?.trim() ?? "";
-  if (act !== "") {
-    return `act ${act}`;
-  }
-  const name = control.getAttribute?.("name") ?? "";
-  const value = control.getAttribute?.("value") ?? "";
-  return name !== "" && value !== "" ? `name ${name} ${value}` : null;
-}
-
-/**
- * The attributes saying a control's state, not which control it is: a
- * toggle pressed or ticked, an option or a tab chosen, a disclosure open or
- * a button disabled while it works is the same control as before. A class
- * or an id isn't among them, since a page may key a control's act on one;
- * a page drawing new ids each time sends focus to the row, which fails safe.
- */
-const LOOKS = new Set([
-  "aria-busy",
-  "aria-checked",
-  "aria-current",
-  "aria-describedby",
-  "aria-disabled",
-  "aria-expanded",
-  "aria-invalid",
-  "aria-pressed",
-  "aria-selected",
-  "checked",
-  "disabled",
-  "open",
-  "selected",
-  "style",
-  "tabindex",
-]);
-
-/** The form a control sends, the nearest holding it. */
-function formOf(control: Placed): Placed | null {
-  for (let at = control.parentElement; at !== null; at = at.parentElement) {
-    if (at.localName === "form") {
-      return at;
-    }
-  }
-  return null;
-}
-
-/** An element's attributes but its state, each a name and its value, in order. */
-function attributesOf(element: Placed): [string, string][] {
-  return (element.getAttributeNames?.() ?? [])
-    .filter((name) => !LOOKS.has(name))
-    .sort()
-    .map((name) => [name, element.getAttribute?.(name) ?? ""]);
-}
-
-/**
- * What a form sends beside `control`: each other named element in it, by
- * its tag, name and value as written, in order, since a hidden input may
- * be what carries a form's act. Of a form around the whole list, only what
- * sits outside the list, or in the control's own row, counts: a row coming,
- * going or changing beside it changes nothing the control's press says.
- */
-function fieldsOf(form: Placed, control: Placed, list: object): [string, string, string][] {
-  const fields: [string, string, string][] = [];
-  for (const each of Array.from(form.children)) {
-    const name = each.getAttribute?.("name") ?? "";
-    if (each !== control && name !== "") {
-      fields.push([each.localName ?? "", name, each.getAttribute?.("value") ?? ""]);
-    }
-    if (each === list) {
-      for (const row of Array.from(each.children).filter((one) => inside(control, one))) {
-        fields.push(...fieldsOf(row, control, list));
-      }
-    } else {
-      fields.push(...fieldsOf(each, control, list));
-    }
-  }
-  return fields;
-}
-
-/**
- * A control's markup but its state, which says what it does and how it's
- * heard: where it goes, a target, a download, a page's own data-act and
- * class, its label and title, and the form it sends, by that form's own
- * markup but its state and what else it sends, each told apart, so no
- * value can pass for another's.
- */
-function markup(control: Placed, list: object): string {
-  const form = formOf(control);
-  return JSON.stringify({
-    form: form === null ? null : attributesOf(form),
-    sends: form === null ? null : fieldsOf(form, control, list),
-    control: attributesOf(control),
-  });
-}
-
-/** A control as it's known again in a new drawing, read while it's in the page. */
-interface Known {
-  readonly localName: string | undefined;
-  readonly markup: string;
-  readonly does: string | null;
-  readonly words: string;
-  readonly apart: boolean;
-}
-
-/**
- * What `control` is, to know it again by. One labelled by another element,
- * or sending a form named by its form attribute, stands apart from what
- * it holds and what holds it, which this doesn't read.
- */
-function knownAs(control: Placed, list: object): Known {
-  return {
-    localName: control.localName,
-    markup: markup(control, list),
-    does: does(control),
-    words: control.textContent?.trim() ?? "",
-    apart: ["aria-labelledby", "form"].some((name) => (control.getAttribute?.(name) ?? "") !== ""),
-  };
-}
-
-/**
- * Whether `one` is the control `other` was: the same element with the
- * same markup but its state, which then says it does the same, so where
- * the markup says what it does (where it goes, the page's act, its name
- * and value) its words may show the record that just changed. One whose
- * markup says none of those is judged by its words too, and one with no
- * words is no control `one` can be known as. One labelled by another
- * element, or sending a form it names by id, is never known again, since
- * what it says or sends isn't its own to read here. A listener no markup
- * shows isn't seen, so a page drawing by key marks each act in its
- * controls' markup.
- */
-function alike(one: Placed, other: Known | null, list: object): boolean {
-  if (
-    other === null ||
-    one.localName !== other.localName ||
-    markup(one, list) !== other.markup ||
-    other.apart
-  ) {
-    return false;
-  }
-  if (other.does !== null) {
-    return true;
-  }
-  return other.words !== "" && one.textContent?.trim() === other.words;
-}
-
 /** Focus before a drawing: what had it, what that was, where focus is kept, and the list. */
 interface Before {
   readonly focused: Placed | null;
@@ -398,20 +210,25 @@ interface Before {
 
 /**
  * Gives focus back after a drawing: to `focused` itself while it's still in
- * its row, and otherwise to the same place in the row's new drawing where
- * that holds the same control, or to the row itself, since by its place
- * alone another control there would take the next press. A place the new
- * drawing doesn't reach all the way down to is another place. A row that
- * takes no focus lets it go, as the page does when a focused element leaves.
- * A control that won't take focus, as one now disabled won't, kept in its
- * row or drawn afresh, hands it to the row too, rather than let it fall to
- * the page.
+ * its row and still the control it was, and otherwise to the same place in
+ * the row's new drawing where that holds the same control, or to the row
+ * itself, since by its place alone another control there would take the
+ * next press. A place the new drawing doesn't reach all the way down to is
+ * another place. A row that takes no focus lets it go, as the page does
+ * when a focused element leaves. A control that won't take focus, or is
+ * disabled, which a browser may still call focused, hands it to the row
+ * too, rather than let it fall to the page.
  */
 function refocus({ focused, known, page, holder }: Before, path: number[], item: object) {
-  const landed = (on: Placed) => page === null || page.activeElement === on;
+  const took = (on: Placed) => (page === null || page.activeElement === on) && !shut(on);
   if (focused !== null && inside(focused, item)) {
-    focused.focus?.({ preventScroll: true });
-    if (!landed(focused) && walkable(item)) {
+    if (known === null || alike(focused, known, holder)) {
+      focused.focus?.({ preventScroll: true });
+      if (took(focused)) {
+        return;
+      }
+    }
+    if (walkable(item)) {
       item.focus?.({ preventScroll: true });
     }
     return;
@@ -430,7 +247,7 @@ function refocus({ focused, known, page, holder }: Before, path: number[], item:
   }
   if (target !== item && alike(target, known, holder)) {
     target.focus?.({ preventScroll: true });
-    if (landed(target)) {
+    if (took(target)) {
       return;
     }
   }

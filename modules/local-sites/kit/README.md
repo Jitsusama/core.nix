@@ -12,6 +12,7 @@ a site's compiled imports land.
 | `fold.ts`     | a long list folded to seven rows, how many more, what's unlisted |
 | `home.ts`     | the home's cursor over the sites, its keys and its switch     |
 | `keyed.ts`    | a list drawn by record key, so an update touches only its rows |
+| `known.ts`    | how a keyed list knows a focused control again in its new drawing |
 | `keys.ts`     | the keys a page answers, and its list of them on `?` and F1   |
 | `records.ts`  | a daemon's records, held as its watch tells them              |
 | `status.ts`   | the line saying how live a page is and since when             |
@@ -22,7 +23,8 @@ a site's compiled imports land.
 | `tests/`      | each of them tried against a stand-in socket and clock        |
 
 The `tests/` folder holds a test for each script but `theme.ts` and
-`home.ts`, which have none yet, and the stand-ins they share, `stand-in.ts`
+`home.ts`, which have none yet, and `known.ts`, which keyed's focus cases
+(`keyed-focus.test.ts`) try through the list, and the stand-ins they share, `stand-in.ts`
 for a feed's socket and `hands.ts` for a clock moved by hand. Node runs them
 as the kit builds.
 
