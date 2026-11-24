@@ -34,7 +34,11 @@
 //! wait. Held from the VPN it sits unused while he's quiet, as the VPN's
 //! own CAKE holds its class hard: after four megabits a second straight it
 //! falls to his least in about eight seconds, leaving about a second of a
-//! ten-megabit line unused, and more after more. Moving his upload into
+//! ten-megabit line unused, and more after more. That's at a steady rate:
+//! held as a share, it falls in kbit/s by about a sixth a second while
+//! the controller climbs, and not at all while it climbs fast
+//! (src/oneway.rs's `FAST_CLIMB`), so the line goes unused that much
+//! longer. Moving his upload into
 //! the VPN then finds it kept only what he carried there the second before
 //! and his headroom past it, so the lane he left holds back his growth on
 //! the one he's on until his need there fills the room or the hold falls:
@@ -42,7 +46,9 @@
 //! agents' uploads are mostly inside the VPN, where a dip beside them alone
 //! would otherwise leave him little more than what he carried. With no
 //! agent waiting nothing is held from the VPN, so a lane he left never
-//! squeezes it.
+//! squeezes it. Waiting is as below, the twenty seconds after the VPN's
+//! CAKE last dropped or marked a packet included, so for those seconds a
+//! move into the VPN is held back as though its agents still queued.
 //! While the VPN's share falls, it never takes the part of the quarter that
 //! agents waiting straight are owed.
 //!
@@ -405,7 +411,8 @@ impl Lanes {
         };
         let held_floor = if held { floor } else { straight_floor };
         // What's held of Joel's straight lane past what he carries comes
-        // from the VPN's agents while they wait and none waits straight,
+        // from the VPN's agents while they wait, for twenty seconds after
+        // their CAKE's last drop or mark too, and none waits straight,
         // never from Joel's part in it or the agents' quarter, and at once,
         // as what he carries straight does. With no agent waiting it isn't
         // held there: the lane he left would squeeze the one he's on. What's
@@ -1058,8 +1065,10 @@ mod tests {
             "a second's dip took Joel's lane from {busy} to {dipped}"
         );
         // Held as what a real second gave him: a smaller rate between
-        // seconds stores nothing.
-        lanes.at(RATE / 2.0);
+        // seconds stores nothing. At three tenths of the rate what's spare
+        // binds, so the hold comes back a smaller share than it was, and
+        // stored it would bring less back at the whole rate.
+        lanes.at(RATE * 0.3);
         assert!(
             near(lanes.at(RATE).joel, dipped),
             "a smaller rate between seconds kept less of Joel's lane"
@@ -1191,10 +1200,13 @@ mod tests {
         let agents = (Agents::default(), waiting(30));
         let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
         let dipped = lanes.split(&seen((200.0, 0.0), agents), 1.0).joel;
-        let half = lanes.at(RATE / 2.0);
+        // At three tenths of the rate what's spare binds, so the hold comes back a smaller share
+        // than it was, and stored it would bring less back at the whole rate.
+        let cut = lanes.at(RATE * 0.3);
         assert!(
-            adds_up(half, RATE / 2.0) && half.vpn - need(0.0) >= RATE / 2.0 * AGENTS_FLOOR - 1.0,
-            "at half the rate Joel's hold left the VPN's agents less than their quarter: {half:?}"
+            adds_up(cut, RATE * 0.3) && cut.vpn - need(0.0) >= RATE * 0.3 * AGENTS_FLOOR - 1.0,
+            "at three tenths of the rate Joel's hold left the VPN's agents less than their \
+             quarter: {cut:?}"
         );
         let back = lanes.at(RATE);
         assert!(
@@ -1257,22 +1269,57 @@ mod tests {
         );
     }
 
-    // The controller moves its rate between seconds; a moment at a higher
-    // rate gives his straight lane more, but holds none of it.
     // With no agent waiting nothing is held from anyone, so a dip then
     // leaves the hold falling by a fifth, for agents who start waiting the
-    // second after to find.
+    // second after, here inside the VPN, to find.
     #[test]
     fn a_second_with_no_agent_waiting_leaves_joel_s_hold_falling() {
         let mut lanes = Lanes::default();
         let none = (Agents::default(), Agents::default());
         lanes.split(&seen((4_000.0, 0.0), none), 1.0);
         lanes.split(&seen((200.0, 0.0), none), 1.0);
-        let fell = need(4_000.0) * (1.0 - FALL);
+        let found = lanes
+            .split(&seen((200.0, 0.0), (Agents::default(), waiting(30))), 1.0)
+            .joel;
+        let fell = need(4_000.0) * (1.0 - FALL).powi(2);
         assert!(
-            near(lanes.joel * RATE, fell),
-            "a second with no agent waiting took Joel's hold from {fell} to {}",
-            lanes.joel * RATE
+            near(found, fell),
+            "agents waiting the second after a second with none found Joel's lane held at \
+             {found}, not {fell}"
+        );
+    }
+
+    // Held as a share of the rate, what's held of his straight lane from the
+    // VPN falls by a fifth of the share each second, so in kbit/s it falls
+    // by less while the controller climbs: by about a sixth at its climb,
+    // and not at all at its fast climb, where 1.25 times 0.8 is one.
+    #[test]
+    fn joel_s_hold_from_the_vpn_stays_flat_in_kbit_s_while_the_rate_climbs_fast() {
+        let mut lanes = Lanes::default();
+        let agents = (Agents::default(), waiting(30));
+        let busy = lanes.split(&seen((4_000.0, 0.0), agents), 1.0).joel;
+        let mut rate = RATE;
+        let mut held = Vec::new();
+        for climb in [
+            crate::oneway::FAST_CLIMB,
+            crate::oneway::FAST_CLIMB,
+            crate::oneway::CLIMB,
+        ] {
+            rate *= climb;
+            let quiet = Seen {
+                rate,
+                ..seen((0.0, 0.0), agents)
+            };
+            held.push(lanes.split(&quiet, 1.0).joel);
+        }
+        let at_climb = busy * (1.0 - FALL) * crate::oneway::CLIMB;
+        assert!(
+            near(held[0], busy) && near(held[1], busy) && near(held[2], at_climb),
+            "from {busy} kbit/s, two seconds' fast climb held Joel's lane at {} and {}, and one \
+             at the climb at {}, not {busy}, {busy} and {at_climb}",
+            held[0],
+            held[1],
+            held[2]
         );
     }
 
