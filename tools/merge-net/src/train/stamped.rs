@@ -3,11 +3,17 @@
 //! time went: evaluating, waiting for room on a builder, or building. On
 //! 24 November one candidate took 26 minutes, and its log, unstamped,
 //! couldn't say how much of that it spent waiting.
+//!
+//! The output and the errors are copied by a thread each, so within one
+//! second the log's order across the two streams isn't always the order
+//! they were said in; each stream's own order holds, and the words the
+//! train's verdict reads all come on the errors.
 
 use std::fs::File;
 use std::io::{self, BufRead as _, BufReader, Read, Write as _};
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::thread;
@@ -18,10 +24,77 @@ use std::time::{Duration, Instant};
 /// train goes on rather than wait for one.
 const LAST_WORDS: Duration = Duration::from_secs(30);
 
+/// The longest piece of a line held before it's written: a longer line is
+/// written in pieces of this, each stamped, so a build that prints without
+/// a newline can't grow the train's memory with it.
+const LONGEST_PIECE: u64 = 64 * 1024;
+
 /// Run `command`, its output and its errors written to `log` a line at a
 /// time, each opened by how long it had run: how it exited.
-pub(super) fn run(mut command: Command, log: &Path) -> io::Result<ExitStatus> {
-    let file = Arc::new(Mutex::new(File::create(log)?));
+///
+/// # Errors
+///
+/// When the log can't be made, the command can't start, or a line couldn't
+/// be written, since the train reads its verdict from the log: before the
+/// stamps, a full disk failed the gate's own writes and so the gate.
+pub(super) fn run(command: Command, log: &Path) -> io::Result<ExitStatus> {
+    run_within(command, log, LAST_WORDS)
+}
+
+/// The log, shared by the copiers; whether the train has stopped reading
+/// it, after which nothing more is written; and the first write that
+/// failed.
+struct Log {
+    file: Mutex<File>,
+    closed: AtomicBool,
+    lost: Mutex<Option<io::Error>>,
+}
+
+impl Log {
+    /// Write `said` whole, unless the log is closed; a failed write is
+    /// kept, the first only, for the gate's caller.
+    fn write(&self, said: &[u8]) {
+        let mut file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
+        if !self.closed.load(Ordering::Acquire) {
+            self.kept(file.write_all(said));
+        }
+    }
+
+    /// Keep `written`'s error if it's the first.
+    fn kept(&self, written: io::Result<()>) {
+        if let Err(error) = written {
+            let mut lost = self.lost.lock().unwrap_or_else(PoisonError::into_inner);
+            if lost.is_none() {
+                *lost = Some(error);
+            }
+        }
+    }
+
+    /// Say at `began`'s time that the gate's last words weren't all heard
+    /// within `wait`, then write nothing more, so the log holds just the
+    /// words the verdict was read from.
+    fn close(&self, began: Instant, wait: Duration) {
+        let said = format!(
+            "{}merge-net: stopped waiting for the gate's last words {} ms after it \
+             exited, so what it says later isn't kept\n",
+            stamp(began.elapsed().as_secs()),
+            wait.as_millis()
+        );
+        let mut file = self.file.lock().unwrap_or_else(PoisonError::into_inner);
+        self.kept(file.write_all(said.as_bytes()));
+        self.closed.store(true, Ordering::Release);
+    }
+}
+
+/// [`run`], waiting at most `wait` for the words still coming once the
+/// command exits. Copiers that outlive the wait stay blocked on whatever
+/// holds their stream, and end when it closes, writing nothing more.
+fn run_within(mut command: Command, log: &Path, wait: Duration) -> io::Result<ExitStatus> {
+    let shared = Arc::new(Log {
+        file: Mutex::new(File::create(log)?),
+        closed: AtomicBool::new(false),
+        lost: Mutex::new(None),
+    });
     let began = Instant::now();
     let mut child = command
         .stdout(Stdio::piped())
@@ -40,36 +113,60 @@ pub(super) fn run(mut command: Command, log: &Path) -> io::Result<ExitStatus> {
     let (done, ended) = mpsc::channel();
     let mut copying = 0;
     for from in streams.into_iter().flatten() {
-        let (file, done) = (Arc::clone(&file), done.clone());
+        let (shared, done) = (Arc::clone(&shared), done.clone());
         thread::spawn(move || {
-            copy(from, &file, began);
+            copy(from, &shared, began);
             let _ = done.send(());
         });
         copying += 1;
     }
     let status = child.wait();
-    let until = Instant::now() + LAST_WORDS;
-    for _ in 0..copying {
-        if ended
+    let until = Instant::now() + wait;
+    let heard_all = (0..copying).all(|_| {
+        ended
             .recv_timeout(until.saturating_duration_since(Instant::now()))
-            .is_err()
-        {
-            break;
-        }
+            .is_ok()
+    });
+    if !heard_all {
+        shared.close(began, wait);
     }
-    status
+    let lost = shared
+        .lost
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .take();
+    match lost {
+        Some(error) => Err(io::Error::new(
+            error.kind(),
+            format!("the gate's log lost words: {error}"),
+        )),
+        None => status,
+    }
 }
 
-/// Copy `from`'s lines to `to`, each opened by its time since `began`. A
-/// line is written whole under the lock, so the output's and the errors'
-/// lines never interleave within one.
-fn copy(from: impl Read, to: &Mutex<File>, began: Instant) {
-    for line in BufReader::new(from).split(b'\n').map_while(Result::ok) {
+/// Copy `from`'s lines to `to`, each opened by its time since `began`, a
+/// line longer than [`LONGEST_PIECE`] in pieces. Each is written whole
+/// under the lock, so the output's and the errors' lines never interleave
+/// within one. Bytes that aren't UTF-8 pass through as they are.
+fn copy(from: impl Read, to: &Log, began: Instant) {
+    let mut from = BufReader::new(from);
+    let mut piece = Vec::new();
+    loop {
+        piece.clear();
+        match from
+            .by_ref()
+            .take(LONGEST_PIECE)
+            .read_until(b'\n', &mut piece)
+        {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
+        if piece.last() != Some(&b'\n') {
+            piece.push(b'\n');
+        }
         let mut said = stamp(began.elapsed().as_secs()).into_bytes();
-        said.extend_from_slice(&line);
-        said.push(b'\n');
-        let mut file = to.lock().unwrap_or_else(PoisonError::into_inner);
-        let _ = file.write_all(&said);
+        said.extend_from_slice(&piece);
+        to.write(&said);
     }
 }
 
@@ -81,37 +178,4 @@ fn stamp(seconds: u64) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_stamp_says_minutes_and_seconds() {
-        assert_eq!(stamp(0), "[0:00] ", "the first second's stamp");
-        assert_eq!(stamp(1_573), "[26:13] ", "a stamp past the 26 minutes seen");
-        assert_eq!(stamp(6_000), "[100:00] ", "a stamp past 99 minutes");
-    }
-
-    // Both streams reach the log, every line stamped and whole, and the
-    // exit is the command's own, since the train reads a red from it.
-    #[test]
-    fn every_line_of_both_streams_is_stamped_and_the_exit_kept() {
-        let log =
-            std::env::temp_dir().join(format!("merge-net-stamped-{}.log", std::process::id()));
-        let mut command = Command::new("sh");
-        command.args([
-            "-c",
-            "echo said; echo erred >&2; printf 'no newline'; exit 3",
-        ]);
-        let status = run(command, &log).unwrap();
-        assert_eq!(status.code(), Some(3), "the gate's own exit was lost");
-        let words = std::fs::read_to_string(&log).unwrap();
-        let _ = std::fs::remove_file(&log);
-        let mut lines: Vec<&str> = words.lines().collect();
-        lines.sort_unstable();
-        assert_eq!(
-            lines,
-            ["[0:00] erred", "[0:00] no newline", "[0:00] said"],
-            "the log wasn't each line stamped once: {words}"
-        );
-    }
-}
+mod tests;
