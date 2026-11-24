@@ -96,8 +96,14 @@ let
   # An address as the firewall and src/networks.rs read it alike.
   address = import ./address.nix lib;
   # A house's addresses, one written alone taken as a list of one, so a
-  # machine that named one before names it the same way still.
-  addresses = lib.types.coercedTo address lib.toList (lib.types.nonEmptyListOf address);
+  # machine that named one before names it the same way still. None is
+  # allowed only beside a key, which alone then says who sent a report.
+  addresses = lib.types.coercedTo address lib.toList (lib.types.listOf address);
+  # Houses heard by their key alone, from any private IPv4 address.
+  # Each holding the key a report was signed under hears it, so one
+  # machine may be the house on several networks (house any round 2's
+  # F12 and F15).
+  unaddressed = lib.filter (house: house.from == [ ]) houses;
 in
 {
   imports = [
@@ -202,6 +208,7 @@ in
               };
               options.from = lib.mkOption {
                 type = addresses;
+                default = [ ];
                 example = [
                   "192.0.2.7"
                   "192.0.2.8"
@@ -227,7 +234,14 @@ in
                   temporary IPv6 address, are dropped without a word, and
                   the house holds nothing. house-report sends over IPv4
                   alone, for that reason. With a `keyFile`, a report from
-                  one of these is taken only when it's signed.
+                  one of these is taken only when it's signed. Left empty,
+                  which needs a `keyFile`, a signed report is taken from
+                  any address, so the house is heard wherever a lease or
+                  a cable moves the other machine; the port is then open
+                  to every private IPv4 address, on every link, so the
+                  other machine must report over IPv4, as house-report
+                  does, and the key and its stamp alone keep a device that
+                  reaches it from holding this machine's upload.
                 '';
               };
               options.keyFile = lib.mkOption {
@@ -341,14 +355,22 @@ in
     sed -i '/cgroupv2 level [0-9]* @/d' ruleset.conf
   '';
 
-  # Only the house's other machine reaches the port its reports go to. The
-  # rule holds on every network, but a report holds only the links of the
-  # network that names the house.
-  config.networking.firewall.extraInputRules = lib.concatMapStrings (address: ''
-    ${
-      if lib.hasInfix ":" address then "ip6" else "ip"
-    } saddr ${address} udp dport ${toString housePort} accept
-  '') (lib.unique (lib.concatMap (house: house.from) houses));
+  # A house's addresses alone reach the port its reports go to. The rule
+  # holds on every network, but a report holds only the links of the
+  # network that names the house. A keyed house naming no address is
+  # heard from any private IPv4 address, house-report sending over IPv4
+  # alone, on every link, since the machine moves between them; its key
+  # alone says a report is its own (house any round 1's F3, F11, F16 and
+  # F18).
+  config.networking.firewall.extraInputRules =
+    lib.concatMapStrings (address: ''
+      ${
+        if lib.hasInfix ":" address then "ip6" else "ip"
+      } saddr ${address} udp dport ${toString housePort} accept
+    '') (lib.unique (lib.concatMap (house: house.from) houses))
+    + lib.optionalString (unaddressed != [ ]) ''
+      ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 } udp dport ${toString housePort} accept
+    '';
 
   # The shaper's service sees an empty /root, /home, /tmp and /var/tmp, so
   # a key kept there would read as missing, as would one spelled through
@@ -391,6 +413,12 @@ in
           + "/tmp or /var/tmp, which the shaper's service can't see, nor spelled with "
           + "//, /./ or /../: "
           + lib.concatStringsSep ", " hidden;
+      }
+      {
+        assertion = lib.all (house: house.keyFile != null) unaddressed;
+        message =
+          "jitsusama.shaper.networks: a house naming no address in `from` must name "
+          + "a keyFile, since its key alone says a report is the other machine's";
       }
       {
         assertion = shared == [ ];

@@ -3824,13 +3824,17 @@
     connection unshaped: a p95 delay of 100 ms or half the unshaped one, 75% of each way carried,
     and no direction under half 30 s longer
   '';
+  shaper-hears-a-keyed-house-from-any-address = ''
+    a keyed house naming no address, whose reports its key alone says are its, opens the port the
+    shaper hears them on to every private IPv4 address, in one rule naming no other, and builds,
+    while a house naming neither an address nor a key is refused as the machine builds
+  '';
   shaper-hears-only-the-house = ''
     a network's house opens the port the shaper hears its reports on, the one src/house.rs names,
     to the house's addresses alone, one written alone or a list, over IPv4 or IPv6 as each is
     written: the input rules are the houses' three alone, and no port, range or trusted interface
     opens it to all; and a house's address, alone or in a list, is held to well-formed IPv4 or
-    IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried, and a
-    list to one address at least
+    IPv6, an IPv4 one written as IPv6, mapped or compatible, refused in each spelling tried
   '';
   shaper-refuses-a-house-key-it-can-t-read = ''
     a house's key file that the shaper's service can't read, under /root, /home, /tmp or /var/tmp,
