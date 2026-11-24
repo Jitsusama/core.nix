@@ -4844,15 +4844,17 @@
   '';
   pi-agent-proxy-reaches-os-login-machines = ''
     where pi's SSH agent proxy runs, by default, it makes a key for the OS Login hosts gcloud
-    knows, started with the session and never in a core dump; the account's gcloud registers each
-    key it writes, once the proxy lists it, for twelve hours, and again as the desktop starts,
-    renews it each quarter hour by the wall clock, every call bounded and a removal's tighter,
-    tries a failed registration again from half a minute on, never giving up, and removes it as
-    the proxy stops, keeping the file; only while the proxy runs is it registered or renewed, from
-    the one line the proxy lists under its OS Login comment, copied aside, never a key in the file
-    the proxy doesn't hold or holds for another use, and only a key whose file is the proxy's is
-    removed; no gcloud, no gcloud login or a gcloud that can't say is warned of and passed over; the machine's ssh offers it to compute.* hosts alone;
-    and with no known-hosts file named, there's no such key
+    knows, started with the session and never in a core dump; the account's gcloud registers
+    each key it writes, once the proxy lists it, for twelve hours, and again as the desktop
+    starts, renews it each quarter hour by the wall clock, every call bounded and a removal's
+    tighter, tries a failed registration, or a proxy it couldn't ask, again from half a minute
+    on in growing steps, never giving up, and removes it as the proxy stops, keeping the file;
+    only while the proxy runs is it registered or renewed, from the one line the proxy lists
+    under its OS Login comment, copied aside, never a key in the file the proxy doesn't hold or
+    holds for another use, even beside its own, and only a key whose file is the proxy's is
+    removed; no gcloud, no gcloud login or a gcloud that can't say is warned of and passed over;
+    the machine's ssh offers it to compute.* hosts alone; and with no known-hosts file named,
+    there's no such key
   '';
   pi-agent-proxy-signs-only-logins = ''
     pi-agent-proxy lists the keys of the agents behind it and signs a login only once the host it

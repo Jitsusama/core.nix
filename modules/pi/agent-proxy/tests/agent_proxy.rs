@@ -13,6 +13,7 @@
 
 use std::fs;
 use std::io::{Read, Write};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -1386,7 +1387,8 @@ fn reads_no_os_login_host_past_the_first_eight_mebibytes() {
 #[test]
 fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
     let (instance, blob) = host(5);
-    let proxy = Proxy::os_login("fifo-known", "", &known("compute.1", &instance));
+    let line = known("compute.1", &instance);
+    let proxy = Proxy::os_login("fifo-known", "", &line);
     let known_hosts = proxy.dir.join("known_hosts");
     fs::remove_file(&known_hosts).expect("the known hosts go");
     let path = std::ffi::CString::new(known_hosts.as_os_str().as_encoded_bytes())
@@ -1397,11 +1399,28 @@ fn knows_no_os_login_host_from_a_file_that_isnt_plain() {
         0,
         "a fifo is made"
     );
+    // The host's own line waits in the fifo, so a proxy that opened it
+    // would read the host as known; only not opening it refuses.
+    let _reader = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(&known_hosts)
+        .expect("the fifo opens to read");
+    let mut writer = fs::OpenOptions::new()
+        .write(true)
+        .open(&known_hosts)
+        .expect("the fifo opens to write");
+    writer
+        .write_all(line.as_bytes())
+        .expect("the host's line waits in the fifo");
 
     let started = Instant::now();
     let (_, taken) = bound(&proxy, &instance, &blob, b"an instance's session");
 
-    assert!(!taken, "a fifo names no OS Login host");
+    assert!(
+        !taken,
+        "a fifo names no OS Login host, even holding its line"
+    );
     assert!(
         started.elapsed() < Duration::from_secs(5),
         "and the binding isn't held open waiting on a writer"
@@ -1542,6 +1561,19 @@ fn makes_no_os_login_key_when_it_cant_listen() {
 fn cant_be_read_by_another_process_of_the_account() {
     let mut proxy = Proxy::os_login("undumpable", "", "");
     let mem = format!("/proc/{}/mem", proxy.child.id());
+
+    // The kernel gives a process that can't be dumped to root in /proc,
+    // whatever Yama allows, so this holds where a refused open alone
+    // would pass for ptrace_scope's sake.
+    // SAFETY: getuid only reads the calling process's user.
+    let account = unsafe { libc::getuid() };
+    assert_ne!(
+        fs::metadata(&mem)
+            .expect("the proxy's memory is listed")
+            .uid(),
+        account,
+        "the proxy's memory isn't the account's"
+    );
 
     // A refusal of any other kind, or a proxy already gone, would pass
     // without its memory being kept from the account.

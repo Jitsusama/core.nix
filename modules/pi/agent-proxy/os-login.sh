@@ -13,9 +13,12 @@
 # own OS Login comment, asked of the proxy's own socket, and only while
 # the file names that key; what it hands gcloud is the proxy's line,
 # copied to a file of its own, so neither a previous proxy's key left in
-# the file, nor another key the proxy holds, such as the builders', nor
-# one written there by anything else is ever registered. A removal takes
-# out only a key whose file carries the proxy's comment.
+# the file nor another key the proxy holds, such as the builders', is ever
+# registered, and the proxy writing its next key mid-run changes nothing
+# sent. A removal takes out only a key whose file carries the proxy's
+# comment. These keep out a mistake, not an attacker: the folder is the
+# person's alone, bound read-only inside the agent fence, so whatever can
+# write it already runs as the person, with their gcloud login itself.
 #
 # It runs the gcloud on the user manager's PATH, the one the person's
 # login was made with. A machine with no gcloud, or a gcloud with no
@@ -44,7 +47,8 @@ EXAMPLES
 
 EXIT
   0   done, or nothing it can do
-  1   gcloud couldn't register the key
+  1   gcloud couldn't register the key, or the proxy
+      couldn't be asked for it
   64  neither register nor remove
 EOF
   exit 0
@@ -61,11 +65,13 @@ if [[ $mode != register && $mode != remove ]]; then
 fi
 
 # Each call is bounded, so a hung network can't hold the next renewal
-# up: the timer starts the unit again only once this one ends. A
-# removal is bounded tighter, since it holds the proxy's stop, and so a
-# logout; a key it can't take out lapses on its own.
+# up: the timer starts the unit again only once this one ends, and a
+# register's wait and its three calls end well within the unit's four
+# minutes. A removal is bounded tighter, since it holds the proxy's
+# stop, and so a logout: its two calls take 14 seconds at most. A key
+# it can't take out lapses on its own.
 bound=60
-[[ $mode == register ]] || bound=15
+[[ $mode == register ]] || bound=7
 cloud() {
   timeout "$bound" gcloud compute os-login ssh-keys "$@" --quiet --verbosity=error
 }
@@ -75,12 +81,16 @@ cloud() {
 comment="pi-agent-proxy OS Login"
 # The key, as kind and blob, that the proxy whose socket sits beside
 # the file lists under its comment, when it lists exactly one and the
-# file names the same; nothing otherwise.
+# file names the same; nothing otherwise. It fails 2 where the proxy
+# couldn't be asked, which ssh-add says with 2 and timeout with 124,
+# and 1 where it was asked and holds no such key, which an agent with
+# no key at all says with 1.
 agent=${key%/*}/agent.sock
 held() {
-  local kind blob rest listed line own=
+  local kind blob rest listed line own='' asked=0
   read -r kind blob rest <"$key" || return 1
-  listed=$(SSH_AUTH_SOCK=$agent timeout 10 ssh-add -L 2>/dev/null) || return 1
+  listed=$(SSH_AUTH_SOCK=$agent timeout 2 ssh-add -L 2>/dev/null) || asked=$?
+  ((asked == 0)) || return $((asked == 1 ? 1 : 2))
   while IFS= read -r line; do
     [[ $line == *" $comment" ]] || continue
     [[ -z $own ]] || return 1
@@ -98,15 +108,27 @@ fi
 # key, while the file still holds the previous proxy's, and the path's
 # event for the new key then joins this run rather than starting
 # another; so a register waits a few seconds for the proxy to hold the
-# key in the file.
+# key in the file. A proxy it still couldn't ask fails the unit, which
+# tries again shortly, rather than wait out the quarter hour as if the
+# proxy held no key.
 if [[ $mode == register ]]; then
   own=
-  for _ in {1..25}; do
-    if [[ -s $key ]] && own=$(held); then
-      break
+  why=1
+  end=$((SECONDS + 5))
+  while ((SECONDS < end)); do
+    why=1
+    if [[ -s $key ]]; then
+      own=$(held) && break
+      why=$?
+      own=
     fi
     sleep 0.2 # The proxy writes its key in this while.
   done
+  if [[ -z $own ]] && ((why == 2)); then
+    echo "<3>pi-agent-proxy-os-login: the proxy at $agent couldn't be asked for its key;" \
+      "trying again soon" >&2
+    exit 1
+  fi
   if [[ -z $own ]]; then
     echo "pi-agent-proxy-os-login: the proxy holds no key at $key, so it does nothing"
     exit 0

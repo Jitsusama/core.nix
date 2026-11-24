@@ -6,8 +6,10 @@
 # failures said, every call bounded, and no gcloud, no gcloud login, a
 # gcloud that can't say, no key or a key the proxy doesn't hold passing
 # over with a word; a key the proxy comes to hold within its wait is
-# registered, another key it holds never is, what gcloud reads is the
-# proxy's own line, and a key that isn't the proxy's is never removed.
+# registered, another key it holds never is but leaves the proxy's own
+# registered beside it, what gcloud reads is the proxy's own line and
+# never the file's, a proxy that can't be asked fails to be tried again,
+# and a key that isn't the proxy's is never removed.
 #
 #   os-login-test.sh PATH-TO-pi-agent-proxy-os-login
 
@@ -99,6 +101,7 @@ run register "$key" || fail "failed renewing a key"
 grep -q "renewed for 12 hours" "$work/said" || fail "didn't say it renewed a key"
 asked "update --key-file=[^ ]+ --ttl=12h" || fail "didn't renew the key for twelve hours"
 grep -q "ssh-keys add" "$work/asked" && fail "added a key already there"
+grep -qxF "$(<"$key")" "$work/sent" && fail "handed gcloud the key's file, not the proxy's line"
 
 touch "$work/failing"
 run register "$key" && fail "passed a key it couldn't register"
@@ -150,6 +153,14 @@ hold "$work/builders"
 run register "$work/builders.pub" || fail "failed with a key that isn't the proxy's own"
 grep -q "ssh-keys" "$work/asked" && fail "registered a key the proxy holds that isn't its own"
 
+# Beside it, the proxy's own is still registered, the builders' listed
+# first, as the proxy lists them.
+hold "$work/key"
+: >"$work/asked"
+run register "$key" || fail "failed with the builders' key held beside the proxy's"
+asked "update --key-file=[^ ]+ --ttl=12h" ||
+  fail "didn't register the proxy's key with the builders' held beside it"
+
 # Nor is a key held beside another under the proxy's comment, as no
 # proxy lists; the other comes first, since the agent lists in order.
 make_key twin 'pi-agent-proxy OS Login' 3
@@ -161,6 +172,15 @@ run register "$key" || fail "failed with two keys under the proxy's comment"
 grep -q "ssh-keys" "$work/asked" && fail "registered one of two keys under the proxy's comment"
 hold_none
 hold "$work/key"
+
+# A proxy that can't be asked fails the unit, to be tried again, rather
+# than pass over as one holding no key.
+mkdir "$work/unasked"
+cp "$key" "$work/unasked/key.pub"
+: >"$work/asked"
+run register "$work/unasked/key.pub" && fail "passed with a proxy it couldn't ask"
+grep -q "^<3>.*couldn't be asked" "$work/said" || fail "didn't say the proxy couldn't be asked"
+grep -q "ssh-keys" "$work/asked" && fail "asked gcloud with a proxy it couldn't ask"
 
 # A removal never takes out a key whose file isn't the proxy's, such as
 # the person's own.
@@ -187,11 +207,11 @@ grep -q "ssh-keys" "$work/asked" && fail "asked for a key with gcloud unable to 
 rm "$work/config-fails"
 
 # Every call to the stand-in was started by timeout: a register's at a
-# minute, a removal's, which holds the proxy's stop, at a quarter of one.
-grep -Eqv "^timeout (60|15) gcloud " "$work/started-by" && fail "called gcloud unbounded"
-grep -q "^timeout 15 gcloud compute os-login ssh-keys remove " "$work/started-by" ||
+# minute, a removal's two, which hold the proxy's stop, at 7 s each.
+grep -Eqv "^timeout (60|7) gcloud " "$work/started-by" && fail "called gcloud unbounded"
+grep -q "^timeout 7 gcloud compute os-login ssh-keys remove " "$work/started-by" ||
   fail "didn't bound a removal tighter"
-grep -q "^timeout 15 gcloud compute os-login ssh-keys \(add\|update\) " "$work/started-by" &&
+grep -q "^timeout 7 gcloud compute os-login ssh-keys \(add\|update\) " "$work/started-by" &&
   fail "bounded a registration as tightly as a removal"
 
 rm "$work/bin/gcloud"
