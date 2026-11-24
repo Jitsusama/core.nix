@@ -14,6 +14,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
+use std::time::Duration;
 
 use daemon_serve::watch::Held;
 use serde_json::Value;
@@ -449,13 +450,13 @@ impl Inputs {
         }
     }
 
-    /// When, from `at`, the kept places are to be written again: in
+    /// How soon the kept places are to be written again: in
     /// [`WRITE_AGAIN_MS`] while their last write failed, else never.
     #[must_use]
-    pub fn kept_places_again_at(&self, at: u64) -> Option<u64> {
+    pub fn kept_places_again_in(&self) -> Option<Duration> {
         self.kept_places_unwritten
             .as_ref()
-            .map(|_| at.saturating_add(WRITE_AGAIN_MS))
+            .map(|_| Duration::from_millis(WRITE_AGAIN_MS))
     }
 
     /// [`Inputs::write_kept_places`] at `at`, journalled as

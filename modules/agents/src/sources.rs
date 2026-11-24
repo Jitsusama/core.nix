@@ -215,22 +215,24 @@ pub fn follow_files(paths: &Paths, to: Sender<Heard>) -> std::io::Result<()> {
 }
 
 impl Inputs {
-    /// Keeps both places files once the windows have been `still` long
-    /// enough at `now`, and asks `still` to be woken for what's to come
-    /// though nothing moves: a place closed by hand let go when due, and
-    /// kept places whose write failed, at the shell's word or here, tried
-    /// again soon though the shell says nothing more.
+    /// Keeps the arrangement once the windows have been `still` long
+    /// enough at `now`, and asks `still` to be woken for a place closed by
+    /// hand let go when due, though nothing moves. Kept places whose write
+    /// failed, at the shell's word or here, are tried again soon though
+    /// the shell says nothing more, whether or not the windows are still,
+    /// as they don't hang on where windows sit.
     pub fn keep_when_still(&mut self, still: &mut Still, paths: &Paths, now: Instant) {
-        if still.due(now) {
-            self.keep_kept_places(&paths.kept_places);
-            if let Some(let_go) = self.keep_places(&paths.arrangement) {
-                let ms = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
-                still.again(now + arrangement::again_in(let_go, ms));
-            }
+        if still.due(now)
+            && let Some(let_go) = self.keep_places(&paths.arrangement)
+        {
+            let ms = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
+            still.again(now + arrangement::again_in(let_go, ms));
         }
-        let ms = u64::try_from(clock::now_ms()).unwrap_or(u64::MAX);
-        if let Some(again) = self.kept_places_again_at(ms) {
-            still.again(now + arrangement::again_in(again, ms));
+        if still.retried(now) {
+            self.keep_kept_places(&paths.kept_places);
+        }
+        if let Some(again) = self.kept_places_again_in() {
+            still.retry(now + again);
         }
     }
 

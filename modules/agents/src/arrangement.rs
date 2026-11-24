@@ -596,11 +596,13 @@ pub fn again_in(let_go: u64, now: u64) -> Duration {
 
 /// When the windows were last seen to move, so their places are kept only
 /// once they've been still [`STILL`], and when a place closed is to be let
-/// go, so it's kept again then though nothing moves.
+/// go, so it's kept again then though nothing moves; and when a write that
+/// doesn't hang on them is to be tried again, still or not.
 #[derive(Debug, Default)]
 pub struct Still {
     moved: Option<Instant>,
     again: Option<Instant>,
+    retry: Option<Instant>,
 }
 
 impl Still {
@@ -609,14 +611,34 @@ impl Still {
         self.moved = Some(at);
     }
 
-    /// How long from `at` until they've been still long enough, or none
-    /// while nothing waits to be kept. A place to let go while they move
-    /// waits until they're still, when keeping them asks again.
+    /// How long from `at` until they've been still long enough, or a
+    /// write is to be tried again (`retry`), whichever is sooner, or none
+    /// while nothing waits. A place to let go while they move waits until
+    /// they're still, when keeping them asks again.
     pub fn wait(&self, at: Instant) -> Option<Duration> {
-        self.moved
-            .map(|moved| moved + STILL)
-            .or(self.again)
-            .map(|due| due.saturating_duration_since(at))
+        let kept = self.moved.map(|moved| moved + STILL).or(self.again);
+        match (kept, self.retry) {
+            (Some(kept), Some(retry)) => Some(kept.min(retry)),
+            (kept, retry) => kept.or(retry),
+        }
+        .map(|due| due.saturating_duration_since(at))
+    }
+
+    /// A write that doesn't hang on where windows are, as of kept places,
+    /// is to be tried again at `at`, or sooner if that's asked already,
+    /// whether or not they're still then.
+    pub fn retry(&mut self, at: Instant) {
+        self.retry = Some(self.retry.map_or(at, |retry| retry.min(at)));
+    }
+
+    /// Whether the write asked by `retry` is due at `at`, after which
+    /// nothing is to be tried until it's asked again.
+    pub fn retried(&mut self, at: Instant) -> bool {
+        let due = self.retry.is_some_and(|retry| retry <= at);
+        if due {
+            self.retry = None;
+        }
+        due
     }
 
     /// Its places are to be kept again at `at`, as a place closed is let
@@ -629,7 +651,11 @@ impl Still {
     /// Whether they've been still long enough at `at`, after which nothing
     /// waits until they move again.
     pub fn due(&mut self, at: Instant) -> bool {
-        let due = self.wait(at) == Some(Duration::ZERO);
+        let due = self
+            .moved
+            .map(|moved| moved + STILL)
+            .or(self.again)
+            .is_some_and(|kept| kept <= at);
         if due {
             self.moved = None;
             self.again = None;

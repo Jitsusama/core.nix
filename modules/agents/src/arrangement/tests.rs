@@ -827,12 +827,35 @@ fn places_are_kept_once_the_windows_are_still() {
         still.due(start + Duration::from_secs(72)),
         "and is kept then"
     );
-    still.again(start + Duration::from_secs(90));
     still.again(start + Duration::from_secs(95));
+    still.again(start + Duration::from_secs(90));
     assert_eq!(
         still.wait(start + Duration::from_secs(80)),
         Some(Duration::from_secs(10)),
-        "of two asked, as a let-go and a write tried again, the sooner is waited for"
+        "of two let-gos asked, the later first, the sooner is waited for"
+    );
+    assert!(still.due(start + Duration::from_secs(90)), "and kept then");
+    still.moved(start + Duration::from_secs(100));
+    still.retry(start + Duration::from_secs(111));
+    still.retry(start + Duration::from_secs(101));
+    assert_eq!(
+        still.wait(start + Duration::from_secs(100)),
+        Some(Duration::from_secs(1)),
+        "a write tried again is waited for though the windows move, the sooner of two"
+    );
+    assert!(
+        !still.due(start + Duration::from_secs(101))
+            && still.retried(start + Duration::from_secs(101)),
+        "and is due then, with nothing kept until the windows are still"
+    );
+    assert_eq!(
+        still.wait(start + Duration::from_secs(101)),
+        Some(Duration::from_secs(1)),
+        "tried, the windows' stillness is waited for alone"
+    );
+    assert!(
+        !still.retried(start + Duration::from_secs(102)),
+        "and nothing's tried again until it's asked"
     );
 }
 
