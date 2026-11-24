@@ -722,6 +722,15 @@ in
       };
     })
     (lib.mkIf (cfg.declares != null) {
+      # Only a Mac's pi lays its own fence round each command; mycelium
+      # starts a fenced or strict session bare where this is said, so on
+      # Linux it would run with no fence at all.
+      assertions = [
+        {
+          assertion = cfg.declares.piFencesItself -> isDarwin;
+          message = "jitsusama.mycelium.declares.piFencesItself is set on Linux, where pi lays no fence of its own round its commands, so mycelium would start fenced and strict sessions there unfenced.";
+        }
+      ];
       # Where the account's commands read it: XDG_CONFIG_HOME's, or
       # ~/.config's. The node reads its own copy in the store
       # (declaredArgs), and an end of a link another machine dials asks

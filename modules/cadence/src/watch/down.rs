@@ -17,6 +17,7 @@
 //! doesn't answer, nothing new is told: a false critical notice misleads
 //! Joel, where a late one only waits.
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{self, Read};
@@ -90,7 +91,8 @@ pub struct Seen {
     /// Whether it has a battery, which a lid shut on mains and then
     /// unplugged sleeps unheard however busy; for one down, as its node last
     /// heard. None where its node couldn't read its power, so another
-    /// realm's reading of it speaks first.
+    /// realm's reading of it as lively speaks first: a down realm's word
+    /// beside a ready one's is set aside, as it may be long out of date.
     pub battery: Option<bool>,
     /// When its node last heard from it, in seconds.
     pub heard: Option<i64>,
@@ -179,7 +181,8 @@ pub struct Spell {
     /// what was heard before; none until a realm reads it.
     #[serde(default)]
     pub power: Option<bool>,
-    /// When a realm last heard it has a battery.
+    /// When a realm last heard it has a battery from it ready, or first
+    /// heard one at all; a down reading's battery doesn't move it.
     #[serde(default)]
     pub battery_at: Option<i64>,
     /// When it first read down while busy and untold this spell, since its
@@ -249,6 +252,8 @@ fn power(was: Option<bool>, heard: Option<bool>) -> Option<bool> {
 /// so it leans silent. Only a word heard `fresh`, from a machine ready,
 /// starts the day again: a down reading repeats its node's last word, so
 /// a battery it repeats through an outage would otherwise never run out.
+/// A battery a down reading repeats still holds it: a laptop shut busy
+/// for a day is its common case, which a run-out would tell as a crash.
 fn keep_power(spell: &mut Spell, heard: Option<bool>, now: i64, fresh: bool) {
     match heard {
         Some(true) => {
@@ -330,7 +335,14 @@ fn merged(seen: &[Seen]) -> BTreeMap<&str, (Seen, BTreeSet<String>)> {
         // Read down by two realms, it was last heard when either last
         // heard it.
         let both_down = kept.reading == Reading::Down && one.reading == Reading::Down;
-        let battery = power(kept.battery, one.battery);
+        // Power is taken from the liveliest reading alone: a realm reading
+        // it down repeats its node's last word, which mustn't pass as
+        // fresh beside another realm's reading of it ready.
+        let battery = match rank(one.reading).cmp(&rank(kept.reading)) {
+            Ordering::Equal => power(kept.battery, one.battery),
+            Ordering::Greater => one.battery,
+            Ordering::Less => kept.battery,
+        };
         let heard = kept.heard.max(one.heard);
         // A realm that didn't say keeps the word unsaid, unless another
         // saw a session busy: its sessions may be the ones it didn't say.
@@ -667,7 +679,11 @@ pub fn machines(realms: &[String]) -> BTreeMap<String, String> {
             // Why it didn't answer is said here, as the line saying it
             // didn't can't tell a node that failed from one held open.
             let said = answer("mycelium", &["--realm", realm, "machines"], ASK_WITHIN)
-                .map_err(|error| println!("{error}"))
+                .map_err(|error| {
+                    println!(
+                        "the {realm} realm's machines unread, so no down is told yet: {error}"
+                    );
+                })
                 .ok()?;
             crate::elsewhere::machines(&said)?;
             Some((realm.clone(), said))

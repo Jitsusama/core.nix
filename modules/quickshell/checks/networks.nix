@@ -246,8 +246,9 @@ in
   # a join needs in the field before it's sent, with the launcher's asking
   # stood in, and no launcher line says a network's name, a password typed or
   # wifid's words (modules/quickshell/tests/wifi-acts.qml, read by
-  # wifi-acts-heard.sh). How a refusal reads in each mode is
-  # the-launcher-keeps-a-daemons-words-out-of-its-journal's.
+  # wifi-acts-heard.sh). How a refusal reads with reports off is
+  # the-launcher-keeps-a-daemons-words-out-of-its-journal's, and with them on
+  # the-launcher-paces-its-refreshes' (refusalShown's cases in tests/pacing.qml).
   wifi-asks-each-word-a-join-needs-first =
     wifiCase "wifi-asks-each-word-a-join-needs-first" ../tests/wifi-acts.qml
       ../tests/wifi-acts-heard.sh;

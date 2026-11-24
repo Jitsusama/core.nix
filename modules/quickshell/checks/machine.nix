@@ -203,7 +203,9 @@
       '';
 
   # The launcher's Firmware asks an install once for each step asking if
-  # Joel's sure, and offers a second Return nothing to run while it goes
+  # Joel's sure, and offers a second Return nothing to run while it goes,
+  # and answers again once its watch is answered whole, so a shell started
+  # after the daemon heard fwupd shows its rows
   # (modules/quickshell/tests/firmware.qml), over a stand-in for the machine
   # daemon, since the real one needs fwupd, with niri stood in.
   firmware-installs-once-for-each-sure =

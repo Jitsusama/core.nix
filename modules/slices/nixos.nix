@@ -156,6 +156,16 @@ let
     ];
     text = builtins.readFile ./disk-order.sh;
   };
+  writebackThrottle = config.jitsusama.slices.writebackThrottle;
+  # A name that isn't a disk's plain one makes no unit, so the assertion
+  # below refuses it in its own words rather than a unit's type failing.
+  plainDisk = disk: builtins.match "[a-z0-9]+" disk != null;
+  throttled = lib.filterAttrs (disk: _: plainDisk disk) writebackThrottle;
+  writebackGoal = pkgs.writeShellApplication {
+    name = "writeback-goal";
+    runtimeInputs = [ pkgs.coreutils ];
+    text = builtins.readFile ./writeback-goal.sh;
+  };
 
   # The programs Joel works in, and agents' sessions beside them, keep their
   # memory while a build fills the rest. With a build taking all but 2 GiB
@@ -335,7 +345,8 @@ let
     "user@"
   ]
   ++ lib.attrNames systemFloors
-  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks);
+  ++ map (disk: "disk-order-${disk}") (lib.attrNames disks)
+  ++ map (disk: "disk-writeback-${disk}") (lib.attrNames throttled);
 in
 {
   # The probe a watcher reads for what the machine makes his programs wait.
@@ -435,6 +446,27 @@ in
     );
   };
 
+  options.jitsusama.slices.writebackThrottle = lib.mkOption {
+    description = ''
+      The kernel's writeback throttle's latency goal on each disk named, by
+      its name under /sys/block, in microseconds; 0 turns the throttle off.
+      It's set as a switch brings it in and as the disk appears, and a
+      switch without it gives back the kernel's default goal, 2 ms on a
+      solid disk, set by hand, so io.cost added to that disk later won't
+      stand the throttle down until the next boot. A name that reaches no
+      throttle, such as a partition's, fails its unit. The name is the
+      kernel's, which follows the order disks are found in: on a machine
+      with two of a kind, the goal can land on the other one. A disk
+      io.cost shares, in jitsusama.slices.disks, is refused, since io.cost
+      already turns its throttle off and giving it back would turn it on.
+    '';
+    default = { };
+    example = {
+      nvme0n1 = 0;
+    };
+    type = lib.types.attrsOf lib.types.ints.unsigned;
+  };
+
   config = {
     # A unit's name is all the grant goes by, so it's the whole name of one
     # the system has, never a pattern, and never one run0 makes, whose
@@ -448,6 +480,15 @@ in
           "jitsusama.slices.agentsMayRepeat names ${unit}, "
           + "which isn't one system unit's whole name, or is one run0 makes.";
       }) config.jitsusama.slices.agentsMayRepeat
+      # The name goes into units' names and a path under /sys/block, so it's
+      # a plain name, never a pattern or a path; and it's never a disk
+      # io.cost shares, whose throttle the unit's stop would turn back on.
+      ++ lib.mapAttrsToList (disk: _: {
+        assertion = plainDisk disk && !(disks ? ${disk});
+        message =
+          "jitsusama.slices.writebackThrottle names ${disk}, which isn't a disk's plain "
+          + "name, or is a disk io.cost shares, which turns its throttle off already.";
+      }) writebackThrottle
       # The floor below makes the service whatever it's named, so a name no
       # service runs would make an empty unit and protect nothing.
       ++ map (name: {
@@ -768,6 +809,44 @@ in
         };
       }
     ) disks
+    # The throttle holds writeback back once a disk's reads take longer than
+    # its goal, whoever writes. Under the 08:35 test call on 23 November the
+    # call's threads were most often found asleep unwakeable in rq_qos_wait,
+    # which the throttle and io.latency's targets both sleep in, and
+    # blk-wbt's frames were among the samples; turning the throttle off on
+    # one machine tells the two apart, so a machine sets it rather than core.
+    # A unit, rather than a udev rule, since a switch replays no disk's
+    # event: starting it sets the goal, and stopping it, as a switch without
+    # it does, gives the kernel's back.
+    // lib.mapAttrs' (
+      disk: goal:
+      lib.nameValuePair "disk-writeback-${disk}" {
+        description = "Holds ${disk}'s writeback to the machine's goal";
+        wantedBy = [
+          "multi-user.target"
+          "dev-${disk}.device"
+        ];
+        after = [ "dev-${disk}.device" ];
+        # No condition on the disk being there: a name that reaches no
+        # throttle fails the unit, which a switch reports, rather than
+        # skipping it unseen while an A/B measures nothing.
+        unitConfig.StopPropagatedFrom = "dev-${disk}.device";
+        serviceConfig = {
+          Type = "oneshot";
+          RemainAfterExit = true;
+          ExecStart = lib.escapeShellArgs [
+            (lib.getExe writebackGoal)
+            disk
+            (toString goal)
+          ];
+          ExecStop = lib.escapeShellArgs [
+            (lib.getExe writebackGoal)
+            disk
+            "kernel"
+          ];
+        };
+      }
+    ) throttled
     # A VPN is never one of the services above, which the assertions refuse,
     # since its settings would replace theirs here rather than join them.
     // lib.genAttrs vpnServices (_: {

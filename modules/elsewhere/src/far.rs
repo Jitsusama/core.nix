@@ -312,6 +312,7 @@ pub fn script(
     let copying = copying();
     let stopping = stopping();
     let sweeping = sweeping();
+    let handing = handing();
     let bringing = bringing(kind);
     let setup = kind.setup.trim();
     format!(
@@ -352,9 +353,7 @@ say {started}
   }} && exec {job_line}
 )
 code=$?
-# Made fresh, so no copy is written through whatever sat at its number.
-rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"
-{bringing}exit "$code"
+{handing}{bringing}exit "$code"
 "#,
         started = quoted(&Heard::Started.line(id)),
         refused = quoted(&Heard::Refused.line(id)),
@@ -786,7 +785,7 @@ mod landing;
 pub mod spent;
 mod steps;
 
-use steps::{RUN, bringing, copying, crossing, stopping, sweeping, waiting};
+use steps::{RUN, bringing, copying, crossing, handing, stopping, sweeping, waiting};
 
 pub use heard::{Heard, REFUSES, UNTAKEN, relay};
 

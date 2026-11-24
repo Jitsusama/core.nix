@@ -117,14 +117,24 @@ done"#
 /// mycelium kills a group still running a short grace after its signal,
 /// and a job's build can hold more files than go in that time, so a
 /// removal cut short or failed leaves the file that lets the next run
-/// here clear it.
+/// here clear it. What lies in the handover is cleared only once no link
+/// the job left stands at it or above it, as `unlinked` makes sure.
 pub(super) fn stopping() -> String {
     format!(
-        r#"stopped() {{
+        r#"# True once neither the job's handover folder nor either folder above
+# it in the quest's scratch is a link, any one there cleared first: a job
+# may leave one, and whatever the far line writes or clears below goes
+# through it. False when one stays, as in a folder the job closed.
+unlinked() {{
+  for at in "${{job%/*/*}}" "${{job%/*}}" "$job"; do
+    [ ! -L "$at" ] || rm -f "$at" 2>/dev/null
+    [ ! -L "$at" ] || return 1
+  done
+}}
+stopped() {{
   trap '' HUP INT PIPE TERM
-  cd "$HOME" && rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}" \
-    "$work.names" "$work.back" "$work.back".* "$work" &&
-    rm -f "$work{RUN}"
+  cd "$HOME" && {{ ! unlinked || rm -rf "$job/{TREE}" "$job/{BACK}" "$job/{BROUGHT}"; }} &&
+    rm -rf "$work.names" "$work.back" "$work.back".* "$work" && rm -f "$work{RUN}"
   trap - "$1"
   kill -s "$1" "$$"
   exit "$2"
@@ -259,6 +269,32 @@ pub(super) fn copying() -> String {
     )
 }
 
+/// The far line's step once the job ends, making the folder its copies
+/// cross in new. A link the job left at its handover folder, or at either
+/// folder above it in the quest's scratch, goes first, so neither the
+/// copies, their list nor the tree's removal is carried through it. Where
+/// one can't be cleared, nothing is written or cleared in the handover:
+/// only the copy goes. Where the folder can't be made new, as on a full
+/// disk, the tree goes too, to free its room, and the list is only its
+/// cut, so the near side says at once that nothing came back, whatever
+/// list the job left there.
+pub(super) fn handing() -> String {
+    format!(
+        r#"# Made fresh, so no copy is written through whatever sat at its number.
+if ! unlinked || ! {{ rm -rf "$job/{BACK}" && mkdir -p "$job/{BACK}"; }}; then
+  printf "elsewhere: its handover couldn't be readied, so nothing is brought back\n" >&2
+  cd "$HOME" && rm -rf "$work.names" "$work.back" "$work.back".* "$work" &&
+    rm -f "$work{RUN}"
+  ! unlinked || {{
+    rm -rf "$job/{TREE}" "$job/{BACK}"
+    rm -f "$job/{BROUGHT}" && (set -C && printf '\n%s\n' {CUT} > "$job/{BROUGHT}")
+  }}
+  exit "$code"
+fi
+"#
+    )
+}
+
 /// The far line's step leaving what `kind` brings back in the handover.
 /// What comes back crosses under its number, since a kind may bring back
 /// what lies under a folder a share keeps home. A hidden file is left, as
@@ -305,7 +341,9 @@ lose() {{
     printf '%s\t%s\n' - "$path" || return 1
   done
 }}
-if true > "$names" && true > "$names.lost"; then
+# The sorted list's name is tried with the others, then left free for
+# sort's own write.
+if true > "$names" && true > "$names.lost" && true > "$names.in" && rm -f "$names.in"; then
 for path in {paths}; do
   [ -e "$path" ] || continue
   find "$path" -type l ! -path '*/.*' ! -name '.*' \
@@ -316,7 +354,8 @@ done
 # A file two of the paths hold crosses once, and counts once. One that
 # can't be sorted loses every path, each named once.
 LC_ALL=C sort -u "$names" > "$names.in" ||
-  {{ true >| "$names.in" && lose >| "$names.lost" || exit 1; }}
+  {{ rm -f "$names.in" "$names.lost" && true > "$names.in" && lose > "$names.lost" ||
+    exit 1; }}
 {{
   n=0 files=0 bytes=0 most_files={MOST_FILES} most_bytes={MOST_BYTES}
   # One that can't be read or copied keeps its number, listed with no
@@ -362,15 +401,15 @@ fi
 # Freed before the list ends, the job's copy and its tree with them, as
 # on a disk that filled, these are the room its end needs.
 rm -f "$names" "$names".*
-{freed}# Cut on a line of its own, so a line the full disk cut in half can't
-# hide it.
-if [ $wrote -ne 0 ]; then
+{freed}if [ $wrote -ne 0 ]; then
   printf "elsewhere: couldn't write down all it brings back\n" >&2
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 elif ! echo {END} >> "$job/{BROUGHT}"; then
   printf "elsewhere: couldn't end the list of what it brings back\n" >&2
-  printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
+  wrote=1
 fi
+# Cut on a line of its own, so a line the full disk cut in half can't
+# hide it, and never through a link that couldn't be cleared at its name.
+[ $wrote -eq 0 ] || [ -L "$job/{BROUGHT}" ] || printf '\n%s\n' {CUT} >> "$job/{BROUGHT}"
 "#,
         freed = freed(),
     )

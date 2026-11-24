@@ -122,6 +122,57 @@ fn said_over_two_spells(battery: Option<bool>) -> Vec<String> {
 }
 
 #[test]
+fn a_laptop_shut_busy_past_a_day_is_never_told() {
+    let mut told = Told::default();
+    step(&mut told, NOW, &[powered(Reading::Ready, Some(true))]);
+    let down = [Seen {
+        battery: Some(true),
+        ..lost("yonder", 300)
+    }];
+    let told_at: Vec<i64> = (1..=(BATTERY_FOR + 1_800) / 300)
+        .map(|n| NOW + n * 300)
+        .filter(|&now| !step(&mut told, now, &down).is_empty())
+        .collect();
+    assert!(
+        told_at.is_empty(),
+        "a laptop its node still hears a battery of was told down: {told_at:?}"
+    );
+}
+
+#[test]
+fn a_down_realms_repeated_battery_never_passes_as_another_realms_fresh_word() {
+    let stale = Seen {
+        realm: "personal".into(),
+        battery: Some(true),
+        ..lost("yonder", 0)
+    };
+    let (desktop, unread) = (
+        powered(Reading::Ready, Some(false)),
+        powered(Reading::Ready, None),
+    );
+    for (case, seen, battery) in [
+        (
+            "the down realm read first",
+            [stale.clone(), desktop.clone()],
+            Some(false),
+        ),
+        (
+            "the ready realm read first",
+            [desktop, stale.clone()],
+            Some(false),
+        ),
+        ("the ready realm reading no power", [unread, stale], None),
+    ] {
+        let (kept, _) = &merged(&seen)["yonder"];
+        assert_eq!(
+            (kept.reading, kept.battery),
+            (Reading::Ready, battery),
+            "{case}: the down realm's battery rode into the ready reading"
+        );
+    }
+}
+
+#[test]
 fn a_busy_machine_held_back_by_its_power_is_said_once_a_spell() {
     for (battery, why) in [
         (None, "its power is unread, which may be a battery"),

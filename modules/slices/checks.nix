@@ -12,6 +12,69 @@
   ...
 }:
 {
+  # A machine turns a disk's writeback throttle off, or sets its goal, by a
+  # unit per disk that a switch starts and the disk's arrival wants, and
+  # stopping it gives the kernel's goal back; one that names none has no
+  # such unit, and a name that isn't a disk's plain one, or a disk io.cost
+  # shares, is refused.
+  a-disks-writeback-throttle-is-the-machines =
+    let
+      sharing =
+        throttle: disks:
+        (bareNixos [
+          self.nixosModules.nix-daemon
+          self.nixosModules.slices
+          {
+            jitsusama.slices = {
+              writebackThrottle = throttle;
+              inherit disks;
+            };
+          }
+        ]).config;
+      machine = throttle: sharing throttle { };
+      measured.nvme0n1.model = lib.genAttrs [
+        "rbps"
+        "rseqiops"
+        "rrandiops"
+        "wbps"
+        "wseqiops"
+        "wrandiops"
+      ] (_: 1000);
+      two =
+        (machine {
+          nvme0n1 = 0;
+          vda = 75000;
+        }).systemd.services;
+      held =
+        disk: goal:
+        let
+          unit = two."disk-writeback-${disk}" or { };
+          service = unit.serviceConfig or { };
+        in
+        lib.hasSuffix "/writeback-goal ${disk} ${goal}" (service.ExecStart or "")
+        && lib.hasSuffix "/writeback-goal ${disk} kernel" (service.ExecStop or "")
+        && service.RemainAfterExit or false
+        && lib.elem "dev-${disk}.device" (unit.wantedBy or [ ])
+        && lib.elem "multi-user.target" (unit.wantedBy or [ ]);
+      refusing = config: lib.any (a: !a.assertion) config.assertions;
+      refuses = throttle: refusing (machine throttle);
+      unnamed =
+        lib.filterAttrs (name: _: lib.hasPrefix "disk-writeback-" name)
+          (machine { }).systemd.services;
+    in
+    holds "a-disks-writeback-throttle-is-the-machines"
+      "A disk's writeback throttle isn't set as the machine names it, or is set unasked."
+      (
+        held "nvme0n1" "0"
+        && held "vda" "75000"
+        && unnamed == { }
+        && !(refuses { nvme0n1 = 0; })
+        && refuses { "nvme*" = 0; }
+        && refuses { "nvme0n1\", RUN+=\"x" = 0; }
+        && !(refusing (sharing { vda = 0; } measured))
+        && refusing (sharing { nvme0n1 = 0; } measured)
+      );
+
   # The kernel protects session.slice's, app.slice's and agents.slice's memory only as far as
   # every slice above them is protected, so a floor one of them lacks is a
   # floor nobody has, and nothing says so. session.slice's and app.slice's

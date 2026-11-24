@@ -385,6 +385,14 @@
     every NixOS account's activation switches its units with an sd-switch that reads each job's
     end as it comes, so a switch of more than 64 jobs doesn't hang waiting for a reply
   '';
+  a-disks-writeback-throttle-is-the-machines = ''
+    each disk a machine names in jitsusama.slices.writebackThrottle has a unit, started at boot,
+    by a switch and as the disk appears, that sets its writeback throttle's goal, each its own,
+    and gives the kernel's back as it stops; a machine naming none has no such unit, and a name
+    that isn't a disk's plain one, or a disk io.cost shares, is refused while another disk beside
+    io.cost's is not. Whether the goal reaches the disk is the switch's to show, where a unit
+    whose name reaches no throttle fails
+  '';
   an-agents-run-stays-in-its-slice = ''
     systemd-run puts an agent's --user unit in the agent's own slice, or in jobs-work.slice when
     the call comes from jobs.service, a pi-spawner scope or a pi host's or conversation's unit,
@@ -585,6 +593,12 @@
   '';
   call-audio-runs-in-real-time = ''
     an app's audio thread can take SCHED_RR 8, below PipeWire's, for at most 200 ms at a time
+  '';
+  sound-takes-real-time-before-the-seat = ''
+    PipeWire's units in the account's session.slice and app.slice, and what runs below them, are
+    granted rtkit's real time and high priority before the seat has a session, while an app's
+    scope, the system's units and a near name keep rtkit's own answer and agents' places are
+    still refused
   '';
   call-transcripts-hears-meetings-as-well-as-it-did = ''
     three AMI meetings laid out as calls, the far end through Opus as Meet sends it, are written
@@ -1378,7 +1392,8 @@
   firmware-installs-once-for-each-sure = ''
     Firmware's step asking if Joel's sure asks the machine daemon to install on that device once,
     its row drawn at once as installing, and neither that row nor the step the daemon then serves
-    offers a second Return anything to run, so pressing it again only closes the launcher
+    offers a second Return anything to run, so pressing it again only closes the launcher; and
+    Firmware answers again once its watch is answered whole, so rows the daemon already held show
   '';
   firmware-leaves-the-keyboard-light = ''
     the XPS 14 leaves the keyboard light to its key, still holding its other firmware settings
@@ -2338,14 +2353,15 @@
   mycelium-declares-what-a-machine-says = ''
     a machine declaring what mycelium's node can't measure (its reach, a probe saying whether a
     call is on there through a-call-is-on alone, what a held session outlives, whether work
-    costs money, its taints, its agents by realm, the fences its agent sessions run in) has it
-    written where mycelium reads it, in mycelium's words; a fence it doesn't say is left out, the
-    doors a fence accepts for another machine are written only when named and refused for a
-    machine no realm could name, a fenced or strict one says its system's launcher for an
-    agent's run, which runs pi's strict profile, and an unfenced one none, no fence says a
-    launcher when agents' runs are turned off, a machine of either system declaring every fence
-    evaluates, one declaring nothing has no file, and agents in a realm it doesn't join are
-    refused
+    costs money, its taints, its agents by realm, the fences its agent sessions run in, whether
+    pi fences each command itself) has it written where mycelium reads it, in mycelium's words;
+    a fence it doesn't say is left out, pi_fences_itself is written only when a Mac says so,
+    beside its fences and their launcher, and refused on Linux, the doors a fence accepts for
+    another machine are written only when named and refused for a machine no realm could name,
+    a fenced or strict one says its system's launcher for an agent's run, which runs pi's strict
+    profile, and an unfenced one none, no fence says a launcher when agents' runs are turned
+    off, a machine of either system declaring every fence evaluates, one declaring nothing has
+    no file, and agents in a realm it doesn't join are refused
   '';
   mycelium-lends-from-the-store = ''
     a NixOS machine that lends evaluates, and its home realm mycelium node is given what it lends
@@ -3068,7 +3084,8 @@
     the store's node, the account's git, its hosts' folders, provider modules as a machine gave
     them, only the agents' SSH proxy its hosts get and none of the variables a pi host's unit
     clears, rather than on a host's thread; left running through a switch for up to two hours,
-    skipped where the harness isn't installed, and never on a Mac
+    made to give memory back past 1.5 GiB with no hard limit, its own or its slices', to kill it
+    at, skipped where the harness isn't installed, and never on a Mac
   '';
   pi-packages-compiles-for-macos = ''
     pi-packages and its tests pass clippy as a Mac compiles them, where libproc says which

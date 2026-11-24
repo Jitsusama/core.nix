@@ -150,7 +150,13 @@
     name = "the-launcher-puts-back-a-look-it-couldnt-write";
     test = ../tests/now-look-unwritten.qml;
     after = ''
-      grep -F "didn't settle 6 letters ({\"code\":\"refused\",\"message\":\"29 letters\"})" said.log
+      wanted="didn't settle 6 letters ({\"code\":\"refused\",\"message\":\"29 letters\"})"
+      if ! grep -F -- "$wanted" said.log; then
+        echo "the journal didn't say the look unsettled by its letters, wanted: $wanted"
+        echo "what the launcher said:"
+        grep -a 'launcher:' said.log || true
+        exit 1
+      fi
       if grep -e 'a\.json' -e 'read-only' said.log; then
         echo "the journal said the look's file or the daemon's words"
         exit 1

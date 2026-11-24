@@ -1265,6 +1265,8 @@ QtObject {
         check(failures, "or nothing", Presented.appShown(undefined, false), "app");
         check(failures, "and whole while they're on",
             Presented.appShown("Backing up Harbour", true), "Backing up Harbour");
+        check(failures, "its line breaks escaped, so an id can't forge a line",
+            Presented.appShown("a\nlauncher: b", true), "a\\nlauncher: b");
         // A link from outside is a page's words, so its line says whom it
         // named by kind and how many letters with reports off.
         check(failures, "a link's session is said by its kind and letters with reports off",
@@ -1280,6 +1282,14 @@ QtObject {
         check(failures, "and whole while they're on, its line breaks escaped",
             Presented.whomShown({ to: "none", said: "a\u2028launcher: b" }, true),
             '{"to":"none","said":"a\\u2028launcher: b"}');
+        // New work a link offers names the session it's from, as talking to one does.
+        check(failures, "new work's session is said by its letters with reports off",
+            Presented.whenceShown("LISTEN", false), "from a session, 6 letters");
+        check(failures, "and whole while they're on",
+            Presented.whenceShown("LISTEN", true), "from LISTEN");
+        check(failures, "and one naming no session here as that with reports off",
+            Presented.whenceShown(undefined, false), "from no session here");
+        check(failures, "and on", Presented.whenceShown(undefined, true), "from no session here");
         // A walk's rows are named by sources, so with reports off each is
         // said by its kind, as a drawer's row is.
         const walked = [{ name: "Networks", key: "place:networks" },
@@ -1288,6 +1298,9 @@ QtObject {
             Presented.pathShown(walked, false), "place:networks \u203a wifi \u203a answer");
         check(failures, "and quoted whole while they're on, so a name can't forge a line",
             Presented.pathShown([{ name: "a\nlauncher: b" }], true), '"a\\nlauncher: b"');
+        check(failures, "and a key said whole with reports off has its line breaks escaped",
+            Presented.pathShown([{ key: "place:a\nlauncher: b" }], false),
+            "place:a\\nlauncher: b");
         // The shell's own failure may quote what it failed on.
         check(failures, "the shell's failure is said by its kind with reports off",
             Presented.failureShown(new SyntaxError("Unexpected token Harbour"), false),
