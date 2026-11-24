@@ -114,9 +114,17 @@ pub fn vetted(described: &Value, pinned: &Pinned) -> Result<String, String> {
     let script = value("startup-script");
     if script != Some(pinned.script.as_str()) {
         let made = described["creationTimestamp"].as_str().and_then(seconds);
-        let named_before = |one: &&Earlier| script == Some(one.script.as_str());
-        match pinned.earlier.iter().find(named_before) {
-            Some(one) if made.is_some_and(|made| made < one.made_before) => {}
+        // A script named more than once has a window for each naming, and
+        // a builder made in any of them runs it as it was made to, so the
+        // latest window judges it, not the first one found.
+        let closed = pinned
+            .earlier
+            .iter()
+            .filter(|one| script == Some(one.script.as_str()))
+            .map(|one| one.made_before)
+            .max();
+        match closed {
+            Some(closed) if made.is_some_and(|made| made < closed) => {}
             Some(_) if made.is_none() => {
                 return Err(
                     "runs the startup script this machine named before, and says nothing of \
@@ -425,6 +433,34 @@ mod tests {
         assert!(
             vetted(&described(&[("startup-script", json!(BEFORE))]), &pinned).is_err(),
             "a builder saying nothing of when it was made passed on the earlier script"
+        );
+        // Named, changed, named again and changed again: a builder made in
+        // its second window runs it as it was made to.
+        let twice = Pinned {
+            earlier: vec![
+                Earlier {
+                    script: BEFORE.to_owned(),
+                    made_before: changed - 7200,
+                },
+                Earlier {
+                    script: "#!/bin/bash\necho the one between\n".to_owned(),
+                    made_before: changed - 3600,
+                },
+                Earlier {
+                    script: BEFORE.to_owned(),
+                    made_before: changed,
+                },
+            ],
+            ..pinned()
+        };
+        assert!(
+            vetted(&made("2026-11-10T05:13:59.100-08:00"), &twice).is_ok(),
+            "a builder made in a script's second window was judged by its first"
+        );
+        assert_eq!(
+            vetted(&made("2026-11-10T05:14:00.000-08:00"), &twice),
+            Err(AFTER.to_owned()),
+            "a builder made after a script's last window passed on it"
         );
         let mut other = made("2026-11-10T05:13:59.100-08:00");
         let mine = described(&[("startup-script", json!("#!/bin/sh\nmine\n"))]);

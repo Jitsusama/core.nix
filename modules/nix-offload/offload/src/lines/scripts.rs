@@ -60,7 +60,17 @@ fn named_at(
     since: i64,
     now: i64,
 ) -> (Option<Vec<Named>>, Vec<Earlier>) {
-    let mut all = kept.to_vec();
+    // A time past now was written while the clock ran ahead. Kept as it
+    // is, it would hold the script before it trusted on builders made
+    // after the change, for as long as the clock had run ahead; brought
+    // back to now, the window closes no later than it truly could have.
+    let mut all: Vec<Named> = kept
+        .iter()
+        .map(|one| Named {
+            script: one.script.clone(),
+            since: one.since.min(now),
+        })
+        .collect();
     if all.last().is_none_or(|last| last.script != script) {
         all.push(Named {
             script: script.to_owned(),
@@ -306,6 +316,22 @@ mod tests {
                 made_before: 200 + DRAINS_FOR
             }],
             "x outlived its drain once a was named again"
+        );
+    }
+
+    #[test]
+    fn a_time_named_ahead_of_the_clock_comes_back_to_now() {
+        let kept = [one("a", 100), one("b", 9_000)];
+        assert_eq!(
+            named(&kept, "b", 400),
+            (
+                Some(vec![one("a", 100), one("b", 400)]),
+                vec![Earlier {
+                    script: "a".to_owned(),
+                    made_before: 400
+                }]
+            ),
+            "a change named ahead of the clock kept the script before it trusted past now"
         );
     }
 

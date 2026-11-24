@@ -143,12 +143,13 @@ in
               running any other, started again or changed since root first
               trusted it, whose audit log holds more than its making, or in a
               project setting metadata its own doesn't override, lends
-              nothing. The one exception is the script this replaced, still
-              trusted for a day on an instance made before the change, so a
-              change drains rather than cutting every run; to refuse it at
-              once, remove scripts.json from the lines service's state folder
-              and restart the service. Each lent token must read the project's Admin Activity
-              audit log. Unset, a lent builder is trusted on its host key
+              nothing. The one exception is a script named here before: each
+              is still trusted for a day after the change that replaced it,
+              on an instance made before that change, so a change drains
+              rather than cutting every run. To refuse them at once, remove
+              /var/lib/nix-offload-lines/scripts.json and restart
+              nix-offload-lines. Each lent token must read the project's
+              Admin Activity audit log. Unset, a lent builder is trusted on its host key
               alone, which anything able to change the instance can get
               round, and the machine warns so.
             '';

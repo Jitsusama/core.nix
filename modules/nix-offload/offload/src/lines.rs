@@ -1117,12 +1117,19 @@ pub fn copy_once(settings: &Settings, keys: &mut HostKeys) {
 
 /// Copies what passes for as long as it runs, at [`PACE`].
 pub fn serve(settings: &Settings, config: PathBuf) -> ! {
-    let mut keys = HostKeys::new(config);
-    keys.name_script(settings);
+    let mut keys = started(settings, config);
     loop {
         copy_once(settings, &mut keys);
         std::thread::sleep(PACE);
     }
+}
+
+/// What `serve` keeps as it starts, the startup script already named, so
+/// its time is this start's.
+fn started(settings: &Settings, config: PathBuf) -> HostKeys {
+    let mut keys = HostKeys::new(config);
+    keys.name_script(settings);
+    keys
 }
 
 #[cfg(test)]
@@ -1826,7 +1833,7 @@ mod tests {
         let (dir, mut settings, _) = lender(&format!("{IMAGES}debian-12-bookworm-v1"));
         settings.state = Some(dir.path().to_path_buf());
         let before = now_seconds();
-        HostKeys::new(dir.path().join("config")).name_script(&settings);
+        started(&settings, dir.path().join("config"));
         let record = fs::read_to_string(dir.path().join(RECORD)).expect("no record kept");
         let named: Value = serde_json::from_str(&record).expect("the record isn't JSON");
         let since = named[0]["since"].as_i64().unwrap_or_default();
