@@ -9,7 +9,15 @@
  }
 --- a/Sources/vzvm/VirtualMachineBuilder.swift
 +++ b/Sources/vzvm/VirtualMachineBuilder.swift
-@@ -196,8 +196,11 @@
+@@ -180,6 +180,7 @@
+ 
+     // NAT is the one attachment that needs no special entitlement.
+     let network = VZVirtioNetworkDeviceConfiguration()
++    network.macAddress = guestAddress
+     network.attachment = try networkAttachment(
+       dnsProxy: config.dnsProxy, subnet: config.ipv4Subnet, mask: config.ipv4Mask)
+     vmc.networkDevices = [network]
+@@ -196,8 +197,15 @@
      return vmc
    }
  
@@ -19,10 +27,14 @@
    private static var network: vmnet_network_ref?
 +  /// Set when a guest's attachment to the kept network is lost, so no later guest is put on it.
 +  static var networkLost = false
++  /// One hardware address for every guest the process boots, so the kept network's DHCP
++  /// server leases the same client again rather than a new one each boot, which would
++  /// use up a small network's addresses.
++  private static let guestAddress = VZMACAddress.randomLocallyAdministered()
  
    /// The host's NAT. With its DNS proxy, macOS's Internet Sharing has mDNSResponder
    /// answer on the host's port 53, where a VPN's own resolver can then no longer bind,
-@@ -218,6 +221,16 @@
+@@ -218,6 +226,21 @@
      guard #available(macOS 26.0, *) else {
        throw VZVMError.config("dnsProxy: false needs macOS 26 or newer")
      }
@@ -30,16 +42,21 @@
 +    // after an idle stop asked vmnet for a second network on the subnet the first still
 +    // held, was refused with status 1001 and the process exited, failing the build that
 +    // woke it. So a later boot is put on the first network again, unless a guest lost its
-+    // attachment to it: then vmnet is asked again, and if it refuses, the guest fails to
-+    // start, the process exits, and launchd starts one that makes a new network.
++    // attachment to it: then the process lets go of it and asks vmnet again. While the lost
++    // network still holds the subnet, vmnet likely refuses, the guest fails to start, and
++    // the process exits, costing that one build, and launchd starts one that makes anew.
 +    if let network, !networkLost {
 +      Log.info("guest network: the process's shared vmnet again")
 +      return VZVmnetNetworkDeviceAttachment(network: network)
 +    }
++    if networkLost {
++      Log.warn("guest network: the last one was lost, so vmnet is asked for another")
++      network = nil
++    }
      var status: vmnet_return_t = .VMNET_SUCCESS
      guard let shared = vmnet_network_configuration_create(.VMNET_SHARED_MODE, &status) else {
        throw VZVMError.runtime("vmnet network configuration failed: status \(status.rawValue)")
-@@ -240,6 +253,7 @@
+@@ -240,6 +263,7 @@
        throw VZVMError.runtime("vmnet network failed: status \(status.rawValue)")
      }
      network = created

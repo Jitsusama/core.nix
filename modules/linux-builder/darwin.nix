@@ -152,7 +152,10 @@ let
         # It's made once a process and reused: each later boot asked for
         # another on the same subnet, which vmnet refused, so the build that
         # woke the guest after an idle stop failed (23 November). A guest that
-        # loses its attachment stops the reuse, so a dead network isn't kept.
+        # loses its attachment stops the reuse, so a dead network isn't kept,
+        # though the next boot likely still fails while it holds the subnet.
+        # Every guest of a process has one hardware address, so the reused
+        # network's DHCP server doesn't run out of leases for new ones.
         virtualisation.vz.package = pkgs.vzvm.overrideAttrs (old: {
           patches = (old.patches or [ ]) ++ [
             ./vzvm-without-dns-proxy.patch

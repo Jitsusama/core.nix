@@ -2,8 +2,9 @@
 # The test that the Mac's builder reuses its network: vzvm's patches, in the
 # order given, apply to a copy of its source with no fuzz; past the macOS 26
 # guard, the attachment hands a kept network back, once, before vmnet is
-# asked for another; the network made is kept; and a guest losing its
-# attachment stops the next boot reusing it, until another is made.
+# asked for another; the network made is kept; a guest losing its attachment
+# stops the next boot reusing it, which lets it go, until another is made;
+# and every guest of a process has one hardware address.
 # Usage: SOURCE PATCH...
 set -euo pipefail
 
@@ -34,19 +35,26 @@ builder=Sources/vzvm/VirtualMachineBuilder.swift
 newer=$(only "${builder}" 'guard #available(macOS 26.0, *) else {')
 guarded=$(only "${builder}" 'if let network, !networkLost {')
 reused=$(only "${builder}" 'return VZVmnetNetworkDeviceAttachment(network: network)')
+let_go=$(only "${builder}" 'network = nil')
 configured=$(only "${builder}" \
   'guard let shared = vmnet_network_configuration_create(.VMNET_SHARED_MODE, &status) else {')
 made=$(only "${builder}" 'guard let created = vmnet_network_create(shared, &status) else {')
 kept=$(only "${builder}" 'network = created')
 cleared=$(only "${builder}" 'networkLost = false')
 only "${builder}" 'static var networkLost = false' >/dev/null
-if ((newer >= guarded || guarded >= reused || reused >= configured || configured >= made ||
-  made >= kept || kept >= cleared)); then
+if ((newer >= guarded || guarded >= reused || reused >= let_go || let_go >= configured ||
+  configured >= made || made >= kept || kept >= cleared)); then
   echo "A later boot isn't given the network the process made: past the guard at ${newer}," \
-    "guarded at ${guarded}, handed back at ${reused}, configured at ${configured}, made at" \
-    "${made}, kept at ${kept}, its loss cleared at ${cleared}." >&2
+    "guarded at ${guarded}, handed back at ${reused}, a lost one let go at ${let_go}," \
+    "configured at ${configured}, made at ${made}, kept at ${kept}, its loss cleared at" \
+    "${cleared}." >&2
   exit 1
 fi
+
+# One hardware address a process, so the kept network's DHCP server sees one client.
+only "${builder}" 'private static let guestAddress = VZMACAddress.randomLocallyAdministered()' \
+  >/dev/null
+only "${builder}" 'network.macAddress = guestAddress' >/dev/null
 
 guest=Sources/vzvm/Guest.swift
 detached=$(only "${guest}" 'attachmentWasDisconnectedWithError error: Error')
