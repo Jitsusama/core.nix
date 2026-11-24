@@ -193,7 +193,7 @@ def test_a_house_moved_to_another_address_still_holds(rig: Rig) -> None:
     )
     rig.client.wait_until_succeeds(
         "journalctl -u shaper -o cat --no-pager"
-        f' | grep -q "the house\'s first report from {MOVED_TO} was heard"',
+        f' | grep -q "the first report from {MOVED_TO} for the house on .* was heard"',
         timeout=QUIETING,
     )
     # The house's word from its first address goes stale, so a hold that
