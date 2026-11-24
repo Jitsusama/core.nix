@@ -326,7 +326,12 @@ impl Inputs {
             self.restore = file::read(path);
         } else if path == paths.arrangement {
             // Read again whenever it's written, by the daemon or another
-            // hand, as the shell read its own file of them.
+            // hand, as the shell read its own file of them. While a write
+            // has failed, memory is ahead of the file and is written over
+            // it at the next try, so the file isn't read back over it.
+            if self.unwritten.is_some() {
+                return;
+            }
             if let Some(kept) = Arrangement::read(path) {
                 self.arrangement = kept;
             }
@@ -519,6 +524,30 @@ mod tests {
         elsewhere.write(&paths.kept_places).expect("written");
         inputs.hear(Heard::Files(vec![paths.kept_places.clone()]), &paths);
         assert_eq!(inputs.kept_places, elsewhere, "heard as it lands");
+        let _ = fs::remove_dir_all(&folder);
+    }
+
+    #[test]
+    fn places_heard_written_while_a_write_has_failed_leave_memory_as_it_is() {
+        let folder = std::env::temp_dir().join(format!("agents-stale-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&folder);
+        let paths = paths_in(&folder);
+        let stale = Arrangement::of(&json!({"v": 1, "boots": {"this": {"s-shut": {}}}}));
+        stale.write(&paths.arrangement).expect("written");
+        let ahead = Arrangement::of(&json!({"v": 1, "boots": {"this": {}}}));
+        let mut inputs = Inputs {
+            arrangement: ahead.clone(),
+            unwritten: Some("No space left on device".into()),
+            ..Inputs::default()
+        };
+        inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
+        assert_eq!(
+            inputs.arrangement, ahead,
+            "memory ahead of the file isn't thrown back to it, let-gos and all"
+        );
+        inputs.unwritten = None;
+        inputs.hear(Heard::Files(vec![paths.arrangement.clone()]), &paths);
+        assert_eq!(inputs.arrangement, stale, "once caught up, it's read again");
         let _ = fs::remove_dir_all(&folder);
     }
 

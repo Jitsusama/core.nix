@@ -546,6 +546,60 @@ fn a_let_go_already_past_is_looked_at_no_sooner_than_still() {
 }
 
 #[test]
+fn a_closed_mark_stamped_ahead_of_now_counts_from_now() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let ahead = at + 10 * grace;
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-shut": {"column": 4, "closed": ahead},
+                "s-parked": {"column": 5, "closed": ahead}}}}));
+    let shut = Windowless {
+        closed: HashSet::from(["s-shut".to_owned()]),
+        heard: HashSet::from(["s-parked".to_owned()]),
+        ..Windowless::default()
+    };
+    let stepped = kept.kept("this", "", Map::new(), Vec::new(), &shut, at);
+    assert_eq!(
+        stepped.boots["this"],
+        json!({"s-shut": {"column": 4, "closed": at},
+            "s-parked": {"column": 5, "closed": at}}),
+        "a mark ahead of now, as after the clock stepped back, is stamped now, \
+         on one parked since as on one closed"
+    );
+    assert_eq!(
+        stepped.let_go_at("this"),
+        Some(at + grace),
+        "so its place goes a boot's end from now, not from the step's far side"
+    );
+}
+
+#[test]
+fn let_go_takes_only_this_boots_places_due_and_counts_a_mark_ahead_from_now() {
+    let at = 1_000_000;
+    let grace = u64::try_from(CLOSED_FOR.as_millis()).expect("minutes fit");
+    let kept = Arrangement::of(&json!({"v": 1,
+            "boots": {"this": {"s-due": {"column": 1, "closed": at - grace},
+                "s-waits": {"column": 2, "closed": at - 1},
+                "s-ahead": {"column": 3, "closed": at + grace},
+                "s-open": {"column": 4}},
+                "before": {"s-due": {"column": 1, "closed": at - grace}}},
+            "others": {"this": [{"app": "Slack"}]}}));
+    let gone = kept.let_go("this", at);
+    assert_eq!(
+        gone.boots["this"],
+        json!({"s-waits": {"column": 2, "closed": at - 1},
+            "s-ahead": {"column": 3, "closed": at},
+            "s-open": {"column": 4}}),
+        "only the one due goes, and one ahead of now is stamped now"
+    );
+    assert_eq!(
+        gone.boots["before"], kept.boots["before"],
+        "another boot's are left"
+    );
+    assert_eq!(gone.others, kept.others, "and the other windows' places");
+}
+
+#[test]
 fn a_window_closed_while_the_boot_runs_on_lets_its_place_go() {
     let kept = Arrangement::of(&json!({"v": 1,
             "boots": {"this": {"s-shut": {"column": 4}, "s-ended": {"column": 5}}}}));

@@ -421,6 +421,7 @@ impl Arrangement {
             let Some(place) = place.as_object_mut() else {
                 return !unwindowed.closed.contains(id);
             };
+            closed_from(place, at);
             // One in a window again keeps its place as it was kept, unmarked.
             // One heard parked, ended or elsewhere keeps a closed mark and
             // lets its place go once that's due, since the host parks an
@@ -440,7 +441,7 @@ impl Arrangement {
                 return place
                     .get("closed")
                     .and_then(Value::as_u64)
-                    .is_none_or(|closed| at.saturating_sub(closed) < closed_for());
+                    .is_none_or(|closed| held(closed, at));
             }
             if unwindowed.unsure.contains(id) && !place.contains_key("closed") {
                 place.insert(ORPHANED.to_owned(), json!(true));
@@ -450,7 +451,7 @@ impl Arrangement {
             } else {
                 place.get("closed").and_then(Value::as_u64)
             };
-            closed.is_none_or(|closed| at.saturating_sub(closed) < closed_for())
+            closed.is_none_or(|closed| held(closed, at))
         });
         let restored = self
             .before(boot, restoring)
@@ -487,6 +488,27 @@ impl Arrangement {
                 kept.others
                     .insert(before.to_owned(), Value::Array(those.clone()));
             }
+        }
+        kept
+    }
+
+    /// It with `boot`'s places closed by hand for [`CLOSED_FOR`] by `at`
+    /// let go, and nothing else changed, for while no window is listed to
+    /// work the rest out from: a place closed before the last window went
+    /// still goes when due, never reopened at the next boot. A mark
+    /// stamped ahead of `at` counts from `at`, as [`Self::kept`] has it.
+    #[must_use]
+    pub fn let_go(&self, boot: &str, at: u64) -> Self {
+        let mut kept = self.clone();
+        if let Some(Value::Object(places)) = kept.boots.get_mut(boot) {
+            // The same rules as kept()'s, so a place goes on one schedule
+            // whether or not a window is listed.
+            places.retain(|_, place| {
+                place
+                    .as_object_mut()
+                    .and_then(|place| closed_from(place, at))
+                    .is_none_or(|closed| held(closed, at))
+            });
         }
         kept
     }
@@ -533,6 +555,24 @@ impl Arrangement {
 /// [`CLOSED_FOR`] in ms, as places are stamped.
 fn closed_for() -> u64 {
     u64::try_from(CLOSED_FOR.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// When `place`'s closed mark counts from at `at`, if it has one. A mark
+/// stamped ahead of `at`, as after the wall clock stepped back, is
+/// stamped `at`, so its place goes a boot's end from here, never held
+/// for as long as the clock stepped.
+fn closed_from(place: &mut Map<String, Value>, at: u64) -> Option<u64> {
+    let closed = place.get("closed").and_then(Value::as_u64)?;
+    if closed > at {
+        place.insert("closed".to_owned(), json!(at));
+        return Some(at);
+    }
+    Some(closed)
+}
+
+/// Whether a place closed by hand at `closed` is still held at `at`.
+fn held(closed: u64, at: u64) -> bool {
+    at.saturating_sub(closed) < closed_for()
 }
 
 /// How long from `now` until the places are kept again for the first
