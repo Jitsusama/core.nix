@@ -2810,7 +2810,11 @@ impl Sent<'_> {
         }
         let status = if status == 0 { alone } else { status };
         let finished = Finished::of(status, Some(printed));
-        if cut.get() { finished.cut_short() } else { finished }
+        if cut.get() {
+            finished.cut_short()
+        } else {
+            finished
+        }
     }
 }
 
@@ -2953,12 +2957,7 @@ fn built_evaluated(folder: &Path, system: &str, names: &[String], cut: &Cell<boo
 
 /// How building `names` did, as `built_evaluated` says, with the subtests
 /// its log says failed.
-fn built_heard(
-    folder: &Path,
-    system: &str,
-    names: &[String],
-    cut: &Cell<bool>,
-) -> changed::Heard {
+fn built_heard(folder: &Path, system: &str, names: &[String], cut: &Cell<bool>) -> changed::Heard {
     let heard = changed::hearing(&mut changed::building(folder, system, names));
     heard.map_or_else(
         |_| {
@@ -4574,8 +4573,16 @@ mod tests {
             let cut = Cell::new(false);
             (evaluated_ended(code, 2, &cut), cut.get())
         };
-        assert_eq!(ended(Some(0)), (0, false), "a build that passed cut its run");
-        assert_eq!(ended(Some(1)), (1, false), "a build that failed cut its run");
+        assert_eq!(
+            ended(Some(0)),
+            (0, false),
+            "a build that passed cut its run"
+        );
+        assert_eq!(
+            ended(Some(1)),
+            (1, false),
+            "a build that failed cut its run"
+        );
         assert_eq!(
             ended(Some(100)),
             (100, false),
