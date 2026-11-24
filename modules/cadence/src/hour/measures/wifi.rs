@@ -59,13 +59,14 @@ pub fn journal(now: i64) -> [String; 7] {
 /// ending `, during a call` while one is on. Best effort's p95 is
 /// kept beside it, since wifid times its own echoes, so a minute with the
 /// machine starved of CPU reads slow in both, where one held in the air
-/// leaves best effort quick. The video p95 is none on a clause ending
-/// `, too few to time`, fewer than half its echoes answered.
+/// leaves best effort quick; it is none where every best-effort echo went
+/// unanswered. The video p95 is none on a clause ending `, too few to
+/// time`, fewer than half its echoes answered.
 #[derive(Debug, PartialEq)]
 struct Minute {
     at: i64,
     bssid: String,
-    best: f64,
+    best: Option<f64>,
     p95: Option<f64>,
     late: f64,
     call: bool,
@@ -74,6 +75,14 @@ struct Minute {
 impl Minute {
     fn held(&self) -> bool {
         self.late > LATE_PERCENT || self.p95.is_some_and(|p95| p95 > HELD_MS)
+    }
+
+    /// Whether enough of its video was answered to judge it: timed, or
+    /// held by the answers that came late. One whose video went mostly
+    /// unanswered and never late is set aside, neither held nor clean, as
+    /// a gateway dropping marked echoes would read held every minute.
+    fn answered(&self) -> bool {
+        self.p95.is_some() || self.held()
     }
 
     /// How far it held, for choosing an access point's worst minute: its
@@ -86,6 +95,12 @@ impl Minute {
     }
 }
 
+/// A time as wifid writes it, `2400.0 ms`, or none for anything else,
+/// `none` among them, which it writes when nothing was answered to time.
+fn time(said: &str) -> Option<f64> {
+    said.strip_suffix(" ms")?.parse().ok()
+}
+
 /// A minute read from one journal entry: none for any other line, and for
 /// a minute with no video echo sent, whose clause reads `video
 /// unmeasured`, or whose line from an older wifid leaves it out.
@@ -94,8 +109,8 @@ fn minute(entry: &Value) -> Option<Minute> {
     let micros: i64 = entry["__REALTIME_TIMESTAMP"].as_str()?.parse().ok()?;
     let (_, rest) = message.split_once(" on ")?;
     let (bssid, rest) = rest.split_once(": gateway ")?;
-    let (_, best) = rest.split_once(" ms at p50, ")?;
-    let (best, _) = best.split_once(" ms at p95, ")?;
+    let (_, best) = rest.split_once(" at p50, ")?;
+    let (best, _) = best.split_once(" at p95, ")?;
     let (_, video) = rest.split_once("; video ")?;
     let video = video.split(';').next()?;
     let (video, timed) = match video.strip_suffix(", too few to time") {
@@ -105,15 +120,15 @@ fn minute(entry: &Value) -> Option<Minute> {
     let (p95, video) = video.split_once(" at p95, ")?;
     let (late, video) = video.split_once("% of ")?;
     video.split_once(" echoes answered past 1 s")?;
-    let p95 = if timed {
-        Some(p95.strip_suffix(" ms")?.parse().ok()?)
-    } else {
-        None
+    let p95 = if timed { Some(time(p95)?) } else { None };
+    let best = match best {
+        "none" => None,
+        best => Some(time(best)?),
     };
     Some(Minute {
         at: micros / 1_000_000,
         bssid: bssid.to_owned(),
-        best: best.parse().ok()?,
+        best,
         p95,
         late: late.parse().ok()?,
         call: message.ends_with(", during a call"),
@@ -123,31 +138,27 @@ fn minute(entry: &Value) -> Option<Minute> {
 /// The hour's held minutes, from wifid's journal as journalctl printed it,
 /// or none where it couldn't be read. Behind the figure, each access point
 /// its minutes held on, most first, with its worst minute, so the owner
-/// reads which radio jammed and when. An hour with no minute read is
-/// unjudged, saying why: the journal unread, no Wi-Fi minute, wired or
-/// asleep, or no video echo sent.
+/// reads which radio jammed and when. Each Wi-Fi minute not judged is
+/// counted beside the figure by why: its video mostly unanswered, its line
+/// unread, no video echo sent, or a wifid writing no video figure. An hour
+/// judging fewer than half its Wi-Fi minutes is unjudged, saying those
+/// counts, unless already past its target, since what went unjudged could
+/// only add to it; so is one with the journal unread, no wifid line, as
+/// when wired or asleep or the journal unreadable here, or no Wi-Fi minute.
 #[must_use]
 pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
-    let minutes: Vec<Minute> = journal
-        .map(|text| lines(text).filter_map(|entry| minute(&entry)).collect())
-        .unwrap_or_default();
-    let unread = match journal {
-        None => Some(": wifid's journal unread"),
-        Some(text) if !text.contains(": gateway ") => Some(": no Wi-Fi minute"),
-        Some(_) if minutes.is_empty() => Some(": no video echo sent"),
-        Some(_) => None,
+    let Some(mut tally) = journal.map(tallied) else {
+        return unjudged(": wifid's journal unread");
     };
-    if let Some(why) = unread {
-        return Measure {
-            key: KEY.to_owned(),
-            class: Class::Apps,
-            says: format!("{SAYS}{why}"),
-            now: 0.0,
-            target: None,
-            owner: OWNER.to_owned(),
-            behind: Vec::new(),
-        };
+    if tally.lines == 0 {
+        return unjudged(": no wifid line, as when wired or asleep, or the journal unread here");
     }
+    if tally.wifi == 0 {
+        return unjudged(": no Wi-Fi minute");
+    }
+    let (minutes, aside): (Vec<Minute>, Vec<Minute>) = std::mem::take(&mut tally.minutes)
+        .into_iter()
+        .partition(Minute::answered);
     let mut points: BTreeMap<&str, Vec<&Minute>> = BTreeMap::new();
     for m in &minutes {
         points.entry(&m.bssid).or_default().push(m);
@@ -162,15 +173,98 @@ pub fn video(journal: Option<&str>, zone: &TimeZone) -> Measure {
         .collect();
     behind.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
     let held: usize = behind.iter().map(|(n, _)| n).sum();
+    let judged = format!(
+        "{} of {} Wi-Fi minutes judged{}",
+        minutes.len(),
+        tally.wifi,
+        tally.left(aside.len())
+    );
+    if minutes.len() * 2 < tally.wifi && count(held) <= TARGET {
+        return unjudged(&format!(": {judged}"));
+    }
     Measure {
         key: KEY.to_owned(),
         class: Class::Apps,
-        says: format!("{SAYS}, of {} read", minutes.len()),
+        says: format!("{SAYS}, {judged}"),
         now: count(held),
         target: Some(TARGET),
         owner: OWNER.to_owned(),
         behind: behind.into_iter().map(|(_, line)| line).collect(),
     }
+}
+
+/// The measure unjudged, saying `why`.
+fn unjudged(why: &str) -> Measure {
+    Measure {
+        key: KEY.to_owned(),
+        class: Class::Apps,
+        says: format!("{SAYS}{why}"),
+        now: 0.0,
+        target: None,
+        owner: OWNER.to_owned(),
+        behind: Vec::new(),
+    }
+}
+
+/// What an hour of wifid's journal holds: its lines, those that are a
+/// Wi-Fi minute, and of those, each one read, or why it wasn't.
+#[derive(Default)]
+struct Tally {
+    lines: usize,
+    wifi: usize,
+    unmeasured: usize,
+    unread: usize,
+    older: usize,
+    minutes: Vec<Minute>,
+}
+
+impl Tally {
+    /// The Wi-Fi minutes left unjudged, by why, with `aside` read but set
+    /// aside, in parentheses; nothing when every one was judged.
+    fn left(&self, aside: usize) -> String {
+        let left: Vec<String> = [
+            (aside, "set aside, their video unanswered"),
+            (self.unread, "unread"),
+            (self.unmeasured, "with no video echo sent"),
+            (self.older, "from a wifid writing no video figure"),
+        ]
+        .into_iter()
+        .filter(|(n, _)| *n > 0)
+        .map(|(n, why)| format!("{n} {why}"))
+        .collect();
+        if left.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", left.join("; "))
+        }
+    }
+}
+
+/// The tally of `journal`, as journalctl's json printed it. A minute with
+/// no video clause, or the clause of wifid's first version, whose echoes
+/// were lost rather than answered late, is from an older wifid.
+fn tallied(journal: &str) -> Tally {
+    let mut tally = Tally::default();
+    for entry in lines(journal) {
+        tally.lines += 1;
+        let Some(message) = entry["MESSAGE"].as_str() else {
+            continue;
+        };
+        if !message.contains(": gateway ") {
+            continue;
+        }
+        tally.wifi += 1;
+        if let Some(read) = minute(&entry) {
+            tally.minutes.push(read);
+        } else if message.contains("; video unmeasured") {
+            tally.unmeasured += 1;
+        } else if message.contains("; video ") && message.contains(" answered past ") {
+            tally.unread += 1;
+        } else {
+            tally.older += 1;
+        }
+    }
+    tally
 }
 
 /// One access point's held minutes, as the card names them.
@@ -183,10 +277,13 @@ fn said(bssid: &str, held: usize, read: usize, worst: &Minute, zone: &TimeZone) 
         .p95
         .map(|p95| format!("{p95:.1} ms at p95 and "))
         .unwrap_or_default();
-    let (late, best) = (worst.late, worst.best);
+    let best = worst
+        .best
+        .map_or("unanswered".to_owned(), |best| format!("{best:.1} ms"));
+    let late = worst.late;
     format!(
         "on {bssid}, {held} of {read} minutes held, the worst {timed}{late:.1}% past 1 s\
-         {when}{call}, best effort then {best:.1} ms"
+         {when}{call}, best effort then {best}"
     )
 }
 
