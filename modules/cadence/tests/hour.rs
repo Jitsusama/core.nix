@@ -79,10 +79,6 @@ fn a_look_by_hand_prints_the_card_and_keeps_and_tells_nothing() {
     );
 }
 
-/// A miss renamed in the ledger, or cut from it, leaves the misses unjudged
-/// the hour it goes, since the hour can't say whether it was fixed; the
-/// hour after reads the ledger as it now stands, so one rename doesn't
-/// leave them unjudged for good.
 #[test]
 fn the_card_counts_the_pains_the_hearer_summed_up() {
     let account = account();
@@ -106,6 +102,10 @@ fn the_card_counts_the_pains_the_hearer_summed_up() {
     );
 }
 
+/// A miss renamed in the ledger, or cut from it, leaves the misses unjudged
+/// the hour it goes, since the hour can't say whether it was fixed; the
+/// hour after reads the ledger as it now stands, so one rename doesn't
+/// leave them unjudged for good.
 #[test]
 fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     let account = account();
@@ -144,6 +144,52 @@ fn a_miss_gone_from_the_ledger_leaves_one_hour_unjudged() {
     assert!(
         !cards.concat().contains("as first written"),
         "the gone miss was told fixed or kept open: {cards:?}"
+    );
+}
+
+/// A miss open last hour that its owner has since said was none leaves the
+/// open misses with its reason shown, and Joel is never told it's fixed:
+/// it wasn't, and nothing catches it if it comes back.
+#[test]
+fn a_miss_said_none_closes_with_why_and_is_never_told_fixed() {
+    let account = account();
+    let kept = account.path().join("state/cadence");
+    fs::create_dir_all(&kept).expect("cadence's folder");
+    fs::write(
+        kept.join("hour.json"),
+        r#"{"open": ["the backup notice stayed up after later runs succeeded · 88LQC0"]}"#,
+    )
+    .expect("last hour");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("a clock past 1970")
+        .as_millis();
+    let said = MISS.replace(
+        r#""owner""#,
+        &format!(r#""none": "a notice it meant to keep", "none_at_ms": {now}, "owner""#),
+    );
+    fs::write(
+        account.path().join("state/mission/misses.jsonl"),
+        format!("{said}\n"),
+    )
+    .expect("the miss said none");
+
+    let ran = hour(account.path(), &["--to", "WCJQSG"]);
+    let stderr = String::from_utf8_lossy(&ran.stderr);
+    assert!(ran.status.success(), "cadence failed: {stderr}");
+    let card = String::from_utf8_lossy(&ran.stdout);
+    assert!(
+        card.contains("a notice it meant to keep") && !card.contains("For Joel"),
+        "a miss said none was told fixed, or its reason wasn't shown: {card}"
+    );
+    assert!(
+        !card.contains("Why didn't our checks catch these?"),
+        "a miss said none was still listed open: {card}"
+    );
+    let carried = fs::read_to_string(kept.join("hour.json")).expect("the hour kept");
+    assert!(
+        !carried.contains("after later runs succeeded"),
+        "a miss said none was carried open: {carried}"
     );
 }
 
