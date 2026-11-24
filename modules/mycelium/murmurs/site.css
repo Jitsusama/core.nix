@@ -5,7 +5,7 @@
    are.
 
    What your sessions murmur: every murmur a quest's sessions said into its
-   web, said first in one sentence over the flock, then listed newest first
+   web, counted first in the kit's head under the flock, then listed newest first
    with its words, who said it, when, its ties and how it settled. An
    interface to keep open: the sentence and the flock are the overview, the
    rows the detail, and nothing moves under the reader but the cursor. */
@@ -22,7 +22,8 @@ code {
   font-size: 0.92em;
 }
 
-/* ---- The first screen: the flock, the sentence, and where it stands. ---- */
+/* ---- The first screen: the flock, then the kit's head (head.css) on its
+   centre axis, the page's own only in its title's size and its glyph. ---- */
 
 .hero {
   display: grid;
@@ -36,15 +37,6 @@ code {
   inline-size: min(15rem, 70vw);
   block-size: auto;
   overflow: visible;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--tint-word);
-  font: var(--label-weight) var(--step-small) / 1.5 var(--label-face);
-  font-feature-settings: var(--mono-features);
-  letter-spacing: var(--label-tracking);
-  text-transform: lowercase;
 }
 
 .headline {
@@ -70,7 +62,9 @@ code {
   font-weight: 420;
 }
 
-.headline a {
+/* The counts lead to what they count, so each is a link, underlined by a
+   hairline until it's pointed at. */
+.lede a {
   color: inherit;
   text-decoration: underline;
   text-decoration-thickness: 1px;
@@ -78,59 +72,23 @@ code {
   text-underline-offset: 0.12em;
 }
 
-.headline a:hover {
+.lede a:hover {
   text-decoration-color: currentColor;
 }
 
-.lede {
-  max-inline-size: 33rem;
-  margin: 0;
-  color: var(--text);
-  font-family: var(--voice-face);
-  font-size: var(--step-large);
-  font-style: italic;
-  font-weight: var(--voice-weight);
-  font-variation-settings: "SOFT" var(--voice-soft), "WONK" var(--voice-wonk);
-  line-height: 1.4;
+/* A cell's words may hold a long run with no space, which wraps anywhere
+   rather than widening the page. */
+.page-head .lede {
   overflow-wrap: anywhere;
 }
 
-.standing {
-  display: flex;
-  align-items: center;
-  gap: var(--mark);
-  min-block-size: 44px;
-  margin: 0;
-}
-
-.asof {
-  color: var(--text);
-  font-size: var(--step-small);
-}
-
-/* The keys said once, quietly, inside the composition, beside the theme. */
-.ways {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: var(--mark) var(--groups);
-  margin-block-start: var(--mark);
-  color: var(--text);
-  font-size: var(--step-small);
-}
-
-.ways .keys {
-  margin: 0;
-  max-inline-size: 40rem;
+/* The keys act only through the page's script, so a page without one keeps
+   the line's room and shows nothing in it. */
+html:not(.js) .page-head .keys {
   visibility: hidden;
 }
 
-.js .ways .keys {
-  visibility: visible;
-}
-
-.ways kbd {
+.page-head .keys kbd {
   cursor: pointer;
 }
 
@@ -257,8 +215,9 @@ code {
   font-style: italic;
 }
 
-/* A quiet day is said in one line where the rows would start, on the same rule. */
-.quiet {
+/* A quiet day is said in one line where the rows would start, on the same
+   rule. Only the list's: the head's quiet row is the kit's. */
+.whole-list .quiet {
   margin: 0;
   padding: var(--items) var(--mark);
   border-block-start: 1px solid var(--rule);

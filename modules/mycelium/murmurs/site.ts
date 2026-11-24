@@ -31,7 +31,6 @@ function found<T extends Element>(selector: string, kind: new () => T): T {
 const AGES_EVERY = 30_000;
 
 const list = found("#murmurs", HTMLDivElement);
-const title = found("#headline", HTMLHeadingElement);
 const ledeLine = found("#lede", HTMLParagraphElement);
 const sky = found("#sky", HTMLDivElement);
 const asof = found("#asof", HTMLSpanElement);
@@ -92,9 +91,8 @@ function sayWhen(): void {
   // A broken node the page never heard live has said nothing, whatever empty
   // list the server held for it.
   if (!fromLive && murmurs.length === 0 && standing?.state === "broken") {
-    title.textContent = "Nothing to hear yet.";
     ledeLine.textContent =
-      "The mycelium node didn't say what its sessions murmur; the line below says why.";
+      "Nothing to hear yet: the mycelium node didn't say what its sessions murmur; the line below says why.";
   }
 }
 
@@ -173,19 +171,27 @@ function draw(): void {
   select();
 }
 
-/** The headline, its counts leading to what they count, and the lede under it. */
-function sayWhole(): void {
+/** The counts, each leading to what it counts, as markup. */
+function counted(): string {
   const whole = headline(murmurs);
   const lead = escaped(whole.lead);
   const turn = escaped(whole.turn);
   if (whole.said === 0) {
-    title.innerHTML = `${lead} <em>${turn}</em>`;
-  } else if (whole.open === 0 || whole.open === whole.said) {
-    title.innerHTML = `<a href="#all" data-show="all">${lead}</a> <em>${turn}</em>`;
-  } else {
-    title.innerHTML = `<a href="#all" data-show="all">${lead}</a> <em><a href="#air" data-show="air">${turn}</a></em>`;
+    return `${lead} <em>${turn}</em>`;
   }
-  ledeLine.textContent = lede(murmurs);
+  if (whole.open === 0 || whole.open === whole.said) {
+    return `<a href="#all" data-show="all">${lead}</a> <em>${turn}</em>`;
+  }
+  return `<a href="#all" data-show="all">${lead}</a> <em><a href="#air" data-show="air">${turn}</a></em>`;
+}
+
+/**
+ * The lede, saying what stands now: the counts, then the newest murmur still
+ * in the air. The title above it names the page and never moves, as every
+ * live page's head does.
+ */
+function sayWhole(): void {
+  ledeLine.innerHTML = `<span id="counted">${counted()}</span> ${escaped(lede(murmurs))}`;
 }
 
 function heardAll(held: Held, moved: Moved): void {
@@ -284,7 +290,7 @@ list.addEventListener("click", (event) => {
   list.focus();
 });
 
-title.addEventListener("click", (event) => {
+ledeLine.addEventListener("click", (event) => {
   const asked = event.target instanceof Element ? event.target.closest("a[data-show]") : null;
   if (!(asked instanceof HTMLAnchorElement)) {
     return;
@@ -318,4 +324,4 @@ themeSwitch();
 // A tap on a key the head shows does what typing it does, for a reader with
 // no keyboard, and leaves the list holding the keys as a typed one does.
 const taps = { j: () => move(1), k: () => move(-1), "?": () => toggle(keys) };
-pressable(".hero .keys kbd", taps, () => list.focus());
+pressable(".page-head .keys kbd", taps, () => list.focus());

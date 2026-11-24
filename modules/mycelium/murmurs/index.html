@@ -29,6 +29,7 @@
 <link rel="stylesheet" href="../local-sites/web/theme.css">
 <link rel="stylesheet" href="../local-sites/web/base.css">
 <link rel="stylesheet" href="../local-sites/kit/switch.css">
+<link rel="stylesheet" href="../local-sites/kit/head.css">
 <link rel="stylesheet" href="site.css">
 <link rel="alternate" type="text/markdown" href="index.md">
 <link rel="describedby" type="text/plain" href="llms.txt">
@@ -37,7 +38,7 @@
 
 <a class="skip" href="#main">Skip to the murmurs</a>
 
-<header class="hero">
+<div class="hero">
   <figure class="dusk" aria-label="The murmurs as a flock, as the list below says them" aria-describedby="sky-says" aria-hidden="true">
     <div id="sky" class="drawn">
     <svg class="crest" viewBox="0 0 240 96" aria-hidden="true">
@@ -53,12 +54,15 @@
   </svg>
     </div>
   </figure>
-  <p class="eyebrow">the <a href="../code/#repo=Jitsusama%2Fmycelium">mycelium</a> · your quests' webs · what they murmur</p>
-  <h1 id="headline" class="headline" tabindex="-1">Listening to the mycelium node.</h1>
-  <p id="lede" class="lede">The cells murmur here what they notice, and tie it to the quests it touches.</p>
-  <p class="standing"><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path class="bird" d="M2 7Q5 3 8 9Q11 3 14 7"/></svg><span id="asof" class="asof" data-state="connecting">Reaching the mycelium node.</span></p>
-  <div class="ways">
-    <p class="keys">Press <kbd data-key="j">j</kbd> and <kbd data-key="k">k</kbd> to step through the murmurs, and <kbd data-key="?">?</kbd> for every key.</p>
+  <header class="page-head" data-axis="centre">
+  <p class="eyebrow">what your cells murmur<span class="sep">·</span>in the <a href="../code/#repo=Jitsusama%2Fmycelium">mycelium</a>'s webs</p>
+  <h1 id="headline" class="headline" tabindex="-1">What Your Cells <em>Murmur</em></h1>
+  <!-- Not a live region: it is written again each time a murmur comes or settles, and a screen
+       reader would say it whole every time; the standing line's status speaks for the feed. -->
+  <p id="lede" class="lede">Listening to the mycelium node.</p>
+  <p class="standing"><svg class="glyph" viewBox="0 0 16 16" aria-hidden="true"><path class="bird" d="M2 7Q5 3 8 9Q11 3 14 7"/></svg><span id="asof" class="asof" role="status" data-state="connecting">Reaching the mycelium node.</span></p>
+  <div class="quiet">
+    <p class="keys">Press <kbd data-key="j" data-tap>j</kbd> and <kbd data-key="k" data-tap>k</kbd> to step through the murmurs, and <kbd data-key="?">?</kbd> for every key.</p>
     <div class="switch" role="radiogroup" aria-label="Theme">
       <label title="Light"><input type="radio" name="theme" value="light"><span class="sr">Light</span>
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
@@ -71,7 +75,8 @@
       </label>
     </div>
   </div>
-</header>
+  </header>
+</div>
 
 <main id="main" class="work">
   <section class="whole-list" aria-labelledby="murmurs-title">

@@ -127,7 +127,7 @@ def the_page_stands(page: Page, state: str, timeout: int = PACE_MS) -> None:
 
 
 def the_page_counts(page: Page, counted: str, why: str) -> None:
-    expect(page.locator("#headline"), why).to_have_text(counted, timeout=PACE_MS)
+    expect(page.locator("#counted"), why).to_have_text(counted, timeout=PACE_MS)
 
 
 def rows(page: Page) -> list[str]:
@@ -296,7 +296,7 @@ def test_a_tap_on_a_key_the_head_shows_does_what_typing_it_does(
     page = murmurs_opened.page
     the_page_counts(page, COUNTED, "the page miscounted the murmurs")
     _, osprey, tern = said_at
-    shown = page.locator(".hero .keys kbd")
+    shown = page.locator(".page-head .keys kbd")
     holding = page.locator("#murmurs")
     shown.filter(has_text="j").click()
     the_cursor_is_on(page, f"murmur:OSPREY:{osprey}", "a tap on j didn't step")
@@ -361,7 +361,7 @@ def test_a_first_reading_that_fails_without_a_crash_is_not_taken_again(
         read.append(page)
         # Waiting for the crash's own words, which the failure then quotes, as
         # it would a page that drew them: a quote is not a crash.
-        expect(page.locator("#headline"), "the page counted").to_have_text("Target crashed")
+        expect(page.locator("#counted"), "the page counted").to_have_text("Target crashed")
 
     # Two readings would say it was taken again; a warning alone could be a
     # load that crashed on a busy builder.
@@ -459,7 +459,7 @@ def test_a_quiet_node_is_said_in_a_line_with_no_empty_list_or_bare_sky(
             roosted = murmur("OSPREY", at - 60, "Charted.", settled="charted this morning")
             quiet_node.tell("murmur", changed=[roosted])
             the_page_counts(page, "Two murmured, one still in the air.", "the roost went unheard")
-            page.locator('#headline a[data-show="air"]').click()
+            page.locator('#counted a[data-show="air"]').click()
             options = listed.locator('[role="option"]')
             title = page.locator("#murmurs-title")
             expect(title, "the air filter didn't take").to_have_text("The murmurs still in the air")

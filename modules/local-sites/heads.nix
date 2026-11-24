@@ -207,7 +207,6 @@ let
     "Forage"
     "Machines"
     "Map"
-    "Murmurs"
     "Network"
   ];
 in
