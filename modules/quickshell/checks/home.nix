@@ -240,8 +240,9 @@
       cp ${../tests/explain-it.qml} explain-it.qml
       cp ${../../../tests/lib/Expect.js} Expect.js
       ${copied [ "launcher/Explaining.js" ]}
+      cp ${(import ../launcher/words.nix).places.on} on.json
       export HOME=$TMPDIR LANG=C.UTF-8 QT_FORCE_STDERR_LOGGING=1 QT_QPA_PLATFORM=offscreen
-      export FONTCONFIG_FILE=${noFonts}
+      export FONTCONFIG_FILE=${noFonts} QML_XHR_ALLOW_FILE_READ=1
       ${shellFolderLint}
       QML_IMPORT_PATH=${qt}/lib/qt-6/qml timeout 60 ${qt}/bin/qml explain-it.qml
       touch $out
@@ -251,8 +252,9 @@
   # that can't say from a session it doesn't know, and shows its pi's answer in
   # the act's place only while it's the act's own
   # (modules/quickshell/tests/explainer.qml), over a stand-in mycelium
-  # (modules/quickshell/tests/explain-it-node.sh) that knows one session,
-  # answers another late, never answers a third and can't say a fourth.
+  # (modules/quickshell/tests/explain-it-node.sh) that knows two sessions, one
+  # asking Joel something, answers another late, never answers a fourth,
+  # can't say a fifth, and finds only another by a sixth's title words.
   explain-it-shows-its-own-answer =
     # Kept in Nix because each line copies a file Nix gives it beside the
     # cases, or sets what the shell runs them with.

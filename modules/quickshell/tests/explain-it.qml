@@ -1,8 +1,9 @@
 // Explain It, the act that says in plain words what the session behind a
 // row works on, run in Qt's own JavaScript engine, the one the shell runs it
 // in. The `explain-it-asks-only-what-a-cell-is` check copies
-// modules/quickshell/launcher/Explaining.js, what it imports and
-// tests/lib/Expect.js beside this file and runs it offscreen.
+// modules/quickshell/launcher/Explaining.js, what it imports,
+// tests/lib/Expect.js and On's words, as on.json, beside this file and runs
+// it offscreen.
 import QtQuick
 import "Expect.js" as Expect
 import "launcher/Explaining.js" as Explaining
@@ -58,6 +59,28 @@ QtObject {
         heard();
         told();
         showing();
+        shipped();
+    }
+
+    // The words Explain It ships with, as On's words the check copies beside
+    // this file hold them: without {facts} the question holds no session, and
+    // without {acts} and its words the answer never says what to press.
+    function shipped() {
+        const request = new XMLHttpRequest();
+        request.open("GET", Qt.resolvedUrl("on.json"), false);
+        request.send();
+        const words = JSON.parse(request.responseText).things
+            .find(one => one.id === "verb:on:waiting:explain")?.said ?? {};
+        const asking = String(words.asks ?? "");
+        Expect.same("its question says where the session's facts go",
+            asking.includes("{facts}"), true);
+        Expect.same("and where what to press is asked", asking.includes("{acts}"), true);
+        Expect.same("which has words of its own", String(words.acts ?? "").trim() !== "",
+            true);
+        Expect.same("which, put in, ask the answer to end with what answers it",
+            Explaining.message(Object.assign({}, cell, { asks: "Which tide?" }), asking,
+                ["Go To"], words.acts)
+                .includes(String(words.acts)), true);
     }
 
     // What it asks the node.
@@ -241,9 +264,9 @@ QtObject {
         // An answer may name an act on its row, so it fits the row only while its
         // acts are those it was asked with.
         Expect.same("an answer fits while its row's acts are as they were",
-            Explaining.fits(["Open", "Go To"], ["Open", "Go To"]), true);
+            Explaining.fits(["Talk", "Go To"], ["Talk", "Go To"]), true);
         Expect.same("not once its row lost an act it may name",
-            Explaining.fits(["Open", "Go To"], ["Open"]), false);
+            Explaining.fits(["Talk", "Go To"], ["Talk"]), false);
         Expect.same("nor once its row gained one",
             Explaining.fits(["Go To"], ["Talk", "Go To"]), false);
         Expect.same("one asked with none fits a row with none, however each says it",
