@@ -435,18 +435,11 @@ fn transcribe(model: &Path, mine: &Path, theirs: &Path) -> Result<(), String> {
     let mut words = HashMap::new();
     for (side, file) in [(Side::Mine, mine), (Side::Theirs, theirs)] {
         let bytes = std::fs::read(file).map_err(|e| format!("reading {}: {e}", file.display()))?;
-        for take in takes(&wav::samples(&bytes)?) {
-            // Heard as the daemon hears a take, each side by its words, so
-            // the checks that run this read what it writes; unlike the
-            // daemon, a take not heard stops it, so no check passes on a
-            // model that fails.
-            let (heard, took) = score::hear_take(&mut speech, side, &take)?;
-            eprintln!("call-transcripts: {}", took.describe(&speech.device));
-            if let Some((line, its_words)) = heard {
-                words.insert(lines.len(), its_words);
-                lines.push(line);
-            }
-        }
+        // Heard as the daemon hears a take, each side by its words, so the
+        // checks that run this read what it writes.
+        let named = file.display().to_string();
+        let cut = takes(&wav::samples(&bytes)?);
+        score::hear_side(&mut speech, side, &named, &cut, &mut lines, &mut words)?;
     }
     let (cut, _) = echo::cut_echoes(&lines, &words, said::spoken);
     print!("{}", markdown(&cut, &own_name(), None, None));

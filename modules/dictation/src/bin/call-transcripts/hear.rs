@@ -265,7 +265,7 @@ pub fn hear(
 
 /// What hears a take: Parakeet, or a script in the cases, so what's
 /// kept of a take is pinned without a model.
-trait Hears {
+pub trait Hears {
     /// The words said in a take, each timed from its start.
     fn words(&mut self, samples: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)>;
     /// Where it runs, for the journal.

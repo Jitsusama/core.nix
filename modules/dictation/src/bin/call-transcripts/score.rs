@@ -17,12 +17,13 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use dictation::echo;
-use dictation::parakeet::{Parakeet, RATE, Timings, WINDOW, Word};
+use dictation::parakeet::{RATE, Timings, WINDOW, Word};
 use dictation::takes::Take;
 use dictation::transcript::{self, Line, Side, markdown};
 use dictation::wav;
 use dictation::wer::{Errors, said, words};
 
+use crate::hear::Hears;
 use crate::said;
 use crate::{Settings, takes};
 
@@ -84,11 +85,11 @@ pub type HeardLine = (Line, Vec<Word>);
 /// A take of `side`'s heard as a line, with its words timed from the
 /// start of its sound, none when it holds no words, and how long it took.
 pub fn hear_take(
-    speech: &mut Parakeet,
+    speech: &mut impl Hears,
     side: Side,
     take: &Take,
 ) -> Result<(Option<HeardLine>, Timings), String> {
-    let (heard, took) = speech.transcribe_words(&take.samples)?;
+    let (heard, took) = speech.words(&take.samples)?;
     let joined: Vec<&str> = heard.iter().map(|word| word.text.as_str()).collect();
     let written = said::spoken(&joined.join(" ")).map(|text| {
         let line = Line {
@@ -109,6 +110,29 @@ pub fn hear_take(
         (line, timed)
     });
     Ok((written, took))
+}
+
+/// `side`'s `takes`, whose sound came from `file`, heard onto `lines`,
+/// each line's words kept in `words` by where it falls in them. Unlike
+/// the daemon, the first take not heard stops it, so no check passes on
+/// a model that fails.
+pub fn hear_side(
+    speech: &mut impl Hears,
+    side: Side,
+    file: &str,
+    takes: &[Take],
+    lines: &mut Vec<Line>,
+    words: &mut HashMap<usize, Vec<Word>>,
+) -> Result<(), String> {
+    for take in takes {
+        let (heard, took) = hear_take(speech, side, take)?;
+        eprintln!("call-transcripts: {}", took.describe(speech.device()));
+        if let Some((line, its_words)) = heard {
+            words.insert(lines.len(), its_words);
+            lines.push(line);
+        }
+    }
+    Ok(())
 }
 
 /// Joel's lines of `lines` that are written, by when each starts.
@@ -417,7 +441,79 @@ pub fn read(file: &Path) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+
+    /// A model that hears each take as the next of `said`, or fails on
+    /// it where that's none.
+    struct Hearing {
+        said: Vec<Option<&'static str>>,
+    }
+
+    impl Hears for Hearing {
+        fn words(&mut self, _: &[f32]) -> dictation::openvino::Result<(Vec<Word>, Timings)> {
+            let said = self.said.remove(0).ok_or("the encoder failed")?;
+            let word = Word {
+                text: said.to_owned(),
+                at: 0,
+                level: 0.0,
+            };
+            let took = Timings {
+                mel: Duration::ZERO,
+                encoder: Duration::ZERO,
+                decoder: Duration::ZERO,
+                tokens: 0,
+            };
+            Ok((vec![word], took))
+        }
+
+        fn device(&self) -> &'static str {
+            "CPU"
+        }
+    }
+
+    #[test]
+    fn a_side_stops_at_a_take_not_heard_and_says_where_it_is() {
+        let take = |second: usize| Take {
+            start: second * RATE,
+            samples: vec![0.0; RATE],
+        };
+        let takes = [take(10), take(40)];
+        let (mut lines, mut words) = (Vec::new(), HashMap::new());
+        let mut heard = Hearing {
+            said: vec![Some("Yes."), Some("No.")],
+        };
+        hear_side(
+            &mut heard,
+            Side::Mine,
+            "mine.wav",
+            &takes,
+            &mut lines,
+            &mut words,
+        )
+        .expect("a side whose every take is heard failed");
+        assert_eq!(lines.len(), 2, "a heard take wasn't written as a line");
+        // The first take isn't heard and the next would be, so going on
+        // past it would write a third line.
+        let mut failing = Hearing {
+            said: vec![None, Some("Yes.")],
+        };
+        let failed = hear_side(
+            &mut failing,
+            Side::Theirs,
+            "theirs.wav",
+            &takes,
+            &mut lines,
+            &mut words,
+        );
+        assert_eq!(
+            failed,
+            Err("hearing theirs.wav at 10 s: the encoder failed".to_owned()),
+            "a take not heard didn't stop its side, or didn't say which file and second it was"
+        );
+        assert_eq!(lines.len(), 2, "a side went on past a take it didn't hear");
+    }
 
     #[test]
     fn a_reference_reads_its_times_speaker_and_words_past_its_comment() {
