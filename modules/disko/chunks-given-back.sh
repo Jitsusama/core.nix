@@ -18,11 +18,12 @@
 # dying. A step that fails, or is killed by something else before 06:00,
 # is said and the next is tried, since a fuller step can find room an
 # emptier one didn't. A night left short only because the data chunks
-# are full, or because 06:00 came, says so and ends well: each is a
-# state it was built to meet, which deleting files or the next night
-# answers, and failing for it marked the unit failed every such night
-# for nothing it could mend. Its help and failures take the shape every command
-# of ours does (docs/commands.md), by hand.
+# are full, as the half-full step finishing or failing for want of room
+# shows, or because 06:00 came, says so and ends well: each is a state
+# it was built to meet, which deleting files or the next night answers,
+# and failing for it marked the unit failed every such night for nothing
+# it could mend. Its help and failures take the shape every command of
+# ours does (docs/commands.md), by hand.
 set -euo pipefail
 
 case "${1:-}" in
@@ -38,9 +39,10 @@ EXAMPLES
   chunks-given-back /
 
 EXIT
-  0   enough room, outside the night's hours, or short
-      only for full data chunks or the night's end
+  0   enough room, outside the night's hours, 06:00
+      came, or short only for full data chunks
   1   no step finished, or the half-full one was killed
+      or failed for anything but room, before 06:00
   65  btrfs's usage couldn't be read
   64  asked wrongly
 EOF
@@ -115,6 +117,7 @@ echo "$((free / gib)) GiB of $mount is in no chunk, short of $((want / gib))," \
   "so data chunks are balanced"
 ran=0
 killed=0
+failed=0
 for full in 0 5 10 20 30 40 50; do
   read_clock
   if [ "$left" -eq 0 ]; then
@@ -125,7 +128,18 @@ for full in 0 5 10 20 30 40 50; do
   status=0
   ended=0
   killed=0
-  timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" || status=$?
+  failed=0
+  onward=", so the next step is tried"
+  if [ "$full" -eq 50 ]; then
+    onward=""
+  fi
+  # What btrfs says is kept to tell a step that failed for want of room,
+  # the one failure that shows the chunks are full, and said after it.
+  said=$(timeout --kill-after=60 "$left" btrfs balance start -dusage="$full" "$mount" 2>&1) ||
+    status=$?
+  if [ -n "$said" ]; then
+    printf '%s\n' "$said"
+  fi
   if [ "$status" -eq 0 ]; then
     ran=$((ran + 1))
   elif [ "$status" -eq 124 ]; then
@@ -141,10 +155,13 @@ for full in 0 5 10 20 30 40 50; do
       echo "balancing data chunks up to $full% full was killed after 06:00"
     else
       killed=1
-      echo "balancing data chunks up to $full% full was killed, so the next step is tried"
+      echo "balancing data chunks up to $full% full was killed$onward"
     fi
+  elif [[ $said == *"No space left on device"* ]]; then
+    echo "balancing data chunks up to $full% full failed for want of room$onward"
   else
-    echo "balancing data chunks up to $full% full failed, so the next step is tried"
+    failed=1
+    echo "balancing data chunks up to $full% full failed$onward"
   fi
   free=$(usage "Device unallocated")
   if [ "$free" -ge "$want" ]; then
@@ -165,6 +182,12 @@ elif [ "$killed" -eq 1 ]; then
   # said so was killed part way. One that failed, as for want of room,
   # did say so.
   echo "balancing chunks up to half full didn't finish, so $((free / gib)) GiB" \
+    "is still in no chunk" >&2
+  exit 1
+elif [ "$failed" -eq 1 ]; then
+  # Only a failure for want of room says the chunks are full; any other
+  # leaves it unknown, and may be a fault worth seeing.
+  echo "balancing chunks up to half full failed, so $((free / gib)) GiB" \
     "is still in no chunk" >&2
   exit 1
 fi

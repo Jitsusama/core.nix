@@ -3,16 +3,17 @@
 # btrfs, date and timeout, each answering only the calls the script may
 # make. btrfs's usage says the disk's size and the bytes in no chunk,
 # kept in files, and each balance step adds what a file of steps gives
-# that step, fails, runs until timeout ends it at 06:00, outlives that by
-# a minute and is killed, or is killed by day. date reads a clock a step
+# that step, fails for want of room or otherwise, runs until timeout ends
+# it at 06:00, outlives that by a minute and is killed, or is killed by
+# day. date reads a clock a step
 # can move, on a day whose 06:00 a file can bring forward as a night the
 # clocks go forward does, and timeout notes each step's deadline. It
 # balances only from 01:00 to 06:00 and while short, ends a step at
 # 06:00, stops at the first step that frees enough, goes past a step that
 # fails or is killed by day, stops at half-full chunks, ends well when
 # left short only by full chunks or 06:00, saying which, and fails when no
-# step finished, the half-full one was killed by day, or it can't read the
-# usage.
+# step finished, the half-full one was killed by day or failed for anything
+# but room, or it can't read the usage.
 set -euo pipefail
 
 given=$1
@@ -46,6 +47,10 @@ if [ -n "\${after:-}" ]; then
 fi
 case "\${gives:-0}" in
 fails) exit 1 ;;
+fails-full)
+  echo "ERROR: error during balancing '/': No space left on device" >&2
+  exit 1
+  ;;
 ends)
   echo 06:00:00 >"$work/clock"
   exit 124
@@ -98,8 +103,8 @@ chmod +x "$work/bin/btrfs" "$work/bin/date" "$work/bin/timeout"
 
 # A disk of SIZE GiB with FREE GiB in no chunk, whose steps give what
 # each line of the rest says: a step's fullness, then GiB, "fails",
-# "ends", "killed" or "killed-by-day", and the clock after it, if the
-# step moves it.
+# "fails-full" (for want of room), "ends", "killed" or "killed-by-day",
+# and the clock after it, if the step moves it.
 disk() {
   rm -f "$work/garbled"
   echo $(($1 * gib)) >"$work/size"
@@ -111,7 +116,9 @@ disk() {
   for line in "$@"; do
     read -r step gives after <<<"$line"
     case "$gives" in
-    fails | ends | killed | killed-by-day) echo "$step $gives $after" >>"$work/gives" ;;
+    fails | fails-full | ends | killed | killed-by-day)
+      echo "$step $gives $after" >>"$work/gives"
+      ;;
     ends+*) echo "$step ends+$((${gives#ends+} * gib)) $after" >>"$work/gives" ;;
     *) echo "$step $((gives * gib)) $after" >>"$work/gives" ;;
     esac
@@ -270,16 +277,30 @@ if grep -qF "needs files gone" "$work/out" "$work/err"; then
   exit 1
 fi
 
-disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails"
+disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails-full"
 give
-expect "0 5 10 20 30 40 50 " 0 "a night whose half-full step fails ends well short"
-expect_said "needs files gone" "a half-full step failing, as for want of room, says files must go"
+expect "0 5 10 20 30 40 50 " 0 "a night whose half-full step wants room ends well short"
+expect_said "needs files gone" "a half-full step failing for want of room says files must go"
+expect_said "No space left on device" "a step's failure is said as btrfs gave it"
+if grep -qF "next step is tried" "$work/out" "$work/err"; then
+  echo "the half-full step said a next step is tried, though it is the last"
+  exit 1
+fi
+
+disk 950 0 "0 1" "5 fails" "10 fails" "20 fails" "30 fails" "40 fails" "50 fails"
+give
+expect "0 5 10 20 30 40 50 " 1 "a night whose half-full step fails but not for room fails"
+expect_said "up to half full failed" "a half-full step failing but not for room says so"
+if grep -qF "needs files gone" "$work/out" "$work/err"; then
+  echo "a half-full step failing but not for room said files must go"
+  exit 1
+fi
 
 # Only the last step's kill is told: an earlier one's, passed for the
-# next, leaves a half-full step that fails saying files must go.
-disk 950 0 "0 killed-by-day" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails"
+# next, leaves a half-full step that wants room saying files must go.
+disk 950 0 "0 killed-by-day" "5 1" "10 1" "20 1" "30 1" "40 1" "50 fails-full"
 give
-expect "0 5 10 20 30 40 50 " 0 "a night whose first step is killed and last fails ends well"
+expect "0 5 10 20 30 40 50 " 0 "a night whose first step is killed and last wants room ends well"
 expect_said "needs files gone" "an early kill leaves a failing half-full step saying files must go"
 
 disk 950 0 "0 1" "5 1" "10 1" "20 1" "30 1" "40 1" "50 killed"

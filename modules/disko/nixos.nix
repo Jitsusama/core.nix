@@ -245,8 +245,10 @@ in
   # the timer fires at 03:00, and the script itself balances only from
   # 01:00 to 06:00, ending a step still running at 06:00, since a laptop
   # asleep at 03:00 fires it on waking and a switch can fire it at any
-  # hour. Two hours bound it, and stopping it cancels the balance, as
-  # the kernel does for a balance whose process is dying. The weights put
+  # hour. Its own 06:00 bounds it; systemd's bound is the longest night,
+  # five hours from 01:00, and the minute a step is given to die, so it
+  # never fails a night the script would end well. Stopping it cancels
+  # the balance, as the kernel does for a balance whose process is dying. The weights put
   # it behind other work wherever io.cost or the processor's shares hold;
   # an NVMe disk's own scheduler honours no I/O class.
   config.systemd.services.chunks-given-back = {
@@ -255,7 +257,7 @@ in
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${chunksGivenBack}/bin/chunks-given-back /";
-      TimeoutStartSec = "2h";
+      TimeoutStartSec = "5h 5min";
       Slice = "background.slice";
       CPUWeight = 1;
       IOWeight = 1;
