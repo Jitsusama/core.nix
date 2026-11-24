@@ -1,6 +1,7 @@
 // pi as the host runs it says, on stderr, each extension whose handlers for
-// one event emit or emitResourcesDiscover sends took 250 ms or more. A runner awaits every extension's handlers
-// one after another, so a conversation's session_start costs their sum, and
+// one session event, or resources_discover, took 250 ms or more, and never a
+// turn's streamed events. A runner awaits every extension's handlers one
+// after another, so a conversation's session_start costs their sum, and
 // nothing outside the runner can see which extension a slow open waited on:
 // its extensions are private to it. Unpatched, it says nothing.
 // Run as: node THIS PI_ROOT
@@ -51,15 +52,13 @@ const run = async (extensions, emitting) => {
 
 // Only the slow extension is said, its two handlers summed, though each
 // alone is under the bar. Each extension is timed from its own start, so
-// the fast one after it isn't said, nor one under the bar, nor one with no
-// handler for the event.
+// the fast one after it isn't said, nor one under the bar.
 {
   const { lines } = await run(
     [
       ["slow", [["session_start", [waiting(150), waiting(150)]]]],
       ["fast", [["session_start", [() => undefined]]]],
-      ["under", [["session_start", [waiting(150)]]]],
-      ["other", [["turn_end", [waiting(300)]]]],
+      ["under", [["session_start", [waiting(50)]]]],
     ],
     (runner) => runner.emit({ type: "session_start", reason: "startup" }),
   );
@@ -68,6 +67,46 @@ const run = async (extensions, emitting) => {
   assert.equal(path, '"slow"');
   assert.equal(event, "session_start");
   assert.ok(Number(took) >= 250, `said ${took} ms for 300 ms of handlers`);
+}
+
+// Two slow extensions are each said on a line of their own, in the order
+// they ran, with a fast one between them said by neither.
+{
+  const { lines } = await run(
+    [
+      ["first", [["session_start", [waiting(300)]]]],
+      ["between", [["session_start", [() => undefined]]]],
+      ["second", [["session_start", [waiting(300)]]]],
+    ],
+    (runner) => runner.emit({ type: "session_start", reason: "startup" }),
+  );
+  assert.deepEqual(
+    lines.map((line) => line.match(SLOW)?.[1]),
+    ['"first"', '"second"'],
+    `said other than the two slow ones: ${JSON.stringify(lines)}`,
+  );
+}
+
+// A turn's streamed events, which emit sends too, are never said, however
+// long their handlers take: a slow one would otherwise say a line a token.
+{
+  const message = { role: "assistant", content: [] };
+  const { lines } = await run(
+    [
+      [
+        "streaming",
+        [
+          ["message_update", [waiting(300)]],
+          ["tool_execution_update", [waiting(300)]],
+        ],
+      ],
+    ],
+    async (runner) => {
+      await runner.emit({ type: "message_update", message, assistantMessageEvent: { type: "text_delta" } });
+      await runner.emit({ type: "tool_execution_update", toolCallId: "one", toolName: "bash", args: {} });
+    },
+  );
+  assert.deepEqual(lines, [], "said a turn's streamed event");
 }
 
 // A slow handler that throws is said too, and its error still reaches pi.
@@ -80,7 +119,8 @@ const run = async (extensions, emitting) => {
     runner.emit({ type: "session_start", reason: "startup" }),
   );
   assert.deepEqual(errors, ["broke"]);
-  assert.match(lines[0] ?? "", /^pi-host: "failing" session_start took \d+ ms$/u);
+  assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
+  assert.match(lines[0], /^pi-host: "failing" session_start took \d+ ms$/u);
 }
 
 // A slow handler that cancels is said once, before emit returns its result
@@ -119,7 +159,8 @@ const run = async (extensions, emitting) => {
     (runner) => runner.emitResourcesDiscover("/work", "startup"),
   );
   assert.deepEqual(result.skillPaths, [{ path: "/skills/one", extensionPath: "finding" }]);
-  assert.match(lines[0] ?? "", /^pi-host: "finding" resources_discover took \d+ ms$/u);
+  assert.equal(lines.length, 1, `said other than once: ${JSON.stringify(lines)}`);
+  assert.match(lines[0], /^pi-host: "finding" resources_discover took \d+ ms$/u);
 }
 
 // A path holding a newline is said on one line, quoted as JSON.

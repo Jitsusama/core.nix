@@ -378,9 +378,9 @@ import ./host-checks.nix args
         touch $out
       '';
 
-  # A hosted pi says on stderr each extension whose handlers for one event
-  # emit or emitResourcesDiscover sends took 250 ms or more, so a slow open
-  # names the extension it waited on.
+  # A hosted pi says on stderr each extension whose handlers for one session
+  # event, or resources_discover, took 250 ms or more, so a slow open names
+  # the extension it waited on.
   pi-hosted-names-handlers-that-hold =
     pkgs.runCommandLocal "pi-hosted-names-handlers-that-hold" { }
       ''

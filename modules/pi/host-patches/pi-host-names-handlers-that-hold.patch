@@ -1,5 +1,5 @@
-A host says each extension whose session_start, or other event pi's emit
-sends, took 250 ms or more.
+A host says each extension whose session_start, or other session event or
+resources_discover, took 250 ms or more.
 
 A host's conversation awaits every extension's handlers for an event one
 after another, so its session_start costs the sum of every extension's, and
@@ -13,9 +13,12 @@ emitResourcesDiscover, and write a line to stderr, which a host's
 conversation sends to its journal, for each one at 250 ms or more:
 pi-host: "PATH" EVENT took N ms. The path is quoted as JSON, so it stays on
 one line. The time is the wall's, awaits included, since that is what an
-open waited, so it counts whatever else the thread ran meanwhile. The events
-with dispatch loops of their own (turn_end, before_agent_start, context,
-tool_call and the like) are not timed. Nothing else changes: the handlers
+open waited, so it counts whatever else the thread ran meanwhile. Of what
+emit sends, only the session events are said: it also sends a turn's
+streamed events, message_update among them, where a slow handler would say
+a line a token. The events with dispatch loops of their own (turn_end,
+before_agent_start, context, tool_call and the like) are not timed. A line
+that can't be written is dropped. Nothing else changes: the handlers
 run in the same order, a cancel still returns at once, and an error still
 reaches emitError.
 
@@ -24,7 +27,7 @@ unchanged.
 
 --- a/packages/coding-agent/src/core/extensions/runner.ts
 +++ b/packages/coding-agent/src/core/extensions/runner.ts
-@@ -281,6 +281,23 @@
+@@ -281,6 +281,29 @@
  	return extensions.map((ext) => ({ ext, handlers: ext.handlers.get(event)?.slice() ?? [] }));
  }
  
@@ -33,22 +36,28 @@ unchanged.
 +// open, reload and wake behind it. The runner keeps its extensions private, so nothing
 +// outside it can say which one is slow: say it here, on stderr, which a host's
 +// conversation sends to its journal, for each extension whose handlers for one event
-+// took this long or longer. Only emit, which sends session_start, and
-+// emitResourcesDiscover are timed; the events with loops of their own are not. The time
-+// is the wall's, awaits included, since that is what the open waited on it, so it counts
-+// whatever else the thread ran meanwhile; each line stands for this much time waited.
++// took this long or longer. Only the session events emit sends (session_start, and the
++// session_before_ events that may cancel) and resources_discover are said: emit also
++// sends a turn's streamed events, message_update among them, which would say a line a
++// token. The time is the wall's, awaits included, since that is what the open waited
++// on it, so it counts whatever else the thread ran meanwhile, other conversations' work
++// on a host that runs them in one process included.
 +const SLOW_HANDLERS_MS = 250;
 +
 +function sayIfSlow(ext: Extension, event: ExtensionEvent["type"], startedAt: number): void {
 +	const took = performance.now() - startedAt;
 +	if (took < SLOW_HANDLERS_MS) return;
-+	process.stderr.write(`pi-host: ${JSON.stringify(ext.path)} ${event} took ${Math.round(took)} ms\n`);
++	try {
++		process.stderr.write(`pi-host: ${JSON.stringify(ext.path)} ${event} took ${Math.round(took)} ms\n`);
++	} catch {
++		// A line that can't be written is lost, never the emit it reports on.
++	}
 +}
 +
  function sameMessages(left: AgentMessage[], right: AgentMessage[]): boolean {
  	return left.length === right.length && left.every((message, index) => message === right[index]);
  }
-@@ -1132,26 +1149,31 @@
+@@ -1132,26 +1155,31 @@
  		let result: SessionBeforeEventResult | undefined;
  
  		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, event.type)) {
@@ -93,11 +102,11 @@ unchanged.
 -					});
  				}
 +			} finally {
-+				if (handlers.length > 0) sayIfSlow(ext, event.type, startedAt);
++				if (handlers.length > 0 && event.type.startsWith("session_")) sayIfSlow(ext, event.type, startedAt);
  			}
  		}
  
-@@ -1524,6 +1546,7 @@
+@@ -1524,6 +1552,7 @@
  		const themePaths: Array<{ path: string; extensionPath: string }> = [];
  
  		for (const { ext, handlers } of snapshotEventHandlers(this.extensions, "resources_discover")) {
@@ -105,7 +114,7 @@ unchanged.
  			for (const handler of handlers) {
  				try {
  					const event: ResourcesDiscoverEvent = { type: "resources_discover", cwd, reason };
-@@ -1550,6 +1573,7 @@
+@@ -1550,6 +1579,7 @@
  					});
  				}
  			}

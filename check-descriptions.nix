@@ -3187,10 +3187,11 @@
   '';
   pi-hosted-names-handlers-that-hold = ''
     pi built with the host's patches, applied exactly, writes one line to stderr for each
-    extension whose handlers for one event emit or emitResourcesDiscover sends took 250 ms
-    or more, each timed from its own start, its path quoted on one line, for session_start,
-    a cancelling event, once, and resources_discover alike, a throwing handler too, and none
-    for an extension under the bar or with no handler for the event
+    extension whose handlers for one session event, or resources_discover, took 250 ms or
+    more, each timed from its own start, its path quoted on one line, for session_start, a
+    cancelling event, once, and resources_discover alike, a throwing handler too, two slow
+    extensions on a line each, and none for an extension under the bar or for a turn's
+    streamed events
   '';
   pi-hosted-screen-reaches-its-viewers = ''
     pi built with the host's patches, applied exactly, copies (a fullscreen selection too)
