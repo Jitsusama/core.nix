@@ -95,7 +95,10 @@ fn a_merge_not_on_main_is_left_at_its_time() {
         "a walk for a merge not on main wasn't left at its time"
     );
     // A walk that ended on its own, short of its time, didn't wait for one.
-    assert!(took >= within, "the walk ended in {took:?}, before its time");
+    assert!(
+        took >= within,
+        "the walk ended in {took:?}, before its time"
+    );
 }
 
 #[test]
