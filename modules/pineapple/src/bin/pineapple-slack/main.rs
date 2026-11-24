@@ -429,8 +429,9 @@ fn tell_deaf(deaf: &mut Deaf, waiting: &Waiting, heard: Round) {
 }
 
 /// Tells Joel, in a row of its own in `file`, that what `search` read on
-/// past was never read, so he can look for a stop said then.
-fn tell_missed(file: &Path, search: Search, skipped: Skipped) {
+/// past was never read, so he can look for a stop said then; whether it
+/// was written.
+fn tell_missed(file: &Path, search: Search, skipped: Skipped) -> bool {
     let at = millis();
     let millis_of = |micros: u128| u64::try_from(micros / 1000).ok();
     let (from, to) = (
@@ -440,11 +441,17 @@ fn tell_missed(file: &Path, search: Search, skipped: Skipped) {
     let row = deaf::missed(search, from, to, at);
     let why = row["why"].as_str().unwrap_or_default().to_owned();
     match deaf::keep_missed(file, row, at) {
-        Ok(()) => eprintln!("<5>wrote Joel's row in {}: {why}", file.display()),
-        Err(error) => eprintln!(
-            "<3>couldn't write Joel's row in {}: {why}: {error}",
-            file.display()
-        ),
+        Ok(()) => {
+            eprintln!("<5>wrote Joel's row in {}: {why}", file.display());
+            true
+        }
+        Err(error) => {
+            eprintln!(
+                "<3>couldn't write Joel's row in {}: {why}: {error}",
+                file.display()
+            );
+            false
+        }
     }
 }
 
@@ -538,8 +545,11 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
         file: state.join("waiting.json"),
         refused: None,
     };
-    // Beside it, what a search read on past, which nothing takes away.
+    // Beside it, what a search read on past, which nothing takes away,
+    // and each span whose row couldn't be written yet, as no round finds
+    // it again.
     let missed = state.join("missed.json");
+    let mut unwritten: Vec<(Search, Skipped)> = Vec::new();
     let mut through = Through::new(Gateway::new(url, program));
     let mut me: Option<String> = None;
     let mut deaf = Deaf::new();
@@ -562,10 +572,11 @@ fn hear_through(how: &Run, url: &str, program: &OsStr) -> Result<(), Failure> {
                 (round::tag(user), Search::Tag),
             ] {
                 if let Some(skipped) = through.skipped(&query) {
-                    tell_missed(&missed, search, skipped);
+                    unwritten.push((search, skipped));
                 }
             }
         }
+        unwritten.retain(|(search, skipped)| !tell_missed(&missed, *search, *skipped));
         std::thread::sleep(how.every);
     }
 }

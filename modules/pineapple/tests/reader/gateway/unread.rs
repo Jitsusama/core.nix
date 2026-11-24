@@ -114,6 +114,46 @@ fn a_gap_whose_row_cant_be_written_is_judged_but_never_read_on() {
 }
 
 #[test]
+fn a_row_of_what_was_never_read_that_cant_be_written_is_written_again() {
+    static TAGS: AtomicUsize = AtomicUsize::new(0);
+    let came = hearing_in(
+        |tool, asked, now| {
+            if tool != "slack_search_public_and_private" {
+                said(tool, now)
+            } else if asked["query"] == "pineapple" {
+                nothing()
+            } else {
+                a_gap(&TAGS, asked, now)
+            }
+        },
+        // The read on comes by the 32nd search, as in the case that reads
+        // on; a round is at most seven, so two more rounds end by the 50th
+        // and the row is tried in each.
+        &Until {
+            judging: 4,
+            asks: 50,
+            read_at: None,
+        },
+        // A folder where the row of what was never read would go.
+        |own| std::fs::create_dir_all(own.join("missed.json")).expect("in its way"),
+    );
+    let unwritten = came
+        .journal
+        .lines()
+        .filter(|line| {
+            line.contains("couldn't write Joel's row in ")
+                && line.contains("missed.json: The safe word never read what tagged you")
+        })
+        .count();
+    assert!(
+        came.journal.contains("told in Joel's row, reads on") && unwritten >= 2,
+        "a span read on past is never read again, so its row is kept and written again each \
+         round till it's written: {}",
+        came.journal
+    );
+}
+
+#[test]
 fn a_gap_beside_a_search_that_cant_be_read_is_read_on_under_the_row_for_both() {
     static TAGS: AtomicUsize = AtomicUsize::new(0);
     let came = hearing(
