@@ -6076,7 +6076,7 @@
     downloading and uploading and an app downloading, two calls both ways at 2.5 Mbit/s, one in
     the video tin and one to 443, lose at most a hundredth of their datagrams coming down before
     the client's socket while a call is on, the shaper holding the download to nine tenths of
-    the line's declared 90 Mbit/s while they run, its own queue dropping what the router's
+    the line's declared 75 Mbit/s while they run, its own queue dropping what the router's
     would, and letting it go straight in once the call ends; with the upload held
     at 6 Mbit/s and an app uploading beside its video call, the shaper drops at most a hundredth
     of the call going up; and while a call is on, an app's call to 443 goes in the video tin and

@@ -123,9 +123,9 @@ STANDS = 5
 # The file the client's stand-in for a-call-is-on reads: a call is on while it's there.
 CALL_FLAG = "/run/call-is-on"
 # What the shaper's journal says as it holds the download for a call: nine tenths of the
-# line's declared 90 Mbit/s (ROOM in src/room.rs).
-ROOM_HELD = "held to 81000 kbit/s, where its own queue puts the call first"
-ROOM_KBIT = 81_000
+# line's declared 75 Mbit/s (ROOM in src/room.rs), which the download must carry first.
+ROOM_HELD = "held to 67500 kbit/s, where its own queue puts the call first"
+ROOM_KBIT = 67_500
 # Where the client notes, once a second while the calls run, whether the download is held
 # for them (Rig.watch).
 WATCHED = "/run/room-watched"
@@ -613,6 +613,12 @@ def met(rig: Rig, *, now: bool, last_try: bool, otherwise: str) -> bool:
     return now
 
 
+def carried(rig: Rig) -> int:
+    """Give the kbit/s the client took in over a second of its own clock."""
+    rx = "cat /sys/class/net/eth1/statistics/rx_bytes"
+    return int(rig.client.succeed(f"a=$({rx}); sleep 1; b=$({rx}); echo $(((b - a) / 125))"))
+
+
 def under_load(
     rig: Rig,
     *,
@@ -631,6 +637,9 @@ def under_load(
 
     The loads run until the client has taken in a few seconds of the line, so the calls cross
     a connection that's full, as a busy afternoon's is, rather than one with room to spare.
+    With room, they run until a second carries the room too, as the shaper gives none to a
+    download short of it: a builder too starved to carry it fails saying so, with its best
+    second, rather than as a hold that never came (#4228).
     They run on until the controller holds the link too, as it has all day on a
     connection the jobs keep full: a call that starts in the seconds before it does crosses
     the router's queue as an unshaped one would. The loads stop however the calls end, so a
@@ -651,15 +660,21 @@ def under_load(
     try:
         for unit, slice_name, flows, script in loads:
             rig.start(unit, slice_name, flows, script)
-        retry(
-            lambda last_try: met(
+        best = [0]
+
+        def filled(last_try: bool) -> bool:
+            if room:
+                best[0] = max(best[0], carried(rig))
+            now = int(rig.client.succeed(rx)) - first >= FULL_BYTES
+            short = f", carrying {best[0]} kbit/s at best of the {ROOM_KBIT} its room needs"
+            return met(
                 rig,
-                now=int(rig.client.succeed(rx)) - first >= FULL_BYTES,
+                now=now and (not room or best[0] >= ROOM_KBIT),
                 last_try=last_try,
-                otherwise="the loads never filled the line",
-            ),
-            timeout=FILLING,
-        )
+                otherwise="the loads never filled the line" + (short if room else ""),
+            )
+
+        retry(filled, timeout=FILLING)
         retry(
             lambda last_try: met(
                 rig,
@@ -837,7 +852,7 @@ def test_a_call_loses_little(rig: Rig) -> None:
     of the builder's CPU does, is only printed. Every queue of the shaper's is before the hook.
 
     A call is on, as Joel's would be, so the shaper holds the download under the line's
-    declared 90 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
+    declared 75 Mbit/s and its queue stands in the IFB's CAKE, which puts the calls first.
     Left straight in, the download queued in the router's fq_codel, and on 23 November the
     media call lost 332 of 5,213 datagrams there, as one shares a bulk flow's queue about
     one run in fifty.
