@@ -2032,7 +2032,7 @@
     lock-screen, lock-for-sleep and swayidle-away answer --help and refuse an unknown word with
     64, asking nothing of the shell, niri or swayidle
   '';
-  lookups-say-a-failed-or-slow-name = ''
+  lookups-say-a-name-that-fails-or-takes-long = ''
     a Mac's account times its names each minute through the system's resolver and each server
     named, github.com among them, and a round over stand-ins says a failed lookup or a server
     giving no address at once, a slow lookup from its second round running and a busy

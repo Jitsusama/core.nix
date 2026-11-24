@@ -5,7 +5,7 @@
 # well again once. dscacheutil, dig, ps and logger are stand-ins answering as
 # the test sets, and the slow mark is set to 0 ms rather than a lookup made
 # to wait, so no round sleeps.
-# usage: lookups-say-a-failed-or-slow-name.sh <lookups.sh>
+# usage: lookups-say-a-name-that-fails-or-takes-long.sh <lookups.sh>
 set -euo pipefail
 
 lookups=$1
