@@ -288,8 +288,9 @@ impl Hears for Parakeet {
 /// text a space between each, as `transcribe` would, and timed from the
 /// call's start, which is where its pieces are, so each of theirs finds
 /// the piece it was said in and each of Joel's the words of theirs it
-/// may echo.
-fn transcribe_take(
+/// may echo. The `transcribe` subcommand and the scorer hear a take
+/// through this too (`score::hear_take`), so they read what it writes.
+pub fn transcribe_take(
     hears: &mut impl Hears,
     start: usize,
     samples: &[f32],

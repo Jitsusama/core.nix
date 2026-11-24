@@ -17,13 +17,13 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use dictation::echo;
-use dictation::parakeet::{RATE, Timings, WINDOW, Word};
+use dictation::parakeet::{RATE, WINDOW, Word};
 use dictation::takes::Take;
 use dictation::transcript::{self, Line, Side, markdown};
 use dictation::wav;
 use dictation::wer::{Errors, said, words};
 
-use crate::hear::Hears;
+use crate::hear::{self, Hears};
 use crate::said;
 use crate::{Settings, takes};
 
@@ -83,15 +83,15 @@ struct Scored {
 pub type HeardLine = (Line, Vec<Word>);
 
 /// A take of `side`'s heard as a line, with its words timed from the
-/// start of its sound, none when it holds no words, and how long it took.
+/// start of its sound, none when it holds no words: heard as the daemon
+/// hears it (`hear::transcribe_take`), so what's scored is what it writes.
 pub fn hear_take(
     speech: &mut impl Hears,
     side: Side,
     take: &Take,
-) -> Result<(Option<HeardLine>, Timings), String> {
-    let (heard, took) = speech.words(&take.samples)?;
-    let joined: Vec<&str> = heard.iter().map(|word| word.text.as_str()).collect();
-    let written = said::spoken(&joined.join(" ")).map(|text| {
+) -> Result<Option<HeardLine>, String> {
+    let (text, words) = hear::transcribe_take(speech, take.start, &take.samples)?;
+    Ok(text.map(|text| {
         let line = Line {
             side,
             start: take.start,
@@ -100,16 +100,8 @@ pub fn hear_take(
             voice: None,
             name: None,
         };
-        let timed = heard
-            .into_iter()
-            .map(|word| Word {
-                at: take.start + word.at,
-                ..word
-            })
-            .collect();
-        (line, timed)
-    });
-    Ok((written, took))
+        (line, words)
+    }))
 }
 
 /// `side`'s `takes`, whose sound came from `file`, heard onto `lines`,
@@ -126,9 +118,8 @@ pub fn hear_side(
     words: &mut HashMap<usize, Vec<Word>>,
 ) -> Result<(), String> {
     for take in takes {
-        let (heard, took) = hear_take(speech, side, take)
+        let heard = hear_take(speech, side, take)
             .map_err(|why| format!("hearing {file} at {} s: {why}", take.start / RATE))?;
-        eprintln!("call-transcripts: {}", took.describe(speech.device()));
         if let Some((line, its_words)) = heard {
             words.insert(lines.len(), its_words);
             lines.push(line);
@@ -171,7 +162,7 @@ pub fn score(model: &Path, set: &Path, ceiling: Option<usize>) -> Result<(), Str
         for side in [Side::Mine, Side::Theirs] {
             let sound = &sounds[index(side)];
             for take in takes(sound) {
-                if let (Some((line, its_words)), _) = hear_take(&mut speech, side, &take)? {
+                if let Some((line, its_words)) = hear_take(&mut speech, side, &take)? {
                     timed.insert(lines.len(), its_words);
                     lines.push(line);
                 }
@@ -444,6 +435,8 @@ pub fn read(file: &Path) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
+
+    use dictation::parakeet::Timings;
 
     use super::*;
 
