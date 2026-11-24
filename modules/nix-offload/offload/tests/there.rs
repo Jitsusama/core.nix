@@ -5226,7 +5226,7 @@ fn a_run_whose_output_cant_be_unpacked_fails_and_isnt_kept_as_passed() {
         fs::read_to_string(changed.bin.join("ssh-commands"))
             .unwrap_or_default()
             .lines()
-            .filter(|command| command.contains("tar -czf"))
+            .filter(|command| command.contains("tar -czhf"))
             .count()
     };
 
