@@ -7,8 +7,12 @@ pragma ComponentBehavior: Bound
 // once, and the row it becomes at once, then the step the daemon serves
 // while it installs, offer nothing to run: a Return on either only closes
 // (Launcher.qml's run), so a second Return never installs again, as the
-// desktop test's dropped case held (#5869's F250 and F261). It exits 0
-// once every case holds, and otherwise 1, saying which didn't.
+// desktop test's dropped case held (#5869's F250 and F261). Its first
+// rows are the watch's whole answer, which come before the link counts it
+// answered, so they're seen only because Firmware answers again once it
+// does (Firmware.qml's onAnsweredChanged); without that the case fails as
+// never answered again. It exits 0 once every case holds, and otherwise
+// 1, saying which didn't.
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -19,7 +23,9 @@ import "launcher" as Launcher
 ShellRoot {
     id: root
 
-    property string waiting: "the first rows"
+    property string waiting: root.firstRows
+    readonly property string firstRows: "the first rows, answered again once the watch is"
+        + " answered whole"
 
     // The launcher as Firmware reads it: open, "firmware" typed, so its
     // rows can be seen and its daemon is watched.
@@ -158,7 +164,7 @@ ShellRoot {
         settings: ({ name: "firmware", fwupdmgr: "/run/fwupdmgr" })
         onAnswered: {
             try {
-                if (root.waiting === "the first rows")
+                if (root.waiting === root.firstRows)
                     root.first();
                 else if (root.waiting === "the install going")
                     root.going();
@@ -177,11 +183,27 @@ ShellRoot {
         return { install: install, sure: install?.verbs?.()?.[0] };
     }
 
-    // What a Return would do with a row, as Launcher.qml's run reads it:
-    // its own act, a function to run, words to ask, or nothing, closing.
+    // What a Return would do with a row at the top, as Launcher.qml's run
+    // decides it, in run's order and from the fields run reads: fill the
+    // field with its start, do its Return's act, step into its category or
+    // group, ask its words, step into the verbs of one that can't be taken
+    // back, step into what one with no run of its own holds, close where it
+    // has nothing to do, open its collection where it has no run, or run.
     function offers(row) {
-        return [row?.returns ? "returns" : "", typeof row?.run === "function" ? "run" : "",
-            row?.given ? "given" : "", row?.sure === true ? "sure" : ""].join("");
+        const holds = (row?.verbs?.() ?? []).length > 0 || !!row?.targets;
+        if (row?.start !== undefined)
+            return "fills";
+        if (row?.returns)
+            return "returns";
+        if ((row?.category || row?.group) && holds)
+            return "steps in";
+        if (row?.given)
+            return "asks";
+        if ((row?.confirm || typeof row?.run !== "function") && holds)
+            return "steps in";
+        if (typeof row?.run !== "function")
+            return row?.opens ? "opens" : "closes";
+        return "runs";
     }
 
     // Install is ready: its step asks if Joel's sure, and its Return asks
@@ -195,14 +217,14 @@ ShellRoot {
             install.name === "Install 1.13.0"
             && sure.name === "Install 1.13.0 on System Firmware?",
             `${install?.name} ${sure?.name}`);
-        Expect.expect("the sure step's Return does its act", offers(sure) === "runsure",
+        Expect.expect("the sure step's Return does its act", offers(sure) === "runs",
             offers(sure));
         theLauncher.answer = theFirmware.answer("firmware");
         sure.run();
         const becomes = theLauncher.becoming["firmware:b10:install:sure"];
         Expect.expect("its row becomes installing at once", becomes?.note === "installing",
             becomes?.note);
-        Expect.expect("and offers a second Return nothing to do", offers(becomes) === "",
+        Expect.expect("and a second Return there only closes", offers(becomes) === "closes",
             offers(becomes));
     }
 
@@ -216,7 +238,7 @@ ShellRoot {
         root.waiting = "the end";
         Expect.expect("Install says it's installing", install.note === "installing",
             install.note);
-        Expect.expect("its step offers a Return nothing to do", offers(sure) === "",
+        Expect.expect("its step's Return only closes", offers(sure) === "closes",
             offers(sure));
         Expect.expect("the install asked once, of that device", root.installs.join() === "b10",
             root.installs.join());

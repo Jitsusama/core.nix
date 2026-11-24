@@ -8,8 +8,9 @@
 //   requirements as everything else"). ChangesPresented.js says a daemon's changes with these.
 // - What a line may say with reports off (Options.reports): a key by its kind, words typed by how
 //   many letters, and a daemon's refusal by its code and length, since each may carry what Joel
-//   typed, a window's title or a daemon's words. SetWords.js, Displays.qml, Wireless.qml and
-//   ReadyRows.qml say their lines through these.
+//   typed, a window's title or a daemon's words. Launcher.qml, SetWords.js, Trials.qml and the
+//   launcher's Agents, Displays, Now, ReadyRows, Session and Wireless say their lines through
+//   these.
 .pragma library
 
 const bar = 50;
@@ -303,10 +304,12 @@ const appsUnnamed = ["null", "undefined"];
 
 // A program's own id, as a power profile's hold names it: whole where `whole`, or where it's
 // shaped as an app's name, as a window's app is said, and otherwise as app, since a program
-// may give any words as its id.
+// may give any words as its id; bare, with what quoting escapes escaped, as actShown's, so a
+// line break in an id can't forge another line.
 function appShown(app, whole) {
     const text = String(app ?? "");
-    return whole || (appWord.test(text) && !appsUnnamed.includes(text)) ? text : "app";
+    return whole ? quoted(text).slice(1, -1)
+        : appWord.test(text) && !appsUnnamed.includes(text) ? text : "app";
 }
 
 // A key's parts up to the first that isn't a kind's word, among its first `kinds`, or an act's,
@@ -461,11 +464,22 @@ function whomShown(whom, whole) {
     return named === undefined ? String(whom?.to) : `${whom?.to}, ${typedShown(named, false)}`;
 }
 
+// The session new work a link offered is from, by its address as Sprouting.js's offered gives it:
+// whole where `whole`, and otherwise by how many letters, as whomShown says a link's session, or
+// as none where the link named no session here.
+function whenceShown(address, whole) {
+    if (address === undefined) {
+        return "from no session here";
+    }
+    return whole ? `from ${address}` : `from a session, ${typedShown(address, false)}`;
+}
+
 // The rows a walk from outside or a terminal took, by their names where `whole`, and otherwise
-// each by its kind as rowShown says it, since a source named them.
+// each by its kind as rowShown says it, since a source named them, escaped as actShown's are,
+// since a launcher's own kind of key, as `place:`, is said whole to its 64th letter.
 function pathShown(rows, whole) {
     return whole ? quoted(rows.map(row => row.name).join(" \u203a "))
-        : rows.map(row => rowShown(row, false)).join(" \u203a ");
+        : quoted(rows.map(row => rowShown(row, false)).join(" \u203a ")).slice(1, -1);
 }
 
 // The shell's own failure, as the engine threw it: whole where `whole`, and otherwise by its

@@ -108,13 +108,25 @@ def first_place(shell: Shell) -> Json:
     return places[0]
 
 
+def assert_walk_said_by_kind(line: str, start: str, place: Json) -> None:
+    """Check a one-row walk's line says its row by its key, or its key's kind, and not its name.
+
+    A place's key is the launcher's own, `place:<id>`, said whole, and another's is said by its
+    kind, so either way the id starts with what the line says, which is one step and not none.
+    """
+    step = line.removeprefix(f"launcher: {start}")
+    assert str(place["words"]) not in line, f"the walk said its row's name: {line}"
+    assert step, f"the walk said no row: {line}"
+    assert "\u203a" not in step, f"a walk of one row said more than one: {line}"
+    assert str(place["id"]).startswith(step), f"the walk said another row than its own: {line}"
+
+
 def test_a_catalogue_walk_says_its_rows_by_kind(shell: Shell) -> None:
     """A walk from outside says each row by its kind rather than its name, which a source gave."""
     place = first_place(shell)
     start = "asked from outside to place "
     _, said = asked(shell, start, "run", str(place["id"]))
-    line = line_of(said, start)
-    assert str(place["words"]) not in line, f"the walk said its row's name: {line}"
+    assert_walk_said_by_kind(line_of(said, start), start, place)
     shell.close_launcher()
 
 
@@ -123,8 +135,7 @@ def test_a_terminals_walk_says_its_rows_by_kind(shell: Shell) -> None:
     place = first_place(shell)
     start = "asked from a terminal to place "
     _, said = asked(shell, start, "doing", json.dumps({"steps": [place["words"]]}))
-    line = line_of(said, start)
-    assert str(place["words"]) not in line, f"the terminal's walk said its row's name: {line}"
+    assert_walk_said_by_kind(line_of(said, start), start, place)
     shell.close_launcher()
 
 
