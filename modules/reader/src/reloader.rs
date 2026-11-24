@@ -26,33 +26,32 @@ pub(crate) fn reload_on_save(
     std::thread::Builder::new()
         .name("reloader".into())
         .spawn(move || {
-            let mut setter: Option<page::Setter> = None;
+            // The setter, and the file and width it's on, so one made again
+            // after a panic takes them up where it left off.
+            let mut kept: Option<page::Setter> = None;
+            let (mut file, mut width) = (first, width);
             while let Ok(ask) = asks.recv() {
                 let (open, fit) = app::newest(
                     std::iter::once(ask).chain(std::iter::from_fn(|| asks.try_recv().ok())),
                 );
-                let setter = setter.get_or_insert_with(|| {
-                    let mut setter = page::Setter::new(&first);
-                    setter.fit(width);
-                    setter
+                file = open.unwrap_or(file);
+                width = fit.unwrap_or(width);
+                let setter = kept.get_or_insert_with(|| page::Setter::new(&file));
+                setter.open(&file);
+                setter.fit(width);
+                let (set, whole) = guarded(|| {
+                    setter.set().map(|(page, ms)| {
+                        let lines = text::lines(text::runs(&page.frame));
+                        (page, ms, lines, setter.title().to_string(), setter.words())
+                    })
                 });
-                if let Some(file) = open {
-                    setter.open(&file);
+                // A setter unwound part-way through a set may hold what
+                // that set left half-made, so the next ask makes its own,
+                // reading the fonts again once.
+                if !whole {
+                    kept = None;
                 }
-                if let Some(width) = fit {
-                    setter.fit(width);
-                }
-                // A panic setting it is told as the set failing, as the
-                // rest's setter tells one, so the thread lives on to set the
-                // next save, and a file being opened is let go rather than
-                // waited on all session.
-                let set = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| setter.set()))
-                    .unwrap_or_else(|_| Err("it panicked".to_string()));
-                let set = set.map(|(page, ms)| {
-                    let lines = text::lines(text::runs(&page.frame));
-                    (page, ms, lines, setter.title().to_string(), setter.words())
-                });
-                if reset_to.send((setter.file().to_string(), set)).is_err() {
+                if reset_to.send((file.clone(), set)).is_err() {
                     return;
                 }
             }
@@ -69,4 +68,36 @@ pub(crate) fn reload_on_save(
     .map_err(|error| eprintln!("reader: can't watch {file} for saves: {error}"))
     .ok();
     Ok((reload_to, watch))
+}
+
+/// A set and what's read of it, with a panic in either told as the set
+/// failing, as the rest's setter tells one, so the reloader lives on to
+/// set the next save, and a file being opened is let go rather than
+/// waited on all session; and whether it ran whole, without one.
+fn guarded<T>(set: impl FnOnce() -> Result<T, String>) -> (Result<T, String>, bool) {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(set)).map_or_else(
+        |_| (Err("it panicked".to_string()), false),
+        |set| (set, true),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::guarded;
+
+    #[test]
+    fn a_set_that_panics_is_told_as_failing_and_the_next_still_sets() {
+        // The panic's own message goes to stderr, as the default hook
+        // writes it; what's asserted is what the reloader hears.
+        let (first, whole) = guarded::<u8>(|| panic!("a page that can't be laid out"));
+        assert_eq!(first, Err("it panicked".to_string()));
+        assert!(!whole, "a panic says the setter didn't run whole");
+        assert_eq!(guarded(|| Ok(7)), (Ok(7), true));
+    }
+
+    #[test]
+    fn a_set_that_fails_without_a_panic_ran_whole() {
+        let failed = guarded::<u8>(|| Err("can't read it".to_string()));
+        assert_eq!(failed, (Err("can't read it".to_string()), true));
+    }
 }

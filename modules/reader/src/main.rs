@@ -56,7 +56,7 @@ mod whole;
 mod worker;
 mod world;
 
-use app::{Drawn, Following, Incoming, Loading, ReadsOn, Reload, Spot};
+use app::{Drawn, Following, Incoming, Loading, ReadsOn, Reload, Shown, Spot};
 use painter::{Band, Key, Painter};
 use smithay_client_toolkit::compositor::CompositorState;
 use smithay_client_toolkit::output::OutputState;
@@ -167,9 +167,9 @@ struct App {
     /// screen's page waiting for the rest, so how far down it the view is
     /// can be said.
     whole: bool,
-    /// The words the page shown was set from, hashed, which a page set
-    /// again is held against to know whether the file was edited.
-    shown_words: u64,
+    /// The words the page shown was set from, which a page set again is
+    /// held against to know whether the file was edited.
+    shown_words: Shown,
     stale: HashSet<Key>,
     jump: Option<motion::Jump>,
     /// Under reduced motion a move cuts straight there.

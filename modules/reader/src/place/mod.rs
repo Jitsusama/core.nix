@@ -407,9 +407,23 @@ pub fn moved(
     line: (f64, f64),
     lines_after: &[(f64, f64)],
 ) -> Option<f64> {
+    moved_into(before, after, line, lines_after, |block| block)
+}
+
+/// Where a line lands as `moved` lands it, but in the block `now` says its
+/// block is after, as an edit that adds or takes a block above it
+/// renumbers it.
+pub fn moved_into(
+    before: &[(usize, f64)],
+    after: &[(usize, f64)],
+    line: (f64, f64),
+    lines_after: &[(f64, f64)],
+    now: impl FnOnce(usize) -> usize,
+) -> Option<f64> {
     let (block, into_pt) = line_at(before, line);
-    let pt = pt_of(after, block, into_pt, height_of(before, block))?;
-    Some(line_in(after, block, pt, lines_after).unwrap_or(pt))
+    let into = now(block);
+    let pt = pt_of(after, into, into_pt, height_of(before, block))?;
+    Some(line_in(after, into, pt, lines_after).unwrap_or(pt))
 }
 
 /// The top of the line in `block` nearest `pt`, of `lines` given by their

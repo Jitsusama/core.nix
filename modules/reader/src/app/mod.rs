@@ -180,14 +180,32 @@ pub(crate) fn sets_for(page_pt: f64, window_pt: f64) -> bool {
     (page_pt - window_pt).abs() < 0.01
 }
 
-/// Whether a page set from words hashed `set`, `page_pt` wide, is taken for
-/// a window whose page is `window_pt` wide, and if so whether it comes of an
-/// edit to the page shown, set from `shown`. One set for a width the window
-/// has left is let go unjudged, and only a page that shows holds its words,
-/// so a set let go, or one a newer set replaces before it shows, can't lose
-/// an edit.
-pub(crate) fn taken(page_pt: f64, window_pt: f64, shown: u64, set: u64) -> Option<bool> {
-    sets_for(page_pt, window_pt).then_some(set != shown)
+/// The words the page shown was set from, hashed (`page::words_of`), which
+/// each page set again is judged against to know whether the file was
+/// edited. Judging takes a copy, so no set judged, let go or replaced
+/// before it shows moves them, and none can lose an edit: only a page
+/// that shows does.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Shown(u64);
+
+impl Shown {
+    /// The words of the first page shown.
+    pub(crate) fn of(words: u64) -> Self {
+        Self(words)
+    }
+
+    /// Whether a page set from words hashed `set`, `page_pt` wide, is taken
+    /// for a window whose page is `window_pt` wide, and if so whether it
+    /// comes of an edit to the page shown. One set for a width the window
+    /// has left is let go unjudged.
+    pub(crate) fn takes(self, page_pt: f64, window_pt: f64, set: u64) -> Option<bool> {
+        sets_for(page_pt, window_pt).then_some(set != self.0)
+    }
+
+    /// A page set from words hashed `words` shows, and holds them from now.
+    pub(crate) fn shows(&mut self, words: u64) {
+        self.0 = words;
+    }
 }
 
 /// A page the reloader set, of the file it names, with the window's title

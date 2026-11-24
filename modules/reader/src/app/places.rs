@@ -65,8 +65,7 @@ impl App {
         // against the page shown, which takes them only once it shows, so
         // the set at the new width still says the edit.
         let page_pt = page.frame.size().x.to_pt();
-        let Some(edited) = super::taken(page_pt, self.width.page_pt(), self.shown_words, words)
-        else {
+        let Some(edited) = self.shown_words.takes(page_pt, self.width.page_pt(), words) else {
             return;
         };
         self.let_incoming_go();
@@ -228,7 +227,7 @@ impl App {
         self.textures = incoming.textures;
         // The page shown holds its words from now, so a set after it is
         // judged against them.
-        self.shown_words = incoming.words;
+        self.shown_words.shows(incoming.words);
         // Set again at another width, the page's blocks have moved, so each
         // mark, and the cursor's line, goes as far through its block from
         // the line it's on. Set again at the same width with its pictures
@@ -543,5 +542,48 @@ impl App {
         if !self.frame_pending {
             self.draw();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::spots_moved;
+    use crate::app::Spot;
+    use crate::text::test_line as line;
+    use crate::{anchor, moves};
+    use std::path::Path;
+
+    #[test]
+    fn each_place_jumped_from_on_the_file_goes_with_its_words_and_others_stay() {
+        // "new" saved in above "one" and "two": a place on this file moves
+        // its view's top and its cursor's line with their words, the last
+        // jump's too, and one on another file stays where it was.
+        let was = [line(20.0, "one"), line(40.0, "two")];
+        let now = [line(20.0, "new"), line(40.0, "one"), line(60.0, "two")];
+        let after = [(0, 0.0), (1, 25.0), (2, 45.0)];
+        let ends: Vec<(f64, f64)> = now.iter().map(moves::ends_of).collect();
+        let moving = anchor::Moving {
+            edited: true,
+            before: None,
+            after: &after,
+            was: &was,
+            now: &now,
+            ends: &ends,
+            most_pt: 500.0,
+        };
+        let spot = |file: &str, pt, aim| Spot {
+            file: file.into(),
+            pt,
+            aim,
+        };
+        let mut jumps = vec![spot("notes.md", 10.0, 30.0), spot("other.md", 10.0, 30.0)];
+        let mut last = Some(spot("notes.md", 30.0, 30.0));
+        let spots = jumps.iter_mut().chain(last.as_mut());
+        spots_moved(spots, Path::new("notes.md"), &moving);
+        assert_eq!(
+            jumps,
+            [spot("notes.md", 30.0, 50.0), spot("other.md", 10.0, 30.0)]
+        );
+        assert_eq!(last, Some(spot("notes.md", 50.0, 50.0)));
     }
 }

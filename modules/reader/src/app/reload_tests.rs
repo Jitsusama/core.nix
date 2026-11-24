@@ -2,7 +2,7 @@
 //! a page set again comes of an edit, which lets the marks kept from the
 //! last time land again from what was kept only when it doesn't.
 
-use super::{Reload, newest, taken};
+use super::{Reload, Shown, newest};
 use crate::page::Width;
 
 #[test]
@@ -26,30 +26,49 @@ fn the_newest_file_and_width_are_taken_and_setting_again_adds_nothing() {
     );
 }
 
-/// What `taken` holds, as `App::saved` asks it of each set: a save set for
-/// a width the window has left is let go unjudged, and the page shown keeps
-/// its words until a page shows, so the set at the new width says the edit.
+/// What the page shown holds, as `App::saved` judges each set and a set
+/// shows: a save set for a width the window has left is let go unjudged,
+/// and the page shown keeps its words until a page shows, so the set at
+/// the new width says the edit.
 #[test]
 fn an_edit_whose_set_was_let_go_for_a_width_left_is_said_by_the_next() {
-    let (shown, saved) = (1, 2);
+    let (opened, saved) = (1, 2);
     let (left, now) = (300.0, 500.0);
+    let mut shown = Shown::of(opened);
     assert_eq!(
-        taken(left, now, shown, saved),
+        shown.takes(left, now, saved),
         None,
         "the save, set at the width the window left, is let go"
     );
     assert_eq!(
-        taken(now, now, shown, saved),
+        shown.takes(now, now, saved),
         Some(true),
         "set again at the new width, it says the edit"
     );
+    shown.shows(saved);
     assert_eq!(
-        taken(now, now, saved, saved),
+        shown.takes(now, now, saved),
         Some(false),
         "once its words show, the same words set again aren't an edit"
     );
+}
+
+/// A set replaced by a newer one before it shows leaves the page shown as
+/// it was, so the newer still says the edit the first carried, though its
+/// own words are the same as the first's.
+#[test]
+fn an_edit_whose_set_a_newer_replaced_before_it_showed_is_said_by_the_newer() {
+    let (opened, saved) = (1, 2);
+    let shown = Shown::of(opened);
+    assert_eq!(shown.takes(500.0, 500.0, saved), Some(true), "the save");
     assert_eq!(
-        taken(now, now, shown, shown),
+        shown.takes(500.0, 500.0, saved),
+        Some(true),
+        "pictures come before it shows: set again, it still says the edit"
+    );
+    assert_eq!(shown, Shown::of(opened), "judging moved nothing");
+    assert_eq!(
+        Shown::of(opened).takes(500.0, 500.0, opened),
         Some(false),
         "pictures come or a width: the same words"
     );
