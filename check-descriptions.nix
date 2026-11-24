@@ -1715,8 +1715,9 @@
   house-report-takes-up-a-macs-swapped-key = ''
     a Mac given a key copies it again, as root, by the same text activation runs, whenever the key
     or its folder changes and each minute, so a key swapped while the Mac runs is taken without a
-    switch, and one launchd missed within a minute; a switch says a refusal each time, and the job
-    says it in its log once until it changes
+    switch, and one launchd missed within a minute; a switch says a refusal each time and forgets
+    what the job said, kept beside the copy's folder, and the job says it in its log once until it
+    changes
   '';
   house-report-takes-up-a-swapped-key = ''
     a Linux machine given a key hands it to house-report as a credential read by --key, and

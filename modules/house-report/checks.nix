@@ -97,11 +97,13 @@ let
   ];
   # What a refusal does, whole: a switch says it each time and forgets
   # `said`, kept beside the copy's folder; the job says it once until it
-  # changes, and forgets it once a copy is made (house keys round 2's F1,
-  # F2, F4 and F9).
+  # changes, and forgets it once a copy is made; and the `said` kept in
+  # the folder before goes, so a rollback can't read it (house keys
+  # round 2's F1, F2, F4 and F9; made anew round 1's F3 and F8).
   noKey = "house-report: $houseReportKey $houseReportWhy, so the daemon has no key";
   refusing = lib.concatStringsSep "\n" [
     "houseReportSaid=/var/db/house-report.said"
+    "/bin/rm -f /var/db/house-report/said 2>/dev/null || :"
     "if [ -n \"$houseReportWhy\" ]; then"
     "  /bin/rm -f \"$houseReportCopy\" \"$houseReportCopy\".* 2>/dev/null || :"
     "  houseReportWhy=\"${noKey}\""
@@ -277,7 +279,9 @@ in
     holds "house-report-takes-up-a-macs-swapped-key"
       (
         "A Mac given /etc/house.key doesn't copy it again, as root, by activation's own text, "
-        + "whenever /etc/house.key or /etc changes and each minute."
+        + "whenever /etc/house.key or /etc changes and each minute, or says a refusal "
+        + "otherwise than at each switch, forgetting what the job said, and once in the "
+        + "job's log until it changes."
       )
       (
         lib.take 2 (watching.ProgramArguments or [ ]) == [
@@ -292,6 +296,9 @@ in
         && lib.hasInfix ("houseReportAtSwitch=1\n" + watched) keyedPrepared
         && !lib.hasInfix "houseReportAtSwitch=" watched
         && lib.hasInfix refusing watched
+        # Nothing else reads or writes `said` (made anew round 1's F5).
+        && times "$houseReportSaid" watched == 4
+        && times "houseReportSaid=" watched == 1
         && watching.UserName or null == null
         && watching.RunAtLoad or null == true
         && watching.StartInterval or null == 60

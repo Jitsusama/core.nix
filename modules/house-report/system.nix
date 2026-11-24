@@ -75,13 +75,15 @@ in
         from this machine's address. Make it root's alone, as a root
         shell does with `install -d -m 0755 /etc/house-report` and
         `install -m 0400 /dev/null /etc/house-report/house.key`, then
-        writes the shaped machine's key into it, or makes one with
+        writes the shaped machine's key into it, or makes the key with
         `head -c 32 /dev/urandom > /etc/house-report/house.key` and
-        writes the same bytes there: any account that can read the key
-        may sign a report. A key another account could ever read is made
-        again on both machines, the same way, rather than given a new
-        mode, since a copy taken of it stays good (house keys round 2's
-        F5 and F7). On Linux the service reads it
+        writes the same bytes into the shaped machine's, through a pipe
+        rather than a file another account could read: any account that
+        can read the key may sign a report. A key either machine ever let
+        another account read is replaced on both by new bytes, made once
+        that way, rather than given a new mode or copied back in, since a
+        copy taken of it stays good (house keys round 2's F5 and F7; made
+        anew round 1's F2, F9 and F11). On Linux the service reads it
         through systemd's credentials, a copy made as it starts, so it
         may be root's alone: a key put there or swapped restarts the
         service, and while none is there the service fails to start,

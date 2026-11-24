@@ -68,7 +68,8 @@ let
   # within a minute, even one the log was cleared of since (house keys
   # round 1's F1, F6, F13 and F17; round 2's F9). `said` sits beside the
   # copy's folder, not in it, so a folder that can't be made is said once
-  # too (round 2's F2).
+  # too (round 2's F2), and the one once kept in it goes, so a rollback
+  # reads no stale refusal there (made anew round 1's F3 and F8).
   #
   # Kept as text here rather than a script of its own, which a sandboxed
   # check could walk over a tree of folders, until that follows (round
@@ -111,6 +112,7 @@ let
       houseReportWhy="couldn't be copied for nobody"
     fi
     houseReportSaid=${copied}.said
+    /bin/rm -f ${copied}/said 2>/dev/null || :
     if [ -n "$houseReportWhy" ]; then
       /bin/rm -f "$houseReportCopy" "$houseReportCopy".* 2>/dev/null || :
       houseReportWhy="house-report: $houseReportKey $houseReportWhy, so the daemon has no key"
