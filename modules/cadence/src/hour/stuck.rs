@@ -91,12 +91,7 @@ fn date(at: i64, tz: &TimeZone) -> String {
 /// been out three days running, with its owner, or none when no measure
 /// has. Dates are the day each run began, where `tz` says.
 #[must_use]
-pub fn named(
-    out: &BTreeMap<String, Out>,
-    measures: &[Measure],
-    now: i64,
-    tz: &TimeZone,
-) -> String {
+pub fn named(out: &BTreeMap<String, Out>, measures: &[Measure], now: i64, tz: &TimeZone) -> String {
     let mut lines = String::new();
     let due = now - RUNNING + SLACK;
     for m in measures {
